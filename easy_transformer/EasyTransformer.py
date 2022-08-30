@@ -1,6 +1,3 @@
-from hook_points import HookedRootModule, HookPoint
-from utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
-
 # Import stuff
 from dataclasses import dataclass
 from dataclasses import fields
@@ -38,6 +35,10 @@ import copy
 import itertools
 
 from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
+
+from easy_transformer.hook_points import HookedRootModule, HookPoint
+from easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
+
 
 VALID_MODEL_NAMES = [
     "gpt2",
