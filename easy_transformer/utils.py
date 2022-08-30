@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import gc
 
 
-def get_sample_from_dataset(sequences: list[str], nb_sample=2, print_len=10):
+def get_sample_from_dataset(sequences, nb_sample=2, print_len=10):
     rd_idx = np.random.randint(0, len(sequences), 3)
     return "\n".join([str(sequences[k][:print_len]) + " ... " for k in rd_idx])
 

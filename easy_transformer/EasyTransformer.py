@@ -4,7 +4,7 @@ from utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from
 # Import stuff
 from dataclasses import dataclass
 from dataclasses import fields
-from typing import Callable, Union
+from typing import Callable, Union, List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -596,8 +596,8 @@ class EasyTransformer(HookedRootModule):
 class AblationMetric:
     def __init__(
         self,
-        metric: Callable[[EasyTransformer, list[str]], torch.Tensor],
-        dataset: list[str],
+        metric: Callable[[EasyTransformer, List[str]], torch.Tensor],
+        dataset: List[str],
         scalar_metric=True,
         relative_metric=True,
     ):
@@ -630,9 +630,9 @@ class AblationConfig:
         self,
         abl_type: str,
         target_module: str,
-        layers: Union[tuple[int, int], str] = "all",
-        heads: Union[list[int], str] = "all",
-        mean_dataset: list[str] = None,
+        layers: Union[Tuple[int, int], str] = "all",
+        heads: Union[List[int], str] = "all",
+        mean_dataset: List[str] = None,
         verbose: bool = False,
         cache_means: bool = True,
         head_circuit: str = "z",
