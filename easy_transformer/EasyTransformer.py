@@ -717,8 +717,6 @@ class EasyAblation:
         if self.cfg.mean_dataset is None and config.compute_means:
             self.cfg.mean_dataset = self.metric.dataset
         self.cfg.dataset = self.metric.dataset
-        if self.cfg.verbose:
-            print(self.cfg)
         if self.cfg.cache_means and self.cfg.compute_means:
             self.get_all_mean()
 
