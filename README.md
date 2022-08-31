@@ -11,3 +11,6 @@ to get access to intermediate activations and features to perform simple emperim
 A demo notebook can be found [here](https://colab.research.google.com/drive/1MvYbd7JqhXFSz3tfRYG7WTbOvdbQRa9q?usp=sharing) and a more comprehensive description of the librairy can be found [here](https://colab.research.google.com/drive/1_tH4PfRSPYuKGnJbhC1NqFesOYuXrir_#scrollTo=zs8juArnyuyB)
 
 
+## Installation
+
+`pip install git+https://github.com/neelnanda-io/Easy-Transformer`
