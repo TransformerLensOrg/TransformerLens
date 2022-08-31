@@ -286,6 +286,7 @@ class EasyTransformer(HookedRootModule):
         self.cfg = self.convert_config(self.model.config, model_type=self.model_type)
         self.cfg["use_attn_result"] = use_attn_result
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
@@ -327,7 +328,7 @@ class EasyTransformer(HookedRootModule):
 
     def forward(self, x):
         # Input x is either a batch of tokens ([batch, pos]) or a text string
-        if type(x) == str:
+        if type(x) == str or type(x) == list:
             # If text, convert to tokens (batch_size=1)
             x = self.to_tokens(x)
         embed = self.hook_embed(self.embed(x))  # [batch, pos, d_model]
@@ -341,7 +342,7 @@ class EasyTransformer(HookedRootModule):
         return x
 
     def to_tokens(self, text):
-        return self.tokenizer(text, return_tensors="pt")["input_ids"]
+        return self.tokenizer(text, return_tensors="pt", padding=True)["input_ids"]
 
     def get_model_type(self, model_name):
         if "gpt2" in model_name:
@@ -594,7 +595,7 @@ class EasyTransformer(HookedRootModule):
 # Ablation implem
 
 
-class AblationMetric:
+class ExperimentMetric:
     def __init__(
         self,
         metric: Callable[[EasyTransformer, List[str]], torch.Tensor],
@@ -626,43 +627,30 @@ class AblationMetric:
         return out
 
 
-class AblationConfig:
+class ExperimentConfig:
     def __init__(
         self,
-        abl_type: str,
-        target_module: str,
+        target_module: str = "attn_head",
         layers: Union[Tuple[int, int], str] = "all",
         heads: Union[List[int], str] = "all",
-        mean_dataset: List[str] = None,
         verbose: bool = False,
-        cache_means: bool = True,
         head_circuit: str = "z",
-        tokens_pos: str = "all",
-        custom_abl_fn: Callable[[torch.tensor, torch.tensor, HookPoint], torch.tensor] = None,
     ):
-        assert abl_type in ["mean", "zero", "neg", "custom"]
         assert target_module in ["mlp", "attn_layer", "attn_head"]
         assert head_circuit in ["z", "q", "v", "k", "attn", "attn_scores"]
-        assert not (abl_type == "custom" and custom_abl_fn is None)
 
-        self.abl_type = abl_type
         self.target_module = target_module
         self.head_circuit = head_circuit
         self.layers = layers
         self.heads = heads
-        self.mean_dataset = mean_dataset
         self.dataset = None
         self.verbose = verbose
-        self.cache_means = cache_means
-        self.compute_means = abl_type == "mean" or abl_type == "custom"
-        self.custom_abl_fn = custom_abl_fn
-        self.tokens_pos = tokens_pos
 
         self.beg_layer = None  # layers where the ablation begins and ends
         self.end_layer = None
 
     def adapt_to_model(self, model: EasyTransformer):
-        """Return a new ablation config that fits the model."""
+        """Return a new experiment config that fits the model."""
         model_cfg = self.copy()
         if self.target_module == "attn_head":
             if self.heads == "all":
@@ -676,7 +664,7 @@ class AblationConfig:
         return model_cfg
 
     def copy(self):
-        copy = AblationConfig(self.abl_type, self.target_module, custom_abl_fn=self.custom_abl_fn)
+        copy = self.__class__()
         for name, attr in vars(self).items():
             if type(attr) == list:
                 setattr(copy, name, attr.copy())
@@ -685,7 +673,7 @@ class AblationConfig:
         return copy
 
     def __str__(self):
-        str_print = "Ablation config:\n"
+        str_print = f"--- {self.__class__.__name__}: ---\n"
         for name, attr in vars(self).items():
             attr = getattr(self, name)
             attr_str = f"* {name}: "
@@ -701,7 +689,68 @@ class AblationConfig:
         return str_print
 
     def __repr__(self):
-        return "AblationConfig(" + self.__str__() + ")"
+        return self.__str__()
+
+
+def zero_fn(z, hk):
+    return torch.zeros(z.shape)
+
+
+def cst_fn(z, cst, hook):
+    return cst
+
+
+def neg_fn(z, hk):
+    return -z
+
+
+class AblationConfig(ExperimentConfig):
+    def __init__(
+        self,
+        abl_type: str = "zero",
+        mean_dataset: List[str] = None,
+        cache_means: bool = True,
+        abl_fn: Callable[[torch.tensor, torch.tensor, HookPoint], torch.tensor] = None,
+        **kwargs,
+    ):
+        assert abl_type in ["mean", "zero", "neg", "custom"]
+        assert not (abl_type == "custom" and abl_fn is None), "You must specify you ablation function"
+        super().__init__(**kwargs)
+
+        self.abl_type = abl_type
+        self.mean_dataset = mean_dataset
+        self.dataset = None
+        self.cache_means = cache_means
+        self.compute_means = abl_type == "mean" or abl_type == "custom"
+        self.abl_fn = abl_fn
+
+        if abl_type == "zero":
+            self.abl_fn = zero_fn
+        if abl_type == "neg":
+            self.abl_fn = neg_fn
+        if abl_type == "mean":
+            self.abl_fn = cst_fn
+
+
+class PatchingConfig(ExperimentConfig):
+    """Configuration for patching activations from the source dataset to the taregt dataset"""
+
+    def __init__(
+        self,
+        source_dataset: List[str] = None,
+        target_dataset: List[str] = None,
+        patch_fn: Callable[[torch.tensor, torch.tensor, HookPoint], torch.tensor] = None,
+        cache_act: bool = True,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+
+        self.source_dataset = source_dataset
+        self.target_dataset = target_dataset
+        self.cache_act = cache_act  # if we should cache activation. Take more GPU memory but faster to run
+        self.patch_fn = patch_fn
+        if patch_fn is None:  # default patch_fn
+            self.patch_fn = cst_fn
 
 
 # TODO : loss metric, zero ablation, mean ablation
@@ -709,37 +758,35 @@ class AblationConfig:
 # datasets, make deterministic
 
 
-class EasyAblation:
-    def __init__(self, model: EasyTransformer, config: AblationConfig, metric: AblationMetric):
+class EasyExperiment:
+    """A virtual class to interatively apply hooks to layers or heads. The children class only needs to define the methods
+    get_hook"""
+
+    def __init__(self, model: EasyTransformer, config: ExperimentConfig, metric: ExperimentMetric):
         self.model = model
         self.metric = metric
         self.cfg = config.adapt_to_model(model)
-        if self.cfg.mean_dataset is None and config.compute_means:
-            self.cfg.mean_dataset = self.metric.dataset
         self.cfg.dataset = self.metric.dataset
-        if self.cfg.cache_means and self.cfg.compute_means:
-            self.get_all_mean()
 
-    def run_ablation(self):
+    def run_experiment(self):
         self.metric.set_baseline(self.model)
-        abl_results = torch.empty(self.get_result_shape())
+        results = torch.empty(self.get_result_shape())
         if self.cfg.verbose:
             print(self.cfg)
         self.metric.set_baseline(self.model)
-        abl_results = torch.empty(self.get_result_shape())
-        if self.cfg.cache_means and self.cfg.compute_means:
-            self.get_all_mean()
+        results = torch.empty(self.get_result_shape())
         for layer in tqdm(range(self.cfg.beg_layer, self.cfg.end_layer)):
             if self.cfg.target_module == "attn_head":
                 for head in self.cfg.heads:
-                    abl_hook = self.get_head_ablation_hook(layer, head)
-                    abl_results[layer, head] = self.compute_metric(abl_hook).cpu().detach()
+                    hook = self.get_hook(layer, head)
+                    results[layer, head] = self.compute_metric(hook).cpu().detach()
             else:
-                abl_hook = self.get_layer_ablation_hook(layer)
-                abl_results[layer] = self.compute_metric(abl_hook).cpu().detach()
-        if len(abl_results.shape) < 2:
-            abl_results = abl_results.unsqueeze(0)  # to make sure that we can always easily plot the results
-        return abl_results
+                hook = self.get_hook(layer)
+                results[layer] = self.compute_metric(hook).cpu().detach()
+        self.model.reset_hooks()
+        if len(results.shape) < 2:
+            results = results.unsqueeze(0)  # to make sure that we can always easily plot the results
+        return results
 
     def get_result_shape(self):
         if self.cfg.target_module == "attn_head":
@@ -753,52 +800,45 @@ class EasyAblation:
         self.model.add_hook(hk_name, hk)
         return self.metric.compute_metric(self.model)
 
-    def get_head_ablation_hook(self, layer, head):
-        hook_name = f"blocks.{layer}.attn.hook_{self.cfg.head_circuit}"
-        dim = (
-            1 if "hook_attn" in hook_name else 2
-        )  # hook_attn and hook_attn_scores are [batch,nb_head,seq_len, seq_len] and the other activation of head (z, q, v,k) are [batch, seq_len, nb_head, head_dim]
+    def get_target(self, layer, head):
+        if head is not None:
+            hook_name = f"blocks.{layer}.attn.hook_{self.cfg.head_circuit}"
+            dim = (
+                1 if "hook_attn" in hook_name else 2
+            )  # hook_attn and hook_attn_scores are [batch,nb_head,seq_len, seq_len] and the other activation of head (z, q, v,k) are [batch, seq_len, nb_head, head_dim]
+        else:
+            if self.cfg.target_module == "mlp":
+                hook_name = f"blocks.{layer}.mlp.hook_post"
+            else:
+                hook_name = f"blocks.{layer}.hook_attn_out"
+            dim = None  # all the activation dimensions are ablated
+        return hook_name, dim
+
+
+class EasyAblation(EasyExperiment):
+    def __init__(self, model: EasyTransformer, config: AblationConfig, metric: ExperimentMetric):
+        super().__init__(model, config, metric)
+        assert type(config) == AblationConfig
+        if self.cfg.mean_dataset is None and config.compute_means:
+            self.cfg.mean_dataset = self.metric.dataset
+        if self.cfg.cache_means and self.cfg.compute_means:
+            self.get_all_mean()
+
+    def run_ablation(self):
+        return self.run_experiment()
+
+    def get_hook(self, layer, head=None):
+        # If the target is a layer, head is None.
+        hook_name, dim = self.get_target(layer, head)
+        mean = None
         if self.cfg.compute_means:
             if self.cfg.cache_means:
                 mean = self.mean_cache[hook_name]
             else:
                 mean = self.get_mean(hook_name)
 
-        if self.cfg.abl_type == "mean":
-            cst_hook = set_cst_hook(mean, head, dim=dim)
-            return (hook_name, cst_hook)
-
-        if self.cfg.abl_type == "zero":
-            zero_hook = set_zero_hook(head, dim=dim)
-            return (hook_name, zero_hook)
-
-        if self.cfg.abl_type == "neg":
-            neg_hook = set_neg_hook(head, dim=dim)
-            return (hook_name, neg_hook)
-        if self.cfg.abl_type == "custom":
-            custom_hook = get_custom_abl_hook(self.cfg.custom_abl_fn, mean, head, dim=dim)
-            return (hook_name, custom_hook)
-
-    def get_layer_ablation_hook(self, layer):
-        if self.cfg.target_module == "mlp":
-            hook_name = f"blocks.{layer}.mlp.hook_post"
-        else:
-            hook_name = f"blocks.{layer}.hook_attn_out"
-
-        if self.cfg.abl_type == "mean":
-            if self.cfg.cache_means:
-                mean = self.mean_cache[hook_name]
-            else:
-                mean = self.get_mean(hook_name)
-
-            cst_hook = set_cst_hook(mean.clone(), dim=None)
-            return (hook_name, cst_hook)
-        if self.cfg.abl_type == "zero":
-            zero_hook = set_zero_hook(dim=None)
-            return (hook_name, zero_hook)
-        if self.cfg.abl_type == "neg":
-            neg_hook = set_neg_hook(dim=None)
-            return (hook_name, neg_hook)
+        abl_hook = get_act_hook(self.cfg.abl_fn, mean, head, dim=dim)
+        return (hook_name, abl_hook)
 
     def get_all_mean(self):
         cache = {}
@@ -822,61 +862,71 @@ class EasyAblation:
         return einops.repeat(mean, "... -> s ...", s=cache[hook_name].shape[0])
 
 
-def get_custom_abl_hook(fn, mean, idx=None, dim=None):
-    def custom_hook(z, hook):
-        if dim is None:  # mean and z have the same shape, the mean is constant along the batch dimension
-            return fn(z, mean, hook)
-        if dim == 0:
-            z[idx] = fn(z[idx], mean[idx], hook)
-        elif dim == 1:
-            z[:, idx] = fn(z[:, idx], mean[:, idx], hook)
-        elif dim == 2:
-            z[:, :, idx] = fn(z[:, :, idx], mean[:, :, idx], hook)
-        return z
+class EasyPatching(EasyExperiment):
+    def __init__(self, model: EasyTransformer, config: PatchingConfig, metric: ExperimentMetric):
+        super().__init__(model, config, metric)
+        assert type(config) == PatchingConfig, f"{type(config)}"
+        if self.cfg.cache_act:
+            self.get_all_act()
+
+    def run_patching(self):
+        return self.run_experiment()
+
+    def get_hook(self, layer, head=None):
+        # If the target is a layer, head is None.
+        hook_name, dim = self.get_target(layer, head)
+        if self.cfg.cache_act:
+            act = self.act_cache[hook_name]  # activation on the source dataset
+        else:
+            act = self.get_act(hook_name)
+
+        hook = get_act_hook(self.cfg.patch_fn, act, head, dim=dim)
+        return (hook_name, hook)
+
+    def get_all_act(self):
+        self.act_cache = {}
+        self.model.reset_hooks()
+        self.model.cache_all(self.act_cache)
+        self.model(self.cfg.source_dataset)
+
+    def get_act(self, hook_name):
+        cache = {}
+
+        def cache_hook(z, hook):
+            cache[hook_name] = z.detach().to("cuda")
+
+        self.model.reset_hooks()
+        self.model.run_with_hooks(self.cfg.mean_dataset, fwd_hooks=[(hook_name, cache_hook)])
+        return cache[hook_name]
+
+
+def get_act_hook(fn, alt_act=None, idx=None, dim=None):
+    """Return an hook that modify the activation on the fly. alt_act (Alternative activations) is a tensor of the same shape of the z.
+    E.g. It can be the mean activation or the activations on other dataset."""
+    if alt_act is not None:
+
+        def custom_hook(z, hook):
+            if dim is None:  # mean and z have the same shape, the mean is constant along the batch dimension
+                return fn(z, alt_act, hook)
+            if dim == 0:
+                z[idx] = fn(z[idx], alt_act[idx], hook)
+            elif dim == 1:
+                z[:, idx] = fn(z[:, idx], alt_act[:, idx], hook)
+            elif dim == 2:
+                z[:, :, idx] = fn(z[:, :, idx], alt_act[:, :, idx], hook)
+            return z
+
+    else:
+
+        def custom_hook(z, hook):
+            if dim is None:
+                return fn(z, hook)
+            if dim == 0:
+                z[idx] = fn(z[idx], hook)
+            elif dim == 1:
+                z[:, idx] = fn(z[:, idx], hook)
+            elif dim == 2:
+                z[:, :, idx] = fn(z[:, :, idx], hook)
+            return z
 
     return custom_hook
-
-
-def set_zero_hook(idx=None, dim=None):
-    def zero_hook(z, hook):
-        if dim is None:
-            return torch.zeros(z.shape)
-        if dim == 0:
-            z[idx] = torch.zeros(z[idx].shape)
-        elif dim == 1:
-            z[:, idx] = torch.zeros(z[:, idx].shape)
-        elif dim == 2:
-            z[:, :, idx] = torch.zeros(z[:, :, idx].shape)
-        return z
-
-    return zero_hook
-
-
-def set_neg_hook(idx=None, dim=None):
-    def neg_hook(z, hook):
-        if dim is None:
-            return -z
-        if dim == 0:
-            z[idx] = -z[idx]
-        elif dim == 1:
-            z[:, idx] = -z[:, idx]
-        elif dim == 2:
-            z[:, :, idx] = -z[:, :, idx]
-        return z
-
-    return neg_hook
-
-
-def set_cst_hook(cst, idx=None, dim=None):
-    def cst_hook(z, hook):
-        if dim is None:
-            return cst
-        if dim == 0:
-            z[idx] = cst[idx]
-        elif dim == 1:
-            z[:, idx] = cst[:, idx]
-        elif dim == 2:
-            z[:, :, idx] = cst[:, :, idx]
-        return z
-
-    return cst_hook

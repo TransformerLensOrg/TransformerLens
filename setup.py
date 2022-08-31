@@ -6,5 +6,5 @@ setup(
     packages=["easy_transformer"],
     license="LICENSE",
     description="An implementation of transformers tailored for mechanistic interpretability.",
-    long_description=open("README.txt").read(),
+    long_description=open("README.md").read(),
 )
