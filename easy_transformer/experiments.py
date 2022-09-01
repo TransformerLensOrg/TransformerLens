@@ -82,7 +82,7 @@ class ExperimentConfig:
         head_circuit: str = "z",
     ):
         assert target_module in ["mlp", "attn_layer", "attn_head"]
-        assert head_circuit in ["z", "q", "v", "k", "attn", "attn_scores"]
+        assert head_circuit in ["z", "q", "v", "k", "attn", "attn_scores", "result"]
 
         self.target_module = target_module
         self.head_circuit = head_circuit
