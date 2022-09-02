@@ -1,4 +1,5 @@
 # Import stuff
+from typing import Callable
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -125,16 +126,22 @@ class HookedRootModule(nn.Module):
 
     def cache_all(self, cache, incl_bwd=False, device="cuda"):
         # Caches all activations wrapped in a HookPoint
+        self.cache_some(cache, lambda x: True, incl_bwd=incl_bwd, device=device)
+
+    def cache_some(self, cache, names: Callable[str, bool], incl_bwd=False, device="cuda"):
+        """Cache a list of hook provided by names, Boolean function on names"""
+
         def save_hook(tensor, hook):
             cache[hook.name] = tensor.detach().to(device)
 
         def save_hook_back(tensor, hook):
             cache[hook.name + "_grad"] = tensor[0].detach().to(device)
 
-        for hp in self.hook_points():
-            hp.add_hook(save_hook, "fwd")
-            if incl_bwd:
-                hp.add_hook(save_hook_back, "bwd")
+        for name, hp in self.hook_dict.items():
+            if names(name):
+                hp.add_hook(save_hook, "fwd")
+                if incl_bwd:
+                    hp.add_hook(save_hook_back, "bwd")
 
     def add_hook(self, name, hook, dir="fwd"):
         if type(name) == str:
