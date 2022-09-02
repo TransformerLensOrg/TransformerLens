@@ -80,6 +80,8 @@ class ExperimentConfig:
         heads: Union[List[int], str] = "all",
         verbose: bool = False,
         head_circuit: str = "z",
+        beg_layer=None,
+        end_layer=None,
     ):
         assert target_module in ["mlp", "attn_layer", "attn_head"]
         assert head_circuit in ["z", "q", "v", "k", "attn", "attn_scores", "result"]
@@ -91,8 +93,8 @@ class ExperimentConfig:
         self.dataset = None
         self.verbose = verbose
 
-        self.beg_layer = None  # layers where the ablation begins and ends
-        self.end_layer = None
+        self.beg_layer = beg_layer  # layers where the ablation begins and ends
+        self.end_layer = end_layer
 
     def adapt_to_model(self, model: EasyTransformer):
         """Return a new experiment config that fits the model."""
