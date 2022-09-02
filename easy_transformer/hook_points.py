@@ -128,7 +128,7 @@ class HookedRootModule(nn.Module):
         # Caches all activations wrapped in a HookPoint
         self.cache_some(cache, lambda x: True, incl_bwd=incl_bwd, device=device)
 
-    def cache_some(self, cache, names: Callable[str, bool], incl_bwd=False, device="cuda"):
+    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device="cuda"):
         """Cache a list of hook provided by names, Boolean function on names"""
 
         def save_hook(tensor, hook):
