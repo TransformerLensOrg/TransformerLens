@@ -35,9 +35,9 @@ import itertools
 
 from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
 
-from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
-from easy_transformer.EasyTransformer import EasyTransformer
+from easy_transformer.easy_transformer.hook_points import HookedRootModule, HookPoint
+from easy_transformer.easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
+from easy_transformer.easy_transformer.EasyTransformer import EasyTransformer
 
 
 class ExperimentMetric:
@@ -263,7 +263,7 @@ class EasyExperiment:
 class EasyAblation(EasyExperiment):
     def __init__(self, model: EasyTransformer, config: AblationConfig, metric: ExperimentMetric, semantic_indices = None):
         super().__init__(model, config, metric)
-        assert "AblationConfig" in str(type(config)) # not sure why config being an easy_transformer.AblationConfig kills this :(
+        assert "AblationConfig" in str(type(config))
         if self.cfg.mean_dataset is None and config.compute_means:
             self.cfg.mean_dataset = self.metric.dataset
         if self.cfg.cache_means and self.cfg.compute_means:
@@ -272,24 +272,15 @@ class EasyAblation(EasyExperiment):
 
     def run_ablation(self):
         if self.semantic_indices is not None:
-            print("Starting semantic ablation...")
             cache = {}
             self.model.reset_hooks()
             self.model.cache_all(cache)
             self.model(self.cfg.mean_dataset) 
             dataset_length = len(self.cfg.mean_dataset)
             for semantic_symbol, semantic_indices in self.semantic_indices.items():
-                print("Doing some ablation w", semantic_symbol)
-                for hk in self.model.hook_dict.keys(): # @TODO turn into relevant hooks
-                    if not ("attn.hook_result" in hk): continue  
-                    # data = cache[hk]
-                    # assert data.shape[0] == dataset_length, f"{data.shape[0]} {hk}"
-                    # selected = data[list(range(dataset_length)), semantic_indices]
-                    # mean = einops.repeat(torch.mean(selected, dim=0, keepdim=False).clone(), "... -> s ...", s=dataset_length)
-                    # self.mean_cache[hk][list(range(dataset_length)), semantic_indices] = mean
-
+                for hk in self.model.hook_dict.keys():
+                    if not ("attn.hook_result" in hk): continue 
                     self.mean_cache[hk][list(range(dataset_length)), semantic_indices] = einops.repeat(torch.mean(cache[hk][list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(), "... -> s ...", s=dataset_length)
-            print("Done.")
         return self.run_experiment()
 
     def get_hook(self, layer, head=None):

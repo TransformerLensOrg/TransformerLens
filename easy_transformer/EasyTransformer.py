@@ -1,3 +1,5 @@
+# Import stuff
+from typing import Callable, Union, List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,8 +34,8 @@ import itertools
 
 from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
 
-from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
+from easy_transformer.easy_transformer.hook_points import HookedRootModule, HookPoint
+from easy_transformer.easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
 
 
 VALID_MODEL_NAMES = [
@@ -242,10 +244,7 @@ class TransformerBlock(nn.Module):
         resid_pre = self.hook_resid_pre(x)  # [batch, pos, d_model]
         attn_out = self.hook_attn_out(self.attn(self.ln1(resid_pre)))  # [batch, pos, d_model]
         resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
-<<<<<<< HEAD
         
-=======
->>>>>>> upstream/main
         mlp_out = self.hook_mlp_out(self.mlp(self.ln2(resid_mid)))  # [batch, pos, d_model]
         resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         return resid_post
