@@ -8,16 +8,16 @@ import numpy as np
 import einops
 from tqdm import tqdm
 
-from easy_transformer.easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer.easy_transformer.utils import (
+from easy_transformer.hook_points import HookedRootModule, HookPoint
+from easy_transformer.utils import (
     gelu_new,
     to_numpy,
     get_corner,
     print_gpu_mem,
     get_sample_from_dataset,
 )
-from easy_transformer.easy_transformer.EasyTransformer import EasyTransformer
-from easy_transformer.easy_transformer.experiments import (
+from easy_transformer.EasyTransformer import EasyTransformer
+from easy_transformer.experiments import (
     ExperimentMetric,
     AblationConfig,
     EasyAblation,
@@ -25,6 +25,12 @@ from easy_transformer.easy_transformer.experiments import (
 
 
 def test_semantic_ablation():
+    """
+    Compute semantic ablation
+    in a manual way, and then 
+    in the experiments.py way and check that they agree
+    """
+
     # so we don't have to add the IOI dataset object to this library...
     ioi_text_prompts = [
         "Then, Christina and Samantha were working at the grocery store. Samantha decided to give a kiss to Christina",
@@ -49,6 +55,7 @@ def test_semantic_ablation():
     if torch.cuda.is_available():
         model.to("cuda")
 
+    # compute in the proper way
     metric = ExperimentMetric(
         metric=logit_diff, dataset=ioi_text_prompts, relative_metric=True
     )
@@ -63,25 +70,22 @@ def test_semantic_ablation():
     abl = EasyAblation(model, config, metric, semantic_indices=semantic_indices)
     result = abl.run_ablation()
 
+    # compute in a manual way
     model.reset_hooks()
     cache = {}
     model.cache_all(cache)
     logits = model(ioi_text_prompts)
-
     io_logits = logits[list(range(L)), ioi_end_idx, ioi_io_ids]
     s_logits = logits[list(range(L)), ioi_end_idx, ioi_s_ids]
     diff_logits = io_logits - s_logits
     avg_logits = diff_logits.mean()
-
     max_seq_length = cache["hook_embed"].shape[1]
     assert list(cache["hook_embed"].shape) == [
         L,
         max_seq_length,
         model.cfg["d_model"],
     ], cache["hook_embed"].shape
-
     average_activations = {}
-
     for key in cache.keys():
         if "attn.hook_result" not in key:
             continue
@@ -99,10 +103,8 @@ def test_semantic_ablation():
             cache[key][
                 list(range(L)), semantic_indices[thing], :, :
             ] = thing_average.clone()
-
     diffs = torch.zeros((model.cfg["n_layers"], model.cfg["n_heads"]))
     diffs += avg_logits.item()
-
     for layer in tqdm(range(model.cfg["n_layers"])):
         for head in range(model.cfg["n_heads"]):
             new_val = (

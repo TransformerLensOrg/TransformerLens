@@ -35,9 +35,9 @@ import itertools
 
 from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
 
-from easy_transformer.easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer.easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
-from easy_transformer.easy_transformer.EasyTransformer import EasyTransformer
+from easy_transformer.hook_points import HookedRootModule, HookPoint
+from easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
+from easy_transformer.EasyTransformer import EasyTransformer
 
 
 class ExperimentMetric:
