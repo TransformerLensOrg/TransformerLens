@@ -575,9 +575,9 @@ class EasyTransformer(HookedRootModule):
             W_Q = opt.model.decoder.layers[l].self_attn.q_proj.weight
             W_K = opt.model.decoder.layers[l].self_attn.k_proj.weight
             W_V = opt.model.decoder.layers[l].self_attn.v_proj.weight
-            W_Q = einops.rearrange(W_Q, "(index d_head) d_model->index d_head d_model", i=self.cfg["n_heads"])
-            W_K = einops.rearrange(W_K, "(index d_head) d_model->index d_head d_model", i=self.cfg["n_heads"])
-            W_V = einops.rearrange(W_V, "(index d_head) d_model->index d_head d_model", i=self.cfg["n_heads"])
+            W_Q = einops.rearrange(W_Q, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
+            W_K = einops.rearrange(W_K, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
+            W_V = einops.rearrange(W_V, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
 
             sd[f"blocks.{l}.attn.W_Q"] = W_Q * w_ln_attn
             sd[f"blocks.{l}.attn.W_K"] = W_K * w_ln_attn
@@ -608,7 +608,7 @@ class EasyTransformer(HookedRootModule):
             sd[f"blocks.{l}.attn.b_V"] = W_V @ b_ln + v_bias
 
             W_O = opt.model.decoder.layers[l].self_attn.out_proj.weight
-            W_O = einops.rearrange(W_O, "d_model (index d_head)->index d_model d_head", i=self.cfg["n_heads"])
+            W_O = einops.rearrange(W_O, "d_model (index d_head)->index d_model d_head", index=self.cfg["n_heads"])
             sd[f"blocks.{l}.attn.W_O"] = W_O
             sd[f"blocks.{l}.attn.b_O"] = opt.model.decoder.layers[l].self_attn.out_proj.bias
 
