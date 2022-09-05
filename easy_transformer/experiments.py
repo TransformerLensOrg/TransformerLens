@@ -178,7 +178,7 @@ class AblationConfig(ExperimentConfig):
 
 
 class PatchingConfig(ExperimentConfig):
-    """Configuration for patching activations from the source dataset to the taregt dataset"""
+    """Configuration for patching activations from the source dataset to the target dataset"""
 
     def __init__(
         self,
@@ -218,6 +218,7 @@ class EasyExperiment:
         results = torch.empty(self.get_result_shape())
         if self.cfg.verbose:
             print(self.cfg)
+
         self.metric.set_baseline(self.model)
         results = torch.empty(self.get_result_shape())
         for layer in tqdm(range(self.cfg.beg_layer, self.cfg.end_layer)):
@@ -263,11 +264,11 @@ class EasyExperiment:
 class EasyAblation(EasyExperiment):
     """
     Run an ablation experiment according to the config object
-    Pass semantic_indices not None to average across different index positions 
+    Pass semantic_indices not None to average across different index positions
     (probably limited used currently, see test_experiments for one usage)
     """
 
-    def __init__(self, model: EasyTransformer, config: AblationConfig, metric: ExperimentMetric, semantic_indices = None):
+    def __init__(self, model: EasyTransformer, config: AblationConfig, metric: ExperimentMetric, semantic_indices=None):
         super().__init__(model, config, metric)
         assert "AblationConfig" in str(type(config))
         if self.cfg.mean_dataset is None and config.compute_means:
@@ -281,12 +282,19 @@ class EasyAblation(EasyExperiment):
             cache = {}
             self.model.reset_hooks()
             self.model.cache_all(cache)
-            self.model(self.cfg.mean_dataset) 
+            self.model(self.cfg.mean_dataset)
             dataset_length = len(self.cfg.mean_dataset)
             for semantic_symbol, semantic_indices in self.semantic_indices.items():
                 for hk in self.model.hook_dict.keys():
-                    if not ("attn.hook_result" in hk): continue 
-                    self.mean_cache[hk][list(range(dataset_length)), semantic_indices] = einops.repeat(torch.mean(cache[hk][list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(), "... -> s ...", s=dataset_length)
+                    if not ("attn.hook_result" in hk):
+                        continue
+                    self.mean_cache[hk][list(range(dataset_length)), semantic_indices] = einops.repeat(
+                        torch.mean(
+                            cache[hk][list(range(dataset_length)), semantic_indices], dim=0, keepdim=False
+                        ).clone(),
+                        "... -> s ...",
+                        s=dataset_length,
+                    )
         return self.run_experiment()
 
     def get_hook(self, layer, head=None):
@@ -327,7 +335,7 @@ class EasyAblation(EasyExperiment):
 class EasyPatching(EasyExperiment):
     def __init__(self, model: EasyTransformer, config: PatchingConfig, metric: ExperimentMetric):
         super().__init__(model, config, metric)
-        assert type(config) == PatchingConfig, f"{type(config)}"
+        assert "PatchingConfig" in str(type(config))
         if self.cfg.cache_act:
             self.get_all_act()
 
@@ -358,7 +366,7 @@ class EasyPatching(EasyExperiment):
             cache[hook_name] = z.detach().to("cuda")
 
         self.model.reset_hooks()
-        self.model.run_with_hooks(self.cfg.mean_dataset, fwd_hooks=[(hook_name, cache_hook)])
+        self.model.run_with_hooks(self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)])
         return cache[hook_name]
 
 
