@@ -164,7 +164,6 @@ class HookedRootModule(nn.Module):
         reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
         including those added in this run)
         clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
-
         Note that if we want to use backward hooks, we need to set
         reset_hooks_end to be False, so the backward hooks are still there - this function only runs a forward pass.
         """

@@ -261,15 +261,32 @@ class EasyExperiment:
 
 
 class EasyAblation(EasyExperiment):
-    def __init__(self, model: EasyTransformer, config: AblationConfig, metric: ExperimentMetric):
+    """
+    Run an ablation experiment according to the config object
+    Pass semantic_indices not None to average across different index positions 
+    (probably limited used currently, see test_experiments for one usage)
+    """
+
+    def __init__(self, model: EasyTransformer, config: AblationConfig, metric: ExperimentMetric, semantic_indices = None):
         super().__init__(model, config, metric)
-        assert type(config) == AblationConfig
+        assert "AblationConfig" in str(type(config))
         if self.cfg.mean_dataset is None and config.compute_means:
             self.cfg.mean_dataset = self.metric.dataset
         if self.cfg.cache_means and self.cfg.compute_means:
             self.get_all_mean()
+        self.semantic_indices = semantic_indices
 
     def run_ablation(self):
+        if self.semantic_indices is not None:
+            cache = {}
+            self.model.reset_hooks()
+            self.model.cache_all(cache)
+            self.model(self.cfg.mean_dataset) 
+            dataset_length = len(self.cfg.mean_dataset)
+            for semantic_symbol, semantic_indices in self.semantic_indices.items():
+                for hk in self.model.hook_dict.keys():
+                    if not ("attn.hook_result" in hk): continue 
+                    self.mean_cache[hk][list(range(dataset_length)), semantic_indices] = einops.repeat(torch.mean(cache[hk][list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(), "... -> s ...", s=dataset_length)
         return self.run_experiment()
 
     def get_hook(self, layer, head=None):
