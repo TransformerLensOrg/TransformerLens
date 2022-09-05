@@ -1,4 +1,3 @@
-# Import stuff
 from typing import Callable, Union, List, Tuple
 import torch
 import torch.nn as nn
@@ -6,6 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import einops
+import logging
 
 from tqdm import tqdm
 import random
@@ -37,7 +37,6 @@ from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
 
-
 VALID_MODEL_NAMES = [
     "gpt2",
     "gpt2-medium",
@@ -53,13 +52,37 @@ VALID_MODEL_NAMES = [
     "EleutherAI/gpt-neo-125M",
     "EleutherAI/gpt-neo-1.3B",
     "EleutherAI/gpt-neo-2.7B",
-    "EleutherAI/gpt-j-6B",
-    "EleutherAI/gpt-neox-20b",
+    "stanford-gpt2-small-A",
+    "stanford-gpt2-small-B",
+    "stanford-gpt2-small-C",
+    "stanford-gpt2-small-D",
+    "stanford-gpt2-small-E",
+    "stanford-gpt2-medium-A",
+    "stanford-gpt2-medium-B",
+    "stanford-gpt2-medium-C",
+    "stanford-gpt2-medium-D",
+    "stanford-gpt2-medium-E",
 ]
 
+MODEL_NAMES_DICT = {
+    "stanford-gpt2-small-A":"stanford-crfm/alias-gpt2-small-x21",
+    "stanford-gpt2-small-B":"stanford-crfm/battlestar-gpt2-small-x49",
+    "stanford-gpt2-small-C":"stanford-crfm/caprica-gpt2-small-x81", 
+    "stanford-gpt2-small-D":"stanford-crfm/darkmatter-gpt2-small-x343",
+    "stanford-gpt2-small-E":"stanford-crfm/expanse-gpt2-small-x777",
+    "stanford-gpt2-medium-A":"stanford-crfm/arwen-gpt2-medium-x21",
+    "stanford-gpt2-medium-B":"stanford-crfm/beren-gpt2-medium-x49",
+    "stanford-gpt2-medium-C":"stanford-crfm/celebrimbor-gpt2-medium-x81",
+    "stanford-gpt2-medium-D":"stanford-crfm/durin-gpt2-medium-x343",
+    "stanford-gpt2-medium-E":"stanford-crfm/eowyn-gpt2-medium-x777",
+}
+# The steps for which there are checkpoints in the stanford crfm models - provided as reference
+STANFORD_CRFM_CHECKPOINTS = list(range(0, 100, 10))+list(range(100, 2000, 50))+list(range(2000, 20000, 100))+list(range(20000, 400000+1, 1000))
 
-# TODO: Add Bloom
+# TODO: Add Bloom, GPT-J and GPT-NeoX
 """
+EleutherAI/gpt-j-6B
+EleutherAI/gpt-neox-20b
 bloom-350m
 bloom-760m
 bloom-1b3
@@ -260,7 +283,7 @@ class EasyTransformer(HookedRootModule):
     the weights
     """
 
-    def __init__(self, model_name, use_attn_result=False, model=None, keep_original_model=False, center_weights=True):
+    def __init__(self, model_name, use_attn_result=False, model=None, keep_original_model=False, center_weights=True, checkpoint=None):
         """
         model_name (str): The name of the model to load, via HuggingFace
         use_attn_result (bool): Says whether to explicitly calculate the amount
@@ -273,18 +296,34 @@ class EasyTransformer(HookedRootModule):
         keep_original_model (bool): If False, the original HuggingFace model is
             deleted, otherwise it's kept as a self.model attribute
         """
-        assert model_name in VALID_MODEL_NAMES
         super().__init__()
+        assert model_name in VALID_MODEL_NAMES, f"Invalid model name: {model_name}. Valid model names are: {VALID_MODEL_NAMES}"
         self.model_name = model_name
-        self.model_type = self.get_model_type(model_name)
+        if self.model_name in MODEL_NAMES_DICT:
+            self.full_model_name = MODEL_NAMES_DICT[self.model_name]
+        else:
+            self.full_model_name = self.model_name
+        self.model_type = self.get_model_type(self.full_model_name)
         if model is not None:
             self.model = model
         else:
-            self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            if checkpoint is not None:
+                if 'stanford' not in self.model_name:
+                    logging.warning(f"Loading checkpoints is not supported for the model {self.model_name}. Loading without checkpoints")
+                    self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name)
+                else:
+                    assert checkpoint in STANFORD_CRFM_CHECKPOINTS, f"Checkpoint {checkpoint} is not valid. Available checkpoints are {STANFORD_CRFM_CHECKPOINTS}"
+                    self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name, revision=f"checkpoint-{checkpoint}")    
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name)
 
         self.cfg = self.convert_config(self.model.config, model_type=self.model_type)
         self.cfg["use_attn_result"] = use_attn_result
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.cfg['checkpoint'] = checkpoint
+        self.cfg['model_type'] = self.model_type
+        self.cfg['model_name'] = self.model_name
+        self.cfg['full_model_name'] = self.full_model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(self.full_model_name)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.embed = Embed(self.cfg)
@@ -344,7 +383,7 @@ class EasyTransformer(HookedRootModule):
         return self.tokenizer(text, return_tensors="pt", padding=True)["input_ids"]
 
     def get_model_type(self, model_name):
-        if "gpt2" in model_name:
+        if "gpt2" in model_name or "stanford" in model_name:
             return "gpt2"
         elif "opt" in model_name:
             return "opt"
@@ -536,9 +575,9 @@ class EasyTransformer(HookedRootModule):
             W_Q = opt.model.decoder.layers[l].self_attn.q_proj.weight
             W_K = opt.model.decoder.layers[l].self_attn.k_proj.weight
             W_V = opt.model.decoder.layers[l].self_attn.v_proj.weight
-            W_Q = einops.rearrange(W_Q, "(index d_head) d_model->index d_head d_model", i=self.cfg["n_heads"])
-            W_K = einops.rearrange(W_K, "(index d_head) d_model->index d_head d_model", i=self.cfg["n_heads"])
-            W_V = einops.rearrange(W_V, "(index d_head) d_model->index d_head d_model", i=self.cfg["n_heads"])
+            W_Q = einops.rearrange(W_Q, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
+            W_K = einops.rearrange(W_K, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
+            W_V = einops.rearrange(W_V, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
 
             sd[f"blocks.{l}.attn.W_Q"] = W_Q * w_ln_attn
             sd[f"blocks.{l}.attn.W_K"] = W_K * w_ln_attn
@@ -569,7 +608,7 @@ class EasyTransformer(HookedRootModule):
             sd[f"blocks.{l}.attn.b_V"] = W_V @ b_ln + v_bias
 
             W_O = opt.model.decoder.layers[l].self_attn.out_proj.weight
-            W_O = einops.rearrange(W_O, "d_model (index d_head)->index d_model d_head", i=self.cfg["n_heads"])
+            W_O = einops.rearrange(W_O, "d_model (index d_head)->index d_model d_head", index=self.cfg["n_heads"])
             sd[f"blocks.{l}.attn.W_O"] = W_O
             sd[f"blocks.{l}.attn.b_O"] = opt.model.decoder.layers[l].self_attn.out_proj.bias
 
