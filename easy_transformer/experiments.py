@@ -68,7 +68,7 @@ class ExperimentMetric:
             assert len(out.shape) == 0, "Output of scalar metric has shape of length > 0"
         self.shape = out.shape
         if self.relative_metric:
-            out = (self.baseline / out) - 1
+            out = (out / self.baseline) - 1
         return out
 
 
@@ -271,30 +271,16 @@ class EasyAblation(EasyExperiment):
     def __init__(self, model: EasyTransformer, config: AblationConfig, metric: ExperimentMetric, semantic_indices=None):
         super().__init__(model, config, metric)
         assert "AblationConfig" in str(type(config))
+        assert not (
+            (semantic_indices is not None) and (config.head_circuit in ["hook_attn_scores", "hook_attn"])
+        )  # not implemented (surely not very useful)
+        self.semantic_indices = semantic_indices
         if self.cfg.mean_dataset is None and config.compute_means:
             self.cfg.mean_dataset = self.metric.dataset
         if self.cfg.cache_means and self.cfg.compute_means:
             self.get_all_mean()
-        self.semantic_indices = semantic_indices
 
     def run_ablation(self):
-        if self.semantic_indices is not None:
-            cache = {}
-            self.model.reset_hooks()
-            self.model.cache_all(cache)
-            self.model(self.cfg.mean_dataset)
-            dataset_length = len(self.cfg.mean_dataset)
-            for semantic_symbol, semantic_indices in self.semantic_indices.items():
-                for hk in self.model.hook_dict.keys():
-                    if not ("attn.hook_result" in hk):
-                        continue
-                    self.mean_cache[hk][list(range(dataset_length)), semantic_indices] = einops.repeat(
-                        torch.mean(
-                            cache[hk][list(range(dataset_length)), semantic_indices], dim=0, keepdim=False
-                        ).clone(),
-                        "... -> s ...",
-                        s=dataset_length,
-                    )
         return self.run_experiment()
 
     def get_hook(self, layer, head=None):
@@ -317,8 +303,8 @@ class EasyAblation(EasyExperiment):
         self.model(self.cfg.mean_dataset)
         self.mean_cache = {}
         for hk in cache.keys():
-            mean = torch.mean(cache[hk], dim=0, keepdim=False).clone()  # we compute the mean along the batch dim
-            self.mean_cache[hk] = einops.repeat(mean, "... -> s ...", s=cache[hk].shape[0])
+            if "blocks" in hk:
+                self.mean_cache[hk] = self.compute_mean(cache[hk], hk)
 
     def get_mean(self, hook_name):
         cache = {}
@@ -328,8 +314,21 @@ class EasyAblation(EasyExperiment):
 
         self.model.reset_hooks()
         self.model.run_with_hooks(self.cfg.mean_dataset, fwd_hooks=[(hook_name, cache_hook)])
-        mean = torch.mean(cache[hook_name], dim=0, keepdim=False)
-        return einops.repeat(mean, "... -> s ...", s=cache[hook_name].shape[0])
+        return self.compute_mean(cache[hook_name], hook_name)
+
+    def compute_mean(self, z, hk_name):
+        mean = torch.mean(z, dim=0, keepdim=False).detach().clone()  # we compute the mean along the batch dim
+        mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
+        if self.semantic_indices is None or "hook_attn" in hk_name:
+            return mean
+        dataset_length = len(self.cfg.mean_dataset)
+        for semantic_symbol, semantic_indices in self.semantic_indices.items():
+            mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
+                torch.mean(z[list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(),
+                "... -> s ...",
+                s=dataset_length,  # instead of the mean constant accross position, for semantic indices, when do semantic ablations
+            )
+        return mean
 
 
 class EasyPatching(EasyExperiment):
