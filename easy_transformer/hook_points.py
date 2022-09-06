@@ -1,4 +1,5 @@
 # Import stuff
+import logging
 from typing import Callable
 import torch
 import torch.nn as nn
@@ -94,6 +95,7 @@ class HookedRootModule(nn.Module):
     # Allows you to name each hook, remove hooks, cache every activation/gradient, etc
     def __init__(self, *args):
         super().__init__()
+        self.is_caching = False
 
     def setup(self):
         # Setup function - this needs to be run in __init__ AFTER defining all
@@ -105,7 +107,7 @@ class HookedRootModule(nn.Module):
         for name, module in self.named_modules():
             module.name = name
             self.mod_dict[name] = module
-            if type(module) == HookPoint:
+            if 'hook_' in name:
                 self.hook_dict[name] = module
 
     def hook_points(self):
@@ -123,20 +125,28 @@ class HookedRootModule(nn.Module):
         if clear_contexts:
             self.clear_contexts()
         self.remove_all_hook_fns(direction)
+        self.is_caching = False
 
-    def cache_all(self, cache, incl_bwd=False, device="cuda"):
+    def cache_all(self, cache, incl_bwd=False, device="cuda", remove_batch_dim=False):
         # Caches all activations wrapped in a HookPoint
-        self.cache_some(cache, lambda x: True, incl_bwd=incl_bwd, device=device)
+        # Remove batch dim is a utility for single batch inputs that removes the batch 
+        # dimension from the cached activations - use ONLY for batches of size 1
+        self.cache_some(cache, lambda x: True, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
 
-    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device="cuda"):
+    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device="cuda", remove_batch_dim=False):
         """Cache a list of hook provided by names, Boolean function on names"""
-
+        self.is_caching = True
         def save_hook(tensor, hook):
-            cache[hook.name] = tensor.detach().to(device)
+            if remove_batch_dim:
+                cache[hook.name] = tensor.detach().to(device)[0]
+            else:
+                cache[hook.name] = tensor.detach().to(device)
 
         def save_hook_back(tensor, hook):
-            cache[hook.name + "_grad"] = tensor[0].detach().to(device)
-
+            if remove_batch_dim:
+                cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
+            else:
+                cache[hook.name + "_grad"] = tensor[0].detach().to(device)
         for name, hp in self.hook_dict.items():
             if names(name):
                 hp.add_hook(save_hook, "fwd")
@@ -168,6 +178,8 @@ class HookedRootModule(nn.Module):
         reset_hooks_end to be False, so the backward hooks are still there - this function only runs a forward pass.
         """
         if reset_hooks_start:
+            if self.is_caching:
+                logging.warning("Caching is on, but hooks are being reset")
             self.reset_hooks(clear_contexts)
         for name, hook in fwd_hooks:
             if type(name) == str:
@@ -188,7 +200,6 @@ class HookedRootModule(nn.Module):
         out = self.forward(*args)
         if reset_hooks_end:
             if len(bwd_hooks) > 0:
-                print("WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set.")
-                print("This removes the backward hooks before a backward pass can occur")
+                logging.warning("WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur")
             self.reset_hooks(clear_contexts)
         return out
