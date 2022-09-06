@@ -375,6 +375,9 @@ def get_act_hook(fn, alt_act=None, idx=None, dim=None):
     if alt_act is not None:
 
         def custom_hook(z, hook):
+            hook.ctx["idx"] = idx
+            hook.ctx["dim"] = dim
+
             if dim is None:  # mean and z have the same shape, the mean is constant along the batch dimension
                 return fn(z, alt_act, hook)
             if dim == 0:
@@ -388,6 +391,8 @@ def get_act_hook(fn, alt_act=None, idx=None, dim=None):
     else:
 
         def custom_hook(z, hook):
+            hook.ctx["idx"] = idx
+            hook.ctx["dim"] = dim
             if dim is None:
                 return fn(z, hook)
             if dim == 0:
