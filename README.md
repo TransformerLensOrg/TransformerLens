@@ -13,4 +13,4 @@ A demo notebook can be found [here](https://colab.research.google.com/drive/1MLw
 
 ## Installation
 
-`pip install git+https://github.com/aVariengien/Easy-Transformer`
+`pip install git+https://github.com/neelnanda-io/Easy-Transformer`
