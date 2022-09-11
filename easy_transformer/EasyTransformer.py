@@ -811,6 +811,8 @@ class EasyTransformer(HookedRootModule):
         """
         Initialize weights according to default Pytorch initialization.
         """
-        sd = self.state_dict()
+        nn.init.normal_(self.embed.W_E)
+        nn.init.normal_(self.pos_embed.W_pos)
+
 
 
