@@ -99,11 +99,11 @@ class ExperimentConfig:
         model_cfg = self.copy()
         if self.target_module == "attn_head":
             if self.heads == "all":
-                model_cfg.heads = list(range(model.cfg["n_heads"]))
+                model_cfg.heads = list(range(model.cfg.n_heads))
 
         if self.layers == "all":
             model_cfg.beg_layer = 0
-            model_cfg.end_layer = model.cfg["n_layers"]
+            model_cfg.end_layer = model.cfg.n_layers
         else:
             model_cfg.beg_layer, model_cfg.end_layer = self.layers
         return model_cfg
