@@ -32,7 +32,7 @@ import copy
 # import comet_ml
 import itertools
 
-from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer, PretrainedTokenizer
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.utils import (
@@ -356,14 +356,19 @@ class EasyTransformer(HookedRootModule):
     """
     This class implements a full Transformer using the above components, with
     HookPoints on every interesting activation. It inherits from HookedRootModule.
-    It is initialised with a model_name, and automatically loads the model weights
-    for that model, loads them into this model, folds in LayerNorm and centers
-    the weights
+
+    It can be initialised with a model name, and then will automatically load the model weights
+    for that model, loads them into this model, as well as fold in LayerNorm and center
+    the weights.
+
+    It can also be initilised with an EasyTransformerConfig or a config dictionary, which can be used to instantiate a custom model without loading pretrained weights and will instead use Pytorch's default weight initialisation.
     """
 
     def __init__(
         self,
         model_name,
+        cfg=None,
+        tokenizer=None,
         use_attn_result=False,
         model=None,
         keep_original_model=False,
@@ -371,56 +376,73 @@ class EasyTransformer(HookedRootModule):
         checkpoint=None,
     ):
         """
-        model_name (str): The name of the model to load, via HuggingFace
+        model_name (str: The name of the model to load, via HuggingFace. If "custom", then cfg must be provided.
+        cfg (EasyTransformerConfig, *optional*): The config to use for the model. If not provided, a model name must be passed via model_name.
+        tokenizer (*optional): The tokenizer to use for the model. If not provided, initialized to None, though the user must initialize one before passing strings to the model.
         use_attn_result (bool): Says whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
             up, vs just calculating the sum. This can be very memory intensive
             for large models, so defaults to False
         model: The loaded model from HuggingFace. If None, it is automatically
             loaded from HuggingFace - this just saves memory if the model was
-            already loaded into RAM
+            already loaded into RAM.
         keep_original_model (bool): If False, the original HuggingFace model is
             deleted, otherwise it's kept as a self.model attribute
+        center_weights (bool): If True, the weights are centered
+        chcekpoint (int, *optional): The checkpoint number of the model to load if it is a model with multiple checkpoints to load.
         """
         super().__init__()
-        assert (
-            model_name in VALID_MODEL_NAMES
-        ), f"Invalid model name: {model_name}. Valid model names are: {VALID_MODEL_NAMES}"
-        self.model_name = model_name
-        if self.model_name in MODEL_NAMES_DICT:
-            self.full_model_name = MODEL_NAMES_DICT[self.model_name]
-        else:
-            self.full_model_name = self.model_name
-        self.model_type = self.get_model_type(self.full_model_name)
-        if model is not None:
+        if model_name == "custom":
+            assert cfg is not None, "Must provide a config if using custom model"
+            self.cfg = cfg
+            self.model_name = cfg.model_name
+            self.model_type = cfg.model_type
+            self.full_model_name = cfg.full_model_name
+            self.tokenizer = tokenizer
+            self.use_attn_result = use_attn_result
             self.model = model
+            self.keep_original_model = keep_original_model
+            self.center_weights = center_weights
+            self.checkpoint = checkpoint
         else:
-            if checkpoint is not None:
-                if "stanford" not in self.model_name:
-                    logging.warning(
-                        f"Loading checkpoints is not supported for the model {self.model_name}. Loading without checkpoints"
-                    )
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                        self.full_model_name
-                    )
-                else:
-                    assert (
-                        checkpoint in STANFORD_CRFM_CHECKPOINTS
-                    ), f"Checkpoint {checkpoint} is not valid. Available checkpoints are {STANFORD_CRFM_CHECKPOINTS}"
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                        self.full_model_name, revision=f"checkpoint-{checkpoint}"
-                    )
+            assert (
+                model_name in VALID_MODEL_NAMES
+            ), f"Invalid model name: {model_name}. Valid model names are: {VALID_MODEL_NAMES}"
+            self.model_name = model_name
+            if self.model_name in MODEL_NAMES_DICT:
+                self.full_model_name = MODEL_NAMES_DICT[self.model_name]
             else:
-                self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name)
+                self.full_model_name = self.model_name
+            self.model_type = self.get_model_type(self.full_model_name)
+            if model is not None:
+                self.model = model
+            else:
+                if checkpoint is not None:
+                    if "stanford" not in self.model_name:
+                        logging.warning(
+                            f"Loading checkpoints is not supported for the model {self.model_name}. Loading without checkpoints"
+                        )
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            self.full_model_name
+                        )
+                    else:
+                        assert (
+                            checkpoint in STANFORD_CRFM_CHECKPOINTS
+                        ), f"Checkpoint {checkpoint} is not valid. Available checkpoints are {STANFORD_CRFM_CHECKPOINTS}"
+                        self.model = AutoModelForCausalLM.from_pretrained(
+                            self.full_model_name, revision=f"checkpoint-{checkpoint}"
+                        )
+                else:
+                    self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name)
 
-        self.cfg = self.convert_hf_config(self.model.config, model_type=self.model_type)
-        self.cfg.use_attn_result = use_attn_result
-        self.cfg.checkpoint = checkpoint
-        self.cfg.model_type = self.model_type
-        self.cfg.model_name = self.model_name
-        self.cfg.full_model_name = self.full_model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(self.full_model_name)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.cfg = self.convert_hf_config(self.model.config, model_type=self.model_type)
+            self.cfg.use_attn_result = use_attn_result
+            self.cfg.checkpoint = checkpoint
+            self.cfg.model_type = self.model_type
+            self.cfg.model_name = self.model_name
+            self.cfg.full_model_name = self.full_model_name
+            self.tokenizer = AutoTokenizer.from_pretrained(self.full_model_name)
+            self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
@@ -452,6 +474,8 @@ class EasyTransformer(HookedRootModule):
             self.load_neox_weights(self.model)
         elif self.model_type == "opt":
             self.load_opt_weights(self.model)
+        elif self.model_type == "custom":
+            self.init_weights()
 
         # Set the average of each weight matrix writing to the residual stream to zero
         # (Layer Norm removes the mean anyway, so this simplifies the weights
@@ -467,6 +491,7 @@ class EasyTransformer(HookedRootModule):
         # Input x is either a batch of tokens ([batch, pos]) or a text string
         if type(x) == str or type(x) == list:
             # If text, convert to tokens (batch_size=1)
+            assert self.tokenizer is not None "Must provide a tokenizer if passing a string to\ the model"
             x = self.to_tokens(x)
         embed = self.hook_embed(self.embed(x))  # [batch, pos, d_model]
         pos_embed = self.hook_pos_embed(self.pos_embed(x))  # [batch, pos, d_model]
@@ -478,8 +503,27 @@ class EasyTransformer(HookedRootModule):
         x = self.unembed(self.ln_final(residual))  # [batch, pos, d_vocab]
         return x
 
+    def set_tokenizer(self, tokenizer):
+        """
+        Sets the tokenizer to use for this model.
+        tokenizer (PretrainedTokenizer): a pretrained HuggingFace tokenizer
+        """
+        assert isinstance(tokenizer, PretrainedTokenizer)
+        self.tokenizer = tokenizer
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+
     def to_tokens(self, text):
         return self.tokenizer(text, return_tensors="pt", padding=True)["input_ids"]
+
+    @classmethod
+    def from_pretrained(cls, model_name, **kwargs):
+        return cls(model_name, **kwargs)
+
+    @classmethod
+    def from_config(cls, cfg):
+        if isinstance(cfg, Dict):
+            cfg = EasyTransformerConfig(**cfg)
+        return cls(cfg.model_name, cfg.use_attn_result, checkpoint=cfg.checkpoint)
 
     def get_model_type(self, model_name):
         if "gpt2" in model_name or "stanford" in model_name:
@@ -762,3 +806,11 @@ class EasyTransformer(HookedRootModule):
 
     def load_bloom_weights(self, bloom):
         raise NotImplementedError
+
+    def init_weights(self):
+        """
+        Initialize weights according to default Pytorch initialization.
+        """
+        sd = self.state_dict()
+
+
