@@ -382,24 +382,30 @@ class EasyTransformer(HookedRootModule):
         checkpoint=None,
     ):
         """
-        model_name (str: The name of the model to load, via HuggingFace. If "custom", then cfg must be provided.
-        cfg (EasyTransformerConfig, *optional*): The config to use for the model. If not provided, a model name must be passed via model_name.
-        tokenizer (*optional): The tokenizer to use for the model. If not provided, initialized to None, though the user must initialize one before passing strings to the model.
+        model_name (str: The name of the model to load, via HuggingFace. If
+            "custom", then cfg must be provided.
+        cfg (EasyTransformerConfig, *optional*): The config to use for the
+            model. If not provided, a model name must be passed via model_name.
+        tokenizer (*optional): The tokenizer to use for the model. If not
+            provided, initialized to None, though the user must initialize one
+            before passing strings to the model.
         use_attn_result (bool): Says whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
             up, vs just calculating the sum. This can be very memory intensive
             for large models, so defaults to False
-        model: The loaded model from HuggingFace. If None, it is automatically
-            loaded from HuggingFace - this just saves memory if the model was
-            already loaded into RAM.
-        keep_original_model (bool): If False, the original HuggingFace model is
-            deleted, otherwise it's kept as a self.model attribute
+        model: The model loaded from HuggingFace or separately initialized. If
+            None, it is automatically loaded from HuggingFace if model_name is
+            passed - this just saves memory if the model was already loaded into
+            RAM.
+        keep_original_model (bool): If False, the original model is deleted,
+            otherwise it's kept as a self.model attribute
         center_weights (bool): If True, the weights are centered
-        chcekpoint (int, *optional): The checkpoint number of the model to load if it is a model with multiple checkpoints to load.
+        checkpoint (int, *optional): The checkpoint number of the model to load
+            if it is a model with multiple possible checkpoints to load from.
         """
         super().__init__()
         if model_name == "custom":
-            assert cfg is not None, "Must provide a config if using custom model"
+            assert cfg is not None, "Must provide a config for custom model"
             self.cfg = cfg
             self.model_name = cfg.model_name
             self.model_type = cfg.model_type
@@ -534,7 +540,12 @@ class EasyTransformer(HookedRootModule):
     def from_config(cls, cfg):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig(**cfg)
-        return cls(cfg.model_name, cfg, use_attn_result=cfg.use_attn_result, checkpoint=cfg.checkpoint)
+        return cls(
+            cfg.model_name,
+            cfg,
+            use_attn_result=cfg.use_attn_result,
+            checkpoint=cfg.checkpoint,
+        )
 
     def get_model_type(self, model_name):
         if "gpt2" in model_name or "stanford" in model_name:
