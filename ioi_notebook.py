@@ -168,49 +168,79 @@ NAMES = [
     "Samuel",
 ]
 
-ABBA_TEMPLATES = [
-    "Then, [A] and [B] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Then, [A] and [B] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Then, [A] and [B] were working at the [PLACE]. [B] decided to give a [OBJECT] to [A]",
-    "Then, [A] and [B] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]",
-    "Then, [A] and [B] had a long argument, and afterwards [B] said to [A]",
-    "After [A] and [B] went to the [PLACE], [B] gave a [OBJECT] to [A]",
-    "When [A] and [B] got a [OBJECT] at the [PLACE], [B] decided to give it to [A]",
-    "When [A] and [B] got a [OBJECT] at the [PLACE], [B] decided to give the [OBJECT] to [A]",
-    "While [A] and [B] were working at the [PLACE], [B] gave a [OBJECT] to [A]",
-    "While [A] and [B] were commuting to the [PLACE], [B] gave a [OBJECT] to [A]",
-]
 
 BABA_TEMPLATES = [
-
     "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
     "Then, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
     "Then, [B] and [A] were working at the [PLACE]. [B] decided to give a [OBJECT] to [A]",
     "Then, [B] and [A] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]",
     "Then, [B] and [A] had a long argument, and afterwards [B] said to [A]",
-    "Then, [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
     "After [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
     "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give it to [A]",
     "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give the [OBJECT] to [A]",
     "While [B] and [A] were working at the [PLACE], [B] gave a [OBJECT] to [A]",
     "While [B] and [A] were commuting to the [PLACE], [B] gave a [OBJECT] to [A]",
+    "After the lunch, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    "Afterwards, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    "Then, [B] and [A] had a long argument. Afterwards [B] said to [A]",
+    "The [PLACE] [B] and [A] went to had a [OBJECT]. [B] gave it to [A]",
+    "Friends [B] and [A] found a [OBJECT] at the [PLACE]. [B] gave it to [A]",
+    # # "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    # # "Then, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
+    # # "Then [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    # # "Then, [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
+    # # "Moreover, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    # # "Afterwards, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    # # "After [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    # # "While [B] and [A] were commuting to the [PLACE], [B] gave a [OBJECT] to [A]",
+    # # "While [B] and [A] were working at the [PLACE], [B] gave a [OBJECT] to [A]",
+    # # "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give the [OBJECT] to [A]",
+    # # "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give it to [A]",
+    # # "After [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
 ]
+
+ABBA_TEMPLATES = BABA_TEMPLATES[:]
+
+for i in range(len(ABBA_TEMPLATES)):
+    for j in range(len(ABBA_TEMPLATES[i])):
+        if ABBA_TEMPLATES[i][j] == "B":
+            ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "A" + ABBA_TEMPLATES[i][j + 1 :]
+        elif ABBA_TEMPLATES[i][j] == "A":
+            ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "B" + ABBA_TEMPLATES[i][j + 1 :]
 
 VERBS = [" tried", " said", " decided", " wanted", " gave"]
 
-PLACES = [
+
+PLACES_SINGLE_TOKEN = [
+    "garden",
+    "restaurant",
+    "school",
     "store",
+    "hospital",
+    "office",
+    "park",
+    "beach",
+]
+
+PLACES_ALL = [
+    "grocery store",
     "garden",
     "restaurant",
     "school",
     "hospital",
     "office",
-    "house",
-    "station",
+    "ballroom",
+    "skyscraper",
+    "police station",
 ]
 
+OBJECTS = ["ring", "kiss", "bone", "basketball", "hotdog", "computer", "necklace", "drink", "snack"]
 
-OBJECTS = ["ring", "kiss", "bone", "basketball", "computer", "necklace", "drink", "snack"]
+OBJECTS_SINGLE_TOKEN = OBJECTS
+OBJECTS_SINGLE_TOKEN.remove("hotdog")
+
+NOUNS_DICT = {"[PLACE]": PLACES_ALL, "[OBJECT]": OBJECTS}
+NOUNS_DICT_SINGLE_TOKEN = {"[PLACE]": PLACES_SINGLE_TOKEN, "[OBJECT]": OBJECTS_SINGLE_TOKEN}
 
 ANIMALS = [
     "dog",
@@ -577,7 +607,7 @@ class IOIDataset:
         self.prompt_type = prompt_type
         if prompts is None:
             self.ioi_prompts = gen_prompt_uniform(  # a list of dict of the form {"text": "Alice and Bob bla bla. Bob gave bla to Alice", "IO": "Alice", "S": "Bob"}
-                self.templates, NAMES, nouns_dict={"[PLACE]": PLACES, "[OBJECT]": OBJECTS}, N=N, symmetric=symmetric, prefixes=self.prefixes
+                self.templates, NAMES, nouns_dict={"[PLACE]": PLACES, "[OBJECT]": OBJECTS}, N=N, symmetric=symmetric, prefixes=self.prefixes,
             )
         else:
             assert N == len(prompts), f"{N} and {len(prompts)}"
@@ -731,8 +761,10 @@ def safe_del(a):
         pass
     torch.cuda.empty_cache()
 #%% [markdown]
-# # Name mover experiments
-# CLAIM: heads 9.6, 9.9 and 10.0 write the IO into the residual stream, by attending to that token and copying it. This is a sparse behavior.
+# # Copying experiments.
+# CLAIM: heads 9.6, 9.9 and 10.0 write the IO into the residual stream, by attending to that token and copying it.
+# For now we review why we think this is true.
+# Experiments for minimality and completeness will follow in the next section (faithfulness). # TODO is the claim too strong? 
 #%% # plot writing in the IO - S direction
 model_name = "gpt2"
 safe_del("model")
@@ -817,25 +849,403 @@ attn_vals = writing_direction_heatmap(
 )
 #%% # check that this attending to IO happens as described
 show_attention_patterns(model, [(9,9), (9,6), (10,0)], ioi_dataset.text_prompts[:1])
+#%% # the more attention, the more writing
+def scatter_attention_and_contribution(
+    model,
+    layer_no,
+    head_no,
+    prompts,
+    gpt_model="gpt2",
+    return_vals=False,
+):
+    """
+    Plot a scatter plot 
+    for each input sequence with the attention paid to IO and S
+    and the amount that is written in the IO and S directions
+    """
+    n_heads = model.cfg["n_heads"]
+    n_layers = model.cfg["n_layers"]
+    model_unembed = model.unembed.W_U.detach().cpu()
+    N = len(prompts)
+    df = []
+    for prompt in tqdm(prompts):
+        io_tok = model.tokenizer(" "+prompt["IO"])["input_ids"][0]
+        s_tok = model.tokenizer(" "+prompt["S"])["input_ids"][0]
+        toks = model.tokenizer(prompt["text"])["input_ids"]
+        io_pos = toks.index(io_tok)
+        s1_pos = toks.index(s_tok)
+        s2_pos = toks[s1_pos+1:].index(s_tok) + (s1_pos+1)
+        assert toks[-1] == io_tok
+
+        io_dir = model_unembed[io_tok].detach().cpu()
+        s_dir = model_unembed[s_tok].detach().cpu()
+
+        model.reset_hooks()
+        cache = {}
+        model.cache_all(cache)
+
+        logits = model(prompt["text"])
+
+        for dire, posses, tok_type in [(io_dir, [io_pos], "IO"), (s_dir, [s1_pos, s2_pos], "S")]:
+            prob = sum([cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos].detach().cpu() for pos in posses])
+            resid = cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :].detach().cpu()
+            dot = torch.einsum("a,a->", resid, dire)
+            df.append([prob, dot, tok_type, prompt["text"]])
+
+    # most of the pandas stuff is intuitive, no need to deeply understand
+    viz_df = pd.DataFrame(df, columns = [f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"])
+    fig = px.scatter(viz_df, x = f"Attn Prob on Name", y = f"Dot w Name Embed", color = "Name Type", hover_data = ["text"], title = f"How Strong {layer_no}.{head_no} Writes in the Name Embed Direction Relative to Attn Prob")
+    fig.show()
+    if return_vals: return viz_df
+
+scatter_attention_and_contribution(model, 9, 9, ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 9, 6, ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 10, 0, ioi_prompts[:500], gpt_model="gpt2")
+#%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
+scatter_attention_and_contribution(model, random.randint(0,11), random.randint(0,11), ioi_prompts[:500], gpt_model="gpt2")
+#%% [markdown]
+# To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated). 
+#%%
+def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
+    cache = {}
+    model.cache_some(cache, lambda x: x=="blocks.0.hook_resid_post")
+    model(ioi_dataset.text_prompts)
+    z_0 = model.blocks[1].ln1( cache["blocks.0.hook_resid_post"])
+    v = (z_0@model.blocks[layer].attn.W_V[head].T + model.blocks[layer].attn.b_V[head])
+    o = torch.einsum('sph,dh->spd', v, model.blocks[layer].attn.W_O[head])
+    logits = model.unembed(model.ln_final(o))
+    k=5
+    n_right = 0
+    
+
+    for seq_idx,prompt in enumerate(ioi_dataset.ioi_prompts):
+        #print(prompt)
+        for word in ["IO", "S", "S2"]:
+            pred_tokens = [model.tokenizer.decode(token) for token in torch.topk(logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k).indices]
+            if "S" in word:
+                name = "S"
+            else:
+                name = word
+            if " "+prompt[name] in pred_tokens:
+                n_right+=1
+            else:
+                if verbose:
+                    print("-------")
+                    print("Seq: " + ioi_dataset.text_prompts[seq_idx])
+                    print("Target: " + ioi_dataset.ioi_prompts[seq_idx][name])
+                    print(' '.join([f'({i+1}):{model.tokenizer.decode(token)}' for i, token in enumerate(torch.topk(logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k).indices)]))
+    percent_right = (n_right / (ioi_dataset.N*3)) * 100
+    print(f'Copy circuit for head {layer}.{head} : Top {k} accuracy: {percent_right}%')
+
+print(" --- Name Mover heads --- ")
+check_copy_circuit(model, 9,9,ioi_dataset)
+check_copy_circuit(model, 10,0,ioi_dataset)
+check_copy_circuit(model, 9,6,ioi_dataset)
+
+print(" --- Calibration heads --- ")
+check_copy_circuit(model, 10,7,ioi_dataset)
+check_copy_circuit(model, 11,10,ioi_dataset)
+
+print(" ---  Random heads for control ---  ")
+check_copy_circuit(model, random.randint(0,11), random.randint(0,11),ioi_dataset) 
+check_copy_circuit(model, random.randint(0,11), random.randint(0,11),ioi_dataset) 
+check_copy_circuit(model, random.randint(0,11), random.randint(0,11),ioi_dataset) 
+#%% [markdown]
+# For calibration heads, we observe a reverse trend to name movers, the more is pays attention to a name, the more it write in its *oposite* direction. Why is that? 
+# You need to remember the training objective of the transformer: it has to predict accurate probability distribution over all the next tokens. 
+# If previously it was able to recover the IO, in the final layer it has to callibrate the probability of this particular token, it cannot go all in "THE NEXT TOKEN IS BOB" with 100% proba.
+# This is why we observe calibration mechanisms that do back and forth and seems to inhibate information put by earlier modules.
+
+# You can see this similarly as open loop / closed loop optimization. It's easier to make a good guess by making previous rough estimate more precise than making a good guess in one shot.
+#%%
+scatter_attention_and_contribution(model, 10, 7, ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 11, 10, ioi_prompts[:500], gpt_model="gpt2")
+#%% [markdown]
+# # Faithfulness: ablating everything but the circuit
+# For each template, e.g `Then, [A] and [B] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]` we ablate only the indices we claim are important and we retain a positive logit difference between `IO` and `S`, as well the "score" (whether the IO logit remains in the top 10 logit AND IO > S), though have some performace degradation, particularly when we don't ablate the name movers heads.
+#%% # run normal ablation experiments
+num_templates = 10 # len(ABBA_TEMPLATES)
+template_type = "BABA"
+if template_type == "ABBA":
+    templates = ABBA_TEMPLATES[:num_templates]
+elif template_type == "BABA":
+    templates = BABA_TEMPLATES[:num_templates]
+else:
+    raise NotImplementedError()
+
+def logit_diff(model, ioi_dataset, all=False, std=False):
+    """Difference between the IO and the S logits at the "to" token"""
+    logits = model(ioi_dataset.text_prompts).detach()
+    L = len(ioi_dataset.text_prompts)
+    IO_logits = logits[
+        torch.arange(len(ioi_dataset.text_prompts)), ioi_dataset.word_idx["end"][:L], ioi_dataset.io_tokenIDs[:L]
+    ]
+    S_logits = logits[
+        torch.arange(len(ioi_dataset.text_prompts)), ioi_dataset.word_idx["end"][:L], ioi_dataset.s_tokenIDs[:L]
+    ]
+
+    print("LOGIT_DIFF:", IO_logits - S_logits)
+
+    if all and not std:
+        return IO_logits - S_logits
+    if std:
+        if all:
+            first_bit = IO_logits - S_logits
+        else:
+            first_bit = (IO_logits - S_logits).mean().detach().cpu()
+        return first_bit, torch.std(IO_logits - S_logits)
+    return (IO_logits - S_logits).mean().detach().cpu()
+
+def score(model, ioi_dataset, all=False):
+    text_prompts = ioi_dataset.text_prompts
+    logits = model(text_prompts).detach()
+    L = len(text_prompts)
+    end_logits = logits[
+        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], :
+    ]  # batch * sequence length * vocab_size
+    io_logits = end_logits[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs[:L]]
+    assert len(list(end_logits.shape)) == 2, end_logits.shape
+    top_10s_standard = torch.topk(end_logits, dim=1, k=10).values[:, -1]
+    good_enough = end_logits > top_10s_standard.unsqueeze(-1)
+    selected_logits = good_enough[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs[:L]]
+
+    # is IO > S ???
+    IO_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], ioi_dataset.io_tokenIDs[:L]]
+    S_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], ioi_dataset.s_tokenIDs[:L]]
+    IO_greater_than_S = (IO_logits - S_logits) > 0
+
+    # calculate percentage passing both tests
+    answer = torch.sum((selected_logits & IO_greater_than_S).float()).detach().cpu() / len(text_prompts)
+
+    selected = torch.sum(selected_logits) / len(text_prompts)
+    greater = torch.sum(IO_greater_than_S) / len(text_prompts)
+
+    print(f"Score calc: {answer}; {selected} and {greater}")
+    return answer
+
+def io_probs(model, ioi_dataset, mode="IO"):  # also S mode
+    assert mode in ["IO", "S"]
+    text_prompts = ioi_dataset.text_prompts
+    logits = model(text_prompts).detach()
+    assert len(list(logits.shape)) == 3, logits.shape
+    L = len(text_prompts)
+    assert logits.shape[0] == L
+    end_logits = logits[
+        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], :
+    ]  # batch * sequence length * vocab_size
+    end_probs = torch.softmax(end_logits, dim=-1)
+    ids = ioi_dataset.io_tokenIDs if mode == "IO" else ioi_dataset.s_tokenIDs
+    probs = end_probs[torch.arange(len(text_prompts)), ids[:L]]
+    return probs.mean().detach().cpu()
+
+
+N = 10  # number per template
+template_prompts = [
+    gen_prompt_uniform(
+        templates[i : i + 1],
+        NAMES,
+        NOUNS_DICT_SINGLE_TOKEN,
+        N=N,
+        symmetric=False,
+    )
+    for i in range(len(templates))
+]
+
+ld_data = []
+score_data = []
+probs_data = []
+sprobs_data = []
+io_logits_data = []
+s_logits_data = []
+
+for ablate_calibration in [False, True]:
+    for template_idx in tqdm(range(num_templates)):
+        prompts = template_prompts[template_idx]
+        ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
+        assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
+        assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
+        for key in ioi_dataset.sem_tok_idx.keys():
+            idx = ioi_dataset.sem_tok_idx[key][0]
+            assert torch.all(ioi_dataset.sem_tok_idx[key] == idx), f"{key} {ioi_dataset.sem_tok_idx[key]}"
+            # check that semantic ablation = normal ablation
+
+        try:
+            del model
+            torch.cuda.empty_cache()
+        except:
+            pass
+        model = EasyTransformer("gpt2", use_attn_result=True).to(device)
+
+        seq_len = ioi_dataset.toks.shape[1]
+        head_indices_to_ablate = {
+            (i % 12, i // 12): [list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))] for i in range(12 * 12)
+        }
+
+        mlp_indices_to_ablate = [[] for _ in range(model.cfg["n_heads"])]
+
+        for head in [
+            (0, 1),
+            (0, 10),
+            (3, 0),
+        ]:
+            head_indices_to_ablate[head] = [i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]]
+
+        for head in [
+            (4, 11),
+            (2, 2),
+            (2, 9),
+        ]:
+            head_indices_to_ablate[head] = [
+                i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S"][0], ioi_dataset.sem_tok_idx["and"][0]]
+            ]
+
+        for head in [
+            (5, 8),
+            (5, 9),
+            (5, 5),
+            (6, 9),
+        ]:
+            head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]]
+
+        end_heads = [
+            (7, 3),
+            (7, 9),
+            (8, 6),
+            (8, 10),
+            (9, 6),
+            (9, 9),
+            (10, 0),        
+        ]
+
+        if ablate_calibration:
+            end_heads += [(10, 7), (11, 12)]
+
+        for head in end_heads:
+            head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["end"][0]]]
+
+        # define the ablation function for ALL parts of the model at once
+        def ablation(z, mean, hook):
+            layer = int(hook.name.split(".")[1])
+            head_idx = hook.ctx["idx"]
+            head = (layer, head_idx)
+
+            if "mlp_out" in hook.name:
+                # ablate the relevant parts
+                for i in range(z.shape[0]):
+                    z[i, mlp_indices_to_ablate[layer]] = mean[i, mlp_indices_to_ablate[layer]].to(z.device)
+
+            if "attn.hook_result" in hook.name:  # and (layer, head) not in heads_to_keep:
+                # ablate
+                assert len(z.shape) == 3, z.shape  # we specifically get sent the relevant head
+                assert 12 not in list(z.shape), "Yikes, probably dim kept back is wrong, should be head dim"
+
+                # see above
+                for i in range(z.shape[0]):
+                    z[i, head_indices_to_ablate[head]] = mean[i, head_indices_to_ablate[head]].to(z.device)
+
+            return z
+
+        ld_metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=False)
+        score_metric = ExperimentMetric(metric=score, dataset=ioi_dataset, relative_metric=False)
+        ld_metric.set_baseline(model)
+        score_metric.set_baseline(model)
+        probs_metric = ExperimentMetric(metric=io_probs, dataset=ioi_dataset, relative_metric=False)
+        probs_metric.set_baseline(model)
+        sprobs_metric = ExperimentMetric(
+            metric=lambda x, y: io_probs(x, y, mode="S"), dataset=ioi_dataset, relative_metric=False
+        )
+        sprobs_metric.set_baseline(model)
+        io_logits_metric = ExperimentMetric(
+            metric=lambda x, y: logit_diff(x, y, all=True)[0], dataset=ioi_dataset, relative_metric=False
+        )
+        io_logits_metric.set_baseline(model)
+        s_logits_metric = ExperimentMetric(
+            metric=lambda x, y: logit_diff(x, y, all=True)[1], dataset=ioi_dataset, relative_metric=False
+        )
+        s_logits_metric.set_baseline(model)
+
+        config = AblationConfig(
+            abl_type="custom",
+            abl_fn=ablation,
+            mean_dataset=ioi_dataset.text_prompts,
+            target_module="attn_head",
+            head_circuit="result",
+            cache_means=True,
+            verbose=True,
+        )
+
+        abl = EasyAblation(model, config, ld_metric)  # , semantic_indices=ioi_dataset.sem_tok_idx) # semantic indices should not be necessary
+
+        model.reset_hooks()
+        for layer in range(12):
+            for head in range(12):
+                model.add_hook(*abl.get_hook(layer, head))
+            model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
+
+        ld = ld_metric.compute_metric(model)
+        print(f"{ld=}")
+        ld_data.append((ld_metric.baseline, ld))
+
+        cur_score = score_metric.compute_metric(model)
+        print(f"{cur_score=}")
+        score_data.append((score_metric.baseline, cur_score))
+
+        cur_probs = probs_metric.compute_metric(model)
+        print(f"{cur_probs=}")
+        probs_data.append((probs_metric.baseline, cur_probs))
+
+        s_probs = sprobs_metric.compute_metric(model)  # s probs is like 0.003 for most ablate calibration heads # or is is that low
+        print(f"{s_probs=}")
+        sprobs_data.append((sprobs_metric.baseline, s_probs))
+
+        io_logits = io_logits_metric.compute_metric(model)
+        print(f"{io_logits=}")
+        io_logits_data.append((io_logits_metric.baseline, io_logits))
+
+        s_logits = s_logits_metric.compute_metric(model)
+        print(f"{s_logits=}")
+        s_logits_data.append((s_logits_metric.baseline, s_logits))
+
+    plotly.io.renderers.default = "notebook"
+
+    xs = [ld_data[i][0].item() for i in range(num_templates)]
+    ys = [ld_data[i][1].item() for i in range(num_templates)]
+
+    x_label = "Baseline Logit Diff" # IO Probability"
+    y_label = "Ablated Logit Diff" # IO Probability"
+
+    d = {
+        x_label: xs,
+        y_label: ys,
+    }
+    d["beg"] = [template[:10] for template in templates]
+    d["sentence"] = [template for template in templates]
+    d["commas"] = [template.count(",") for template in templates]
+
+    df = pd.DataFrame(d)
+    px.scatter(df, x=x_label, y=y_label, hover_data=["sentence"], text="beg", title=f"Change in logit diff when {ablate_calibration=}").show()
+    
+
+#%% # TODO TODO TODO warn that the rest of this is not finished
+
 # %%
 model_name = "gpt2"
+device = "cuda"
+safe_del("model")
 model = EasyTransformer(
     model_name, use_attn_result=True
 )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
 small_model = EasyTransformer("gpt2", use_attn_result=True)
 print_gpu_mem()
 if torch.cuda.is_available():
-    model.to("cuda")
-    small_model.to("cuda")
+    model.to(device)
 print_gpu_mem("Gpt2 loaded")
 print_gpu_mem()
 #%% [markdown]
 # # Circuit extraction experiments 
 # Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study.
-# Dataset initialisation:
-# TODO should this be used, or mt experiments???
-#%%
+#%% # Dataset initialisation
 N=100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None) #["Two friends were discussing.", "It was a levely day.", "Two friends arrived in a new place.", "The couple arrived."]) # , prompts=saved_prompts) # [{"IO" : "Anthony", "S" : "Aaron", "text" : "Then, Aaron and Anthony went to the grocery store. Aaron gave a ring to Anthony"}, {'IO': 'Lindsey', 'S': 'Joshua', 'text': 'Then, Joshua and Lindsey were working at the grocery store. Joshua decided to give a basketball to Lindsey'}], symmetric=True)
 ioi_prompts = ioi_dataset.ioi_prompts
