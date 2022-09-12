@@ -1,3 +1,11 @@
+#%% [markdown]
+# # Intro
+# This notebook is an implementation of the IOI experiments (some with adjustments from the [presentation](https://docs.google.com/presentation/d/19H__CYCBL5F3M-UaBB-685J-AuJZNsXqIXZR-O4j9J8/edit#slide=id.g14659e4d87a_0_290)).
+# It should be able to be run as by just git cloning this repo (+ some easy installs).
+# Reminder of the circuit:
+#
+# 
+# ![image_here](https://i.imgur.com/PPtTQRh.png)
 # %%
 import os
 try: # for Arthur
@@ -549,7 +557,7 @@ def get_idx_dict(ioi_prompts, tokenizer):
 
 class IOIDataset:
     def __init__(self, prompt_type: str, N=500, tokenizer=None, prompts=None, symmetric=False, prefixes=None):
-        assert (prompts is not None) or (symmetric == (N%2 == 0)), f"{symmetric} {N}"
+        assert (prompts is not None) or (not symmetric) or (N%2 == 0), f"{symmetric} {N}"
         assert prompt_type in ["ABBA", "BABA", "mixed"]
         self.prompt_type = prompt_type
         if prompt_type == "ABBA":
@@ -714,12 +722,32 @@ def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
             )
 
             fig.show()
-#%% [markdown]
-# Name mover experiments
 
-# CLAIM: heads 9.6, 9.9 and 10.0 write the IO into the residual stream, by attending to that token and copying it:
-# TODO maybe this is wrong ... just copy the old notebook?
-#%%
+def safe_del(a):
+    """Try and delete a even if it doesn't yet exist"""
+    try:
+        exec(f"del {a}")
+    except:
+        pass
+    torch.cuda.empty_cache()
+#%% [markdown]
+# # Name mover experiments
+# CLAIM: heads 9.6, 9.9 and 10.0 write the IO into the residual stream, by attending to that token and copying it. This is a sparse behavior.
+#%% # plot writing in the IO - S direction
+model_name = "gpt2"
+safe_del("model")
+print_gpu_mem("About to load model")
+model = EasyTransformer(model_name, use_attn_result=True) #use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+if torch.cuda.is_available():
+    model.to("cuda")
+print_gpu_mem("Gpt2 loaded")
+
+ioi_dataset = IOIDataset(prompt_type = "mixed", N=200, tokenizer=model.tokenizer) 
+ioi_prompts = ioi_dataset.ioi_prompts
+
+webtext = load_dataset("stas/openwebtext-10k")
+owb_seqs = ["".join(show_tokens(webtext['train']['text'][i][:2000], return_list=True)[:ioi_dataset.max_len]) for i in range(ioi_dataset.N)]
+
 def writing_direction_heatmap(
     model,
     prompts, 
@@ -787,6 +815,8 @@ attn_vals = writing_direction_heatmap(
     dir_mode="IO - S", 
     title="Attention head output into IO - S token unembedding (GPT2)",
 )
+#%% # check that this attending to IO happens as described
+show_attention_patterns(model, [(9,9), (9,6), (10,0)], ioi_dataset.text_prompts[:1])
 # %%
 model_name = "gpt2"
 model = EasyTransformer(
@@ -810,46 +840,7 @@ N=100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None) #["Two friends were discussing.", "It was a levely day.", "Two friends arrived in a new place.", "The couple arrived."]) # , prompts=saved_prompts) # [{"IO" : "Anthony", "S" : "Aaron", "text" : "Then, Aaron and Anthony went to the grocery store. Aaron gave a ring to Anthony"}, {'IO': 'Lindsey', 'S': 'Joshua', 'text': 'Then, Joshua and Lindsey were working at the grocery store. Joshua decided to give a basketball to Lindsey'}], symmetric=True)
 ioi_prompts = ioi_dataset.ioi_prompts
 pprint(ioi_dataset.text_prompts[:5])  # example prompts
-# %%
-webtext = load_dataset("stas/openwebtext-10k")
-owb_seqs = ["".join(show_tokens(webtext['train']['text'][i][:2000], return_list=True)[:ioi_dataset.max_len]) for i in range(ioi_dataset.N)]
 #%%
-def safe_del(a):
-    try:
-        del a
-    except:
-        pass
-    torch.cuda.empty_cache()
-
-
-def logit_diff(model, ioi_data,target_dataset=None, all=False, std=False):
-    """Difference between the IO and the S logits at the "to" token"""
-    global ioi_dataset
-    if "IOIDataset" in str(type(ioi_data)):
-        text_prompts = ioi_data.text_prompts
-        ioi_dataset = ioi_data
-    else:
-        text_prompts = ioi_data
-
-    if target_dataset is None:
-        target_dataset = ioi_dataset
-
-    logits = model(text_prompts).detach()
-    L = len(text_prompts)
-    IO_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], target_dataset.io_tokenIDs[:L]]
-    S_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], target_dataset.s_tokenIDs[:L]]
-    # print(IO_logits, S_logits)
-    if all and not std:
-        return IO_logits - S_logits
-    if std:
-        if all:
-            first_bit = IO_logits - S_logits
-        else:
-            first_bit = (IO_logits - S_logits).mean().detach().cpu()
-        return first_bit, torch.std(IO_logits - S_logits)
-    return (IO_logits - S_logits).mean().detach().cpu()
-
-
 ld = logit_diff(model, ioi_dataset[:N], all=True)
 
 def list_diff(l1, l2):
