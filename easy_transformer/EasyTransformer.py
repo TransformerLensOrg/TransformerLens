@@ -221,6 +221,7 @@ class Attention(nn.Module):
             self.register_buffer("mask", causal_mask)
         elif self.attn_type == "local":
             # For local, this is banded, query - window_size < key <= query
+            assert isinstance(self.cfg.window_size, int)
             self.register_buffer(
                 "mask", torch.triu(causal_mask, 1 - self.cfg.window_size)
             )
@@ -332,6 +333,7 @@ class TransformerBlock(nn.Module):
         if not self.cfg.use_local_attn:
             self.attn = Attention(cfg, "global")
         else:
+            assert self.cfg.attn_types is not None
             attn_type = self.cfg.attn_types[block_index]
             self.attn = Attention(cfg, attn_type)
         self.ln2 = LayerNormPre(cfg)
@@ -530,6 +532,7 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def to_tokens(self, text):
+        assert self.tokenizer is not None
         return self.tokenizer(text, return_tensors="pt", padding=True)["input_ids"]
 
     @classmethod
