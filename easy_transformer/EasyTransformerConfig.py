@@ -23,13 +23,19 @@ class EasyTransformerConfig:
             each head adds to the residual stream (with a hook) and THEN add it
             up, vs just calculating the sum. This can be very memory intensive
             for large models, so defaults to False
-        use_attn_scale (bool): whether to scale the attention weights by 1/sqrt(d_head)
+        use_attn_scale (bool): whether to scale the attention weights by
+        1/sqrt(d_head)
         use_local_attn (bool): whether to use local attention
-        model_name (str, *optional*): the name of the model, used to load weights from          HuggingFace or initialized to "custom" if not passed
-        model_type (str, *optional*): the type of the model, used to help load weights from     HuggingFace or initialized to "custom" if not passed
-        full_model_name (str, *optional*): the full name of the model, initialized to "custom" if not passed
-        window_size (int, *optional*): the size of the window for local attention
-        attn_types (List[str], *optional*): the types of attention to use for local attention
+        model_name (str, *optional*): the name of the model, used to load
+            weights from HuggingFace or initialized to "custom" if not passed
+        model_type (str, *optional*): the type of the model, used to help load
+            weights from HuggingFace or initialized to "custom" if not passed
+        full_model_name (str, *optional*): the full name of the model,
+            initialized to "custom" if not passed
+        window_size (int, *optional*): the size of the window for local
+            attention
+        attn_types (List[str], *optional*): the types of attention to use for
+            local attention
     """
 
     d_model: int
