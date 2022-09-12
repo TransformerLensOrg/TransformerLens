@@ -1,6 +1,9 @@
 # %%
 import os
-os.chdir("/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer")
+try: # for Arthur
+    os.chdir("/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer")
+except:
+    pass
 
 from tqdm import tqdm
 import pandas as pd
