@@ -246,14 +246,15 @@ class EasyExperiment:
         self.model.add_hook(hk_name, hk)
         return self.metric.compute_metric(self.model)
 
-    def get_target(self, layer, head):
+    def get_target(self, layer, head, target_module=None):
+        """pass target_module to override cfg settings"""
         if head is not None:
             hook_name = f"blocks.{layer}.attn.hook_{self.cfg.head_circuit}"
             dim = (
                 1 if "hook_attn" in hook_name else 2
             )  # hook_attn and hook_attn_scores are [batch,nb_head,seq_len, seq_len] and the other activation of head (z, q, v,k) are [batch, seq_len, nb_head, head_dim]
         else:
-            if self.cfg.target_module == "mlp":
+            if self.cfg.target_module == "mlp" or target_module == "mlp":
                 hook_name = f"blocks.{layer}.mlp.hook_post"
             else:
                 hook_name = f"blocks.{layer}.hook_attn_out"
@@ -268,13 +269,32 @@ class EasyAblation(EasyExperiment):
     (probably limited used currently, see test_experiments for one usage)
     """
 
-    def __init__(self, model: EasyTransformer, config: AblationConfig, metric: ExperimentMetric, semantic_indices=None):
+    def __init__(
+        self,
+        model: EasyTransformer,
+        config: AblationConfig,
+        metric: ExperimentMetric,
+        semantic_indices=None,
+        mean_by_groups=False,
+        groups=None,
+        blue_pen=False,
+    ):
         super().__init__(model, config, metric)
         assert "AblationConfig" in str(type(config))
         assert not (
             (semantic_indices is not None) and (config.head_circuit in ["hook_attn_scores", "hook_attn"])
         )  # not implemented (surely not very useful)
+        assert not (mean_by_groups and groups is None)
         self.semantic_indices = semantic_indices
+        self.blue_pen = blue_pen  # If true not taking sem indices in non sem means
+
+        self.mean_by_groups = mean_by_groups
+        self.groups = groups  # list of (list of indices of element of the group)
+
+        if self.semantic_indices is not None:  # blue pen project
+            self.max_len = max([len(self.model.tokenizer(t).input_ids) for t in self.cfg.mean_dataset])
+            self.get_seq_no_sem(self.max_len)
+
         if self.cfg.mean_dataset is None and config.compute_means:
             self.cfg.mean_dataset = self.metric.dataset
         if self.cfg.cache_means and self.cfg.compute_means:
@@ -283,9 +303,9 @@ class EasyAblation(EasyExperiment):
     def run_ablation(self):
         return self.run_experiment()
 
-    def get_hook(self, layer, head=None):
+    def get_hook(self, layer, head=None, target_module=None):
         # If the target is a layer, head is None.
-        hook_name, dim = self.get_target(layer, head)
+        hook_name, dim = self.get_target(layer, head, target_module=target_module)
         mean = None
         if self.cfg.compute_means:
             if self.cfg.cache_means:
@@ -316,19 +336,69 @@ class EasyAblation(EasyExperiment):
         self.model.run_with_hooks(self.cfg.mean_dataset, fwd_hooks=[(hook_name, cache_hook)])
         return self.compute_mean(cache[hook_name], hook_name)
 
+    # hook_attn and hook_attn_scores are [batch,nb_head,seq_len, seq_len] and the other activation of head (z, q, v,k) are [batch, seq_len, nb_head, head_dim]
     def compute_mean(self, z, hk_name):
+
         mean = torch.mean(z, dim=0, keepdim=False).detach().clone()  # we compute the mean along the batch dim
         mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
+
+        if self.mean_by_groups:
+            mean = torch.zeros_like(z)
+            for group in self.groups:
+                group_mean = torch.mean(z[group], dim=0, keepdim=False).detach().clone()
+                mean[group] = einops.repeat(group_mean, "... -> s ...", s=len(group))
+
         if self.semantic_indices is None or "hook_attn" in hk_name:
             return mean
+
+        if self.blue_pen:
+            # in the semantic ablation case
+            mean = torch.zeros(z.shape[1:], device=z.device)  # seq len, dim
+            for pos in range(z.shape[1]):  # seq len
+                # self.seq_no_sem[i] is the list of the batch posiitons where i in not a semantic index.
+                if z[self.seq_no_sem[pos], pos, :].numel() != 0:
+                    mean[pos] = torch.mean(
+                        z[self.seq_no_sem[pos], pos, :], dim=0, keepdim=False
+                    ).clone()  # we exclude the semntic indices from the mean
+
+            mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
+
         dataset_length = len(self.cfg.mean_dataset)
-        for semantic_symbol, semantic_indices in self.semantic_indices.items():
-            mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
-                torch.mean(z[list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(),
-                "... -> s ...",
-                s=dataset_length,  # instead of the mean constant accross position, for semantic indices, when do semantic ablations
-            )
+        if self.mean_by_groups:
+            for group in self.groups:
+                for semantic_symbol, semantic_indices in self.semantic_indices.items():
+                    mean[group, semantic_indices[group]] = einops.repeat(
+                        torch.mean(z[group, semantic_indices[group]], dim=0, keepdim=False).clone(),
+                        "... -> s ...",
+                        s=len(group),  # we do mean inside groups. Information cannot go accross groups
+                    )
+        else:
+            for semantic_symbol, semantic_indices in self.semantic_indices.items():
+                mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
+                    torch.mean(z[list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(),
+                    "... -> s ...",
+                    s=dataset_length,  # instead of the mean constant accross position, for semantic indices, when do semantic ablations
+                )
         return mean
+
+    def get_seq_no_sem(self, max_len):  ## Only useful for the blue pen projet
+        self.seq_no_sem = []
+        for pos in range(max_len):
+            seq_no_sem_at_pos = []
+
+            for seq in range(len(self.cfg.mean_dataset)):
+                seq_is_sem = False
+                for semantic_symbol, semantic_indices in self.semantic_indices.items():
+                    if pos == semantic_indices[seq]:
+                        seq_is_sem = True
+                        break
+                if self.semantic_indices["end"][seq] < pos:
+                    seq_is_sem = True
+
+                if not (seq_is_sem):
+                    seq_no_sem_at_pos.append(seq)
+
+            self.seq_no_sem.append(seq_no_sem_at_pos.copy())
 
 
 class EasyPatching(EasyExperiment):
@@ -341,9 +411,9 @@ class EasyPatching(EasyExperiment):
     def run_patching(self):
         return self.run_experiment()
 
-    def get_hook(self, layer, head=None):
+    def get_hook(self, layer, head=None, target_module=None):
         # If the target is a layer, head is None.
-        hook_name, dim = self.get_target(layer, head)
+        hook_name, dim = self.get_target(layer, head, target_module=target_module)
         if self.cfg.cache_act:
             act = self.act_cache[hook_name]  # activation on the source dataset
         else:
