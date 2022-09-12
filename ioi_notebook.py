@@ -714,11 +714,81 @@ def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
             )
 
             fig.show()
+#%% [markdown]
+# Name mover experiments
 
+# CLAIM: heads 9.6, 9.9 and 10.0 write the IO into the residual stream, by attending to that token and copying it:
+# TODO maybe this is wrong ... just copy the old notebook?
+#%%
+def writing_direction_heatmap(
+    model,
+    prompts, 
+    mode="attn_out", 
+    return_vals=False, 
+    dir_mode = "IO - S",
+    unembed_mode = "normal", # or "Neel"
+    title="",
+):
+    """
+    Plot the dot product between how much each attention head
+    output with `IO-S`, the difference between the unembeds between
+    the (correct) IO token and the incorrect S token
+    """
 
+    n_heads = model.cfg["n_heads"]
+    n_layers = model.cfg["n_layers"]
+
+    model_unembed = model.unembed.W_U.detach().cpu() #note that for GPT2 embeddings and unembeddings are tides such that W_E = Transpose(W_U)
+
+    if mode == "attn_out": # heads, layers
+        vals = torch.zeros(size=(n_heads, n_layers))
+    elif mode == "mlp":
+        vals = torch.zeros(size=(1, n_layers))
+    else:
+        raise NotImplementedError()
+
+    N = len(prompts)
+    for prompt in tqdm(prompts):
+        io_tok = model.tokenizer(" "+prompt["IO"])["input_ids"][0]
+        s_tok = model.tokenizer(" "+prompt["S"])["input_ids"][0]
+        io_dir = model_unembed[io_tok]
+        s_dir = model_unembed[s_tok]
+        if dir_mode == "IO - S":
+            dire = io_dir - s_dir
+        elif dir_mode == "IO":
+            dire = io_dir
+        elif dir_mode == "S":
+            dire = s_dir
+        else:
+            raise NotImplementedError()
+
+        model.reset_hooks()
+        cache = {}
+        model.cache_all(cache)
+
+        logits = model(prompt["text"])
+
+        for lay in range(n_layers):
+            if mode == "attn_out": 
+                cur = cache[f"blocks.{lay}.attn.hook_result"][0,-2,:,:]
+            elif mode == "mlp":
+                cur = cache[f"blocks.{lay}.hook_mlp_out"][:,-2,:]
+            vals[:,lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
+
+    vals /= N
+    show_pp(vals, xlabel="head no", ylabel="layer no", title=title)
+    if return_vals: return vals
+
+attn_vals = writing_direction_heatmap(
+    model,
+    ioi_dataset.ioi_prompts[:51], 
+    return_vals=True, 
+    mode="attn_out", 
+    dir_mode="IO - S", 
+    title="Attention head output into IO - S token unembedding (GPT2)",
+)
 # %%
-model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
-
+model_name = "gpt2"
 model = EasyTransformer(
     model_name, use_attn_result=True
 )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
@@ -727,43 +797,29 @@ print_gpu_mem()
 if torch.cuda.is_available():
     model.to("cuda")
     small_model.to("cuda")
-print("WARN work on CPU")
 print_gpu_mem("Gpt2 loaded")
 print_gpu_mem()
-
-# %%
-#dataset generation
-
-
-# [markdown] hehe no longer
+#%% [markdown]
+# # Circuit extraction experiments 
 # Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
-# The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
-# IOI Dataset initialisation
-#from prompts import alex_prompts as saved_prompts # prompts_2p8_pm_4p4 as saved_prompts
+# The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study.
+# Dataset initialisation:
+# TODO should this be used, or mt experiments???
+#%%
 N=100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None) #["Two friends were discussing.", "It was a levely day.", "Two friends arrived in a new place.", "The couple arrived."]) # , prompts=saved_prompts) # [{"IO" : "Anthony", "S" : "Aaron", "text" : "Then, Aaron and Anthony went to the grocery store. Aaron gave a ring to Anthony"}, {'IO': 'Lindsey', 'S': 'Joshua', 'text': 'Then, Joshua and Lindsey were working at the grocery store. Joshua decided to give a basketball to Lindsey'}], symmetric=True)
 ioi_prompts = ioi_dataset.ioi_prompts
 pprint(ioi_dataset.text_prompts[:5])  # example prompts
-
 # %%
-
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = ["".join(show_tokens(webtext['train']['text'][i][:2000], return_list=True)[:ioi_dataset.max_len]) for i in range(ioi_dataset.N)]
-
-# %%
-# Definiing circuit extraction (by groups)
-
-
+#%%
 def safe_del(a):
     try:
         del a
     except:
         pass
     torch.cuda.empty_cache()
-
-
-# safe_del("model")
-# model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 
 
 def logit_diff(model, ioi_data,target_dataset=None, all=False, std=False):
@@ -795,8 +851,6 @@ def logit_diff(model, ioi_data,target_dataset=None, all=False, std=False):
 
 
 ld = logit_diff(model, ioi_dataset[:N], all=True)
-# this indeed has mean 3.59 +- 1.70 as the slides suggest
-
 
 def list_diff(l1, l2):
     l2_ = [int(x) for x in l2]
@@ -963,49 +1017,6 @@ def do_circuit_extraction(
         model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
     return model, abl
-
-
-# %%
-type(ioi_dataset)
-
-# %%
-old_ld = logit_diff(model, ioi_dataset[:N])
-model, abl_cricuit_extr = do_circuit_extraction(
-    heads_to_remove={
-        (0, 4): [list(range(ioi_dataset.max_len)) for _ in range(N)]
-    },  # annoyingly sometimes needs to be edited...
-    mlps_to_remove={},
-    heads_to_keep=None,
-    mlps_to_keep=None,
-    no_prompts=N,
-    model=model,
-    ioi_dataset=ioi_dataset[:N],
-)
-ld = logit_diff(model, ioi_dataset[:N])
-
-metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset.text_prompts[:N], relative_metric=False)
-config = AblationConfig(
-    abl_type="mean",
-    mean_dataset=ioi_dataset.text_prompts[:N],
-    target_module="attn_head",
-    head_circuit="result",
-    cache_means=True,
-)  #  abl_fn=mean_at_end) # mean_dataset=owb_seqs, target_module="mlp", head_circuit="result", cache_means=True, verbose=True)
-abl = EasyAblation(
-    model,
-    config,
-    metric,
-    semantic_indices=ioi_dataset[:N].sem_tok_idx,
-    mean_by_groups=True,  # TO CHECK CIRCUIT BY GROUPS
-    groups=ioi_dataset.groups,
-    blue_pen=False,
-)
-res = abl.run_experiment()
-
-
-# %%
-print(ld, res[:5, :5])
-
 # %%
 def score_metric(model, ioi_dataset, K=1, target_dataset=None,all=False):
     if target_dataset is None:
@@ -1050,9 +1061,6 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
         print("-------------------")
         print(ioi_dataset.text_prompts[x])
         print(' '.join([f'({i+1}):{model.tokenizer.decode(token)} : {probs[x][token]}' for i, token in enumerate(topk[x])]))
-    
-
-
 # %%
 print_top_k(model, ioi_dataset, K=5)
 
