@@ -11,7 +11,7 @@ def get_sample_from_dataset(sequences, nb_sample=2, print_len=10):
 
 
 def print_gpu_mem(step_name=""):
-    print(f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/1e9, 2)} Go allocated on GPU.")
+    print(f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/1e9, 2)} GB allocated on GPU.")
 
 
 def get_corner(tensor, n=2):
