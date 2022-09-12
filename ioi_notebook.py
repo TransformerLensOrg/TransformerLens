@@ -222,7 +222,7 @@ PLACES_SINGLE_TOKEN = [
     "beach",
 ]
 
-PLACES_ALL = [
+PLACES = [
     "grocery store",
     "garden",
     "restaurant",
@@ -239,7 +239,7 @@ OBJECTS = ["ring", "kiss", "bone", "basketball", "hotdog", "computer", "necklace
 OBJECTS_SINGLE_TOKEN = OBJECTS
 OBJECTS_SINGLE_TOKEN.remove("hotdog")
 
-NOUNS_DICT = {"[PLACE]": PLACES_ALL, "[OBJECT]": OBJECTS}
+NOUNS_DICT = {"[PLACE]": PLACES, "[OBJECT]": OBJECTS}
 NOUNS_DICT_SINGLE_TOKEN = {"[PLACE]": PLACES_SINGLE_TOKEN, "[OBJECT]": OBJECTS_SINGLE_TOKEN}
 
 ANIMALS = [
@@ -544,7 +544,7 @@ def get_word_idxs(prompts, word_list, tokenizer):
             if word_list[i] in prompt["text"]:
                 idx = toks.index(w_tok)
         if idx is None:
-            raise ValueError(f"Word {word_list[i]} Not found")
+            raise ValueError(f"Word {word_list[i]} Not found {prompt}")
         idxs.append(idx)
     return torch.tensor(idxs)
 
