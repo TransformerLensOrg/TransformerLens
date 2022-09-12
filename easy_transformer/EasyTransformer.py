@@ -1,3 +1,4 @@
+from mimetypes import init
 from typing import Callable, Union, List, Tuple, Dict
 import torch
 import torch.nn as nn
@@ -32,7 +33,12 @@ import copy
 # import comet_ml
 import itertools
 
-from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer, PretrainedTokenizer
+from transformers import (
+    AutoModelForCausalLM,
+    AutoConfig,
+    AutoTokenizer,
+    PreTrainedTokenizer,
+)
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.utils import (
@@ -402,7 +408,6 @@ class EasyTransformer(HookedRootModule):
             self.use_attn_result = use_attn_result
             self.model = model
             self.keep_original_model = keep_original_model
-            self.center_weights = center_weights
             self.checkpoint = checkpoint
         else:
             assert (
@@ -433,9 +438,13 @@ class EasyTransformer(HookedRootModule):
                             self.full_model_name, revision=f"checkpoint-{checkpoint}"
                         )
                 else:
-                    self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name)
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        self.full_model_name
+                    )
 
-            self.cfg = self.convert_hf_config(self.model.config, model_type=self.model_type)
+            self.cfg = self.convert_hf_config(
+                self.model.config, model_type=self.model_type
+            )
             self.cfg.use_attn_result = use_attn_result
             self.cfg.checkpoint = checkpoint
             self.cfg.model_type = self.model_type
@@ -491,7 +500,9 @@ class EasyTransformer(HookedRootModule):
         # Input x is either a batch of tokens ([batch, pos]) or a text string
         if type(x) == str or type(x) == list:
             # If text, convert to tokens (batch_size=1)
-            assert self.tokenizer is not None "Must provide a tokenizer if passing a string to\ the model"
+            assert (
+                self.tokenizer is not None
+            ), "Must provide a tokenizer if passing a string to the model"
             x = self.to_tokens(x)
         embed = self.hook_embed(self.embed(x))  # [batch, pos, d_model]
         pos_embed = self.hook_pos_embed(self.pos_embed(x))  # [batch, pos, d_model]
@@ -506,9 +517,9 @@ class EasyTransformer(HookedRootModule):
     def set_tokenizer(self, tokenizer):
         """
         Sets the tokenizer to use for this model.
-        tokenizer (PretrainedTokenizer): a pretrained HuggingFace tokenizer
+        tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer
         """
-        assert isinstance(tokenizer, PretrainedTokenizer)
+        assert isinstance(tokenizer, PreTrainedTokenizer)
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -523,7 +534,7 @@ class EasyTransformer(HookedRootModule):
     def from_config(cls, cfg):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig(**cfg)
-        return cls(cfg.model_name, cfg.use_attn_result, checkpoint=cfg.checkpoint)
+        return cls(cfg.model_name, cfg, use_attn_result=cfg.use_attn_result, checkpoint=cfg.checkpoint)
 
     def get_model_type(self, model_name):
         if "gpt2" in model_name or "stanford" in model_name:
@@ -814,5 +825,30 @@ class EasyTransformer(HookedRootModule):
         nn.init.normal_(self.embed.W_E)
         nn.init.normal_(self.pos_embed.W_pos)
 
+        def init_linear_weight_and_bias(weight, bias):
+            nn.init.kaiming_uniform_(weight, a=np.sqrt(5))
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(weight)
+            bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(bias, -bound, bound)
 
+        for l in range(self.cfg.n_layers):
+            init_linear_weight_and_bias(
+                self.blocks[l].attn.W_Q, self.blocks[l].attn.b_Q
+            )
+            init_linear_weight_and_bias(
+                self.blocks[l].attn.W_K, self.blocks[l].attn.b_K
+            )
+            init_linear_weight_and_bias(
+                self.blocks[l].attn.W_V, self.blocks[l].attn.b_V
+            )
+            init_linear_weight_and_bias(
+                self.blocks[l].attn.W_O, self.blocks[l].attn.b_O
+            )
+            init_linear_weight_and_bias(
+                self.blocks[l].mlp.W_in, self.blocks[l].mlp.b_in
+            )
+            init_linear_weight_and_bias(
+                self.blocks[l].mlp.W_out, self.blocks[l].mlp.b_out
+            )
 
+        init_linear_weight_and_bias(self.unembed.W_U, self.unembed.b_U)
