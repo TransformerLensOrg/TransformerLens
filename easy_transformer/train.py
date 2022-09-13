@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import wandb
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 from einops import rearrange
 
@@ -115,7 +116,7 @@ def train(
 
     model.to(config.device)
 
-    for epoch in range(config.num_epochs):
+    for epoch in tqdm(range(1, config.num_epochs + 1)):
         steps = 0
         for i, (x, y) in tqdm(enumerate(dataloader)):
             x = x.to(config.device)
@@ -139,6 +140,8 @@ def train(
 
             if config.wandb:
                 wandb.log({"train_loss": loss.item(), "steps": steps, epoch: epoch})
+
+            print(f"Epoch {epoch} Step {steps} Loss {loss.item()}")
 
             if (
                 config.save_every is not None
