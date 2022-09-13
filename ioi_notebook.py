@@ -1459,61 +1459,7 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
 # %%  Running circuit extraction
 
 
-def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
-    assert len(l1) == len(l2)
-    assert type(l1[0]) == list and type(l2[0]) == int
-    l = []
-    for i in range(len(l1)):
-        l.append(l1[i] + [l2[i]])
-    return l
-
-
-def get_extracted_idx(idx_list: list[str], ioi_dataset):
-    int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
-    for idx_name in idx_list:
-        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
-        int_idx = join_lists(int_idx, int_idx_to_add)
-    return int_idx
-
-CIRCUIT = {"name mover": [((9, 6), (9, 9), (10, 0))], 
-    "calibration": [((10, 7), (11, 10))], 
-    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0)],
-    "previous token": [(2, 2), (2, 9), (4, 11)],
-}
-
-RELEVANT_TOKENS = {}
-for head in CIRCUIT["name mover"] + CIRCUIT["calibration"] + CIRCUIT["s2 inhibition"]:
-    RELEVANT_TOKENS[head] = ["end"]
-
-for head in CIRCUIT["induction"]:
-    RELEVANT_TOKENS[head] = ["S2"]
-
-for head in CIRCUIT["duplicate token"]:
-    RELEVANT_TOKENS[head] = ["S2"]
-
-for head in CIRCUIT["previous token"]:
-    RELEVANT_TOKENS[head] = ["S+1", "and"]
-
-def get_heads_circuit(ioi_dataset, excluded_classes=["calibration"], mlp0=False):
-    heads_to_keep = {}
-
-    for circuit_class in CIRCUIT.keys():
-        if circuit_class in excluded_classes:
-            continue
-        for head in CIRCUIT[circuit_class]:
-            heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
-
-    if mlp0:
-        mlps_to_keep = {}
-        mlps_to_keep[0] = get_extracted_idx(
-            ["IO", "and", "S", "S+1", "S2", "end"], ioi_dataset
-        )  # IO, AND, S, S+1, S2, and END
-        return heads_to_keep, mlps_to_keep
-
-    return heads_to_keep
-
+from ioi_utils import join_lists, CIRCUIT, RELEVANT_TOKENS, get_extracted_idx, get_heads_circuit
 
 heads_to_keep = get_heads_circuit(ioi_dataset)
 
