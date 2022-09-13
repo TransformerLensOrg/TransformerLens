@@ -1,20 +1,10 @@
 #%% [markdown]
 # <h1><b>Intro</b></h1>
-# This notebook is an implementation of the IOI experiments (some with adjustments from the [presentation](https://docs.google.com/presentation/d/19H__CYCBL5F3M-UaBB-685J-AuJZNsXqIXZR-O4j9J8/edit#slide=id.g14659e4d87a_0_290)).
+# This notebook is an implementation of the IOI experiments (some with adjustments from the <a href="https://docs.google.com/presentation/d/19H__CYCBL5F3M-UaBB-685J-AuJZNsXqIXZR-O4j9J8/edit#slide=id.g14659e4d87a_0_290">presentation</a>.
 # It should be able to be run as by just git cloning this repo (+ some easy installs).
 # Reminder of the circuit:
-#
-#
 # ![image_here](https://i.imgur.com/PPtTQRh.png)
 # %%
-from ast import Lambda
-import os
-
-try:  # for Arthur
-    os.chdir("/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer")
-except:
-    pass
-
 from tqdm import tqdm
 import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
@@ -770,8 +760,6 @@ def safe_del(a):
     except:
         pass
     torch.cuda.empty_cache()
-
-
 #%% [markdown]
 # # <h1><b>Initial evidence</b></h1>
 # ## <h2>Direct attribution</h2>
