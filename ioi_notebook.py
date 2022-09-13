@@ -1166,7 +1166,7 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
         s_probs = sprobs_metric.compute_metric(
             model
         )  # s probs is like 0.003 for most ablate calibration heads # or is is that low
-        print(f"{s_probs=}")
+        # print(f"{s_probs=}")
         sprobs_data.append((sprobs_metric.baseline, s_probs))
         io_logits = io_logits_metric.compute_metric(model)
         io_logits_data.append((io_logits_metric.baseline, io_logits))
@@ -1467,15 +1467,15 @@ def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the in
     return l
 
 
-def get_extracted_idx(idx_list: list[str], no_prompts, ioi_dataset):
-    int_idx = [[] for i in range(no_prompts)]
+def get_extracted_idx(idx_list: list[str], ioi_dataset):
+    int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name][:no_prompts])]  # torch to python objects
+        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
 
-def get_heads_circuit(ioi_dataset, no_prompts, calib_head=True, mlp0=False):
+def get_heads_circuit(ioi_dataset, calib_head=True, mlp0=False):
     heads_to_keep = {}
     heads_to_keep[(0, 1)] = get_extracted_idx(["S2"], ioi_dataset)
     heads_to_keep[(0, 10)] = get_extracted_idx(
@@ -1521,7 +1521,6 @@ model.reset_hooks()
 model, _ = do_circuit_extraction(
     mlps_to_remove={},  # we have to keep every mlps
     heads_to_keep=heads_to_keep,
-    mlps_to_keep={},
     model=model,
     ioi_dataset=ioi_dataset,
 )
@@ -1535,19 +1534,14 @@ print(f"Original logit_diff = {old_ld.mean()} +/- {old_std}. score={old_score}")
 
 df = pd.DataFrame({"Logit difference":ldiff.cpu(), 
 "Random (for separation)":np.random.random(len(ldiff)),
-"beg":[prompt["text"][:10] for prompt in ioi_prompts], 
-"sentence": [prompt["text"] for prompt in ioi_prompts],
-"#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts], # (no of tokens)
+"beg":[prompt[:10] for prompt in ioi_dataset.text_prompts], 
+"sentence": [prompt for prompt in ioi_dataset.text_prompts],
+"#tokens before first name": [prompt.count("Then") for prompt in ioi_dataset.text_prompts], # (no of tokens)
 "template": ioi_dataset.templates_by_prompt,
-"misc": [ (str(prompt["text"].count("Then")) +str(ioi_dataset.templates_by_prompt[i])) for (i,prompt) in enumerate(ioi_prompts)] })
-#[ prompt["text"].count(prompt["IO"]) for (i,prompt) in enumerate(ioi_prompts)] })
-# TODO figure out how to make the global IOI dataset work
-# black please work
-# black...
-# black
+"misc": [(str(prompt.count("Then")) + str(ioi_dataset.templates_by_prompt[i])) for (i, prompt) in enumerate(ioi_dataset.text_prompts)] })
 
 px.scatter(
-    df,
+    df, 
     x="Logit difference",
     y="Random (for separation)",
     hover_data=["sentence", "template"],
@@ -1564,11 +1558,9 @@ for key in ioi_dataset.word_idx:
     print(key, ioi_dataset.word_idx[key][8])
 
 # %% [markdown]
-# # Global Patching
+# # Global patching
 
 # %%
-
-
 def do_global_patching(
     source_mlps_to_patch=None,
     source_mlps_to_keep=None,
@@ -1710,7 +1702,7 @@ df = pd.DataFrame(
         ],
     }
 )
-# [ prompt["text"].count(prompt["IO"]) for (i,prompt) in enumerate(ioi_prompts)] })
+
 px.scatter(
     df, x="x", y="y", hover_data=["sentence", "template"], text="beg", color="misc", title=ioi_dataset.prompt_type
 )
