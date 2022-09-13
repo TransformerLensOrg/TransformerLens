@@ -303,18 +303,16 @@ class MLP(nn.Module):
 
         if self.cfg.act_fn == "relu":
             self.act_fn = F.relu
-        elif self.cfg.act_fn == "gelu_new":
-            self.act_fn = gelu_new
         elif self.cfg.act_fn == "gelu":
             self.act_fn = F.gelu
-        elif self.cfg.act_fn == "solu":
-            self.act_fn = solu
-        elif self.cfg.act_fn == "relu":
-            self.act_fn = F.relu
         elif self.cfg.act_fn == "silu":
             self.act_fn = F.silu
         elif self.cfg.act_fn == "glu":
             self.act_fn = F.glu
+        elif self.cfg.act_fn == "gelu_new":
+            self.act_fn = gelu_new
+        elif self.cfg.act_fn == "solu":
+            self.act_fn = solu
         elif self.cfg.act_fn == "reglu":
             self.act_fn = reglu
         elif self.cfg.act_fn == "geglu":
