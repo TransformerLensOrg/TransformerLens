@@ -17,6 +17,11 @@ class EasyTransformerKeyValueCacheEntry:
             past_values=torch.empty(1, model.cfg.n_heads, 0, model.cfg.d_head),
         )
 
+    def append(self, new_keys: torch.Tensor, new_values: torch.Tensor):
+        self.past_keys = torch.cat([self.past_keys, new_keys], dim=2)
+        self.past_values = torch.cat([self.past_values, new_values], dim=2)
+        return self.past_keys, self.past_values
+
 
 @dataclass
 class EasyTransformerKeyValueCache:
@@ -30,3 +35,6 @@ class EasyTransformerKeyValueCache:
                 for _ in range(model.cfg.n_layers)
             ]
         )
+
+    def __getitem__(self, idx):
+        return self.entries[idx]
