@@ -1197,116 +1197,10 @@ show_pp(three_d, animate_axis=0, title="Writing Direction Heatmap for all templa
 ld = logit_diff_target(model, ioi_dataset[:N], all=True)
 
 
-def list_diff(l1, l2):
-    l2_ = [int(x) for x in l2]
-    return list(set(l1).difference(set(l2_)))
-
-
-def turn_keep_in_rmv(to_keep, max_len):
-    to_rmv = {}
-    for t in to_keep.keys():
-        to_rmv[t] = []
-        for idxs in to_keep[t]:
-            to_rmv[t].append(list_diff(list(range(max_len)), idxs))
-    return to_rmv
-
-
-def process_heads_and_mlps(
-    heads_to_remove=None,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
-    mlps_to_remove=None,  # {2: List[List[int]]: dimensions dataset_size * datapoint_length
-    heads_to_keep=None,  # as above for heads
-    mlps_to_keep=None,  # as above for mlps
-    ioi_dataset=None,
-    model=None,
-):
-    assert (heads_to_remove is None) != (heads_to_keep is None)
-    assert (mlps_to_keep is None) != (mlps_to_remove is None)
-
-    n_layers = model.cfg["n_layers"]
-    n_heads = model.cfg["n_heads"]
-
-    dataset_length = len(ioi_dataset.text_prompts)
-
-    if mlps_to_remove is not None:
-        mlps = mlps_to_remove.copy()
-    else:  # do smart computation in mean cache
-        mlps = mlps_to_keep.copy()
-        for l in range(n_layers):
-            if l not in mlps_to_keep:
-                mlps[l] = [[] for _ in range(dataset_length)]
-        mlps = turn_keep_in_rmv(
-            mlps, ioi_dataset.max_len
-        )  # TODO check that this is still right for the max_len of maybe shortened datasets
-
-    if heads_to_remove is not None:
-        heads = heads_to_remove.copy()
-    else:
-        heads = heads_to_keep.copy()
-        for l in range(n_layers):
-            for h in range(n_heads):
-                if (l, h) not in heads_to_keep:
-                    heads[(l, h)] = [[] for _ in range(dataset_length)]
-        heads = turn_keep_in_rmv(heads, ioi_dataset.max_len)
-    return heads, mlps
-    # print(mlps, heads)
-
-
-def get_circuit_replacement_hook(
-    heads_to_remove=None,
-    mlps_to_remove=None,
-    heads_to_keep=None,
-    mlps_to_keep=None,
-    heads_to_remove2=None,
-    mlps_to_remove2=None,
-    heads_to_keep2=None,
-    mlps_to_keep2=None,
-    ioi_dataset=None,
-    model=None,
-):
-    heads, mlps = process_heads_and_mlps(
-        heads_to_remove=heads_to_remove,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
-        mlps_to_remove=mlps_to_remove,  # {2: List[List[int]]: dimensions dataset_size * datapoint_length
-        heads_to_keep=heads_to_keep,  # as above for heads
-        mlps_to_keep=mlps_to_keep,  # as above for mlps
-        ioi_dataset=ioi_dataset,
-        model=model,
-    )
-
-    if (heads_to_remove2 is not None) or (heads_to_keep2 is not None):
-        heads2, mlps2 = process_heads_and_mlps(
-            heads_to_remove=heads_to_remove2,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
-            mlps_to_remove=mlps_to_remove2,  # {2: List[List[int]]: dimensions dataset_size * datapoint_length
-            heads_to_keep=heads_to_keep2,  # as above for heads
-            mlps_to_keep=mlps_to_keep2,  # as above for mlps
-            ioi_dataset=ioi_dataset,
-            model=model,
-        )
-    else:
-        heads2, mlps2 = heads, mlps
-
-    dataset_length = len(ioi_dataset.text_prompts)
-
-    def circuit_replmt_hook(z, act, hook):  # batch, seq, heads, head dim
-        layer = int(hook.name.split(".")[1])
-        if "mlp" in hook.name and layer in mlps:
-            for i in range(dataset_length):
-                z[i, mlps[layer][i], :] = act[
-                    i, mlps2[layer][i], :
-                ]  # ablate all the indices in mlps[layer][i]; mean may contain semantic ablation
-                # TODO can this i loop be vectorized?
-
-        if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(dataset_length):  # we use the idx from contex to get the head
-                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[i, heads2[(layer, hook.ctx["idx"])][i], :]
-
-        return z
-
-    return circuit_replmt_hook, heads, mlps
-
+from ioi_circuit_extraction import turn_keep_into_rmv, list_diff
 # %% # sanity check
 
-from ioi_utils import do_circuit_extraction
-
+from ioi_circuit_extraction import process_heads_and_mlps, get_circuit_replacement_hook, do_circuit_extraction, turn_keep_into_rmv
 if False:
     type(ioi_dataset)
     old_ld = logit_diff_target(model, ioi_dataset[:N])
@@ -1319,6 +1213,7 @@ if False:
         mlps_to_keep=None,
         model=model,
         ioi_dataset=ioi_dataset[:N],
+        metric=logit_diff_target,
     )
     ld = logit_diff_target(model, ioi_dataset[:N])
     metric = ExperimentMetric(metric=logit_diff_target, dataset=ioi_dataset.text_prompts[:N], relative_metric=False)
@@ -1417,6 +1312,7 @@ model, _ = do_circuit_extraction(
     heads_to_keep=heads_to_keep,
     model=model,
     ioi_dataset=ioi_dataset,
+    metric=logit_diff_target,
 )
 
 ldiff, std = logit_diff_target(model, ioi_dataset, std=True, all=True)

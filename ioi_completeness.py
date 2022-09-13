@@ -118,7 +118,7 @@ owb_seqs = [
 
 #%%
 
-from ioi_utils import join_lists, CIRCUIT, RELEVANT_TOKENS, get_extracted_idx, get_heads_circuit
+from ioi_circuit_extraction import join_lists, CIRCUIT, RELEVANT_TOKENS, get_extracted_idx, get_heads_circuit, do_circuit_extraction
 
 def logit_diff(model, text_prompts):
     """Difference between the IO and the S logits (at the "to" token)"""
@@ -129,9 +129,8 @@ def logit_diff(model, text_prompts):
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
-from ioi_utils import do_circuit_extraction 
 
-for G in [None] + CIRCUIT.keys():
+for G in CIRCUIT.keys():
     if G == "ablation":
         continue
 
@@ -139,7 +138,7 @@ for G in [None] + CIRCUIT.keys():
     excluded_classes = ["calibration"]
     if G is not None:
         excluded_classes.append(G)
-    heads_to_keep, mlps_to_keep = get_heads_circuit(ioi_dataset, excluded_classes = excluded_classes)
+    heads_to_keep, mlps_to_keep = get_heads_circuit(ioi_dataset, excluded_classes = excluded_classes, mlp0=True) # TODO check the MLP stuff
     model = do_circuit_extraction(
         model=model, 
         heads_to_keep=heads_to_keep, 
@@ -147,4 +146,4 @@ for G in [None] + CIRCUIT.keys():
         ioi_dataset=ioi_dataset,
     )
 
-    ld = logit_diff()
+    # ld = logit_diff(
