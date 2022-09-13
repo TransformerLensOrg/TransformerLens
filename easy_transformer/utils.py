@@ -68,3 +68,33 @@ def solu(input):
     https://transformer-circuits.pub/2022/solu/index.html.
     """
     return F.layer_norm(input * F.softmax(input, dim=-1), input.shape)
+
+
+def reglu(input):
+    """
+    ReGLU activation function as described by
+    https://arxiv.org/pdf/2002.05202.pdf.
+    """
+    input_, gate = input.chunk(2, dim=-1)
+    return F.relu(gate) * input_
+
+
+def geglu(input, use_gelu_new=False):
+    """
+    GeGLU activation function as described by
+    https://arxiv.org/pdf/2002.05202.pdf.
+    """
+    input_, gate = input.chunk(2, dim=-1)
+    if use_gelu_new:
+        return gelu_new(gate) * input_
+    else:
+        return F.gelu(gate) * input_
+
+
+def swiglu(input):
+    """
+    SwiGLU activation function as described by
+    https://arxiv.org/pdf/2002.05202.pdf.
+    """
+    input_, gate = input.chunk(2, dim=-1)
+    return F.silu(gate) * input_

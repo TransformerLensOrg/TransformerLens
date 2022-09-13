@@ -42,6 +42,9 @@ from easy_transformer.utils import (
     print_gpu_mem,
     get_sample_from_dataset,
     solu,
+    reglu,
+    geglu,
+    swiglu,
 )
 from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
@@ -308,6 +311,14 @@ class MLP(nn.Module):
             self.act_fn = solu
         elif self.cfg.act_fn == "relu":
             self.act_fn = F.relu
+        elif self.cfg.act_fn == "glu":
+            self.act_fn = F.glu
+        elif self.cfg.act_fn == "reglu":
+            self.act_fn = reglu
+        elif self.cfg.act_fn == "geglu":
+            self.act_fn = geglu
+        elif self.cfg.act_fn == "swiglu":
+            self.act_fn = swiglu
         else:
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 
