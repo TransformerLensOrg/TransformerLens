@@ -1,4 +1,4 @@
-from typing import Callable, Union, List, Tuple, Dict
+from typing import Callable, Union, List, Tuple, Dict, Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,6 +43,11 @@ from easy_transformer.utils import (
     get_sample_from_dataset,
 )
 from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+
+from easy_transformer.EasyTransformerKeyValueCache import (
+    EasyTransformerKeyValueCache,
+    EasyTransformerKeyValueCacheEntry,
+)
 
 VALID_MODEL_NAMES = set(
     [
@@ -149,9 +154,10 @@ class PosEmbed(nn.Module):
         self.cfg = cfg
         self.W_pos = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.n_ctx))
 
-    def forward(self, x):
+    def forward(self, x, offset=0):
         # Output shape [pos, d_model] - will be broadcast along batch dim
-        return self.W_pos[:, : x.size(-1)].T  # [pos, d_model]
+        # Offset accounts for generation
+        return self.W_pos[:, : x.size(-1) + offset].T  # [pos, d_model]
 
 
 # LayerNormPre
@@ -236,7 +242,10 @@ class Attention(nn.Module):
         self.hook_attn = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
 
-    def forward(self, x):
+    def forward(
+        self, x, cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None
+    ):
+        B, S, D = x.shape
         q = self.hook_q(
             torch.einsum("ihm,bpm->bpih", self.W_Q, x) + self.b_Q
         )  # [batch, pos, head_index, d_head]
@@ -246,11 +255,24 @@ class Attention(nn.Module):
         v = self.hook_v(
             torch.einsum("ihm,bpm->bpih", self.W_V, x) + self.b_V
         )  # [batch, pos, head_index, d_head]
+
+        if cache_entry is not None:
+            CB, CN, CS, CH = cache_entry.past_keys.shape
+            assert CB == B
+            assert CN == self.cfg.n_heads
+            assert CH == self.cfg.d_head
+            if CS != 0:
+                assert S == 1, "Can only pass one token at a time after cache is loaded"
+            k, v = cache_entry.append(k, v)
+            pos_start = CS
+        else:
+            pos_start = 0
+
         attn_scores = (
             torch.einsum("bpih,bqih->bipq", q, k) / self.attn_scale
         )  # [batch, head_index, query_pos, key_pos]
         attn_scores = self.hook_attn_scores(
-            self.causal_mask(attn_scores)
+            self.causal_mask(attn_scores, pos_start)
         )  # [batch, head_index, query_pos, key_pos]
         attn_matrix = self.hook_attn(
             F.softmax(attn_scores, dim=-1)
@@ -274,9 +296,12 @@ class Attention(nn.Module):
             )  # [batch, pos, d_model]
         return out
 
-    def causal_mask(self, attn_scores):
+    def causal_mask(self, attn_scores, cache_pos_start):
         return torch.where(
-            self.mask[: attn_scores.size(-2), : attn_scores.size(-1)],
+            self.mask[
+                : cache_pos_start : cache_pos_start + attn_scores.size(-2),
+                : attn_scores.size(-1),
+            ],
             attn_scores,
             self.IGNORE,
         )
@@ -337,10 +362,12 @@ class TransformerBlock(nn.Module):
         self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
 
-    def forward(self, x):
+    def forward(
+        self, x, cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None
+    ):
         resid_pre = self.hook_resid_pre(x)  # [batch, pos, d_model]
         attn_out = self.hook_attn_out(
-            self.attn(self.ln1(resid_pre))
+            self.attn(self.ln1(resid_pre), cache_entry)
         )  # [batch, pos, d_model]
         resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
 
@@ -463,18 +490,37 @@ class EasyTransformer(HookedRootModule):
             # Delete the original model to save memory
             del self.model
 
-    def forward(self, x):
+    def forward(
+        self,
+        x: Union[str, list, torch.Tensor],
+        cache: Optional[EasyTransformerKeyValueCache] = None,
+    ):
         # Input x is either a batch of tokens ([batch, pos]) or a text string
         if type(x) == str or type(x) == list:
             # If text, convert to tokens (batch_size=1)
             x = self.to_tokens(x)
+        assert isinstance(x, torch.Tensor)
+        B, S = x.shape
+        if cache is None:
+            pos_start = 0
+        else:
+            CB, CN, CS, CH = cache[0].past_keys.shape
+            assert CB == B
+            assert CN == self.cfg.n_heads
+            assert CH == self.cfg.d_head
+            assert CS == 0 or S == 1, "Pass in one token at a time after loading cache"
+            pos_start = CS
         embed = self.hook_embed(self.embed(x))  # [batch, pos, d_model]
-        pos_embed = self.hook_pos_embed(self.pos_embed(x))  # [batch, pos, d_model]
+        pos_embed = self.hook_pos_embed(
+            self.pos_embed(x, pos_start)
+        )  # [batch, pos, d_model]
         residual = embed + pos_embed  # [batch, pos, d_model]
-        for block in self.blocks:
+        for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
-            residual = block(residual)  # [batch, pos, d_model]
+            residual = block(
+                residual, cache[i] if cache else None
+            )  # [batch, pos, d_model]
         x = self.unembed(self.ln_final(residual))  # [batch, pos, d_vocab]
         return x
 
