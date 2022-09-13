@@ -252,6 +252,7 @@ def iter_sample_fast(iterable, samplesize):
 
     return results
 
+NOUNS_DICT = NOUNS_DICT = {"[PLACE]": PLACES, "[OBJECT]": OBJECTS}
 
 def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None):
     nb_gen = 0
@@ -670,8 +671,9 @@ model_name = "gpt2"
 safe_del("model")
 print_gpu_mem("About to load model")
 model = EasyTransformer(model_name, use_attn_result=True) #use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+device = "cuda"
 if torch.cuda.is_available():
-    model.to("cuda")
+    model.to(device)
 print_gpu_mem("Gpt2 loaded")
 
 ioi_dataset = IOIDataset(prompt_type = "mixed", N=200, tokenizer=model.tokenizer) 
@@ -680,6 +682,7 @@ ioi_prompts = ioi_dataset.ioi_prompts
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = ["".join(show_tokens(webtext['train']['text'][i][:2000], return_list=True)[:ioi_dataset.max_len]) for i in range(ioi_dataset.N)]
 
+#%%
 def writing_direction_heatmap(
     model,
     prompts, 
@@ -802,7 +805,9 @@ scatter_attention_and_contribution(model, 9, 9, ioi_prompts[:500], gpt_model="gp
 scatter_attention_and_contribution(model, 9, 6, ioi_prompts[:500], gpt_model="gpt2")
 scatter_attention_and_contribution(model, 10, 0, ioi_prompts[:500], gpt_model="gpt2")
 #%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
-scatter_attention_and_contribution(model, random.randint(0,11), random.randint(0,11), ioi_prompts[:500], gpt_model="gpt2") # TODO diff circuits with templates experiment
+scatter_attention_and_contribution(model, random.randint(0,11), random.randint(0,11), ioi_prompts[:500], gpt_model="gpt2") 
+#%%
+# TODO diff circuits with templates experiment
 #%% [markdown]
 # To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated). 
 #%%
@@ -944,21 +949,20 @@ template_prompts = [
     gen_prompt_uniform(
         templates[i : i + 1],
         NAMES,
-        NOUNS_DICT_SINGLE_TOKEN,
+        NOUNS_DICT,
         N=N,
         symmetric=False,
     )
     for i in range(len(templates))
 ]
 
-ld_data = []
-score_data = []
-probs_data = []
-sprobs_data = []
-io_logits_data = []
-s_logits_data = []
-
 for ablate_calibration in [False, True]:
+    ld_data = []
+    score_data = []
+    probs_data = []
+    sprobs_data = []
+    io_logits_data = []
+    s_logits_data = []
     for template_idx in tqdm(range(num_templates)):
         prompts = template_prompts[template_idx]
         ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
@@ -1124,32 +1128,13 @@ for ablate_calibration in [False, True]:
 
     df = pd.DataFrame(d)
     px.scatter(df, x=x_label, y=y_label, hover_data=["sentence"], text="beg", title=f"Change in logit diff when {ablate_calibration=}").show()
-    
-
-#%% # TODO TODO TODO warn that the rest of this is not finished
-
-# %%
-model_name = "gpt2"
-device = "cuda"
-safe_del("model")
-model = EasyTransformer(
-    model_name, use_attn_result=True
-)  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
-small_model = EasyTransformer("gpt2", use_attn_result=True)
-print_gpu_mem()
-if torch.cuda.is_available():
-    model.to(device)
-print_gpu_mem("Gpt2 loaded")
-print_gpu_mem()
 #%% [markdown]
 # # Circuit extraction experiments 
-# Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
-# The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study.
-#%% # Dataset initialisation
-N=100
-ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None) #["Two friends were discussing.", "It was a levely day.", "Two friends arrived in a new place.", "The couple arrived."]) # , prompts=saved_prompts) # [{"IO" : "Anthony", "S" : "Aaron", "text" : "Then, Aaron and Anthony went to the grocery store. Aaron gave a ring to Anthony"}, {'IO': 'Lindsey', 'S': 'Joshua', 'text': 'Then, Joshua and Lindsey were working at the grocery store. Joshua decided to give a basketball to Lindsey'}], symmetric=True)
-ioi_prompts = ioi_dataset.ioi_prompts
-pprint(ioi_dataset.text_prompts[:5])  # example prompts
+# #%% # Dataset initialisation
+# N=100
+# ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None) #["Two friends were discussing.", "It was a levely day.", "Two friends arrived in a new place.", "The couple arrived."]) # , prompts=saved_prompts) # [{"IO" : "Anthony", "S" : "Aaron", "text" : "Then, Aaron and Anthony went to the grocery store. Aaron gave a ring to Anthony"}, {'IO': 'Lindsey', 'S': 'Joshua', 'text': 'Then, Joshua and Lindsey were working at the grocery store. Joshua decided to give a basketball to Lindsey'}], symmetric=True)
+# ioi_prompts = ioi_dataset.ioi_prompts
+# pprint(ioi_dataset.text_prompts[:5])  # example prompts
 #%%
 ld = logit_diff(model, ioi_dataset[:N], all=True)
 
@@ -1246,7 +1231,7 @@ def get_circuit_replacement_hook(
     def circuit_replmt_hook(z, act, hook):  # batch, seq, heads, head dim
         layer = int(hook.name.split(".")[1])
         if "mlp" in hook.name and layer in mlps:
-            for i in range(len(no_prompts)):
+            for i in range(no_prompts):
                 z[i, mlps[layer][i], :] = act[
                     i, mlps2[layer][i], :
                 ]  # ablate all the indices in mlps[layer][i]; mean may contain semantic ablation
@@ -1352,8 +1337,7 @@ if False:
         blue_pen=False,
     )
     res = abl.run_experiment()
-# %%
-print(ld, res[:5, :5])
+    print(ld, res[:5, :5])
 
 
 #%%
@@ -1483,13 +1467,14 @@ print(f"Original logit_diff = {old_ld.mean()} +/- {old_std}. score={old_score}")
 
 df = pd.DataFrame({"Logit difference":ldiff.cpu(), 
 "Random (for separation)":np.random.random(len(ldiff)),
-"beg":[prompt["text"][:10] for prompt in ioi_prompts], 
-"sentence": [prompt["text"] for prompt in ioi_prompts],
-"#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts],
-"template": ioi_dataset.templates_by_prompt,
-"misc": [ (str(prompt["text"].count("Then")) +str(ioi_dataset.templates_by_prompt[i])) for (i,prompt) in enumerate(ioi_prompts)] })
+"beg":[prompt["text"][:10] for prompt in ioi_prompts[:no_prompts]], 
+"sentence": [prompt["text"] for prompt in ioi_prompts[:no_prompts]],
+"#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts[:no_prompts]],
+"template": ioi_dataset[:no_prompts].templates_by_prompt,
+"misc": [ (str(prompt["text"].count("Then")) +str(ioi_dataset[:no_prompts].templates_by_prompt[i])) for (i,prompt) in enumerate(ioi_prompts[:no_prompts])] })
 #[ prompt["text"].count(prompt["IO"]) for (i,prompt) in enumerate(ioi_prompts)] })
 
+# TODO figure out how to make the global IOI dataset work
 
 px.scatter(df, x="Logit difference", y="Random (for separation)", hover_data=["sentence", "template"],text="beg", color="misc", title=f"Prompt type = {ioi_dataset.prompt_type}")
 
