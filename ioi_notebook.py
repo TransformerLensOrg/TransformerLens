@@ -1,9 +1,25 @@
 #%% [markdown]
+# # GPT-2 small Indirect Object Identification
 # <h1><b>Intro</b></h1>
 # This notebook is an implementation of the IOI experiments (some with adjustments from the <a href="https://docs.google.com/presentation/d/19H__CYCBL5F3M-UaBB-685J-AuJZNsXqIXZR-O4j9J8/edit#slide=id.g14659e4d87a_0_290">presentation</a>.
 # It should be able to be run as by just git cloning this repo (+ some easy installs).
+#
+# ### Task
+# We're interested in GPT-2 ability to complete sentences like "Alice and Bob went to the store, Alice gave a bottle of milk to"...
+#
+# GPT-2 knows that it have to output a name that is not the subject (Alice) and that was present in the context: Bob.
+# The first apparition of Alice is called "S" (or sometimes "S1") for "Subject", and Bob is the indirect object ("IO"). Even if the sentences we generate contains the last word of the sentence "Bob", we'll never look at the transformer output here. What's matter is the next-token prediction on the token "to", sometime called the "end" token.
+#
+# ### Tools
+# In this notebook, we define a class `IOIDataset` to handle the generation and utils for this particular dataset.
+#
+# Refer to the demo of the [`easy_transformer` library](https://github.com/neelnanda-io/Easy-Transformer) here: <a href="https://colab.research.google.com/drive/1MLwJ7P94cizVs2LD8Qwi-vLGSoH-cHxq?usp=sharing">demo with ablation & patching</a>.
+#
 # Reminder of the circuit:
-# ![image_here](https://i.imgur.com/PPtTQRh.png)
+# <img src="https://i.imgur.com/PPtTQRh.png">
+
+# %% [markdown]
+# ## Import
 # %%
 from tqdm import tqdm
 import pandas as pd
@@ -59,713 +75,21 @@ from IPython import get_ipython
 import matplotlib.pyplot as plt
 import random as rd
 
+from ioi_dataset import IOIDataset, NOUNS_DICT, NAMES, gen_prompt_uniform, BABA_TEMPLATES, ABBA_TEMPLATES
+from ioi_utils import clear_gpu_mem, show_tokens, show_pp, show_attention_patterns, safe_del
+
+
 ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 
-NAMES = [
-    "Michael",
-    "Christopher",
-    "Jessica",
-    "Matthew",
-    "Ashley",
-    "Jennifer",
-    "Joshua",
-    "Amanda",
-    "Daniel",
-    "David",
-    "James",
-    "Robert",
-    "John",
-    "Joseph",
-    "Andrew",
-    "Ryan",
-    "Brandon",
-    "Jason",
-    "Justin",
-    "Sarah",
-    "William",
-    "Jonathan",
-    "Stephanie",
-    "Brian",
-    "Nicole",
-    "Nicholas",
-    "Anthony",
-    "Heather",
-    "Eric",
-    "Elizabeth",
-    "Adam",
-    "Megan",
-    "Melissa",
-    "Kevin",
-    "Steven",
-    "Thomas",
-    "Timothy",
-    "Christina",
-    "Kyle",
-    "Rachel",
-    "Laura",
-    "Lauren",
-    "Amber",
-    "Brittany",
-    "Danielle",
-    "Richard",
-    "Kimberly",
-    "Jeffrey",
-    "Amy",
-    "Crystal",
-    "Michelle",
-    "Tiffany",
-    "Jeremy",
-    "Benjamin",
-    "Mark",
-    "Emily",
-    "Aaron",
-    "Charles",
-    "Rebecca",
-    "Jacob",
-    "Stephen",
-    "Patrick",
-    "Sean",
-    "Erin",
-    "Jamie",
-    "Kelly",
-    "Samantha",
-    "Nathan",
-    "Sara",
-    "Dustin",
-    "Paul",
-    "Angela",
-    "Tyler",
-    "Scott",
-    "Katherine",
-    "Andrea",
-    "Gregory",
-    "Erica",
-    "Mary",
-    "Travis",
-    "Lisa",
-    "Kenneth",
-    "Bryan",
-    "Lindsey",
-    "Kristen",
-    "Jose",
-    "Alexander",
-    "Jesse",
-    "Katie",
-    "Lindsay",
-    "Shannon",
-    "Vanessa",
-    "Courtney",
-    "Christine",
-    "Alicia",
-    "Cody",
-    "Allison",
-    "Bradley",
-    "Samuel",
-]
 
-
-BABA_TEMPLATES = [
-    "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Then, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Then, [B] and [A] were working at the [PLACE]. [B] decided to give a [OBJECT] to [A]",
-    "Then, [B] and [A] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]",
-    "Then, [B] and [A] had a long argument, and afterwards [B] said to [A]",
-    "After [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
-    "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give it to [A]",
-    "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give the [OBJECT] to [A]",
-    "While [B] and [A] were working at the [PLACE], [B] gave a [OBJECT] to [A]",
-    "While [B] and [A] were commuting to the [PLACE], [B] gave a [OBJECT] to [A]",
-    "After the lunch, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Afterwards, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Then, [B] and [A] had a long argument. Afterwards [B] said to [A]",
-    "The [PLACE] [B] and [A] went to had a [OBJECT]. [B] gave it to [A]",
-    "Friends [B] and [A] found a [OBJECT] at the [PLACE]. [B] gave it to [A]",
-]
-
-ABBA_TEMPLATES = BABA_TEMPLATES[:]
-
-for i in range(len(ABBA_TEMPLATES)):
-    for j in range(1, len(ABBA_TEMPLATES[i]) - 1):
-        if ABBA_TEMPLATES[i][j - 1 : j + 1] == "[B]":
-            ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "A" + ABBA_TEMPLATES[i][j + 1 :]
-        elif ABBA_TEMPLATES[i][j - 1 : j + 1] == "[A]":
-            ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "B" + ABBA_TEMPLATES[i][j + 1 :]
-
-VERBS = [" tried", " said", " decided", " wanted", " gave"]
-PLACES = [
-    "store",
-    "garden",
-    "restaurant",
-    "school",
-    "hospital",
-    "office",
-    "house",
-    "station",
-]
-OBJECTS = [
-    "ring",
-    "kiss",
-    "bone",
-    "basketball",
-    "computer",
-    "necklace",
-    "drink",
-    "snack",
-]
-
-ANIMALS = [
-    "dog",
-    "cat",
-    "snake",
-    "elephant",
-    "beetle",
-    "hippo",
-    "giraffe",
-    "tiger",
-    "husky",
-    "lion",
-    "panther",
-    "whale",
-    "dolphin",
-    "beaver",
-    "rabbit",
-    "fox",
-    "lamb",
-    "ferret",
-]
-
-
-def multiple_replace(dict, text):
-    # from: https://stackoverflow.com/questions/15175142/how-can-i-do-multiple-substitutions-using-regex
-    # Create a regular expression from the dictionary keys
-    regex = re.compile("(%s)" % "|".join(map(re.escape, dict.keys())))
-
-    # For each match, look-up corresponding value in dictionary
-    return regex.sub(lambda mo: dict[mo.string[mo.start() : mo.end()]], text)
-
-
-def iter_sample_fast(iterable, samplesize):
-    results = []
-    # Fill in the first samplesize elements:
-    try:
-        for _ in range(samplesize):
-            results.append(next(iterable))
-    except StopIteration:
-        raise ValueError("Sample larger than population.")
-    random.shuffle(results)  # Randomize their positions
-
-    return results
-
-
-NOUNS_DICT = NOUNS_DICT = {"[PLACE]": PLACES, "[OBJECT]": OBJECTS}
-
-
-def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None):
-    nb_gen = 0
-    ioi_prompts = []
-    while nb_gen < N:
-        temp = rd.choice(templates)
-        temp_id = templates.index(temp)
-        name_1 = ""
-        name_2 = ""
-        while name_1 == name_2:
-            name_1 = rd.choice(names)
-            name_2 = rd.choice(names)
-
-        nouns = {}
-        for k in nouns_dict:
-            nouns[k] = rd.choice(nouns_dict[k])
-        prompt = temp
-        for k in nouns_dict:
-            prompt = prompt.replace(k, nouns[k])
-
-        if prefixes is not None:
-            L = rd.randint(30, 40)
-            pref = ".".join(rd.choice(prefixes).split(".")[:L])
-            pref += "<|endoftext|>"
-        else:
-            pref = ""
-
-        prompt1 = prompt.replace("[A]", name_1)
-        prompt1 = prompt1.replace("[B]", name_2)
-        prompt1 = pref + prompt1
-        ioi_prompts.append(
-            {"text": prompt1, "IO": name_1, "S": name_2, "T_ID": temp_id}
-        )
-        nb_gen += 1
-
-        if symmetric and nb_gen < N:
-            prompt2 = prompt.replace("[A]", name_2)
-            prompt2 = prompt2.replace("[B]", name_1)
-            prompt2 = pref + prompt2
-            ioi_prompts.append(
-                {"text": prompt2, "IO": name_2, "S": name_1, "T_ID": temp_id}
-            )
-            nb_gen += 1
-    return ioi_prompts
-
-
-def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
-    """_summary_
-
-    Args:
-        prompts (List[D]): _description_
-        flip (tuple, optional): First element is the string to be replaced, Second is what to replace with. Defaults to ("S2", "IO").
-
-    Returns:
-        _type_: _description_
-    """
-    flipped_prompts = []
-
-    for prompt in prompts:
-        t = prompt["text"].split(" ")
-        prompt = prompt.copy()
-        if flip[0] == "S2":
-            if flip[1] == "IO":
-                t[len(t) - t[::-1].index(prompt["S"]) - 1] = prompt["IO"]
-            elif flip[1] == "RAND":
-                rand_name = names[np.random.randint(len(names))]
-                while rand_name == prompt["IO"] or rand_name == prompt["S"]:
-                    rand_name = names[np.random.randint(len(names))]
-                t[len(t) - t[::-1].index(prompt["S"]) - 1] = rand_name
-
-        if flip[0] == "IO":
-            if flip[1] == "RAND":
-                rand_name = names[np.random.randint(len(names))]
-                while rand_name == prompt["IO"] or rand_name == prompt["S"]:
-                    rand_name = names[np.random.randint(len(names))]
-
-                t[t.index(prompt["IO"])] = rand_name
-                t[t.index(prompt["IO"])] = rand_name
-                prompt["IO"] = rand_name
-            elif flip[1] == "ANIMAL":
-                rand_animal = ANIMALS[np.random.randint(len(ANIMALS))]
-                t[t.index(prompt["IO"])] = rand_animal
-                prompt["IO"] = rand_animal
-                # print(t)
-        if flip[0] == "S":
-            if flip[1] == "ANIMAL":
-                new_s = ANIMALS[np.random.randint(len(ANIMALS))]
-            if flip[1] == "RAND":
-                new_s = names[np.random.randint(len(names))]
-            t[len(t) - t[::-1].index(prompt["S"]) - 1] = new_s
-            t[t.index(prompt["S"])] = new_s
-            prompt["S"] = new_s
-        if flip[0] == "END":
-            if flip[1] == "S":
-                t[len(t) - t[::-1].index(prompt["IO"]) - 1] = prompt["S"]
-        if flip[0] == "PUNC":
-            n = []
-
-            # separate the punctuation from the words
-            for i, word in enumerate(t):
-                if "." in word:
-                    n.append(word[:-1])
-                    n.append(".")
-                elif "," in word:
-                    n.append(word[:-1])
-                    n.append(",")
-                else:
-                    n.append(word)
-
-            # remove punctuation, important that you check for period first
-            if flip[1] == "NONE":
-                if "." in n:
-                    n[n.index(".")] = ""
-                elif "," in n:
-                    n[len(n) - n[::-1].index(",") - 1] = ""
-
-            # remove empty strings
-            while "" in n:
-                n.remove("")
-
-            # add punctuation back to the word before it
-            while "," in n:
-                n[n.index(",") - 1] += ","
-                n.remove(",")
-
-            while "." in n:
-                n[n.index(".") - 1] += "."
-                n.remove(".")
-
-            t = n
-
-        if flip[0] == "C2":
-            if flip[1] == "A":
-                t[len(t) - t[::-1].index(prompt["C"]) - 1] = prompt["A"]
-
-        if "IO" in prompt:
-            prompt["text"] = " ".join(t)
-            flipped_prompts.append(prompt)
-        else:
-            flipped_prompts.append(
-                {
-                    "A": prompt["A"],
-                    "B": prompt["B"],
-                    "C": prompt["C"],
-                    "text": " ".join(t),
-                }
-            )
-
-    return flipped_prompts
-
-
-# *Tok Idxs Methods
-
-
-def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
-    name_idx_dict = dict((idx_type, []) for idx_type in idx_types)
-    for prompt in prompts:
-        t = prompt["text"].split(" ")
-        toks = tokenizer.tokenize(" ".join(t[:-1]))
-        idxs = []
-        for idx_type in idx_types:
-            if "2" in idx_type:
-                idx = (
-                    len(toks)
-                    - toks[::-1].index(
-                        tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]
-                    )
-                    - 1
-                )
-            else:
-                idx = toks.index(tokenizer.tokenize(" " + prompt[idx_type])[0])
-
-            name_idx_dict[idx_type].append(idx)
-
-    return [torch.tensor(name_idx_dict[idx_type]) for idx_type in idx_types]
-
-
-def get_end_idxs(prompts, tokenizer, name_tok_len=1):
-    toks = torch.Tensor(
-        tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids
-    ).type(torch.int)
-    end_idxs = torch.tensor(
-        [
-            (toks[i] == 50256).nonzero()[0][0].item()
-            if 50256 in toks[i]
-            else toks.shape[1]
-            for i in range(toks.shape[0])
-        ]
-    )
-    end_idxs = end_idxs - 1 - name_tok_len  # YOURE LOOKING AT TO NOT FINAL IO TOKEN
-    return end_idxs
-
-
-def get_rand_idxs(end_idxs, exclude):
-    rand_idxs = []
-    for i in range(len(end_idxs)):
-        idx = np.random.randint(end_idxs[i])
-
-        while idx in torch.vstack(exclude)[:, i]:
-            idx = np.random.randint(end_idxs[i])
-        rand_idxs.append(idx)
-    return rand_idxs
-
-
-def get_word_idxs(prompts, word_list, tokenizer):
-    """Get the index of the words in word_list in the prompts. Exactly one of the word_list word has to be present in each prompt"""
-    idxs = []
-    tokenized_words = [tokenizer.tokenize(word)[0] for word in word_list]
-    for pr_idx, prompt in enumerate(prompts):
-        toks = tokenizer.tokenize(prompt["text"])
-        idx = None
-        for i, w_tok in enumerate(tokenized_words):
-            if word_list[i] in prompt["text"]:
-                try:
-                    idx = toks.index(w_tok)
-                except:
-                    raise ValueError(toks, w_tok, prompt["text"])
-        if idx is None:
-            raise ValueError(f"Word {word_list} and {i} not found {prompt}")
-        idxs.append(idx)
-    return torch.tensor(idxs)
-
-
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-ALL_SEM = [
-    "S",
-    "IO",
-    "S2",
-    "end",
-    "S+1",
-    "and",
-]  # , "verb", "starts", "S-1", "punct"] # Kevin's antic averages
-
-
-def get_idx_dict(ioi_prompts, tokenizer):
-    (
-        IO_idxs,
-        S_idxs,
-        S2_idxs,
-    ) = get_name_idxs(ioi_prompts, tokenizer, idx_types=["IO", "S", "S2"])
-
-    end_idxs = get_end_idxs(ioi_prompts, tokenizer, name_tok_len=1)
-    rand_idxs = get_rand_idxs(end_idxs, exclude=[IO_idxs, S_idxs, S2_idxs])
-    punc_idxs = get_word_idxs(
-        ioi_prompts, [",", "."], tokenizer
-    )  # if there is "," and '.' in the prompt, only the '.' index will be kept.
-    verb_idxs = get_word_idxs(ioi_prompts, VERBS, tokenizer)
-    and_idxs = get_word_idxs(ioi_prompts, [" and"], tokenizer)
-    return {
-        "IO": IO_idxs,
-        "IO-1": IO_idxs - 1,
-        "IO+1": IO_idxs + 1,
-        "S": S_idxs,
-        "S-1": S_idxs - 1,
-        "S+1": S_idxs + 1,
-        "S2": S2_idxs,
-        "end": end_idxs,  # the " to" token, the last one.
-        "rand": rand_idxs,  # random index at each
-        "punct": punc_idxs,
-        "verb": verb_idxs,
-        "and": and_idxs,
-        "starts": torch.zeros_like(and_idxs),
-    }
-
-
-class IOIDataset:
-    def __init__(
-        self,
-        prompt_type: str,
-        N=500,
-        tokenizer=None,
-        prompts=None,
-        symmetric=False,
-        prefixes=None,
-    ):
-        assert (
-            (prompts is not None) or (not symmetric) or (N % 2 == 0)
-        ), f"{symmetric} {N}"
-        assert prompt_type in ["ABBA", "BABA", "mixed"]
-        self.prompt_type = prompt_type
-        if prompt_type == "ABBA":
-            self.templates = ABBA_TEMPLATES.copy()
-        elif prompt_type == "BABA":
-            self.templates = BABA_TEMPLATES.copy()
-        else:
-            self.templates = BABA_TEMPLATES.copy() + ABBA_TEMPLATES.copy()
-            random.shuffle(self.templates)
-        if tokenizer is None:
-            self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        else:
-            self.tokenizer = tokenizer
-
-        self.prefixes = prefixes
-        self.prompt_type = prompt_type
-        if prompts is None:
-            self.ioi_prompts = gen_prompt_uniform(  # a list of dict of the form {"text": "Alice and Bob bla bla. Bob gave bla to Alice", "IO": "Alice", "S": "Bob"}
-                self.templates,
-                NAMES,
-                nouns_dict={"[PLACE]": PLACES, "[OBJECT]": OBJECTS},
-                N=N,
-                symmetric=symmetric,
-                prefixes=self.prefixes,
-            )
-        else:
-            assert N == len(prompts), f"{N} and {len(prompts)}"
-            self.ioi_prompts = prompts
-
-        all_ids = [prompt["T_ID"] for prompt in self.ioi_prompts]
-        all_ids_ar = np.array(all_ids)
-        self.groups = []
-        for id in list(set(all_ids)):
-            self.groups.append(np.where(all_ids_ar == id)[0])
-
-        self.text_prompts = [
-            prompt["text"] for prompt in self.ioi_prompts
-        ]  # a list of strings
-
-        self.templates_by_prompt = []  # for each prompt if it's ABBA or BABA
-        for i in range(N):
-            if self.text_prompts[i].index(
-                self.ioi_prompts[i]["IO"]
-            ) < self.text_prompts[i].index(self.ioi_prompts[i]["S"]):
-                self.templates_by_prompt.append("ABBA")
-            else:
-                self.templates_by_prompt.append("BABA")
-
-        # print(self.ioi_prompts, "that's that")
-        self.toks = torch.Tensor(
-            self.tokenizer(
-                [prompt["text"] for prompt in self.ioi_prompts], padding=True
-            ).input_ids
-        ).type(torch.int)
-
-        self.word_idx = get_idx_dict(self.ioi_prompts, self.tokenizer)
-        self.sem_tok_idx = {
-            k: v for k, v in self.word_idx.items() if k in ALL_SEM
-        }  # the semantic indices that kevin uses
-        self.N = N
-        self.max_len = max(
-            [
-                len(self.tokenizer(prompt["text"]).input_ids)
-                for prompt in self.ioi_prompts
-            ]
-        )
-
-        self.io_tokenIDs = [
-            self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts
-        ]
-        self.s_tokenIDs = [
-            self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts
-        ]
-
-    def gen_flipped_prompts(self, flip):
-        """Return a IOIDataset where the name to flip has been replaced by a random name."""
-        assert flip in ["S", "S2", "IO"]
-
-        flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, (flip, "RAND"))
-        fliped_ioi_dataset = IOIDataset(
-            prompt_type=self.prompt_type,
-            N=self.N,
-            tokenizer=self.tokenizer,
-            prompts=flipped_prompts,
-            prefixes=self.prefixes,
-        )
-        return fliped_ioi_dataset
-
-    def __getitem__(self, key):
-        sliced_prompts = self.ioi_prompts[key]
-        sliced_dataset = IOIDataset(
-            prompt_type=self.prompt_type,
-            N=len(sliced_prompts),
-            tokenizer=self.tokenizer,
-            prompts=sliced_prompts,
-            prefixes=self.prefixes,
-        )
-        return sliced_dataset
-
-    def __setitem__(self, key, value):
-        raise NotImplementedError()
-
-    def __delitem__(self, key):
-        raise NotImplementedError()
-
-
-def clear_gpu_mem():
-    gc.collect()
-    torch.cuda.empty_cache()
-
-
-def show_tokens(tokens, return_list=False):
-    # Prints the tokens as text, separated by |
-    if type(tokens) == str:
-        # If we input text, tokenize first
-        tokens = model.to_tokens(tokens)
-    text_tokens = [model.tokenizer.decode(t) for t in tokens.squeeze()]
-    if return_list:
-        return text_tokens
-    else:
-        print("|".join(text_tokens))
-
-
-def show_pp(m, xlabel="", ylabel="", title="", bartitle=""):
-    """
-    Plot a heatmap of the values in the matrix `m`
-    """
-    fig = px.imshow(
-        m.T,
-        title=title if title else "",
-        color_continuous_scale="RdBu",
-        color_continuous_midpoint=0,
-    )
-
-    fig.update_layout(
-        coloraxis_colorbar=dict(
-            title=bartitle,
-            thicknessmode="pixels",
-            thickness=50,
-            lenmode="pixels",
-            len=300,
-            yanchor="top",
-            y=1,
-            ticks="outside",
-        ),
-        xaxis_title="",
-    )
-
-    fig.update_layout(yaxis_title=ylabel, xaxis_title=xlabel)
-    fig.show()
-
-
-# Plot attention patterns weighted by value norm
-
-
-def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
-    assert mode in [
-        "attn",
-        "val",
-    ]  # value weighted attention or attn for attention probas
-    assert type(texts) == list
-
-    for (layer, head) in heads:
-        cache = {}
-
-        good_names = [f"blocks.{layer}.attn.hook_attn"]
-        if mode == "val":
-            good_names.append(f"blocks.{layer}.attn.hook_v")
-        model.cache_some(
-            cache=cache, names=lambda x: x in good_names
-        )  # shape: batch head_no seq_len seq_len
-
-        logits = model(texts)
-
-        for i, text in enumerate(texts):
-            assert len(list(cache.items())) == 1 + int(mode == "val"), len(
-                list(cache.items())
-            )
-            toks = model.tokenizer(text)["input_ids"]
-            words = [model.tokenizer.decode([tok]) for tok in toks]
-            attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
-            if mode == "val":
-                vals = cache[good_names[1]].detach().cpu()[i, :, head, :].norm(dim=-1)
-                cont = torch.einsum("ab,b->ab", attn, vals)
-
-            fig = px.imshow(
-                attn if mode == "attn" else cont,
-                title=f"{layer}.{head} Attention" + title_suffix,
-                color_continuous_midpoint=0,
-                color_continuous_scale="RdBu",
-                labels={"y": "Queries", "x": "Keys"},
-            )
-
-            fig.update_layout(
-                xaxis={
-                    "side": "top",
-                    "ticktext": words,
-                    "tickvals": list(range(len(words))),
-                    "tickfont": dict(size=8),
-                },
-                yaxis={
-                    "ticktext": words,
-                    "tickvals": list(range(len(words))),
-                    "tickfont": dict(size=8),
-                },
-            )
-
-            fig.show()
-
-
-def safe_del(a):
-    """Try and delete a even if it doesn't yet exist"""
-    try:
-        exec(f"del {a}")
-    except:
-        pass
-    torch.cuda.empty_cache()
 #%% [markdown]
-# # <h1><b>Initial evidence</b></h1>
-# ## <h2>Direct attribution</h2>
-# CLAIM: heads 9.6, 9.9 and 10.0 write the IO into the residual stream.
+# # <h1><b>Setup</b></h1>
+# Import model and dataset
 #%% # plot writing in the IO - S direction
-model_name = "gpt2"
+model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
 print_gpu_mem("About to load model")
 model = EasyTransformer(
@@ -775,19 +99,204 @@ device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
 print_gpu_mem("Gpt2 loaded")
+# %% [markdown]
+# Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
+# The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 
-N = 100
+
+# %%
+# IOI Dataset initialisation
+N = 200
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
+# %% [markdown]
+# ioi_dataset`ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
+
+# %%
+[(k, int(ioi_dataset.word_idx[k][0])) for k in ioi_dataset.word_idx.keys()]
+
+# %%
+[(i, t) for (i, t) in enumerate(show_tokens(ioi_dataset.ioi_prompts[0]["text"], model, return_list=True))]
+
+# %% [markdown]
+# The `ioi_dataset` ca also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
+
+# %%
+flipped = ioi_dataset.gen_flipped_prompts("S2")
+pprint(flipped.ioi_prompts[:5])
+
+# %% [markdown]
+# IOIDataset contains many other useful features, see the definition of the class in the cell `Dataset class` for more info!
+
+# %% [markdown]
+# We also import open web text sentences to compute means that are not correlated with our IOI distribution.
+
+# %%
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
-    "".join(
-        show_tokens(webtext["train"]["text"][i][:2000], return_list=True)[
-            : ioi_dataset.max_len
-        ]
-    )
+    "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
     for i in range(ioi_dataset.N)
 ]
+
+
+# %% [markdown]
+
+# # <h1><b>Initial evidence</b></h1>
+
+# %% [markdown]
+# ### Layer Ablations
+
+# %% [markdown]
+# The first series of experiment: we define our metric, here, how much the logit for IO is bigger than S, we ablate part of the network and see what matters. Globally, it shows that the behavior is distributed accross many parts of the network, we cannot draw much conclusion from this alone.
+
+# %%
+def logit_diff(model, text_prompts):
+    """Difference between the IO and the S logits (at the "to" token)"""
+    logits = model(text_prompts).detach()
+    IO_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], ioi_dataset.io_tokenIDs]
+    S_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], ioi_dataset.s_tokenIDs]
+    return (IO_logits - S_logits).mean().detach().cpu()
+
+
+# %%
+def mean_at_end(z, mean, hook):  # to ablate at particular indices, we have to define a custom ablation function
+    z[torch.arange(len(ioi_dataset.ioi_prompts)), ioi_dataset.word_idx["end"], :] = mean[
+        torch.arange(len(ioi_dataset.ioi_prompts)), ioi_dataset.word_idx["end"], :
+    ]
+    return z
+
+
+# %%
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True)
+config_mlp = AblationConfig(
+    abl_type="custom",
+    abl_fn=mean_at_end,
+    mean_dataset=owb_seqs,
+    target_module="mlp",
+    head_circuit="result",
+    cache_means=True,
+    verbose=True,
+)
+abl_mlp = EasyAblation(model, config_mlp, metric)
+mlp_result = abl_mlp.run_ablation()
+
+config_attn_layer = AblationConfig(
+    abl_type="custom",
+    abl_fn=mean_at_end,
+    mean_dataset=owb_seqs,
+    target_module="attn_layer",
+    head_circuit="result",
+    cache_means=True,
+    verbose=True,
+)
+abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
+attn_result = abl_attn_layer.run_ablation()
+
+layer_ablation = torch.cat([mlp_result, attn_result], dim=0)
+
+fig = px.imshow(
+    layer_ablation,
+    labels={"x": "Layer"},
+    title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+)
+
+fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
+
+fig.show()
+
+# %%
+len(ioi_dataset.text_prompts)
+
+# %% [markdown]
+# ### Attention Heads Ablations
+
+# %% [markdown]
+# #### Mean ablation
+
+# %%
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True)
+config = AblationConfig(
+    abl_type="mean",
+    mean_dataset=owb_seqs,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_means=True,
+    verbose=True,
+)
+abl = EasyAblation(model, config, metric)
+result = abl.run_ablation()
+plotly.offline.init_notebook_mode(connected=True)
+px.imshow(
+    result,
+    labels={"y": "Layer", "x": "Head"},
+    title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+).show()
+
+# %% [markdown]
+# Blue squares corresponds to head that when ablated makes the logit diff *bigger*. (the color are inverted relative to the picture of the slides because here we plot the relative variation vs the relative *drop* in the presentation plots)
+
+# %% [markdown]
+# #### Zero ablations
+
+# %%
+def zero_at_end(z, mean, hook):
+    z[torch.arange(len(ioi_dataset.ioi_prompts)), ioi_dataset.word_idx["end"], :] = 0.0
+    return z
+
+
+config = AblationConfig(
+    abl_type="custom",
+    abl_fn=zero_at_end,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_means=True,
+    verbose=True,
+)
+abl = EasyAblation(model, config, metric)
+result = abl.run_ablation()
+
+px.imshow(
+    result,
+    labels={"y": "Layer", "x": "Head"},
+    title='Logit Difference Variation after Zero Ablation on "to" token',
+    color_continuous_midpoint=0,
+    zmin=-1,
+    zmax=1,
+    color_continuous_scale="RdBu",
+).show()
+
+# %% [markdown]
+# Zero ablation gives roughtly the same results expect for 1.10 that appears strongly. Suggesting that its mean value is really important for the logit diff, even if its specific value on each prompt does not matter to much.
+
+# %% [markdown]
+# #### Symetric ablation
+# Here we write in the symetric direction relative to the mean. The same head appears.
+
+# %%
+def sym_mean(z, mean, hook):
+    return mean - (z - mean)
+
+
+config = AblationConfig(
+    abl_type="custom", abl_fn=sym_mean, target_module="attn_head", head_circuit="z", cache_means=True, verbose=True
+)
+abl = EasyAblation(model, config, metric)
+result = abl.run_ablation()
+
+px.imshow(
+    result,
+    labels={"y": "Layer", "x": "Head"},
+    title='Logit Difference Variation after Zero Ablation on "to" token',
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+).show()
+
+# %% [markdown]
+# ### Which head write in the direction Embed(IO) - Embed(S) ?
 
 #%%
 def writing_direction_heatmap(
@@ -861,8 +370,41 @@ attn_vals = writing_direction_heatmap(
     dir_mode="IO - S",
     title="Attention head output into IO - S token unembedding (GPT2)",
 )
-#%% # check that this attending to IO happens as described
+# %% [markdown]
+# We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
+
+# %%
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset.text_prompts[:1])
+
+# %%
+show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset.text_prompts[:1])
+
+# %% [markdown]
+# ### Plot attention vs direction
+
+# %% [markdown]
+# We want to investigate what are the head we observed doing. By plotting attention patterns we see that they are paying preferential attention to IO.
+
+# %%
+def max_2d(m, k=1):
+    """Get the max of a matrix"""
+    if len(m.shape) != 2:
+        raise NotImplementedError()
+    mf = m.flatten()
+    inds = torch.topk(mf, k=k).indices
+    out = []
+    for ind in inds:
+        ind = ind.item()
+        x = ind // m.shape[1]
+        y = ind - x * m.shape[1]
+        out.append((x, y))
+    return out
+
+
+k = 5
+print(f"Top {k} heads (by magnitude):")
+top_heads = max_2d(torch.abs(attn_vals.T), k=k)  # remove abs to just get positive contributors
+top_heads
 #%% [markdown]
 # <h2>Copying</h2>
 # CLAIM: heads 9.6, 9.9 and 10.0 copy the IO into the residual stream, <b>by attending to the IO token</b>
@@ -908,25 +450,14 @@ def scatter_attention_and_contribution(
             (s_dir, [s1_pos, s2_pos], "S"),
         ]:
             prob = sum(
-                [
-                    cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos]
-                    .detach()
-                    .cpu()
-                    for pos in posses
-                ]
+                [cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos].detach().cpu() for pos in posses]
             )
-            resid = (
-                cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :]
-                .detach()
-                .cpu()
-            )
+            resid = cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :].detach().cpu()
             dot = torch.einsum("a,a->", resid, dire)
             df.append([prob, dot, tok_type, prompt["text"]])
 
     # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(
-        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
-    )
+    viz_df = pd.DataFrame(df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"])
     fig = px.scatter(
         viz_df,
         x=f"Attn Prob on Name",
@@ -940,15 +471,9 @@ def scatter_attention_and_contribution(
         return viz_df
 
 
-scatter_attention_and_contribution(
-    model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
-scatter_attention_and_contribution(
-    model, 9, 6, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
-scatter_attention_and_contribution(
-    model, 10, 0, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
+scatter_attention_and_contribution(model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 9, 6, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 10, 0, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
 #%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
 scatter_attention_and_contribution(
     model,
@@ -957,9 +482,19 @@ scatter_attention_and_contribution(
     ioi_dataset.ioi_prompts[:500],
     gpt_model="gpt2",
 )
+
+
+# %% [markdown]
+# They all demonstrate a straightforward relationship: the more they pay attention to a token, the more they write in its direction. A.k.a. they are just copying the token embedding of this position.
+
+# %% [markdown]
+# ### Check copy circuit of Name Movers Heads
+
+# %% [markdown]
+# To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated).
+#
 #%%
 # TODO diff circuits with templates experiment
-#%% # To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated)
 def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
     cache = {}
     model.cache_some(cache, lambda x: x == "blocks.0.hook_resid_post")
@@ -976,9 +511,7 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
         for word in ["IO", "S", "S2"]:
             pred_tokens = [
                 model.tokenizer.decode(token)
-                for token in torch.topk(
-                    logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k
-                ).indices
+                for token in torch.topk(logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k).indices
             ]
             if "S" in word:
                 name = "S"
@@ -997,9 +530,7 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
                                 f"({i+1}):{model.tokenizer.decode(token)}"
                                 for i, token in enumerate(
                                     torch.topk(
-                                        logits[
-                                            seq_idx, ioi_dataset.word_idx[word][seq_idx]
-                                        ],
+                                        logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]],
                                         k,
                                     ).indices
                                 )
@@ -1031,12 +562,291 @@ check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_data
 
 # You can see this similarly as open loop / closed loop optimization. It's easier to make a good guess by making previous rough estimate more precise than making a good guess in one shot.
 #%%
-scatter_attention_and_contribution(
-    model, 10, 7, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+scatter_attention_and_contribution(model, 10, 7, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+
+
+# %% [markdown]
+# ### Patching experiments
+
+# %% [markdown]
+# What causes name mover heads to pay attention to IO? To figure this out, we'll patch activation from sentences like "A..B..C..to"  to "A..B..B..to" where A, B and C are differents names.
+
+# %%
+print_gpu_mem()
+
+# %%
+abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
+pprint(abca_dataset.text_prompts[:5])
+
+# %%
+pprint(ioi_dataset.text_prompts[:5])
+
+# %%
+
+HEAD = 9  # head 9.9, 9.6, 10.0 show similar plots in the exeprimetns, try changing the values!
+LAYER = 9
+hook_name = f"blocks.{LAYER}.attn.hook_attn"
+
+text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
+
+
+def attention_probs(model, text_prompts):  # we have to redefine logit differences to use the new abba dataset
+    """Difference between the IO and the S logits at the "to" token"""
+    cache_patched = {}
+    model.cache_some(cache_patched, lambda x: x == hook_name)  # we only cache the activation we're interested
+    logits = model(text_prompts).detach()
+
+    # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
+    model.reset_hooks()
+    cache_baseline = {}
+    model.cache_some(cache_baseline, lambda x: x == hook_name)  # we only cache the activation we're interested
+    logits = model(text_prompts).detach()
+    # attn score of head HEAD at token "to" (end) to token IO
+
+    attn_probs_variation = []
+    for key in ["IO", "S", "S2"]:
+        attn_probs_patched = cache_patched[hook_name][
+            torch.arange(len(text_prompts)), HEAD, ioi_dataset.word_idx["end"], ioi_dataset.word_idx[key]
+        ]
+        attn_probs_base = cache_baseline[hook_name][
+            torch.arange(len(text_prompts)), HEAD, ioi_dataset.word_idx["end"], ioi_dataset.word_idx[key]
+        ]
+        attn_probs_variation.append(((attn_probs_patched - attn_probs_base) / attn_probs_base).mean().unsqueeze(dim=0))
+
+    attn_probs_variation = torch.cat(attn_probs_variation, dim=0)
+
+    return attn_probs_variation.detach().cpu()
+
+
+# %%
+def patch_last_tokens(
+    z, source_act, hook
+):  # we patch at the "to" token. We have to use custom patching when we specify particular tokens to ablate.
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]] = source_act[
+        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]
+    ]
+    return z
+
+
+# %%
+
+
+config = PatchingConfig(
+    source_dataset=abca_dataset.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",  # we patch "result", the result of the attention head
+    cache_act=True,
+    verbose=False,
+    patch_fn=patch_last_tokens,
+    layers=(0, LAYER),
+)  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
+
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
+
+patching = EasyPatching(model, config, metric)
+result = patching.run_patching()
+
+for i, key in enumerate(["IO", "S", "S2"]):
+    px.imshow(
+        result[:, :, i],
+        labels={"y": "Layer", "x": "Head"},
+        title=f'Variation in attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "to"',
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    ).show()
+
+
+# %% [markdown]
+# We can clearly identify the S2-inhibition heads: 8.6, 8.10, 7.3 and 7.9. Patching them with activation from ABC causes 9.9 to pay less attention to IO and more to S and S2. To have a a better sense of what is going on behind these plots, we can see how patching impact the attention patterns of 9.9 on sample sentences.
+
+# %%
+print_gpu_mem()
+
+# %% [markdown]
+# #### Plotting attention patterns
+
+# %%
+IDX = 8
+model.reset_hooks()  ##before patching
+show_attention_patterns(
+    model, [(9, 9)], ioi_dataset.text_prompts[IDX : IDX + 1], mode="val", title_suffix=" Pre-patching"
 )
-scatter_attention_and_contribution(
-    model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+
+
+# %%
+
+
+def one_sentence_patching(z, source_act, hook):  # we patch at the "to" token
+    # print(source_act.shape, z.shape)
+    z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[0, ioi_dataset.word_idx["end"][IDX]]
+    return z
+
+
+config2 = PatchingConfig(
+    source_dataset=abca_dataset.text_prompts[IDX : IDX + 1],
+    target_dataset=ioi_dataset.text_prompts[IDX : IDX + 1],
+    target_module="attn_head",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=one_sentence_patching,
+    layers=(0, LAYER),
 )
+
+metric2 = ExperimentMetric(
+    lambda x, y: 0, dataset=ioi_dataset.text_prompts[IDX : IDX + 1], relative_metric=False, scalar_metric=False
+)
+
+patching2 = EasyPatching(model, config2, metric2)
+
+l, h = (8, 6)  # (8,10), (7,3), (7,9)]:
+hk_name, hk = patching2.get_hook(l, h)
+model.add_hook(hk_name, hk)  # we patch head 8.6
+show_attention_patterns(
+    model, [(9, 9)], ioi_dataset.text_prompts[IDX : IDX + 1], mode="val", title_suffix=" Post-patching"
+)
+
+
+# %% [markdown]
+# Here we plotted attention probas weighed by the values. We observe that patching one single head at one tokens reduce by 40% the attentions on the IO token.
+#
+# Takeaway from the experiments: there are some information written in the residual stream at the END token by S2-inhibition heads that are used by name mover heads to generate their attention patterns. This is an example of Q-composition.
+#
+# Attention pattern of S2-inihibition heads. They seems to generally track the subject on key words such as "and" and "to".
+
+# %%
+show_attention_patterns(model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset.text_prompts[IDX : IDX + 1])
+
+# %% [markdown]
+# #### Patching at S2
+
+# %% [markdown]
+# What happend if we patch at S2 instead of END?
+
+# %%
+
+
+# %%
+def patch_s2(z, source_act, hook):  # we patch at the "to" token
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = source_act[
+        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]
+    ]
+    return z
+
+
+# %%
+
+config = PatchingConfig(
+    source_dataset=abca_dataset.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=patch_s2,
+    layers=(0, LAYER),
+)
+
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
+
+patching = EasyPatching(model, config, metric)
+result = patching.run_patching()
+
+
+for i, key in enumerate(["IO", "S", "S2"]):
+    px.imshow(
+        result[:, :, i],
+        labels={"y": "Layer", "x": "Head"},
+        title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "S2"',
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    ).show()
+
+# %% [markdown]
+# A bunch of other head appear, in layer earlier than the S2-inhibition heads: 0.1, 0.10, 3.0 and 5.5, 5.8, 5.9, 6.9. We claim that they influence the values that S2 will read. Let's visualize their attention patterns.
+
+# %% [markdown]
+# #### Duplicate tokens heads
+
+# %%
+show_attention_patterns(model, [(0, 1), (0, 10), (3, 0)], ioi_dataset.text_prompts[:2])
+
+# %% [markdown]
+# #### Induction-ish heads
+
+# %%
+show_attention_patterns(model, [(5, 5), (5, 8), (5, 9), (6, 9)], ioi_dataset.text_prompts[:2])
+
+# %% [markdown]
+# ### More patching: patching at S+1
+
+# %% [markdown]
+# Some of the important heads for 9.9 attention at S2 have attention pattern that looks like induction: they pay attention to the token that follows a previous occurence of the query, in this case, because the query is S2, the previous occurence is S.
+#
+# What append if we patch at the token after S? (We'll call it S+1)
+#
+# To do this we first have to create a new dataset where S1 is flipped compared to the original dataset.
+
+# %%
+acba_dataset = ioi_dataset.gen_flipped_prompts("S")  # we flip the first occurence of S
+
+acba_dataset.text_prompts[0], ioi_dataset.text_prompts[0]
+
+# %%
+
+
+def patch_s_plus_1(z, source_act, hook):  # we patch at the "to" token
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"] + 1] = source_act[
+        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"] + 1
+    ]
+    return z
+
+
+config = PatchingConfig(
+    source_dataset=acba_dataset.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=patch_s_plus_1,
+    layers=(0, LAYER),
+)
+
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
+
+patching = EasyPatching(model, config, metric)
+result = patching.run_patching()
+
+for i, key in enumerate(["IO", "S", "S2"]):
+    px.imshow(
+        result[:, :, i],
+        labels={"y": "Layer", "x": "Head"},
+        title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on S+1',
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    ).show()
+
+# %% [markdown]
+# It seems that the heads 4.11, 4.7, 4.3, 2.2 and 5.6 are important. Let's look at their patterns. The majority of them look like they're attending to the previous tokens.
+
+# %%
+show_attention_patterns(model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_dataset.text_prompts[34:35])
+
+# %% [markdown]
+# Here is the (approximative) story of wat's going on here:
+# * Early layers heads implement duplicate test: "if the key and queries are the same token, copy the token in the residual stream". This has for effect to write "S is duplicate" on the S2 residual stream.
+# * In parallel, previous tokens heads copy information about the previous token.
+# * At S2, induction heads find a match: S2 match the information written at S+1 about S by a previous token head, so they have a trong attention proba on S+1. However, contrary to plain induction, they don't copy information about S+1, they'll also write information about S in their residual stream. This is another source of information "S is a duplicate token" at S2.
+# * On the END token, S2-Inhibition heads use value composition to copy information about duplicate tokens from the two previus sources. Their attention seems to be "look for the subject of the sentence". (But their attention pattern is not well understood for now)
+# * The name mover heads use the value of S in their queries, with a negative sign. This has for effect to gives IO greatest scores, then their OV circuit is a simple copy for names.
+# * Same story for the calibrations heads but they flip the sign of the direction (and surely something more complex is going on to calibrate the norm).
+
+# <img src="https://i.imgur.com/PPtTQRh.png">
+
+
 #%% [markdown]
 # <h1><b>Faithfulness</b></h1>
 # These experiments isolate the circuit, e.g by ablating all other heads.
@@ -1053,7 +863,7 @@ elif template_type == "BABA":
 else:
     raise NotImplementedError()
 
-
+## new logit diff definition
 def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
     """
     Difference between the IO and the S logits at the "to" token
@@ -1106,9 +916,7 @@ def score(model, ioi_dataset, all=False, verbose=False):
     assert len(list(end_logits.shape)) == 2, end_logits.shape
     top_10s_standard = torch.topk(end_logits, dim=1, k=10).values[:, -1]
     good_enough = end_logits > top_10s_standard.unsqueeze(-1)
-    selected_logits = good_enough[
-        torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs[:L]
-    ]
+    selected_logits = good_enough[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs[:L]]
 
     # is IO > S ???
     IO_logits = logits[
@@ -1124,9 +932,7 @@ def score(model, ioi_dataset, all=False, verbose=False):
     IO_greater_than_S = (IO_logits - S_logits) > 0
 
     # calculate percentage passing both tests
-    answer = torch.sum(
-        (selected_logits & IO_greater_than_S).float()
-    ).detach().cpu() / len(text_prompts)
+    answer = torch.sum((selected_logits & IO_greater_than_S).float()).detach().cpu() / len(text_prompts)
 
     selected = torch.sum(selected_logits) / len(text_prompts)
     greater = torch.sum(IO_greater_than_S) / len(text_prompts)
@@ -1176,25 +982,19 @@ for ablate_calibration in [
     s_logits_data = []
     for template_idx in tqdm(range(num_templates)):
         prompts = template_prompts[template_idx]
-        ioi_dataset = IOIDataset(
-            prompt_type=template_type, N=N, symmetric=False, prompts=prompts
-        )
+        ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
         assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
         assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
         for key in ioi_dataset.sem_tok_idx.keys():
             idx = ioi_dataset.sem_tok_idx[key][0]
-            assert torch.all(
-                ioi_dataset.sem_tok_idx[key] == idx
-            ), f"{key} {ioi_dataset.sem_tok_idx[key]}"
+            assert torch.all(ioi_dataset.sem_tok_idx[key] == idx), f"{key} {ioi_dataset.sem_tok_idx[key]}"
             # check that semantic ablation = normal ablation
 
         model.reset_hooks()  # TODO find other instances of model deletion
 
         seq_len = ioi_dataset.toks.shape[1]
         head_indices_to_ablate = {
-            (i % 12, i // 12): [
-                list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))
-            ]
+            (i % 12, i // 12): [list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))]
             for i in range(12 * 12)
         }
 
@@ -1205,9 +1005,7 @@ for ablate_calibration in [
             (0, 10),
             (3, 0),
         ]:
-            head_indices_to_ablate[head] = [
-                i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]
-            ]
+            head_indices_to_ablate[head] = [i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]]
 
         for head in [
             (4, 11),
@@ -1230,9 +1028,7 @@ for ablate_calibration in [
             (5, 5),
             (6, 9),
         ]:
-            head_indices_to_ablate[head] = [
-                i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]
-            ]
+            head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]]
 
         end_heads = [
             (7, 3),
@@ -1248,11 +1044,7 @@ for ablate_calibration in [
             end_heads += [(10, 7), (11, 12)]
 
         for head in end_heads:
-            head_indices_to_ablate[head] = [
-                i
-                for i in range(seq_len)
-                if i not in [ioi_dataset.sem_tok_idx["end"][0]]
-            ]
+            head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["end"][0]]]
 
         # define the ablation function for ALL parts of the model at once
         def ablation(z, mean, hook):
@@ -1263,40 +1055,24 @@ for ablate_calibration in [
             if "mlp_out" in hook.name:
                 # ablate the relevant parts
                 for i in range(z.shape[0]):
-                    z[i, mlp_indices_to_ablate[layer]] = mean[
-                        i, mlp_indices_to_ablate[layer]
-                    ].to(z.device)
+                    z[i, mlp_indices_to_ablate[layer]] = mean[i, mlp_indices_to_ablate[layer]].to(z.device)
 
-            if (
-                "attn.hook_result" in hook.name
-            ):  # and (layer, head) not in heads_to_keep:
+            if "attn.hook_result" in hook.name:  # and (layer, head) not in heads_to_keep:
                 # ablate
-                assert (
-                    len(z.shape) == 3
-                ), z.shape  # we specifically get sent the relevant head
-                assert 12 not in list(
-                    z.shape
-                ), "Yikes, probably dim kept back is wrong, should be head dim"
+                assert len(z.shape) == 3, z.shape  # we specifically get sent the relevant head
+                assert 12 not in list(z.shape), "Yikes, probably dim kept back is wrong, should be head dim"
 
                 # see above
                 for i in range(z.shape[0]):
-                    z[i, head_indices_to_ablate[head]] = mean[
-                        i, head_indices_to_ablate[head]
-                    ].to(z.device)
+                    z[i, head_indices_to_ablate[head]] = mean[i, head_indices_to_ablate[head]].to(z.device)
 
             return z
 
-        ld_metric = ExperimentMetric(
-            metric=logit_diff, dataset=ioi_dataset, relative_metric=False
-        )
-        score_metric = ExperimentMetric(
-            metric=score, dataset=ioi_dataset, relative_metric=False
-        )
+        ld_metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=False)
+        score_metric = ExperimentMetric(metric=score, dataset=ioi_dataset, relative_metric=False)
         ld_metric.set_baseline(model)
         score_metric.set_baseline(model)
-        probs_metric = ExperimentMetric(
-            metric=io_probs, dataset=ioi_dataset, relative_metric=False
-        )
+        probs_metric = ExperimentMetric(metric=io_probs, dataset=ioi_dataset, relative_metric=False)
         probs_metric.set_baseline(model)
         sprobs_metric = ExperimentMetric(
             metric=lambda x, y: io_probs(x, y, mode="S"),
@@ -1483,12 +1259,8 @@ def get_circuit_replacement_hook(
                 # TODO can this i loop be vectorized?
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(
-                dataset_length
-            ):  # we use the idx from contex to get the head
-                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
-                    i, heads2[(layer, hook.ctx["idx"])][i], :
-                ]
+            for i in range(dataset_length):  # we use the idx from contex to get the head
+                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[i, heads2[(layer, hook.ctx["idx"])][i], :]
 
         return z
 
@@ -1568,9 +1340,7 @@ if False:
         ioi_dataset=ioi_dataset[:N],
     )
     ld = logit_diff(model, ioi_dataset[:N])
-    metric = ExperimentMetric(
-        metric=logit_diff, dataset=ioi_dataset.text_prompts[:N], relative_metric=False
-    )
+    metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset.text_prompts[:N], relative_metric=False)
     config = AblationConfig(
         abl_type="mean",
         mean_dataset=ioi_dataset.text_prompts[:N],
@@ -1603,15 +1373,11 @@ def score_metric(model, ioi_dataset, k=1, target_dataset=None, all=False):
     end_logits = logits[
         torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], :
     ]  # batch * sequence length * vocab_size
-    io_logits = end_logits[
-        torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]
-    ]
+    io_logits = end_logits[torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]]
     assert len(list(end_logits.shape)) == 2, end_logits.shape
     top_10s_standard = torch.topk(end_logits, dim=1, k=k).values[:, -1]
     good_enough = end_logits >= top_10s_standard.unsqueeze(-1)
-    selected_logits = good_enough[
-        torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]
-    ]
+    selected_logits = good_enough[torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]]
     # print(torch.argmax(end_logits, dim=-1))
     # is IO > S ???
     IO_logits = logits[
@@ -1627,9 +1393,7 @@ def score_metric(model, ioi_dataset, k=1, target_dataset=None, all=False):
     IO_greater_than_S = (IO_logits - S_logits) > 0
 
     # calculate percentage passing both tests
-    answer = torch.sum(
-        (selected_logits & IO_greater_than_S).float()
-    ).detach().cpu() / len(text_prompts)
+    answer = torch.sum((selected_logits & IO_greater_than_S).float()).detach().cpu() / len(text_prompts)
 
     selected = torch.sum(selected_logits) / len(text_prompts)
     greater = torch.sum(IO_greater_than_S) / len(text_prompts)
@@ -1643,19 +1407,14 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
     end_logits = logits[
         torch.arange(len(ioi_dataset.text_prompts)), ioi_dataset.word_idx["end"], :
     ]  # batch * sequence length * vocab_size
-    probs = np.around(
-        torch.nn.functional.log_softmax(end_logits, dim=-1).cpu().numpy(), 2
-    )
+    probs = np.around(torch.nn.functional.log_softmax(end_logits, dim=-1).cpu().numpy(), 2)
     topk = torch.topk(end_logits, dim=1, k=K).indices
     for x in range(n):
         print("-------------------")
         print(ioi_dataset.text_prompts[x])
         print(
             " ".join(
-                [
-                    f"({i+1}):{model.tokenizer.decode(token)} : {probs[x][token]}"
-                    for i, token in enumerate(topk[x])
-                ]
+                [f"({i+1}):{model.tokenizer.decode(token)} : {probs[x][token]}" for i, token in enumerate(topk[x])]
             )
         )
 
@@ -1663,9 +1422,7 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
 # %%  Running circuit extraction
 
 
-def join_lists(
-    l1, l2
-):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
+def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
     assert len(l1) == len(l2)
     assert type(l1[0]) == list and type(l2[0]) == int
     l = []
@@ -1677,9 +1434,7 @@ def join_lists(
 def get_extracted_idx(idx_list: list[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [
-            int(x) for x in list(ioi_dataset.word_idx[idx_name])
-        ]  # torch to python objects
+        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
@@ -1748,9 +1503,7 @@ df = pd.DataFrame(
         "Random (for separation)": np.random.random(len(ldiff)),
         "beg": [prompt[:10] for prompt in ioi_dataset.text_prompts],
         "sentence": [prompt for prompt in ioi_dataset.text_prompts],
-        "#tokens before first name": [
-            prompt.count("Then") for prompt in ioi_dataset.text_prompts
-        ],
+        "#tokens before first name": [prompt.count("Then") for prompt in ioi_dataset.text_prompts],
         "template": ioi_dataset.templates_by_prompt,
         "misc": [
             (str(prompt.count("Then")) + str(ioi_dataset.templates_by_prompt[i]))
@@ -1767,11 +1520,6 @@ px.scatter(
     text="beg",
     color="misc",
     title=f"Prompt type = {ioi_dataset.prompt_type}",
-)
-
-# %%
-show_tokens(
-    "After   Rebecca and James went to the grocery store. Rebecca gave a basketball to James"
 )
 
 # %%
@@ -1858,30 +1606,20 @@ print(
     source_ioi_dataset.text_prompts[:3],
 )
 
-source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(
-    source_ioi_dataset, calib_head=False, mlp0=True
-)
-target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(
-    target_ioi_dataset, calib_head=False, mlp0=True
-)
+source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(source_ioi_dataset, calib_head=False, mlp0=True)
+target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(target_ioi_dataset, calib_head=False, mlp0=True)
 
 K = 1
 model.reset_hooks()
-old_ld, old_std = logit_diff(
-    model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True
-)
+old_ld, old_std = logit_diff(model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True)
 model.reset_hooks()
-old_score = score_metric(
-    model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
-)
+old_score = score_metric(model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K)
 model.reset_hooks()
 old_ld_source, old_std_source = logit_diff(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
-old_score_source = score_metric(
-    model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
-)
+old_score_source = score_metric(model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K)
 model.reset_hooks()
 model, _ = do_global_patching(
     source_mlps_to_patch=source_mlps_to_keep,
@@ -1900,19 +1638,13 @@ model, _ = do_global_patching(
 ldiff_target, std_ldiff_target = logit_diff(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, std=True, all=True
 )
-score_target = score_metric(
-    model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
-)
+score_target = score_metric(model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K)
 ldiff_source, std_ldiff_source = logit_diff(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, std=True, all=True
 )
-score_source = score_metric(
-    model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
-)
+score_source = score_metric(model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K)
 # %%
-print(
-    f"Original logit_diff on TARGET dataset (no patching yet!) = {old_ld.mean()} +/- {old_std}. Score {old_score}"
-)
+print(f"Original logit_diff on TARGET dataset (no patching yet!) = {old_ld.mean()} +/- {old_std}. Score {old_score}")
 print(
     f"Original logit_diff on SOURCE dataset (no patching yet!) = {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
 )
@@ -1928,15 +1660,10 @@ df = pd.DataFrame(
         "Random (for interactivity)": np.random.random(len(ldiff_source)),
         "beg": [prompt["text"][:10] for prompt in ioi_dataset.ioi_prompts],
         "sentence": [prompt["text"] for prompt in ioi_dataset.ioi_prompts],
-        "#tokens before first name": [
-            prompt["text"].count("Then") for prompt in ioi_dataset.ioi_prompts
-        ],
+        "#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_dataset.ioi_prompts],
         "template": ioi_dataset.templates_by_prompt,
         "misc": [
-            (
-                str(prompt["text"].count("Then"))
-                + str(ioi_dataset.templates_by_prompt[i])
-            )
+            (str(prompt["text"].count("Then")) + str(ioi_dataset.templates_by_prompt[i]))
             for (i, prompt) in enumerate(ioi_dataset.ioi_prompts)
         ],
     }
@@ -1951,3 +1678,5 @@ px.scatter(
     color="misc",
     title=ioi_dataset.prompt_type,
 )
+
+# %%
