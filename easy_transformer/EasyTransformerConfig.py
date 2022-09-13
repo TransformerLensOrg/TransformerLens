@@ -1,10 +1,9 @@
-# %%
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
 import torch
 import torch.nn as nn
 
-# %%
+
 @dataclass
 class EasyTransformerConfig:
     model_name: str
@@ -39,6 +38,3 @@ class EasyTransformerConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
         return cls(**config_dict)
-
-
-# %%

@@ -6,6 +6,8 @@ from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import wandb
 import torch
+from tqdm import tqdm
+from einops import rearrange
 
 
 @dataclass
@@ -54,11 +56,12 @@ def train(
     loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
 ) -> EasyTransformer:
     """
-    Trains an EasyTransformer model.
+    Trains an EasyTransformer model on an autoregressive language modeling task.
     Args:
         model: The model to train
         config: The training configuration
-        dataset: The dataset to train on
+        dataset: The dataset to train on - this function assumes the dataset is
+            set up for autoregressive language modeling.
         loss_fn: The loss function to use for training
     Returns:
         The trained model
@@ -114,12 +117,15 @@ def train(
 
     for epoch in range(config.num_epochs):
         steps = 0
-        for i, (x, y) in enumerate(dataloader):
+        for i, (x, y) in tqdm(enumerate(dataloader)):
             x = x.to(config.device)
             y = y.to(config.device)
 
             y_pred = model(x)
-            loss = loss_fn(y_pred, y)
+            loss = loss_fn(
+                rearrange(y_pred, "batch pos classes -> (batch pos) classes"),
+                rearrange(y, "batch pos -> (batch pos)"),
+            )
             loss.backward()
             if config.max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
