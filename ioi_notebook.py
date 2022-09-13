@@ -168,79 +168,46 @@ NAMES = [
     "Samuel",
 ]
 
-
-BABA_TEMPLATES = [
-    "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Then, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Then, [B] and [A] were working at the [PLACE]. [B] decided to give a [OBJECT] to [A]",
-    "Then, [B] and [A] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]",
-    "Then, [B] and [A] had a long argument, and afterwards [B] said to [A]",
-    "After [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
-    "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give it to [A]",
-    "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give the [OBJECT] to [A]",
-    "While [B] and [A] were working at the [PLACE], [B] gave a [OBJECT] to [A]",
-    "While [B] and [A] were commuting to the [PLACE], [B] gave a [OBJECT] to [A]",
-    "After the lunch, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Afterwards, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    "Then, [B] and [A] had a long argument. Afterwards [B] said to [A]",
-    "The [PLACE] [B] and [A] went to had a [OBJECT]. [B] gave it to [A]",
+		
+BABA_TEMPLATES = [	
+    "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",	
+    "Then, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",	
+    "Then, [B] and [A] were working at the [PLACE]. [B] decided to give a [OBJECT] to [A]",	
+    "Then, [B] and [A] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]",	
+    "Then, [B] and [A] had a long argument, and afterwards [B] said to [A]",	
+    "After [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",	
+    "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give it to [A]",	
+    "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give the [OBJECT] to [A]",	
+    "While [B] and [A] were working at the [PLACE], [B] gave a [OBJECT] to [A]",	
+    "While [B] and [A] were commuting to the [PLACE], [B] gave a [OBJECT] to [A]",	
+    "After the lunch, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",	
+    "Afterwards, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",	
+    "Then, [B] and [A] had a long argument. Afterwards [B] said to [A]",	
+    "The [PLACE] [B] and [A] went to had a [OBJECT]. [B] gave it to [A]",	
     "Friends [B] and [A] found a [OBJECT] at the [PLACE]. [B] gave it to [A]",
-    # # "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    # # "Then, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
-    # # "Then [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    # # "Then, [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
-    # # "Moreover, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    # # "Afterwards, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    # # "After [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
-    # # "While [B] and [A] were commuting to the [PLACE], [B] gave a [OBJECT] to [A]",
-    # # "While [B] and [A] were working at the [PLACE], [B] gave a [OBJECT] to [A]",
-    # # "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give the [OBJECT] to [A]",
-    # # "When [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give it to [A]",
-    # # "After [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
 ]
 
-ABBA_TEMPLATES = BABA_TEMPLATES[:]
+ABBA_TEMPLATES = BABA_TEMPLATES[:]	
 
-for i in range(len(ABBA_TEMPLATES)):
-    for j in range(len(ABBA_TEMPLATES[i])):
-        if ABBA_TEMPLATES[i][j] == "B":
-            ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "A" + ABBA_TEMPLATES[i][j + 1 :]
-        elif ABBA_TEMPLATES[i][j] == "A":
+for i in range(len(ABBA_TEMPLATES)):	
+    for j in range(len(ABBA_TEMPLATES[i])):	
+        if ABBA_TEMPLATES[i][j] == "B":	
+            ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "A" + ABBA_TEMPLATES[i][j + 1 :]	
+        elif ABBA_TEMPLATES[i][j] == "A":	
             ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "B" + ABBA_TEMPLATES[i][j + 1 :]
 
 VERBS = [" tried", " said", " decided", " wanted", " gave"]
-
-
-PLACES_SINGLE_TOKEN = [
-    "garden",
-    "restaurant",
-    "school",
-    "store",
-    "hospital",
-    "office",
-    "park",
-    "beach",
-]
-
 PLACES = [
-    "grocery store",
+    "store",
     "garden",
     "restaurant",
     "school",
     "hospital",
     "office",
-    "ballroom",
-    "skyscraper",
-    "police station",
+    "house",
+    "station",
 ]
-
-OBJECTS = ["ring", "kiss", "bone", "basketball", "hotdog", "computer", "necklace", "drink", "snack"]
-
-OBJECTS_SINGLE_TOKEN = OBJECTS
-OBJECTS_SINGLE_TOKEN.remove("hotdog")
-
-NOUNS_DICT = {"[PLACE]": PLACES, "[OBJECT]": OBJECTS}
-NOUNS_DICT_SINGLE_TOKEN = {"[PLACE]": PLACES_SINGLE_TOKEN, "[OBJECT]": OBJECTS_SINGLE_TOKEN}
+OBJECTS = ["ring", "kiss", "bone", "basketball", "computer", "necklace", "drink", "snack"]
 
 ANIMALS = [
     "dog",
@@ -587,7 +554,7 @@ def get_idx_dict(ioi_prompts, tokenizer):
 
 class IOIDataset:
     def __init__(self, prompt_type: str, N=500, tokenizer=None, prompts=None, symmetric=False, prefixes=None):
-        assert (prompts is not None) or (not symmetric) or (N%2 == 0), f"{symmetric} {N}"
+        assert (prompts is not None) or (not symmetric) or (N%2 == 0), f"{symmetric} {N}"	
         assert prompt_type in ["ABBA", "BABA", "mixed"]
         self.prompt_type = prompt_type
         if prompt_type == "ABBA":
@@ -902,7 +869,7 @@ scatter_attention_and_contribution(model, 9, 9, ioi_prompts[:500], gpt_model="gp
 scatter_attention_and_contribution(model, 9, 6, ioi_prompts[:500], gpt_model="gpt2")
 scatter_attention_and_contribution(model, 10, 0, ioi_prompts[:500], gpt_model="gpt2")
 #%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
-scatter_attention_and_contribution(model, random.randint(0,11), random.randint(0,11), ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, random.randint(0,11), random.randint(0,11), ioi_prompts[:500], gpt_model="gpt2") # TODO diff circuits with templates experiment
 #%% [markdown]
 # To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated). 
 #%%
@@ -1345,8 +1312,7 @@ def get_circuit_replacement_hook(
 
     def circuit_replmt_hook(z, act, hook):  # batch, seq, heads, head dim
         layer = int(hook.name.split(".")[1])
-        if "mlp_out" in hook.name and layer in mlps:
-            # print("MLPPPP")
+        if "mlp" in hook.name and layer in mlps:
             for i in range(len(no_prompts)):
                 z[i, mlps[layer][i], :] = act[
                     i, mlps2[layer][i], :
@@ -1418,7 +1384,46 @@ def do_circuit_extraction(
         model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
     return model, abl
+# %% # sanity check
+
+if False:
+    type(ioi_dataset)
+    old_ld = logit_diff(model, ioi_dataset[:N])
+    model, abl_cricuit_extr = do_circuit_extraction(
+        heads_to_remove={
+            (0, 4): [list(range(ioi_dataset.max_len)) for _ in range(N)]
+        },  # annoyingly sometimes needs to be edited...
+        mlps_to_remove={},
+        heads_to_keep=None,
+        mlps_to_keep=None,
+        no_prompts=N,
+        model=model,
+        ioi_dataset=ioi_dataset[:N],
+    )
+    ld = logit_diff(model, ioi_dataset[:N])
+    metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset.text_prompts[:N], relative_metric=False)
+    config = AblationConfig(
+        abl_type="mean",
+        mean_dataset=ioi_dataset.text_prompts[:N],
+        target_module="attn_head",
+        head_circuit="result",
+        cache_means=True,
+    )  #  abl_fn=mean_at_end) # mean_dataset=owb_seqs, target_module="mlp", head_circuit="result", cache_means=True, verbose=True)
+    abl = EasyAblation(
+        model,
+        config,
+        metric,
+        semantic_indices=ioi_dataset[:N].sem_tok_idx,
+        mean_by_groups=True,  # TO CHECK CIRCUIT BY GROUPS
+        groups=ioi_dataset.groups,
+        blue_pen=False,
+    )
+    res = abl.run_experiment()
 # %%
+print(ld, res[:5, :5])
+
+
+#%%
 def score_metric(model, ioi_dataset, K=1, target_dataset=None,all=False):
     if target_dataset is None:
         target_dataset = ioi_dataset
@@ -1482,26 +1487,40 @@ def get_extracted_idx(idx_list: list[str], no_prompts, ioi_dataset):
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
-
-def get_heads_circuit(ioi_dataset, no_prompts):
+def get_heads_circuit(ioi_dataset, no_prompts, calib_head=True, mlp0=False):
     heads_to_keep = {}
-    heads_to_keep[(0,1)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset) 
-    heads_to_keep[(0,10)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)# torch.hstack([S_idxs.unsqueeze(1), S2_idxs.unsqueeze(1)]) 
-    heads_to_keep[(3,0)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
-
-    heads_to_keep[(4,11)] = get_extracted_idx(["S+1", "and"], no_prompts, ioi_dataset)
-    heads_to_keep[(2,2)] = get_extracted_idx(["S+1", "and"], no_prompts, ioi_dataset)
-    heads_to_keep[(2,9)] = get_extracted_idx(["S+1", "and"], no_prompts, ioi_dataset)
-
-    heads_to_keep[(5,8)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
-    heads_to_keep[(5,9)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
-    heads_to_keep[(5,5)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
-    heads_to_keep[(6,9)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
-
-    for (h,l) in [(7,3), (7,9), (8,6), (8,10), (9,6), (9,9), (10,0), (10,7), (11, 10)]:#, (10,7), (11, 10)]:#, (10,7), (11, 10)]:
-        heads_to_keep[(h,l)] = get_extracted_idx(["end"], no_prompts, ioi_dataset)
+    heads_to_keep[(0, 1)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
+    heads_to_keep[(0, 10)] = get_extracted_idx(
+        ["S2"], no_prompts, ioi_dataset
+    )  # torch.hstack([S_idxs.unsqueeze(1), S2_idxs.unsqueeze(1)])
+    heads_to_keep[(3, 0)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
+    heads_to_keep[(4, 11)] = get_extracted_idx(["S+1", "and"], no_prompts, ioi_dataset)
+    heads_to_keep[(2, 2)] = get_extracted_idx(["S+1", "and"], no_prompts, ioi_dataset)
+    heads_to_keep[(2, 9)] = get_extracted_idx(["S+1", "and"], no_prompts, ioi_dataset)
+    heads_to_keep[(5, 8)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
+    heads_to_keep[(5, 9)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
+    heads_to_keep[(5, 5)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
+    heads_to_keep[(6, 9)] = get_extracted_idx(["S2"], no_prompts, ioi_dataset)
+    for (h, l) in [
+        (7, 3),
+        (7, 9),
+        (8, 6),
+        (8, 10),
+        (9, 6),
+        (9, 9),
+        (10, 0),
+    ]:  # , (10,7), (11, 10)]:#, (10,7), (11, 10)]:
+        heads_to_keep[(h, l)] = get_extracted_idx(["end"], no_prompts, ioi_dataset)
+    if calib_head:
+        for (h, l) in [(10, 7), (11, 10)]:
+            heads_to_keep[(h, l)] = get_extracted_idx(["end"], no_prompts, ioi_dataset)
+    if mlp0:
+        mlps_to_keep = {}
+        mlps_to_keep[0] = get_extracted_idx(
+            ["IO", "and", "S", "S+1", "S2", "end"], no_prompts, ioi_dataset
+        )  # IO, AND, S, S+1, S2, and END
+        return heads_to_keep, mlps_to_keep
     return heads_to_keep
-
 
 no_prompts = N
 heads_to_keep = get_heads_circuit(ioi_dataset, no_prompts)
@@ -1598,7 +1617,7 @@ def do_global_patching(
         target_module="attn_head",
         head_circuit="result",
         verbose=True,
-        cache_act=True
+        cache_act=True,
     )
     ptch = EasyPatching(
         model,
@@ -1616,6 +1635,7 @@ def do_global_patching(
 
 # %%
 N=100
+no_prompts = N
 target_ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None)
 source_ioi_dataset = target_ioi_dataset.gen_flipped_prompts("IO")
 
@@ -1626,8 +1646,13 @@ target_ioi_dataset.text_prompts[:3]
 source_ioi_dataset.text_prompts[:3]
 
 # %%
-source_heads_to_keep = get_heads_circuit(source_ioi_dataset, no_prompts)
-target_heads_to_keep = get_heads_circuit(target_ioi_dataset, no_prompts)
+
+source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(
+    source_ioi_dataset, no_prompts, calib_head=False, mlp0=True
+)
+target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(
+    target_ioi_dataset, no_prompts, calib_head=False, mlp0=True
+)
 
 # %%
 model.reset_hooks()
@@ -1641,62 +1666,69 @@ print_top_k(model, target_ioi_dataset, K=5)
 
 # %%
 
-model.reset_hooks()
-old_ld, old_std = logit_diff(model, target_ioi_dataset[:no_prompts], target_dataset=target_ioi_dataset,all=True, std=True)
-model.reset_hooks()
-old_score = score_metric(model, target_ioi_dataset[:no_prompts], target_dataset=target_ioi_dataset)
-model.reset_hooks()
-old_ld_source, old_std_source = logit_diff(model, target_ioi_dataset[:no_prompts],target_dataset=source_ioi_dataset, all=True, std=True)
-model.reset_hooks()
-old_score_source = score_metric(model, target_ioi_dataset[:no_prompts],target_dataset=source_ioi_dataset)
 
+# %%
+K = 1
+model.reset_hooks()
+old_ld, old_std = logit_diff(
+    model, target_ioi_dataset[:no_prompts], target_dataset=target_ioi_dataset, all=True, std=True
+)
+model.reset_hooks()
+old_score = score_metric(model, target_ioi_dataset[:no_prompts], target_dataset=target_ioi_dataset, k=K)
+model.reset_hooks()
+old_ld_source, old_std_source = logit_diff(
+    model, target_ioi_dataset[:no_prompts], target_dataset=source_ioi_dataset, all=True, std=True
+)
+model.reset_hooks()
+old_score_source = score_metric(model, target_ioi_dataset[:no_prompts], target_dataset=source_ioi_dataset, k=K)
 model.reset_hooks()
 model, _ = do_global_patching(
-    source_mlps_to_patch={},
+    source_mlps_to_patch=source_mlps_to_keep,
     source_mlps_to_keep=None,
-    target_mlps_to_patch={},
+    target_mlps_to_patch=target_mlps_to_keep,
     target_mlps_to_keep=None,
-
     source_heads_to_keep=None,
     source_heads_to_patch=source_heads_to_keep,
-
     target_heads_to_keep=None,
     target_heads_to_patch=target_heads_to_keep,
-
     no_prompts=N,
     model=model,
     source_ioi_dataset=source_ioi_dataset[:no_prompts],
     target_ioi_dataset=target_ioi_dataset[:no_prompts],
 )
 
-ldiff_target, std_ldiff_target = logit_diff(model, target_ioi_dataset[:no_prompts], target_dataset=target_ioi_dataset, std=True, all=True)
-score_target = score_metric(model, target_ioi_dataset[:no_prompts], target_dataset=target_ioi_dataset)
-
-ldiff_source, std_ldiff_source = logit_diff(model, target_ioi_dataset[:no_prompts], target_dataset=source_ioi_dataset,std=True, all=True)
-score_source = score_metric(model, target_ioi_dataset[:no_prompts], target_dataset=source_ioi_dataset)
-
+ldiff_target, std_ldiff_target = logit_diff(
+    model, target_ioi_dataset[:no_prompts], target_dataset=target_ioi_dataset, std=True, all=True
+)
+score_target = score_metric(model, target_ioi_dataset[:no_prompts], target_dataset=target_ioi_dataset, k=K)
+ldiff_source, std_ldiff_source = logit_diff(
+    model, target_ioi_dataset[:no_prompts], target_dataset=source_ioi_dataset, std=True, all=True
+)
+score_source = score_metric(model, target_ioi_dataset[:no_prompts], target_dataset=source_ioi_dataset, k=K)
 # %%
 print(f"Original logif_diff TARGET DATASET (TARGET, no patching)=  {old_ld.mean()} +/- {old_std}. Score {old_score}")
-print(f"Original logif_diff TARGET DATASET  (SOURCE, no patching)=  {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}")
-
-
-print(f"Logit_diff TARGET (*AFTER* patching)=  {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}") 
-print(f"Logit_diff SOURCE (*AFTER* patching)=  {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}") 
-
-df = pd.DataFrame({"Logit difference":ldiff_source.cpu(), 
-"Random":np.random.random(len(ldiff_source)),
-"beg":[prompt["text"][:10] for prompt in ioi_prompts], 
-"sentence": [prompt["text"] for prompt in ioi_prompts],
- "#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts],
- "template": ioi_dataset.templates_by_prompt,
- "misc": [ (str(prompt["text"].count("Then")) +str(ioi_dataset.templates_by_prompt[i])) for (i,prompt) in enumerate(ioi_prompts)] })
- #[ prompt["text"].count(prompt["IO"]) for (i,prompt) in enumerate(ioi_prompts)] })
-
-
-px.scatter(df, x="x", y="y", hover_data=["sentence", "template"],text="beg", color="misc", title=ioi_dataset.prompt_type )
-
+print(
+    f"Original logif_diff TARGET DATASET  (SOURCE, no patching)=  {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
+)
+print(f"Logit_diff TARGET (*AFTER* patching)=  {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}")
+print(f"Logit_diff SOURCE (*AFTER* patching)=  {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}")
+df = pd.DataFrame(
+    {
+        "x": ldiff_source.cpu(),
+        "y": np.random.random(len(ldiff_source)),
+        "beg": [prompt["text"][:10] for prompt in ioi_prompts],
+        "sentence": [prompt["text"] for prompt in ioi_prompts],
+        "#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts],
+        "template": ioi_dataset.templates_by_prompt,
+        "misc": [
+            (str(prompt["text"].count("Then")) + str(ioi_dataset.templates_by_prompt[i]))
+            for (i, prompt) in enumerate(ioi_prompts)
+        ],
+    }
+)
+# [ prompt["text"].count(prompt["IO"]) for (i,prompt) in enumerate(ioi_prompts)] })
+px.scatter(
+    df, x="x", y="y", hover_data=["sentence", "template"], text="beg", color="misc", title=ioi_dataset.prompt_type
+)
 # %%
 "ssodiqsddifusgidfuisd".index("s")
-
-# %%
-def global_patching()
