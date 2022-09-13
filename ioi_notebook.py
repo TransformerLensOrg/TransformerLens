@@ -791,7 +791,6 @@ print_gpu_mem("Gpt2 loaded")
 
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-ioi_prompts = ioi_dataset.ioi_prompts
 
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
@@ -869,7 +868,7 @@ def writing_direction_heatmap(
 
 attn_vals = writing_direction_heatmap(
     model,
-    ioi_dataset.ioi_prompts[:51],
+    ioi_dataset.ioi_dataset.ioi_prompts[:51],
     return_vals=True,
     mode="attn_out",
     dir_mode="IO - S",
@@ -951,15 +950,15 @@ def scatter_attention_and_contribution(
         return viz_df
 
 
-scatter_attention_and_contribution(model, 9, 9, ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 9, 6, ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 10, 0, ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 9, 6, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 10, 0, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
 #%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
 scatter_attention_and_contribution(
     model,
     random.randint(0, 11),
     random.randint(0, 11),
-    ioi_prompts[:500],
+    ioi_dataset.ioi_prompts[:500],
     gpt_model="gpt2",
 )
 #%%
@@ -1038,8 +1037,8 @@ check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_data
 
 # You can see this similarly as open loop / closed loop optimization. It's easier to make a good guess by making previous rough estimate more precise than making a good guess in one shot.
 #%%
-scatter_attention_and_contribution(model, 10, 7, ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 11, 10, ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 10, 7, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
 #%% [markdown]
 # # Faithfulness: ablating everything but the circuit
 # For each template, e.g `Then, [A] and [B] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]` we ablate only the indices we claim are important and we retain a positive logit difference between `IO` and `S`, as well the "score" (whether the IO logit remains in the top 10 logit AND IO > S), though have some performace degradation, particularly when we don't ablate the name movers heads.
@@ -1056,8 +1055,13 @@ else:
 
 
 def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
-    """Difference between the IO and the S logits at the "to" token"""
-    global ioi_dataset
+    """
+    Difference between the IO and the S logits at the "to" token
+
+    If `target_dataset` is specified, assume the IO and S tokens are the same as those in `target_dataset`
+    """
+
+    global ioi_dataset # probably when we call this function, we want `ioi_data` to be the main dataset. So make it that way.
     if "IOIDataset" in str(type(ioi_data)):
         text_prompts = ioi_data.text_prompts
         ioi_dataset = ioi_data
@@ -1079,7 +1083,7 @@ def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
         ioi_dataset.word_idx["end"][:L],
         target_dataset.s_tokenIDs[:L],
     ]
-    # print(IO_logits, S_logits)
+
     if all and not std:
         return IO_logits - S_logits
     if std:
@@ -1281,6 +1285,8 @@ for ablate_calibration in [
                     ].to(z.device)
 
             return z
+
+        print(ablation.__code__.co_varnames) # TODO edit out Arthur; after thinking about how all this passing around hook stuff works
 
         ld_metric = ExperimentMetric(
             metric=logit_diff, dataset=ioi_dataset, relative_metric=False
@@ -1748,7 +1754,7 @@ df = pd.DataFrame(
         "sentence": [prompt for prompt in ioi_dataset.text_prompts],
         "#tokens before first name": [
             prompt.count("Then") for prompt in ioi_dataset.text_prompts
-        ],  # (no of tokens)
+        ],
         "template": ioi_dataset.templates_by_prompt,
         "misc": [
             (str(prompt.count("Then")) + str(ioi_dataset.templates_by_prompt[i]))
@@ -1841,16 +1847,12 @@ def do_global_patching(
 
 # %%
 N = 100
-target_ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None)
+target_ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None) # annoyingly you could swap "target" and "source" as names, and I think the original dataset would be a "source" in some ways (a bit confusing!)
 source_ioi_dataset = target_ioi_dataset.gen_flipped_prompts("IO")
 
 # %%
-target_ioi_dataset.text_prompts[:3]
-
-# %%
-source_ioi_dataset.text_prompts[:3]
-
-# %%
+print("The target dataset (has both ABBA and BABA sentences):", target_ioi_dataset.text_prompts[:3])
+print("The source dataset (with IO randomly changed):", source_ioi_dataset.text_prompts[:3])
 
 source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(
     source_ioi_dataset, calib_head=False, mlp0=True
@@ -1859,15 +1861,10 @@ target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(
     target_ioi_dataset, calib_head=False, mlp0=True
 )
 
-# %%
-model.reset_hooks()
-logit_diff(model, ioi_dataset, all=False, std=True)
-
-# %%
 K = 1
 model.reset_hooks()
-old_ld, old_std = logit_diff(  # TODO get this to work
-    model, target_ioi_dataset, ioi_dataset=target_ioi_dataset, all=True, std=True
+old_ld, old_std = logit_diff(
+    model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
 old_score = score_metric(
@@ -1908,27 +1905,27 @@ ldiff_source, std_ldiff_source = logit_diff(
 score_source = score_metric(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
 )
-# %%
+# %% 
 print(
-    f"Original logif_diff TARGET DATASET (TARGET, no patching)=  {old_ld.mean()} +/- {old_std}. Score {old_score}"
+    f"Original logit_diff on TARGET dataset (no patching yet!) = {old_ld.mean()} +/- {old_std}. Score {old_score}"
 )
 print(
-    f"Original logif_diff TARGET DATASET  (SOURCE, no patching)=  {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
+    f"Original logit_diff on SOURCE dataset (no patching yet!) = {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
 )
 print(
-    f"Logit_diff TARGET (*AFTER* patching)=  {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}"
+    f"Logit_diff on TARGET dataset (*AFTER* patching) = {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}"
 )
 print(
-    f"Logit_diff SOURCE (*AFTER* patching)=  {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}"
+    f"Logit_diff on SOURCE dataset (*AFTER* patching) = {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}"
 )
 df = pd.DataFrame(
     {
-        "x": ldiff_source.cpu(),
-        "y": np.random.random(len(ldiff_source)),
-        "beg": [prompt["text"][:10] for prompt in ioi_prompts],
-        "sentence": [prompt["text"] for prompt in ioi_prompts],
+        "Logit difference in source": ldiff_source.cpu(),
+        "Random (for interactivity)": np.random.random(len(ldiff_source)),
+        "beg": [prompt["text"][:10] for prompt in ioi_dataset.ioi_prompts],
+        "sentence": [prompt["text"] for prompt in ioi_dataset.ioi_prompts],
         "#tokens before first name": [
-            prompt["text"].count("Then") for prompt in ioi_prompts
+            prompt["text"].count("Then") for prompt in ioi_dataset.ioi_prompts
         ],
         "template": ioi_dataset.templates_by_prompt,
         "misc": [
@@ -1936,17 +1933,19 @@ df = pd.DataFrame(
                 str(prompt["text"].count("Then"))
                 + str(ioi_dataset.templates_by_prompt[i])
             )
-            for (i, prompt) in enumerate(ioi_prompts)
+            for (i, prompt) in enumerate(ioi_dataset.ioi_prompts)
         ],
     }
 )
 
 px.scatter(
     df,
-    x="x",
-    y="y",
+    x="Logit difference in source",
+    y="Random (for interactivity)",
     hover_data=["sentence", "template"],
     text="beg",
     color="misc",
     title=ioi_dataset.prompt_type,
 )
+
+# %%
