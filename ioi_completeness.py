@@ -153,23 +153,17 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
-circuit_perf = pd.DataFrame(
-    columns=["ldiff_broken", "ldiff_cobble", "std_ldiff_broken", "std_ldiff_cobble", "removed_group"]
-)
+circuit_perf = []
 
-ldiff_broken_circuit = []
-ldiff_cobble_circuit = []
-std_ldiff_broken_circuit = []
-std_ldiff_cobble_circuit = []
-
-for G in CIRCUIT.keys():
+for G in ["none"] + list(CIRCUIT.keys()):
     if G == "ablation":
         continue
 
     # compute METRIC( C \ G )
     # excluded_classes = ["calibration"]
     excluded_classes = []
-    excluded_classes.append(G)
+    if G != "none":
+        excluded_classes.append(G)
 
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=excluded_classes)  # TODO check the MLP stuff
     model, _ = do_circuit_extraction(
@@ -183,7 +177,9 @@ for G in CIRCUIT.keys():
 
     # adding back the whole model
     excl_class = list(CIRCUIT.keys())
-    excl_class.remove(G)
+    if G != "none":
+        excl_class.remove(G)
+
     G_heads_to_remove = get_heads_circuit(ioi_dataset, excluded_classes=excl_class)  # TODO check the MLP stuff
 
     model.reset_hooks()
@@ -196,21 +192,44 @@ for G in CIRCUIT.keys():
     ldiff_cobble, std_cobble_circuit = logit_diff(model, ioi_dataset, std=True, all=False)
     # metric(M\G)
 
-    circuit_perf = circuit_perf.append(
+    circuit_perf.append(
         {
             "removed_group": G,
             "ldiff_broken": ldiff_broken_circuit,
             "ldiff_cobble": ldiff_cobble,
             "std_ldiff_broken": std_broken_circuit,
             "std_ldiff_cobble": std_cobble_circuit,
-        },
-        ignore_index=True,
+        }
     )
 
-    # ld = logit_diff(
+circuit_perf = pd.DataFrame(circuit_perf)
+# ld = logit_diff(
 
 # %%
 
-px.scatter(circuit_perf, x="ldiff_broken", y="ldiff_cobble", text="removed_group")
+fig = px.scatter(
+    circuit_perf,
+    x="ldiff_broken",
+    y="ldiff_cobble",
+    text="removed_group",
+    error_x="std_ldiff_broken",
+    error_y="std_ldiff_cobble",
+)
 
+fig.update_layout(
+    shapes=[
+        # adds line at y=5
+        dict(
+            type="line",
+            xref="x",
+            x0=1,
+            x1=7,
+            yref="y",
+            y0=1,
+            y1=7,
+        )
+    ]
+)
+
+fig.show()
 # %%
