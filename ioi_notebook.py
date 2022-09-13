@@ -330,8 +330,8 @@ def writing_direction_heatmap(
 
     N = len(prompts)
     for i in range(ioi_dataset.N):
-        io_tok = model.tokenizer(" " + prompt["IO"])["input_ids"][0]
-        s_tok = model.tokenizer(" " + prompt["S"])["input_ids"][0]
+        io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
+        s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
         io_dir = model_unembed[io_tok]
         s_dir = model_unembed[s_tok]
         if dir_mode == "IO - S":
@@ -345,9 +345,9 @@ def writing_direction_heatmap(
 
         model.reset_hooks()
         cache = {}
-        model.cache_all(cache)
+        model.cache_all(cache) # TODO maybe speed up by only caching relevant things
 
-        logits = model(prompt["text"])
+        logits = model(ioi_dataset.text_prompts[i])
 
         for lay in range(n_layers):
             if mode == "attn_out":
@@ -364,7 +364,7 @@ def writing_direction_heatmap(
 
 attn_vals = writing_direction_heatmap(
     model,
-    ioi_dataset.ioi_prompts[:51],
+    ioi_dataset[:51],
     return_vals=True,
     mode="attn_out",
     dir_mode="IO - S",
@@ -553,7 +553,29 @@ print(" ---  Random heads for control ---  ")
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
-#%% [markdown]
+
+#%%
+CIRCUIT = {"name mover": [((9, 6), (9, 9), (10, 0))], 
+    "calibration": [((10, 7), (11, 10))], 
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "duplicate token": [(0, 1), (0, 10), (3, 0)],
+    "previous token": [(2, 2), (2, 9), (4, 11)],
+}
+
+RELEVANT_TOKENS = {}
+for head in CIRCUIT["name mover"] + CIRCUIT["calibration"] + CIRCUIT["s2 inhibition"]:
+    RELEVANT_TOKENS[head] = ["end"]
+
+for head in CIRCUIT["induction"]:
+    RELEVANT_TOKENS[head] = ["S2"]
+
+for head in CIRCUIT["duplicate token"]:
+    RELEVANT_TOKENS[head] = ["S2"]
+
+for head in CIRCUIT["previous token"]:
+    RELEVANT_TOKENS[head] = ["S+1", "and"]
+#%% [markdown] 
 # For calibration heads, we observe a reverse trend to name movers, the more is pays attention to a name, the more it write in its *oposite* direction. Why is that?
 # You need to remember the training objective of the transformer: it has to predict accurate probability distribution over all the next tokens.
 # If previously it was able to recover the IO, in the final layer it has to callibrate the probability of this particular token, it cannot go all in "THE NEXT TOKEN IS BOB" with 100% proba.
@@ -863,7 +885,7 @@ else:
     raise NotImplementedError()
 
 ## new logit diff definition
-def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
+def logit_diff_target(model, ioi_data, target_dataset=None, all=False, std=False):
     """
     Difference between the IO and the S logits at the "to" token
 
@@ -1067,7 +1089,7 @@ for ablate_calibration in [
 
             return z
 
-        ld_metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=False)
+        ld_metric = ExperimentMetric(metric=logit_diff_target, dataset=ioi_dataset, relative_metric=False)
         score_metric = ExperimentMetric(metric=score, dataset=ioi_dataset, relative_metric=False)
         ld_metric.set_baseline(model)
         score_metric.set_baseline(model)
@@ -1080,13 +1102,13 @@ for ablate_calibration in [
         )
         sprobs_metric.set_baseline(model)
         io_logits_metric = ExperimentMetric(
-            metric=lambda x, y: logit_diff(x, y, all=True)[0],
+            metric=lambda x, y: logit_diff_target(x, y, all=True)[0],
             dataset=ioi_dataset,
             relative_metric=False,
         )
         io_logits_metric.set_baseline(model)
         s_logits_metric = ExperimentMetric(
-            metric=lambda x, y: logit_diff(x, y, all=True)[1],
+            metric=lambda x, y: logit_diff_target(x, y, all=True)[1],
             dataset=ioi_dataset,
             relative_metric=False,
         )
@@ -1156,7 +1178,7 @@ for ablate_calibration in [
 #%% # let's check that the circuit isn't changing relative to which template we are using
 
 
-N = 10  # number per template
+N = 100  # number per template
 template_prompts = [
     gen_prompt_uniform(
         templates[i : i + 1],
@@ -1168,6 +1190,8 @@ template_prompts = [
     for i in range(len(templates))
 ]
 
+three_d = torch.zeros(size=(num_templates, 12, 12))
+
 for template_idx in tqdm(range(num_templates)):
     prompts = template_prompts[template_idx]
     ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
@@ -1178,154 +1202,21 @@ for template_idx in tqdm(range(num_templates)):
         assert torch.all(ioi_dataset.sem_tok_idx[key] == idx), f"{key} {ioi_dataset.sem_tok_idx[key]}"
         # check that semantic ablation = normal ablation
 
-    writing_direction_heatmap(
+    vals = writing_direction_heatmap(
         model,
-        ioi_dataset.text_prompts,
+        ioi_dataset,
         title=f"Writing Direction Heatmap for {template_idx}", 
+        return_vals=True,
     )
+    three_d[template_idx] = vals
+    continue
+show_pp(three_d, animate_axis=0, title="Writing Direction Heatmap for all templates")
 
-    seq_len = ioi_dataset.toks.shape[1]
-    head_indices_to_ablate = {
-        (i % 12, i // 12): list(range(seq_len)) for i in range(12 * 12)
-    } ## list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))]
-
-    mlp_indices_to_ablate = [list(range(seq_len)) for _ in range(model.cfg["n_heads"])]
-
-    for head in [
-        (0, 1),
-        (0, 10),
-        (3, 0),
-    ]:
-        head_indices_to_ablate[head] = [i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]]
-
-    for head in [
-        (4, 11),
-        (2, 2),
-        (2, 9),
-    ]:
-        head_indices_to_ablate[head] = [
-            i
-            for i in range(seq_len)
-            if i
-            not in [
-                ioi_dataset.sem_tok_idx["S"][0],
-                ioi_dataset.sem_tok_idx["and"][0],
-            ]
-        ]
-
-    for head in [
-        (5, 8),
-        (5, 9),
-        (5, 5),
-        (6, 9),
-    ]:
-        head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]]
-
-    end_heads = [
-        (7, 3),
-        (7, 9),
-        (8, 6),
-        (8, 10),
-        (9, 6),
-        (9, 9),
-        (10, 0),
-    ]
-
-    if not ablate_calibration:
-        end_heads += [(10, 7), (11, 12)]
-
-    for head in end_heads:
-        head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["end"][0]]]
-
-    # define the ablation function for ALL parts of the model at once
-    def ablation(z, mean, hook):
-        layer = int(hook.name.split(".")[1])
-        head_idx = hook.ctx["idx"]
-        head = (layer, head_idx)
-
-        if "mlp_out" in hook.name:
-            # ablate the relevant parts
-            for i in range(z.shape[0]):
-                z[i, mlp_indices_to_ablate[layer]] = mean[i, mlp_indices_to_ablate[layer]].to(z.device)
-
-        if "attn.hook_result" in hook.name:  # and (layer, head) not in heads_to_keep:
-            # ablate
-            assert len(z.shape) == 3, z.shape  # we specifically get sent the relevant head
-            assert 12 not in list(z.shape), "Yikes, probably dim kept back is wrong, should be head dim"
-
-            # see above
-            for i in range(z.shape[0]):
-                z[i, head_indices_to_ablate[head]] = mean[i, head_indices_to_ablate[head]].to(z.device)
-
-        return z
-
-    ld_metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=False)
-    score_metric = ExperimentMetric(metric=score, dataset=ioi_dataset, relative_metric=False)
-    ld_metric.set_baseline(model)
-    score_metric.set_baseline(model)
-    probs_metric = ExperimentMetric(metric=io_probs, dataset=ioi_dataset, relative_metric=False)
-    probs_metric.set_baseline(model)
-    sprobs_metric = ExperimentMetric(
-        metric=lambda x, y: io_probs(x, y, mode="S"),
-        dataset=ioi_dataset,
-        relative_metric=False,
-    )
-    sprobs_metric.set_baseline(model)
-    io_logits_metric = ExperimentMetric(
-        metric=lambda x, y: logit_diff(x, y, all=True)[0],
-        dataset=ioi_dataset,
-        relative_metric=False,
-    )
-    io_logits_metric.set_baseline(model)
-    s_logits_metric = ExperimentMetric(
-        metric=lambda x, y: logit_diff(x, y, all=True)[1],
-        dataset=ioi_dataset,
-        relative_metric=False,
-    )
-    s_logits_metric.set_baseline(model)
-
-    config = AblationConfig(
-        abl_type="custom",
-        abl_fn=ablation,
-        mean_dataset=ioi_dataset.text_prompts,
-        target_module="attn_head",
-        head_circuit="result",
-        cache_means=True,
-        verbose=True,
-    )
-
-    abl = EasyAblation(
-        model, config, ld_metric
-    )  # , semantic_indices=ioi_dataset.sem_tok_idx) # semantic indices should not be necessary
-
-    model.reset_hooks()
-    for layer in range(12):
-        for head in range(12):
-            model.add_hook(*abl.get_hook(layer, head))
-        model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
-
-    # compute a bunch of datasets
-    ld = ld_metric.compute_metric(model)
-    ld_data.append((ld_metric.baseline, ld))
-    cur_score = score_metric.compute_metric(model)
-    score_data.append((score_metric.baseline, cur_score))
-    cur_probs = probs_metric.compute_metric(model)
-    probs_data.append((probs_metric.baseline, cur_probs))
-
-    s_probs = sprobs_metric.compute_metric(
-        model
-    )  # s probs is like 0.003 for most ablate calibration heads # or is is that low
-    # print(f"{s_probs=}")
-    sprobs_data.append((sprobs_metric.baseline, s_probs))
-    io_logits = io_logits_metric.compute_metric(model)
-    io_logits_data.append((io_logits_metric.baseline, io_logits))
-    s_logits = s_logits_metric.compute_metric(model)
-    s_logits_data.append((s_logits_metric.baseline, s_logits))
 
 #%% [markdown]
 # <h2>Circuit extraction</h2>
 #%%
-ld = logit_diff(model, ioi_dataset[:N], all=True)
+ld = logit_diff_target(model, ioi_dataset[:N], all=True)
 
 
 def list_diff(l1, l2):
@@ -1461,7 +1352,7 @@ def do_circuit_extraction(
     )
 
     metric = ExperimentMetric(
-        metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=False
+        metric=logit_diff_target, dataset=ioi_dataset.text_prompts, relative_metric=False
     )  # TODO make dummy metric
 
     config = AblationConfig(
@@ -1480,6 +1371,7 @@ def do_circuit_extraction(
         semantic_indices=ioi_dataset.sem_tok_idx,
         mean_by_groups=True,  # TO CHECK CIRCUIT BY GROUPS
         groups=ioi_dataset.groups,
+        blue_pen=False,
     )
     model.reset_hooks()
 
@@ -1495,7 +1387,7 @@ def do_circuit_extraction(
 
 if False:
     type(ioi_dataset)
-    old_ld = logit_diff(model, ioi_dataset[:N])
+    old_ld = logit_diff_target(model, ioi_dataset[:N])
     model, abl_cricuit_extr = do_circuit_extraction(
         heads_to_remove={
             (0, 4): [list(range(ioi_dataset.max_len)) for _ in range(N)]
@@ -1506,8 +1398,8 @@ if False:
         model=model,
         ioi_dataset=ioi_dataset[:N],
     )
-    ld = logit_diff(model, ioi_dataset[:N])
-    metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset.text_prompts[:N], relative_metric=False)
+    ld = logit_diff_target(model, ioi_dataset[:N])
+    metric = ExperimentMetric(metric=logit_diff_target, dataset=ioi_dataset.text_prompts[:N], relative_metric=False)
     config = AblationConfig(
         abl_type="mean",
         mean_dataset=ioi_dataset.text_prompts[:N],
@@ -1605,40 +1497,22 @@ def get_extracted_idx(idx_list: list[str], ioi_dataset):
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
-
 def get_heads_circuit(ioi_dataset, calib_head=True, mlp0=False):
     heads_to_keep = {}
-    heads_to_keep[(0, 1)] = get_extracted_idx(["S2"], ioi_dataset)
-    heads_to_keep[(0, 10)] = get_extracted_idx(
-        ["S2"], ioi_dataset
-    )  # torch.hstack([S_idxs.unsqueeze(1), S2_idxs.unsqueeze(1)])
-    heads_to_keep[(3, 0)] = get_extracted_idx(["S2"], ioi_dataset)
-    heads_to_keep[(4, 11)] = get_extracted_idx(["S+1", "and"], ioi_dataset)
-    heads_to_keep[(2, 2)] = get_extracted_idx(["S+1", "and"], ioi_dataset)
-    heads_to_keep[(2, 9)] = get_extracted_idx(["S+1", "and"], ioi_dataset)
-    heads_to_keep[(5, 8)] = get_extracted_idx(["S2"], ioi_dataset)
-    heads_to_keep[(5, 9)] = get_extracted_idx(["S2"], ioi_dataset)
-    heads_to_keep[(5, 5)] = get_extracted_idx(["S2"], ioi_dataset)
-    heads_to_keep[(6, 9)] = get_extracted_idx(["S2"], ioi_dataset)
-    for (h, l) in [
-        (7, 3),
-        (7, 9),
-        (8, 6),
-        (8, 10),
-        (9, 6),
-        (9, 9),
-        (10, 0),
-    ]:  # , (10,7), (11, 10)]:#, (10,7), (11, 10)]:
-        heads_to_keep[(h, l)] = get_extracted_idx(["end"], ioi_dataset)
-    if calib_head:
-        for (h, l) in [(10, 7), (11, 10)]:
-            heads_to_keep[(h, l)] = get_extracted_idx(["end"], ioi_dataset)
+
+    for circuit_class in CIRCUIT.keys():
+        if not calib_head and circuit_class == "calibration":
+            continue
+        for head in CIRCUIT[circuit_class]:
+            heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
+
     if mlp0:
         mlps_to_keep = {}
         mlps_to_keep[0] = get_extracted_idx(
             ["IO", "and", "S", "S+1", "S2", "end"], ioi_dataset
         )  # IO, AND, S, S+1, S2, and END
         return heads_to_keep, mlps_to_keep
+
     return heads_to_keep
 
 
@@ -1647,7 +1521,7 @@ heads_to_keep = get_heads_circuit(ioi_dataset)
 mlps_to_keep = {}
 
 model.reset_hooks()
-old_ld, old_std = logit_diff(model, ioi_dataset, all=True, std=True)
+old_ld, old_std = logit_diff_target(model, ioi_dataset, all=True, std=True)
 old_score = score_metric(model, ioi_dataset)
 model.reset_hooks()
 model, _ = do_circuit_extraction(
@@ -1657,12 +1531,12 @@ model, _ = do_circuit_extraction(
     ioi_dataset=ioi_dataset,
 )
 
-ldiff, std = logit_diff(model, ioi_dataset, std=True, all=True)
+ldiff, std = logit_diff_target(model, ioi_dataset, std=True, all=True)
 score = score_metric(model, ioi_dataset)  # k=K ??
 
 # %%
 print(f"Logit difference = {ldiff.mean().item()} +/- {std}. score={score.item()}")
-print(f"Original logit_diff = {old_ld.mean()} +/- {old_std}. score={old_score}")
+print(f"Original logit_diff_target = {old_ld.mean()} +/- {old_std}. score={old_score}")
 
 df = pd.DataFrame(
     {
@@ -1778,11 +1652,11 @@ target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(target_ioi_dataset
 
 K = 1
 model.reset_hooks()
-old_ld, old_std = logit_diff(model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True)
+old_ld, old_std = logit_diff_target(model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True)
 model.reset_hooks()
 old_score = score_metric(model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K)
 model.reset_hooks()
-old_ld_source, old_std_source = logit_diff(
+old_ld_source, old_std_source = logit_diff_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
@@ -1802,11 +1676,11 @@ model, _ = do_global_patching(
     target_ioi_dataset=target_ioi_dataset,
 )
 
-ldiff_target, std_ldiff_target = logit_diff(
+ldiff_target, std_ldiff_target = logit_diff_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, std=True, all=True
 )
 score_target = score_metric(model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K)
-ldiff_source, std_ldiff_source = logit_diff(
+ldiff_source, std_ldiff_source = logit_diff_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, std=True, all=True
 )
 score_source = score_metric(model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K)
@@ -1816,7 +1690,7 @@ print(
     f"Original logit_diff on SOURCE dataset (no patching yet!) = {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
 )
 print(
-    f"Logit_diff on TARGET dataset (*AFTER* patching) = {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}"
+    f"logit_diff on TARGET dataset (*AFTER* patching) = {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}"
 )
 print(
     f"Logit_diff on SOURCE dataset (*AFTER* patching) = {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}"
@@ -1846,4 +1720,50 @@ px.scatter(
     title=ioi_dataset.prompt_type,
 )
 
-# %%
+# %% # completeness experiments
+
+# firstly remove all groups
+
+
+        for head in [
+            (0, 1),
+            (0, 10),
+            (3, 0),
+        ]:
+            head_indices_to_ablate[head] = [i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]]
+
+        for head in [
+            (4, 11),
+            (2, 2),
+            (2, 9),
+        ]:
+            head_indices_to_ablate[head] = [
+                i
+                for i in range(seq_len)
+                if i
+                not in [
+                    ioi_dataset.sem_tok_idx["S"][0],
+                    ioi_dataset.sem_tok_idx["and"][0],
+                ]
+            ]
+
+        for head in [
+            (5, 8),
+            (5, 9),
+            (5, 5),
+            (6, 9),
+        ]:
+            head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]]
+
+        end_heads = [
+            (7, 3),
+            (7, 9),
+            (8, 6),
+            (8, 10),
+            (9, 6),
+            (9, 9),
+            (10, 0),
+        ]
+
+        if not ablate_calibration:
+            end_heads += [(10, 7), (11, 12)]

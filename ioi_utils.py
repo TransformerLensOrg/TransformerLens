@@ -1,6 +1,7 @@
 import torch
 import plotly.express as px
 import gc
+import einops
 
 
 def clear_gpu_mem():
@@ -20,16 +21,27 @@ def show_tokens(tokens, model, return_list=False):
         print("|".join(text_tokens))
 
 
-def show_pp(m, xlabel="", ylabel="", title="", bartitle=""):
+def show_pp(m, xlabel="", ylabel="", title="", bartitle="", animate_axis=None):
     """
     Plot a heatmap of the values in the matrix `m`
     """
-    fig = px.imshow(
-        m.T,
-        title=title if title else "",
-        color_continuous_scale="RdBu",
-        color_continuous_midpoint=0,
-    )
+
+    if animate_axis is None:
+        fig = px.imshow(
+            m.T,
+            title=title if title else "",
+            color_continuous_scale="RdBu",
+            color_continuous_midpoint=0,
+        )
+
+    else:
+        fig = px.imshow(
+            einops.rearrange(m, "a b c -> a c b"),
+            title=title if title else "",
+            animation_frame=animate_axis,
+            color_continuous_scale="RdBu",
+            color_continuous_midpoint=0,
+        )        
 
     fig.update_layout(
         coloraxis_colorbar=dict(
