@@ -20,7 +20,7 @@
 
 # %% [markdown]
 # ## Import
-# %%
+# # %%
 from tqdm import tqdm
 import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
@@ -553,28 +553,6 @@ print(" ---  Random heads for control ---  ")
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
-
-#%%
-CIRCUIT = {"name mover": [((9, 6), (9, 9), (10, 0))], 
-    "calibration": [((10, 7), (11, 10))], 
-    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0)],
-    "previous token": [(2, 2), (2, 9), (4, 11)],
-}
-
-RELEVANT_TOKENS = {}
-for head in CIRCUIT["name mover"] + CIRCUIT["calibration"] + CIRCUIT["s2 inhibition"]:
-    RELEVANT_TOKENS[head] = ["end"]
-
-for head in CIRCUIT["induction"]:
-    RELEVANT_TOKENS[head] = ["S2"]
-
-for head in CIRCUIT["duplicate token"]:
-    RELEVANT_TOKENS[head] = ["S2"]
-
-for head in CIRCUIT["previous token"]:
-    RELEVANT_TOKENS[head] = ["S+1", "and"]
 #%% [markdown] 
 # For calibration heads, we observe a reverse trend to name movers, the more is pays attention to a name, the more it write in its *oposite* direction. Why is that?
 # You need to remember the training objective of the transformer: it has to predict accurate probability distribution over all the next tokens.
@@ -1497,6 +1475,27 @@ def get_extracted_idx(idx_list: list[str], ioi_dataset):
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
+CIRCUIT = {"name mover": [((9, 6), (9, 9), (10, 0))], 
+    "calibration": [((10, 7), (11, 10))], 
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "duplicate token": [(0, 1), (0, 10), (3, 0)],
+    "previous token": [(2, 2), (2, 9), (4, 11)],
+}
+
+RELEVANT_TOKENS = {}
+for head in CIRCUIT["name mover"] + CIRCUIT["calibration"] + CIRCUIT["s2 inhibition"]:
+    RELEVANT_TOKENS[head] = ["end"]
+
+for head in CIRCUIT["induction"]:
+    RELEVANT_TOKENS[head] = ["S2"]
+
+for head in CIRCUIT["duplicate token"]:
+    RELEVANT_TOKENS[head] = ["S2"]
+
+for head in CIRCUIT["previous token"]:
+    RELEVANT_TOKENS[head] = ["S+1", "and"]
+
 def get_heads_circuit(ioi_dataset, calib_head=True, mlp0=False):
     heads_to_keep = {}
 
@@ -1719,51 +1718,3 @@ px.scatter(
     color="misc",
     title=ioi_dataset.prompt_type,
 )
-
-# %% # completeness experiments
-
-# firstly remove all groups
-
-
-        for head in [
-            (0, 1),
-            (0, 10),
-            (3, 0),
-        ]:
-            head_indices_to_ablate[head] = [i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]]
-
-        for head in [
-            (4, 11),
-            (2, 2),
-            (2, 9),
-        ]:
-            head_indices_to_ablate[head] = [
-                i
-                for i in range(seq_len)
-                if i
-                not in [
-                    ioi_dataset.sem_tok_idx["S"][0],
-                    ioi_dataset.sem_tok_idx["and"][0],
-                ]
-            ]
-
-        for head in [
-            (5, 8),
-            (5, 9),
-            (5, 5),
-            (6, 9),
-        ]:
-            head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]]
-
-        end_heads = [
-            (7, 3),
-            (7, 9),
-            (8, 6),
-            (8, 10),
-            (9, 6),
-            (9, 9),
-            (10, 0),
-        ]
-
-        if not ablate_calibration:
-            end_heads += [(10, 7), (11, 12)]
