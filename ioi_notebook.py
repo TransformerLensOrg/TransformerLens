@@ -329,7 +329,7 @@ def writing_direction_heatmap(
         raise NotImplementedError()
 
     N = len(prompts)
-    for i in range(len(ioi_dataset)):
+    for i in range(ioi_dataset.N):
         io_tok = model.tokenizer(" " + prompt["IO"])["input_ids"][0]
         s_tok = model.tokenizer(" " + prompt["S"])["input_ids"][0]
         io_dir = model_unembed[io_tok]
