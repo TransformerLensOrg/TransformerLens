@@ -277,7 +277,6 @@ class EasyAblation(EasyExperiment):
         semantic_indices=None,
         mean_by_groups=False,
         groups=None,
-        blue_pen=False,
     ):
         super().__init__(model, config, metric)
         assert "AblationConfig" in str(type(config))
@@ -286,7 +285,6 @@ class EasyAblation(EasyExperiment):
         )  # not implemented (surely not very useful)
         assert not (mean_by_groups and groups is None)
         self.semantic_indices = semantic_indices
-        self.blue_pen = blue_pen  # If true not taking sem indices in non sem means
 
         self.mean_by_groups = mean_by_groups
         self.groups = groups  # list of (list of indices of element of the group)
@@ -348,37 +346,17 @@ class EasyAblation(EasyExperiment):
                 group_mean = torch.mean(z[group], dim=0, keepdim=False).detach().clone()
                 mean[group] = einops.repeat(group_mean, "... -> s ...", s=len(group))
 
-        if self.semantic_indices is None or "hook_attn" in hk_name:
+        if self.semantic_indices is None or "hook_attn" in hk_name or self.mean_by_groups:
             return mean
 
-        if self.blue_pen:
-            # in the semantic ablation case
-            mean = torch.zeros(z.shape[1:], device=z.device)  # seq len, dim
-            for pos in range(z.shape[1]):  # seq len
-                # self.seq_no_sem[i] is the list of the batch posiitons where i in not a semantic index.
-                if z[self.seq_no_sem[pos], pos, :].numel() != 0:
-                    mean[pos] = torch.mean(
-                        z[self.seq_no_sem[pos], pos, :], dim=0, keepdim=False
-                    ).clone()  # we exclude the semntic indices from the mean
-
-            mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
-
         dataset_length = len(self.cfg.mean_dataset)
-        if self.mean_by_groups:
-            for group in self.groups:
-                for semantic_symbol, semantic_indices in self.semantic_indices.items():
-                    mean[group, semantic_indices[group]] = einops.repeat(
-                        torch.mean(z[group, semantic_indices[group]], dim=0, keepdim=False).clone(),
-                        "... -> s ...",
-                        s=len(group),  # we do mean inside groups. Information cannot go accross groups
-                    )
-        else:
-            for semantic_symbol, semantic_indices in self.semantic_indices.items():
-                mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
-                    torch.mean(z[list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(),
-                    "... -> s ...",
-                    s=dataset_length,  # instead of the mean constant accross position, for semantic indices, when do semantic ablations
-                )
+
+        for semantic_symbol, semantic_indices in self.semantic_indices.items():
+            mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
+                torch.mean(z[list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(),
+                "... -> s ...",
+                s=dataset_length,  # instead of the mean constant accross position, for semantic indices, when do semantic ablations
+            )
         return mean
 
     def get_seq_no_sem(self, max_len):  ## Only useful for the blue pen projet

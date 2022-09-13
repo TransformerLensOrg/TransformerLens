@@ -1480,7 +1480,6 @@ def do_circuit_extraction(
         semantic_indices=ioi_dataset.sem_tok_idx,
         mean_by_groups=True,  # TO CHECK CIRCUIT BY GROUPS
         groups=ioi_dataset.groups,
-        blue_pen=False,
     )
     model.reset_hooks()
 
