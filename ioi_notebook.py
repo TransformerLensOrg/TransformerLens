@@ -940,12 +940,7 @@ elif template_type == "BABA":
 else:
     raise NotImplementedError()
 
-<<<<<<< HEAD
-def logit_diff(model, ioi_dataset, all=False, std=False, verbose=False):
-=======
-
 def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
     """Difference between the IO and the S logits at the "to" token"""
     global ioi_dataset
     if "IOIDataset" in str(type(ioi_data)):
@@ -954,13 +949,8 @@ def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
     else:
         text_prompts = ioi_data
 
-<<<<<<< HEAD
-    if verbose:
-        print("LOGIT_DIFF:", IO_logits - S_logits)
-=======
     if target_dataset is None:
         target_dataset = ioi_dataset
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
 
     logits = model(text_prompts).detach()
     L = len(text_prompts)
@@ -977,15 +967,7 @@ def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
         return first_bit, torch.std(IO_logits - S_logits)
     return (IO_logits - S_logits).mean().detach().cpu()
 
-<<<<<<< HEAD
 def score(model, ioi_dataset, all=False, verbose=False):
-=======
-
-#%%
-
-
-def score(model, ioi_dataset, all=False):
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach()
     L = len(text_prompts)
@@ -1179,15 +1161,11 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
         score_data.append((score_metric.baseline, cur_score))
         cur_probs = probs_metric.compute_metric(model)
         probs_data.append((probs_metric.baseline, cur_probs))
-<<<<<<< HEAD
-        s_probs = sprobs_metric.compute_metric(model)
-=======
 
         s_probs = sprobs_metric.compute_metric(
             model
         )  # s probs is like 0.003 for most ablate calibration heads # or is is that low
         print(f"{s_probs=}")
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
         sprobs_data.append((sprobs_metric.baseline, s_probs))
         io_logits = io_logits_metric.compute_metric(model)
         io_logits_data.append((io_logits_metric.baseline, io_logits))
@@ -1220,16 +1198,7 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
         title=f"Change in logit diff when {ablate_calibration=}",
     ).show()
 #%% [markdown]
-<<<<<<< HEAD
 # # Circuit extraction experiments 
-=======
-# # Circuit extraction experiments
-# #%% # Dataset initialisation
-# N=100
-# ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None) #["Two friends were discussing.", "It was a levely day.", "Two friends arrived in a new place.", "The couple arrived."]) # , prompts=saved_prompts) # [{"IO" : "Anthony", "S" : "Aaron", "text" : "Then, Aaron and Anthony went to the grocery store. Aaron gave a ring to Anthony"}, {'IO': 'Lindsey', 'S': 'Joshua', 'text': 'Then, Joshua and Lindsey were working at the grocery store. Joshua decided to give a basketball to Lindsey'}], symmetric=True)
-# ioi_prompts = ioi_dataset.ioi_prompts
-# pprint(ioi_dataset.text_prompts[:5])  # example prompts
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
 #%%
 ld = logit_diff(model, ioi_dataset[:N], all=True)
 
@@ -1496,18 +1465,6 @@ def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the in
         l.append(l1[i] + [l2[i]])
     return l
 
-<<<<<<< HEAD
-def get_extracted_idx(idx_list: list[str], ioi_dataset):
-    no_prompts = len(ioi_dataset.text_prompts)
-    int_idx = [[] for i in range(no_prompts)]
-    for idx_name in idx_list:
-        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])] #torch to python objects
-        int_idx = join_lists(int_idx, int_idx_to_add)
-    return int_idx
-
-def get_heads_circuit(ioi_dataset, calib_head=True, mlp0=False):
-    no_prompts = len(ioi_dataset.text_prompts)
-=======
 
 def get_extracted_idx(idx_list: list[str], no_prompts, ioi_dataset):
     int_idx = [[] for i in range(no_prompts)]
@@ -1518,7 +1475,6 @@ def get_extracted_idx(idx_list: list[str], no_prompts, ioi_dataset):
 
 
 def get_heads_circuit(ioi_dataset, no_prompts, calib_head=True, mlp0=False):
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
     heads_to_keep = {}
     heads_to_keep[(0, 1)] = get_extracted_idx(["S2"], ioi_dataset)
     heads_to_keep[(0, 10)] = get_extracted_idx(
@@ -1553,7 +1509,6 @@ def get_heads_circuit(ioi_dataset, no_prompts, calib_head=True, mlp0=False):
         return heads_to_keep, mlps_to_keep
     return heads_to_keep
 
-<<<<<<< HEAD
 heads_to_keep = get_heads_circuit(ioi_dataset)
 
 mlps_to_keep={}
@@ -1561,72 +1516,34 @@ mlps_to_keep={}
 model.reset_hooks()
 old_ld, old_std = logit_diff(model, ioi_dataset, all=True, std=True)
 old_score = score_metric(model, ioi_dataset)
-=======
-
-K = 1
-no_prompts = N
-heads_to_keep = get_heads_circuit(ioi_dataset, no_prompts, calib_head=True)
-
-# mlps_to_keep[0] = [list(range(ioi_dataset.max_len)) for i in range(no_prompts)]
-
-model.reset_hooks()
-old_ld, old_std = logit_diff(model, ioi_dataset[:no_prompts], all=True, std=True)
-old_score = score_metric(model, ioi_dataset[:no_prompts], k=K)
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
 model.reset_hooks()
 model, _ = do_circuit_extraction(
     mlps_to_remove={},  # we have to keep every mlps
     heads_to_keep=heads_to_keep,
-<<<<<<< HEAD
     mlps_to_keep={},
-=======
-    mlps_to_keep=None,
-    no_prompts=no_prompts,
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
     model=model,
     ioi_dataset=ioi_dataset,
 )
 
-<<<<<<< HEAD
 ldiff, std = logit_diff(model, ioi_dataset, std=True, all=True)
-score = score_metric(model, ioi_dataset)
-=======
-ldiff, std = logit_diff(model, ioi_dataset[:no_prompts], std=True, all=True)
-score = score_metric(model, ioi_dataset[:no_prompts], k=K)
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
+score = score_metric(model, ioi_dataset) # k=K ??
 
 # %%
 print(f"Logit difference = {ldiff.mean().item()} +/- {std}. score={score.item()}")
 print(f"Original logit_diff = {old_ld.mean()} +/- {old_std}. score={old_score}")
 
-<<<<<<< HEAD
 df = pd.DataFrame({"Logit difference":ldiff.cpu(), 
 "Random (for separation)":np.random.random(len(ldiff)),
 "beg":[prompt["text"][:10] for prompt in ioi_prompts], 
 "sentence": [prompt["text"] for prompt in ioi_prompts],
-"#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts],
+"#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts], # (no of tokens)
 "template": ioi_dataset.templates_by_prompt,
 "misc": [ (str(prompt["text"].count("Then")) +str(ioi_dataset.templates_by_prompt[i])) for (i,prompt) in enumerate(ioi_prompts)] })
 #[ prompt["text"].count(prompt["IO"]) for (i,prompt) in enumerate(ioi_prompts)] })
-=======
-df = pd.DataFrame(
-    {
-        "Logit difference": ldiff.cpu(),
-        "Random (for separation)": np.random.random(len(ldiff)),
-        "beg": [prompt["text"][:10] for prompt in ioi_prompts[:no_prompts]],
-        "sentence": [prompt["text"] for prompt in ioi_prompts[:no_prompts]],
-        "#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts[:no_prompts]],
-        "template": ioi_dataset[:no_prompts].templates_by_prompt,
-        "misc": [
-            (str(prompt["text"].count("Then")) + str(ioi_dataset[:no_prompts].templates_by_prompt[i]))
-            for (i, prompt) in enumerate(ioi_prompts[:no_prompts])
-        ],
-    }
-)
-# [ prompt["text"].count(prompt["IO"]) for (i,prompt) in enumerate(ioi_prompts)] })
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
-
 # TODO figure out how to make the global IOI dataset work
+# black please work
+# black...
+# black
 
 px.scatter(
     df,
