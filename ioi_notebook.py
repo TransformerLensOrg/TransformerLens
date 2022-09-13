@@ -1303,65 +1303,9 @@ def get_circuit_replacement_hook(
 
     return circuit_replmt_hook, heads, mlps
 
-
-def do_circuit_extraction(
-    heads_to_remove=None,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
-    mlps_to_remove=None,  # {2: List[List[int]]: dimensions dataset_size * datapoint_length
-    heads_to_keep=None,  # as above for heads
-    mlps_to_keep=None,  # as above for mlps
-    ioi_dataset=None,
-    model=None,
-):
-    """
-    if `ablate` then ablate all `heads` and `mlps`
-        and keep everything else same
-    otherwise, ablate everything else
-        and keep `heads` and `mlps` the same
-    """
-
-    # check if we are either in keep XOR remove move from the args
-    ablation, heads, mlps = get_circuit_replacement_hook(
-        heads_to_remove=heads_to_remove,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
-        mlps_to_remove=mlps_to_remove,  # {2: List[List[int]]: dimensions dataset_size * datapoint_length
-        heads_to_keep=heads_to_keep,  # as above for heads
-        mlps_to_keep=mlps_to_keep,  # as above for mlps
-        ioi_dataset=ioi_dataset,
-        model=model,
-    )
-
-    metric = ExperimentMetric(
-        metric=logit_diff_target, dataset=ioi_dataset.text_prompts, relative_metric=False
-    )  # TODO make dummy metric
-
-    config = AblationConfig(
-        abl_type="custom",
-        abl_fn=ablation,
-        mean_dataset=ioi_dataset.text_prompts,  # TODO nb of prompts useless ?
-        target_module="attn_head",
-        head_circuit="result",
-        cache_means=True,  # circuit extraction *has* to cache means. the get_mean reset the
-        verbose=True,
-    )
-    abl = EasyAblation(
-        model,
-        config,
-        metric,
-        semantic_indices=ioi_dataset.sem_tok_idx,
-        mean_by_groups=True,  # TO CHECK CIRCUIT BY GROUPS
-        groups=ioi_dataset.groups,
-        blue_pen=False,
-    )
-    model.reset_hooks()
-
-    for layer, head in heads.keys():
-        model.add_hook(*abl.get_hook(layer, head))
-    for layer in mlps.keys():
-        model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
-
-    return model, abl
-
-
 # %% # sanity check
+
+from ioi_utils import do_circuit_extraction
 
 if False:
     type(ioi_dataset)
@@ -1457,7 +1401,6 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
 
 
 # %%  Running circuit extraction
-
 
 from ioi_utils import join_lists, CIRCUIT, RELEVANT_TOKENS, get_extracted_idx, get_heads_circuit
 

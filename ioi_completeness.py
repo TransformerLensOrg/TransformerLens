@@ -117,27 +117,8 @@ owb_seqs = [
 ]
 
 #%%
-CIRCUIT = {"name mover": [((9, 6), (9, 9), (10, 0))], 
-    "calibration": [((10, 7), (11, 10))], 
-    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0)],
-    "previous token": [(2, 2), (2, 9), (4, 11)],
-}
 
-RELEVANT_TOKENS = {}
-for head in CIRCUIT["name mover"] + CIRCUIT["calibration"] + CIRCUIT["s2 inhibition"]:
-    RELEVANT_TOKENS[head] = ["end"]
-
-for head in CIRCUIT["induction"]:
-    RELEVANT_TOKENS[head] = ["S2"]
-
-for head in CIRCUIT["duplicate token"]:
-    RELEVANT_TOKENS[head] = ["S2"]
-
-for head in CIRCUIT["previous token"]:
-    RELEVANT_TOKENS[head] = ["S+1", "and"]
-
+from ioi_utils import join_lists, CIRCUIT, RELEVANT_TOKENS, get_extracted_idx, get_heads_circuit
 
 def logit_diff(model, text_prompts):
     """Difference between the IO and the S logits (at the "to" token)"""
@@ -148,5 +129,22 @@ def logit_diff(model, text_prompts):
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
-for circuit_class in circuit_class.keys():
-    
+from ioi_utils import do_circuit_extraction 
+
+for G in [None] + CIRCUIT.keys():
+    if G == "ablation":
+        continue
+
+    # compute METRIC( C \ G ) 
+    excluded_classes = ["calibration"]
+    if G is not None:
+        excluded_classes.append(G)
+    heads_to_keep, mlps_to_keep = get_heads_circuit(ioi_dataset, excluded_classes = excluded_classes)
+    model = do_circuit_extraction(
+        model=model, 
+        heads_to_keep=heads_to_keep, 
+        mlps_to_keep=mlps_to_keep,
+        ioi_dataset=ioi_dataset,
+    )
+
+    ld = logit_diff()
