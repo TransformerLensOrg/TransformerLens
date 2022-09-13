@@ -1430,8 +1430,8 @@ print(
     source_ioi_dataset.text_prompts[:3],
 )
 
-source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(source_ioi_dataset, calib_head=False, mlp0=True)
-target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(target_ioi_dataset, calib_head=False, mlp0=True)
+source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(source_ioi_dataset, excluded_classes=["calibration"], mlp0=True)
+target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(target_ioi_dataset, excluded_classes=["calibration"], mlp0=True)
 
 K = 1
 model.reset_hooks()

@@ -1,4 +1,5 @@
 #%%
+from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
@@ -100,41 +101,10 @@ print_gpu_mem("Gpt2 loaded")
 N = 200
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
-# %% [markdown]
-# ioi_dataset`ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
-
-# %%
-[(k, int(ioi_dataset.word_idx[k][0])) for k in ioi_dataset.word_idx.keys()]
-
-# %%
-[
-    (i, t)
-    for (i, t) in enumerate(
-        show_tokens(ioi_dataset.ioi_prompts[0]["text"], model, return_list=True)
-    )
-]
-
-# %% [markdown]
-# The `ioi_dataset` ca also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
-
-# %%
-flipped = ioi_dataset.gen_flipped_prompts("S2")
-pprint(flipped.ioi_prompts[:5])
-
-# %% [markdown]
-# IOIDataset contains many other useful features, see the definition of the class in the cell `Dataset class` for more info!
-
-# %% [markdown]
-# We also import open web text sentences to compute means that are not correlated with our IOI distribution.
-
 # %%
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
-    "".join(
-        show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[
-            : ioi_dataset.max_len
-        ]
-    )
+    "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
     for i in range(ioi_dataset.N)
 ]
 
@@ -147,47 +117,100 @@ from ioi_circuit_extraction import (
     get_extracted_idx,
     get_heads_circuit,
     do_circuit_extraction,
+    list_diff,
 )
 
 
-def logit_diff(model, text_prompts):
-    """Difference between the IO and the S logits (at the "to" token)"""
+def logit_diff(model, ioi_dataset, all=False, std=False):
+    """
+    Difference between the IO and the S logits at the "to" token
+    """
+    text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach()
+    L = len(text_prompts)
     IO_logits = logits[
         torch.arange(len(text_prompts)),
-        ioi_dataset.word_idx["end"],
-        ioi_dataset.io_tokenIDs,
+        ioi_dataset.word_idx["end"][:L],
+        ioi_dataset.io_tokenIDs[:L],
     ]
     S_logits = logits[
         torch.arange(len(text_prompts)),
-        ioi_dataset.word_idx["end"],
-        ioi_dataset.s_tokenIDs,
+        ioi_dataset.word_idx["end"][:L],
+        ioi_dataset.s_tokenIDs[:L],
     ]
+
+    if all and not std:
+        return IO_logits - S_logits
+    if std:
+        if all:
+            first_bit = IO_logits - S_logits
+        else:
+            first_bit = (IO_logits - S_logits).mean().detach().cpu()
+        return first_bit, torch.std(IO_logits - S_logits).detach().cpu()
     return (IO_logits - S_logits).mean().detach().cpu()
 
 
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
+circuit_perf = pd.DataFrame(
+    columns=["ldiff_broken", "ldiff_cobble", "std_ldiff_broken", "std_ldiff_cobble", "removed_group"]
+)
+
+ldiff_broken_circuit = []
+ldiff_cobble_circuit = []
+std_ldiff_broken_circuit = []
+std_ldiff_cobble_circuit = []
 
 for G in CIRCUIT.keys():
     if G == "ablation":
         continue
 
     # compute METRIC( C \ G )
-    excluded_classes = ["calibration"]
-    if G is not None:
-        excluded_classes.append(G)
-    heads_to_keep, mlps_to_keep = get_heads_circuit(
-        ioi_dataset, excluded_classes=excluded_classes, mlp0=True
-    )  # TODO check the MLP stuff
-    model = do_circuit_extraction(
+    # excluded_classes = ["calibration"]
+    excluded_classes = []
+    excluded_classes.append(G)
+
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=excluded_classes)  # TODO check the MLP stuff
+    model, _ = do_circuit_extraction(
         model=model,
         heads_to_keep=heads_to_keep,
-        mlps_to_keep=mlps_to_keep,
+        mlps_to_remove={},
         ioi_dataset=ioi_dataset,
+    )
+    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True, all=False)
+    # metric(C\G)
+
+    # adding back the whole model
+    excl_class = list(CIRCUIT.keys())
+    excl_class.remove(G)
+    G_heads_to_remove = get_heads_circuit(ioi_dataset, excluded_classes=excl_class)  # TODO check the MLP stuff
+
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_remove=G_heads_to_remove,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+    ldiff_cobble, std_cobble_circuit = logit_diff(model, ioi_dataset, std=True, all=False)
+    # metric(M\G)
+
+    circuit_perf = circuit_perf.append(
+        {
+            "removed_group": G,
+            "ldiff_broken": ldiff_broken_circuit,
+            "ldiff_cobble": ldiff_cobble,
+            "std_ldiff_broken": std_broken_circuit,
+            "std_ldiff_cobble": std_cobble_circuit,
+        },
+        ignore_index=True,
     )
 
     # ld = logit_diff(
+
+# %%
+
+px.scatter(circuit_perf, x="ldiff_broken", y="ldiff_cobble", text="removed_group")
 
 # %%
