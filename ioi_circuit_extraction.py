@@ -12,11 +12,20 @@ import plotly.express as px
 import gc
 import einops
 
-from ioi_dataset import IOIDataset, NOUNS_DICT, NAMES, gen_prompt_uniform, BABA_TEMPLATES, ABBA_TEMPLATES
+from ioi_dataset import (
+    IOIDataset,
+    NOUNS_DICT,
+    NAMES,
+    gen_prompt_uniform,
+    BABA_TEMPLATES,
+    ABBA_TEMPLATES,
+)
+
 
 def list_diff(l1, l2):
     l2_ = [int(x) for x in l2]
     return list(set(l1).difference(set(l2_)))
+
 
 def turn_keep_in_rmv(to_keep, max_len):
     to_rmv = {}
@@ -66,6 +75,7 @@ def process_heads_and_mlps(
     return heads, mlps
     # print(mlps, heads)
 
+
 def get_circuit_replacement_hook(
     heads_to_remove=None,
     mlps_to_remove=None,
@@ -111,15 +121,21 @@ def get_circuit_replacement_hook(
                 # TODO can this i loop be vectorized?
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(dataset_length):  # we use the idx from contex to get the head
-                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[i, heads2[(layer, hook.ctx["idx"])][i], :]
+            for i in range(
+                dataset_length
+            ):  # we use the idx from contex to get the head
+                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
+                    i, heads2[(layer, hook.ctx["idx"])][i], :
+                ]
 
         return z
 
     return circuit_replmt_hook, heads, mlps
- 
 
-def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
+
+def join_lists(
+    l1, l2
+):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
     assert len(l1) == len(l2)
     assert type(l1[0]) == list and type(l2[0]) == int
     l = []
@@ -131,13 +147,16 @@ def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the in
 def get_extracted_idx(idx_list: list[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
+        int_idx_to_add = [
+            int(x) for x in list(ioi_dataset.word_idx[idx_name])
+        ]  # torch to python objects
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
 
-CIRCUIT = {"name mover": [((9, 6), (9, 9), (10, 0))], 
-    "calibration": [((10, 7), (11, 10))], 
+CIRCUIT = {
+    "name mover": [((9, 6), (9, 9), (10, 0))],
+    "calibration": [((10, 7), (11, 10))],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
     "duplicate token": [(0, 1), (0, 10), (3, 0)],
@@ -156,6 +175,7 @@ for head in CIRCUIT["duplicate token"]:
 
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
+
 
 def get_heads_circuit(ioi_dataset, excluded_classes=["calibration"], mlp0=False):
     for excluded_class in excluded_classes:
@@ -225,7 +245,6 @@ def do_circuit_extraction(
         semantic_indices=ioi_dataset.sem_tok_idx,
         mean_by_groups=True,  # TO CHECK CIRCUIT BY GROUPS
         groups=ioi_dataset.groups,
-        blue_pen=False,
     )
     model.reset_hooks()
 
@@ -235,4 +254,3 @@ def do_circuit_extraction(
         model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
     return model, abl
-

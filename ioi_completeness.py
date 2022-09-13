@@ -53,8 +53,21 @@ from IPython import get_ipython
 import matplotlib.pyplot as plt
 import random as rd
 
-from ioi_dataset import IOIDataset, NOUNS_DICT, NAMES, gen_prompt_uniform, BABA_TEMPLATES, ABBA_TEMPLATES
-from ioi_utils import clear_gpu_mem, show_tokens, show_pp, show_attention_patterns, safe_del
+from ioi_dataset import (
+    IOIDataset,
+    NOUNS_DICT,
+    NAMES,
+    gen_prompt_uniform,
+    BABA_TEMPLATES,
+    ABBA_TEMPLATES,
+)
+from ioi_utils import (
+    clear_gpu_mem,
+    show_tokens,
+    show_pp,
+    show_attention_patterns,
+    safe_del,
+)
 
 
 ipython = get_ipython()
@@ -94,7 +107,12 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 [(k, int(ioi_dataset.word_idx[k][0])) for k in ioi_dataset.word_idx.keys()]
 
 # %%
-[(i, t) for (i, t) in enumerate(show_tokens(ioi_dataset.ioi_prompts[0]["text"], model, return_list=True))]
+[
+    (i, t)
+    for (i, t) in enumerate(
+        show_tokens(ioi_dataset.ioi_prompts[0]["text"], model, return_list=True)
+    )
+]
 
 # %% [markdown]
 # The `ioi_dataset` ca also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
@@ -112,20 +130,42 @@ pprint(flipped.ioi_prompts[:5])
 # %%
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
-    "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
+    "".join(
+        show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[
+            : ioi_dataset.max_len
+        ]
+    )
     for i in range(ioi_dataset.N)
 ]
 
 #%%
 
-from ioi_circuit_extraction import join_lists, CIRCUIT, RELEVANT_TOKENS, get_extracted_idx, get_heads_circuit, do_circuit_extraction
+from ioi_circuit_extraction import (
+    join_lists,
+    CIRCUIT,
+    RELEVANT_TOKENS,
+    get_extracted_idx,
+    get_heads_circuit,
+    do_circuit_extraction,
+)
+
 
 def logit_diff(model, text_prompts):
     """Difference between the IO and the S logits (at the "to" token)"""
     logits = model(text_prompts).detach()
-    IO_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], ioi_dataset.io_tokenIDs]
-    S_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], ioi_dataset.s_tokenIDs]
+    IO_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.io_tokenIDs,
+    ]
+    S_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.s_tokenIDs,
+    ]
     return (IO_logits - S_logits).mean().detach().cpu()
+
+
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
@@ -134,16 +174,20 @@ for G in CIRCUIT.keys():
     if G == "ablation":
         continue
 
-    # compute METRIC( C \ G ) 
+    # compute METRIC( C \ G )
     excluded_classes = ["calibration"]
     if G is not None:
         excluded_classes.append(G)
-    heads_to_keep, mlps_to_keep = get_heads_circuit(ioi_dataset, excluded_classes = excluded_classes, mlp0=True) # TODO check the MLP stuff
+    heads_to_keep, mlps_to_keep = get_heads_circuit(
+        ioi_dataset, excluded_classes=excluded_classes, mlp0=True
+    )  # TODO check the MLP stuff
     model = do_circuit_extraction(
-        model=model, 
-        heads_to_keep=heads_to_keep, 
+        model=model,
+        heads_to_keep=heads_to_keep,
         mlps_to_keep=mlps_to_keep,
         ioi_dataset=ioi_dataset,
     )
 
     # ld = logit_diff(
+
+# %%
