@@ -167,7 +167,7 @@ class PosEmbed(nn.Module):
     def forward(self, x, offset=0):
         # Output shape [pos, d_model] - will be broadcast along batch dim
         # Offset accounts for generation
-        return self.W_pos[:, : x.size(-1) + offset].T  # [pos, d_model]
+        return self.W_pos[:, offset : offset + x.size(-1)].T  # [pos, d_model]
 
 
 # LayerNormPre
@@ -305,7 +305,7 @@ class Attention(nn.Module):
         )  # [batch, pos, head_index, d_head]
 
         if cache_entry is not None:
-            CB, CN, CS, CH = cache_entry.past_keys.shape
+            CB, CS, CN, CH = cache_entry.past_keys.shape
             assert CB == B
             assert CN == self.cfg.n_heads
             assert CH == self.cfg.d_head
@@ -347,7 +347,7 @@ class Attention(nn.Module):
     def causal_mask(self, attn_scores, cache_pos_start):
         return torch.where(
             self.mask[
-                : cache_pos_start : cache_pos_start + attn_scores.size(-2),
+                cache_pos_start : cache_pos_start + attn_scores.size(-2),
                 : attn_scores.size(-1),
             ],
             attn_scores,
@@ -666,7 +666,7 @@ class EasyTransformer(HookedRootModule):
         if cache is None:
             pos_start = 0
         else:
-            CB, CN, CS, CH = cache[0].past_keys.shape
+            CB, CS, CN, CH = cache[0].past_keys.shape
             assert CB == B
             assert CN == self.cfg.n_heads
             assert CH == self.cfg.d_head
@@ -720,7 +720,7 @@ class EasyTransformer(HookedRootModule):
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
         num_beams: int = 1,
-        cache: Optional[EasyTransformerKeyValueCache] = None,
+        use_cache: bool = True,
     ):
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -728,12 +728,13 @@ class EasyTransformer(HookedRootModule):
             x (int): Either a batch of tokens ([batch, pos]) or a text string
             max_new_tokens (int): Maximum number of tokens to generate
             stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
+            do_sample (bool): If True, sample from the model's output distribution. Otherwise, use beam or greedy search.
             top_k (int): Number of tokens to sample from. If None, sample from all tokens
             top_p (float): Probability mass to sample from. If 1.0, sample from all tokens
             temperature (float): Temperature for sampling. Higher values will make the model more random
             freq_penalty (float): Frequency penalty for sampling. Higher values will make the model more random
             num_beams (int): Number of beams to use for beam search. If 1, use greedy search
-            cache (EasyTransformerKeyValueCache, *optional*): Cache to use for the model. If None, no cache is used
+            use_cache (bool): If True, create and use cache to speed up generation
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
         """
@@ -742,14 +743,18 @@ class EasyTransformer(HookedRootModule):
             x = self.to_tokens(x)
         assert isinstance(x, torch.Tensor)
         B, S = x.shape
+        if use_cache:
+            cache = EasyTransformerKeyValueCache.init_cache(self.cfg, B)
+        else:
+            cache = None
+        self.eval()
         if not do_sample and num_beams == 1:
             return self.greedy_search(x, max_new_tokens, stop_at_eos, cache)
         elif not do_sample and num_beams > 1:
             raise NotImplementedError("Beam search not implemented yet")
             return beam_search(self, x, max_new_tokens, num_beams, cache)
         else:
-            return sample(
-                self,
+            return self.sample(
                 x,
                 max_new_tokens,
                 stop_at_eos,
@@ -778,11 +783,10 @@ class EasyTransformer(HookedRootModule):
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
         """
         B, S = x.shape
-        self.eval()
         outputs = x
         unfinished_sequences = x.new(x.shape[0]).fill_(1)
         for _ in tqdm(range(max_new_tokens)):
-            logits = self(outputs, cache)
+            logits = self(x, cache)
             next_tokens = torch.argmax(logits[:, -1, :], dim=-1)
             if stop_at_eos:
                 next_tokens = (
@@ -793,6 +797,10 @@ class EasyTransformer(HookedRootModule):
                     (next_tokens != self.tokenizer.eos_token_id).long()
                 )
             outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
+            if cache is not None:
+                x = next_tokens.unsqueeze(-1)
+            else:
+                x = outputs
 
         return outputs
 
@@ -822,7 +830,6 @@ class EasyTransformer(HookedRootModule):
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
         """
         B, S = x.shape
-        self.eval()
         outputs = x
         unfinished_sequences = x.new(x.shape[0]).fill_(1)
 
@@ -830,9 +837,10 @@ class EasyTransformer(HookedRootModule):
             assert temperature > 0, "temperature has to be greater than 0"
             logits = logits / temperature
             if freq_penalty > 0:
-                logits = logits - freq_penalty * torch.bincount(
-                    input_ids, minlength=logits.shape[-1]
-                )
+                for b in range(logits.shape[0]):
+                    logits[b] = logits[b] - freq_penalty * torch.bincount(
+                        input_ids[b], minlength=logits.shape[-1]
+                    )
             if top_k is not None:
                 assert top_k > 0, "top_k has to be greater than 0"
                 top_logits, top_idx = logits.topk(top_k)
@@ -843,14 +851,18 @@ class EasyTransformer(HookedRootModule):
                 sorted_logits, sorted_indices = torch.sort(logits, descending=True)
                 cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
                 sorted_indices_to_remove = cumulative_probs > top_p
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[.., :-1].clone()
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
+                    ..., :-1
+                ].clone()
                 sorted_indices_to_remove[..., 0] = 0
-                indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
+                indices_to_remove = sorted_indices_to_remove.scatter(
+                    1, sorted_indices, sorted_indices_to_remove
+                )
                 logits = logits.masked_fill(indices_to_remove, -float("inf"))
             return torch.distributions.categorical.Categorical(logits=logits).sample()
 
         for _ in tqdm(range(max_new_tokens)):
-            logits = self(outputs, cache)
+            logits = self(x, cache)
             next_tokens = sample_logits(
                 outputs,
                 logits[:, -1, :],
@@ -868,6 +880,10 @@ class EasyTransformer(HookedRootModule):
                     (next_tokens != self.tokenizer.eos_token_id).long()
                 )
             outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
+            if cache is not None:
+                x = next_tokens.unsqueeze(-1)
+            else:
+                x = outputs
 
         return outputs
 

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
-from EasyTransformer import EasyTransformer
+from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
 
 @dataclass
@@ -11,15 +11,15 @@ class EasyTransformerKeyValueCacheEntry:
     past_values: torch.Tensor
 
     @classmethod
-    def init_cache_entry(cls, model: EasyTransformer):
+    def init_cache_entry(cls, cfg: EasyTransformerConfig, batch_size: int = 1):
         return cls(
-            past_keys=torch.empty(1, model.cfg.n_heads, 0, model.cfg.d_head),
-            past_values=torch.empty(1, model.cfg.n_heads, 0, model.cfg.d_head),
+            past_keys=torch.empty(batch_size, 0, cfg.n_heads, cfg.d_head),
+            past_values=torch.empty(batch_size, 0, cfg.n_heads, cfg.d_head),
         )
 
     def append(self, new_keys: torch.Tensor, new_values: torch.Tensor):
-        self.past_keys = torch.cat([self.past_keys, new_keys], dim=2)
-        self.past_values = torch.cat([self.past_values, new_values], dim=2)
+        self.past_keys = torch.cat([self.past_keys, new_keys], dim=1)
+        self.past_values = torch.cat([self.past_values, new_values], dim=1)
         return self.past_keys, self.past_values
 
 
@@ -28,11 +28,11 @@ class EasyTransformerKeyValueCache:
     entries: List[EasyTransformerKeyValueCacheEntry]
 
     @classmethod
-    def init_cache(cls, model: EasyTransformer):
+    def init_cache(cls, cfg: EasyTransformerConfig, batch_size: int = 1):
         return cls(
             entries=[
-                EasyTransformerKeyValueCacheEntry.init_cache_entry(model)
-                for _ in range(model.cfg.n_layers)
+                EasyTransformerKeyValueCacheEntry.init_cache_entry(cfg, batch_size)
+                for _ in range(cfg.n_layers)
             ]
         )
 
