@@ -868,7 +868,7 @@ def writing_direction_heatmap(
 
 attn_vals = writing_direction_heatmap(
     model,
-    ioi_dataset.ioi_dataset.ioi_prompts[:51],
+    ioi_dataset.ioi_prompts[:51],
     return_vals=True,
     mode="attn_out",
     dir_mode="IO - S",
@@ -1356,8 +1356,6 @@ for ablate_calibration in [
         io_logits_data.append((io_logits_metric.baseline, io_logits))
         s_logits = s_logits_metric.compute_metric(model)
         s_logits_data.append((s_logits_metric.baseline, s_logits))
-
-    plotly.io.renderers.default = "notebook"
 
     xs = [ld_data[i][0].item() for i in range(num_templates)]
     ys = [ld_data[i][1].item() for i in range(num_templates)]
