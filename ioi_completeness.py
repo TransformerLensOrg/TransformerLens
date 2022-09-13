@@ -117,6 +117,14 @@ owb_seqs = [
 ]
 
 #%%
+CIRCUIT = {"name mover": [((9, 6), (9, 9), (10, 0))], 
+    "calibration": [((10, 7), (11, 10))], 
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "duplicate token": [(0, 1), (0, 10), (3, 0)],
+    "previous token": [(2, 2), (2, 9), (4, 11)],
+}
+
 RELEVANT_TOKENS = {}
 for head in CIRCUIT["name mover"] + CIRCUIT["calibration"] + CIRCUIT["s2 inhibition"]:
     RELEVANT_TOKENS[head] = ["end"]
@@ -130,4 +138,15 @@ for head in CIRCUIT["duplicate token"]:
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
 
+
+def logit_diff(model, text_prompts):
+    """Difference between the IO and the S logits (at the "to" token)"""
+    logits = model(text_prompts).detach()
+    IO_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], ioi_dataset.io_tokenIDs]
+    S_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], ioi_dataset.s_tokenIDs]
+    return (IO_logits - S_logits).mean().detach().cpu()
+#%% [markdown]
+# TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
+for circuit_class in circuit_class.keys():
+    

@@ -1496,11 +1496,11 @@ for head in CIRCUIT["duplicate token"]:
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
 
-def get_heads_circuit(ioi_dataset, calib_head=True, mlp0=False):
+def get_heads_circuit(ioi_dataset, excluded_classes=["calibration"], mlp0=False):
     heads_to_keep = {}
 
     for circuit_class in CIRCUIT.keys():
-        if not calib_head and circuit_class == "calibration":
+        if circuit_class in excluded_classes:
             continue
         for head in CIRCUIT[circuit_class]:
             heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
