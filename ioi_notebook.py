@@ -930,6 +930,7 @@ scatter_attention_and_contribution(model, 11, 10, ioi_prompts[:500], gpt_model="
 #%% [markdown]
 # # Faithfulness: ablating everything but the circuit
 # For each template, e.g `Then, [A] and [B] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]` we ablate only the indices we claim are important and we retain a positive logit difference between `IO` and `S`, as well the "score" (whether the IO logit remains in the top 10 logit AND IO > S), though have some performace degradation, particularly when we don't ablate the name movers heads.
+
 #%% # run normal ablation experiments
 num_templates = 10  # len(ABBA_TEMPLATES)
 template_type = "BABA"
@@ -1628,12 +1629,7 @@ def do_global_patching(
 
 
 # %%
-<<<<<<< HEAD
 N=100
-=======
-N = 100
-no_prompts = N
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
 target_ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None)
 source_ioi_dataset = target_ioi_dataset.gen_flipped_prompts("IO")
 
@@ -1656,15 +1652,6 @@ target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(
 model.reset_hooks()
 logit_diff(model, ioi_dataset, all=False, std=True)
 
-<<<<<<< HEAD
-# %%
-np.round(5.473965938, 4)
-
-# %%
-print_top_k(model, target_ioi_dataset, K=5)
-=======
-
->>>>>>> c5ccfabd87f5b68e0038fab711b9a6b2fe7dc44b
 # %%
 K = 1
 model.reset_hooks()
