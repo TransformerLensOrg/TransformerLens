@@ -190,10 +190,10 @@ BABA_TEMPLATES = [
 ABBA_TEMPLATES = BABA_TEMPLATES[:]	
 
 for i in range(len(ABBA_TEMPLATES)):	
-    for j in range(len(ABBA_TEMPLATES[i])):	
-        if ABBA_TEMPLATES[i][j] == "B":	
+    for j in range(1, len(ABBA_TEMPLATES[i])-1):	
+        if ABBA_TEMPLATES[i][j-1:j+1] == "[B]":	
             ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "A" + ABBA_TEMPLATES[i][j + 1 :]	
-        elif ABBA_TEMPLATES[i][j] == "A":	
+        elif ABBA_TEMPLATES[i][j-1:j+1] == "[A]":	
             ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "B" + ABBA_TEMPLATES[i][j + 1 :]
 
 VERBS = [" tried", " said", " decided", " wanted", " gave"]
@@ -292,76 +292,6 @@ def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None
             ioi_prompts.append({"text":prompt2, "IO": name_2, "S":  name_1, "T_ID": temp_id})
             nb_gen+=1
     return ioi_prompts
-
-# def gen_prompts(
-#     templates: List[str], names: List[str], nouns_dict, N=100, num_names=2, symmetric=True,
-# ) -> List[Dict[str, str]]:
-#     """_summary_
-
-#     Args:
-#         templates (List[str]): _description_
-#         names (List[str]): _description_
-#         places (List[str]): _description_
-#         objects (List[str]): _description_
-#         N (int, optional): _description_. Defaults to 100.
-#         random (bool, optional): whether to generate prompts with random names instead of by default cartesian product (slower). Defaults to True.
-
-#     Returns:
-#         List[Dict[str, str]]: _description_
-#     """
-#     alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-#     sent_combos_list = []
-
-#     for noun in nouns_dict:
-#         sent_combos_list.append(nouns_dict[noun])
-
-#     for i in range(1, num_names + 1):
-#         sent_combos_list.append(names[(i - 1) * (len(names) // num_names) : i * (len(names) // num_names)])
-
-#     sent_combos = itertools.product(*sent_combos_list)
-#     sent_combos_rand_list = iter_sample_fast(sent_combos, 10_000)
-
-#     if symmetric:
-#         N = N // 2
-
-#     ioi_prompts = []
-#     for i in range(N):
-#         template = templates[np.random.randint(len(templates))]
-
-#         sent_combo = sent_combos_rand_list[np.random.randint(10_000)]
-
-#         replace_dict = {}
-
-#         for i, noun in enumerate(nouns_dict.keys()):
-#             replace_dict[noun] = sent_combo[i]
-
-#         for i in range(num_names):
-#             replace_dict[f"[{alphabet[i]}]"] = sent_combo[len(nouns_dict.keys()) + i]
-
-#         if num_names == 2:
-#             ioi_prompts.append(
-#                 {"IO": replace_dict["[A]"], "S": replace_dict["[B]"], "text": multiple_replace(replace_dict, template)}
-#             )
-
-#             if symmetric:
-#                 A_name = replace_dict["[A]"]
-
-#                 replace_dict["[A]"] = replace_dict["[B]"]
-#                 replace_dict["[B]"] = A_name
-
-#                 ioi_prompts.append(
-#                     {
-#                         "IO": replace_dict["[A]"],
-#                         "S": replace_dict["[B]"],
-#                         "text": multiple_replace(replace_dict, template),
-#                     }
-#                 )
-#         else:
-#             prompt = dict((f"[{alphabet[i]}]", sent_combo[len(nouns_dict.keys()) + i]) for i in range(num_names))
-#             prompt["text"] = multiple_replace(replace_dict, template)
-#             ioi_prompts.append(prompt)
-
-#     return ioi_prompts
 
 
 def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
@@ -509,9 +439,12 @@ def get_word_idxs(prompts, word_list, tokenizer):
         idx = None
         for i, w_tok in enumerate(tokenized_words):
             if word_list[i] in prompt["text"]:
-                idx = toks.index(w_tok)
+                try:
+                    idx = toks.index(w_tok)
+                except:
+                    raise ValueError(toks, w_tok, prompt["text"])
         if idx is None:
-            raise ValueError(f"Word {word_list[i]} Not found {prompt}")
+            raise ValueError(f"Word {word_list} and {i} not found {prompt}")
         idxs.append(idx)
     return torch.tensor(idxs)
 
