@@ -301,7 +301,7 @@ px.imshow(
 #%%
 def writing_direction_heatmap(
     model,
-    prompts,
+    ioi_dataset,
     mode="attn_out",
     return_vals=False,
     dir_mode="IO - S",
@@ -329,7 +329,7 @@ def writing_direction_heatmap(
         raise NotImplementedError()
 
     N = len(prompts)
-    for prompt in tqdm(prompts):
+    for i in range(len(ioi_dataset)):
         io_tok = model.tokenizer(" " + prompt["IO"])["input_ids"][0]
         s_tok = model.tokenizer(" " + prompt["S"])["input_ids"][0]
         io_dir = model_unembed[io_tok]
@@ -494,7 +494,6 @@ scatter_attention_and_contribution(
 # To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated).
 #
 #%%
-# TODO diff circuits with templates experiment
 def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
     cache = {}
     model.cache_some(cache, lambda x: x == "blocks.0.hook_resid_post")
@@ -836,7 +835,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
 show_attention_patterns(model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_dataset.text_prompts[34:35])
 
 # %% [markdown]
-# Here is the (approximative) story of wat's going on here:
+# Here is the (approximative) story of what's going on here:
 # * Early layers heads implement duplicate test: "if the key and queries are the same token, copy the token in the residual stream". This has for effect to write "S is duplicate" on the S2 residual stream.
 # * In parallel, previous tokens heads copy information about the previous token.
 # * At S2, induction heads find a match: S2 match the information written at S+1 about S by a previous token head, so they have a trong attention proba on S+1. However, contrary to plain induction, they don't copy information about S+1, they'll also write information about S in their residual stream. This is another source of information "S is a duplicate token" at S2.
@@ -973,7 +972,7 @@ template_prompts = [
 for ablate_calibration in [
     False,
     True,
-]:  # TODO add comments and also remove the model deletion stuff
+]:
     ld_data = []
     score_data = []
     probs_data = []
@@ -1154,6 +1153,175 @@ for ablate_calibration in [
         text="beg",
         title=f"Change in logit diff when {ablate_calibration=}",
     ).show()
+#%% # let's check that the circuit isn't changing relative to which template we are using
+
+
+N = 10  # number per template
+template_prompts = [
+    gen_prompt_uniform(
+        templates[i : i + 1],
+        NAMES,
+        NOUNS_DICT,
+        N=N,
+        symmetric=False,
+    )
+    for i in range(len(templates))
+]
+
+for template_idx in tqdm(range(num_templates)):
+    prompts = template_prompts[template_idx]
+    ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
+    assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
+    assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
+    for key in ioi_dataset.sem_tok_idx.keys():
+        idx = ioi_dataset.sem_tok_idx[key][0]
+        assert torch.all(ioi_dataset.sem_tok_idx[key] == idx), f"{key} {ioi_dataset.sem_tok_idx[key]}"
+        # check that semantic ablation = normal ablation
+
+    writing_direction_heatmap(
+        model,
+        ioi_dataset.text_prompts,
+        title=f"Writing Direction Heatmap for {template_idx}", 
+    )
+
+    seq_len = ioi_dataset.toks.shape[1]
+    head_indices_to_ablate = {
+        (i % 12, i // 12): list(range(seq_len)) for i in range(12 * 12)
+    } ## list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))]
+
+    mlp_indices_to_ablate = [list(range(seq_len)) for _ in range(model.cfg["n_heads"])]
+
+    for head in [
+        (0, 1),
+        (0, 10),
+        (3, 0),
+    ]:
+        head_indices_to_ablate[head] = [i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]]
+
+    for head in [
+        (4, 11),
+        (2, 2),
+        (2, 9),
+    ]:
+        head_indices_to_ablate[head] = [
+            i
+            for i in range(seq_len)
+            if i
+            not in [
+                ioi_dataset.sem_tok_idx["S"][0],
+                ioi_dataset.sem_tok_idx["and"][0],
+            ]
+        ]
+
+    for head in [
+        (5, 8),
+        (5, 9),
+        (5, 5),
+        (6, 9),
+    ]:
+        head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]]
+
+    end_heads = [
+        (7, 3),
+        (7, 9),
+        (8, 6),
+        (8, 10),
+        (9, 6),
+        (9, 9),
+        (10, 0),
+    ]
+
+    if not ablate_calibration:
+        end_heads += [(10, 7), (11, 12)]
+
+    for head in end_heads:
+        head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["end"][0]]]
+
+    # define the ablation function for ALL parts of the model at once
+    def ablation(z, mean, hook):
+        layer = int(hook.name.split(".")[1])
+        head_idx = hook.ctx["idx"]
+        head = (layer, head_idx)
+
+        if "mlp_out" in hook.name:
+            # ablate the relevant parts
+            for i in range(z.shape[0]):
+                z[i, mlp_indices_to_ablate[layer]] = mean[i, mlp_indices_to_ablate[layer]].to(z.device)
+
+        if "attn.hook_result" in hook.name:  # and (layer, head) not in heads_to_keep:
+            # ablate
+            assert len(z.shape) == 3, z.shape  # we specifically get sent the relevant head
+            assert 12 not in list(z.shape), "Yikes, probably dim kept back is wrong, should be head dim"
+
+            # see above
+            for i in range(z.shape[0]):
+                z[i, head_indices_to_ablate[head]] = mean[i, head_indices_to_ablate[head]].to(z.device)
+
+        return z
+
+    ld_metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=False)
+    score_metric = ExperimentMetric(metric=score, dataset=ioi_dataset, relative_metric=False)
+    ld_metric.set_baseline(model)
+    score_metric.set_baseline(model)
+    probs_metric = ExperimentMetric(metric=io_probs, dataset=ioi_dataset, relative_metric=False)
+    probs_metric.set_baseline(model)
+    sprobs_metric = ExperimentMetric(
+        metric=lambda x, y: io_probs(x, y, mode="S"),
+        dataset=ioi_dataset,
+        relative_metric=False,
+    )
+    sprobs_metric.set_baseline(model)
+    io_logits_metric = ExperimentMetric(
+        metric=lambda x, y: logit_diff(x, y, all=True)[0],
+        dataset=ioi_dataset,
+        relative_metric=False,
+    )
+    io_logits_metric.set_baseline(model)
+    s_logits_metric = ExperimentMetric(
+        metric=lambda x, y: logit_diff(x, y, all=True)[1],
+        dataset=ioi_dataset,
+        relative_metric=False,
+    )
+    s_logits_metric.set_baseline(model)
+
+    config = AblationConfig(
+        abl_type="custom",
+        abl_fn=ablation,
+        mean_dataset=ioi_dataset.text_prompts,
+        target_module="attn_head",
+        head_circuit="result",
+        cache_means=True,
+        verbose=True,
+    )
+
+    abl = EasyAblation(
+        model, config, ld_metric
+    )  # , semantic_indices=ioi_dataset.sem_tok_idx) # semantic indices should not be necessary
+
+    model.reset_hooks()
+    for layer in range(12):
+        for head in range(12):
+            model.add_hook(*abl.get_hook(layer, head))
+        model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
+
+    # compute a bunch of datasets
+    ld = ld_metric.compute_metric(model)
+    ld_data.append((ld_metric.baseline, ld))
+    cur_score = score_metric.compute_metric(model)
+    score_data.append((score_metric.baseline, cur_score))
+    cur_probs = probs_metric.compute_metric(model)
+    probs_data.append((probs_metric.baseline, cur_probs))
+
+    s_probs = sprobs_metric.compute_metric(
+        model
+    )  # s probs is like 0.003 for most ablate calibration heads # or is is that low
+    # print(f"{s_probs=}")
+    sprobs_data.append((sprobs_metric.baseline, s_probs))
+    io_logits = io_logits_metric.compute_metric(model)
+    io_logits_data.append((io_logits_metric.baseline, io_logits))
+    s_logits = s_logits_metric.compute_metric(model)
+    s_logits_data.append((s_logits_metric.baseline, s_logits))
+
 #%% [markdown]
 # <h2>Circuit extraction</h2>
 #%%
