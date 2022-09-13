@@ -311,6 +311,8 @@ class MLP(nn.Module):
             self.act_fn = solu
         elif self.cfg.act_fn == "relu":
             self.act_fn = F.relu
+        elif self.cfg.act_fn == "silu":
+            self.act_fn = F.silu
         elif self.cfg.act_fn == "glu":
             self.act_fn = F.glu
         elif self.cfg.act_fn == "reglu":
