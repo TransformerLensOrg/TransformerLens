@@ -20,7 +20,12 @@ import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
-from easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem  # helper functions
+from easy_transformer.utils import (
+    gelu_new,
+    to_numpy,
+    get_corner,
+    print_gpu_mem,
+)  # helper functions
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.EasyTransformer import (
     EasyTransformer,
@@ -210,7 +215,16 @@ PLACES = [
     "house",
     "station",
 ]
-OBJECTS = ["ring", "kiss", "bone", "basketball", "computer", "necklace", "drink", "snack"]
+OBJECTS = [
+    "ring",
+    "kiss",
+    "bone",
+    "basketball",
+    "computer",
+    "necklace",
+    "drink",
+    "snack",
+]
 
 ANIMALS = [
     "dog",
@@ -288,14 +302,18 @@ def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None
         prompt1 = prompt.replace("[A]", name_1)
         prompt1 = prompt1.replace("[B]", name_2)
         prompt1 = pref + prompt1
-        ioi_prompts.append({"text": prompt1, "IO": name_1, "S": name_2, "T_ID": temp_id})
+        ioi_prompts.append(
+            {"text": prompt1, "IO": name_1, "S": name_2, "T_ID": temp_id}
+        )
         nb_gen += 1
 
         if symmetric and nb_gen < N:
             prompt2 = prompt.replace("[A]", name_2)
             prompt2 = prompt2.replace("[B]", name_1)
             prompt2 = pref + prompt2
-            ioi_prompts.append({"text": prompt2, "IO": name_2, "S": name_1, "T_ID": temp_id})
+            ioi_prompts.append(
+                {"text": prompt2, "IO": name_2, "S": name_1, "T_ID": temp_id}
+            )
             nb_gen += 1
     return ioi_prompts
 
@@ -393,7 +411,14 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
             prompt["text"] = " ".join(t)
             flipped_prompts.append(prompt)
         else:
-            flipped_prompts.append({"A": prompt["A"], "B": prompt["B"], "C": prompt["C"], "text": " ".join(t)})
+            flipped_prompts.append(
+                {
+                    "A": prompt["A"],
+                    "B": prompt["B"],
+                    "C": prompt["C"],
+                    "text": " ".join(t),
+                }
+            )
 
     return flipped_prompts
 
@@ -409,7 +434,13 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
         idxs = []
         for idx_type in idx_types:
             if "2" in idx_type:
-                idx = len(toks) - toks[::-1].index(tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]) - 1
+                idx = (
+                    len(toks)
+                    - toks[::-1].index(
+                        tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]
+                    )
+                    - 1
+                )
             else:
                 idx = toks.index(tokenizer.tokenize(" " + prompt[idx_type])[0])
 
@@ -419,9 +450,16 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
 
 
 def get_end_idxs(prompts, tokenizer, name_tok_len=1):
-    toks = torch.Tensor(tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids).type(torch.int)
+    toks = torch.Tensor(
+        tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids
+    ).type(torch.int)
     end_idxs = torch.tensor(
-        [(toks[i] == 50256).nonzero()[0][0].item() if 50256 in toks[i] else toks.shape[1] for i in range(toks.shape[0])]
+        [
+            (toks[i] == 50256).nonzero()[0][0].item()
+            if 50256 in toks[i]
+            else toks.shape[1]
+            for i in range(toks.shape[0])
+        ]
     )
     end_idxs = end_idxs - 1 - name_tok_len  # YOURE LOOKING AT TO NOT FINAL IO TOKEN
     return end_idxs
@@ -460,7 +498,14 @@ def get_word_idxs(prompts, word_list, tokenizer):
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-ALL_SEM = ["S", "IO", "S2", "end", "S+1", "and"]  # , "verb", "starts", "S-1", "punct"] # Kevin's antic averages
+ALL_SEM = [
+    "S",
+    "IO",
+    "S2",
+    "end",
+    "S+1",
+    "and",
+]  # , "verb", "starts", "S-1", "punct"] # Kevin's antic averages
 
 
 def get_idx_dict(ioi_prompts, tokenizer):
@@ -495,8 +540,18 @@ def get_idx_dict(ioi_prompts, tokenizer):
 
 
 class IOIDataset:
-    def __init__(self, prompt_type: str, N=500, tokenizer=None, prompts=None, symmetric=False, prefixes=None):
-        assert (prompts is not None) or (not symmetric) or (N % 2 == 0), f"{symmetric} {N}"
+    def __init__(
+        self,
+        prompt_type: str,
+        N=500,
+        tokenizer=None,
+        prompts=None,
+        symmetric=False,
+        prefixes=None,
+    ):
+        assert (
+            (prompts is not None) or (not symmetric) or (N % 2 == 0)
+        ), f"{symmetric} {N}"
         assert prompt_type in ["ABBA", "BABA", "mixed"]
         self.prompt_type = prompt_type
         if prompt_type == "ABBA":
@@ -533,20 +588,24 @@ class IOIDataset:
         for id in list(set(all_ids)):
             self.groups.append(np.where(all_ids_ar == id)[0])
 
-        self.text_prompts = [prompt["text"] for prompt in self.ioi_prompts]  # a list of strings
+        self.text_prompts = [
+            prompt["text"] for prompt in self.ioi_prompts
+        ]  # a list of strings
 
         self.templates_by_prompt = []  # for each prompt if it's ABBA or BABA
         for i in range(N):
-            if self.text_prompts[i].index(self.ioi_prompts[i]["IO"]) < self.text_prompts[i].index(
-                self.ioi_prompts[i]["S"]
-            ):
+            if self.text_prompts[i].index(
+                self.ioi_prompts[i]["IO"]
+            ) < self.text_prompts[i].index(self.ioi_prompts[i]["S"]):
                 self.templates_by_prompt.append("ABBA")
             else:
                 self.templates_by_prompt.append("BABA")
 
         # print(self.ioi_prompts, "that's that")
         self.toks = torch.Tensor(
-            self.tokenizer([prompt["text"] for prompt in self.ioi_prompts], padding=True).input_ids
+            self.tokenizer(
+                [prompt["text"] for prompt in self.ioi_prompts], padding=True
+            ).input_ids
         ).type(torch.int)
 
         self.word_idx = get_idx_dict(self.ioi_prompts, self.tokenizer)
@@ -554,10 +613,19 @@ class IOIDataset:
             k: v for k, v in self.word_idx.items() if k in ALL_SEM
         }  # the semantic indices that kevin uses
         self.N = N
-        self.max_len = max([len(self.tokenizer(prompt["text"]).input_ids) for prompt in self.ioi_prompts])
+        self.max_len = max(
+            [
+                len(self.tokenizer(prompt["text"]).input_ids)
+                for prompt in self.ioi_prompts
+            ]
+        )
 
-        self.io_tokenIDs = [self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts]
-        self.s_tokenIDs = [self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts]
+        self.io_tokenIDs = [
+            self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts
+        ]
+        self.s_tokenIDs = [
+            self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts
+        ]
 
     def gen_flipped_prompts(self, flip):
         """Return a IOIDataset where the name to flip has been replaced by a random name."""
@@ -641,7 +709,10 @@ def show_pp(m, xlabel="", ylabel="", title="", bartitle=""):
 
 
 def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
-    assert mode in ["attn", "val"]  # value weighted attention or attn for attention probas
+    assert mode in [
+        "attn",
+        "val",
+    ]  # value weighted attention or attn for attention probas
     assert type(texts) == list
 
     for (layer, head) in heads:
@@ -650,12 +721,16 @@ def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
         good_names = [f"blocks.{layer}.attn.hook_attn"]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
-        model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
+        model.cache_some(
+            cache=cache, names=lambda x: x in good_names
+        )  # shape: batch head_no seq_len seq_len
 
         logits = model(texts)
 
         for i, text in enumerate(texts):
-            assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
+            assert len(list(cache.items())) == 1 + int(mode == "val"), len(
+                list(cache.items())
+            )
             toks = model.tokenizer(text)["input_ids"]
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
@@ -672,8 +747,17 @@ def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
             )
 
             fig.update_layout(
-                xaxis={"side": "top", "ticktext": words, "tickvals": list(range(len(words))), "tickfont": dict(size=8)},
-                yaxis={"ticktext": words, "tickvals": list(range(len(words))), "tickfont": dict(size=8)},
+                xaxis={
+                    "side": "top",
+                    "ticktext": words,
+                    "tickvals": list(range(len(words))),
+                    "tickfont": dict(size=8),
+                },
+                yaxis={
+                    "ticktext": words,
+                    "tickvals": list(range(len(words))),
+                    "tickfont": dict(size=8),
+                },
             )
 
             fig.show()
@@ -711,7 +795,11 @@ ioi_prompts = ioi_dataset.ioi_prompts
 
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
-    "".join(show_tokens(webtext["train"]["text"][i][:2000], return_list=True)[: ioi_dataset.max_len])
+    "".join(
+        show_tokens(webtext["train"]["text"][i][:2000], return_list=True)[
+            : ioi_dataset.max_len
+        ]
+    )
     for i in range(ioi_dataset.N)
 ]
 
@@ -826,16 +914,30 @@ def scatter_attention_and_contribution(
 
         logits = model(prompt["text"])
 
-        for dire, posses, tok_type in [(io_dir, [io_pos], "IO"), (s_dir, [s1_pos, s2_pos], "S")]:
+        for dire, posses, tok_type in [
+            (io_dir, [io_pos], "IO"),
+            (s_dir, [s1_pos, s2_pos], "S"),
+        ]:
             prob = sum(
-                [cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos].detach().cpu() for pos in posses]
+                [
+                    cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos]
+                    .detach()
+                    .cpu()
+                    for pos in posses
+                ]
             )
-            resid = cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :].detach().cpu()
+            resid = (
+                cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :]
+                .detach()
+                .cpu()
+            )
             dot = torch.einsum("a,a->", resid, dire)
             df.append([prob, dot, tok_type, prompt["text"]])
 
     # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"])
+    viz_df = pd.DataFrame(
+        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
+    )
     fig = px.scatter(
         viz_df,
         x=f"Attn Prob on Name",
@@ -854,7 +956,11 @@ scatter_attention_and_contribution(model, 9, 6, ioi_prompts[:500], gpt_model="gp
 scatter_attention_and_contribution(model, 10, 0, ioi_prompts[:500], gpt_model="gpt2")
 #%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
 scatter_attention_and_contribution(
-    model, random.randint(0, 11), random.randint(0, 11), ioi_prompts[:500], gpt_model="gpt2"
+    model,
+    random.randint(0, 11),
+    random.randint(0, 11),
+    ioi_prompts[:500],
+    gpt_model="gpt2",
 )
 #%%
 # TODO diff circuits with templates experiment
@@ -877,7 +983,9 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
         for word in ["IO", "S", "S2"]:
             pred_tokens = [
                 model.tokenizer.decode(token)
-                for token in torch.topk(logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k).indices
+                for token in torch.topk(
+                    logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k
+                ).indices
             ]
             if "S" in word:
                 name = "S"
@@ -895,7 +1003,12 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
                             [
                                 f"({i+1}):{model.tokenizer.decode(token)}"
                                 for i, token in enumerate(
-                                    torch.topk(logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k).indices
+                                    torch.topk(
+                                        logits[
+                                            seq_idx, ioi_dataset.word_idx[word][seq_idx]
+                                        ],
+                                        k,
+                                    ).indices
                                 )
                             ]
                         )
@@ -941,6 +1054,7 @@ elif template_type == "BABA":
 else:
     raise NotImplementedError()
 
+
 def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
     """Difference between the IO and the S logits at the "to" token"""
     global ioi_dataset
@@ -955,8 +1069,16 @@ def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
 
     logits = model(text_prompts).detach()
     L = len(text_prompts)
-    IO_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], target_dataset.io_tokenIDs[:L]]
-    S_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], target_dataset.s_tokenIDs[:L]]
+    IO_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"][:L],
+        target_dataset.io_tokenIDs[:L],
+    ]
+    S_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"][:L],
+        target_dataset.s_tokenIDs[:L],
+    ]
     # print(IO_logits, S_logits)
     if all and not std:
         return IO_logits - S_logits
@@ -967,6 +1089,7 @@ def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
             first_bit = (IO_logits - S_logits).mean().detach().cpu()
         return first_bit, torch.std(IO_logits - S_logits)
     return (IO_logits - S_logits).mean().detach().cpu()
+
 
 def score(model, ioi_dataset, all=False, verbose=False):
     text_prompts = ioi_dataset.text_prompts
@@ -979,15 +1102,27 @@ def score(model, ioi_dataset, all=False, verbose=False):
     assert len(list(end_logits.shape)) == 2, end_logits.shape
     top_10s_standard = torch.topk(end_logits, dim=1, k=10).values[:, -1]
     good_enough = end_logits > top_10s_standard.unsqueeze(-1)
-    selected_logits = good_enough[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs[:L]]
+    selected_logits = good_enough[
+        torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs[:L]
+    ]
 
     # is IO > S ???
-    IO_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], ioi_dataset.io_tokenIDs[:L]]
-    S_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], ioi_dataset.s_tokenIDs[:L]]
+    IO_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"][:L],
+        ioi_dataset.io_tokenIDs[:L],
+    ]
+    S_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"][:L],
+        ioi_dataset.s_tokenIDs[:L],
+    ]
     IO_greater_than_S = (IO_logits - S_logits) > 0
 
     # calculate percentage passing both tests
-    answer = torch.sum((selected_logits & IO_greater_than_S).float()).detach().cpu() / len(text_prompts)
+    answer = torch.sum(
+        (selected_logits & IO_greater_than_S).float()
+    ).detach().cpu() / len(text_prompts)
 
     selected = torch.sum(selected_logits) / len(text_prompts)
     greater = torch.sum(IO_greater_than_S) / len(text_prompts)
@@ -1025,7 +1160,10 @@ template_prompts = [
     for i in range(len(templates))
 ]
 
-for ablate_calibration in [False, True]: # TODO add comments and also remove the model deletion stuff
+for ablate_calibration in [
+    False,
+    True,
+]:  # TODO add comments and also remove the model deletion stuff
     ld_data = []
     score_data = []
     probs_data = []
@@ -1034,19 +1172,25 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
     s_logits_data = []
     for template_idx in tqdm(range(num_templates)):
         prompts = template_prompts[template_idx]
-        ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
+        ioi_dataset = IOIDataset(
+            prompt_type=template_type, N=N, symmetric=False, prompts=prompts
+        )
         assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
         assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
         for key in ioi_dataset.sem_tok_idx.keys():
             idx = ioi_dataset.sem_tok_idx[key][0]
-            assert torch.all(ioi_dataset.sem_tok_idx[key] == idx), f"{key} {ioi_dataset.sem_tok_idx[key]}"
+            assert torch.all(
+                ioi_dataset.sem_tok_idx[key] == idx
+            ), f"{key} {ioi_dataset.sem_tok_idx[key]}"
             # check that semantic ablation = normal ablation
 
-        model.reset_hooks() # TODO find other instances of model deletion
+        model.reset_hooks()  # TODO find other instances of model deletion
 
         seq_len = ioi_dataset.toks.shape[1]
         head_indices_to_ablate = {
-            (i % 12, i // 12): [list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))]
+            (i % 12, i // 12): [
+                list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))
+            ]
             for i in range(12 * 12)
         }
 
@@ -1057,7 +1201,9 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
             (0, 10),
             (3, 0),
         ]:
-            head_indices_to_ablate[head] = [i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]]
+            head_indices_to_ablate[head] = [
+                i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]
+            ]
 
         for head in [
             (4, 11),
@@ -1067,7 +1213,11 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
             head_indices_to_ablate[head] = [
                 i
                 for i in range(seq_len)
-                if i not in [ioi_dataset.sem_tok_idx["S"][0], ioi_dataset.sem_tok_idx["and"][0]]
+                if i
+                not in [
+                    ioi_dataset.sem_tok_idx["S"][0],
+                    ioi_dataset.sem_tok_idx["and"][0],
+                ]
             ]
 
         for head in [
@@ -1076,7 +1226,9 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
             (5, 5),
             (6, 9),
         ]:
-            head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]]
+            head_indices_to_ablate[head] = [
+                i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]
+            ]
 
         end_heads = [
             (7, 3),
@@ -1092,7 +1244,11 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
             end_heads += [(10, 7), (11, 12)]
 
         for head in end_heads:
-            head_indices_to_ablate[head] = [i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["end"][0]]]
+            head_indices_to_ablate[head] = [
+                i
+                for i in range(seq_len)
+                if i not in [ioi_dataset.sem_tok_idx["end"][0]]
+            ]
 
         # define the ablation function for ALL parts of the model at once
         def ablation(z, mean, hook):
@@ -1103,35 +1259,57 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
             if "mlp_out" in hook.name:
                 # ablate the relevant parts
                 for i in range(z.shape[0]):
-                    z[i, mlp_indices_to_ablate[layer]] = mean[i, mlp_indices_to_ablate[layer]].to(z.device)
+                    z[i, mlp_indices_to_ablate[layer]] = mean[
+                        i, mlp_indices_to_ablate[layer]
+                    ].to(z.device)
 
-            if "attn.hook_result" in hook.name:  # and (layer, head) not in heads_to_keep:
+            if (
+                "attn.hook_result" in hook.name
+            ):  # and (layer, head) not in heads_to_keep:
                 # ablate
-                assert len(z.shape) == 3, z.shape  # we specifically get sent the relevant head
-                assert 12 not in list(z.shape), "Yikes, probably dim kept back is wrong, should be head dim"
+                assert (
+                    len(z.shape) == 3
+                ), z.shape  # we specifically get sent the relevant head
+                assert 12 not in list(
+                    z.shape
+                ), "Yikes, probably dim kept back is wrong, should be head dim"
 
                 # see above
                 for i in range(z.shape[0]):
-                    z[i, head_indices_to_ablate[head]] = mean[i, head_indices_to_ablate[head]].to(z.device)
+                    z[i, head_indices_to_ablate[head]] = mean[
+                        i, head_indices_to_ablate[head]
+                    ].to(z.device)
 
             return z
 
-        ld_metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=False)
-        score_metric = ExperimentMetric(metric=score, dataset=ioi_dataset, relative_metric=False)
+        ld_metric = ExperimentMetric(
+            metric=logit_diff, dataset=ioi_dataset, relative_metric=False
+        )
+        score_metric = ExperimentMetric(
+            metric=score, dataset=ioi_dataset, relative_metric=False
+        )
         ld_metric.set_baseline(model)
         score_metric.set_baseline(model)
-        probs_metric = ExperimentMetric(metric=io_probs, dataset=ioi_dataset, relative_metric=False)
+        probs_metric = ExperimentMetric(
+            metric=io_probs, dataset=ioi_dataset, relative_metric=False
+        )
         probs_metric.set_baseline(model)
         sprobs_metric = ExperimentMetric(
-            metric=lambda x, y: io_probs(x, y, mode="S"), dataset=ioi_dataset, relative_metric=False
+            metric=lambda x, y: io_probs(x, y, mode="S"),
+            dataset=ioi_dataset,
+            relative_metric=False,
         )
         sprobs_metric.set_baseline(model)
         io_logits_metric = ExperimentMetric(
-            metric=lambda x, y: logit_diff(x, y, all=True)[0], dataset=ioi_dataset, relative_metric=False
+            metric=lambda x, y: logit_diff(x, y, all=True)[0],
+            dataset=ioi_dataset,
+            relative_metric=False,
         )
         io_logits_metric.set_baseline(model)
         s_logits_metric = ExperimentMetric(
-            metric=lambda x, y: logit_diff(x, y, all=True)[1], dataset=ioi_dataset, relative_metric=False
+            metric=lambda x, y: logit_diff(x, y, all=True)[1],
+            dataset=ioi_dataset,
+            relative_metric=False,
         )
         s_logits_metric.set_baseline(model)
 
@@ -1199,7 +1377,7 @@ for ablate_calibration in [False, True]: # TODO add comments and also remove the
         title=f"Change in logit diff when {ablate_calibration=}",
     ).show()
 #%% [markdown]
-# # Circuit extraction experiments 
+# # Circuit extraction experiments
 #%%
 ld = logit_diff(model, ioi_dataset[:N], all=True)
 
@@ -1303,8 +1481,12 @@ def get_circuit_replacement_hook(
                 # TODO can this i loop be vectorized?
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(dataset_length):  # we use the idx from contex to get the head
-                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[i, heads2[(layer, hook.ctx["idx"])][i], :]
+            for i in range(
+                dataset_length
+            ):  # we use the idx from contex to get the head
+                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
+                    i, heads2[(layer, hook.ctx["idx"])][i], :
+                ]
 
         return z
 
@@ -1384,7 +1566,9 @@ if False:
         ioi_dataset=ioi_dataset[:N],
     )
     ld = logit_diff(model, ioi_dataset[:N])
-    metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset.text_prompts[:N], relative_metric=False)
+    metric = ExperimentMetric(
+        metric=logit_diff, dataset=ioi_dataset.text_prompts[:N], relative_metric=False
+    )
     config = AblationConfig(
         abl_type="mean",
         mean_dataset=ioi_dataset.text_prompts[:N],
@@ -1417,19 +1601,33 @@ def score_metric(model, ioi_dataset, k=1, target_dataset=None, all=False):
     end_logits = logits[
         torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], :
     ]  # batch * sequence length * vocab_size
-    io_logits = end_logits[torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]]
+    io_logits = end_logits[
+        torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]
+    ]
     assert len(list(end_logits.shape)) == 2, end_logits.shape
     top_10s_standard = torch.topk(end_logits, dim=1, k=k).values[:, -1]
     good_enough = end_logits >= top_10s_standard.unsqueeze(-1)
-    selected_logits = good_enough[torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]]
+    selected_logits = good_enough[
+        torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]
+    ]
     # print(torch.argmax(end_logits, dim=-1))
     # is IO > S ???
-    IO_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], target_dataset.io_tokenIDs[:L]]
-    S_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], target_dataset.s_tokenIDs[:L]]
+    IO_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"][:L],
+        target_dataset.io_tokenIDs[:L],
+    ]
+    S_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"][:L],
+        target_dataset.s_tokenIDs[:L],
+    ]
     IO_greater_than_S = (IO_logits - S_logits) > 0
 
     # calculate percentage passing both tests
-    answer = torch.sum((selected_logits & IO_greater_than_S).float()).detach().cpu() / len(text_prompts)
+    answer = torch.sum(
+        (selected_logits & IO_greater_than_S).float()
+    ).detach().cpu() / len(text_prompts)
 
     selected = torch.sum(selected_logits) / len(text_prompts)
     greater = torch.sum(IO_greater_than_S) / len(text_prompts)
@@ -1443,14 +1641,19 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
     end_logits = logits[
         torch.arange(len(ioi_dataset.text_prompts)), ioi_dataset.word_idx["end"], :
     ]  # batch * sequence length * vocab_size
-    probs = np.around(torch.nn.functional.log_softmax(end_logits, dim=-1).cpu().numpy(), 2)
+    probs = np.around(
+        torch.nn.functional.log_softmax(end_logits, dim=-1).cpu().numpy(), 2
+    )
     topk = torch.topk(end_logits, dim=1, k=K).indices
     for x in range(n):
         print("-------------------")
         print(ioi_dataset.text_prompts[x])
         print(
             " ".join(
-                [f"({i+1}):{model.tokenizer.decode(token)} : {probs[x][token]}" for i, token in enumerate(topk[x])]
+                [
+                    f"({i+1}):{model.tokenizer.decode(token)} : {probs[x][token]}"
+                    for i, token in enumerate(topk[x])
+                ]
             )
         )
 
@@ -1458,7 +1661,9 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
 # %%  Running circuit extraction
 
 
-def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
+def join_lists(
+    l1, l2
+):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
     assert len(l1) == len(l2)
     assert type(l1[0]) == list and type(l2[0]) == int
     l = []
@@ -1470,7 +1675,9 @@ def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the in
 def get_extracted_idx(idx_list: list[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
+        int_idx_to_add = [
+            int(x) for x in list(ioi_dataset.word_idx[idx_name])
+        ]  # torch to python objects
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
@@ -1510,9 +1717,10 @@ def get_heads_circuit(ioi_dataset, calib_head=True, mlp0=False):
         return heads_to_keep, mlps_to_keep
     return heads_to_keep
 
+
 heads_to_keep = get_heads_circuit(ioi_dataset)
 
-mlps_to_keep={}
+mlps_to_keep = {}
 
 model.reset_hooks()
 old_ld, old_std = logit_diff(model, ioi_dataset, all=True, std=True)
@@ -1526,22 +1734,31 @@ model, _ = do_circuit_extraction(
 )
 
 ldiff, std = logit_diff(model, ioi_dataset, std=True, all=True)
-score = score_metric(model, ioi_dataset) # k=K ??
+score = score_metric(model, ioi_dataset)  # k=K ??
 
 # %%
 print(f"Logit difference = {ldiff.mean().item()} +/- {std}. score={score.item()}")
 print(f"Original logit_diff = {old_ld.mean()} +/- {old_std}. score={old_score}")
 
-df = pd.DataFrame({"Logit difference":ldiff.cpu(), 
-"Random (for separation)":np.random.random(len(ldiff)),
-"beg":[prompt[:10] for prompt in ioi_dataset.text_prompts], 
-"sentence": [prompt for prompt in ioi_dataset.text_prompts],
-"#tokens before first name": [prompt.count("Then") for prompt in ioi_dataset.text_prompts], # (no of tokens)
-"template": ioi_dataset.templates_by_prompt,
-"misc": [(str(prompt.count("Then")) + str(ioi_dataset.templates_by_prompt[i])) for (i, prompt) in enumerate(ioi_dataset.text_prompts)] })
+df = pd.DataFrame(
+    {
+        "Logit difference": ldiff.cpu(),
+        "Random (for separation)": np.random.random(len(ldiff)),
+        "beg": [prompt[:10] for prompt in ioi_dataset.text_prompts],
+        "sentence": [prompt for prompt in ioi_dataset.text_prompts],
+        "#tokens before first name": [
+            prompt.count("Then") for prompt in ioi_dataset.text_prompts
+        ],  # (no of tokens)
+        "template": ioi_dataset.templates_by_prompt,
+        "misc": [
+            (str(prompt.count("Then")) + str(ioi_dataset.templates_by_prompt[i]))
+            for (i, prompt) in enumerate(ioi_dataset.text_prompts)
+        ],
+    }
+)
 
 px.scatter(
-    df, 
+    df,
     x="Logit difference",
     y="Random (for separation)",
     hover_data=["sentence", "template"],
@@ -1551,7 +1768,9 @@ px.scatter(
 )
 
 # %%
-show_tokens("After   Rebecca and James went to the grocery store. Rebecca gave a basketball to James")
+show_tokens(
+    "After   Rebecca and James went to the grocery store. Rebecca gave a basketball to James"
+)
 
 # %%
 for key in ioi_dataset.word_idx:
@@ -1621,7 +1840,7 @@ def do_global_patching(
 
 
 # %%
-N=100
+N = 100
 target_ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None)
 source_ioi_dataset = target_ioi_dataset.gen_flipped_prompts("IO")
 
@@ -1647,17 +1866,21 @@ logit_diff(model, ioi_dataset, all=False, std=True)
 # %%
 K = 1
 model.reset_hooks()
-old_ld, old_std = logit_diff( # TODO get this to work
+old_ld, old_std = logit_diff(  # TODO get this to work
     model, target_ioi_dataset, ioi_dataset=target_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
-old_score = score_metric(model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K)
+old_score = score_metric(
+    model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
+)
 model.reset_hooks()
 old_ld_source, old_std_source = logit_diff(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
-old_score_source = score_metric(model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K)
+old_score_source = score_metric(
+    model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
+)
 model.reset_hooks()
 model, _ = do_global_patching(
     source_mlps_to_patch=source_mlps_to_keep,
@@ -1676,33 +1899,54 @@ model, _ = do_global_patching(
 ldiff_target, std_ldiff_target = logit_diff(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, std=True, all=True
 )
-score_target = score_metric(model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K)
+score_target = score_metric(
+    model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
+)
 ldiff_source, std_ldiff_source = logit_diff(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, std=True, all=True
 )
-score_source = score_metric(model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K)
+score_source = score_metric(
+    model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
+)
 # %%
-print(f"Original logif_diff TARGET DATASET (TARGET, no patching)=  {old_ld.mean()} +/- {old_std}. Score {old_score}")
+print(
+    f"Original logif_diff TARGET DATASET (TARGET, no patching)=  {old_ld.mean()} +/- {old_std}. Score {old_score}"
+)
 print(
     f"Original logif_diff TARGET DATASET  (SOURCE, no patching)=  {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
 )
-print(f"Logit_diff TARGET (*AFTER* patching)=  {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}")
-print(f"Logit_diff SOURCE (*AFTER* patching)=  {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}")
+print(
+    f"Logit_diff TARGET (*AFTER* patching)=  {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}"
+)
+print(
+    f"Logit_diff SOURCE (*AFTER* patching)=  {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}"
+)
 df = pd.DataFrame(
     {
         "x": ldiff_source.cpu(),
         "y": np.random.random(len(ldiff_source)),
         "beg": [prompt["text"][:10] for prompt in ioi_prompts],
         "sentence": [prompt["text"] for prompt in ioi_prompts],
-        "#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_prompts],
+        "#tokens before first name": [
+            prompt["text"].count("Then") for prompt in ioi_prompts
+        ],
         "template": ioi_dataset.templates_by_prompt,
         "misc": [
-            (str(prompt["text"].count("Then")) + str(ioi_dataset.templates_by_prompt[i]))
+            (
+                str(prompt["text"].count("Then"))
+                + str(ioi_dataset.templates_by_prompt[i])
+            )
             for (i, prompt) in enumerate(ioi_prompts)
         ],
     }
 )
 
 px.scatter(
-    df, x="x", y="y", hover_data=["sentence", "template"], text="beg", color="misc", title=ioi_dataset.prompt_type
+    df,
+    x="x",
+    y="y",
+    hover_data=["sentence", "template"],
+    text="beg",
+    color="misc",
+    title=ioi_dataset.prompt_type,
 )
