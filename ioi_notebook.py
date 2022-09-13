@@ -1,5 +1,5 @@
 #%% [markdown]
-# # Intro
+# <h1><b>Intro</b></h1>
 # This notebook is an implementation of the IOI experiments (some with adjustments from the [presentation](https://docs.google.com/presentation/d/19H__CYCBL5F3M-UaBB-685J-AuJZNsXqIXZR-O4j9J8/edit#slide=id.g14659e4d87a_0_290)).
 # It should be able to be run as by just git cloning this repo (+ some easy installs).
 # Reminder of the circuit:
@@ -773,10 +773,9 @@ def safe_del(a):
 
 
 #%% [markdown]
-# # Copying experiments.
-# CLAIM: heads 9.6, 9.9 and 10.0 write the IO into the residual stream, by attending to that token and copying it.
-# For now we review why we think this is true.
-# Experiments for minimality and completeness will follow in the next section (faithfulness). # TODO is the claim too strong?
+# # <h1><b>Initial evidence</b></h1>
+# ## <h2>Direct attribution</h2>
+# CLAIM: heads 9.6, 9.9 and 10.0 write the IO into the residual stream.
 #%% # plot writing in the IO - S direction
 model_name = "gpt2"
 
@@ -876,6 +875,9 @@ attn_vals = writing_direction_heatmap(
 )
 #%% # check that this attending to IO happens as described
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset.text_prompts[:1])
+#%% [markdown]
+# <h2>Copying</h2>
+# CLAIM: heads 9.6, 9.9 and 10.0 copy the IO into the residual stream, <b>by attending to the IO token</b>
 #%% # the more attention, the more writing
 def scatter_attention_and_contribution(
     model,
@@ -950,9 +952,15 @@ def scatter_attention_and_contribution(
         return viz_df
 
 
-scatter_attention_and_contribution(model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 9, 6, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 10, 0, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(
+    model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+)
+scatter_attention_and_contribution(
+    model, 9, 6, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+)
+scatter_attention_and_contribution(
+    model, 10, 0, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+)
 #%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
 scatter_attention_and_contribution(
     model,
@@ -963,9 +971,7 @@ scatter_attention_and_contribution(
 )
 #%%
 # TODO diff circuits with templates experiment
-#%% [markdown]
-# To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated).
-#%%
+#%% # To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated)
 def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
     cache = {}
     model.cache_some(cache, lambda x: x == "blocks.0.hook_resid_post")
@@ -1037,11 +1043,17 @@ check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_data
 
 # You can see this similarly as open loop / closed loop optimization. It's easier to make a good guess by making previous rough estimate more precise than making a good guess in one shot.
 #%%
-scatter_attention_and_contribution(model, 10, 7, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(
+    model, 10, 7, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+)
+scatter_attention_and_contribution(
+    model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+)
 #%% [markdown]
-# # Faithfulness: ablating everything but the circuit
-# For each template, e.g `Then, [A] and [B] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]` we ablate only the indices we claim are important and we retain a positive logit difference between `IO` and `S`, as well the "score" (whether the IO logit remains in the top 10 logit AND IO > S), though have some performace degradation, particularly when we don't ablate the name movers heads.
+# <h1><b>Faithfulness</b></h1>
+# These experiments isolate the circuit, e.g by ablating all other heads.
+# <h2>Ablations</h2>
+# For each template, e.g `Then, [A] and [B] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]` we ablate only the indices we claim are important and we retain a positive logit difference between `IO` and `S`, as well the "score" (whether the IO logit remains in the top 10 logit AND IO > S), though have some performace degradation, particularly when we don't ablate the calibration heads.
 
 #%% # run normal ablation experiments
 num_templates = 10  # len(ABBA_TEMPLATES)
@@ -1061,7 +1073,7 @@ def logit_diff(model, ioi_data, target_dataset=None, all=False, std=False):
     If `target_dataset` is specified, assume the IO and S tokens are the same as those in `target_dataset`
     """
 
-    global ioi_dataset # probably when we call this function, we want `ioi_data` to be the main dataset. So make it that way.
+    global ioi_dataset  # probably when we call this function, we want `ioi_data` to be the main dataset. So make it that way.
     if "IOIDataset" in str(type(ioi_data)):
         text_prompts = ioi_data.text_prompts
         ioi_dataset = ioi_data
@@ -1244,7 +1256,7 @@ for ablate_calibration in [
             (10, 0),
         ]
 
-        if ablate_calibration:
+        if not ablate_calibration:
             end_heads += [(10, 7), (11, 12)]
 
         for head in end_heads:
@@ -1285,8 +1297,6 @@ for ablate_calibration in [
                     ].to(z.device)
 
             return z
-
-        print(ablation.__code__.co_varnames) # TODO edit out Arthur; after thinking about how all this passing around hook stuff works
 
         ld_metric = ExperimentMetric(
             metric=logit_diff, dataset=ioi_dataset, relative_metric=False
@@ -1381,7 +1391,7 @@ for ablate_calibration in [
         title=f"Change in logit diff when {ablate_calibration=}",
     ).show()
 #%% [markdown]
-# # Circuit extraction experiments
+# <h2>Circuit extraction</h2>
 #%%
 ld = logit_diff(model, ioi_dataset[:N], all=True)
 
@@ -1781,7 +1791,7 @@ for key in ioi_dataset.word_idx:
     print(key, ioi_dataset.word_idx[key][8])
 
 # %% [markdown]
-# # Global patching
+# <h2>Global patching</h2>
 
 # %%
 def do_global_patching(
@@ -1845,12 +1855,20 @@ def do_global_patching(
 
 # %%
 N = 100
-target_ioi_dataset = IOIDataset(prompt_type="mixed", N=N, symmetric=True, prefixes=None) # annoyingly you could swap "target" and "source" as names, and I think the original dataset would be a "source" in some ways (a bit confusing!)
+target_ioi_dataset = IOIDataset(
+    prompt_type="mixed", N=N, symmetric=True, prefixes=None
+)  # annoyingly you could swap "target" and "source" as names, and I think the original dataset would be a "source" in some ways (a bit confusing!)
 source_ioi_dataset = target_ioi_dataset.gen_flipped_prompts("IO")
 
 # %%
-print("The target dataset (has both ABBA and BABA sentences):", target_ioi_dataset.text_prompts[:3])
-print("The source dataset (with IO randomly changed):", source_ioi_dataset.text_prompts[:3])
+print(
+    "The target dataset (has both ABBA and BABA sentences):",
+    target_ioi_dataset.text_prompts[:3],
+)
+print(
+    "The source dataset (with IO randomly changed):",
+    source_ioi_dataset.text_prompts[:3],
+)
 
 source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(
     source_ioi_dataset, calib_head=False, mlp0=True
@@ -1903,7 +1921,7 @@ ldiff_source, std_ldiff_source = logit_diff(
 score_source = score_metric(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
 )
-# %% 
+# %%
 print(
     f"Original logit_diff on TARGET dataset (no patching yet!) = {old_ld.mean()} +/- {old_std}. Score {old_score}"
 )
@@ -1945,5 +1963,3 @@ px.scatter(
     color="misc",
     title=ioi_dataset.prompt_type,
 )
-
-# %%
