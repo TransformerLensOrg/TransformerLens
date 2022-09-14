@@ -1,4 +1,3 @@
-# %%
 from typing import Callable, Union, List, Tuple, Dict, Optional
 import torch
 import torch.nn as nn
@@ -1058,24 +1057,3 @@ class EasyTransformer(HookedRootModule):
 
     def load_bloom_weights(self, bloom):
         raise NotImplementedError
-
-
-# %%
-m = EasyTransformer("gpt2")
-# %%
-y = m.generate(
-    ["The Fund for Alignment Research", "The Alignment Research Center ("],
-    max_new_tokens=5,
-    stop_at_eos=False,
-    do_sample=False,
-    num_beams=3,
-    top_k=50,
-    temperature=100,
-    top_p=0.5,
-    freq_penalty=5,
-    use_cache=False,
-    num_return_sequences=2,
-)
-print(y)
-print(m.tokenizer.batch_decode(y))
-# %%
