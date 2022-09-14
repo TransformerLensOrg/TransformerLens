@@ -1,5 +1,6 @@
 #%%
 from dataclasses import dataclass
+from email.mime import base
 from tqdm import tqdm
 import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
@@ -196,7 +197,37 @@ for G in tqdm(list(CIRCUIT.keys())):
         ldiff_with_v = logit_diff(model, ioi_dataset, std=True)
         results[G]["vs"][v] = ldiff_with_v
         torch.cuda.empty_cache()
+#%%
+#%%
+def compute_baseline(model, ioi_dataset):
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
+    torch.cuda.empty_cache()
 
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+    torch.cuda.empty_cache()
+    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
+    torch.cuda.empty_cache()
+    return ldiff_broken_circuit, std_broken_circuit
+
+
+recalculate_baseline = False
+
+if recalculate_baseline:
+    circuit_baseline = compute_baseline(model, ioi_dataset)
+    model.reset_hooks()
+    baseline = logit_diff(model, ioi_dataset, std=True)
+
+else:
+    circuit_baseline = (3.5512, 1.4690)
+    baseline = (3.5467, 1.6115)
+baseline_ldiff = baseline[0]
+circuit_baseline_diff = circuit_baseline[0]
 #%%
 fig = go.Figure()
 
@@ -216,6 +247,66 @@ for G in list(CIRCUIT.keys()):
             )
         )
 
+fig.add_shape(
+    type="line",
+    xref="x",
+    x0=-2,
+    x1=8,
+    yref="y",
+    y0=baseline_ldiff,
+    y1=baseline_ldiff,
+    line_width=1,
+    line=dict(
+        color="blue",
+        width=4,
+        dash="dashdot",
+    ),
+)
+
+fig.add_trace(
+    go.Scatter(
+        x=["name mover"],
+        y=[3.3],
+        text=["Logit difference of M"],
+        mode="text",
+        textfont=dict(
+            color="blue",
+            size=10,
+            # family="Arail",
+        ),
+    )
+)
+
+fig.add_shape(
+    type="line",
+    xref="x",
+    x0=-2,
+    x1=8,
+    yref="y",
+    y0=circuit_baseline_diff,
+    y1=circuit_baseline_diff,
+    line_width=1,
+    line=dict(
+        color="black",
+        width=4,
+        dash="dashdot",
+    ),
+)
+
+fig.add_trace(
+    go.Scatter(
+        x=["name mover"],
+        y=[3.8],
+        text=["Logit difference of C"],
+        mode="text",
+        textfont=dict(
+            color="black",
+            size=10,
+            # family="Arail",
+        ),
+    )
+)
+
 fig.update_layout(showlegend=False)
 
 fig.update_layout(
@@ -227,20 +318,5 @@ fig.update_layout(
 fig.show()
 
 #%%
-def compute_baseline(model, ioi_dataset):
-    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
-    torch.cuda.empty_cache()
-
-    model.reset_hooks()
-    model, _ = do_circuit_extraction(
-        model=model,
-        heads_to_keep=heads_to_keep,
-        mlps_to_remove={},
-        ioi_dataset=ioi_dataset,
-    )
-    torch.cuda.empty_cache()
-    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
-    torch.cuda.empty_cache()
-
-
-baseline = compute_baseline(model, ioi_dataset)
+model.reset_hooks()
+ldiff_baseline = logit_diff(model, ioi_dataset, std=True)
