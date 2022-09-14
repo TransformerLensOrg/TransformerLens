@@ -185,3 +185,34 @@ def baseline():
 
 
 baseline()
+#%%
+# len(relevant_stuff)
+eyes = [8, 23, 66, 95, 5, 21, 49, 11, 3, 41, 26, 29, 35, 77, 99, 91, 41, 17, 47, 47]
+for eye in eyes:
+    print(relevant_stuff[eye])
+
+#%%
+NEW_CIRCUIT = {
+    # old name mover
+    (9, 6): ["S2", "end"],
+    (9, 9): ["S+1", "end"],
+    (10, 0): ["end"],
+    # old s2 inhibition
+    (7, 3): ["S2", "end"],
+    (7, 9): ["S+1", "end"],
+    (10, 7): [],
+    (11, 10): [],
+    # old induction
+    (5, 5): ["end"],
+    (5, 8): ["S"],
+    (5, 9): [],
+    (6, 9): [],
+    # old duplicate
+    (0, 1): ["IO"],
+    (0, 10): ["end"],
+    (3, 0): [],
+    # old previous token
+    (2, 2): [],
+    (2, 9): ["S", "end"],
+    (4, 11): ["S2"],
+}
