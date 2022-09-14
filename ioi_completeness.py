@@ -104,7 +104,11 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 # %%
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
-    "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
+    "".join(
+        show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[
+            : ioi_dataset.max_len
+        ]
+    )
     for i in range(ioi_dataset.N)
 ]
 
@@ -156,7 +160,7 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 circuit_perf = []
 
 for G in ["none"] + list(CIRCUIT.keys()):
-    if G == "ablation":
+    if G == "ablation" or G == "calibration":
         continue
 
     # compute METRIC( C \ G )
@@ -165,14 +169,21 @@ for G in ["none"] + list(CIRCUIT.keys()):
     if G != "none":
         excluded_classes.append(G)
 
-    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=excluded_classes)  # TODO check the MLP stuff
+    heads_to_keep = get_heads_circuit(
+        ioi_dataset, excluded_classes=excluded_classes
+    )  # TODO check the MLP stuff
+    torch.cuda.empty_cache()
     model, _ = do_circuit_extraction(
         model=model,
         heads_to_keep=heads_to_keep,
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
     )
-    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True, all=False)
+    torch.cuda.empty_cache()
+    ldiff_broken_circuit, std_broken_circuit = logit_diff(
+        model, ioi_dataset, std=True, all=False
+    )
+    torch.cuda.empty_cache()
     # metric(C\G)
 
     # adding back the whole model
@@ -180,8 +191,10 @@ for G in ["none"] + list(CIRCUIT.keys()):
     if G != "none":
         excl_class.remove(G)
 
-    G_heads_to_remove = get_heads_circuit(ioi_dataset, excluded_classes=excl_class)  # TODO check the MLP stuff
-
+    G_heads_to_remove = get_heads_circuit(
+        ioi_dataset, excluded_classes=excl_class
+    )  # TODO check the MLP stuff
+    torch.cuda.empty_cache()
     model.reset_hooks()
     model, _ = do_circuit_extraction(
         model=model,
@@ -189,7 +202,11 @@ for G in ["none"] + list(CIRCUIT.keys()):
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
     )
-    ldiff_cobble, std_cobble_circuit = logit_diff(model, ioi_dataset, std=True, all=False)
+    torch.cuda.empty_cache()
+    ldiff_cobble, std_cobble_circuit = logit_diff(
+        model, ioi_dataset, std=True, all=False
+    )
+    torch.cuda.empty_cache()
     # metric(M\G)
 
     circuit_perf.append(
@@ -232,4 +249,93 @@ fig.update_layout(
 )
 
 fig.show()
+# %% # do the same as above, except with individual heads
+head_circuit_perf = []
+all_relevant_heads = []
+for circuit_class in CIRCUIT.keys():
+    for head in CIRCUIT[circuit_class]:
+        all_relevant_heads.append(head)
+
+for head in tqdm(all_relevant_heads):
+    # compute METRIC( C \ G )
+    excluded_classes = []
+    if G != "none":
+        excluded_classes.append(G)
+
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
+    head_indices = heads_to_keep.pop(head)
+    torch.cuda.empty_cache()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+    torch.cuda.empty_cache()
+    ldiff_broken_circuit, std_broken_circuit = logit_diff(
+        model, ioi_dataset, std=True, all=False
+    )
+    torch.cuda.empty_cache()
+    # metric(C\G)
+
+    # adding back the whole model
+    excl_class = list(CIRCUIT.keys())
+
+    G_heads_to_remove = get_heads_circuit(
+        ioi_dataset, excluded_classes=excl_class
+    )  # TODO check the MLP stuff
+    assert head not in G_heads_to_remove.keys()
+    G_heads_to_remove[head] = head_indices
+    torch.cuda.empty_cache()
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_remove=G_heads_to_remove,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+    torch.cuda.empty_cache()
+    ldiff_cobble, std_cobble_circuit = logit_diff(
+        model, ioi_dataset, std=True, all=False
+    )
+    torch.cuda.empty_cache()
+    # metric(M\G)
+
+    head_circuit_perf.append(
+        {
+            "head": str(head),
+            "ldiff_broken": ldiff_broken_circuit,
+            "ldiff_cobble": ldiff_cobble,
+            "std_ldiff_broken": std_broken_circuit,
+            "std_ldiff_cobble": std_cobble_circuit,
+        }
+    )
+
+head_circuit_perf = pd.DataFrame(circuit_perf)
+# ld = logit_diff(
+
 # %%
+
+fig = px.scatter(
+    head_circuit_perf,
+    x="ldiff_broken",
+    y="ldiff_cobble",
+    text="head",
+    # error_x="std_ldiff_broken", # remember, these errors are pretty huge...
+    # error_y="std_ldiff_cobble",
+).show()
+
+# fig.update_layout(
+#     shapes=[
+#         # adds line at y=5
+#         dict(
+#             type="line",
+#             xref="x",
+#             x0=1,
+#             x1=7,
+#             yref="y",
+#             y0=1,
+#             y1=7,
+#         )
+#     ]
+# )
