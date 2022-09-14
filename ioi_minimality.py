@@ -251,7 +251,7 @@ fig.add_trace(
 )
 
 fig.update_layout(
-    title="Effect of adding a head to the circuit where all small groups are ablated",
+    title="Effect of adding a head to the circuit where are all ablated",
     xaxis_title="Head",
     yaxis_title="Logit difference",
 )
