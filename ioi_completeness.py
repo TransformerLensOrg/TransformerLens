@@ -157,9 +157,20 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
+circuit_perf_scatter = []
 circuit_perf = []
 
-for G in list(CIRCUIT.keys()) + ["none"]:
+
+def basis_change(x, y):
+    """
+    Change the basis (1, 0) and (0, 1) to the basis
+    1/sqrt(2) (1, 1) and 1/sqrt(2) (-1, 1)
+    """
+
+    return (x + y) / np.sqrt(2), (y - x) / np.sqrt(2)
+
+
+for G in tqdm(list(CIRCUIT.keys()) + ["none"]):
     if G == "ablation":
         continue
     print_gpu_mem(G)
@@ -210,8 +221,11 @@ for G in list(CIRCUIT.keys()) + ["none"]:
 
     # metric(M\G)
 
+    on_diagonals = []
+    off_diagonals = []
+
     for i in range(len(ldiff_cobble)):
-        circuit_perf.append(
+        circuit_perf_scatter.append(
             {
                 "removed_group": G,
                 "ldiff_broken": ldiff_broken_circuit[i],
@@ -220,16 +234,40 @@ for G in list(CIRCUIT.keys()) + ["none"]:
                 "template": ioi_dataset.templates_by_prompt[i],
             }
         )
+
+        x, y = basis_change(
+            circuit_perf_scatter[-1]["ldiff_broken"],
+            circuit_perf_scatter[-1]["ldiff_cobble"],
+        )
+        circuit_perf_scatter[-1]["on_diagonal"] = x
+        circuit_perf_scatter[-1]["off_diagonal"] = y
+        on_diagonals.append(x)
+        off_diagonals.append(y)
+
+    circuit_perf.append(
+        {
+            "removed_group": G,
+            "ldiff_broken": ldiff_broken_circuit.detach().mean(),
+            "ldiff_cobble": ldiff_cobble.detach().mean(),
+            "std_ldiff_broken": std_broken_circuit,
+            "std_ldiff_cobble": std_cobble_circuit,
+            "on_diagonal": np.mean(on_diagonals),
+            "off_diagonal": np.mean(off_diagonals),
+            "std_on_diagonal": np.std(on_diagonals),
+            "std_off_diagonal": np.std(off_diagonals),
+        }
+    )
 #%%
 fig = px.scatter(
     circuit_perf,
-    x="ldiff_broken",
-    y="ldiff_cobble",
-    color="template",
-    hover_data=["sentence", "template"],
+    x="on_diagonal",
+    y="off_diagonal",
+    color="removed_group",
+    text="removed_group",
+    # hover_data=["sentence", "template"],
     opacity=0.7,
-    # error_x="std_broken_circuit",
-    # error_y="std_cobble_circuit",
+    error_x="std_on_diagonal",
+    error_y="std_off_diagonal",
 )
 
 fig.update_layout(
@@ -238,13 +276,28 @@ fig.update_layout(
         dict(
             type="line",
             xref="x",
-            x0=1,
+            x0=0,
             x1=7,
             yref="y",
-            y0=1,
-            y1=7,
+            y0=0,
+            y1=0,
         )
     ]
+)
+
+fig.show()
+# %%
+# TODO do the experiment with orthogonally turning things
+
+fig = px.scatter(
+    circuit_perf,
+    x="on_diagonal",
+    y="off_diagonal",
+    color="removed_group",
+    hover_data=["sentence", "template"],
+    opacity=0.7,
+    error_x="std_broken_circuit",
+    error_y="std_cobble_circuit",
 )
 
 fig.show()
