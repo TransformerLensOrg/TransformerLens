@@ -153,34 +153,44 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 #%%
 
 results = {}
+vertices = []
 
-for G in tqdm(list(CIRCUIT.keys())):
-    print_gpu_mem(G)
+small_effect_classes = ["s2 inhibition", "induction", "duplicate token"]
 
-    # compute METRIC(C \ W)
-    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[G])
-    torch.cuda.empty_cache()
+for circuit_class in list(CIRCUIT.keys()):
+    if circuit_class not in small_effect_classes:
+        continue
+    for circuit in CIRCUIT[circuit_class]:
+        vertices.append(circuit)
 
-    model.reset_hooks()
-    model, _ = do_circuit_extraction(
-        model=model,
-        heads_to_keep=heads_to_keep,
-        mlps_to_remove={},
-        ioi_dataset=ioi_dataset,
-    )
-    torch.cuda.empty_cache()
-    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
-    torch.cuda.empty_cache()
+print_gpu_mem("About to start experiment")
 
-    results[G] = {
-        "ldiff_broken_circuit": ldiff_broken_circuit,
-        "std_broken_circuit": std_broken_circuit,
-    }
-    results[G]["vs"] = {}
+# compute METRIC(C \ W)
+heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=small_effect_classes)
+torch.cuda.empty_cache()
 
-    # METRIC((C \ W) \cup \{ v \})
+model.reset_hooks()
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_keep=heads_to_keep,
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+torch.cuda.empty_cache()
+ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
+torch.cuda.empty_cache()
 
-    for v in tqdm(list(CIRCUIT[G])):
+results = {
+    "ldiff_broken_circuit": ldiff_broken_circuit,
+    "std_broken_circuit": std_broken_circuit,
+}
+results["vs"] = {}
+
+# METRIC((C \ W) \cup \{ v \})
+for circuit_class in list(CIRCUIT.keys()):
+    if circuit_class not in small_effect_classes:
+        continue
+    for v in tqdm(list(CIRCUIT[circuit_class])):
         new_heads_to_keep = heads_to_keep.copy()
         v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
         assert v not in new_heads_to_keep.keys()
@@ -195,9 +205,8 @@ for G in tqdm(list(CIRCUIT.keys())):
         )
         torch.cuda.empty_cache()
         ldiff_with_v = logit_diff(model, ioi_dataset, std=True)
-        results[G]["vs"][v] = ldiff_with_v
+        results["vs"][v] = ldiff_with_v
         torch.cuda.empty_cache()
-#%%
 #%%
 def compute_baseline(model, ioi_dataset):
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
@@ -228,6 +237,27 @@ else:
     baseline = (3.5467, 1.6115)
 baseline_ldiff = baseline[0]
 circuit_baseline_diff = circuit_baseline[0]
+#%%
+fig = go.Figure()
+
+fig.add_trace(
+    go.Bar(
+        x=[str(s) for s in list(results["vs"].keys())],
+        y=[
+            results["vs"][v][0] - results["ldiff_broken_circuit"]
+            for v in results["vs"].keys()
+        ],
+        base=[results["ldiff_broken_circuit"] for _ in results["vs"].keys()],
+    )
+)
+
+fig.update_layout(
+    title="Effect of adding a head to the circuit where all small groups are ablated",
+    xaxis_title="Head",
+    yaxis_title="Logit difference",
+)
+
+fig.show()
 #%%
 fig = go.Figure()
 
@@ -272,7 +302,6 @@ fig.add_trace(
         textfont=dict(
             color="blue",
             size=10,
-            # family="Arail",
         ),
     )
 )
@@ -302,7 +331,6 @@ fig.add_trace(
         textfont=dict(
             color="black",
             size=10,
-            # family="Arail",
         ),
     )
 )
