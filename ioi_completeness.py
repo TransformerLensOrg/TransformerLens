@@ -143,7 +143,7 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
         return IO_logits - S_logits
     if std:
         if all:
-            first_bit = IO_logits - S_logits
+            first_bit = (IO_logits - S_logits).detach().cpu()
         else:
             first_bit = (IO_logits - S_logits).mean().detach().cpu()
         return first_bit, torch.std(IO_logits - S_logits).detach().cpu()
@@ -155,31 +155,30 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 #%%
 circuit_perf = []
 
-for G in ["none"] + list(CIRCUIT.keys()):
+for G in list(CIRCUIT.keys()) + ["none"]:
     if G == "ablation":
         continue
-
+    print_gpu_mem(G)
     # compute METRIC( C \ G )
     # excluded_classes = ["calibration"]
     excluded_classes = []
     if G != "none":
         excluded_classes.append(G)
-
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=excluded_classes)  # TODO check the MLP stuff
+    
     model, _ = do_circuit_extraction(
         model=model,
         heads_to_keep=heads_to_keep,
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
     )
-    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True, all=False)
+    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True, all=True)
     # metric(C\G)
-
     # adding back the whole model
+
     excl_class = list(CIRCUIT.keys())
     if G != "none":
         excl_class.remove(G)
-
     G_heads_to_remove = get_heads_circuit(ioi_dataset, excluded_classes=excl_class)  # TODO check the MLP stuff
 
     model.reset_hooks()
@@ -189,18 +188,61 @@ for G in ["none"] + list(CIRCUIT.keys()):
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
     )
-    ldiff_cobble, std_cobble_circuit = logit_diff(model, ioi_dataset, std=True, all=False)
+    ldiff_cobble, std_cobble_circuit = logit_diff(model, ioi_dataset, std=True, all=True)
     # metric(M\G)
 
-    circuit_perf.append(
-        {
-            "removed_group": G,
-            "ldiff_broken": ldiff_broken_circuit,
-            "ldiff_cobble": ldiff_cobble,
-            "std_ldiff_broken": std_broken_circuit,
-            "std_ldiff_cobble": std_cobble_circuit,
-        }
+    for i in range(len(ldiff_cobble)):
+        circuit_perf.append(
+            {
+                "removed_group": G,
+                "ldiff_broken": ldiff_broken_circuit[i],
+                "ldiff_cobble": ldiff_cobble[i],
+                "sentence": ioi_dataset.text_prompts[i],
+                "template": ioi_dataset.templates_by_prompt[i],
+            }
+        )
+
+
+#%% gready circuit breaking
+def get_heads_toks(heads_idx):
+    heads = {}
+    for h in heads_to_keep:
+        heads[h]=RELEVANT_TOKENS[h]
+    return heads
+
+circuit_perf_greedy = []
+HEADS_PER_STEP = 5
+NB_SETS = 10
+NB_ITER = 10
+
+for i in range(NB_SETS):
+    heads_to_keep = list(RELEVANT_TOKENS.keys())
+    to_test = rd.sample(heads, HEADS_PER_STEP)
+
+
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_remove=G_heads_to_remove,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
     )
+    baseline = logit_diff(model, ioi_dataset, std=False, all=False)
+
+    for head in to_test: #check wich heads in to_test causes the biggest drop
+        heads = {}
+        for h in heads_to_keep:
+            heads[h]=RELEVANT_TOKENS[h]
+
+        logit_diff_before = 
+    
+
+
+    for i in range(NB_ITER):
+        for head in CIRCUIT[circuit_class]:
+            heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
+
+        
+
 
 circuit_perf = pd.DataFrame(circuit_perf)
 # ld = logit_diff(
@@ -211,9 +253,9 @@ fig = px.scatter(
     circuit_perf,
     x="ldiff_broken",
     y="ldiff_cobble",
-    text="removed_group",
-    error_x="std_ldiff_broken",
-    error_y="std_ldiff_cobble",
+    color="template",
+    hover_data=["sentence", "template"],
+    opacity=0.7,
 )
 
 fig.update_layout(
@@ -222,11 +264,11 @@ fig.update_layout(
         dict(
             type="line",
             xref="x",
-            x0=1,
-            x1=7,
+            x0=-2,
+            x1=12,
             yref="y",
-            y0=1,
-            y1=7,
+            y0=-2,
+            y1=12,
         )
     ]
 )
