@@ -162,7 +162,7 @@ if True:
             continue
         print_gpu_mem(G)
         # compute METRIC( C \ G )
-        # excluded_classes = ["calibration"]
+        # excluded_classes = ["negative"]
         excluded_classes = []
         if G != "none":
             excluded_classes.append(G)
@@ -387,9 +387,9 @@ def greed_search_max_brok_cob_diff(get_cob_brok_from_nodes):
     NB_ITER = 10
     all_sets = []
 
-    calib_in_G = False
+    neg_head_in_G = False
 
-    if calib_in_G:
+    if neg_head_in_G:
         all_node_baseline = get_cob_brok_from_nodes([((10, 7), "end"), ((11, 10), "end")])  # |metric(C) - metric(M)|
     else:
         all_node_baseline = get_cob_brok_from_nodes([])
@@ -398,7 +398,7 @@ def greed_search_max_brok_cob_diff(get_cob_brok_from_nodes):
 
         C_minus_G = ALL_NODES.copy()
         G = []
-        if calib_in_G:
+        if neg_head_in_G:
             C_minus_G.remove(((10, 7), "end"))
             C_minus_G.remove(((11, 10), "end"))
             G = [((10, 7), "end"), ((11, 10), "end")]
