@@ -277,27 +277,12 @@ fig.update_layout(
             type="line",
             xref="x",
             x0=0,
-            x1=7,
+            x1=12,
             yref="y",
             y0=0,
             y1=0,
         )
     ]
-)
-
-fig.show()
-# %%
-# TODO do the experiment with orthogonally turning things
-
-fig = px.scatter(
-    circuit_perf,
-    x="on_diagonal",
-    y="off_diagonal",
-    color="removed_group",
-    hover_data=["sentence", "template"],
-    opacity=0.7,
-    error_x="std_broken_circuit",
-    error_y="std_cobble_circuit",
 )
 
 fig.show()
