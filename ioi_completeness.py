@@ -539,6 +539,8 @@ fig = px.scatter(
     color="removed_set_id",
     hover_data=["sentence", "template"],
     opacity=0.7,
+    error_x="std_on_diagonal",
+    error_y="std_off_diagonal",
 )
 
 min_xy = min(df_circuit_perf_greedy.ldiff_broken.min(), df_circuit_perf_greedy.ldiff_cobble.min()) - 0.1

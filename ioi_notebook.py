@@ -23,7 +23,6 @@
 # # %%
 from tqdm import tqdm
 import pandas as pd
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
@@ -345,7 +344,7 @@ def writing_direction_heatmap(
 
         model.reset_hooks()
         cache = {}
-        model.cache_all(cache) # TODO maybe speed up by only caching relevant things
+        model.cache_all(cache)  # TODO maybe speed up by only caching relevant things
 
         logits = model(ioi_dataset.text_prompts[i])
 
@@ -553,7 +552,7 @@ print(" ---  Random heads for control ---  ")
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
-#%% [markdown] 
+#%% [markdown]
 # For calibration heads, we observe a reverse trend to name movers, the more is pays attention to a name, the more it write in its *oposite* direction. Why is that?
 # You need to remember the training objective of the transformer: it has to predict accurate probability distribution over all the next tokens.
 # If previously it was able to recover the IO, in the final layer it has to callibrate the probability of this particular token, it cannot go all in "THE NEXT TOKEN IS BOB" with 100% proba.
@@ -1183,7 +1182,7 @@ for template_idx in tqdm(range(num_templates)):
     vals = writing_direction_heatmap(
         model,
         ioi_dataset,
-        title=f"Writing Direction Heatmap for {template_idx}", 
+        title=f"Writing Direction Heatmap for {template_idx}",
         return_vals=True,
     )
     three_d[template_idx] = vals
@@ -1198,9 +1197,16 @@ ld = logit_diff_target(model, ioi_dataset[:N], all=True)
 
 
 from ioi_circuit_extraction import turn_keep_into_rmv, list_diff
+
 # %% # sanity check
 
-from ioi_circuit_extraction import process_heads_and_mlps, get_circuit_replacement_hook, do_circuit_extraction, turn_keep_into_rmv
+from ioi_circuit_extraction import (
+    process_heads_and_mlps,
+    get_circuit_replacement_hook,
+    do_circuit_extraction,
+    turn_keep_into_rmv,
+)
+
 if False:
     type(ioi_dataset)
     old_ld = logit_diff_target(model, ioi_dataset[:N])
@@ -1430,8 +1436,12 @@ print(
     source_ioi_dataset.text_prompts[:3],
 )
 
-source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(source_ioi_dataset, excluded_classes=["calibration"], mlp0=True)
-target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(target_ioi_dataset, excluded_classes=["calibration"], mlp0=True)
+source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(
+    source_ioi_dataset, excluded_classes=["calibration"], mlp0=True
+)
+target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(
+    target_ioi_dataset, excluded_classes=["calibration"], mlp0=True
+)
 
 K = 1
 model.reset_hooks()
