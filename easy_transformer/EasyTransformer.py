@@ -720,6 +720,7 @@ class EasyTransformer(HookedRootModule):
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
         num_beams: int = 1,
+        num_return_sequences: int = 1,
         use_cache: bool = True,
     ):
         """
@@ -734,6 +735,7 @@ class EasyTransformer(HookedRootModule):
             temperature (float): Temperature for sampling. Higher values will make the model more random
             freq_penalty (float): Frequency penalty for sampling. Higher values will make the model more random
             num_beams (int): Number of beams to use for beam search. If 1, use greedy search
+            num_return_sequences (int): Number of sequences to return for beam search
             use_cache (bool): If True, create and use cache to speed up generation
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
@@ -752,7 +754,22 @@ class EasyTransformer(HookedRootModule):
             return self.greedy_search(x, max_new_tokens, stop_at_eos, cache)
         elif not do_sample and num_beams > 1:
             raise NotImplementedError("Beam search not implemented yet")
-            return beam_search(self, x, max_new_tokens, num_beams, cache)
+            return self.beam_search(
+                x, max_new_tokens, num_beams, num_return_sequences, cache
+            )
+        elif do_sample and num_beams > 1:
+            raise NotImplementedError("Beam sampling not implemented yet")
+            return self.beam_sample(
+                x,
+                max_new_tokens,
+                num_beams,
+                num_return_sequences,
+                top_k,
+                top_p,
+                temperature,
+                freq_penalty,
+                cache,
+            )
         else:
             return self.sample(
                 x,
@@ -803,6 +820,58 @@ class EasyTransformer(HookedRootModule):
                 x = outputs
 
         return outputs
+
+    def beam_search(
+        self,
+        x: torch.Tensor,
+        max_new_tokens: int,
+        num_beams: int,
+        num_return_sequences: int,
+        cache: Optional[EasyTransformerKeyValueCache] = None,
+    ):
+        """
+        Beam search for tokens from the model until the model outputs eos_token or max_new_tokens is reached.
+        Args:
+            x (torch.Tensor): A batch of tokens ([batch, pos])
+            max_new_tokens (int): Maximum number of tokens to generate
+            num_beams (int): Number of beams to use for beam search.
+            num_return_sequences (int): Number of sequences to return for beam search
+            cache (EasyTransformerKeyValueCache, *optional*): Cache to use for the model. If None, no cache is used
+        Returns:
+            outputs (torch.Tensor): [batch * num_return_sequences, pos + max_new_tokens], generated sequence of new tokens
+        """
+        assert num_return_sequences <= num_beams
+        raise NotImplementedError("Beam search not implemented yet")
+
+    def beam_sample(
+        self,
+        x: torch.Tensor,
+        max_new_tokens: int,
+        num_beams: int,
+        num_return_sequences: int,
+        top_k: int,
+        top_p: float,
+        temperature: float,
+        freq_penalty: float,
+        cache: Optional[EasyTransformerKeyValueCache] = None,
+    ):
+        """
+        Beam sampling for tokens from the model until the model outputs eos_token or max_new_tokens is reached.
+        Args:
+            x (torch.Tensor): A batch of tokens ([batch, pos])
+            max_new_tokens (int): Maximum number of tokens to generate
+            num_beams (int): Number of beams to use for beam search.
+            num_return_sequences (int): Number of sequences to return for beam search
+            top_k (int): Number of tokens to sample from. If None, sample from all tokens
+            top_p (float): Probability mass to sample from. If 1.0, sample from all tokens
+            temperature (float): Temperature for sampling. Higher values will make the model more random
+            freq_penalty (float): Frequency penalty for sampling. Higher values will make the model more random
+            cache (EasyTransformerKeyValueCache, *optional*): Cache to use for the model. If None, no cache is used
+        Returns:
+            outputs (torch.Tensor): [batch * num_return_sequences, pos + max_new_tokens], generated sequence of new tokens
+        """
+        assert num_return_sequences <= num_beams
+        raise NotImplementedError("Beam sampling not implemented yet")
 
     def sample(
         self,
