@@ -179,7 +179,7 @@ for G in tqdm(list(CIRCUIT.keys())):
 
     # METRIC((C \ W) \cup \{ v \})
 
-    for v in tqdm(list(CIRCUIT[G].keys())):
+    for v in tqdm(list(CIRCUIT[G])):
         new_heads_to_keep = heads_to_keep.copy()
         v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
         assert v not in new_heads_to_keep.keys()
@@ -198,31 +198,26 @@ for G in tqdm(list(CIRCUIT.keys())):
         torch.cuda.empty_cache()
 
 #%%
-fig = px.scatter(
-    circuit_perf,
-    x="on_diagonal",
-    y="off_diagonal",
-    color="removed_group",
-    text="removed_group",
-    # hover_data=["sentence", "template"],
-    opacity=0.7,
-    error_x="std_on_diagonal",
-    error_y="std_off_diagonal",
-)
+fig = go.Figure()
+
+for G in list(CIRCUIT.keys()):
+    for i, v in enumerate(list(CIRCUIT[G])):
+        fig.add_trace(
+            go.Bar(
+                x=[G],
+                y=[results[G]["vs"][v][0] - results[G]["ldiff_broken_circuit"]],
+                base=results[G]["ldiff_broken_circuit"],
+                width=1 / (len(CIRCUIT[G]) + 1),
+                offset=i / (len(CIRCUIT[G]) + 1),
+                marker_color=["crimson", "royalblue", "darkorange", "limegreen"][i],
+                name=f"{v}",
+            )
+        )
 
 fig.update_layout(
-    shapes=[
-        # adds line at y=5
-        dict(
-            type="line",
-            xref="x",
-            x0=0,
-            x1=12,
-            yref="y",
-            y0=0,
-            y1=0,
-        )
-    ]
+    title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
+    xaxis_title="Circuit node class",
+    yaxis_title="Average logit diff",
 )
 
 fig.show()
