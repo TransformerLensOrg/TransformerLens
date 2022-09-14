@@ -133,10 +133,12 @@ BABA_TEMPLATES = [
 ABBA_TEMPLATES = BABA_TEMPLATES[:]
 
 for i in range(len(ABBA_TEMPLATES)):
+    first_clause = True
     for j in range(1, len(ABBA_TEMPLATES[i]) - 1):
-        if ABBA_TEMPLATES[i][j - 1 : j + 1] == "[B]":
+        if ABBA_TEMPLATES[i][j - 1 : j + 2] == "[B]" and first_clause:
             ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "A" + ABBA_TEMPLATES[i][j + 1 :]
-        elif ABBA_TEMPLATES[i][j - 1 : j + 1] == "[A]":
+        elif ABBA_TEMPLATES[i][j - 1 : j + 2] == "[A]" and first_clause:
+            first_clause = False
             ABBA_TEMPLATES[i] = ABBA_TEMPLATES[i][:j] + "B" + ABBA_TEMPLATES[i][j + 1 :]
 
 VERBS = [" tried", " said", " decided", " wanted", " gave"]
