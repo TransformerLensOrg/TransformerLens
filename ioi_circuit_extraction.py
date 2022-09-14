@@ -147,7 +147,7 @@ def get_extracted_idx(idx_list: list[str], ioi_dataset):
 
 
 CIRCUIT = {
-    "name mover": [(9, 6), (9, 9), (10, 0)],
+    "name mover": [(9, 6), (9, 9), (10, 0)],  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
     "calibration": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],

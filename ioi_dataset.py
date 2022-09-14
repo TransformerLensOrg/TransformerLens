@@ -468,16 +468,22 @@ class IOIDataset:
         prompts=None,
         symmetric=False,
         prefixes=None,
+        nb_templates=None,
     ):
         assert (prompts is not None) or (not symmetric) or (N % 2 == 0), f"{symmetric} {N}"
         assert prompt_type in ["ABBA", "BABA", "mixed"]
+        assert nb_templates is None or (nb_templates % 2 == 0 and prompt_type == "mixed")
         self.prompt_type = prompt_type
+
+        if nb_templates is None:
+            nb_templates = len(BABA_TEMPLATES)
+
         if prompt_type == "ABBA":
-            self.templates = ABBA_TEMPLATES.copy()
+            self.templates = ABBA_TEMPLATES[:nb_templates].copy()
         elif prompt_type == "BABA":
-            self.templates = BABA_TEMPLATES.copy()
+            self.templates = BABA_TEMPLATES[:nb_templates].copy()
         else:
-            self.templates = BABA_TEMPLATES.copy() + ABBA_TEMPLATES.copy()
+            self.templates = BABA_TEMPLATES[: nb_templates // 2].copy() + ABBA_TEMPLATES[: nb_templates // 2].copy()
             random.shuffle(self.templates)
         if tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
@@ -505,6 +511,13 @@ class IOIDataset:
         self.groups = []
         for id in list(set(all_ids)):
             self.groups.append(np.where(all_ids_ar == id)[0])
+
+        small_group_warning = False
+        for group in self.groups:
+            if len(group) < 5:
+                small_group_warning = True
+        if small_group_warning:
+            print("Warning: some groups have less than 5 prompts")
 
         self.text_prompts = [prompt["text"] for prompt in self.ioi_prompts]  # a list of strings
 
