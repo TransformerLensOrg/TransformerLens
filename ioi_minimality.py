@@ -210,9 +210,13 @@ for G in list(CIRCUIT.keys()):
                 width=1 / (len(CIRCUIT[G]) + 1),
                 offset=i / (len(CIRCUIT[G]) + 1),
                 marker_color=["crimson", "royalblue", "darkorange", "limegreen"][i],
+                text=f"{v}",
                 name=f"{v}",
+                textposition="outside",
             )
         )
+
+fig.update_layout(showlegend=False)
 
 fig.update_layout(
     title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
