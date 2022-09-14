@@ -225,3 +225,22 @@ fig.update_layout(
 )
 
 fig.show()
+
+#%%
+def compute_baseline(model, ioi_dataset):
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
+    torch.cuda.empty_cache()
+
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+    torch.cuda.empty_cache()
+    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
+    torch.cuda.empty_cache()
+
+
+baseline = compute_baseline(model, ioi_dataset)
