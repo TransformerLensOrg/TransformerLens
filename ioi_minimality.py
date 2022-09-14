@@ -154,7 +154,11 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 results = {}
 vertices = []
 
-small_effect_classes = ["previous token", "induction", "duplicate token"]
+small_effect_classes = [
+    "previous token",
+    "s2 inhibition",
+    "duplicate token",
+]
 
 for circuit_class in list(CIRCUIT.keys()):
     if circuit_class not in small_effect_classes:
@@ -251,7 +255,7 @@ fig.add_trace(
 )
 
 fig.update_layout(
-    title="Effect of adding a head to the circuit where are all ablated",
+    title=f"Effect of adding a head to the circuit where are all {small_effect_classes} ablated",
     xaxis_title="Head",
     yaxis_title="Logit difference",
 )
