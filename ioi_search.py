@@ -87,15 +87,13 @@ study_name = "example-study"  # Unique identifier of the study.
 storage_name = "sqlite:///{}.db".format(study_name)
 from time import ctime
 
-study = optuna.create_study(
-    study_name=f"Check by heads and index @ {ctime()}", storage=storage_name
-)  # ADD!
+study = optuna.create_study(study_name=f"Check by heads and index @ {ctime()}", storage=storage_name)  # ADD!
 
 #%%
 relevant_stuff = []  # pairs (layer, head), TOKEN
 
 for circuit_class in CIRCUIT.keys():
-    if circuit_class == "calibration":
+    if circuit_class == "negative":
         continue
     for head in CIRCUIT[circuit_class]:
         for relevant_token in ["IO", "S", "S+1", "S2", "and", "end"]:  # TODO more?
@@ -158,7 +156,7 @@ study.optimize(objective, n_trials=1e8)
 def baseline():
     cur_stuff = []
     for circuit_class in CIRCUIT.keys():
-        if circuit_class == "calibration":
+        if circuit_class == "negative":
             continue
         for head in CIRCUIT[circuit_class]:
             for relevant_token in RELEVANT_TOKENS[head]:

@@ -23,7 +23,6 @@
 # # %%
 from tqdm import tqdm
 import pandas as pd
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
@@ -345,7 +344,7 @@ def writing_direction_heatmap(
 
         model.reset_hooks()
         cache = {}
-        model.cache_all(cache) # TODO maybe speed up by only caching relevant things
+        model.cache_all(cache)  # TODO maybe speed up by only caching relevant things
 
         logits = model(ioi_dataset.text_prompts[i])
 
@@ -553,11 +552,11 @@ print(" ---  Random heads for control ---  ")
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
 check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
-#%% [markdown] 
-# For calibration heads, we observe a reverse trend to name movers, the more is pays attention to a name, the more it write in its *oposite* direction. Why is that?
+#%% [markdown]
+# For negative heads, we observe a reverse trend to name movers, the more is pays attention to a name, the more it write in its *oposite* direction. Why is that?
 # You need to remember the training objective of the transformer: it has to predict accurate probability distribution over all the next tokens.
 # If previously it was able to recover the IO, in the final layer it has to callibrate the probability of this particular token, it cannot go all in "THE NEXT TOKEN IS BOB" with 100% proba.
-# This is why we observe calibration mechanisms that do back and forth and seems to inhibate information put by earlier modules.
+# This is why we observe negative mechanisms that do back and forth and seems to inhibate information put by earlier modules.
 
 # You can see this similarly as open loop / closed loop optimization. It's easier to make a good guess by making previous rough estimate more precise than making a good guess in one shot.
 #%%
@@ -841,7 +840,7 @@ show_attention_patterns(model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_da
 # * At S2, induction heads find a match: S2 match the information written at S+1 about S by a previous token head, so they have a trong attention proba on S+1. However, contrary to plain induction, they don't copy information about S+1, they'll also write information about S in their residual stream. This is another source of information "S is a duplicate token" at S2.
 # * On the END token, S2-Inhibition heads use value composition to copy information about duplicate tokens from the two previus sources. Their attention seems to be "look for the subject of the sentence". (But their attention pattern is not well understood for now)
 # * The name mover heads use the value of S in their queries, with a negative sign. This has for effect to gives IO greatest scores, then their OV circuit is a simple copy for names.
-# * Same story for the calibrations heads but they flip the sign of the direction (and surely something more complex is going on to calibrate the norm).
+# * Same story for the negatives heads but they flip the sign of the direction (and surely something more complex is going on to calibrate the norm).
 
 # <img src="https://i.imgur.com/PPtTQRh.png">
 
@@ -850,7 +849,7 @@ show_attention_patterns(model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_da
 # <h1><b>Faithfulness</b></h1>
 # These experiments isolate the circuit, e.g by ablating all other heads.
 # <h2>Ablations</h2>
-# For each template, e.g `Then, [A] and [B] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]` we ablate only the indices we claim are important and we retain a positive logit difference between `IO` and `S`, as well the "score" (whether the IO logit remains in the top 10 logit AND IO > S), though have some performace degradation, particularly when we don't ablate the calibration heads.
+# For each template, e.g `Then, [A] and [B] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]` we ablate only the indices we claim are important and we retain a positive logit difference between `IO` and `S`, as well the "score" (whether the IO logit remains in the top 10 logit AND IO > S), though have some performace degradation, particularly when we don't ablate the negative heads.
 
 #%% # run normal ablation experiments
 num_templates = 10  # len(ABBA_TEMPLATES)
@@ -969,7 +968,7 @@ template_prompts = [
     for i in range(len(templates))
 ]
 
-for ablate_calibration in [
+for ablate_negative in [
     False,
     True,
 ]:
@@ -1039,7 +1038,7 @@ for ablate_calibration in [
             (10, 0),
         ]
 
-        if not ablate_calibration:
+        if not ablate_negative:
             end_heads += [(10, 7), (11, 12)]
 
         for head in end_heads:
@@ -1122,7 +1121,7 @@ for ablate_calibration in [
 
         s_probs = sprobs_metric.compute_metric(
             model
-        )  # s probs is like 0.003 for most ablate calibration heads # or is is that low
+        )  # s probs is like 0.003 for most ablate negative heads # or is is that low
         # print(f"{s_probs=}")
         sprobs_data.append((sprobs_metric.baseline, s_probs))
         io_logits = io_logits_metric.compute_metric(model)
@@ -1151,7 +1150,7 @@ for ablate_calibration in [
         y=y_label,
         hover_data=["sentence"],
         text="beg",
-        title=f"Change in logit diff when {ablate_calibration=}",
+        title=f"Change in logit diff when {ablate_negative=}",
     ).show()
 #%% # let's check that the circuit isn't changing relative to which template we are using
 
@@ -1183,7 +1182,7 @@ for template_idx in tqdm(range(num_templates)):
     vals = writing_direction_heatmap(
         model,
         ioi_dataset,
-        title=f"Writing Direction Heatmap for {template_idx}", 
+        title=f"Writing Direction Heatmap for {template_idx}",
         return_vals=True,
     )
     three_d[template_idx] = vals
@@ -1198,9 +1197,16 @@ ld = logit_diff_target(model, ioi_dataset[:N], all=True)
 
 
 from ioi_circuit_extraction import turn_keep_into_rmv, list_diff
+
 # %% # sanity check
 
-from ioi_circuit_extraction import process_heads_and_mlps, get_circuit_replacement_hook, do_circuit_extraction, turn_keep_into_rmv
+from ioi_circuit_extraction import (
+    process_heads_and_mlps,
+    get_circuit_replacement_hook,
+    do_circuit_extraction,
+    turn_keep_into_rmv,
+)
+
 if False:
     type(ioi_dataset)
     old_ld = logit_diff_target(model, ioi_dataset[:N])
@@ -1430,8 +1436,12 @@ print(
     source_ioi_dataset.text_prompts[:3],
 )
 
-source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(source_ioi_dataset, excluded_classes=["calibration"], mlp0=True)
-target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(target_ioi_dataset, excluded_classes=["calibration"], mlp0=True)
+source_heads_to_keep, source_mlps_to_keep = get_heads_circuit(
+    source_ioi_dataset, excluded_classes=["negative"], mlp0=True
+)
+target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(
+    target_ioi_dataset, excluded_classes=["negative"], mlp0=True
+)
 
 K = 1
 model.reset_hooks()
