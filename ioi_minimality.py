@@ -239,7 +239,7 @@ for G in list(CIRCUIT.keys()):
                 y=[results[G]["vs"][v][0] - results[G]["ldiff_broken_circuit"]],
                 base=results[G]["ldiff_broken_circuit"],
                 width=1 / (len(CIRCUIT[G]) + 1),
-                offset=i / (len(CIRCUIT[G]) + 1),
+                offset=(i - 3 / 2) / (len(CIRCUIT[G]) + 1),
                 marker_color=["crimson", "royalblue", "darkorange", "limegreen"][i],
                 text=f"{v}",
                 name=f"{v}",
