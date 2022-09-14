@@ -256,14 +256,25 @@ for circuit_class in CIRCUIT.keys():
     for head in CIRCUIT[circuit_class]:
         all_relevant_heads.append(head)
 
-for head in tqdm(all_relevant_heads):
+from random import randint as ri
+
+random_heads = []
+while len(random_heads) < 10:
+    layer = ri(0, 11)
+    head = ri(0, 11)
+    if (layer, head) not in all_relevant_heads:
+        random_heads.append((layer, head))
+
+for head in tqdm(random_heads):
     # compute METRIC( C \ G )
     excluded_classes = []
     if G != "none":
         excluded_classes.append(G)
 
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
-    head_indices = heads_to_keep.pop(head)
+    heads_to_keep[head] = get_extracted_idx(
+        ["IO", "and", "S", "S+1", "S2", "end"], ioi_dataset
+    )
     torch.cuda.empty_cache()
     model, _ = do_circuit_extraction(
         model=model,
@@ -285,7 +296,7 @@ for head in tqdm(all_relevant_heads):
         ioi_dataset, excluded_classes=excl_class
     )  # TODO check the MLP stuff
     assert head not in G_heads_to_remove.keys()
-    G_heads_to_remove[head] = head_indices
+    G_heads_to_remove[head] = heads_to_keep[head]
     torch.cuda.empty_cache()
     model.reset_hooks()
     model, _ = do_circuit_extraction(
@@ -310,10 +321,6 @@ for head in tqdm(all_relevant_heads):
             "std_ldiff_cobble": std_cobble_circuit,
         }
     )
-
-head_circuit_perf = pd.DataFrame(circuit_perf)
-# ld = logit_diff(
-
 # %%
 
 fig = px.scatter(
@@ -323,19 +330,19 @@ fig = px.scatter(
     text="head",
     # error_x="std_ldiff_broken", # remember, these errors are pretty huge...
     # error_y="std_ldiff_cobble",
-).show()
+)
 
-# fig.update_layout(
-#     shapes=[
-#         # adds line at y=5
-#         dict(
-#             type="line",
-#             xref="x",
-#             x0=1,
-#             x1=7,
-#             yref="y",
-#             y0=1,
-#             y1=7,
-#         )
-#     ]
-# )
+fig.update_layout(
+    shapes=[
+        # adds line at y=5
+        dict(
+            type="line",
+            xref="x",
+            x0=2,
+            x1=6,
+            yref="y",
+            y0=2,
+            y1=6,
+        )
+    ]
+)
