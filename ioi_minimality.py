@@ -156,7 +156,7 @@ vertices = []
 
 small_effect_classes = [
     "previous token",
-    "s2 inhibition",
+    "induction",
     "duplicate token",
 ]
 
