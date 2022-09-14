@@ -151,11 +151,10 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 #%% [markdown]
 # TODO Explain the way we're doing the minimal circuit experiment here
 #%%
-
 results = {}
 vertices = []
 
-small_effect_classes = ["s2 inhibition", "induction", "duplicate token"]
+small_effect_classes = ["previous token", "induction", "duplicate token"]
 
 for circuit_class in list(CIRCUIT.keys()):
     if circuit_class not in small_effect_classes:
