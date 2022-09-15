@@ -100,11 +100,7 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 # %%
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
-    "".join(
-        show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[
-            : ioi_dataset.max_len
-        ]
-    )
+    "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
     for i in range(ioi_dataset.N)
 ]
 #%%
@@ -242,10 +238,7 @@ fig = go.Figure()
 fig.add_trace(
     go.Bar(
         x=[str(s) for s in list(results["vs"].keys())],
-        y=[
-            results["vs"][v][0] - results["ldiff_broken_circuit"]
-            for v in results["vs"].keys()
-        ],
+        y=[results["vs"][v][0] - results["ldiff_broken_circuit"] for v in results["vs"].keys()],
         base=[results["ldiff_broken_circuit"] for _ in results["vs"].keys()],
     )
 )
@@ -347,3 +340,5 @@ fig.show()
 #%%
 model.reset_hooks()
 ldiff_baseline = logit_diff(model, ioi_dataset, std=True)
+
+# %%
