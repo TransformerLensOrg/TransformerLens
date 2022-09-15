@@ -43,7 +43,7 @@ def show_pp(m, xlabel="", ylabel="", title="", bartitle="", animate_axis=None):
             animation_frame=animate_axis,
             color_continuous_scale="RdBu",
             color_continuous_midpoint=0,
-        )        
+        )
 
     fig.update_layout(
         coloraxis_colorbar=dict(
@@ -79,12 +79,16 @@ def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
         good_names = [f"blocks.{layer}.attn.hook_attn"]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
-        model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
+        model.cache_some(
+            cache=cache, names=lambda x: x in good_names
+        )  # shape: batch head_no seq_len seq_len
 
         logits = model(texts)
 
         for i, text in enumerate(texts):
-            assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
+            assert len(list(cache.items())) == 1 + int(mode == "val"), len(
+                list(cache.items())
+            )
             toks = model.tokenizer(text)["input_ids"]
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
@@ -124,3 +128,20 @@ def safe_del(a):
     except:
         pass
     torch.cuda.empty_cache()
+
+
+def get_indices_from_sql_file(fname, trial_id):
+    """
+    Given a SQL file, return the indices of the trial_id
+    """
+    import sqlite3
+    import pandas as pd
+
+    conn = sqlite3.connect(fname)
+    df = pd.read_sql_query("SELECT * from trial_params", conn)
+    return list(map(int, df[df.trial_id == trial_id].param_value.values))
+
+
+if __name__ == "__main__":
+    inds = get_indices_from_sql_file("example-study.db", 1494)
+    print(inds)

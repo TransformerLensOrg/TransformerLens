@@ -189,13 +189,23 @@ def objective(trial):
 
 
 study.optimize(objective, n_trials=1e8)
+#%% # new answer extraction
+
+from ioi_utils import *
+
+ids = get_indices_from_sql_file("example-study.db", 1494)
+print(ids)
+
+for idx in ids:
+    print(relevant_stuff[idx])
+
 #%%
 # old answer extraction
 eyes = [8, 23, 66, 95, 5, 21, 49, 11, 3, 41, 26, 29, 35, 77, 99, 91, 41, 17, 47, 47]
 for eye in eyes:
     print(relevant_stuff[eye])
 
-#%%
+#%% # found from searching over all our heads, at all index positions
 NEW_CIRCUIT = {
     # old name mover
     (9, 6): ["S2", "end"],
@@ -219,4 +229,49 @@ NEW_CIRCUIT = {
     (2, 2): [],
     (2, 9): ["S", "end"],
     (4, 11): ["S2"],
+}
+
+#%% # found from searching over all heads, at all index positions
+
+NEWER_CIRCUIT = {
+    # old name mover
+    (9, 6): [],
+    (9, 9): ["end"],
+    (10, 0): ["S+1"],  # weird
+    # old s2 inhibition
+    (7, 3): [],
+    (7, 9): ["IO"],
+    (10, 7): [],
+    (11, 10): [],
+    # old induction
+    (5, 5): [],
+    (5, 8): [],
+    (5, 9): [],
+    (6, 9): [],
+    # old duplicate
+    (0, 1): [],
+    (0, 10): [],
+    (3, 0): [],
+    # old previous token
+    (2, 2): [],
+    (2, 9): [],
+    (4, 11): [],
+    # new things!
+    # ((4, 0), 'IO')
+    # ((1, 5), 'S+1')
+    # ((6, 8), 'S')
+    # ((10, 6), 'IO')
+    # ((10, 10), 'end')
+    # ((8, 10), 'end')
+    # ((9, 2), 'S+1')
+    # ((5, 3), 'and')
+    # ((2, 10), 'S2')
+    # ((10, 4), 'S2')
+    # ((0, 9), 'S')
+    # ((7, 8), 'S')
+    # ((1, 8), 'and')
+    # ((2, 7), 'S2')
+    # ((1, 5), 'end')
+    # ((8, 7), 'end')
+    # ((7, 0), 'S+1')
 }
