@@ -97,15 +97,6 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 200
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-<<<<<<< HEAD
-=======
-# %%
-webtext = load_dataset("stas/openwebtext-10k")
-owb_seqs = [
-    "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
-    for i in range(ioi_dataset.N)
-]
->>>>>>> 8d2287d750742c18070466acc887e4743d5d1bae
 #%%
 from ioi_circuit_extraction import (
     join_lists,
@@ -245,7 +236,10 @@ fig = go.Figure()
 fig.add_trace(
     go.Bar(
         x=[str(s) for s in list(results["vs"].keys())],
-        y=[results["vs"][v][0] - results["ldiff_broken_circuit"] for v in results["vs"].keys()],
+        y=[
+            results["vs"][v][0] - results["ldiff_broken_circuit"]
+            for v in results["vs"].keys()
+        ],
         base=[results["ldiff_broken_circuit"] for _ in results["vs"].keys()],
     )
 )
