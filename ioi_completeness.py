@@ -678,7 +678,101 @@ for h, tok in best_scores.keys():
             break
 
 
-px.bar(x=list(best_scores.values()), y=[str(k) for k in best_scores.keys()], orientation="h")
+px.bar(x=list(best_scores.values()), y=[str(k) for k in best_scores.keys()], orientation="h", color=head_classes)
 
+
+# %% Random experiment : writing direction after removing name movers
+
+
+def writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    mode="attn_out",
+    return_vals=False,
+    dir_mode="IO - S",
+    unembed_mode="normal",  # or "Neel"
+    title="",
+):
+    """
+    Plot the dot product between how much each attention head
+    output with `IO-S`, the difference between the unembeds between
+    the (correct) IO token and the incorrect S token
+    """
+
+    n_heads = model.cfg["n_heads"]
+    n_layers = model.cfg["n_layers"]
+
+    model_unembed = (
+        model.unembed.W_U.detach().cpu()
+    )  # note that for GPT2 embeddings and unembeddings are tides such that W_E = Transpose(W_U)
+
+    if mode == "attn_out":  # heads, layers
+        vals = torch.zeros(size=(n_heads, n_layers))
+    elif mode == "mlp":
+        vals = torch.zeros(size=(1, n_layers))
+    else:
+        raise NotImplementedError()
+
+    N = ioi_dataset.N
+    cache = {}
+    model.cache_all(cache)  # TODO maybe speed up by only caching relevant things
+
+    logits = model(ioi_dataset.text_prompts)
+
+    for i in range(ioi_dataset.N):
+        io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
+        s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
+        io_dir = model_unembed[io_tok]
+        s_dir = model_unembed[s_tok]
+        if dir_mode == "IO - S":
+            dire = io_dir - s_dir
+        elif dir_mode == "IO":
+            dire = io_dir
+        elif dir_mode == "S":
+            dire = s_dir
+        else:
+            raise NotImplementedError()
+
+        for lay in range(n_layers):
+            if mode == "attn_out":
+                cur = cache[f"blocks.{lay}.attn.hook_result"][i, ioi_dataset.word_idx["end"][i], :, :]
+            elif mode == "mlp":
+                cur = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :]
+            vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
+
+    vals /= N
+    show_pp(vals, xlabel="head no", ylabel="layer no", title=title)
+    if return_vals:
+        return vals
+
+
+model.reset_hooks()
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_remove=get_heads_from_nodes(
+        [
+            ((9, 6), "end"),
+            ((9, 9), "end"),
+            ((10, 0), "end"),
+            ((10, 10), "end"),
+            ((10, 6), "end"),
+            ((10, 2), "end"),
+            ((11, 2), "end"),
+        ],
+        ioi_dataset,
+    ),
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+
+# model.reset_hooks()
+dir_val = writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    return_vals=True,
+    mode="attn_out",
+    dir_mode="IO - S",
+    title="Attention head output into IO - S token unembedding (GPT2)",
+)
 
 # %%

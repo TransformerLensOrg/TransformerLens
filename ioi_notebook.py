@@ -327,7 +327,7 @@ def writing_direction_heatmap(
     else:
         raise NotImplementedError()
 
-    N = len(prompts)
+    N = ioi_dataset.N
     for i in range(ioi_dataset.N):
         io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
         s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
