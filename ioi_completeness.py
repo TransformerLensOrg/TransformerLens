@@ -373,14 +373,14 @@ if run_original:
                 type="circle",
                 # xref="x",
                 # yref="y",
-                # x0=1,
-                # y0=1,
-                # x1=3,
-                # y1=3,
-                x_center=x_center,
-                y_center=y_center,
-                ax1=[cos(angel_4), sin(angel_4)],
-                ax2=[-sin(angel_4), cos(angel_4)],
+                x0=1,
+                y0=1,
+                x1=3,
+                y1=3,
+                # x_center=x_center,
+                # y_center=y_center,
+                # ax1=[cos(angel_4), sin(angel_4)],
+                # ax2=[-sin(angel_4), cos(angel_4)],
                 line_color="LightSeaGreen",
             ),
             # adds line at y=5
@@ -425,6 +425,113 @@ if run_original:
     )
 
     fig.show()
+#%%
+# plot the covariance ellipsoid
+# as in https://matplotlib.org/3.1.1/gallery/statistics/confidence_ellipse.html#sphx-glr-gallery-statistics-confidence-ellipse-py
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+import matplotlib.transforms as transforms
+
+xs = {}
+ys = {}
+for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
+    xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].ldiff_broken.values
+    ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].ldiff_cobble.values
+    xs[G] = [float(x) for x in xs[G]]
+    ys[G] = [float(y) for y in ys[G]]
+
+
+def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
+    """
+    Create a plot of the covariance confidence ellipse of `x` and `y`
+
+    Parameters
+    ----------
+    x, y : array_like, shape (n, )
+        Input data.
+
+    ax : matplotlib.axes.Axes
+        The axes object to draw the ellipse into.
+
+    n_std : float
+        The number of standard deviations to determine the ellipse's radiuses.
+
+    Returns
+    -------
+    matplotlib.patches.Ellipse
+
+    Other parameters
+    ----------------
+    kwargs : `~matplotlib.patches.Patch` properties
+    """
+    if x.size != y.size:
+        raise ValueError("x and y must be the same size")
+
+    cov = np.cov(x, y)
+    pearson = cov[0, 1] / np.sqrt(cov[0, 0] * cov[1, 1])
+    # Using a special case to obtain the eigenvalues of this
+    # two-dimensionl dataset.
+    ell_radius_x = np.sqrt(1 + pearson)
+    ell_radius_y = np.sqrt(1 - pearson)
+    ellipse = Ellipse(
+        (0, 0),
+        width=ell_radius_x * 2,
+        height=ell_radius_y * 2,
+        facecolor=facecolor,
+        **kwargs,
+    )
+
+    # Calculating the stdandard deviation of x from
+    # the squareroot of the variance and multiplying
+    # with the given number of standard deviations.
+    scale_x = np.sqrt(cov[0, 0]) * n_std
+    mean_x = np.mean(x)
+
+    # calculating the stdandard deviation of y ...
+    scale_y = np.sqrt(cov[1, 1]) * n_std
+    mean_y = np.mean(y)
+
+    transf = (
+        transforms.Affine2D()
+        .rotate_deg(45)
+        .scale(scale_x, scale_y)
+        .translate(mean_x, mean_y)
+    )
+
+    ellipse.set_transform(transf + ax.transData)
+    return ax.add_patch(ellipse)
+
+
+fig, ax = plt.subplots(1, 1, figsize=(20, 10))
+
+ax.axvline(c="grey", lw=1)
+ax.axhline(c="grey", lw=1)
+
+colors = ["#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A", "#19D3F3", "#FF6692"]
+
+for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
+    ax.scatter(list(xs[G]), list(ys[G]), s=5, label=G, c=colors[i])
+    confidence_ellipse(
+        np.asarray(xs[G]),
+        np.asarray(ys[G]),
+        ax,
+        edgecolor=colors[i],
+        n_std=1,
+    )
+
+xs2 = np.asarray(list(range(-100, 700))) / 100
+ys2 = np.asarray(list(range(-100, 700))) / 100
+ax.plot(xs2, ys2)
+ax.legend()
+plt.xlabel("Logit diff of broken circuit")
+plt.ylabel("Logit diff of complement of G")
+
+# ax.margins(0)  # Default margin is 0.05, value 0 means fit
+plt.xlim(-0.1, 7)
+plt.ylim(-0.1, 7)
+plt.show()
 
 # %% gready circuit breaking
 
