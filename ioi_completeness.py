@@ -434,7 +434,8 @@ def get_heads_from_nodes(nodes, ioi_dataset):
     for h, t in nodes:
         if h not in heads_to_keep_tok:
             heads_to_keep_tok[h] = []
-        heads_to_keep_tok[h].append(t)
+        if t not in heads_to_keep_tok[h]:
+            heads_to_keep_tok[h].append(t)
 
     heads_to_keep = {}
     for h in heads_to_keep_tok:
@@ -548,30 +549,31 @@ def greed_search_max_broken(get_circuit_logit_diff):
     return all_sets
 
 
-def greed_search_max_brok_cob_diff(get_cob_brok_from_nodes):
+def greed_search_max_brok_cob_diff(
+    get_cob_brok_from_nodes,
+    init_set=[],
+    NODES_PER_STEP=10,
+    NB_SETS=5,
+    NB_ITER=10,
+    verbose=True,
+):
     """Geed search to find G that maximize the difference between broken and cobbled circuit |metric(C\G) - metric(M\G)| . Return a list of node sets."""
-    NODES_PER_STEP = 10
-    NB_SETS = 5
-    NB_ITER = 10
     all_sets = []
 
     neg_head_in_G = False
-
     if neg_head_in_G:
-        all_node_baseline = get_cob_brok_from_nodes(
-            [((10, 7), "end"), ((11, 10), "end")]
-        )  # |metric(C) - metric(M)|
-    else:
-        all_node_baseline = get_cob_brok_from_nodes([])
+        init_set = list(set(init_set) + set([((10, 7), "end"), ((11, 10), "end")]))
+
+    all_node_baseline = get_cob_brok_from_nodes(init_set)  # |metric(C) - metric(M)|
+
+    C_minus_G_init = ALL_NODES.copy()
+    for n in init_set:
+        C_minus_G_init.remove(n)
 
     for step in range(NB_SETS):
 
-        C_minus_G = ALL_NODES.copy()
-        G = []
-        if neg_head_in_G:
-            C_minus_G.remove(((10, 7), "end"))
-            C_minus_G.remove(((11, 10), "end"))
-            G = [((10, 7), "end"), ((11, 10), "end")]
+        C_minus_G = C_minus_G_init.copy()
+        G = init_set.copy()
 
         old_diff = all_node_baseline
 
@@ -598,11 +600,11 @@ def greed_search_max_brok_cob_diff(get_cob_brok_from_nodes):
                     all_sets.append(
                         {"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()}
                     )
-
-                print(
-                    f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{all_node_baseline}"
-                )
-            print_gpu_mem(f"iter {iter}")
+                if verbose:
+                    print(
+                        f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{all_node_baseline}"
+                    )
+                    print_gpu_mem(f"iter {iter}")
     return all_sets
 
 
@@ -620,6 +622,7 @@ for h in RELEVANT_TOKENS:
 
 # find G tht minimizes metric(C\G)
 
+# %% Run experiment
 
 greedy_heuristic = "max_brok"
 
@@ -834,6 +837,83 @@ fig.update_layout(
     ]
 )
 fig.show()
+
+
+# %% greedy minimality experiments
+
+model.reset_hooks()
+small_ioi_dataset = IOIDataset(
+    prompt_type="mixed", N=30, tokenizer=model.tokenizer, nb_templates=2
+)
+
+
+def test_minimality(model, ioi_dataset, v, J):
+    """Compute |Metric( (C\J) U {v}) - Metric(C\J)| where J is a list of nodes, v is a node"""
+    C_minus_J = list(set(ALL_NODES.copy()) - set(J.copy()))
+
+    LD_C_m_J = circuit_from_nodes_logit_diff(
+        model, ioi_dataset, C_minus_J
+    )  # metric(C\J)
+    C_minus_J_plus_v = set(C_minus_J.copy())
+    C_minus_J_plus_v.add(v)
+    C_minus_J_plus_v = list(C_minus_J_plus_v)
+
+    LD_C_m_J_plus_v = circuit_from_nodes_logit_diff(
+        model, ioi_dataset, C_minus_J_plus_v
+    )  # metric( (C\J) U {v})
+    return np.abs(LD_C_m_J - LD_C_m_J_plus_v)
+
+
+best_J = {}  # list of candidate sets for each node
+best_scores = {}  # list of scores for each node
+for v in tqdm(ALL_NODES):
+    minimality_test_v = partial(test_minimality, model, small_ioi_dataset, v)
+    best_J[v] = greed_search_max_brok_cob_diff(
+        minimality_test_v,
+        init_set=[v],
+        NODES_PER_STEP=5,
+        NB_SETS=1,
+        NB_ITER=10,
+        verbose=False,
+    )
+    if (
+        len(best_J[v]) == 0
+    ):  # if the greedy search did not find any set, we use the set with the node itself
+        all_but_v = ALL_NODES.copy()
+        all_but_v.remove(v)
+        best_J[v] = [{"circuit_nodes": all_but_v, "removed_nodes": [v]}]
+
+ioi_dataset = IOIDataset(prompt_type="mixed", N=200, tokenizer=model.tokenizer)
+
+for v in tqdm(ALL_NODES):  # validate the best sets
+    minimality_scores = [
+        test_minimality(model, ioi_dataset, v, node_set["removed_nodes"])
+        for node_set in best_J[v]
+    ]
+    best_J[v] = best_J[v][np.argmax(minimality_scores)]
+    best_scores[v] = np.max(minimality_scores)
+    print(f"v={v}, J={best_J[v]}, score={best_scores[v]}")
+
+
+for v, J in best_J.items():
+    print(f"v={v}, score={best_scores[v]}")
+
+
+# %%
+
+head_classes = []
+for h, tok in best_scores.keys():
+    for group in CIRCUIT:
+        if h in CIRCUIT[group]:
+            head_classes.append(group)
+            break
+
+
+px.bar(
+    x=list(best_scores.values()),
+    y=[str(k) for k in best_scores.keys()],
+    orientation="h",
+)
 
 
 # %%

@@ -472,7 +472,7 @@ class IOIDataset:
     ):
         assert (prompts is not None) or (not symmetric) or (N % 2 == 0), f"{symmetric} {N}"
         assert prompt_type in ["ABBA", "BABA", "mixed"]
-        assert nb_templates is None or (nb_templates % 2 == 0 and prompt_type == "mixed")
+        assert nb_templates is None or (nb_templates % 2 == 0 or prompt_type != "mixed")
         self.prompt_type = prompt_type
 
         if nb_templates is None:
