@@ -97,16 +97,6 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 200
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-# %%
-webtext = load_dataset("stas/openwebtext-10k")
-owb_seqs = [
-    "".join(
-        show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[
-            : ioi_dataset.max_len
-        ]
-    )
-    for i in range(ioi_dataset.N)
-]
 #%%
 from ioi_circuit_extraction import (
     join_lists,

@@ -99,7 +99,7 @@ print_gpu_mem("Gpt2 loaded")
 
 # %%
 # IOI Dataset initialisation
-N = 400
+N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
 # %%
@@ -154,7 +154,10 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
-if True:
+
+run_original = True
+
+if run_original:
     circuit_perf = []
 
     for G in list(CIRCUIT.keys()) + ["none"]:
@@ -166,7 +169,9 @@ if True:
         excluded_classes = []
         if G != "none":
             excluded_classes.append(G)
-        heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=excluded_classes)  # TODO check the MLP stuff
+        heads_to_keep = get_heads_circuit(
+            ioi_dataset, excluded_classes=excluded_classes
+        )  # TODO check the MLP stuff
 
         model, _ = do_circuit_extraction(
             model=model,
@@ -174,14 +179,21 @@ if True:
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
         )
-        ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True, all=True)
+        torch.cuda.empty_cache()
+        ldiff_broken_circuit, std_broken_circuit = logit_diff(
+            model, ioi_dataset, std=True, all=True
+        )
+        torch.cuda.empty_cache()
         # metric(C\G)
         # adding back the whole model
 
         excl_class = list(CIRCUIT.keys())
         if G != "none":
             excl_class.remove(G)
-        G_heads_to_remove = get_heads_circuit(ioi_dataset, excluded_classes=excl_class)  # TODO check the MLP stuff
+        G_heads_to_remove = get_heads_circuit(
+            ioi_dataset, excluded_classes=excl_class
+        )  # TODO check the MLP stuff
+        torch.cuda.empty_cache()
 
         model.reset_hooks()
         model, _ = do_circuit_extraction(
@@ -190,7 +202,11 @@ if True:
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
         )
-        ldiff_cobble, std_cobble_circuit = logit_diff(model, ioi_dataset, std=True, all=True)
+        torch.cuda.empty_cache()
+        ldiff_cobble, std_cobble_circuit = logit_diff(
+            model, ioi_dataset, std=True, all=True
+        )
+        torch.cuda.empty_cache()
         # metric(M\G)
 
         for i in range(len(ldiff_cobble)):
@@ -205,45 +221,56 @@ if True:
             )
     circuit_perf = pd.DataFrame(circuit_perf)
 
-    # %%
+# %%
 
-    # by points
-    fig = px.scatter(
-        circuit_perf,
-        x="ldiff_broken",
-        y="ldiff_cobble",
-        hover_data=["sentence", "template"],
-        color="removed_group",
-        opacity=1.0,
-    )
+show_scatter = False
 
-    fig.update_layout(
-        shapes=[
-            # adds line at y=5
-            dict(
-                type="line",
-                xref="x",
-                x0=-2,
-                x1=12,
-                yref="y",
-                y0=-2,
-                y1=12,
-            )
-        ]
-    )
-    fig.show()
+# by points
+if run_original:
+    if show_scatter:
+        fig = px.scatter(
+            circuit_perf,
+            x="ldiff_broken",
+            y="ldiff_cobble",
+            hover_data=["sentence", "template"],
+            color="removed_group",
+            opacity=1.0,
+        )
+
+        fig.update_layout(
+            shapes=[
+                # adds line at y=5
+                dict(
+                    type="line",
+                    xref="x",
+                    x0=-2,
+                    x1=12,
+                    yref="y",
+                    y0=-2,
+                    y1=12,
+                )
+            ]
+        )
+        fig.show()
 
     # by sets
     perf_by_sets = []
     for i in range(len(CIRCUIT) + 1):
-
         perf_by_sets.append(
             {
                 "removed_group": circuit_perf.iloc[i * ioi_dataset.N].removed_group,
-                "mean_ldiff_broken": circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_broken.mean(),
-                "mean_ldiff_cobble": circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_cobble.mean(),
-                "std_ldiff_broken": circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_broken.std(),
-                "std_ldiff_cobble": circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_cobble.std(),
+                "mean_ldiff_broken": circuit_perf.iloc[
+                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
+                ].ldiff_broken.mean(),
+                "mean_ldiff_cobble": circuit_perf.iloc[
+                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
+                ].ldiff_cobble.mean(),
+                "std_ldiff_broken": circuit_perf.iloc[
+                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
+                ].ldiff_broken.std(),
+                "std_ldiff_cobble": circuit_perf.iloc[
+                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
+                ].ldiff_cobble.std(),
             }
         )
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
@@ -270,7 +297,9 @@ if True:
             )
         ]
     )
-#
+
+    fig.show()
+
 # %% gready circuit breaking
 
 
@@ -302,7 +331,9 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     return logit_diff(model, ioi_dataset, all=False)
 
 
-def circuit_from_heads_logit_diff(model, ioi_dataset, heads_to_rmv=None, heads_to_kp=None, all=False):
+def circuit_from_heads_logit_diff(
+    model, ioi_dataset, heads_to_rmv=None, heads_to_kp=None, all=False
+):
     model.reset_hooks()
     model, _ = do_circuit_extraction(
         model=model,
@@ -314,7 +345,9 @@ def circuit_from_heads_logit_diff(model, ioi_dataset, heads_to_rmv=None, heads_t
     return logit_diff(model, ioi_dataset, all=all)
 
 
-def compute_cobble_broken_diff(model, ioi_dataset, nodes):  # red teaming the circuit by trying
+def compute_cobble_broken_diff(
+    model, ioi_dataset, nodes
+):  # red teaming the circuit by trying
     """ "Compute |Metric(C\ nodes) - Metric(M\ nodes)|"""
     nodes_to_keep = ALL_NODES.copy()
     for n in nodes:
@@ -371,10 +404,19 @@ def greed_search_max_broken(get_circuit_logit_diff):
             current_nodes.remove(best_node)  # we remove the best node from the circuit
             nodes_removed.append(best_node)
 
-            if iter > NB_ITER // 2 - 1:  # we begin to save the sets after half of the iterations
-                all_sets.append({"circuit_nodes": current_nodes.copy(), "removed_nodes": nodes_removed.copy()})
+            if (
+                iter > NB_ITER // 2 - 1
+            ):  # we begin to save the sets after half of the iterations
+                all_sets.append(
+                    {
+                        "circuit_nodes": current_nodes.copy(),
+                        "removed_nodes": nodes_removed.copy(),
+                    }
+                )
 
-            print(f"iter: {iter} - best node:{best_node} - drop:{min(diff_to_baseline)} - baseline:{baseline}")
+            print(
+                f"iter: {iter} - best node:{best_node} - drop:{min(diff_to_baseline)} - baseline:{baseline}"
+            )
             print_gpu_mem(f"iter {iter}")
             baseline = results[best_node_idx]  # new baseline for the next iteration
     return all_sets
@@ -390,7 +432,9 @@ def greed_search_max_brok_cob_diff(get_cob_brok_from_nodes):
     neg_head_in_G = False
 
     if neg_head_in_G:
-        all_node_baseline = get_cob_brok_from_nodes([((10, 7), "end"), ((11, 10), "end")])  # |metric(C) - metric(M)|
+        all_node_baseline = get_cob_brok_from_nodes(
+            [((10, 7), "end"), ((11, 10), "end")]
+        )  # |metric(C) - metric(M)|
     else:
         all_node_baseline = get_cob_brok_from_nodes([])
 
@@ -422,8 +466,12 @@ def greed_search_max_brok_cob_diff(get_cob_brok_from_nodes):
                 G.append(best_node)
                 old_diff = max_diff
 
-                if iter > NB_ITER // 2 - 1:  # we begin to save the sets after half of the iterations
-                    all_sets.append({"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()})
+                if (
+                    iter > NB_ITER // 2 - 1
+                ):  # we begin to save the sets after half of the iterations
+                    all_sets.append(
+                        {"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()}
+                    )
 
                 print(
                     f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{all_node_baseline}"
@@ -434,7 +482,9 @@ def greed_search_max_brok_cob_diff(get_cob_brok_from_nodes):
 
 # /!\ if the dataset is too small, the mean by template will contain name information !!! -> reduce the number of templates for small N
 model.reset_hooks()
-small_ioi_dataset = IOIDataset(prompt_type="mixed", N=40, tokenizer=model.tokenizer, nb_templates=2)
+small_ioi_dataset = IOIDataset(
+    prompt_type="mixed", N=40, tokenizer=model.tokenizer, nb_templates=2
+)
 
 
 ALL_NODES = []  # a node is a tuple (head, token)
@@ -450,7 +500,9 @@ greedy_heuristic = "max_brok"
 assert greedy_heuristic in ["max_brok", "max_brok_cob_diff"]
 
 if greedy_heuristic == "max_brok":
-    nodes_logit_diff_small_data = partial(circuit_from_nodes_logit_diff, model, small_ioi_dataset)
+    nodes_logit_diff_small_data = partial(
+        circuit_from_nodes_logit_diff, model, small_ioi_dataset
+    )
     all_sets_max_brok = greed_search_max_broken(nodes_logit_diff_small_data)
     title_suffix = "min metric(C\G) "
     all_sets = all_sets_max_brok.copy()
@@ -458,8 +510,12 @@ if greedy_heuristic == "max_brok":
 
 if greedy_heuristic == "max_brok_cob_diff":
     # find G tht maximizes |metric(C\G) - metric(M\G)|
-    nodes_cob_brok_diff_small_data = partial(compute_cobble_broken_diff, model, small_ioi_dataset)
-    all_set_max_brok_cob_diff = greed_search_max_brok_cob_diff(nodes_cob_brok_diff_small_data)
+    nodes_cob_brok_diff_small_data = partial(
+        compute_cobble_broken_diff, model, small_ioi_dataset
+    )
+    all_set_max_brok_cob_diff = greed_search_max_brok_cob_diff(
+        nodes_cob_brok_diff_small_data
+    )
     title_suffix = "max |metric(C\G) - metric(M\G)| "
 
     ## Choose wich set to plot
@@ -478,13 +534,19 @@ circuit_perf_greedy = []
 for set_id, nodes_set in enumerate(all_sets):
 
     logit_diff_broken = circuit_from_heads_logit_diff(  # note set contains circuit_nodes (C\G) and removed_nodes (G)
-        model, ioi_dataset, heads_to_kp=get_heads_from_nodes(nodes_set["circuit_nodes"], ioi_dataset), all=True
+        model,
+        ioi_dataset,
+        heads_to_kp=get_heads_from_nodes(nodes_set["circuit_nodes"], ioi_dataset),
+        all=True,
     )
 
     print_gpu_mem(f"first extraction {set_id}")
 
     logit_diff_cobble = circuit_from_heads_logit_diff(  # note set contains circuit_nodes (C\G) and removed_nodes (G)
-        model, ioi_dataset, heads_to_rmv=get_heads_from_nodes(nodes_set["removed_nodes"], ioi_dataset), all=True
+        model,
+        ioi_dataset,
+        heads_to_rmv=get_heads_from_nodes(nodes_set["removed_nodes"], ioi_dataset),
+        all=True,
     )
 
     print_gpu_mem(f"set_id {set_id}")
@@ -543,8 +605,20 @@ fig = px.scatter(
     error_y="std_off_diagonal",
 )
 
-min_xy = min(df_circuit_perf_greedy.ldiff_broken.min(), df_circuit_perf_greedy.ldiff_cobble.min()) - 0.1
-max_xy = max(df_circuit_perf_greedy.ldiff_broken.max(), df_circuit_perf_greedy.ldiff_cobble.max()) + 0.1
+min_xy = (
+    min(
+        df_circuit_perf_greedy.ldiff_broken.min(),
+        df_circuit_perf_greedy.ldiff_cobble.min(),
+    )
+    - 0.1
+)
+max_xy = (
+    max(
+        df_circuit_perf_greedy.ldiff_broken.max(),
+        df_circuit_perf_greedy.ldiff_cobble.max(),
+    )
+    + 0.1
+)
 
 
 fig.update_layout(
@@ -603,8 +677,20 @@ fig.update_layout(
     yaxis_title="logit diff cobble",
 )
 
-min_xy = min(df_perf_greedy_by_sets.mean_ldiff_broken.min(), df_perf_greedy_by_sets.mean_ldiff_cobble.min()) - 0.1
-max_xy = max(df_perf_greedy_by_sets.mean_ldiff_broken.max(), df_perf_greedy_by_sets.mean_ldiff_cobble.max()) + 0.1
+min_xy = (
+    min(
+        df_perf_greedy_by_sets.mean_ldiff_broken.min(),
+        df_perf_greedy_by_sets.mean_ldiff_cobble.min(),
+    )
+    - 0.1
+)
+max_xy = (
+    max(
+        df_perf_greedy_by_sets.mean_ldiff_broken.max(),
+        df_perf_greedy_by_sets.mean_ldiff_cobble.max(),
+    )
+    + 0.1
+)
 
 
 fig.update_layout(
