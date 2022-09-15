@@ -221,9 +221,25 @@ if run_original:
             )
     circuit_perf = pd.DataFrame(circuit_perf)
 
+#%%
+
+# old std on diagonal plot
+
+
+def basis_change(x, y):
+    """
+    Change the basis (1, 0) and (0, 1) to the basis
+    1/sqrt(2) (1, 1) and 1/sqrt(2) (-1, 1)
+    """
+
+    return (x + y) / np.sqrt(2), (y - x) / np.sqrt(2)
+
+
 # %%
 
 show_scatter = False
+
+circuit_perf_scatter = []
 
 # by points
 if run_original:
@@ -273,6 +289,116 @@ if run_original:
                 ].ldiff_cobble.std(),
             }
         )
+
+    # process diagonal std
+    diagonal_data = []
+    for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
+
+        on_diagonals = []
+        off_diagonals = []
+
+        for j in range(
+            len(circuit_perf)
+        ):  # eat the 7x slow down as this is faster to code
+            cur = circuit_perf.loc[j]
+            if cur["removed_group"] != G:
+                continue
+
+            x, y = basis_change(
+                cur["ldiff_broken"],
+                cur["ldiff_cobble"],
+            )
+            # circuit_perf_scatter[-1]["on_diagonal"] = x
+            # circuit_perf_scatter[-1]["off_diagonal"] = y
+            on_diagonals.append(x)
+            off_diagonals.append(y)
+
+        assert (
+            perf_by_sets[i]["removed_group"] == G
+        ), f"{perf_by_sets[i]['removed_group']} != {G}"
+
+        diagonal_data.append(
+            {
+                "removed_group": G,
+                "ldiff_broken": perf_by_sets[i]["mean_ldiff_broken"],
+                "ldiff_cobble": perf_by_sets[i]["mean_ldiff_cobble"],
+                "sentence": ioi_dataset.text_prompts[i],
+                "template": ioi_dataset.templates_by_prompt[i],
+                "on_diagonal": np.mean(on_diagonals),
+                "off_diagonal": np.mean(off_diagonals),
+                "std_on_diagonal": np.std(on_diagonals),
+                "std_off_diagonal": np.std(off_diagonals),
+            }
+        )
+
+    diagonal_data = pd.DataFrame(diagonal_data)
+    fig = px.scatter(
+        diagonal_data,
+        x="ldiff_broken",
+        y="ldiff_cobble",
+        color="removed_group",
+        # error_x="std_ldiff_broken",
+        # error_y="std_ldiff_cobble",
+    )
+
+    # some ellipses!
+
+    # x_center = h4
+    # y_center = k4
+    # angel_4 = np.pi/1.93
+    # x, y = ellipse(x_center=x_center, y_center=y_center, ax1 =[cos(angel_4), sin(angel_4)], ax2=[-sin(angel_4),cos(angel_4)], a=a4, b =b4)
+    # fig.add_scatter(x=x, y=y, mode = 'lines', name='Zone-1 - well-4', fill='toself', opacity=0.5)
+
+    # fig.add_shape(
+    #     type="circle",
+    #     # xref="x",
+    #     # yref="y",
+    #     x0=1,
+    #     y0=1,
+    #     x1=3,
+    #     y1=3,
+    #     line_color="LightSeaGreen",
+    # )
+
+    x_center = 3
+    y_center = 2
+    import numpy as np
+    from numpy import sin, cos
+
+    angel_4 = np.pi / 1.93
+
+    fig.update_layout(
+        shapes=[
+            dict(
+                type="circle",
+                # xref="x",
+                # yref="y",
+                # x0=1,
+                # y0=1,
+                # x1=3,
+                # y1=3,
+                x_center=x_center,
+                y_center=y_center,
+                ax1=[cos(angel_4), sin(angel_4)],
+                ax2=[-sin(angel_4), cos(angel_4)],
+                line_color="LightSeaGreen",
+            ),
+            # adds line at y=5
+            dict(
+                type="line",
+                xref="x",
+                x0=0,
+                x1=6,
+                yref="y",
+                y0=0,
+                y1=6,
+            ),
+        ]
+    )
+
+    fig.show()
+
+    # plot sets
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
     fig = px.scatter(
         perf_by_sets,
