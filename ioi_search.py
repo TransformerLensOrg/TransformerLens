@@ -118,10 +118,10 @@ def logit_diff(model, text_prompts, std=False):
         return (IO_logits - S_logits).mean().detach().cpu()
 
 
-def baseline():
+def baseline(remove_neg=True):
     cur_stuff = []
     for circuit_class in CIRCUIT.keys():
-        if circuit_class == "negative":
+        if circuit_class == "negative" and remove_neg:
             continue
         for head in CIRCUIT[circuit_class]:
             for relevant_token in RELEVANT_TOKENS[head]:
@@ -190,7 +190,7 @@ def objective(trial):
 
 study.optimize(objective, n_trials=1e8)
 #%%
-# len(relevant_stuff)
+# old answer extraction
 eyes = [8, 23, 66, 95, 5, 21, 49, 11, 3, 41, 26, 29, 35, 77, 99, 91, 41, 17, 47, 47]
 for eye in eyes:
     print(relevant_stuff[eye])
