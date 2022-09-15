@@ -97,12 +97,6 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 200
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-# %%
-webtext = load_dataset("stas/openwebtext-10k")
-owb_seqs = [
-    "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
-    for i in range(ioi_dataset.N)
-]
 #%%
 from ioi_circuit_extraction import (
     join_lists,
@@ -150,7 +144,11 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 results = {}
 vertices = []
 
-small_effect_classes = ["previous token", "induction", "duplicate token"]
+small_effect_classes = [
+    "previous token",
+    "induction",
+    "duplicate token",
+]
 
 for circuit_class in list(CIRCUIT.keys()):
     if circuit_class not in small_effect_classes:
@@ -238,13 +236,16 @@ fig = go.Figure()
 fig.add_trace(
     go.Bar(
         x=[str(s) for s in list(results["vs"].keys())],
-        y=[results["vs"][v][0] - results["ldiff_broken_circuit"] for v in results["vs"].keys()],
+        y=[
+            results["vs"][v][0] - results["ldiff_broken_circuit"]
+            for v in results["vs"].keys()
+        ],
         base=[results["ldiff_broken_circuit"] for _ in results["vs"].keys()],
     )
 )
 
 fig.update_layout(
-    title="Effect of adding a head to the circuit where are all ablated",
+    title=f"Effect of adding a head to the circuit where are all {small_effect_classes} ablated",
     xaxis_title="Head",
     yaxis_title="Logit difference",
 )
