@@ -21,6 +21,7 @@
 # %% [markdown]
 # ## Import
 # # %%
+from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
 import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
@@ -162,12 +163,9 @@ owb_seqs = [
 
 
 # %% [markdown]
-
 # # <h1><b>Initial evidence</b></h1>
-
 # %% [markdown]
 # ### Layer Ablations
-
 # %% [markdown]
 # The first series of experiment: we define our metric, here, how much the logit for IO is bigger than S, we ablate part of the network and see what matters. Globally, it shows that the behavior is distributed accross many parts of the network, we cannot draw much conclusion from this alone.
 
@@ -342,6 +340,22 @@ px.imshow(
 # ### Which head write in the direction Embed(IO) - Embed(S) ?
 
 #%%
+
+MODEL_EPS = model.cfg["eps"]
+
+
+def layer_norm(x, eps=MODEL_EPS):
+    return LayerNormPre({"eps": eps})(x)
+
+
+def pytorch_layer_norm(x, eps=MODEL_EPS):
+    return torch.nn.LayerNorm(normalized_shape=x.shape[-1], eps=eps)(x)
+
+
+m = torch.randn(2, 3, 4)
+assert torch.allclose(layer_norm(m), pytorch_layer_norm(m))
+
+
 def writing_direction_heatmap(
     model,
     ioi_dataset,
@@ -359,10 +373,13 @@ def writing_direction_heatmap(
 
     n_heads = model.cfg["n_heads"]
     n_layers = model.cfg["n_layers"]
+    d_model = model.cfg["d_model"]
 
     model_unembed = (
         model.unembed.W_U.detach().cpu()
     )  # note that for GPT2 embeddings and unembeddings are tides such that W_E = Transpose(W_U)
+
+    unembed_bias = model.unembed.b_U.detach().cpu()
 
     if mode == "attn_out":  # heads, layers
         vals = torch.zeros(size=(n_heads, n_layers))
@@ -371,12 +388,16 @@ def writing_direction_heatmap(
     else:
         raise NotImplementedError()
 
-    N = len(prompts)
+    fulls = []
+    more_curs = []
+    N = len(ioi_dataset.text_prompts)
     for i in range(ioi_dataset.N):
         io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
         s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
         io_dir = model_unembed[io_tok]
         s_dir = model_unembed[s_tok]
+        unembed_bias_io = unembed_bias[io_tok]
+        unembed_bias_s = unembed_bias[s_tok]
         if dir_mode == "IO - S":
             dire = io_dir - s_dir
         elif dir_mode == "IO":
@@ -391,21 +412,55 @@ def writing_direction_heatmap(
         model.cache_all(cache)  # TODO maybe speed up by only caching relevant things
 
         logits = model(ioi_dataset.text_prompts[i])
+        vals_shape = list(vals.shape)
+        all_curs = torch.zeros([n_heads, n_layers, d_model])
 
         for lay in range(n_layers):
             if mode == "attn_out":
-                cur = cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
+                cur = (
+                    cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
+                    + model.blocks[lay].attn.b_O.detach()  # / n_heads
+                )
             elif mode == "mlp":
                 cur = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :]
-            vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
+            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :].detach().cpu()
+            more_curs.append(cur_mlp)
+            all_curs[:, lay, :] = cur.detach().cpu()
+            # cur = layer_norm(cur.unsqueeze(0)).squeeze(0) # won't work as we never layer norm single heads!!!
+            cur = cur - cur.mean(dim=-1, keepdim=True)
+            cur_std = (
+                (
+                    einops.reduce(
+                        torch.sum(cur, dim=0, keepdim=True).unsqueeze(0).pow(2),
+                        "batch pos embed -> batch pos 1",
+                        "mean",
+                    )
+                    + 1e-5
+                )
+                .sqrt()
+                .squeeze(0)
+            )
+            print(cur_std)
+            cur = cur / cur_std
 
+            vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
+            vals[:, lay] += unembed_bias_io - unembed_bias_s
+
+        cur_sum = torch.einsum("hla->a", all_curs)
+
+        ln_cur_sum = (  # layer norm wants to see "batch pos embed"
+            layer_norm(cur_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+        )
+        fulls.append(torch.einsum("a,a->", ln_cur_sum, dire.cpu()))
+
+    print(sum(fulls) / len(fulls))
     vals /= N
     show_pp(vals, xlabel="head no", ylabel="layer no", title=title)
     if return_vals:
-        return vals
+        return vals, cache
 
 
-attn_vals = writing_direction_heatmap(
+attn_vals, cache = writing_direction_heatmap(
     model,
     ioi_dataset[:51],
     return_vals=True,
@@ -415,7 +470,6 @@ attn_vals = writing_direction_heatmap(
 )
 # %% [markdown]
 # We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
-
 # %%
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset.text_prompts[:1])
 

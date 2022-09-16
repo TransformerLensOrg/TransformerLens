@@ -35,7 +35,13 @@ import itertools
 from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
+from easy_transformer.utils import (
+    gelu_new,
+    to_numpy,
+    get_corner,
+    print_gpu_mem,
+    get_sample_from_dataset,
+)
 
 VALID_MODEL_NAMES = [
     "gpt2",
@@ -65,19 +71,24 @@ VALID_MODEL_NAMES = [
 ]
 
 MODEL_NAMES_DICT = {
-    "stanford-gpt2-small-A":"stanford-crfm/alias-gpt2-small-x21",
-    "stanford-gpt2-small-B":"stanford-crfm/battlestar-gpt2-small-x49",
-    "stanford-gpt2-small-C":"stanford-crfm/caprica-gpt2-small-x81", 
-    "stanford-gpt2-small-D":"stanford-crfm/darkmatter-gpt2-small-x343",
-    "stanford-gpt2-small-E":"stanford-crfm/expanse-gpt2-small-x777",
-    "stanford-gpt2-medium-A":"stanford-crfm/arwen-gpt2-medium-x21",
-    "stanford-gpt2-medium-B":"stanford-crfm/beren-gpt2-medium-x49",
-    "stanford-gpt2-medium-C":"stanford-crfm/celebrimbor-gpt2-medium-x81",
-    "stanford-gpt2-medium-D":"stanford-crfm/durin-gpt2-medium-x343",
-    "stanford-gpt2-medium-E":"stanford-crfm/eowyn-gpt2-medium-x777",
+    "stanford-gpt2-small-A": "stanford-crfm/alias-gpt2-small-x21",
+    "stanford-gpt2-small-B": "stanford-crfm/battlestar-gpt2-small-x49",
+    "stanford-gpt2-small-C": "stanford-crfm/caprica-gpt2-small-x81",
+    "stanford-gpt2-small-D": "stanford-crfm/darkmatter-gpt2-small-x343",
+    "stanford-gpt2-small-E": "stanford-crfm/expanse-gpt2-small-x777",
+    "stanford-gpt2-medium-A": "stanford-crfm/arwen-gpt2-medium-x21",
+    "stanford-gpt2-medium-B": "stanford-crfm/beren-gpt2-medium-x49",
+    "stanford-gpt2-medium-C": "stanford-crfm/celebrimbor-gpt2-medium-x81",
+    "stanford-gpt2-medium-D": "stanford-crfm/durin-gpt2-medium-x343",
+    "stanford-gpt2-medium-E": "stanford-crfm/eowyn-gpt2-medium-x777",
 }
 # The steps for which there are checkpoints in the stanford crfm models - provided as reference
-STANFORD_CRFM_CHECKPOINTS = list(range(0, 100, 10))+list(range(100, 2000, 50))+list(range(2000, 20000, 100))+list(range(20000, 400000+1, 1000))
+STANFORD_CRFM_CHECKPOINTS = (
+    list(range(0, 100, 10))
+    + list(range(100, 2000, 50))
+    + list(range(2000, 20000, 100))
+    + list(range(20000, 400000 + 1, 1000))
+)
 
 # TODO: Add Bloom, GPT-J and GPT-NeoX
 """
@@ -104,7 +115,9 @@ class Embed(nn.Module):
     def forward(self, tokens):
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
-        return einops.rearrange(self.W_E[:, tokens], "d_model batch pos -> batch pos d_model")
+        return einops.rearrange(
+            self.W_E[:, tokens], "d_model batch pos -> batch pos d_model"
+        )
 
 
 class Unembed(nn.Module):
@@ -115,7 +128,9 @@ class Unembed(nn.Module):
         self.b_U = nn.Parameter(torch.empty(self.cfg["d_vocab"]))
 
     def forward(self, tokens):
-        return torch.einsum("vm,bpm->bpv", self.W_U, tokens) + self.b_U  # [batch, pos, d_vocab]
+        return (
+            torch.einsum("vm,bpm->bpv", self.W_U, tokens) + self.b_U
+        )  # [batch, pos, d_vocab]
 
 
 # Positional Embeddings
@@ -148,8 +163,12 @@ class LayerNormPre(nn.Module):
     def forward(self, x):
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, d_model]
         scale = self.hook_scale(
-            (einops.reduce(x.pow(2), "batch pos embed -> batch pos 1", "mean") + self.eps).sqrt()
+            (
+                einops.reduce(x.pow(2), "batch pos embed -> batch pos 1", "mean")
+                + self.eps
+            ).sqrt()
         )  # [batch, pos, 1]
+        # print(f"{scale=}")
         return x / scale
 
 
@@ -158,10 +177,18 @@ class Attention(nn.Module):
     def __init__(self, cfg, attn_type="global"):
         super().__init__()
         self.cfg = cfg
-        self.W_Q = nn.Parameter(torch.empty(self.cfg["n_heads"], self.cfg["d_head"], self.cfg["d_model"]))
-        self.W_K = nn.Parameter(torch.empty(self.cfg["n_heads"], self.cfg["d_head"], self.cfg["d_model"]))
-        self.W_V = nn.Parameter(torch.empty(self.cfg["n_heads"], self.cfg["d_head"], self.cfg["d_model"]))
-        self.W_O = nn.Parameter(torch.empty(self.cfg["n_heads"], self.cfg["d_model"], self.cfg["d_head"]))
+        self.W_Q = nn.Parameter(
+            torch.empty(self.cfg["n_heads"], self.cfg["d_head"], self.cfg["d_model"])
+        )
+        self.W_K = nn.Parameter(
+            torch.empty(self.cfg["n_heads"], self.cfg["d_head"], self.cfg["d_model"])
+        )
+        self.W_V = nn.Parameter(
+            torch.empty(self.cfg["n_heads"], self.cfg["d_head"], self.cfg["d_model"])
+        )
+        self.W_O = nn.Parameter(
+            torch.empty(self.cfg["n_heads"], self.cfg["d_model"], self.cfg["d_head"])
+        )
         self.b_Q = nn.Parameter(torch.empty(self.cfg["n_heads"], self.cfg["d_head"]))
         self.b_K = nn.Parameter(torch.empty(self.cfg["n_heads"], self.cfg["d_head"]))
         self.b_V = nn.Parameter(torch.empty(self.cfg["n_heads"], self.cfg["d_head"]))
@@ -170,13 +197,17 @@ class Attention(nn.Module):
         self.attn_type = attn_type
         # Create a query_pos x key_pos mask, with True iff that query position
         # can attend to that key position
-        causal_mask = torch.tril(torch.ones((self.cfg["n_ctx"], self.cfg["n_ctx"])).bool())
+        causal_mask = torch.tril(
+            torch.ones((self.cfg["n_ctx"], self.cfg["n_ctx"])).bool()
+        )
         if self.attn_type == "global":
             # For global attention, this is a lower triangular matrix - key <= query
             self.register_buffer("mask", causal_mask)
         elif self.attn_type == "local":
             # For local, this is banded, query - window_size < key <= query
-            self.register_buffer("mask", torch.triu(causal_mask, 1 - self.cfg["window_size"]))
+            self.register_buffer(
+                "mask", torch.triu(causal_mask, 1 - self.cfg["window_size"])
+            )
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
@@ -196,24 +227,49 @@ class Attention(nn.Module):
         self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
 
     def forward(self, x):
-        q = self.hook_q(torch.einsum("ihm,bpm->bpih", self.W_Q, x) + self.b_Q)  # [batch, pos, head_index, d_head]
-        k = self.hook_k(torch.einsum("ihm,bpm->bpih", self.W_K, x) + self.b_K)  # [batch, pos, head_index, d_head]
-        v = self.hook_v(torch.einsum("ihm,bpm->bpih", self.W_V, x) + self.b_V)  # [batch, pos, head_index, d_head]
-        attn_scores = torch.einsum("bpih,bqih->bipq", q, k) / self.attn_scale  # [batch, head_index, query_pos, key_pos]
-        attn_scores = self.hook_attn_scores(self.causal_mask(attn_scores))  # [batch, head_index, query_pos, key_pos]
-        attn_matrix = self.hook_attn(F.softmax(attn_scores, dim=-1))  # [batch, head_index, query_pos, key_pos]
-        z = self.hook_z(torch.einsum("bpih,biqp->bqih", v, attn_matrix))  # [batch, pos, head_index, d_head]
+        q = self.hook_q(
+            torch.einsum("ihm,bpm->bpih", self.W_Q, x) + self.b_Q
+        )  # [batch, pos, head_index, d_head]
+        k = self.hook_k(
+            torch.einsum("ihm,bpm->bpih", self.W_K, x) + self.b_K
+        )  # [batch, pos, head_index, d_head]
+        v = self.hook_v(
+            torch.einsum("ihm,bpm->bpih", self.W_V, x) + self.b_V
+        )  # [batch, pos, head_index, d_head]
+        attn_scores = (
+            torch.einsum("bpih,bqih->bipq", q, k) / self.attn_scale
+        )  # [batch, head_index, query_pos, key_pos]
+        attn_scores = self.hook_attn_scores(
+            self.causal_mask(attn_scores)
+        )  # [batch, head_index, query_pos, key_pos]
+        attn_matrix = self.hook_attn(
+            F.softmax(attn_scores, dim=-1)
+        )  # [batch, head_index, query_pos, key_pos]
+        z = self.hook_z(
+            torch.einsum("bpih,biqp->bqih", v, attn_matrix)
+        )  # [batch, pos, head_index, d_head]
         if self.cfg["use_attn_result"]:
-            result = self.hook_result(torch.einsum("imh,bqih->bqim", self.W_O, z))  # [batch, pos, head_index, d_model]
+            result = self.hook_result(
+                torch.einsum("imh,bqih->bqim", self.W_O, z)
+            )  # [batch, pos, head_index, d_model]
             out = (
-                einops.reduce(result, "batch position index model->batch position model", "sum") + self.b_O
+                einops.reduce(
+                    result, "batch position index model->batch position model", "sum"
+                )
+                + self.b_O
             )  # [batch, pos, d_model]
         else:
-            out = torch.einsum("idh,bqih->bqd", self.W_O, z) + self.b_O  # [batch, pos, d_model]
+            out = (
+                torch.einsum("idh,bqih->bqd", self.W_O, z) + self.b_O
+            )  # [batch, pos, d_model]
         return out
 
     def causal_mask(self, attn_scores):
-        return torch.where(self.mask[: attn_scores.size(-2), : attn_scores.size(-1)], attn_scores, self.IGNORE)
+        return torch.where(
+            self.mask[: attn_scores.size(-2), : attn_scores.size(-1)],
+            attn_scores,
+            self.IGNORE,
+        )
 
 
 # MLP Layers
@@ -237,9 +293,13 @@ class MLP(nn.Module):
             raise ValueError(f"Invalid activation function name: {self.cfg['act_fn']}")
 
     def forward(self, x):
-        x = self.hook_pre(torch.einsum("md,bpd->bpm", self.W_in, x) + self.b_in)  # [batch, pos, d_mlp]
+        x = self.hook_pre(
+            torch.einsum("md,bpd->bpm", self.W_in, x) + self.b_in
+        )  # [batch, pos, d_mlp]
         x = self.hook_post(self.act_fn(x))  # [batch, pos, d_mlp]
-        x = torch.einsum("dm,bpm->bpd", self.W_out, x) + self.b_out  # [batch, pos, d_model]
+        x = (
+            torch.einsum("dm,bpm->bpd", self.W_out, x) + self.b_out
+        )  # [batch, pos, d_model]
         return x
 
 
@@ -265,10 +325,14 @@ class TransformerBlock(nn.Module):
 
     def forward(self, x):
         resid_pre = self.hook_resid_pre(x)  # [batch, pos, d_model]
-        attn_out = self.hook_attn_out(self.attn(self.ln1(resid_pre)))  # [batch, pos, d_model]
+        attn_out = self.hook_attn_out(
+            self.attn(self.ln1(resid_pre))
+        )  # [batch, pos, d_model]
         resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
-        
-        mlp_out = self.hook_mlp_out(self.mlp(self.ln2(resid_mid)))  # [batch, pos, d_model]
+
+        mlp_out = self.hook_mlp_out(
+            self.mlp(self.ln2(resid_mid))
+        )  # [batch, pos, d_model]
         resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         return resid_post
 
@@ -283,7 +347,15 @@ class EasyTransformer(HookedRootModule):
     the weights
     """
 
-    def __init__(self, model_name, use_attn_result=False, model=None, keep_original_model=False, center_weights=True, checkpoint=None):
+    def __init__(
+        self,
+        model_name,
+        use_attn_result=False,
+        model=None,
+        keep_original_model=False,
+        center_weights=True,
+        checkpoint=None,
+    ):
         """
         model_name (str): The name of the model to load, via HuggingFace
         use_attn_result (bool): Says whether to explicitly calculate the amount
@@ -297,7 +369,9 @@ class EasyTransformer(HookedRootModule):
             deleted, otherwise it's kept as a self.model attribute
         """
         super().__init__()
-        assert model_name in VALID_MODEL_NAMES, f"Invalid model name: {model_name}. Valid model names are: {VALID_MODEL_NAMES}"
+        assert (
+            model_name in VALID_MODEL_NAMES
+        ), f"Invalid model name: {model_name}. Valid model names are: {VALID_MODEL_NAMES}"
         self.model_name = model_name
         if self.model_name in MODEL_NAMES_DICT:
             self.full_model_name = MODEL_NAMES_DICT[self.model_name]
@@ -308,21 +382,29 @@ class EasyTransformer(HookedRootModule):
             self.model = model
         else:
             if checkpoint is not None:
-                if 'stanford' not in self.model_name:
-                    logging.warning(f"Loading checkpoints is not supported for the model {self.model_name}. Loading without checkpoints")
-                    self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name)
+                if "stanford" not in self.model_name:
+                    logging.warning(
+                        f"Loading checkpoints is not supported for the model {self.model_name}. Loading without checkpoints"
+                    )
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        self.full_model_name
+                    )
                 else:
-                    assert checkpoint in STANFORD_CRFM_CHECKPOINTS, f"Checkpoint {checkpoint} is not valid. Available checkpoints are {STANFORD_CRFM_CHECKPOINTS}"
-                    self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name, revision=f"checkpoint-{checkpoint}")    
+                    assert (
+                        checkpoint in STANFORD_CRFM_CHECKPOINTS
+                    ), f"Checkpoint {checkpoint} is not valid. Available checkpoints are {STANFORD_CRFM_CHECKPOINTS}"
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        self.full_model_name, revision=f"checkpoint-{checkpoint}"
+                    )
             else:
                 self.model = AutoModelForCausalLM.from_pretrained(self.full_model_name)
 
         self.cfg = self.convert_config(self.model.config, model_type=self.model_type)
         self.cfg["use_attn_result"] = use_attn_result
-        self.cfg['checkpoint'] = checkpoint
-        self.cfg['model_type'] = self.model_type
-        self.cfg['model_name'] = self.model_name
-        self.cfg['full_model_name'] = self.full_model_name
+        self.cfg["checkpoint"] = checkpoint
+        self.cfg["model_type"] = self.model_type
+        self.cfg["model_name"] = self.model_name
+        self.cfg["full_model_name"] = self.full_model_name
         self.tokenizer = AutoTokenizer.from_pretrained(self.full_model_name)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -333,7 +415,10 @@ class EasyTransformer(HookedRootModule):
         self.hook_pos_embed = HookPoint()  # [batch, pos, d_model]
 
         self.blocks = nn.ModuleList(
-            [TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg["n_layers"])]
+            [
+                TransformerBlock(self.cfg, block_index)
+                for block_index in range(self.cfg["n_layers"])
+            ]
         )
         self.ln_final = LayerNormPre(self.cfg)
         self.unembed = Unembed(self.cfg)
@@ -462,7 +547,9 @@ class EasyTransformer(HookedRootModule):
         self.pos_embed.W_pos.data -= self.pos_embed.W_pos.mean(0, keepdim=True)
         self.unembed.W_U.data -= self.unembed.W_U.mean(0, keepdim=True)
         for block in self.blocks:
-            block.attn.W_O.data -= einops.reduce(block.attn.W_O, "index d_model d_head -> index 1 d_head", "mean")
+            block.attn.W_O.data -= einops.reduce(
+                block.attn.W_O, "index d_model d_head -> index 1 d_head", "mean"
+            )
             block.mlp.W_out.data -= block.mlp.W_out.mean(0, keepdim=True)
 
     def load_gpt2_weights(self, gpt2):
@@ -489,7 +576,11 @@ class EasyTransformer(HookedRootModule):
             b_ln = gpt2.transformer.h[l].ln_1.bias
             qkv_bias = gpt2.transformer.h[l].attn.c_attn.bias
             qkv_bias = einops.rearrange(
-                qkv_bias, "(qkv index head)->qkv index head", qkv=3, index=self.cfg["n_heads"], head=self.cfg["d_head"]
+                qkv_bias,
+                "(qkv index head)->qkv index head",
+                qkv=3,
+                index=self.cfg["n_heads"],
+                head=self.cfg["d_head"],
             )
             # Fold in layer norm biases
             sd[f"blocks.{l}.attn.b_Q"] = W_Q @ b_ln + qkv_bias[0]
@@ -507,7 +598,9 @@ class EasyTransformer(HookedRootModule):
             W_in_adj = gpt2.transformer.h[l].ln_2.weight[None, :] * W_in
             sd[f"blocks.{l}.mlp.W_in"] = W_in_adj
             # Fold in layer norm biases
-            sd[f"blocks.{l}.mlp.b_in"] = gpt2.transformer.h[l].mlp.c_fc.bias + (W_in @ gpt2.transformer.h[l].ln_2.bias)
+            sd[f"blocks.{l}.mlp.b_in"] = gpt2.transformer.h[l].mlp.c_fc.bias + (
+                W_in @ gpt2.transformer.h[l].ln_2.bias
+            )
             sd[f"blocks.{l}.mlp.W_out"] = W_out
             sd[f"blocks.{l}.mlp.b_out"] = gpt2.transformer.h[l].mlp.c_proj.bias
         W_U = gpt2.lm_head.weight
@@ -544,13 +637,17 @@ class EasyTransformer(HookedRootModule):
             W_O = neo.transformer.h[l].attn.attention.out_proj.weight
             W_O = einops.rearrange(W_O, "m (i h)->i m h", i=self.cfg["n_heads"])
             sd[f"blocks.{l}.attn.W_O"] = W_O
-            sd[f"blocks.{l}.attn.b_O"] = neo.transformer.h[l].attn.attention.out_proj.bias
+            sd[f"blocks.{l}.attn.b_O"] = neo.transformer.h[
+                l
+            ].attn.attention.out_proj.bias
 
             W_in = neo.transformer.h[l].mlp.c_fc.weight
             W_out = neo.transformer.h[l].mlp.c_proj.weight
             W_in_adj = neo.transformer.h[l].ln_2.weight[None, :] * W_in
             sd[f"blocks.{l}.mlp.W_in"] = W_in_adj
-            sd[f"blocks.{l}.mlp.b_in"] = neo.transformer.h[l].mlp.c_fc.bias + (W_in @ neo.transformer.h[l].ln_2.bias)
+            sd[f"blocks.{l}.mlp.b_in"] = neo.transformer.h[l].mlp.c_fc.bias + (
+                W_in @ neo.transformer.h[l].ln_2.bias
+            )
             sd[f"blocks.{l}.mlp.W_out"] = W_out
             sd[f"blocks.{l}.mlp.b_out"] = neo.transformer.h[l].mlp.c_proj.bias
         W_U = neo.lm_head.weight
@@ -575,9 +672,21 @@ class EasyTransformer(HookedRootModule):
             W_Q = opt.model.decoder.layers[l].self_attn.q_proj.weight
             W_K = opt.model.decoder.layers[l].self_attn.k_proj.weight
             W_V = opt.model.decoder.layers[l].self_attn.v_proj.weight
-            W_Q = einops.rearrange(W_Q, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
-            W_K = einops.rearrange(W_K, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
-            W_V = einops.rearrange(W_V, "(index d_head) d_model->index d_head d_model", index=self.cfg["n_heads"])
+            W_Q = einops.rearrange(
+                W_Q,
+                "(index d_head) d_model->index d_head d_model",
+                index=self.cfg["n_heads"],
+            )
+            W_K = einops.rearrange(
+                W_K,
+                "(index d_head) d_model->index d_head d_model",
+                index=self.cfg["n_heads"],
+            )
+            W_V = einops.rearrange(
+                W_V,
+                "(index d_head) d_model->index d_head d_model",
+                index=self.cfg["n_heads"],
+            )
 
             sd[f"blocks.{l}.attn.W_Q"] = W_Q * w_ln_attn
             sd[f"blocks.{l}.attn.W_K"] = W_K * w_ln_attn
@@ -608,13 +717,21 @@ class EasyTransformer(HookedRootModule):
             sd[f"blocks.{l}.attn.b_V"] = W_V @ b_ln + v_bias
 
             W_O = opt.model.decoder.layers[l].self_attn.out_proj.weight
-            W_O = einops.rearrange(W_O, "d_model (index d_head)->index d_model d_head", index=self.cfg["n_heads"])
+            W_O = einops.rearrange(
+                W_O,
+                "d_model (index d_head)->index d_model d_head",
+                index=self.cfg["n_heads"],
+            )
             sd[f"blocks.{l}.attn.W_O"] = W_O
-            sd[f"blocks.{l}.attn.b_O"] = opt.model.decoder.layers[l].self_attn.out_proj.bias
+            sd[f"blocks.{l}.attn.b_O"] = opt.model.decoder.layers[
+                l
+            ].self_attn.out_proj.bias
 
             W_in = opt.model.decoder.layers[l].fc1.weight
             W_out = opt.model.decoder.layers[l].fc2.weight
-            W_in_adj = opt.model.decoder.layers[l].final_layer_norm.weight[None, :] * W_in
+            W_in_adj = (
+                opt.model.decoder.layers[l].final_layer_norm.weight[None, :] * W_in
+            )
             sd[f"blocks.{l}.mlp.W_in"] = W_in_adj
             sd[f"blocks.{l}.mlp.b_in"] = opt.model.decoder.layers[l].fc1.bias + (
                 W_in @ opt.model.decoder.layers[l].final_layer_norm.bias

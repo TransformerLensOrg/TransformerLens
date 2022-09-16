@@ -107,7 +107,7 @@ class HookedRootModule(nn.Module):
         for name, module in self.named_modules():
             module.name = name
             self.mod_dict[name] = module
-            if 'hook_' in name:
+            if "hook_" in name:
                 self.hook_dict[name] = module
 
     def hook_points(self):
@@ -129,13 +129,27 @@ class HookedRootModule(nn.Module):
 
     def cache_all(self, cache, incl_bwd=False, device="cuda", remove_batch_dim=False):
         # Caches all activations wrapped in a HookPoint
-        # Remove batch dim is a utility for single batch inputs that removes the batch 
+        # Remove batch dim is a utility for single batch inputs that removes the batch
         # dimension from the cached activations - use ONLY for batches of size 1
-        self.cache_some(cache, lambda x: True, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
+        self.cache_some(
+            cache,
+            lambda x: True,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+        )
 
-    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device="cuda", remove_batch_dim=False):
+    def cache_some(
+        self,
+        cache,
+        names: Callable[[str], bool],
+        incl_bwd=False,
+        device="cuda",
+        remove_batch_dim=False,
+    ):
         """Cache a list of hook provided by names, Boolean function on names"""
         self.is_caching = True
+
         def save_hook(tensor, hook):
             if remove_batch_dim:
                 cache[hook.name] = tensor.detach().to(device)[0]
@@ -147,6 +161,7 @@ class HookedRootModule(nn.Module):
                 cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
             else:
                 cache[hook.name + "_grad"] = tensor[0].detach().to(device)
+
         for name, hp in self.hook_dict.items():
             if names(name):
                 hp.add_hook(save_hook, "fwd")
@@ -163,7 +178,13 @@ class HookedRootModule(nn.Module):
                     hp.add_hook(hook, dir=dir)
 
     def run_with_hooks(
-        self, *args, fwd_hooks=[], bwd_hooks=[], reset_hooks_start=True, reset_hooks_end=True, clear_contexts=False
+        self,
+        *args,
+        fwd_hooks=[],
+        bwd_hooks=[],
+        reset_hooks_start=True,
+        reset_hooks_end=True,
+        clear_contexts=False,
     ):
         """
         fwd_hooks: A list of (name, hook), where name is either the name of
@@ -200,6 +221,8 @@ class HookedRootModule(nn.Module):
         out = self.forward(*args)
         if reset_hooks_end:
             if len(bwd_hooks) > 0:
-                logging.warning("WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur")
+                logging.warning(
+                    "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
+                )
             self.reset_hooks(clear_contexts)
         return out
