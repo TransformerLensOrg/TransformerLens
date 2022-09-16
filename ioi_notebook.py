@@ -1412,7 +1412,6 @@ ld = logit_diff_target(model, ioi_dataset[:N], all=True)
 
 
 from ioi_circuit_extraction import turn_keep_into_rmv, list_diff
-
 # %% # sanity check
 
 from ioi_circuit_extraction import (
@@ -1462,7 +1461,7 @@ if True:  # I think this is some test
 
 
 #%%
-def score_metric(model, ioi_dataset, k=1, target_dataset=None, all=False):
+def score_target(model, ioi_dataset, k=1, target_dataset=None, all=False):
     if target_dataset is None:
         target_dataset = ioi_dataset
     text_prompts = ioi_dataset.text_prompts
@@ -1546,7 +1545,7 @@ mlps_to_keep = {}
 
 model.reset_hooks()
 old_ld, old_std = logit_diff_target(model, ioi_dataset, all=True, std=True)
-old_score = score_metric(model, ioi_dataset)
+old_score = score_target(model, ioi_dataset)
 model.reset_hooks()
 model, _ = do_circuit_extraction(
     mlps_to_remove={},  # we have to keep every mlps
@@ -1557,7 +1556,7 @@ model, _ = do_circuit_extraction(
 )
 
 ldiff, std = logit_diff_target(model, ioi_dataset, std=True, all=True)
-score = score_metric(model, ioi_dataset)  # k=K ??
+score = score_target(model, ioi_dataset)  # k=K ??
 
 # %%
 print(f"Logit difference = {ldiff.mean().item()} +/- {std}. score={score.item()}")
@@ -1589,6 +1588,7 @@ px.scatter(
     color="misc",
     title=f"Prompt type = {ioi_dataset.prompt_type}",
 )
+
 
 # %%
 for key in ioi_dataset.word_idx:
@@ -1687,7 +1687,7 @@ old_ld, old_std = logit_diff_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
-old_score = score_metric(
+old_score = score_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
 )
 model.reset_hooks()
@@ -1695,7 +1695,7 @@ old_ld_source, old_std_source = logit_diff_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
-old_score_source = score_metric(
+old_score_source = score_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
 )
 model.reset_hooks()
@@ -1716,13 +1716,13 @@ model, _ = do_global_patching(
 ldiff_target, std_ldiff_target = logit_diff_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, std=True, all=True
 )
-score_target = score_metric(
+score_target = score_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
 )
 ldiff_source, std_ldiff_source = logit_diff_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, std=True, all=True
 )
-score_source = score_metric(
+score_source = score_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
 )
 # %%
