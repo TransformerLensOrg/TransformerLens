@@ -335,7 +335,7 @@ px.imshow(
 # ### Which head write in the direction Embed(IO) - Embed(S) ?
 #%%
 
-MODEL_EPS = model.cfg["eps"]
+MODEL_EPS = model.cfg.eps
 
 
 def get_layer_norm_div(x, eps=MODEL_EPS):
@@ -372,9 +372,9 @@ def writing_direction_heatmap(
     the (correct) IO token and the incorrect S token
     """
 
-    n_heads = model.cfg["n_heads"]
-    n_layers = model.cfg["n_layers"]
-    d_model = model.cfg["d_model"]
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
+    d_model = model.cfg.d_model
 
     model_unembed = (
         model.unembed.W_U.detach().cpu()
@@ -540,8 +540,8 @@ def scatter_attention_and_contribution(
     for each input sequence with the attention paid to IO and S
     and the amount that is written in the IO and S directions
     """
-    n_heads = model.cfg["n_heads"]
-    n_layers = model.cfg["n_layers"]
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
     model_unembed = model.unembed.W_U.detach().cpu()
     df = []
     for prompt in tqdm(prompts):
@@ -1183,7 +1183,7 @@ for ablate_calibration in [
             for i in range(12 * 12)
         }
 
-        mlp_indices_to_ablate = [[] for _ in range(model.cfg["n_heads"])]
+        mlp_indices_to_ablate = [[] for _ in range(model.cfg.n_heads)]
 
         for head in [
             (0, 1),

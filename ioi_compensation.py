@@ -137,8 +137,8 @@ def writing_direction_heatmap(
     the (correct) IO token and the incorrect S token
     """
 
-    n_heads = model.cfg["n_heads"]
-    n_layers = model.cfg["n_layers"]
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
 
     model_unembed = (
         model.unembed.W_U.detach().cpu()
@@ -173,7 +173,9 @@ def writing_direction_heatmap(
 
         for lay in range(n_layers):
             if mode == "attn_out":
-                cur = cache[f"blocks.{lay}.attn.hook_result"][i, ioi_dataset.word_idx["end"][i], :, :]
+                cur = cache[f"blocks.{lay}.attn.hook_result"][
+                    i, ioi_dataset.word_idx["end"][i], :, :
+                ]
             elif mode == "mlp":
                 cur = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :]
             vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
@@ -230,8 +232,8 @@ def compensation_plot(
     the (correct) IO token and the incorrect S token
     """
 
-    n_heads = model.cfg["n_heads"]
-    n_layers = model.cfg["n_layers"]
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
 
     model_unembed = (
         model.unembed.W_U.detach()
@@ -239,8 +241,12 @@ def compensation_plot(
 
     io_dir = model_unembed[ioi_dataset.io_tokenIDs]
     s_dir = model_unembed[ioi_dataset.s_tokenIDs]
-    random_dir1 = model_unembed[np.random.randint(0, model_unembed.shape[0], size=ioi_dataset.N)]
-    random_dir2 = model_unembed[np.random.randint(0, model_unembed.shape[0], size=ioi_dataset.N)]
+    random_dir1 = model_unembed[
+        np.random.randint(0, model_unembed.shape[0], size=ioi_dataset.N)
+    ]
+    random_dir2 = model_unembed[
+        np.random.randint(0, model_unembed.shape[0], size=ioi_dataset.N)
+    ]
 
     IO_m_S_dirs = io_dir - s_dir  # random_dir2 - random_dir1
 
@@ -260,7 +266,9 @@ def compensation_plot(
 
         def write_IO_m_S_in_resid(z, hook):
             """Add the IO - S direction to the residual. Shape of z is (batch, seq_len, embed_dim)"""
-            z[:, ioi_dataset.word_idx["end"], :] = z[:, ioi_dataset.word_idx["end"], :] + K * IO_m_S_dirs
+            z[:, ioi_dataset.word_idx["end"], :] = (
+                z[:, ioi_dataset.word_idx["end"], :] + K * IO_m_S_dirs
+            )
             return z
 
         # model.cache_all(cache)
@@ -274,16 +282,27 @@ def compensation_plot(
         head_out = cache[f"blocks.{layer_to_get}.attn.hook_result"][
             range(ioi_dataset.N), ioi_dataset.word_idx["end"], :, :
         ]  # keep only the end token
-        vals = torch.einsum("bhd,bd->bh", head_out, IO_m_S_dirs).mean(dim=0).detach().cpu().numpy()
+        vals = (
+            torch.einsum("bhd,bd->bh", head_out, IO_m_S_dirs)
+            .mean(dim=0)
+            .detach()
+            .cpu()
+            .numpy()
+        )
         vals_k.append(vals)
 
     vals_k = np.array(vals_k)
-    df = pd.DataFrame(vals_k, index=K_values, columns=[f"Head {layer_to_get}.{h}" for h in range(n_heads)])
+    df = pd.DataFrame(
+        vals_k,
+        index=K_values,
+        columns=[f"Head {layer_to_get}.{h}" for h in range(n_heads)],
+    )
     df.index.name = "K"
 
     fig = px.line(df)
     fig.update_layout(
-        title=f"Heads from Layer {layer_to_get} writting in the (IO-S) direction vs k*(IO-S) in resid {layer}" + title,
+        title=f"Heads from Layer {layer_to_get} writting in the (IO-S) direction vs k*(IO-S) in resid {layer}"
+        + title,
         xaxis_title=f"k",
         yaxis_title="H(R + k*(IO-S)).IO-S",
     )
