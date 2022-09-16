@@ -569,7 +569,7 @@ class EasyTransformer(HookedRootModule):
         if center_weights:
             self.center_weights()
 
-        if not keep_original_model:
+        if not keep_original_model and self.model is not None:
             # Delete the original model to save memory
             del self.model
 
@@ -610,6 +610,15 @@ class EasyTransformer(HookedRootModule):
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
+
+    def set_tokenizer(self, tokenizer):
+        """
+        Sets the tokenizer to use for this model.
+        tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer
+        """
+        assert isinstance(tokenizer, PreTrainedTokenizer)
+        self.tokenizer = tokenizer
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def set_tokenizer(self, tokenizer):
         """
