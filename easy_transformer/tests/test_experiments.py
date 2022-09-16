@@ -83,7 +83,7 @@ def test_semantic_ablation():
     assert list(cache["hook_embed"].shape) == [
         L,
         max_seq_length,
-        model.cfg["d_model"],
+        model.cfg.d_model,
     ], cache["hook_embed"].shape
     average_activations = {}
     for key in cache.keys():
@@ -103,10 +103,10 @@ def test_semantic_ablation():
             cache[key][
                 list(range(L)), semantic_indices[thing], :, :
             ] = thing_average.clone()
-    diffs = torch.zeros((model.cfg["n_layers"], model.cfg["n_heads"]))
+    diffs = torch.zeros((model.cfg.n_layers, model.cfg.n_heads))
     diffs += avg_logits.item()
-    for layer in tqdm(range(model.cfg["n_layers"])):
-        for head in range(model.cfg["n_heads"]):
+    for layer in tqdm(range(model.cfg.n_layers)):
+        for head in range(model.cfg.n_heads):
             new_val = (
                 cache[f"blocks.{layer}.attn.hook_result"][:, :, head, :]
                 .detach()

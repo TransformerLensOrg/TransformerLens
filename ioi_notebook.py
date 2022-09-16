@@ -1412,6 +1412,7 @@ ld = logit_diff_target(model, ioi_dataset[:N], all=True)
 
 
 from ioi_circuit_extraction import turn_keep_into_rmv, list_diff
+
 # %% # sanity check
 
 from ioi_circuit_extraction import (
@@ -1716,7 +1717,7 @@ model, _ = do_global_patching(
 ldiff_target, std_ldiff_target = logit_diff_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, std=True, all=True
 )
-score_target = score_target(
+score_target_result = score_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
 )
 ldiff_source, std_ldiff_source = logit_diff_target(
@@ -1733,7 +1734,7 @@ print(
     f"Original logit_diff on SOURCE dataset (no patching yet!) = {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
 )
 print(
-    f"logit_diff on TARGET dataset (*AFTER* patching) = {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}"
+    f"logit_diff on TARGET dataset (*AFTER* patching) = {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target_result}"
 )
 print(
     f"Logit_diff on SOURCE dataset (*AFTER* patching) = {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}"

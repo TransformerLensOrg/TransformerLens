@@ -51,13 +51,19 @@ class HookPoint(nn.Module):
         # Hook format is fn(activation, hook_name)
         # Change it into PyTorch hook format (this includes input and output,
         # which are the same for a HookPoint)
-        def full_hook(module, module_input, module_output):
-            return hook(module_output, hook=self)
 
         if dir == "fwd":
+
+            def full_hook(module, module_input, module_output):
+                return hook(module_output, hook=self)
+
             handle = self.register_forward_hook(full_hook)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
+            # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
+            def full_hook(module, module_input, module_output):
+                return hook(module_output[0], hook=self)
+
             handle = self.register_full_backward_hook(full_hook)
             self.bwd_hooks.append(handle)
         else:
@@ -107,7 +113,7 @@ class HookedRootModule(nn.Module):
         for name, module in self.named_modules():
             module.name = name
             self.mod_dict[name] = module
-            if "hook_" in name:
+            if "HookPoint" in str(type(module)):
                 self.hook_dict[name] = module
 
     def hook_points(self):
