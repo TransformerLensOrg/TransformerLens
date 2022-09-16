@@ -193,11 +193,11 @@ def mean_at_end(
 
 
 # %%
-run_memory_intense_cells = False
+run_memory_intense_cells = True
 
 if run_memory_intense_cells:
     metric = ExperimentMetric(
-        metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True
+        metric=logit_diff, dataset=ioi_dataset, relative_metric=True
     )
     config_mlp = AblationConfig(
         abl_type="custom",
@@ -206,7 +206,7 @@ if run_memory_intense_cells:
         target_module="mlp",
         head_circuit="result",
         cache_means=True,
-        verbose=True,
+        verbose=False,
     )
     abl_mlp = EasyAblation(model, config_mlp, metric)
     mlp_result = abl_mlp.run_ablation()
@@ -218,7 +218,7 @@ if run_memory_intense_cells:
         target_module="attn_layer",
         head_circuit="result",
         cache_means=True,
-        verbose=True,
+        verbose=False,
     )
     abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
     attn_result = abl_attn_layer.run_ablation()
