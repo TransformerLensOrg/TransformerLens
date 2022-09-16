@@ -1,7 +1,4 @@
-<<<<<<< HEAD
 from mimetypes import init
-=======
->>>>>>> 6d65c32 (Get rid of debugging code)
 from typing import Callable, Union, List, Tuple, Dict, Optional
 import torch
 import torch.nn as nn
@@ -714,9 +711,11 @@ class EasyTransformer(HookedRootModule):
     @torch.inference_mode()
     def generate(
         self,
-        x: Union[str, list, torch.Tensor],
+        input: Union[str, list, torch.Tensor],
         max_new_tokens: int,
         stop_at_eos: bool = True,
+        pad_token_id: Optional[int] = None,
+        eos_token_id: Optional[int] = None,
         do_sample: bool = False,
         top_k: Optional[int] = None,
         top_p: float = 1.0,
@@ -729,9 +728,11 @@ class EasyTransformer(HookedRootModule):
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
         Args:
-            x (int): Either a batch of tokens ([batch, pos]) or a text string
+            input (int): Either a batch of tokens ([batch, pos]) or a text string
             max_new_tokens (int): Maximum number of tokens to generate
             stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
+            pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
+            eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
             do_sample (bool): If True, sample from the model's output distribution. Otherwise, use beam or greedy search.
             top_k (int): Number of tokens to sample from. If None, sample from all tokens
             top_p (float): Probability mass to sample from. If 1.0, sample from all tokens
@@ -743,27 +744,44 @@ class EasyTransformer(HookedRootModule):
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
         """
-        if type(x) == str or type(x) == list:
+        if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
-            x = self.to_tokens(x)
-        assert isinstance(x, torch.Tensor)
-        B, S = x.shape
+            assert (
+                self.tokenizer is not None
+            ), "Must provide a tokenizer if passing a string to the model"
+            tokens = self.to_tokens(input)
+        else:
+            tokens = input
+        assert isinstance(tokens, torch.Tensor)
+        B, S = tokens.shape
         if use_cache:
             cache = EasyTransformerKeyValueCache.init_cache(self.cfg, B)
         else:
             cache = None
+        if stop_at_eos and pad_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.pad_token_id is not None
+            ), "Must pass a pad_token_id if stop_at_eos is True and tokenizer is None or has no pad_token_id"
+            pad_token_id = self.tokenizer.pad_token_id
+        if stop_at_eos and eos_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+            eos_token_id = self.tokenizer.eos_token_id
         self.eval()
         if not do_sample and num_beams == 1:
-            return self.greedy_search(x, max_new_tokens, stop_at_eos, cache)
+            return self.greedy_search(
+                tokens, max_new_tokens, stop_at_eos, pad_token_id, eos_token_id, cache
+            )
         elif not do_sample and num_beams > 1:
             raise NotImplementedError("Beam search not implemented yet")
             return self.beam_search(
-                x, max_new_tokens, num_beams, num_return_sequences, cache
+                tokens, max_new_tokens, num_beams, num_return_sequences, cache
             )
         elif do_sample and num_beams > 1:
             raise NotImplementedError("Beam sampling not implemented yet")
             return self.beam_sample(
-                x,
+                tokens,
                 max_new_tokens,
                 num_beams,
                 num_return_sequences,
@@ -775,9 +793,11 @@ class EasyTransformer(HookedRootModule):
             )
         else:
             return self.sample(
-                x,
+                tokens,
                 max_new_tokens,
                 stop_at_eos,
+                pad_token_id,
+                eos_token_id,
                 top_k,
                 top_p,
                 temperature,
@@ -787,46 +807,59 @@ class EasyTransformer(HookedRootModule):
 
     def greedy_search(
         self,
-        x: torch.Tensor,
+        tokens: torch.Tensor,
         max_new_tokens: int,
         stop_at_eos: bool = True,
+        pad_token_id: Optional[int] = None,
+        eos_token_id: Optional[int] = None,
         cache: Optional[EasyTransformerKeyValueCache] = None,
     ):
         """
         Greedily sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
         Args:
-            x (torch.Tensor): A batch of tokens ([batch, pos])
+            tokens (torch.Tensor): A batch of tokens ([batch, pos])
             max_new_tokens (int): Maximum number of tokens to generate
             stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
+            pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
+            eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
             cache (EasyTransformerKeyValueCache, *optional*): Cache to use for the model. If None, no cache is used
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
         """
-        B, S = x.shape
-        outputs = x
-        unfinished_sequences = x.new(x.shape[0]).fill_(1)
+        B, S = tokens.shape
+        outputs = tokens
+        unfinished_sequences = tokens.new(tokens.shape[0]).fill_(1)
+
+        if stop_at_eos and pad_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.pad_token_id is not None
+            ), "Must pass a pad_token_id if stop_at_eos is True and tokenizer is None or has no pad_token_id"
+            pad_token_id = self.tokenizer.pad_token_id
+        if stop_at_eos and eos_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+            eos_token_id = self.tokenizer.eos_token_id
+
         for _ in tqdm(range(max_new_tokens)):
-            logits = self(x, cache)
+            logits = self(tokens, cache)
             next_tokens = torch.argmax(logits[:, -1, :], dim=-1)
             if stop_at_eos:
-                next_tokens = (
-                    next_tokens * unfinished_sequences
-                    + self.tokenizer.pad_token_id * (1 - unfinished_sequences)
+                next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
+                    1 - unfinished_sequences
                 )
-                unfinished_sequences.mul_(
-                    (next_tokens != self.tokenizer.eos_token_id).long()
-                )
+                unfinished_sequences.mul_((next_tokens != eos_token_id).long())
             outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
             if cache is not None:
-                x = next_tokens.unsqueeze(-1)
+                tokens = next_tokens.unsqueeze(-1)
             else:
-                x = outputs
+                tokens = outputs
 
         return outputs
 
     def beam_search(
         self,
-        x: torch.Tensor,
+        tokens: torch.Tensor,
         max_new_tokens: int,
         num_beams: int,
         num_return_sequences: int,
@@ -835,7 +868,7 @@ class EasyTransformer(HookedRootModule):
         """
         Beam search for tokens from the model until the model outputs eos_token or max_new_tokens is reached.
         Args:
-            x (torch.Tensor): A batch of tokens ([batch, pos])
+            tokens (torch.Tensor): A batch of tokens ([batch, pos])
             max_new_tokens (int): Maximum number of tokens to generate
             num_beams (int): Number of beams to use for beam search.
             num_return_sequences (int): Number of sequences to return for beam search
@@ -848,7 +881,7 @@ class EasyTransformer(HookedRootModule):
 
     def beam_sample(
         self,
-        x: torch.Tensor,
+        tokens: torch.Tensor,
         max_new_tokens: int,
         num_beams: int,
         num_return_sequences: int,
@@ -861,7 +894,7 @@ class EasyTransformer(HookedRootModule):
         """
         Beam sampling for tokens from the model until the model outputs eos_token or max_new_tokens is reached.
         Args:
-            x (torch.Tensor): A batch of tokens ([batch, pos])
+            tokens (torch.Tensor): A batch of tokens ([batch, pos])
             max_new_tokens (int): Maximum number of tokens to generate
             num_beams (int): Number of beams to use for beam search.
             num_return_sequences (int): Number of sequences to return for beam search
@@ -878,9 +911,11 @@ class EasyTransformer(HookedRootModule):
 
     def sample(
         self,
-        x: torch.Tensor,
+        tokens: torch.Tensor,
         max_new_tokens: int,
         stop_at_eos: bool = True,
+        pad_token_id: Optional[int] = None,
+        eos_token_id: Optional[int] = None,
         top_k: Optional[int] = None,
         top_p: float = 1.0,
         temperature: float = 1.0,
@@ -890,9 +925,11 @@ class EasyTransformer(HookedRootModule):
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
         Args:
-            x (torch.Tensor): A batch of tokens ([batch, pos])
+            tokens (torch.Tensor): A batch of tokens ([batch, pos])
             max_new_tokens (int): Maximum number of tokens to generate
             stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
+            pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
+            eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
             top_k (int): Number of tokens to sample from. If None, sample from all tokens
             top_p (float): Probability mass to sample from. If 1.0, sample from all tokens
             temperature (float): Temperature for sampling. Higher values will make the model more random
@@ -901,9 +938,20 @@ class EasyTransformer(HookedRootModule):
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
         """
-        B, S = x.shape
-        outputs = x
-        unfinished_sequences = x.new(x.shape[0]).fill_(1)
+        B, S = tokens.shape
+        outputs = tokens
+        unfinished_sequences = tokens.new(tokens.shape[0]).fill_(1)
+
+        if stop_at_eos and pad_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.pad_token_id is not None
+            ), "Must pass a pad_token_id if stop_at_eos is True and tokenizer is None or has no pad_token_id"
+            pad_token_id = self.tokenizer.pad_token_id
+        if stop_at_eos and eos_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+            eos_token_id = self.tokenizer.eos_token_id
 
         def sample_logits(input_ids, logits, top_k, top_p, temperature, freq_penalty):
             assert temperature > 0, "temperature has to be greater than 0"
@@ -934,7 +982,7 @@ class EasyTransformer(HookedRootModule):
             return torch.distributions.categorical.Categorical(logits=logits).sample()
 
         for _ in tqdm(range(max_new_tokens)):
-            logits = self(x, cache)
+            logits = self(tokens, cache)
             next_tokens = sample_logits(
                 outputs,
                 logits[:, -1, :],
@@ -944,18 +992,15 @@ class EasyTransformer(HookedRootModule):
                 freq_penalty=freq_penalty,
             )
             if stop_at_eos:
-                next_tokens = (
-                    next_tokens * unfinished_sequences
-                    + self.tokenizer.pad_token_id * (1 - unfinished_sequences)
+                next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
+                    1 - unfinished_sequences
                 )
-                unfinished_sequences.mul_(
-                    (next_tokens != self.tokenizer.eos_token_id).long()
-                )
+                unfinished_sequences.mul_((next_tokens != eos_token_id).long())
             outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
             if cache is not None:
-                x = next_tokens.unsqueeze(-1)
+                tokens = next_tokens.unsqueeze(-1)
             else:
-                x = outputs
+                tokens = outputs
 
         return outputs
 
