@@ -346,6 +346,12 @@ px.imshow(
 MODEL_EPS = model.cfg["eps"]
 
 
+def get_layer_norm_vals(x, eps=MODEL_EPS):
+    mean = x.mean(dim=-1, keepdim=True)
+    new_x = (x - mean).detach().clone()
+    return (new_x.var(dim=-1, keepdim=True).mean() + eps).sqrt()
+
+
 def layer_norm(x, eps=MODEL_EPS):
     return LayerNormPre({"eps": eps})(x)
 
@@ -419,6 +425,11 @@ def writing_direction_heatmap(
         mlp_sum = 0
         res_stream_sum = torch.zeros(size=(d_model,))
         res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :].detach().cpu()
+
+        layer_norm_vals = get_layer_norm_vals(
+            cache["blocks.11.hook_resid_post"][0, -2, :]
+        )
+
         for lay in range(n_layers):
             if mode == "attn_out":
                 cur = (
@@ -429,21 +440,25 @@ def writing_direction_heatmap(
                 cur = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :]
             cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :].detach().cpu()
             more_curs.append(cur_mlp)
+            for i in range(12):
+                cur[i] -= cur[i].mean()
+            cur /= layer_norm_vals
+
             res_stream_sum += torch.sum(cur, dim=0).cpu()
             res_stream_sum += model.blocks[lay].attn.b_O.detach().cpu()
             res_stream_sum += cur_mlp[0]
 
-            assert torch.allclose(
-                res_stream_sum,
-                cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach().cpu(),
-                rtol=1e-3,
-                atol=1e-3,
-            ), lay
+            # assert torch.allclose(
+            #     res_stream_sum,
+            #     cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach().cpu(),
+            #     rtol=1e-3,
+            #     atol=1e-3,
+            # ), lay
 
             mlp_sum += cur_mlp
 
             vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
-            vals[:, lay] += (unembed_bias_io - unembed_bias_s) / n_heads
+            vals[:, lay] += unembed_bias_io - unembed_bias_s
 
         res_stream_sum = (
             layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
