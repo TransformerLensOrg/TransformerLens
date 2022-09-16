@@ -680,7 +680,7 @@ class EasyTransformer(HookedRootModule):
         for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
-            residual = block(residual)  # [batch, pos, d_model]
+            residual = block(residual, cache[i])  # [batch, pos, d_model]
         if return_type is None:
             return None
         else:
@@ -842,7 +842,7 @@ class EasyTransformer(HookedRootModule):
             eos_token_id = self.tokenizer.eos_token_id
 
         for _ in tqdm(range(max_new_tokens)):
-            logits = self(tokens, cache)
+            logits = self(tokens, return_type="logits", cache=cache)
             next_tokens = torch.argmax(logits[:, -1, :], dim=-1)
             if stop_at_eos:
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
@@ -982,7 +982,7 @@ class EasyTransformer(HookedRootModule):
             return torch.distributions.categorical.Categorical(logits=logits).sample()
 
         for _ in tqdm(range(max_new_tokens)):
-            logits = self(tokens, cache)
+            logits = self(tokens, return_type="logits", cache=cache)
             next_tokens = sample_logits(
                 outputs,
                 logits[:, -1, :],
