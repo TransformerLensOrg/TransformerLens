@@ -20,7 +20,7 @@
 # %% [markdown]
 # ## Import
 # # %%
-from easy_transformer.EasyTransformer import LayerNormPre
+from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
@@ -335,6 +335,7 @@ px.imshow(
 # ### Which head write in the direction Embed(IO) - Embed(S) ?
 #%%
 
+MODEL_CFG = model.cfg
 MODEL_EPS = model.cfg.eps
 
 
@@ -344,8 +345,8 @@ def get_layer_norm_div(x, eps=MODEL_EPS):
     return (new_x.var(dim=-1, keepdim=True).mean() + eps).sqrt()
 
 
-def layer_norm(x, eps=MODEL_EPS):
-    return LayerNormPre({"eps": eps})(x)
+def layer_norm(x, cfg=MODEL_CFG):
+    return LayerNormPre(cfg)(x)
 
 
 def pytorch_layer_norm(x, eps=MODEL_EPS):

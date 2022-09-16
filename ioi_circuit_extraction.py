@@ -47,8 +47,8 @@ def process_heads_and_mlps(
     assert (heads_to_remove is None) != (heads_to_keep is None)
     assert (mlps_to_keep is None) != (mlps_to_remove is None)
 
-    n_layers = model.cfg["n_layers"]
-    n_heads = model.cfg["n_heads"]
+    n_layers = model.cfg.n_layers
+    n_heads = model.cfg.n_heads
 
     dataset_length = len(ioi_dataset.text_prompts)
 
