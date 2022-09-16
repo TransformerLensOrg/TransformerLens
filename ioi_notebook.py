@@ -414,7 +414,7 @@ def writing_direction_heatmap(
         logits = model(ioi_dataset.text_prompts[i])
         vals_shape = list(vals.shape)
         all_curs = torch.zeros([n_heads, n_layers, d_model])
-
+        mlp_sum = 0
         for lay in range(n_layers):
             if mode == "attn_out":
                 cur = (
@@ -442,11 +442,15 @@ def writing_direction_heatmap(
             )
             print(cur_std)
             cur = cur / cur_std
+            cur_mlp = cur_mlp - cur_mlp.mean(dim=-1, keepdim=True)
+            cur_mlp_std = cur_mlp.cpu() / cur_std.cpu()
+            mlp_sum += torch.einsum("ha,a->", cur_mlp_std, dire.cpu())
 
             vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
-            vals[:, lay] += unembed_bias_io - unembed_bias_s
+            vals[:, lay] += (unembed_bias_io - unembed_bias_s) / n_heads
 
         cur_sum = torch.einsum("hla->a", all_curs)
+        print(f"{mlp_sum=}")
 
         ln_cur_sum = (  # layer norm wants to see "batch pos embed"
             layer_norm(cur_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
