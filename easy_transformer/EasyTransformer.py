@@ -47,6 +47,10 @@ from easy_transformer.utils import (
     get_corner,
     print_gpu_mem,
     get_sample_from_dataset,
+    solu,
+    reglu,
+    geglu,
+    swiglu,
 )
 from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
@@ -338,6 +342,10 @@ class MLP(nn.Module):
         self.cfg = cfg
         self.W_in = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
         self.b_in = nn.Parameter(torch.empty(self.cfg.d_mlp))
+        if self.cfg.gated_act_fn:
+            self.W_gate = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
+            self.b_gate = nn.Parameter(torch.empty(self.cfg.d_mlp))
+            self.hook_gate = HookPoint()
         self.W_out = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
         self.b_out = nn.Parameter(torch.empty(self.cfg.d_model))
 
@@ -346,20 +354,44 @@ class MLP(nn.Module):
 
         if self.cfg.act_fn == "relu":
             self.act_fn = F.relu
+        elif self.cfg.act_fn == "gelu":
+            self.act_fn = F.gelu
+        elif self.cfg.act_fn == "silu":
+            self.act_fn = F.silu
+        elif self.cfg.act_fn == "glu":
+            self.act_fn = F.glu
         elif self.cfg.act_fn == "gelu_new":
             self.act_fn = gelu_new
+        elif self.cfg.act_fn == "solu_ln":
+            self.act_fn = solu
+            self.hook_post_ln = HookPoint() # [batch, pos, d_mlp]
+            self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
+        elif self.cfg.act_fn == "reglu":
+            self.act_fn = reglu
+        elif self.cfg.act_fn == "geglu":
+            self.act_fn = geglu
+        elif self.cfg.act_fn == "swiglu":
+            self.act_fn = swiglu
         else:
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 
     def forward(self, x):
-        x = self.hook_pre(
+        pre_act = self.hook_pre(
             torch.einsum("md,bpd->bpm", self.W_in, x) + self.b_in
         )  # [batch, pos, d_mlp]
-        x = self.hook_post(self.act_fn(x))  # [batch, pos, d_mlp]
-        x = (
-            torch.einsum("dm,bpm->bpd", self.W_out, x) + self.b_out
+        if self.cfg.gated_act_fn:
+            gate = self.hook_gate(
+                torch.einsum("md,bpd->bpm", self.W_gate, x) + self.b_gate
+            )
+            post_act = self.hook_post(self.act_fn(pre_act, gate))  # [batch, pos, d_mlp]
+        else:
+            post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+        if self.cfg.act_fn == "solu_ln":
+            post_act = self.hook_post_ln(self.ln(post_act))
+        mlp_out = (
+            torch.einsum("dm,bpm->bpd", self.W_out, post_act) + self.b_out
         )  # [batch, pos, d_model]
-        return x
+        return mlp_out
 
 
 # Transformer Block
@@ -973,6 +1005,12 @@ class EasyTransformer(HookedRootModule):
             init_linear_weight_and_bias(
                 self.blocks[l].mlp.W_out, self.blocks[l].mlp.b_out
             )
+            
+            if self.cfg.gated_act_fn:
+                init_linear_weight_and_bias(
+                    self.blocks[l].mlp.W_gate, self.blocks[l].mlp.b_gate
+                )
+                
 
         init_linear_weight_and_bias(self.unembed.W_U, self.unembed.b_U)
 

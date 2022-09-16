@@ -17,7 +17,7 @@ class EasyTransformerConfig:
         n_layers (int): The number of attention layers.
         n_ctx (int): The maximum sequence length.
         d_vocab (int): The size of the vocabulary.
-        act_fn (str): The activation function to use. Always lowercase
+        act_fn (str): The activation function to use. Always lowercase. Supports ['relu', 'gelu', 'silu', 'glu'm 'gelu_new', 'solu_ln', 'reglu', 'geglu', 'swiglu'].
         eps (float): The epsilon value to use for layer normalization. Defaults to 1e-5
         use_attn_result (bool): whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
@@ -47,6 +47,7 @@ class EasyTransformerConfig:
             are None (no normalization), 'LN' (use LayerNorm, including weights & 
             biases) and 'LNPre' (use LayerNorm, but no weights & biases). Defaults to 
             None
+        gated_act_fn (bool): Whether a gated activation function is being used (geglu, reglu, swiglu). Automatically set from act_fn. Used to determine whether to create an extra MLP weight matrix W_gate
     """
 
     d_model: int
@@ -70,6 +71,7 @@ class EasyTransformerConfig:
     attn_types: Optional[List] = None
     init_mode: str = 'gpt2'
     normalization_type: Optional[str] = None
+    gated_act_fn: bool = False
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
@@ -84,6 +86,8 @@ class EasyTransformerConfig:
             self.model_name = "custom"
             self.model_type = "custom"
             self.full_model_name = "custom"
+        if self.act_fn in ['reglu', 'geglu', 'swiglu']:
+            self.gated_act_fn = True
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
