@@ -384,6 +384,7 @@ def writing_direction_heatmap(
 
     attn_vals = torch.zeros(size=(n_heads, n_layers))
     mlp_vals = torch.zeros(size=(n_layers,))
+    model.reset_hooks()
     logit_diffs = logit_diff(model, ioi_dataset, all=True).cpu()
 
     for i in tqdm(range(ioi_dataset.N)):
@@ -781,8 +782,6 @@ def patch_last_tokens(
 
 
 # %%
-
-
 config = PatchingConfig(
     source_dataset=abca_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
@@ -1401,7 +1400,7 @@ for template_idx in tqdm(range(num_templates)):
         title=f"Writing Direction Heatmap for {template_idx}",
         return_vals=True,
     )
-    three_d[template_idx] = vals
+    three_d[template_idx] = attn_vals
     continue
 show_pp(three_d, animate_axis=0, title="Writing Direction Heatmap for all templates")
 
@@ -1768,3 +1767,5 @@ px.scatter(
     color="misc",
     title=ioi_dataset.prompt_type,
 )
+
+# %%
