@@ -170,19 +170,21 @@ owb_seqs = [
 # The first series of experiment: we define our metric, here, how much the logit for IO is bigger than S, we ablate part of the network and see what matters. Globally, it shows that the behavior is distributed accross many parts of the network, we cannot draw much conclusion from this alone.
 
 # %%
-def logit_diff(model, text_prompts):
+def logit_diff(model, ioi_dataset, all=False):
     """Difference between the IO and the S logits (at the "to" token)"""
-    logits = model(text_prompts).detach()
+    logits = model(ioi_dataset.text_prompts).detach()
     IO_logits = logits[
-        torch.arange(len(text_prompts)),
+        torch.arange(ioi_dataset.N),
         ioi_dataset.word_idx["end"],
         ioi_dataset.io_tokenIDs,
     ]
     S_logits = logits[
-        torch.arange(len(text_prompts)),
+        torch.arange(ioi_dataset.N),
         ioi_dataset.word_idx["end"],
         ioi_dataset.s_tokenIDs,
     ]
+    if all:
+        return IO_logits - S_logits
     return (IO_logits - S_logits).mean().detach().cpu()
 
 
@@ -415,49 +417,52 @@ def writing_direction_heatmap(
         vals_shape = list(vals.shape)
         all_curs = torch.zeros([n_heads, n_layers, d_model])
         mlp_sum = 0
+        res_stream_sum = torch.zeros(size=(d_model,))
+        res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :].detach().cpu()
         for lay in range(n_layers):
             if mode == "attn_out":
                 cur = (
                     cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
-                    + model.blocks[lay].attn.b_O.detach()  # / n_heads
+                    # + model.blocks[lay].attn.b_O.detach()  # / n_heads
                 )
             elif mode == "mlp":
                 cur = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :]
             cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :].detach().cpu()
             more_curs.append(cur_mlp)
-            all_curs[:, lay, :] = cur.detach().cpu()
-            # cur = layer_norm(cur.unsqueeze(0)).squeeze(0) # won't work as we never layer norm single heads!!!
-            cur = cur - cur.mean(dim=-1, keepdim=True)
-            cur_std = (
-                (
-                    einops.reduce(
-                        torch.sum(cur, dim=0, keepdim=True).unsqueeze(0).pow(2),
-                        "batch pos embed -> batch pos 1",
-                        "mean",
-                    )
-                    + 1e-5
-                )
-                .sqrt()
-                .squeeze(0)
-            )
-            print(cur_std)
-            cur = cur / cur_std
-            cur_mlp = cur_mlp - cur_mlp.mean(dim=-1, keepdim=True)
-            cur_mlp_std = cur_mlp.cpu() / cur_std.cpu()
-            mlp_sum += torch.einsum("ha,a->", cur_mlp_std, dire.cpu())
+            res_stream_sum += torch.sum(cur, dim=0).cpu()
+            res_stream_sum += model.blocks[lay].attn.b_O.detach().cpu()
+            res_stream_sum += cur_mlp[0]
+
+            assert torch.allclose(
+                res_stream_sum,
+                cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach().cpu(),
+                rtol=1e-3,
+                atol=1e-3,
+            ), lay
+
+            mlp_sum += cur_mlp
 
             vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
             vals[:, lay] += (unembed_bias_io - unembed_bias_s) / n_heads
 
-        cur_sum = torch.einsum("hla->a", all_curs)
-        print(f"{mlp_sum=}")
-
-        ln_cur_sum = (  # layer norm wants to see "batch pos embed"
-            layer_norm(cur_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+        res_stream_sum = (
+            layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
         )
-        fulls.append(torch.einsum("a,a->", ln_cur_sum, dire.cpu()))
+        print(
+            torch.einsum("a,a->", res_stream_sum, dire.cpu())
+            + unembed_bias_io
+            - unembed_bias_s,  # torch.einsum("a,a->", unembed_bias_io - unembed_bias_s, dire.cpu()),
+            "is the direction",
+        )
 
-    print(sum(fulls) / len(fulls))
+        # res_stream_sum
+
+    #     ln_cur_sum = (  # layer norm wants to see "batch pos embed"
+    #         layer_norm(cur_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+    #     )
+    #     fulls.append(torch.einsum("a,a->", ln_cur_sum, dire.cpu()))
+
+    # print(sum(fulls) / len(fulls))
     vals /= N
     show_pp(vals, xlabel="head no", ylabel="layer no", title=title)
     if return_vals:
@@ -466,12 +471,15 @@ def writing_direction_heatmap(
 
 attn_vals, cache = writing_direction_heatmap(
     model,
-    ioi_dataset[:51],
+    ioi_dataset,
     return_vals=True,
     mode="attn_out",
     dir_mode="IO - S",
     title="Attention head output into IO - S token unembedding (GPT2)",
 )
+
+#%%
+logits = logit_diff(model, ioi_dataset, all=True)
 # %% [markdown]
 # We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
 # %%
