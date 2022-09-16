@@ -193,53 +193,46 @@ def mean_at_end(
 
 
 # %%
-run_memory_intense_cells = True
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
+config_mlp = AblationConfig(
+    abl_type="custom",
+    abl_fn=mean_at_end,
+    mean_dataset=owb_seqs,
+    target_module="mlp",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+)
+abl_mlp = EasyAblation(model, config_mlp, metric)
+mlp_result = abl_mlp.run_ablation()
 
-if run_memory_intense_cells:
-    metric = ExperimentMetric(
-        metric=logit_diff, dataset=ioi_dataset, relative_metric=True
-    )
-    config_mlp = AblationConfig(
-        abl_type="custom",
-        abl_fn=mean_at_end,
-        mean_dataset=owb_seqs,
-        target_module="mlp",
-        head_circuit="result",
-        cache_means=True,
-        verbose=False,
-    )
-    abl_mlp = EasyAblation(model, config_mlp, metric)
-    mlp_result = abl_mlp.run_ablation()
+config_attn_layer = AblationConfig(
+    abl_type="custom",
+    abl_fn=mean_at_end,
+    mean_dataset=owb_seqs,
+    target_module="attn_layer",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+)
+abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
+attn_result = abl_attn_layer.run_ablation()
 
-    config_attn_layer = AblationConfig(
-        abl_type="custom",
-        abl_fn=mean_at_end,
-        mean_dataset=owb_seqs,
-        target_module="attn_layer",
-        head_circuit="result",
-        cache_means=True,
-        verbose=False,
-    )
-    abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
-    attn_result = abl_attn_layer.run_ablation()
+layer_ablation = torch.cat([mlp_result, attn_result], dim=0)
 
-    layer_ablation = torch.cat([mlp_result, attn_result], dim=0)
+fig = px.imshow(
+    layer_ablation,
+    labels={"x": "Layer"},
+    title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+)
 
-    fig = px.imshow(
-        layer_ablation,
-        labels={"x": "Layer"},
-        title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
-        color_continuous_midpoint=0,
-        color_continuous_scale="RdBu",
-    )
+fig.update_layout(
+    yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"])
+)
 
-    fig.update_layout(
-        yaxis=dict(
-            tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]
-        )
-    )
-
-    fig.show()
+fig.show()
 
 # %%
 len(ioi_dataset.text_prompts)
@@ -251,28 +244,25 @@ len(ioi_dataset.text_prompts)
 # #### Mean ablation
 
 # %%
-if run_memory_intense_cells:
-    metric = ExperimentMetric(
-        metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True
-    )
-    config = AblationConfig(
-        abl_type="mean",
-        mean_dataset=owb_seqs,
-        target_module="attn_head",
-        head_circuit="result",
-        cache_means=True,
-        verbose=True,
-    )
-    abl = EasyAblation(model, config, metric)
-    result = abl.run_ablation()
-    plotly.offline.init_notebook_mode(connected=True)
-    px.imshow(
-        result,
-        labels={"y": "Layer", "x": "Head"},
-        title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
-        color_continuous_midpoint=0,
-        color_continuous_scale="RdBu",
-    ).show()
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
+config = AblationConfig(
+    abl_type="mean",
+    mean_dataset=owb_seqs,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+)
+abl = EasyAblation(model, config, metric)
+result = abl.run_ablation()
+plotly.offline.init_notebook_mode(connected=True)
+px.imshow(
+    result,
+    labels={"y": "Layer", "x": "Head"},
+    title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+).show()
 
 # %% [markdown]
 # Blue squares corresponds to head that when ablated makes the logit diff *bigger*. (the color are inverted relative to the picture of the slides because here we plot the relative variation vs the relative *drop* in the presentation plots)
@@ -489,7 +479,7 @@ def writing_direction_heatmap(
 
 
 torch.cuda.empty_cache()
-vals = writing_direction_heatmap(
+attn_vals, mlp_vals = writing_direction_heatmap(
     model,
     ioi_dataset,
     return_vals=True,
