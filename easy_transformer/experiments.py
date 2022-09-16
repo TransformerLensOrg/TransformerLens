@@ -1,6 +1,6 @@
 # Ablation implem
 # Import stuff
-from typing import Callable, Union, List, Tuple
+from typing import Callable, Union, List, Tuple, Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -36,15 +36,21 @@ import itertools
 from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer.utils import gelu_new, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset
+from easy_transformer.utils import (
+    gelu_new,
+    to_numpy,
+    get_corner,
+    print_gpu_mem,
+    get_sample_from_dataset,
+)
 from easy_transformer.EasyTransformer import EasyTransformer
 
 
 class ExperimentMetric:
     def __init__(
         self,
-        metric: Callable[[EasyTransformer, List[str]], torch.Tensor],
-        dataset: List[str],
+        metric: Callable[[EasyTransformer, Any], torch.Tensor],
+        dataset: Any,
         scalar_metric=True,
         relative_metric=True,
     ):
@@ -62,10 +68,14 @@ class ExperimentMetric:
         self.shape = base_metric.shape
 
     def compute_metric(self, model):
-        assert (self.baseline is not None) or not (self.relative_metric), "Baseline has not been set in relative mean"
+        assert (self.baseline is not None) or not (
+            self.relative_metric
+        ), "Baseline has not been set in relative mean"
         out = self.metric(model, self.dataset)
         if self.scalar_metric:
-            assert len(out.shape) == 0, "Output of scalar metric has shape of length > 0"
+            assert (
+                len(out.shape) == 0
+            ), "Output of scalar metric has shape of length > 0"
         self.shape = out.shape
         if self.relative_metric:
             out = (out / self.baseline) - 1
@@ -159,7 +169,9 @@ class AblationConfig(ExperimentConfig):
         **kwargs,
     ):
         assert abl_type in ["mean", "zero", "neg", "custom"]
-        assert not (abl_type == "custom" and abl_fn is None), "You must specify you ablation function"
+        assert not (
+            abl_type == "custom" and abl_fn is None
+        ), "You must specify you ablation function"
         super().__init__(**kwargs)
 
         self.abl_type = abl_type
@@ -184,7 +196,9 @@ class PatchingConfig(ExperimentConfig):
         self,
         source_dataset: List[str] = None,
         target_dataset: List[str] = None,
-        patch_fn: Callable[[torch.tensor, torch.tensor, HookPoint], torch.tensor] = None,
+        patch_fn: Callable[
+            [torch.tensor, torch.tensor, HookPoint], torch.tensor
+        ] = None,
         cache_act: bool = True,
         **kwargs,
     ):
@@ -207,7 +221,9 @@ class EasyExperiment:
     """A virtual class to interatively apply hooks to layers or heads. The children class only needs to define the methods
     get_hook"""
 
-    def __init__(self, model: EasyTransformer, config: ExperimentConfig, metric: ExperimentMetric):
+    def __init__(
+        self, model: EasyTransformer, config: ExperimentConfig, metric: ExperimentMetric
+    ):
         self.model = model
         self.metric = metric
         self.cfg = config.adapt_to_model(model)
@@ -231,12 +247,17 @@ class EasyExperiment:
                 results[layer] = self.compute_metric(hook).cpu().detach()
         self.model.reset_hooks()
         if len(results.shape) < 2:
-            results = results.unsqueeze(0)  # to make sure that we can always easily plot the results
+            results = results.unsqueeze(
+                0
+            )  # to make sure that we can always easily plot the results
         return results
 
     def get_result_shape(self):
         if self.cfg.target_module == "attn_head":
-            return (self.cfg.end_layer - self.cfg.beg_layer, len(self.cfg.heads)) + self.metric.shape
+            return (
+                self.cfg.end_layer - self.cfg.beg_layer,
+                len(self.cfg.heads),
+            ) + self.metric.shape
         else:
             return (self.cfg.end_layer - self.cfg.beg_layer,) + self.metric.shape
 
@@ -281,7 +302,8 @@ class EasyAblation(EasyExperiment):
         super().__init__(model, config, metric)
         assert "AblationConfig" in str(type(config))
         assert not (
-            (semantic_indices is not None) and (config.head_circuit in ["hook_attn_scores", "hook_attn"])
+            (semantic_indices is not None)
+            and (config.head_circuit in ["hook_attn_scores", "hook_attn"])
         )  # not implemented (surely not very useful)
         assert not (mean_by_groups and groups is None)
         self.semantic_indices = semantic_indices
@@ -290,7 +312,9 @@ class EasyAblation(EasyExperiment):
         self.groups = groups  # list of (list of indices of element of the group)
 
         if self.semantic_indices is not None:  # blue pen project
-            self.max_len = max([len(self.model.tokenizer(t).input_ids) for t in self.cfg.mean_dataset])
+            self.max_len = max(
+                [len(self.model.tokenizer(t).input_ids) for t in self.cfg.mean_dataset]
+            )
             self.get_seq_no_sem(self.max_len)
 
         if self.cfg.mean_dataset is None and config.compute_means:
@@ -331,13 +355,17 @@ class EasyAblation(EasyExperiment):
             cache[hook_name] = z.detach().to("cuda")
 
         self.model.reset_hooks()
-        self.model.run_with_hooks(self.cfg.mean_dataset, fwd_hooks=[(hook_name, cache_hook)])
+        self.model.run_with_hooks(
+            self.cfg.mean_dataset, fwd_hooks=[(hook_name, cache_hook)]
+        )
         return self.compute_mean(cache[hook_name], hook_name)
 
     # hook_attn and hook_attn_scores are [batch,nb_head,seq_len, seq_len] and the other activation of head (z, q, v,k) are [batch, seq_len, nb_head, head_dim]
     def compute_mean(self, z, hk_name):
 
-        mean = torch.mean(z, dim=0, keepdim=False).detach().clone()  # we compute the mean along the batch dim
+        mean = (
+            torch.mean(z, dim=0, keepdim=False).detach().clone()
+        )  # we compute the mean along the batch dim
         mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
 
         if self.mean_by_groups:
@@ -346,14 +374,22 @@ class EasyAblation(EasyExperiment):
                 group_mean = torch.mean(z[group], dim=0, keepdim=False).detach().clone()
                 mean[group] = einops.repeat(group_mean, "... -> s ...", s=len(group))
 
-        if self.semantic_indices is None or "hook_attn" in hk_name or self.mean_by_groups:
+        if (
+            self.semantic_indices is None
+            or "hook_attn" in hk_name
+            or self.mean_by_groups
+        ):
             return mean
 
         dataset_length = len(self.cfg.mean_dataset)
 
         for semantic_symbol, semantic_indices in self.semantic_indices.items():
             mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
-                torch.mean(z[list(range(dataset_length)), semantic_indices], dim=0, keepdim=False).clone(),
+                torch.mean(
+                    z[list(range(dataset_length)), semantic_indices],
+                    dim=0,
+                    keepdim=False,
+                ).clone(),
                 "... -> s ...",
                 s=dataset_length,  # instead of the mean constant accross position, for semantic indices, when do semantic ablations
             )
@@ -380,7 +416,9 @@ class EasyAblation(EasyExperiment):
 
 
 class EasyPatching(EasyExperiment):
-    def __init__(self, model: EasyTransformer, config: PatchingConfig, metric: ExperimentMetric):
+    def __init__(
+        self, model: EasyTransformer, config: PatchingConfig, metric: ExperimentMetric
+    ):
         super().__init__(model, config, metric)
         assert "PatchingConfig" in str(type(config))
         if self.cfg.cache_act:
@@ -413,7 +451,9 @@ class EasyPatching(EasyExperiment):
             cache[hook_name] = z.detach().to("cuda")
 
         self.model.reset_hooks()
-        self.model.run_with_hooks(self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)])
+        self.model.run_with_hooks(
+            self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)]
+        )
         return cache[hook_name]
 
 
@@ -426,7 +466,9 @@ def get_act_hook(fn, alt_act=None, idx=None, dim=None):
             hook.ctx["idx"] = idx
             hook.ctx["dim"] = dim
 
-            if dim is None:  # mean and z have the same shape, the mean is constant along the batch dimension
+            if (
+                dim is None
+            ):  # mean and z have the same shape, the mean is constant along the batch dimension
                 return fn(z, alt_act, hook)
             if dim == 0:
                 z[idx] = fn(z[idx], alt_act[idx], hook)

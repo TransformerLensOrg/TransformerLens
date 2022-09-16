@@ -575,3 +575,6 @@ class IOIDataset:
 
     def __delitem__(self, key):
         raise NotImplementedError()
+
+    def __len__(self):
+        return self.N

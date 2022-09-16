@@ -6,7 +6,6 @@
 #
 # ### Task
 # We're interested in GPT-2 ability to complete sentences like "Alice and Bob went to the store, Alice gave a bottle of milk to"...
-#
 # GPT-2 knows that it have to output a name that is not the subject (Alice) and that was present in the context: Bob.
 # The first apparition of Alice is called "S" (or sometimes "S1") for "Subject", and Bob is the indirect object ("IO"). Even if the sentences we generate contains the last word of the sentence "Bob", we'll never look at the transformer output here. What's matter is the next-token prediction on the token "to", sometime called the "end" token.
 #
@@ -116,19 +115,34 @@ print_gpu_mem("Gpt2 loaded")
 # %% [markdown]
 # Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
-
-
 # %%
 # IOI Dataset initialisation
 N = 200
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
+
+def logit_diff(model, ioi_dataset, all=False):
+    """Difference between the IO and the S logits (at the "to" token)"""
+    logits = model(ioi_dataset.text_prompts).detach()
+    IO_logits = logits[
+        torch.arange(ioi_dataset.N),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.io_tokenIDs,
+    ]
+    S_logits = logits[
+        torch.arange(ioi_dataset.N),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.s_tokenIDs,
+    ]
+    if all:
+        return IO_logits - S_logits
+    return (IO_logits - S_logits).mean().detach().cpu()
+
+
 # %% [markdown]
 # ioi_dataset`ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
-
 # %%
 [(k, int(ioi_dataset.word_idx[k][0])) for k in ioi_dataset.word_idx.keys()]
-
 # %%
 [
     (i, t)
@@ -136,9 +150,8 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
         show_tokens(ioi_dataset.ioi_prompts[0]["text"], model, return_list=True)
     )
 ]
-
 # %% [markdown]
-# The `ioi_dataset` ca also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
+# The `ioi_dataset` can also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
 
 # %%
 flipped = ioi_dataset.gen_flipped_prompts("S2")
@@ -170,25 +183,6 @@ owb_seqs = [
 # The first series of experiment: we define our metric, here, how much the logit for IO is bigger than S, we ablate part of the network and see what matters. Globally, it shows that the behavior is distributed accross many parts of the network, we cannot draw much conclusion from this alone.
 
 # %%
-def logit_diff(model, ioi_dataset, all=False):
-    """Difference between the IO and the S logits (at the "to" token)"""
-    logits = model(ioi_dataset.text_prompts).detach()
-    IO_logits = logits[
-        torch.arange(ioi_dataset.N),
-        ioi_dataset.word_idx["end"],
-        ioi_dataset.io_tokenIDs,
-    ]
-    S_logits = logits[
-        torch.arange(ioi_dataset.N),
-        ioi_dataset.word_idx["end"],
-        ioi_dataset.s_tokenIDs,
-    ]
-    if all:
-        return IO_logits - S_logits
-    return (IO_logits - S_logits).mean().detach().cpu()
-
-
-# %%
 def mean_at_end(
     z, mean, hook
 ):  # to ablate at particular indices, we have to define a custom ablation function
@@ -199,48 +193,53 @@ def mean_at_end(
 
 
 # %%
-metric = ExperimentMetric(
-    metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True
-)
-config_mlp = AblationConfig(
-    abl_type="custom",
-    abl_fn=mean_at_end,
-    mean_dataset=owb_seqs,
-    target_module="mlp",
-    head_circuit="result",
-    cache_means=True,
-    verbose=True,
-)
-abl_mlp = EasyAblation(model, config_mlp, metric)
-mlp_result = abl_mlp.run_ablation()
+run_memory_intense_cells = False
 
-config_attn_layer = AblationConfig(
-    abl_type="custom",
-    abl_fn=mean_at_end,
-    mean_dataset=owb_seqs,
-    target_module="attn_layer",
-    head_circuit="result",
-    cache_means=True,
-    verbose=True,
-)
-abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
-attn_result = abl_attn_layer.run_ablation()
+if run_memory_intense_cells:
+    metric = ExperimentMetric(
+        metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True
+    )
+    config_mlp = AblationConfig(
+        abl_type="custom",
+        abl_fn=mean_at_end,
+        mean_dataset=owb_seqs,
+        target_module="mlp",
+        head_circuit="result",
+        cache_means=True,
+        verbose=True,
+    )
+    abl_mlp = EasyAblation(model, config_mlp, metric)
+    mlp_result = abl_mlp.run_ablation()
 
-layer_ablation = torch.cat([mlp_result, attn_result], dim=0)
+    config_attn_layer = AblationConfig(
+        abl_type="custom",
+        abl_fn=mean_at_end,
+        mean_dataset=owb_seqs,
+        target_module="attn_layer",
+        head_circuit="result",
+        cache_means=True,
+        verbose=True,
+    )
+    abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
+    attn_result = abl_attn_layer.run_ablation()
 
-fig = px.imshow(
-    layer_ablation,
-    labels={"x": "Layer"},
-    title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
-    color_continuous_midpoint=0,
-    color_continuous_scale="RdBu",
-)
+    layer_ablation = torch.cat([mlp_result, attn_result], dim=0)
 
-fig.update_layout(
-    yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"])
-)
+    fig = px.imshow(
+        layer_ablation,
+        labels={"x": "Layer"},
+        title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    )
 
-fig.show()
+    fig.update_layout(
+        yaxis=dict(
+            tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]
+        )
+    )
+
+    fig.show()
 
 # %%
 len(ioi_dataset.text_prompts)
@@ -252,27 +251,28 @@ len(ioi_dataset.text_prompts)
 # #### Mean ablation
 
 # %%
-metric = ExperimentMetric(
-    metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True
-)
-config = AblationConfig(
-    abl_type="mean",
-    mean_dataset=owb_seqs,
-    target_module="attn_head",
-    head_circuit="result",
-    cache_means=True,
-    verbose=True,
-)
-abl = EasyAblation(model, config, metric)
-result = abl.run_ablation()
-plotly.offline.init_notebook_mode(connected=True)
-px.imshow(
-    result,
-    labels={"y": "Layer", "x": "Head"},
-    title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
-    color_continuous_midpoint=0,
-    color_continuous_scale="RdBu",
-).show()
+if run_memory_intense_cells:
+    metric = ExperimentMetric(
+        metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True
+    )
+    config = AblationConfig(
+        abl_type="mean",
+        mean_dataset=owb_seqs,
+        target_module="attn_head",
+        head_circuit="result",
+        cache_means=True,
+        verbose=True,
+    )
+    abl = EasyAblation(model, config, metric)
+    result = abl.run_ablation()
+    plotly.offline.init_notebook_mode(connected=True)
+    px.imshow(
+        result,
+        labels={"y": "Layer", "x": "Head"},
+        title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    ).show()
 
 # %% [markdown]
 # Blue squares corresponds to head that when ablated makes the logit diff *bigger*. (the color are inverted relative to the picture of the slides because here we plot the relative variation vs the relative *drop* in the presentation plots)
@@ -286,13 +286,16 @@ def zero_at_end(z, mean, hook):
     return z
 
 
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
+
 config = AblationConfig(
     abl_type="custom",
     abl_fn=zero_at_end,
     target_module="attn_head",
     head_circuit="result",
     cache_means=True,
-    verbose=True,
+    mean_dataset=ioi_dataset.text_prompts,
+    verbose=False,  # TODO new version of experiments has a bug with verbose
 )
 abl = EasyAblation(model, config, metric)
 result = abl.run_ablation()
@@ -325,7 +328,8 @@ config = AblationConfig(
     target_module="attn_head",
     head_circuit="z",
     cache_means=True,
-    verbose=True,
+    mean_dataset=ioi_dataset.text_prompts,
+    verbose=False,
 )
 abl = EasyAblation(model, config, metric)
 result = abl.run_ablation()
@@ -337,10 +341,8 @@ px.imshow(
     color_continuous_midpoint=0,
     color_continuous_scale="RdBu",
 ).show()
-
 # %% [markdown]
 # ### Which head write in the direction Embed(IO) - Embed(S) ?
-
 #%%
 
 MODEL_EPS = model.cfg["eps"]
@@ -493,23 +495,18 @@ vals = writing_direction_heatmap(
     return_vals=True,
     show=["attn", "mlp"],
     dir_mode="IO - S",
-    title="Output into IO - S token unembedding",
+    title="Output into IO - S token unembedding direction",
     verbose=True,
 )
-
-#%%
-logits = logit_diff(model, ioi_dataset, all=True)
 # %% [markdown]
 # We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
 # %%
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset.text_prompts[:1])
-
 # %%
 show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset.text_prompts[:1])
 
 # %% [markdown]
 # ### Plot attention vs direction
-
 # %% [markdown]
 # We want to investigate what are the head we observed doing. By plotting attention patterns we see that they are paying preferential attention to IO.
 
@@ -628,8 +625,6 @@ scatter_attention_and_contribution(
     ioi_dataset.ioi_prompts[:500],
     gpt_model="gpt2",
 )
-
-
 # %% [markdown]
 # They all demonstrate a straightforward relationship: the more they pay attention to a token, the more they write in its direction. A.k.a. they are just copying the token embedding of this position.
 
@@ -717,17 +712,12 @@ scatter_attention_and_contribution(
 scatter_attention_and_contribution(
     model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
 )
-
-
 # %% [markdown]
 # ### Patching experiments
-
 # %% [markdown]
 # What causes name mover heads to pay attention to IO? To figure this out, we'll patch activation from sentences like "A..B..C..to"  to "A..B..B..to" where A, B and C are differents names.
-
 # %%
 print_gpu_mem()
-
 # %%
 abca_dataset = ioi_dataset.gen_flipped_prompts(
     "S2"
@@ -1415,7 +1405,7 @@ for template_idx in tqdm(range(num_templates)):
         ), f"{key} {ioi_dataset.sem_tok_idx[key]}"
         # check that semantic ablation = normal ablation
 
-    vals = writing_direction_heatmap(
+    attn_vals, mlp_vals = writing_direction_heatmap(
         model,
         ioi_dataset,
         title=f"Writing Direction Heatmap for {template_idx}",
