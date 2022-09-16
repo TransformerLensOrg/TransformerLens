@@ -408,6 +408,9 @@ class EasyTransformer(HookedRootModule):
         super().__init__()
         if model_name == "custom":
             assert cfg is not None, "Must provide a config for custom model"
+            assert cfg.model_name == "custom", "Config must be for custom model"
+            assert cfg.model_type == "custom", "Config must be for custom model"
+            assert cfg.full_model_name == "custom", "Config must be for custom model"
             self.cfg = cfg
             self.model_name = cfg.model_name
             self.model_type = cfg.model_type
@@ -500,7 +503,7 @@ class EasyTransformer(HookedRootModule):
         if center_weights:
             self.center_weights()
 
-        if not keep_original_model:
+        if not keep_original_model and self.model is not None:
             # Delete the original model to save memory
             del self.model
 
