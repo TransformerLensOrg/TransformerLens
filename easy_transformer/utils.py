@@ -12,7 +12,7 @@ def get_sample_from_dataset(sequences, nb_sample=2, print_len=10):
 
 def print_gpu_mem(step_name=""):
     print(
-        f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/1e9, 2)} Go allocated on GPU."
+        f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU."
     )
 
 
@@ -66,35 +66,34 @@ def solu(input):
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
+    
+    LayerNorm implemented by the MLP class.
     """
-    return F.layer_norm(input * F.softmax(input, dim=-1), input.shape)
+    return input * F.softmax(input, dim=-1)
 
 
-def reglu(input):
+def reglu(input, gate):
     """
     ReGLU activation function as described by
     https://arxiv.org/pdf/2002.05202.pdf.
     """
-    input_, gate = input.chunk(2, dim=-1)
-    return F.relu(gate) * input_
+    return F.relu(gate) * input
 
 
-def geglu(input, use_gelu_new=False):
+def geglu(input, gate, use_gelu_new=False):
     """
     GeGLU activation function as described by
     https://arxiv.org/pdf/2002.05202.pdf.
     """
-    input_, gate = input.chunk(2, dim=-1)
     if use_gelu_new:
-        return gelu_new(gate) * input_
+        return gelu_new(gate) * input
     else:
-        return F.gelu(gate) * input_
+        return F.gelu(gate) * input
 
 
-def swiglu(input):
+def swiglu(input, gate):
     """
     SwiGLU activation function as described by
     https://arxiv.org/pdf/2002.05202.pdf.
     """
-    input_, gate = input.chunk(2, dim=-1)
-    return F.silu(gate) * input_
+    return F.silu(gate) * input
