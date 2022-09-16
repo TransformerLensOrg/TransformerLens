@@ -367,7 +367,7 @@ assert torch.allclose(layer_norm(m), pytorch_layer_norm(m))
 def writing_direction_heatmap(
     model,
     ioi_dataset,
-    mode="attn_out",
+    show=["attn"],  # can add "mlp" to this
     return_vals=False,
     dir_mode="IO - S",
     unembed_mode="normal",
@@ -390,7 +390,8 @@ def writing_direction_heatmap(
 
     unembed_bias = model.unembed.b_U.detach().cpu()
 
-    vals = torch.zeros(size=(n_heads + 1, n_layers))
+    attn_vals = torch.zeros(size=(n_heads, n_layers))
+    mlp_vals = torch.zeros(size=(n_layers,))
     logit_diffs = logit_diff(model, ioi_dataset, all=True).cpu()
 
     for i in tqdm(range(ioi_dataset.N)):
@@ -429,12 +430,12 @@ def writing_direction_heatmap(
                 cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
                 # + model.blocks[lay].attn.b_O.detach()  # / n_heads
             )
-            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :]
+            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :][0]
 
             # check that we're really extracting the right thing
             res_stream_sum += torch.sum(cur_attn, dim=0)
             res_stream_sum += model.blocks[lay].attn.b_O.detach().cpu()
-            res_stream_sum += cur_mlp[0]
+            res_stream_sum += cur_mlp
             assert torch.allclose(
                 res_stream_sum,
                 cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach(),
@@ -452,8 +453,10 @@ def writing_direction_heatmap(
             cur_attn /= layer_norm_div  # ... and then apply the layer norm division
             cur_mlp /= layer_norm_div
 
-            vals[:n_heads, lay] += torch.einsum("ha,a->h", cur_attn.cpu(), dire.cpu())
-            vals[n_heads, lay] = torch.einsum("ha,a->h", cur_mlp.cpu(), dire.cpu())
+            attn_vals[:n_heads, lay] += torch.einsum(
+                "ha,a->h", cur_attn.cpu(), dire.cpu()
+            )
+            mlp_vals[lay] = torch.einsum("a,a->", cur_mlp.cpu(), dire.cpu())
 
         res_stream_sum -= res_stream_sum.mean()
         res_stream_sum = (
@@ -473,10 +476,14 @@ def writing_direction_heatmap(
             atol=1e-2,
         ), f"{i=} {cur_writing=} {logit_diffs[i]}"
 
-    vals /= N
-    show_pp(vals, xlabel="head no", ylabel="layer no", title=title)
+    attn_vals /= ioi_dataset.N
+    mlp_vals /= ioi_dataset.N
+    if "attn" in show:
+        show_pp(attn_vals, xlabel="head no", ylabel="layer no", title=title)
+    if "mlp" in show:
+        show_pp(mlp_vals.unsqueeze(0), xlabel="", ylabel="layer no", title=title)
     if return_vals:
-        return vals
+        return attn_vals, mlp_vals
 
 
 torch.cuda.empty_cache()
@@ -484,9 +491,9 @@ vals = writing_direction_heatmap(
     model,
     ioi_dataset,
     return_vals=True,
-    mode="attn_out",
+    show=["attn", "mlp"],
     dir_mode="IO - S",
-    title="Attention head output into IO - S token unembedding (GPT2) - 'head 12' is the MLP output",
+    title="Output into IO - S token unembedding",
     verbose=True,
 )
 
