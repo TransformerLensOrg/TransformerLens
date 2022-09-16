@@ -155,7 +155,7 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
 
-run_original = True
+run_original = False
 
 if run_original:
     circuit_perf = []
@@ -169,9 +169,7 @@ if run_original:
         excluded_classes = []
         if G != "none":
             excluded_classes.append(G)
-        heads_to_keep = get_heads_circuit(
-            ioi_dataset, excluded_classes=excluded_classes
-        )  # TODO check the MLP stuff
+        heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=excluded_classes)  # TODO check the MLP stuff
 
         model, _ = do_circuit_extraction(
             model=model,
@@ -180,9 +178,7 @@ if run_original:
             ioi_dataset=ioi_dataset,
         )
         torch.cuda.empty_cache()
-        ldiff_broken_circuit, std_broken_circuit = logit_diff(
-            model, ioi_dataset, std=True, all=True
-        )
+        ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True, all=True)
         torch.cuda.empty_cache()
         # metric(C\G)
         # adding back the whole model
@@ -190,9 +186,7 @@ if run_original:
         excl_class = list(CIRCUIT.keys())
         if G != "none":
             excl_class.remove(G)
-        G_heads_to_remove = get_heads_circuit(
-            ioi_dataset, excluded_classes=excl_class
-        )  # TODO check the MLP stuff
+        G_heads_to_remove = get_heads_circuit(ioi_dataset, excluded_classes=excl_class)  # TODO check the MLP stuff
         torch.cuda.empty_cache()
 
         model.reset_hooks()
@@ -203,9 +197,7 @@ if run_original:
             ioi_dataset=ioi_dataset,
         )
         torch.cuda.empty_cache()
-        ldiff_cobble, std_cobble_circuit = logit_diff(
-            model, ioi_dataset, std=True, all=True
-        )
+        ldiff_cobble, std_cobble_circuit = logit_diff(model, ioi_dataset, std=True, all=True)
         torch.cuda.empty_cache()
         # metric(M\G)
 
@@ -275,18 +267,10 @@ if run_original:
         perf_by_sets.append(
             {
                 "removed_group": circuit_perf.iloc[i * ioi_dataset.N].removed_group,
-                "mean_ldiff_broken": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].ldiff_broken.mean(),
-                "mean_ldiff_cobble": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].ldiff_cobble.mean(),
-                "std_ldiff_broken": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].ldiff_broken.std(),
-                "std_ldiff_cobble": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].ldiff_cobble.std(),
+                "mean_ldiff_broken": circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_broken.mean(),
+                "mean_ldiff_cobble": circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_cobble.mean(),
+                "std_ldiff_broken": circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_broken.std(),
+                "std_ldiff_cobble": circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_cobble.std(),
             }
         )
 
@@ -385,12 +369,7 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
     scale_y = np.sqrt(cov[1, 1]) * n_std
     mean_y = np.mean(y)
 
-    transf = (
-        transforms.Affine2D()
-        .rotate_deg(45)
-        .scale(scale_x, scale_y)
-        .translate(mean_x, mean_y)
-    )
+    transf = transforms.Affine2D().rotate_deg(45).scale(scale_x, scale_y).translate(mean_x, mean_y)
 
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
@@ -457,9 +436,7 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     return logit_diff(model, ioi_dataset, all=False)
 
 
-def circuit_from_heads_logit_diff(
-    model, ioi_dataset, heads_to_rmv=None, heads_to_kp=None, all=False
-):
+def circuit_from_heads_logit_diff(model, ioi_dataset, heads_to_rmv=None, heads_to_kp=None, all=False):
     model.reset_hooks()
     model, _ = do_circuit_extraction(
         model=model,
@@ -471,9 +448,7 @@ def circuit_from_heads_logit_diff(
     return logit_diff(model, ioi_dataset, all=all)
 
 
-def compute_cobble_broken_diff(
-    model, ioi_dataset, nodes
-):  # red teaming the circuit by trying
+def compute_cobble_broken_diff(model, ioi_dataset, nodes):  # red teaming the circuit by trying
     """ "Compute |Metric(C\ nodes) - Metric(M\ nodes)|"""
     nodes_to_keep = ALL_NODES.copy()
     for n in nodes:
@@ -530,9 +505,7 @@ def greed_search_max_broken(get_circuit_logit_diff):
             current_nodes.remove(best_node)  # we remove the best node from the circuit
             nodes_removed.append(best_node)
 
-            if (
-                iter > NB_ITER // 2 - 1
-            ):  # we begin to save the sets after half of the iterations
+            if iter > NB_ITER // 2 - 1:  # we begin to save the sets after half of the iterations
                 all_sets.append(
                     {
                         "circuit_nodes": current_nodes.copy(),
@@ -540,9 +513,7 @@ def greed_search_max_broken(get_circuit_logit_diff):
                     }
                 )
 
-            print(
-                f"iter: {iter} - best node:{best_node} - drop:{min(diff_to_baseline)} - baseline:{baseline}"
-            )
+            print(f"iter: {iter} - best node:{best_node} - drop:{min(diff_to_baseline)} - baseline:{baseline}")
             print_gpu_mem(f"iter {iter}")
             baseline = results[best_node_idx]  # new baseline for the next iteration
     return all_sets
@@ -577,7 +548,8 @@ def greed_search_max_brok_cob_diff(
         old_diff = all_node_baseline
 
         for iter in range(NB_ITER):
-            to_test = rd.sample(C_minus_G, NODES_PER_STEP)
+
+            to_test = rd.sample(C_minus_G, min(NODES_PER_STEP, len(C_minus_G)))
 
             results = []
             for node in to_test:  # check wich heads in to_test causes the biggest drop
@@ -593,12 +565,8 @@ def greed_search_max_brok_cob_diff(
                 G.append(best_node)
                 old_diff = max_diff
 
-                if (
-                    iter > NB_ITER // 2 - 1
-                ):  # we begin to save the sets after half of the iterations
-                    all_sets.append(
-                        {"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()}
-                    )
+                if iter > NB_ITER // 2 - 1:  # we begin to save the sets after half of the iterations
+                    all_sets.append({"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()})
                 if verbose:
                     print(
                         f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{all_node_baseline}"
@@ -609,28 +577,53 @@ def greed_search_max_brok_cob_diff(
 
 # /!\ if the dataset is too small, the mean by template will contain name information !!! -> reduce the number of templates for small N
 model.reset_hooks()
-small_ioi_dataset = IOIDataset(
-    prompt_type="mixed", N=40, tokenizer=model.tokenizer, nb_templates=2
-)
+small_ioi_dataset = IOIDataset(prompt_type="mixed", N=40, tokenizer=model.tokenizer, nb_templates=2)
 
 
-ALL_NODES = []  # a node is a tuple (head, token)
-for h in RELEVANT_TOKENS:
-    for tok in RELEVANT_TOKENS[h]:
-        ALL_NODES.append((h, tok))
+circuit_to_study = "natural_circuit"
+
+
+assert circuit_to_study in ["auto_search", "natural_circuit"]
+
+ALL_NODES_AUTO_SEARCH = [
+    ((4, 0), "IO"),
+    ((1, 5), "S+1"),
+    ((6, 8), "S"),
+    ((10, 6), "IO"),
+    ((10, 10), "end"),
+    ((8, 10), "end"),
+    ((9, 2), "S+1"),
+    ((5, 3), "and"),
+    ((2, 10), "S2"),
+    ((10, 4), "S2"),
+    ((0, 9), "S"),
+    ((7, 8), "S"),
+    ((1, 8), "and"),
+    ((2, 7), "S2"),
+    ((1, 5), "end"),
+    ((8, 7), "end"),
+    ((7, 0), "S+1"),
+]
+
+if circuit_to_study == "auto_search":
+    ALL_NODES = ALL_NODES_AUTO_SEARCH.copy()
+elif circuit_to_study == "natural_circuit":
+    ALL_NODES = []  # a node is a tuple (head, token)
+    for h in RELEVANT_TOKENS:
+        for tok in RELEVANT_TOKENS[h]:
+            ALL_NODES.append((h, tok))
+
 
 # find G tht minimizes metric(C\G)
 
 # %% Run experiment
 
-greedy_heuristic = "max_brok"
+greedy_heuristic = "max_brok_cob_diff"
 
 assert greedy_heuristic in ["max_brok", "max_brok_cob_diff"]
 
 if greedy_heuristic == "max_brok":
-    nodes_logit_diff_small_data = partial(
-        circuit_from_nodes_logit_diff, model, small_ioi_dataset
-    )
+    nodes_logit_diff_small_data = partial(circuit_from_nodes_logit_diff, model, small_ioi_dataset)
     all_sets_max_brok = greed_search_max_broken(nodes_logit_diff_small_data)
     title_suffix = "min metric(C\G) "
     all_sets = all_sets_max_brok.copy()
@@ -638,12 +631,8 @@ if greedy_heuristic == "max_brok":
 
 if greedy_heuristic == "max_brok_cob_diff":
     # find G tht maximizes |metric(C\G) - metric(M\G)|
-    nodes_cob_brok_diff_small_data = partial(
-        compute_cobble_broken_diff, model, small_ioi_dataset
-    )
-    all_set_max_brok_cob_diff = greed_search_max_brok_cob_diff(
-        nodes_cob_brok_diff_small_data
-    )
+    nodes_cob_brok_diff_small_data = partial(compute_cobble_broken_diff, model, small_ioi_dataset)
+    all_set_max_brok_cob_diff = greed_search_max_brok_cob_diff(nodes_cob_brok_diff_small_data)
     title_suffix = "max |metric(C\G) - metric(M\G)| "
 
     ## Choose wich set to plot
@@ -729,8 +718,6 @@ fig = px.scatter(
     color="removed_set_id",
     hover_data=["sentence", "template"],
     opacity=0.7,
-    error_x="std_on_diagonal",
-    error_y="std_off_diagonal",
 )
 
 min_xy = (
@@ -841,25 +828,19 @@ fig.show()
 # %% greedy minimality experiments
 
 model.reset_hooks()
-small_ioi_dataset = IOIDataset(
-    prompt_type="mixed", N=30, tokenizer=model.tokenizer, nb_templates=2
-)
+small_ioi_dataset = IOIDataset(prompt_type="mixed", N=30, tokenizer=model.tokenizer, nb_templates=2)
 
 
 def test_minimality(model, ioi_dataset, v, J):
     """Compute |Metric( (C\J) U {v}) - Metric(C\J)| where J is a list of nodes, v is a node"""
     C_minus_J = list(set(ALL_NODES.copy()) - set(J.copy()))
 
-    LD_C_m_J = circuit_from_nodes_logit_diff(
-        model, ioi_dataset, C_minus_J
-    )  # metric(C\J)
+    LD_C_m_J = circuit_from_nodes_logit_diff(model, ioi_dataset, C_minus_J)  # metric(C\J)
     C_minus_J_plus_v = set(C_minus_J.copy())
     C_minus_J_plus_v.add(v)
     C_minus_J_plus_v = list(C_minus_J_plus_v)
 
-    LD_C_m_J_plus_v = circuit_from_nodes_logit_diff(
-        model, ioi_dataset, C_minus_J_plus_v
-    )  # metric( (C\J) U {v})
+    LD_C_m_J_plus_v = circuit_from_nodes_logit_diff(model, ioi_dataset, C_minus_J_plus_v)  # metric( (C\J) U {v})
     return np.abs(LD_C_m_J - LD_C_m_J_plus_v)
 
 
@@ -875,9 +856,7 @@ for v in tqdm(ALL_NODES):
         NB_ITER=10,
         verbose=False,
     )
-    if (
-        len(best_J[v]) == 0
-    ):  # if the greedy search did not find any set, we use the set with the node itself
+    if len(best_J[v]) == 0:  # if the greedy search did not find any set, we use the set with the node itself
         all_but_v = ALL_NODES.copy()
         all_but_v.remove(v)
         best_J[v] = [{"circuit_nodes": all_but_v, "removed_nodes": [v]}]
@@ -885,10 +864,7 @@ for v in tqdm(ALL_NODES):
 ioi_dataset = IOIDataset(prompt_type="mixed", N=200, tokenizer=model.tokenizer)
 
 for v in tqdm(ALL_NODES):  # validate the best sets
-    minimality_scores = [
-        test_minimality(model, ioi_dataset, v, node_set["removed_nodes"])
-        for node_set in best_J[v]
-    ]
+    minimality_scores = [test_minimality(model, ioi_dataset, v, node_set["removed_nodes"]) for node_set in best_J[v]]
     best_J[v] = best_J[v][np.argmax(minimality_scores)]
     best_scores[v] = np.max(minimality_scores)
     print(f"v={v}, J={best_J[v]}, score={best_scores[v]}")
@@ -899,19 +875,22 @@ for v, J in best_J.items():
 
 
 # %%
-
-head_classes = []
-for h, tok in best_scores.keys():
-    for group in CIRCUIT:
-        if h in CIRCUIT[group]:
-            head_classes.append(group)
-            break
+if circuit_to_study == "natural_circuit":
+    head_classes = []
+    for h, tok in best_scores.keys():
+        for group in CIRCUIT:
+            if h in CIRCUIT[group]:
+                head_classes.append(group)
+                break
+else:
+    head_classes = ["none" for i in range(len(best_scores))]
 
 
 px.bar(
     x=list(best_scores.values()),
     y=[str(k) for k in best_scores.keys()],
     orientation="h",
+    color=head_classes,
 )
 
 

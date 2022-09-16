@@ -370,7 +370,7 @@ def writing_direction_heatmap(
     mode="attn_out",
     return_vals=False,
     dir_mode="IO - S",
-    unembed_mode="normal",  # or "Neel"
+    unembed_mode="normal",
     title="",
     verbose=False,
 ):
