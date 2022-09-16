@@ -1422,7 +1422,7 @@ from ioi_circuit_extraction import (
     turn_keep_into_rmv,
 )
 
-if False:
+if True:  # I think this is some test
     type(ioi_dataset)
     old_ld = logit_diff_target(model, ioi_dataset[:N])
     model, abl_cricuit_extr = do_circuit_extraction(
@@ -1448,7 +1448,7 @@ if False:
         target_module="attn_head",
         head_circuit="result",
         cache_means=True,
-    )  #  abl_fn=mean_at_end) # mean_dataset=owb_seqs, target_module="mlp", head_circuit="result", cache_means=True, verbose=True)
+    )
     abl = EasyAblation(
         model,
         config,
@@ -1532,7 +1532,7 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
 
 # %%  Running circuit extraction
 
-from ioi_utils import (
+from ioi_circuit_extraction import (
     join_lists,
     CIRCUIT,
     RELEVANT_TOKENS,

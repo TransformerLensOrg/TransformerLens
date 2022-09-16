@@ -27,7 +27,7 @@ def list_diff(l1, l2):
     return list(set(l1).difference(set(l2_)))
 
 
-def turn_keep_in_rmv(to_keep, max_len):
+def turn_keep_into_rmv(to_keep, max_len):
     to_rmv = {}
     for t in to_keep.keys():
         to_rmv[t] = []
@@ -59,7 +59,7 @@ def process_heads_and_mlps(
         for l in range(n_layers):
             if l not in mlps_to_keep:
                 mlps[l] = [[] for _ in range(dataset_length)]
-        mlps = turn_keep_in_rmv(
+        mlps = turn_keep_into_rmv(
             mlps, ioi_dataset.max_len
         )  # TODO check that this is still right for the max_len of maybe shortened datasets
 
@@ -71,7 +71,7 @@ def process_heads_and_mlps(
             for h in range(n_heads):
                 if (l, h) not in heads_to_keep:
                     heads[(l, h)] = [[] for _ in range(dataset_length)]
-        heads = turn_keep_in_rmv(heads, ioi_dataset.max_len)
+        heads = turn_keep_into_rmv(heads, ioi_dataset.max_len)
     return heads, mlps
     # print(mlps, heads)
 
