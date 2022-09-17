@@ -189,7 +189,7 @@ class LayerNormPre(nn.Module):
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale = self.hook_scale(
             (
-                einops.reduce(x.pow(2), "batch pos embed -> batch pos 1", "mean")
+                x.pow(2).mean(-1, keepdim=True)
                 + self.eps
             ).sqrt()
         )  # [batch, pos, 1]
@@ -224,7 +224,7 @@ class LayerNorm(nn.Module):
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale = self.hook_scale(
             (
-                einops.reduce(x.pow(2), "batch pos embed -> batch pos 1", "mean")
+                x.pow(2).mean(-1, keepdim=True)
                 + self.eps
             ).sqrt()
         )  # [batch, pos, 1]
