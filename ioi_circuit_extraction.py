@@ -167,7 +167,7 @@ SMALL_CIRCUIT = {
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
 
-CIRCUIT = SMALL_CIRCUIT[:]
+CIRCUIT = SMALL_CIRCUIT.copy()
 for head in [
     (10, 10),
     (10, 6),
@@ -176,6 +176,10 @@ for head in [
     (11, 3),
 ]:
     CIRCUIT["name mover"].append(head)
+
+ARTHUR_CIRCUIT = CIRCUIT.copy()
+ARTHUR_CIRCUIT.pop("duplicate token")
+ARTHUR_CIRCUIT["induction"] = [(5, 5), (6, 9)]
 
 RELEVANT_TOKENS = {}
 for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
@@ -191,16 +195,18 @@ for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
 
 
-def get_heads_circuit(ioi_dataset, excluded_classes=["negative"], mlp0=False):
+def get_heads_circuit(
+    ioi_dataset, excluded_classes=["negative"], mlp0=False, circuit=CIRCUIT
+):
     for excluded_class in excluded_classes:
-        assert excluded_class in CIRCUIT.keys()
+        assert excluded_class in circuit.keys()
 
     heads_to_keep = {}
 
-    for circuit_class in CIRCUIT.keys():
+    for circuit_class in circuit.keys():
         if circuit_class in excluded_classes:
             continue
-        for head in CIRCUIT[circuit_class]:
+        for head in circuit[circuit_class]:
             heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
 
     if mlp0:

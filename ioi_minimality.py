@@ -94,6 +94,7 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 from ioi_circuit_extraction import (
     join_lists,
     CIRCUIT,
+    SMALL_CIRCUIT,
     RELEVANT_TOKENS,
     get_extracted_idx,
     get_heads_circuit,
@@ -102,8 +103,8 @@ from ioi_circuit_extraction import (
 )
 
 
-def get_basic_extracted_model(model, ioi_dataset):
-    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
+def get_basic_extracted_model(model, ioi_dataset, circuit=CIRCUIT):
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[], circuit=circuit)
     torch.cuda.empty_cache()
 
     model.reset_hooks()
@@ -116,7 +117,9 @@ def get_basic_extracted_model(model, ioi_dataset):
     return model
 
 
-model = get_basic_extracted_model(model, ioi_dataset)
+circuit = SMALL_CIRCUIT
+
+model = get_basic_extracted_model(model, ioi_dataset, circuit)
 torch.cuda.empty_cache()
 circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
     model, ioi_dataset, std=True
@@ -151,14 +154,16 @@ labels = ["baseline", "circuit"]
 for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
     if extra_ablate_subset == []:
         continue
-    for circuit_class in list(CIRCUIT.keys()):
+    for circuit_class in list(circuit.keys()):
         if circuit_class not in extra_ablate_subset:
             continue
-        for circuit in CIRCUIT[circuit_class]:
-            vertices.append(circuit)
+        for layer, idx in circuit[circuit_class]:
+            vertices.append((layer, idx))
 
     # compute METRIC(C \ W)
-    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=extra_ablate_subset)
+    heads_to_keep = get_heads_circuit(
+        ioi_dataset, excluded_classes=extra_ablate_subset, circuit=circuit
+    )
     torch.cuda.empty_cache()
 
     model.reset_hooks()
