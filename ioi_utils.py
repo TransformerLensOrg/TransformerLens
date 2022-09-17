@@ -173,7 +173,7 @@ def scatter_attention_and_contribution(
         io_dir = model_unembed[io_tok].detach().cpu()
         s_dir = model_unembed[s_tok].detach().cpu()
 
-        model.reset_hooks()
+        # model.reset_hooks() # should allow things to be done with ablated models
         cache = {}
         model.cache_all(cache)
 
@@ -216,6 +216,82 @@ def scatter_attention_and_contribution(
         return viz_df
 
 
-if __name__ == "__main__":
-    inds = get_indices_from_sql_file("example-study.db", 1494)
-    print(inds)
+# metrics
+# (Callable[ [EasyTransformer, IOIDataset], ...]) # probably a tensor, but with more stuff too as well sometimes
+
+
+def handle_all_and_std(returning, all, std):
+    """
+    For use by the below functions. Lots of options!!!
+    """
+
+    if all and not std:
+        return returning
+    if std:
+        if all:
+            first_bit = (returning).detach().cpu()
+        else:
+            first_bit = (returning).mean().detach().cpu()
+        return first_bit, torch.std(returning).detach().cpu()
+    return (returning).mean().detach().cpu()
+
+
+def logit_diff(model, ioi_dataset, all=False, std=False):
+    """
+    Difference between the IO and the S logits at the "to" token
+    """
+    text_prompts = ioi_dataset.text_prompts
+    logits = model(text_prompts).detach()
+    IO_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.io_tokenIDs,
+    ]
+    S_logits = logits[
+        torch.arange(len(text_prompts)),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.s_tokenIDs,
+    ]
+
+    return handle_all_and_std(IO_logits - S_logits, all, std)
+
+
+def positions(x: torch.Tensor):
+    """
+    x is a tensor of shape (B, L)
+    returns the order of the elements in x
+    """
+    return torch.argsort(x, dim=1)
+
+
+def posses(model, ioi_dataset, all=False, std=False):
+    """
+    Ranking of the IO token in all the tokens
+    """
+    text_prompts = ioi_dataset.text_prompts
+    logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
+    end_logits = logits[
+        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :
+    ]  # batch * vocab_size
+
+    positions = torch.argsort(end_logits, dim=1)
+    io_positions = positions[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs]
+
+    return handle_all_and_std(io_positions, all, std)
+
+
+def probabilies(model, ioi_dataset, all=False, std=False):
+    """
+    IO probs
+    """
+
+    text_prompts = ioi_dataset.text_prompts
+    logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
+    end_logits = logits[
+        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :
+    ]  # batch * vocab_size
+    end_probs = torch.softmax(end_logits, dim=1)
+
+    io_probs = end_probs[torch.arange(ioi_dataset.N), ioi_dataset.io_tokenIDs]
+
+    return handle_all_and_std(io_probs, all, std)

@@ -102,35 +102,6 @@ from ioi_circuit_extraction import (
 )
 
 
-def logit_diff(model, ioi_dataset, all=False, std=False):
-    """
-    Difference between the IO and the S logits at the "to" token
-    """
-    text_prompts = ioi_dataset.text_prompts
-    logits = model(text_prompts).detach()
-    L = len(text_prompts)
-    IO_logits = logits[
-        torch.arange(len(text_prompts)),
-        ioi_dataset.word_idx["end"][:L],
-        ioi_dataset.io_tokenIDs[:L],
-    ]
-    S_logits = logits[
-        torch.arange(len(text_prompts)),
-        ioi_dataset.word_idx["end"][:L],
-        ioi_dataset.s_tokenIDs[:L],
-    ]
-
-    if all and not std:
-        return IO_logits - S_logits
-    if std:
-        if all:
-            first_bit = (IO_logits - S_logits).detach().cpu()
-        else:
-            first_bit = (IO_logits - S_logits).mean().detach().cpu()
-        return first_bit, torch.std(IO_logits - S_logits).detach().cpu()
-    return (IO_logits - S_logits).mean().detach().cpu()
-
-
 def compute_baseline(model, ioi_dataset):
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
     torch.cuda.empty_cache()
@@ -161,7 +132,7 @@ results = {}
 vertices = []
 
 small_effect_classes = [
-    # "previous token",
+    "previous token",
     "induction",
     "duplicate token",
 ]
@@ -336,5 +307,28 @@ fig.update_layout(
 
 fig.show()
 #%%
+
+cur_stuff = []
+for circuit_class in CIRCUIT.keys():
+    if circuit_class == "negative":
+        continue
+    for head in CIRCUIT[circuit_class]:
+        for relevant_token in RELEVANT_TOKENS[head]:
+            cur_stuff.append((head, relevant_token))
+heads = {head: [] for head, _ in cur_stuff}
+for head, val in cur_stuff:
+    heads[head].append(val)
+heads_to_keep = {}
+for head in heads.keys():
+    heads_to_keep[head] = get_extracted_idx(heads[head], ioi_dataset)
+model.reset_hooks()
+
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_keep=heads_to_keep,
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+
 scatter_attention_and_contribution(model, 9, 9, ioi_dataset.ioi_prompts)
 # %%
