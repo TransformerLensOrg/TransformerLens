@@ -12,6 +12,7 @@ from easy_transformer.utils import (
     get_corner,
     print_gpu_mem,
 )  # helper functions
+from ioi_utils import scatter_attention_and_contribution
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.EasyTransformer import (
     EasyTransformer,
@@ -78,10 +79,7 @@ if ipython is not None:
     ipython.magic("autoreload 2")
 
 
-#%% [markdown]
-# # <h1><b>Setup</b></h1>
-# Import model and dataset
-#%% # plot writing in the IO - S direction
+#%%
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
 print_gpu_mem("About to load model")
@@ -90,14 +88,9 @@ device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
 print_gpu_mem("Gpt2 loaded")
-# %% [markdown]
-# Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
-# The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
-# %%
-# IOI Dataset initialisation
-N = 200
+N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-#%%
+
 from ioi_circuit_extraction import (
     join_lists,
     CIRCUIT,
@@ -138,14 +131,37 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
     return (IO_logits - S_logits).mean().detach().cpu()
 
 
-#%% [markdown]
-# TODO Explain the way we're doing the minimal circuit experiment here
-#%%
+def compute_baseline(model, ioi_dataset):
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
+    torch.cuda.empty_cache()
+
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+    torch.cuda.empty_cache()
+    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
+    torch.cuda.empty_cache()
+    return ldiff_broken_circuit, std_broken_circuit
+
+
+circuit_baseline_diff, circuit_baseline_diff_std = compute_baseline(model, ioi_dataset)
+torch.cuda.empty_cache()
+model.reset_hooks()
+baseline_ldiff, baseline_ldiff_std = logit_diff(model, ioi_dataset, std=True)
+torch.cuda.empty_cache()
+
+print(f"{circuit_baseline_diff=}, {circuit_baseline_diff_std=}")
+print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
+#%% TODO Explain the way we're doing the minimal circuit experiment here
 results = {}
 vertices = []
 
 small_effect_classes = [
-    "previous token",
+    # "previous token",
     "induction",
     "duplicate token",
 ]
@@ -179,10 +195,13 @@ results = {
 }
 results["vs"] = {}
 
+print(f"{ldiff_broken_circuit=} {std_broken_circuit=}")
+#%%
 # METRIC((C \ W) \cup \{ v \})
-for circuit_class in list(CIRCUIT.keys()):
-    if circuit_class not in small_effect_classes:
-        continue
+
+for i, circuit_class in enumerate(
+    [key for key in CIRCUIT.keys() if key in small_effect_classes]
+):
     for v in tqdm(list(CIRCUIT[circuit_class])):
         new_heads_to_keep = heads_to_keep.copy()
         v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
@@ -201,48 +220,27 @@ for circuit_class in list(CIRCUIT.keys()):
         results["vs"][v] = ldiff_with_v
         torch.cuda.empty_cache()
 #%%
-def compute_baseline(model, ioi_dataset):
-    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
-    torch.cuda.empty_cache()
-
-    model.reset_hooks()
-    model, _ = do_circuit_extraction(
-        model=model,
-        heads_to_keep=heads_to_keep,
-        mlps_to_remove={},
-        ioi_dataset=ioi_dataset,
-    )
-    torch.cuda.empty_cache()
-    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
-    torch.cuda.empty_cache()
-    return ldiff_broken_circuit, std_broken_circuit
-
-
-recalculate_baseline = False
-
-if recalculate_baseline:
-    circuit_baseline = compute_baseline(model, ioi_dataset)
-    model.reset_hooks()
-    baseline = logit_diff(model, ioi_dataset, std=True)
-
-else:
-    circuit_baseline = (3.5512, 1.4690)
-    baseline = (3.5467, 1.6115)
-baseline_ldiff = baseline[0]
-circuit_baseline_diff = circuit_baseline[0]
-#%%
 fig = go.Figure()
+
+xs = [str(s) for s in list(results["vs"].keys())]
 
 fig.add_trace(
     go.Bar(
-        x=[str(s) for s in list(results["vs"].keys())],
+        x=xs,
         y=[
             results["vs"][v][0] - results["ldiff_broken_circuit"]
             for v in results["vs"].keys()
         ],
         base=[results["ldiff_broken_circuit"] for _ in results["vs"].keys()],
+        name="Change in logit difference when adding back",
     )
 )
+
+
+for val in ["baseline_ldiff", "circuit_baseline_diff", "ldiff_broken_circuit"]:
+    fig.add_trace(
+        go.Scatter(x=xs, y=[eval(val) for _ in range(len(xs))], mode="lines", name=val)
+    )
 
 fig.update_layout(
     title=f"Effect of adding a head to the circuit where are all {small_effect_classes} ablated",
@@ -337,9 +335,6 @@ fig.update_layout(
 )
 
 fig.show()
-
 #%%
-model.reset_hooks()
-ldiff_baseline = logit_diff(model, ioi_dataset, std=True)
-
+scatter_attention_and_contribution(model, 9, 9, ioi_dataset.ioi_prompts)
 # %%

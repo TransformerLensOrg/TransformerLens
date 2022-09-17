@@ -496,7 +496,6 @@ attn_vals, mlp_vals = writing_direction_heatmap(
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset.text_prompts[:1])
 # %%
 show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset.text_prompts[:1])
-
 # %% [markdown]
 # ### Plot attention vs direction
 # %% [markdown]
@@ -528,77 +527,7 @@ top_heads
 # <h2>Copying</h2>
 # CLAIM: heads 9.6, 9.9 and 10.0 copy the IO into the residual stream, <b>by attending to the IO token</b>
 #%% # the more attention, the more writing
-def scatter_attention_and_contribution(
-    model,
-    layer_no,
-    head_no,
-    prompts,
-    gpt_model="gpt2",
-    return_vals=False,
-):
-    """
-    Plot a scatter plot
-    for each input sequence with the attention paid to IO and S
-    and the amount that is written in the IO and S directions
-    """
-    n_heads = model.cfg.n_heads
-    n_layers = model.cfg.n_layers
-    model_unembed = model.unembed.W_U.detach().cpu()
-    df = []
-    for prompt in tqdm(prompts):
-        io_tok = model.tokenizer(" " + prompt["IO"])["input_ids"][0]
-        s_tok = model.tokenizer(" " + prompt["S"])["input_ids"][0]
-        toks = model.tokenizer(prompt["text"])["input_ids"]
-        io_pos = toks.index(io_tok)
-        s1_pos = toks.index(s_tok)
-        s2_pos = toks[s1_pos + 1 :].index(s_tok) + (s1_pos + 1)
-        assert toks[-1] == io_tok
-
-        io_dir = model_unembed[io_tok].detach().cpu()
-        s_dir = model_unembed[s_tok].detach().cpu()
-
-        model.reset_hooks()
-        cache = {}
-        model.cache_all(cache)
-
-        logits = model(prompt["text"])
-
-        for dire, posses, tok_type in [
-            (io_dir, [io_pos], "IO"),
-            (s_dir, [s1_pos, s2_pos], "S"),
-        ]:
-            prob = sum(
-                [
-                    cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos]
-                    .detach()
-                    .cpu()
-                    for pos in posses
-                ]
-            )
-            resid = (
-                cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :]
-                .detach()
-                .cpu()
-            )
-            dot = torch.einsum("a,a->", resid, dire)
-            df.append([prob, dot, tok_type, prompt["text"]])
-
-    # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(
-        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
-    )
-    fig = px.scatter(
-        viz_df,
-        x=f"Attn Prob on Name",
-        y=f"Dot w Name Embed",
-        color="Name Type",
-        hover_data=["text"],
-        title=f"How Strong {layer_no}.{head_no} Writes in the Name Embed Direction Relative to Attn Prob",
-    )
-    fig.show()
-    if return_vals:
-        return viz_df
-
+from ioi_utils import scatter_attention_and_contribution
 
 scatter_attention_and_contribution(
     model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
@@ -809,8 +738,6 @@ for i, key in enumerate(["IO", "S", "S2"]):
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
     ).show()
-
-
 # %% [markdown]
 # We can clearly identify the S2-inhibition heads: 8.6, 8.10, 7.3 and 7.9. Patching them with activation from ABC causes 9.9 to pay less attention to IO and more to S and S2. To have a a better sense of what is going on behind these plots, we can see how patching impact the attention patterns of 9.9 on sample sentences.
 
@@ -892,7 +819,6 @@ show_attention_patterns(
 
 # %% [markdown]
 # What happend if we patch at S2 instead of END?
-
 # %%
 
 

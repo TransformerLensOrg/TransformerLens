@@ -1,3 +1,5 @@
+from tqdm import tqdm
+import pandas as pd
 import torch
 import plotly.express as px
 import gc
@@ -140,6 +142,78 @@ def get_indices_from_sql_file(fname, trial_id):
     conn = sqlite3.connect(fname)
     df = pd.read_sql_query("SELECT * from trial_params", conn)
     return list(map(int, df[df.trial_id == trial_id].param_value.values))
+
+
+def scatter_attention_and_contribution(
+    model,
+    layer_no,
+    head_no,
+    prompts,
+    gpt_model="gpt2",
+    return_vals=False,
+):
+    """
+    Plot a scatter plot
+    for each input sequence with the attention paid to IO and S
+    and the amount that is written in the IO and S directions
+    """
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
+    model_unembed = model.unembed.W_U.detach().cpu()
+    df = []
+    for prompt in tqdm(prompts):
+        io_tok = model.tokenizer(" " + prompt["IO"])["input_ids"][0]
+        s_tok = model.tokenizer(" " + prompt["S"])["input_ids"][0]
+        toks = model.tokenizer(prompt["text"])["input_ids"]
+        io_pos = toks.index(io_tok)
+        s1_pos = toks.index(s_tok)
+        s2_pos = toks[s1_pos + 1 :].index(s_tok) + (s1_pos + 1)
+        assert toks[-1] == io_tok
+
+        io_dir = model_unembed[io_tok].detach().cpu()
+        s_dir = model_unembed[s_tok].detach().cpu()
+
+        model.reset_hooks()
+        cache = {}
+        model.cache_all(cache)
+
+        logits = model(prompt["text"])
+
+        for dire, posses, tok_type in [
+            (io_dir, [io_pos], "IO"),
+            (s_dir, [s1_pos, s2_pos], "S"),
+        ]:
+            prob = sum(
+                [
+                    cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos]
+                    .detach()
+                    .cpu()
+                    for pos in posses
+                ]
+            )
+            resid = (
+                cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :]
+                .detach()
+                .cpu()
+            )
+            dot = torch.einsum("a,a->", resid, dire)
+            df.append([prob, dot, tok_type, prompt["text"]])
+
+    # most of the pandas stuff is intuitive, no need to deeply understand
+    viz_df = pd.DataFrame(
+        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
+    )
+    fig = px.scatter(
+        viz_df,
+        x=f"Attn Prob on Name",
+        y=f"Dot w Name Embed",
+        color="Name Type",
+        hover_data=["text"],
+        title=f"How Strong {layer_no}.{head_no} Writes in the Name Embed Direction Relative to Attn Prob",
+    )
+    fig.show()
+    if return_vals:
+        return viz_df
 
 
 if __name__ == "__main__":
