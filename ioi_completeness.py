@@ -95,8 +95,6 @@ print_gpu_mem("Gpt2 loaded")
 # %% [markdown]
 # Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
-
-
 # %%
 # IOI Dataset initialisation
 N = 100
@@ -112,6 +110,7 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 #%%
 
 from ioi_circuit_extraction import (
+    ARTHUR_CIRCUIT,
     join_lists,
     CIRCUIT,
     RELEVANT_TOKENS,
@@ -155,12 +154,14 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
 
-run_original = False
+run_original = True
+
+circuit = ARTHUR_CIRCUIT
 
 if run_original:
     circuit_perf = []
 
-    for G in list(CIRCUIT.keys()) + ["none"]:
+    for G in list(circuit.keys()) + ["none"]:
         if G == "ablation":
             continue
         print_gpu_mem(G)
@@ -170,7 +171,7 @@ if run_original:
         if G != "none":
             excluded_classes.append(G)
         heads_to_keep = get_heads_circuit(
-            ioi_dataset, excluded_classes=excluded_classes
+            ioi_dataset, excluded_classes=excluded_classes, circuit=circuit
         )  # TODO check the MLP stuff
 
         model, _ = do_circuit_extraction(
@@ -187,11 +188,11 @@ if run_original:
         # metric(C\G)
         # adding back the whole model
 
-        excl_class = list(CIRCUIT.keys())
+        excl_class = list(circuit.keys())
         if G != "none":
             excl_class.remove(G)
         G_heads_to_remove = get_heads_circuit(
-            ioi_dataset, excluded_classes=excl_class
+            ioi_dataset, excluded_classes=excl_class, circuit=circuit
         )  # TODO check the MLP stuff
         torch.cuda.empty_cache()
 
@@ -237,8 +238,7 @@ def basis_change(x, y):
 
 # %%
 
-show_scatter = False
-
+show_scatter = True
 circuit_perf_scatter = []
 
 # by points
@@ -271,7 +271,7 @@ if run_original:
 
     # by sets
     perf_by_sets = []
-    for i in range(len(CIRCUIT) + 1):
+    for i in range(len(circuit) + 1):
         perf_by_sets.append(
             {
                 "removed_group": circuit_perf.iloc[i * ioi_dataset.N].removed_group,

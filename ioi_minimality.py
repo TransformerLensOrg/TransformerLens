@@ -1,6 +1,5 @@
 #%%
 from dataclasses import dataclass
-from email.mime import base
 from tqdm import tqdm
 import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
@@ -120,7 +119,6 @@ def get_basic_extracted_model(model, ioi_dataset, circuit=CIRCUIT):
 
 
 circuit = ARTHUR_CIRCUIT
-circuit.pop("duplicate token")
 
 model = get_basic_extracted_model(model, ioi_dataset, circuit)
 torch.cuda.empty_cache()
@@ -141,6 +139,7 @@ print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
 print(f"{baseline_prob=}, {baseline_prob_std=}")
 #%% TODO Explain the way we're doing the minimal circuit experiment here
 results = {}
+results["ldiff_broken_circuit"] = circuit_baseline_diff
 vertices = []
 
 extra_ablate_classes = [
@@ -182,16 +181,21 @@ for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
         torch.cuda.empty_cache()
         both[i].append(ans)
 
+        if i == 0 and len(extra_ablate_subset) == 1:
+            results[extra_ablate_subset[0]] = ans
+
 fig = px.scatter(x=xs, y=ys, text=labels)
 fig.update_traces(textposition="top center")
 fig.show()
 #%%
 # METRIC((C \ W) \cup \{ v \})
+# TODO TODO TODO sort the minimality plot
 
 for i, circuit_class in enumerate(
-    [key for key in CIRCUIT.keys() if key in extra_ablate_classes]
+    [key for key in circuit.keys() if key in extra_ablate_classes]
 ):
-    for v in tqdm(list(CIRCUIT[circuit_class])):
+    results["vs"] = {}
+    for v in tqdm(list(circuit[circuit_class])):
         new_heads_to_keep = heads_to_keep.copy()
         v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
         assert v not in new_heads_to_keep.keys()
@@ -226,10 +230,10 @@ fig.add_trace(
 )
 
 
-for val in ["baseline_ldiff", "circuit_baseline_diff", "ldiff_broken_circuit"]:
-    fig.add_trace(
-        go.Scatter(x=xs, y=[eval(val) for _ in range(len(xs))], mode="lines", name=val)
-    )
+# for val in ["baseline_ldiff", "circuit_baseline_diff", "ldiff_broken_circuit"]:
+#     fig.add_trace(
+#         go.Scatter(x=xs, y=[eval(val) for _ in range(len(xs))], mode="lines", name=val)
+#     )
 
 fig.update_layout(
     title=f"Effect of adding a head to the circuit where are all {extra_ablate_classes} ablated",
@@ -241,8 +245,8 @@ fig.show()
 #%%
 fig = go.Figure()
 
-for G in list(CIRCUIT.keys()):
-    for i, v in enumerate(list(CIRCUIT[G])):
+for G in list(extra_ablate_classes):
+    for i, v in enumerate(list(circuit[G])):
         fig.add_trace(
             go.Bar(
                 x=[G],
