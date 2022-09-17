@@ -81,7 +81,7 @@ def get_circuit_replacement_hook(
     mlps_to_remove=None,
     heads_to_keep=None,
     mlps_to_keep=None,
-    heads_to_remove2=None,
+    heads_to_remove2=None,  # TODO @Alex ehat are these
     mlps_to_remove2=None,
     heads_to_keep2=None,
     mlps_to_keep2=None,
@@ -154,23 +154,28 @@ def get_extracted_idx(idx_list: list[str], ioi_dataset):
     return int_idx
 
 
-CIRCUIT = {
+SMALL_CIRCUIT = {
     "name mover": [
         (9, 6),
         (9, 9),
         (10, 0),
-        (10, 10),
-        (10, 6),
-        (10, 2),
-        (10, 8),
-        (11, 3),
-    ],  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
+    ],
     "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
     "duplicate token": [(0, 1), (0, 10), (3, 0)],
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
+
+CIRCUIT = SMALL_CIRCUIT[:]
+for head in [
+    (10, 10),
+    (10, 6),
+    (10, 2),
+    (10, 8),
+    (11, 3),
+]:
+    CIRCUIT["name mover"].append(head)
 
 RELEVANT_TOKENS = {}
 for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:

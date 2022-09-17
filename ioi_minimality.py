@@ -102,7 +102,7 @@ from ioi_circuit_extraction import (
 )
 
 
-def compute_baseline(model, ioi_dataset):
+def get_basic_extracted_model(model, ioi_dataset):
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[])
     torch.cuda.empty_cache()
 
@@ -113,20 +113,26 @@ def compute_baseline(model, ioi_dataset):
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
     )
-    torch.cuda.empty_cache()
-    ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
-    torch.cuda.empty_cache()
-    return ldiff_broken_circuit, std_broken_circuit
+    return model
 
 
-circuit_baseline_diff, circuit_baseline_diff_std = compute_baseline(model, ioi_dataset)
+model = get_basic_extracted_model(model, ioi_dataset)
+torch.cuda.empty_cache()
+circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
+    model, ioi_dataset, std=True
+)
+torch.cuda.empty_cache()
+circuit_baseline_prob, circuit_baseline_prob_std = probs(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
 model.reset_hooks()
 baseline_ldiff, baseline_ldiff_std = logit_diff(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
+baseline_prob, baseline_prob_std = probs(model, ioi_dataset, std=True)
 
 print(f"{circuit_baseline_diff=}, {circuit_baseline_diff_std=}")
+print(f"{circuit_baseline_prob=}, {circuit_baseline_prob_std=}")
 print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
+print(f"{baseline_prob=}, {baseline_prob_std=}")
 #%% TODO Explain the way we're doing the minimal circuit experiment here
 results = {}
 vertices = []
@@ -137,19 +143,19 @@ extra_ablate_classes = [
     "duplicate token",
 ]
 
-xs = []
-ys = []
+xs = [baseline_ldiff, circuit_baseline_diff]
+ys = [baseline_prob, circuit_baseline_prob]
 both = [xs, ys]
-labels = []
+labels = ["baseline", "circuit"]
 
 for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
+    if extra_ablate_subset == []:
+        continue
     for circuit_class in list(CIRCUIT.keys()):
         if circuit_class not in extra_ablate_subset:
             continue
         for circuit in CIRCUIT[circuit_class]:
             vertices.append(circuit)
-
-    print_gpu_mem("About to start experiment")
 
     # compute METRIC(C \ W)
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=extra_ablate_subset)
