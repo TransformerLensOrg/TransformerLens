@@ -1,3 +1,4 @@
+from typing import List, Tuple, Dict, Union, Optional, Callable, Any
 from tqdm import tqdm
 import pandas as pd
 import torch
@@ -280,7 +281,7 @@ def posses(model, ioi_dataset, all=False, std=False):
     return handle_all_and_std(io_positions, all, std)
 
 
-def probabilies(model, ioi_dataset, all=False, std=False):
+def probs(model, ioi_dataset, all=False, std=False):
     """
     IO probs
     """
@@ -295,3 +296,14 @@ def probabilies(model, ioi_dataset, all=False, std=False):
     io_probs = end_probs[torch.arange(ioi_dataset.N), ioi_dataset.io_tokenIDs]
 
     return handle_all_and_std(io_probs, all, std)
+
+
+def all_subsets(L: List) -> List[List]:
+    """
+    Returns all subsets of L
+    """
+    if len(L) == 0:
+        return [[]]
+    else:
+        rest = all_subsets(L[1:])
+        return rest + [[L[0]] + subset for subset in rest]  # thanks copilot

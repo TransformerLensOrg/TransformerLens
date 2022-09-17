@@ -12,7 +12,7 @@ from easy_transformer.utils import (
     get_corner,
     print_gpu_mem,
 )  # helper functions
-from ioi_utils import scatter_attention_and_contribution
+from ioi_utils import *
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.EasyTransformer import (
     EasyTransformer,
@@ -131,47 +131,52 @@ print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
 results = {}
 vertices = []
 
-small_effect_classes = [
+extra_ablate_classes = [
     "previous token",
     "induction",
     "duplicate token",
 ]
 
-for circuit_class in list(CIRCUIT.keys()):
-    if circuit_class not in small_effect_classes:
-        continue
-    for circuit in CIRCUIT[circuit_class]:
-        vertices.append(circuit)
+xs = []
+ys = []
+both = [xs, ys]
+labels = []
 
-print_gpu_mem("About to start experiment")
+for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
+    for circuit_class in list(CIRCUIT.keys()):
+        if circuit_class not in extra_ablate_subset:
+            continue
+        for circuit in CIRCUIT[circuit_class]:
+            vertices.append(circuit)
 
-# compute METRIC(C \ W)
-heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=small_effect_classes)
-torch.cuda.empty_cache()
+    print_gpu_mem("About to start experiment")
 
-model.reset_hooks()
-model, _ = do_circuit_extraction(
-    model=model,
-    heads_to_keep=heads_to_keep,
-    mlps_to_remove={},
-    ioi_dataset=ioi_dataset,
-)
-torch.cuda.empty_cache()
-ldiff_broken_circuit, std_broken_circuit = logit_diff(model, ioi_dataset, std=True)
-torch.cuda.empty_cache()
+    # compute METRIC(C \ W)
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=extra_ablate_subset)
+    torch.cuda.empty_cache()
 
-results = {
-    "ldiff_broken_circuit": ldiff_broken_circuit,
-    "std_broken_circuit": std_broken_circuit,
-}
-results["vs"] = {}
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+    labels.append(str(extra_ablate_subset))
+    torch.cuda.empty_cache()
+    for i, metric in enumerate([logit_diff, probs]):
+        ans, std = metric(model, ioi_dataset, std=True)
+        torch.cuda.empty_cache()
+        both[i].append(ans)
 
-print(f"{ldiff_broken_circuit=} {std_broken_circuit=}")
+fig = px.scatter(x=xs, y=ys, text=labels)
+fig.update_traces(textposition="top center")
+fig.show()
 #%%
 # METRIC((C \ W) \cup \{ v \})
 
 for i, circuit_class in enumerate(
-    [key for key in CIRCUIT.keys() if key in small_effect_classes]
+    [key for key in CIRCUIT.keys() if key in extra_ablate_classes]
 ):
     for v in tqdm(list(CIRCUIT[circuit_class])):
         new_heads_to_keep = heads_to_keep.copy()
@@ -214,7 +219,7 @@ for val in ["baseline_ldiff", "circuit_baseline_diff", "ldiff_broken_circuit"]:
     )
 
 fig.update_layout(
-    title=f"Effect of adding a head to the circuit where are all {small_effect_classes} ablated",
+    title=f"Effect of adding a head to the circuit where are all {extra_ablate_classes} ablated",
     xaxis_title="Head",
     yaxis_title="Logit difference",
 )
