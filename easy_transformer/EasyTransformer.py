@@ -172,8 +172,8 @@ class PosEmbed(nn.Module):
 # Normalising is a funkier non-linear operation, that projects the residual stream onto the unit hypersphere
 class LayerNormPre(nn.Module):
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
-        """LayerNormPre - the 'center and normalise' part of LayerNorm. Length is 
-        normally d_model, but is d_mlp for softmax. Not needed as a parameter. This 
+        """LayerNormPre - the 'center and normalise' part of LayerNorm. Length is
+        normally d_model, but is d_mlp for softmax. Not needed as a parameter. This
         should only be used in inference mode after folding in LayerNorm weights"""
         super().__init__()
         if isinstance(cfg, Dict):
@@ -193,14 +193,17 @@ class LayerNormPre(nn.Module):
                 + self.eps
             ).sqrt()
         )  # [batch, pos, 1]
-        return self.hook_normalized(x / scale) # [batch, pos, length]
+        return self.hook_normalized(x / scale)  # [batch, pos, length]
+
 
 class LayerNorm(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig], length: Optional[int] = None):
-        
+    def __init__(
+        self, cfg: Union[Dict, EasyTransformerConfig], length: Optional[int] = None
+    ):
+
         """
         LayerNorm with optional length parameter
-        
+
         length (Optional[int]): If the dimension of the LayerNorm. If not provided, assumed to be d_model
         """
         super().__init__()
@@ -215,7 +218,7 @@ class LayerNorm(nn.Module):
 
         self.w = nn.Parameter(torch.ones(self.length))
         self.b = nn.Parameter(torch.zeros(self.length))
-        
+
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos, 1]
         self.hook_normalized = HookPoint()  # [batch, pos, length]
@@ -228,7 +231,7 @@ class LayerNorm(nn.Module):
                 + self.eps
             ).sqrt()
         )  # [batch, pos, 1]
-        x = self.hook_normalized(x / scale) # [batch, pos, length]
+        x = self.hook_normalized(x / scale)  # [batch, pos, length]
         return x * self.w + self.b
 
 
@@ -364,7 +367,7 @@ class MLP(nn.Module):
             self.act_fn = gelu_new
         elif self.cfg.act_fn == "solu_ln":
             self.act_fn = solu
-            self.hook_post_ln = HookPoint() # [batch, pos, d_mlp]
+            self.hook_post_ln = HookPoint()  # [batch, pos, d_mlp]
             self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
         elif self.cfg.act_fn == "reglu":
             self.act_fn = reglu
@@ -401,10 +404,10 @@ class TransformerBlock(nn.Module):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        if self.cfg.normalization_type == 'LN':
+        if self.cfg.normalization_type == "LN":
             self.ln1 = LayerNorm(cfg)
             self.ln2 = LayerNorm(cfg)
-        elif self.cfg.normalization_type == 'LNPre':
+        elif self.cfg.normalization_type == "LNPre":
             # We've folded in LayerNorm weights, so just need the center + scale parts
             self.ln1 = LayerNormPre(cfg)
             self.ln2 = LayerNormPre(cfg)
@@ -412,8 +415,10 @@ class TransformerBlock(nn.Module):
             # If it's None, don't create either layer
             pass
         else:
-            logging.warning(f"Invalid normalization_type passed in {self.cfg.normalization_type}")
-            
+            logging.warning(
+                f"Invalid normalization_type passed in {self.cfg.normalization_type}"
+            )
+
         if not self.cfg.use_local_attn:
             self.attn = Attention(cfg, "global")
         else:
@@ -434,14 +439,18 @@ class TransformerBlock(nn.Module):
             normalized_resid_pre = self.ln1(resid_pre)
         else:
             normalized_resid_pre = resid_pre
-        attn_out = self.hook_attn_out(self.attn(normalized_resid_pre))  # [batch, pos, d_model]
+        attn_out = self.hook_attn_out(
+            self.attn(normalized_resid_pre)
+        )  # [batch, pos, d_model]
         resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
 
         if self.cfg.normalization_type is not None:
             normalized_resid_mid = self.ln2(resid_mid)
         else:
             normalized_resid_mid = resid_mid
-        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))  # [batch, pos, d_model]
+        mlp_out = self.hook_mlp_out(
+            self.mlp(normalized_resid_mid)
+        )  # [batch, pos, d_model]
         resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         return resid_post
 
@@ -500,6 +509,7 @@ class EasyTransformer(HookedRootModule):
             self.model_type = cfg.model_type
             if self.cfg.tokenizer_name is not None:
                 self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+                self.tokenizer.pad_token = self.tokenizer.eos_token
             else:
                 # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
                 self.tokenizer = None
@@ -551,9 +561,12 @@ class EasyTransformer(HookedRootModule):
             self.cfg.tokenizer_name = self.full_model_name
             self.cfg.normalization_type = "LNPre"
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+            self.tokenizer.pad_token = self.tokenizer.eos_token
         if not self.cfg.d_vocab:
-            assert self.tokenizer is not None, "Must provide a tokenizer if d_vocab is not provided"
-            self.cfg.d_vocab = max(self.tokenizer.vocab.values())+1
+            assert (
+                self.tokenizer is not None
+            ), "Must provide a tokenizer if d_vocab is not provided"
+            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
@@ -567,16 +580,18 @@ class EasyTransformer(HookedRootModule):
                 for block_index in range(self.cfg.n_layers)
             ]
         )
-        if self.cfg.normalization_type == 'LN':
+        if self.cfg.normalization_type == "LN":
             self.ln_final = LayerNorm(self.cfg)
-        elif self.cfg.normalization_type == 'LNPre':
+        elif self.cfg.normalization_type == "LNPre":
             # We've folded in LayerNorm weights, so just need the center + scale parts
             self.ln_final = LayerNormPre(self.cfg)
         elif self.cfg.normalization_type is None:
             # If it's None, don't create either layer
             pass
         else:
-            logging.warning(f"Invalid normalization_type passed in {self.cfg.normalization_type}")
+            logging.warning(
+                f"Invalid normalization_type passed in {self.cfg.normalization_type}"
+            )
         self.unembed = Unembed(self.cfg)
 
         # Gives each module a parameter with its name (relative to this root module)
@@ -607,9 +622,9 @@ class EasyTransformer(HookedRootModule):
             # Delete the original model to save memory
             del self.model
 
-    def forward(self, input, return_type: Optional[str] = 'logits'):
+    def forward(self, input, return_type: Optional[str] = "logits"):
         """Input is either a batch of tokens ([batch, pos]) or a text string.
-        
+
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
         """
         if type(input) == str or type(input) == list:
@@ -631,16 +646,16 @@ class EasyTransformer(HookedRootModule):
             return None
         else:
             if self.cfg.normalization_type is not None:
-                residual = self.ln_final(residual) # [batch, pos, d_vocab]
-            logits = self.unembed(residual) # [batch, pos, d_vocab]
-            if return_type=='logits':
+                residual = self.ln_final(residual)  # [batch, pos, d_vocab]
+            logits = self.unembed(residual)  # [batch, pos, d_vocab]
+            if return_type == "logits":
                 return logits
             else:
                 loss = self.cross_entropy_loss(logits, tokens)
-                if return_type=='loss':
+                if return_type == "loss":
                     return loss
-                elif return_type=='both':
-                    return {'logits': logits, 'loss': loss}
+                elif return_type == "both":
+                    return {"logits": logits, "loss": loss}
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
@@ -974,13 +989,13 @@ class EasyTransformer(HookedRootModule):
     def init_weights(self):
         """
         Initialize weights according to default Pytorch initialization.
-        
-        LayerNorm weights are already initialized to 1.0 (and biases to 0.0) 
+
+        LayerNorm weights are already initialized to 1.0 (and biases to 0.0)
         in the constructor
         """
         # Initialize weights with std 1/sqrt(d_model) so the vector has variance 1
-        nn.init.normal_(self.embed.W_E, std=self.cfg.d_model**(-0.5))
-        nn.init.normal_(self.pos_embed.W_pos, std=self.cfg.d_model**(-0.5))
+        nn.init.normal_(self.embed.W_E, std=self.cfg.d_model ** (-0.5))
+        nn.init.normal_(self.pos_embed.W_pos, std=self.cfg.d_model ** (-0.5))
 
         def init_linear_weight_and_bias(weight, bias):
             nn.init.kaiming_uniform_(weight, a=np.sqrt(5))
@@ -1007,16 +1022,17 @@ class EasyTransformer(HookedRootModule):
             init_linear_weight_and_bias(
                 self.blocks[l].mlp.W_out, self.blocks[l].mlp.b_out
             )
-            
+
             if self.cfg.gated_act_fn:
                 init_linear_weight_and_bias(
                     self.blocks[l].mlp.W_gate, self.blocks[l].mlp.b_gate
                 )
-                
 
         init_linear_weight_and_bias(self.unembed.W_U, self.unembed.b_U)
 
-    def cross_entropy_loss(self, logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False):
+    def cross_entropy_loss(
+        self, logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
+    ):
         """Cross entropy loss for the language model.
 
         Args:
@@ -1031,7 +1047,9 @@ class EasyTransformer(HookedRootModule):
         # Use torch.gather to find the log probs of the correct tokens
         # Offsets needed because we're predicting the NEXT token (this means the final logit is meaningless)
         # None and [..., 0] needed because the tensor used in gather must have the same rank.
-        predicted_log_probs = log_probs[..., :-1, :].gather(dim=-1, index=tokens[..., 1:, None])[..., 0]
+        predicted_log_probs = log_probs[..., :-1, :].gather(
+            dim=-1, index=tokens[..., 1:, None]
+        )[..., 0]
         if return_per_token:
             return -predicted_log_probs
         else:
