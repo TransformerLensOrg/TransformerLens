@@ -551,7 +551,9 @@ class EasyTransformer(HookedRootModule):
             self.cfg.tokenizer_name = self.full_model_name
             self.cfg.normalization_type = "LNPre"
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        if not self.cfg.d_vocab:
+            assert self.tokenizer is not None, "Must provide a tokenizer if d_vocab is not provided"
+            self.cfg.d_vocab = max(self.tokenizer.vocab.values())+1
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
