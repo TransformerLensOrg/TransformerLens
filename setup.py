@@ -14,6 +14,7 @@ setup(
         'datasets',
         'transformers',
         'tqdm',
-        'pandas'
+        'pandas',
+        'datasets',
     ]
 )

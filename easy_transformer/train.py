@@ -7,7 +7,7 @@ import torch.optim as optim
 import wandb
 import torch
 import torch.nn as nn
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from einops import rearrange
 
 
@@ -31,12 +31,14 @@ class EasyTransformerTrainConfig:
         save_every (int, *optional*): After how many batches should a checkpoint be saved
         save_dir, (str, *optional*): Where to save checkpoints
         wandb (bool): Whether to use Weights and Biases for logging
-        wandb_project (str, *optional): Name of the Weights and Biases project to use
+        wandb_project (str, *optional*): Name of the Weights and Biases project to use
+        print_every (int, *optional*): Print the loss every n steps
+        max_steps (int, *optional*): Terminate the epoch after this many steps. Used for debugging.
     """
 
     num_epochs: int
     batch_size: int
-    lr: float
+    lr: float = 1e-3
     seed: int = 0
     momentum: float = 0.0
     max_grad_norm: Optional[float] = None
@@ -48,13 +50,14 @@ class EasyTransformerTrainConfig:
     save_dir: Optional[str] = None
     wandb: bool = False
     wandb_project_name: Optional[str] = None
+    print_every: Optional[int] = 50
+    max_steps: Optional[int] = None
 
 
 def train(
     model: EasyTransformer,
     config: EasyTransformerTrainConfig,
     dataset: Dataset,
-    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
 ) -> EasyTransformer:
     """
     Trains an EasyTransformer model on an autoregressive language modeling task.
@@ -63,7 +66,6 @@ def train(
         config: The training configuration
         dataset: The dataset to train on - this function assumes the dataset is
             set up for autoregressive language modeling.
-        loss_fn: The loss function to use for training
     Returns:
         The trained model
     """
@@ -77,22 +79,19 @@ def train(
     if config.device is None:
         config.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if config.optimizer_name == "Adam":
-        optimizer = optim.Adam(
+    if config.optimizer_name in ["Adam", "AdamW"]:
+        # Weight decay in Adam is implemented badly, so use AdamW instead (see PyTorch AdamW docs)
+        if config.weight_decay is not None:
+            optimizer = optim.AdamW(
+                model.parameters(),
+                lr=config.lr,
+                weight_decay=config.weight_decay,
+            )
+        else:
+            optimizer = optim.Adam(
             model.parameters(),
             lr=config.lr,
-            weight_decay=config.weight_decay
-            if config.weight_decay is not None
-            else 0.0,
-        )
-    elif config.optimizer_name == "AdamW":
-        optimizer = optim.AdamW(
-            model.parameters(),
-            lr=config.lr,
-            weight_decay=config.weight_decay
-            if config.weight_decay is not None
-            else 1e-2,
-        )
+            )
     elif config.optimizer_name == "SGD":
         optimizer = optim.SGD(
             model.parameters(),
@@ -117,16 +116,10 @@ def train(
     model.to(config.device)
 
     for epoch in tqdm(range(1, config.num_epochs + 1)):
-        steps = 0
-        for i, (x, y) in tqdm(enumerate(dataloader)):
-            x = x.to(config.device)
-            y = y.to(config.device)
-
-            y_pred = model(x)
-            loss = loss_fn(
-                rearrange(y_pred, "batch pos classes -> (batch pos) classes"),
-                rearrange(y, "batch pos -> (batch pos)"),
-            )
+        samples = 0
+        for step, batch in tqdm(enumerate(dataloader)):
+            tokens = batch['tokens'].to(config.device)
+            loss = model(tokens, return_type='loss')
             loss.backward()
             if config.max_grad_norm is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
@@ -136,18 +129,28 @@ def train(
                 scheduler.step()
             optimizer.zero_grad()
 
-            steps += x.shape[0]
+            samples += tokens.shape[0]
 
             if config.wandb:
-                wandb.log({"train_loss": loss.item(), "steps": steps, epoch: epoch})
-
-            print(f"Epoch {epoch} Step {steps} Loss {loss.item()}")
+                wandb.log({"train_loss": loss.item(), "samples": samples, 'epoch': epoch})
+            
+            if (
+                config.print_every is not None
+                and step % config.print_every == 0
+            ):
+                print(f"Epoch {epoch} Samples {samples} Step {step} Loss {loss.item()}")
 
             if (
                 config.save_every is not None
-                and i % config.save_every == 0
+                and step % config.save_every == 0
                 and config.save_dir is not None
             ):
-                torch.save(model.state_dict(), f"{config.save_dir}/model_{i}.pt")
+                torch.save(model.state_dict(), f"{config.save_dir}/model_{step}.pt")
+            
+            if (
+                config.max_steps is not None
+                and step >= config.max_steps
+            ):
+                break
 
     return model

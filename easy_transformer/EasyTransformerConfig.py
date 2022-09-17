@@ -15,7 +15,8 @@ class EasyTransformerConfig:
         d_mlp (int): The dimensionality of the feedforward mlp network.
         n_layers (int): The number of attention layers.
         n_ctx (int): The maximum sequence length.
-        d_vocab (int): The size of the vocabulary.
+        d_vocab (int): The size of the vocabulary. If not set, will be automatically set 
+            from the tokenizer's vocab size.
         act_fn (str): The activation function to use. Always lowercase. Supports ['relu', 'gelu', 'silu', 'glu'm 'gelu_new', 'solu_ln', 'reglu', 'geglu', 'swiglu'].
         eps (float): The epsilon value to use for layer normalization. Defaults to 1e-5
         use_attn_result (bool): whether to explicitly calculate the amount
@@ -55,8 +56,8 @@ class EasyTransformerConfig:
     d_mlp: int
     n_layers: int
     n_ctx: int
-    d_vocab: int
     act_fn: str
+    d_vocab: Optional[int] = None
     eps: float = 1e-5
     use_attn_result: bool = False
     use_attn_scale: bool = True
