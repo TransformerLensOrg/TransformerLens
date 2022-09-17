@@ -92,10 +92,12 @@ N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
 from ioi_circuit_extraction import (
+    ARTHUR_CIRCUIT,
     join_lists,
     CIRCUIT,
     SMALL_CIRCUIT,
     RELEVANT_TOKENS,
+    ARTHUR_CIRCUIT,
     get_extracted_idx,
     get_heads_circuit,
     do_circuit_extraction,
@@ -117,7 +119,8 @@ def get_basic_extracted_model(model, ioi_dataset, circuit=CIRCUIT):
     return model
 
 
-circuit = SMALL_CIRCUIT
+circuit = ARTHUR_CIRCUIT
+circuit.pop("duplicate token")
 
 model = get_basic_extracted_model(model, ioi_dataset, circuit)
 torch.cuda.empty_cache()
@@ -143,7 +146,6 @@ vertices = []
 extra_ablate_classes = [
     "previous token",
     "induction",
-    "duplicate token",
 ]
 
 xs = [baseline_ldiff, circuit_baseline_diff]
