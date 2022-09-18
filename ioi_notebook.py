@@ -18,8 +18,7 @@
 # <img src="https://i.imgur.com/PPtTQRh.png">
 
 # %% [markdown]
-# ## Import
-# # %%
+# ## Importsf
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
@@ -91,6 +90,20 @@ from ioi_utils import (
     show_pp,
     show_attention_patterns,
     safe_del,
+)
+from ioi_circuit_extraction import (
+    do_circuit_extraction,
+    gen_prompt_uniform,
+    get_act_hook,
+    get_circuit_replacement_hook,
+    get_extracted_idx,
+    get_heads_circuit,
+    join_lists,
+    list_diff,
+    process_heads_and_mlps,
+    turn_keep_into_rmv,
+    CIRCUIT,
+    ARTHUR_CIRCUIT,
 )
 
 
@@ -1066,7 +1079,9 @@ template_prompts = [
     for i in range(len(templates))
 ]
 
-for ablate_calibration in [
+circuit = CIRCUIT.copy()
+
+for ablate_negative in [
     False,
     True,
 ]:
@@ -1091,70 +1106,86 @@ for ablate_calibration in [
             # check that semantic ablation = normal ablation
 
         model.reset_hooks()  # TODO find other instances of model deletion
-
         seq_len = ioi_dataset.toks.shape[1]
-        head_indices_to_ablate = {
-            (i % 12, i // 12): [
-                list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))
-            ]
-            for i in range(12 * 12)
-        }
 
-        mlp_indices_to_ablate = [[] for _ in range(model.cfg.n_heads)]
+        heads_to_keep = get_heads_circuit(
+            ioi_dataset,
+            circuit=circuit,
+            excluded_classes=["negative"] if ablate_negative else [],
+        )
 
-        for head in [
-            (0, 1),
-            (0, 10),
-            (3, 0),
-        ]:
-            head_indices_to_ablate[head] = [
-                i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]
-            ]
+        model, abl = do_circuit_extraction(
+            model=model,
+            ioi_dataset=ioi_dataset,
+            heads_to_keep=heads_to_keep,
+            mlps_to_keep={},
+        )
 
-        for head in [
-            (4, 11),
-            (2, 2),
-            (2, 9),
-        ]:
-            head_indices_to_ablate[head] = [
-                i
-                for i in range(seq_len)
-                if i
-                not in [
-                    ioi_dataset.sem_tok_idx["S"][0],
-                    ioi_dataset.sem_tok_idx["and"][0],
+        if False:  # surely there's a better way to do this...
+            head_indices_to_ablate = {
+                (i % 12, i // 12): [
+                    list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))
                 ]
+                for i in range(12 * 12)
+            }
+
+            mlp_indices_to_ablate = [[] for _ in range(model.cfg.n_heads)]
+
+            for head in [
+                (0, 1),
+                (0, 10),
+                (3, 0),
+            ]:
+                head_indices_to_ablate[head] = [
+                    i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]
+                ]
+
+            for head in [
+                (4, 11),
+                (2, 2),
+                (2, 9),
+            ]:
+                head_indices_to_ablate[head] = [
+                    i
+                    for i in range(seq_len)
+                    if i
+                    not in [
+                        ioi_dataset.sem_tok_idx["S"][0],
+                        ioi_dataset.sem_tok_idx["and"][0],
+                    ]
+                ]
+
+            for head in [
+                (5, 8),
+                (5, 9),
+                (5, 5),
+                (6, 9),
+            ]:
+                head_indices_to_ablate[head] = [
+                    i
+                    for i in range(seq_len)
+                    if i not in [ioi_dataset.sem_tok_idx["S2"][0]]
+                ]
+
+            end_heads = [
+                (7, 3),
+                (7, 9),
+                (8, 6),
+                (8, 10),
+                (9, 6),
+                (9, 9),
+                (10, 0),
             ]
 
-        for head in [
-            (5, 8),
-            (5, 9),
-            (5, 5),
-            (6, 9),
-        ]:
-            head_indices_to_ablate[head] = [
-                i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]
-            ]
+            if not ablate_calibration:
+                end_heads += [(10, 7), (11, 12)]
 
-        end_heads = [
-            (7, 3),
-            (7, 9),
-            (8, 6),
-            (8, 10),
-            (9, 6),
-            (9, 9),
-            (10, 0),
-        ]
-
-        if not ablate_calibration:
-            end_heads += [(10, 7), (11, 12)]
-
-        for head in end_heads:
-            head_indices_to_ablate[head] = [
-                i
-                for i in range(seq_len)
-                if i not in [ioi_dataset.sem_tok_idx["end"][0]]
-            ]
+            for head in end_heads:
+                head_indices_to_ablate[head] = [
+                    i
+                    for i in range(seq_len)
+                    if i not in [ioi_dataset.sem_tok_idx["end"][0]]
+                ]
 
         # define the ablation function for ALL parts of the model at once
         def ablation(z, mean, hook):
@@ -1231,7 +1262,7 @@ for ablate_calibration in [
 
         abl = EasyAblation(
             model, config, ld_metric
-        )  # , semantic_indices=ioi_dataset.sem_tok_idx) # semantic indices should not be necessary
+        )  # semantic_indices=ioi_dataset.sem_tok_idx] # semantic indices should not be necessary
 
         model.reset_hooks()
         for layer in range(12):
@@ -1331,14 +1362,6 @@ ld = logit_diff_target(model, ioi_dataset[:N], all=True)
 from ioi_circuit_extraction import turn_keep_into_rmv, list_diff
 
 # %% # sanity check
-
-from ioi_circuit_extraction import (
-    process_heads_and_mlps,
-    get_circuit_replacement_hook,
-    do_circuit_extraction,
-    turn_keep_into_rmv,
-)
-
 if True:  # I think this is some test
     type(ioi_dataset)
     old_ld = logit_diff_target(model, ioi_dataset[:N])

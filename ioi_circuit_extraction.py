@@ -201,9 +201,7 @@ for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
 
 
-def get_heads_circuit(
-    ioi_dataset, excluded_classes=["negative"], mlp0=False, circuit=CIRCUIT
-):
+def get_heads_circuit(ioi_dataset, excluded_classes=[], mlp0=False, circuit=CIRCUIT):
     for excluded_class in excluded_classes:
         assert excluded_class in circuit.keys()
 
