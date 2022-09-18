@@ -198,7 +198,9 @@ for i, circuit_class in enumerate(
 ):
     results[circuit_class]["vs"] = {}
     for v in tqdm(list(circuit[circuit_class])):
-        new_heads_to_keep = heads_to_keep.copy()
+        new_heads_to_keep = get_heads_circuit(
+            ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
+        )  # TODOTODOTODO I'm not sure this is right for the line plot use case
         v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
         assert v not in new_heads_to_keep.keys()
         new_heads_to_keep[v] = v_indices
@@ -214,7 +216,7 @@ for i, circuit_class in enumerate(
         ldiff_with_v = logit_diff(model, ioi_dataset, std=True)
         results[circuit_class]["vs"][v] = ldiff_with_v
         torch.cuda.empty_cache()
-#%% # uh only run this for the biig multicolor
+#%% # uh dont run this for the biig multicolor
 fig = go.Figure()
 
 xs = [str(s) for s in list(results["vs"].keys())]
