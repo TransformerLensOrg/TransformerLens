@@ -51,6 +51,7 @@ from easy_transformer.experiments import (
     PatchingConfig,
     get_act_hook,
 )
+from functools import partial
 from typing import Any, Callable, Dict, List, Set, Tuple, Union, Optional, Iterable
 import itertools
 import numpy as np
@@ -84,6 +85,7 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    all_subsets,
     clear_gpu_mem,
     show_tokens,
     show_pp,
@@ -96,8 +98,6 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-
-
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -117,7 +117,9 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 200
+N = 100
+ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
+ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
 
@@ -140,7 +142,7 @@ def logit_diff(model, ioi_dataset, all=False):
 
 
 # %% [markdown]
-# ioi_dataset`ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
+# ioi_dataset `ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
 # %%
 [(k, int(ioi_dataset.word_idx[k][0])) for k in ioi_dataset.word_idx.keys()]
 # %%
@@ -152,17 +154,13 @@ def logit_diff(model, ioi_dataset, all=False):
 ]
 # %% [markdown]
 # The `ioi_dataset` can also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
-
 # %%
 flipped = ioi_dataset.gen_flipped_prompts("S2")
 pprint(flipped.ioi_prompts[:5])
-
 # %% [markdown]
 # IOIDataset contains many other useful features, see the definition of the class in the cell `Dataset class` for more info!
-
 # %% [markdown]
 # We also import open web text sentences to compute means that are not correlated with our IOI distribution.
-
 # %%
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
@@ -173,15 +171,12 @@ owb_seqs = [
     )
     for i in range(ioi_dataset.N)
 ]
-
-
 # %% [markdown]
 # # <h1><b>Initial evidence</b></h1>
 # %% [markdown]
 # ### Layer Ablations
 # %% [markdown]
 # The first series of experiment: we define our metric, here, how much the logit for IO is bigger than S, we ablate part of the network and see what matters. Globally, it shows that the behavior is distributed accross many parts of the network, we cannot draw much conclusion from this alone.
-
 # %%
 def mean_at_end(
     z, mean, hook
@@ -231,12 +226,9 @@ fig = px.imshow(
 fig.update_layout(
     yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"])
 )
-
 fig.show()
-
 # %%
 len(ioi_dataset.text_prompts)
-
 # %% [markdown]
 # ### Attention Heads Ablations
 
@@ -265,7 +257,8 @@ px.imshow(
 ).show()
 
 # %% [markdown]
-# Blue squares corresponds to head that when ablated makes the logit diff *bigger*. (the color are inverted relative to the picture of the slides because here we plot the relative variation vs the relative *drop* in the presentation plots)
+# Blue squares corresponds to head that when ablated makes the logit diff *bigger*. (the color are
+# inverted relative to the picture of the slides because here we plot the relative variation vs the relative *drop* in the presentation plots)
 
 # %% [markdown]
 # #### Zero ablations
@@ -493,9 +486,11 @@ attn_vals, mlp_vals = writing_direction_heatmap(
 # %% [markdown]
 # We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
 # %%
-show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset.text_prompts[:1])
+show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 # %%
-show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset.text_prompts[:1])
+show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset[:1])
+#%%
+show_attention_patterns(model, [(11, 2)], ioi_dataset[:1])
 # %% [markdown]
 # ### Plot attention vs direction
 # %% [markdown]
@@ -529,6 +524,9 @@ top_heads
 #%% # the more attention, the more writing
 from ioi_utils import scatter_attention_and_contribution
 
+scatter_attention_and_contribution(
+    model, 11, 2, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+)
 scatter_attention_and_contribution(
     model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
 )
@@ -648,8 +646,7 @@ pprint(abca_dataset.text_prompts[:5])
 # %%
 pprint(ioi_dataset.text_prompts[:5])
 
-# %%
-
+# %% # here...
 HEAD = 9  # head 9.9, 9.6, 10.0 show similar plots in the exeprimetns, try changing the values!
 LAYER = 9
 hook_name = f"blocks.{LAYER}.attn.hook_attn"
@@ -734,7 +731,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
     px.imshow(
         result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
-        title=f'Variation in attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "to"',
+        title=f'Variation in attention probs of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "to"',
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
     ).show()
@@ -757,11 +754,7 @@ show_attention_patterns(
     mode="val",
     title_suffix=" Pre-patching",
 )
-
-
 # %%
-
-
 def one_sentence_patching(z, source_act, hook):  # we patch at the "to" token
     # print(source_act.shape, z.shape)
     z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[
@@ -800,8 +793,6 @@ show_attention_patterns(
     mode="val",
     title_suffix=" Post-patching",
 )
-
-
 # %% [markdown]
 # Here we plotted attention probas weighed by the values. We observe that patching one single head at one tokens reduce by 40% the attentions on the IO token.
 #
@@ -816,21 +807,22 @@ show_attention_patterns(
 
 # %% [markdown]
 # #### Patching at S2
-
 # %% [markdown]
 # What happend if we patch at S2 instead of END?
 # %%
-
-
-# %%
-def patch_s2(z, source_act, hook):  # we patch at the "to" token
-    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = source_act[
-        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]
-    ]
+def patch_positions(
+    z, source_act, hook, positions=["S2"]
+):  # we patch at the "to" token
+    for pos in positions:
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+        ]
     return z
 
 
 # %%
+positions = ["end"]
+patcher = partial(patch_positions, positions=positions)
 
 config = PatchingConfig(
     source_dataset=abca_dataset.text_prompts,
@@ -839,7 +831,7 @@ config = PatchingConfig(
     head_circuit="result",
     cache_act=True,
     verbose=False,
-    patch_fn=patch_s2,
+    patch_fn=patcher,
     layers=(0, LAYER),
 )
 
@@ -855,7 +847,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
     px.imshow(
         result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
-        title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "S2"',
+        title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on {positions}',
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
     ).show()
@@ -873,9 +865,8 @@ show_attention_patterns(model, [(0, 1), (0, 10), (3, 0)], ioi_dataset.text_promp
 # #### Induction-ish heads
 
 # %%
-show_attention_patterns(
-    model, [(5, 5), (5, 8), (5, 9), (6, 9)], ioi_dataset.text_prompts[:2]
-)
+
+show_attention_patterns(model, [(5, 5), (5, 8), (5, 9), (6, 9)], ioi_dataset[:2])
 
 # %% [markdown]
 # ### More patching: patching at S+1
@@ -1697,7 +1688,7 @@ px.scatter(
 )
 #%% evidence for the S2 story
 # ablating V for everywhere except S2 barely affects LD. But ablating all V has LD go to almost 0
-from ioi_circuit_extraction import ARTHUR_CIRCUIT
+from ioi_circuit_extraction import ARTHUR_CIRCUIT, get_extracted_idx, RELEVANT_TOKENS
 
 heads_to_keep = {}
 
@@ -1734,7 +1725,7 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
         z = (
             mean_cached_values.cuda()
         )  # hope that we don't see chaning values of mean_cached_values...
-        z[:, s2_token_idxs, :] = true_s2_values
+        # z[:, s2_token_idxs, :] = true_s2_values
 
         return z
 
@@ -1746,5 +1737,103 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
     )
     model.add_hook(cur_tensor_name, cur_hook)
 
-new_ld, new_ld_std = logit_diff(model, ioi_dataset.text_prompts, std=True)
-new_ld, new_ld_std
+new_ld = logit_diff(model, ioi_dataset)
+# new_ld, new_ld_std
+
+#%%
+# ablate all the earlier things in S2 and see what decreases logit diff
+
+vals2 = torch.zeros(7, 12)
+indices = get_extracted_idx(["S2"], ioi_dataset)
+circuit = CIRCUIT
+heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[], circuit=circuit)
+exclude_heads = [(layer, head) for layer in range(7) for head in range(12)]
+
+
+#%% # which part matters for these previous token heads?
+# things seem to not care when we
+
+from ioi_circuit_extraction import CIRCUIT
+
+circuit = CIRCUIT.copy()
+lds = {}
+prbs = {}
+
+from ioi_utils import probs
+
+for ioi_dataset in [ioi_dataset_baba, ioi_dataset_abba]:
+    for S in all_subsets(["S+1", "and"]):
+        heads_to_keep = get_heads_circuit(
+            ioi_dataset,
+            excluded_classes=["previous token", "induction", "duplicate token"],
+            circuit=CIRCUIT,
+        )
+        torch.cuda.empty_cache()
+
+        for layer, head_idx in circuit["previous token"]:
+            heads_to_keep[(layer, head_idx)] = get_extracted_idx(S, ioi_dataset)
+
+        model.reset_hooks()
+        model, _ = do_circuit_extraction(
+            model=model,
+            mlps_to_remove={},
+            heads_to_keep=heads_to_keep,
+            ioi_dataset=ioi_dataset,
+        )
+        torch.cuda.empty_cache()
+
+        lds[tuple(S)] = logit_diff(model, ioi_dataset)
+        prbs[tuple(S)] = probs(model, ioi_dataset)
+        print(S, lds[tuple(S)], prbs[tuple(S)])
+#%%
+# make fancy attention plots for previous token heads
+
+positions = ["IO", "S", "S+1", "S2", "end", "starts"]
+
+
+def plot_attention_of_head(
+    model,
+    ioi_dataset,
+    layer,
+    head_idx,
+    positions,
+):
+    model, abl = do_circuit_extraction(
+        model=model,
+        heads_to_keep={},
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+
+    att = (
+        abl.mean_cache[f"blocks.{layer}.attn.hook_attn"][:, head_idx, :, :]
+        .cpu()
+        .detach()
+    )
+    # batch * to * from
+
+    vals = torch.zeros(size=(len(positions), len(positions)))
+
+    for i in range(ioi_dataset.N):
+        for word_to_pos, word_to in enumerate(positions):
+            for word_from_pos, word_from in enumerate(positions):
+                vals[word_to_pos, word_from_pos] += att[
+                    i,
+                    ioi_dataset.word_idx[word_to][i],
+                    ioi_dataset.word_idx[word_from][i],
+                ]
+
+    vals /= ioi_dataset.N
+    return vals
+
+
+vals = plot_attention_of_head(
+    model,
+    ioi_dataset_baba,
+    layer=4,
+    head_idx=11,
+    positions=positions,
+)
+
+show_pp(vals)  # yep, these previous token bois defintely do the previous token thing
+# %%

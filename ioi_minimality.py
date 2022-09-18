@@ -1,4 +1,5 @@
 #%%
+import warnings
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -121,6 +122,9 @@ circuit = CIRCUIT
 
 model = get_basic_extracted_model(model, ioi_dataset, circuit)
 torch.cuda.empty_cache()
+
+metric = probs
+
 circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
     model, ioi_dataset, std=True
 )
@@ -141,10 +145,10 @@ results = {}
 results["ldiff_circuit"] = circuit_baseline_diff
 vertices = []
 
-extra_ablate_classes = [
-    "previous token",
-    "induction",
-]
+extra_ablate_classes = list(circuit.keys())  # [
+# "previous token",
+# "induction",
+# ]
 
 xs = [baseline_ldiff, circuit_baseline_diff]
 ys = [baseline_prob, circuit_baseline_prob]
@@ -153,6 +157,8 @@ labels = ["baseline", "circuit"]
 
 for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
     if extra_ablate_subset == []:
+        continue
+    if len(extra_ablate_subset) != 1:
         continue
     for circuit_class in list(circuit.keys()):
         if circuit_class not in extra_ablate_subset:
@@ -175,15 +181,16 @@ for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
     )
     labels.append(str(extra_ablate_subset))
     torch.cuda.empty_cache()
-    for i, metric in enumerate([logit_diff, probs]):
-        ans, std = metric(model, ioi_dataset, std=True)
+    for i, a_metric in enumerate([logit_diff, probs]):
+        ans, std = a_metric(model, ioi_dataset, std=True)
         torch.cuda.empty_cache()
         both[i].append(ans)
 
-        if i == 0 and len(extra_ablate_subset) == 1:
+        if i == 1 and len(extra_ablate_subset) == 1:
+            print("Warn use IO probs")
             if extra_ablate_subset[0] not in results:
                 results[extra_ablate_subset[0]] = {}
-            results[extra_ablate_subset[0]]["ldiff_broken_circuit"] = ans
+            results[extra_ablate_subset[0]]["metric_calc"] = ans
 
 fig = px.scatter(x=xs, y=ys, text=labels)
 fig.update_traces(textposition="top center")
@@ -211,19 +218,21 @@ for i, circuit_class in enumerate(
             ioi_dataset=ioi_dataset,
         )
         torch.cuda.empty_cache()
-        ldiff_with_v = logit_diff(model, ioi_dataset, std=True)
-        results[circuit_class]["vs"][v] = ldiff_with_v
+        metric_calc = metric(model, ioi_dataset, std=True)
+        results[circuit_class]["vs"][v] = metric_calc
         torch.cuda.empty_cache()
 #%%
 fig = go.Figure()
 
 for G in list(extra_ablate_classes):
-    for i, v in enumerate(list(circuit[G])):
+    if len(circuit[G]) > 4:
+        warnings.warn("just plotting first 4 vertices per class")
+    for i, v in enumerate(list(circuit[G])[:4]):
         fig.add_trace(
             go.Bar(
                 x=[G],
-                y=[results[G]["vs"][v][0] - results[G]["ldiff_broken_circuit"]],
-                base=results[G]["ldiff_broken_circuit"],
+                y=[results[G]["vs"][v][0] - results[G]["metric_calc"]],
+                base=results[G]["metric_calc"],
                 width=1 / (len(CIRCUIT[G]) + 1),
                 offset=(i - 3 / 2) / (len(CIRCUIT[G]) + 1),
                 marker_color=["crimson", "royalblue", "darkorange", "limegreen"][i],
@@ -239,8 +248,8 @@ fig.add_shape(
     x0=-2,
     x1=8,
     yref="y",
-    y0=baseline_ldiff,
-    y1=baseline_ldiff,
+    y0=baseline_prob if metric == probs else baseline_ldiff,
+    y1=baseline_prob if metric == probs else baseline_ldiff,
     line_width=1,
     line=dict(
         color="blue",
@@ -268,8 +277,8 @@ fig.add_shape(
     x0=-2,
     x1=8,
     yref="y",
-    y0=circuit_baseline_diff,
-    y1=circuit_baseline_diff,
+    y0=circuit_baseline_prob if metric == probs else circuit_baseline_diff,
+    y1=circuit_baseline_prob if metric == probs else circuit_baseline_diff,
     line_width=1,
     line=dict(
         color="black",

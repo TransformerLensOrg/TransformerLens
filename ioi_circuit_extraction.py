@@ -125,7 +125,9 @@ def get_circuit_replacement_hook(
                 dataset_length
             ):  # we use the idx from contex to get the head
                 z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
-                    i, heads2[(layer, hook.ctx["idx"])][i], :
+                    i,
+                    heads2[(layer, hook.ctx["idx"])][i],
+                    :,  # TODO, this was heads2???
                 ]
 
         return z
@@ -169,11 +171,15 @@ SMALL_CIRCUIT = {
 
 CIRCUIT = SMALL_CIRCUIT.copy()
 for head in [
-    (10, 10),
+    (9, 0),
+    (9, 7),
+    (10, 1),
+    (10, 2),  # ~
     (10, 6),
-    (10, 2),
-    (10, 8),
-    (11, 3),
+    (10, 10),
+    (11, 1),  # ~
+    (11, 6),  # ~
+    (11, 9),  # ~
 ]:
     CIRCUIT["name mover"].append(head)
 
@@ -227,12 +233,12 @@ def do_circuit_extraction(
     ioi_dataset=None,
     model=None,
     metric=None,
+    exclude_heads=[],
 ):
     """
-    if `ablate` then ablate all `heads` and `mlps`
-        and keep everything else same
-    otherwise, ablate everything else
-        and keep `heads` and `mlps` the same
+    ..._to_remove means the indices ablated away. Otherwise the indices not ablated away.
+
+    `exclude_heads` is a list of heads that actually we won't put any hooks on. Just keep them as is
     """
 
     # check if we are either in keep XOR remove move from the args
@@ -269,6 +275,8 @@ def do_circuit_extraction(
     model.reset_hooks()
 
     for layer, head in heads.keys():
+        if (layer, head) in exclude_heads:
+            continue
         model.add_hook(*abl.get_hook(layer, head))
     for layer in mlps.keys():
         model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))

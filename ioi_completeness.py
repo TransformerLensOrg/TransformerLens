@@ -150,13 +150,16 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
     return (IO_logits - S_logits).mean().detach().cpu()
 
 
+from ioi_utils import probs
+
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%%
 
 run_original = True
+circuit = CIRCUIT
 
-circuit = ARTHUR_CIRCUIT
+cur_metric = probs # partial(probs, type="s")
 
 if run_original:
     circuit_perf = []
@@ -181,7 +184,7 @@ if run_original:
             ioi_dataset=ioi_dataset,
         )
         torch.cuda.empty_cache()
-        ldiff_broken_circuit, std_broken_circuit = logit_diff(
+        cur_metric_broken_circuit, std_broken_circuit = cur_metric(
             model, ioi_dataset, std=True, all=True
         )
         torch.cuda.empty_cache()
@@ -204,40 +207,24 @@ if run_original:
             ioi_dataset=ioi_dataset,
         )
         torch.cuda.empty_cache()
-        ldiff_cobble, std_cobble_circuit = logit_diff(
+        cur_metric_cobble, std_cobble_circuit = cur_metric(
             model, ioi_dataset, std=True, all=True
         )
         torch.cuda.empty_cache()
         # metric(M\G)
 
-        for i in range(len(ldiff_cobble)):
+        for i in range(len(cur_metric_cobble)):
             circuit_perf.append(
                 {
                     "removed_group": G,
-                    "ldiff_broken": ldiff_broken_circuit[i],
-                    "ldiff_cobble": ldiff_cobble[i],
+                    "cur_metric_broken": cur_metric_broken_circuit[i],
+                    "cur_metric_cobble": cur_metric_cobble[i],
                     "sentence": ioi_dataset.text_prompts[i],
                     "template": ioi_dataset.templates_by_prompt[i],
                 }
             )
     circuit_perf = pd.DataFrame(circuit_perf)
-
-#%%
-
-# old std on diagonal plot
-
-
-def basis_change(x, y):
-    """
-    Change the basis (1, 0) and (0, 1) to the basis
-    1/sqrt(2) (1, 1) and 1/sqrt(2) (-1, 1)
-    """
-
-    return (x + y) / np.sqrt(2), (y - x) / np.sqrt(2)
-
-
 # %%
-
 show_scatter = True
 circuit_perf_scatter = []
 
@@ -246,8 +233,8 @@ if run_original:
     if show_scatter:
         fig = px.scatter(
             circuit_perf,
-            x="ldiff_broken",
-            y="ldiff_cobble",
+            x="cur_metric_broken",
+            y="cur_metric_cobble",
             hover_data=["sentence", "template"],
             color="removed_group",
             opacity=1.0,
@@ -275,18 +262,18 @@ if run_original:
         perf_by_sets.append(
             {
                 "removed_group": circuit_perf.iloc[i * ioi_dataset.N].removed_group,
-                "mean_ldiff_broken": circuit_perf.iloc[
+                "mean_cur_metric_broken": circuit_perf.iloc[
                     i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].ldiff_broken.mean(),
-                "mean_ldiff_cobble": circuit_perf.iloc[
+                ].cur_metric_broken.mean(),
+                "mean_cur_metric_cobble": circuit_perf.iloc[
                     i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].ldiff_cobble.mean(),
-                "std_ldiff_broken": circuit_perf.iloc[
+                ].cur_metric_cobble.mean(),
+                "std_cur_metric_broken": circuit_perf.iloc[
                     i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].ldiff_broken.std(),
-                "std_ldiff_cobble": circuit_perf.iloc[
+                ].cur_metric_broken.std(),
+                "std_cur_metric_cobble": circuit_perf.iloc[
                     i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].ldiff_cobble.std(),
+                ].cur_metric_cobble.std(),
             }
         )
 
@@ -294,11 +281,11 @@ if run_original:
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
     fig = px.scatter(
         perf_by_sets,
-        x="mean_ldiff_broken",
-        y="mean_ldiff_cobble",
+        x="mean_cur_metric_broken",
+        y="mean_cur_metric_cobble",
         color="removed_group",
-        error_x="std_ldiff_broken",
-        error_y="std_ldiff_cobble",
+        error_x="std_cur_metric_broken",
+        error_y="std_cur_metric_cobble",
     )
 
     fig.update_layout(
@@ -329,8 +316,12 @@ import matplotlib.transforms as transforms
 xs = {}
 ys = {}
 for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
-    xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].ldiff_broken.values
-    ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].ldiff_cobble.values
+    xs[G] = circuit_perf.loc[
+        circuit_perf["removed_group"] == G
+    ].cur_metric_broken.values
+    ys[G] = circuit_perf.loc[
+        circuit_perf["removed_group"] == G
+    ].cur_metric_cobble.values
     xs[G] = [float(x) for x in xs[G]]
     ys[G] = [float(y) for y in ys[G]]
 
@@ -421,8 +412,8 @@ ax.legend()
 plt.xlabel("Logit diff of broken circuit")
 plt.ylabel("Logit diff of complement of G")
 
-plt.xlim(-0.1, 7)
-plt.ylim(-0.1, 7)
+plt.xlim(-0.01, 0.1)
+plt.ylim(-0.01, 0.1)
 plt.show()
 
 # %% gready circuit breaking

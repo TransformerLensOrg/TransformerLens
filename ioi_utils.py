@@ -6,6 +6,8 @@ import plotly.express as px
 import gc
 import einops
 
+from ioi_dataset import IOIDataset
+
 # other utils
 
 
@@ -69,12 +71,13 @@ def show_pp(m, xlabel="", ylabel="", title="", bartitle="", animate_axis=None):
 # Plot attention patterns weighted by value norm
 
 
-def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
+def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=""):
     assert mode in [
         "attn",
         "val",
     ]  # value weighted attention or attn for attention probas
-    assert type(texts) == list
+    assert type(ioi_dataset) == IOIDataset
+    texts = ioi_dataset.text_prompts
 
     for (layer, head) in heads:
         cache = {}
@@ -86,7 +89,8 @@ def show_attention_patterns(model, heads, texts, mode="val", title_suffix=""):
             cache=cache, names=lambda x: x in good_names
         )  # shape: batch head_no seq_len seq_len
 
-        logits = model(texts)
+        
+        logits = model(ioi_dataset.text_prompts)
 
         for i, text in enumerate(texts):
             assert len(list(cache.items())) == 1 + int(mode == "val"), len(
@@ -281,7 +285,7 @@ def posses(model, ioi_dataset, all=False, std=False):
     return handle_all_and_std(io_positions, all, std)
 
 
-def probs(model, ioi_dataset, all=False, std=False):
+def probs(model, ioi_dataset, all=False, std=False, type="io"):
     """
     IO probs
     """
@@ -293,7 +297,13 @@ def probs(model, ioi_dataset, all=False, std=False):
     ]  # batch * vocab_size
     end_probs = torch.softmax(end_logits, dim=1)
 
-    io_probs = end_probs[torch.arange(ioi_dataset.N), ioi_dataset.io_tokenIDs]
+    if type == "io":
+        token_ids = ioi_dataset.io_tokenIDs
+    elif type == "s":
+        token_ids = ioi_dataset.s_tokenIDs
+    else:
+        raise ValueError("type must be io or s")
+    io_probs = end_probs[torch.arange(ioi_dataset.N), token_ids]
 
     return handle_all_and_std(io_probs, all, std)
 

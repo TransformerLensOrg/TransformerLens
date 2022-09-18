@@ -1,3 +1,4 @@
+import warnings
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -239,14 +240,18 @@ def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None
         prompt1 = prompt.replace("[A]", name_1)
         prompt1 = prompt1.replace("[B]", name_2)
         prompt1 = pref + prompt1
-        ioi_prompts.append({"text": prompt1, "IO": name_1, "S": name_2, "T_ID": temp_id})
+        ioi_prompts.append(
+            {"text": prompt1, "IO": name_1, "S": name_2, "TEMPLATE_IDX": temp_id}
+        )
         nb_gen += 1
 
         if symmetric and nb_gen < N:
             prompt2 = prompt.replace("[A]", name_2)
             prompt2 = prompt2.replace("[B]", name_1)
             prompt2 = pref + prompt2
-            ioi_prompts.append({"text": prompt2, "IO": name_2, "S": name_1, "T_ID": temp_id})
+            ioi_prompts.append(
+                {"text": prompt2, "IO": name_2, "S": name_1, "TEMPLATE_IDX": temp_id}
+            )
             nb_gen += 1
     return ioi_prompts
 
@@ -367,7 +372,13 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
         idxs = []
         for idx_type in idx_types:
             if "2" in idx_type:
-                idx = len(toks) - toks[::-1].index(tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]) - 1
+                idx = (
+                    len(toks)
+                    - toks[::-1].index(
+                        tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]
+                    )
+                    - 1
+                )
             else:
                 idx = toks.index(tokenizer.tokenize(" " + prompt[idx_type])[0])
 
@@ -377,9 +388,16 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
 
 
 def get_end_idxs(prompts, tokenizer, name_tok_len=1):
-    toks = torch.Tensor(tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids).type(torch.int)
+    toks = torch.Tensor(
+        tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids
+    ).type(torch.int)
     end_idxs = torch.tensor(
-        [(toks[i] == 50256).nonzero()[0][0].item() if 50256 in toks[i] else toks.shape[1] for i in range(toks.shape[0])]
+        [
+            (toks[i] == 50256).nonzero()[0][0].item()
+            if 50256 in toks[i]
+            else toks.shape[1]
+            for i in range(toks.shape[0])
+        ]
     )
     end_idxs = end_idxs - 1 - name_tok_len  # YOURE LOOKING AT TO NOT FINAL IO TOKEN
     return end_idxs
@@ -470,7 +488,9 @@ class IOIDataset:
         prefixes=None,
         nb_templates=None,
     ):
-        assert (prompts is not None) or (not symmetric) or (N % 2 == 0), f"{symmetric} {N}"
+        assert (
+            (prompts is not None) or (not symmetric) or (N % 2 == 0)
+        ), f"{symmetric} {N}"
         assert prompt_type in ["ABBA", "BABA", "mixed"]
         assert nb_templates is None or (nb_templates % 2 == 0 or prompt_type != "mixed")
         self.prompt_type = prompt_type
@@ -482,8 +502,11 @@ class IOIDataset:
             self.templates = ABBA_TEMPLATES[:nb_templates].copy()
         elif prompt_type == "BABA":
             self.templates = BABA_TEMPLATES[:nb_templates].copy()
-        else:
-            self.templates = BABA_TEMPLATES[: nb_templates // 2].copy() + ABBA_TEMPLATES[: nb_templates // 2].copy()
+        elif prompt_type == "mixed":
+            self.templates = (
+                BABA_TEMPLATES[: nb_templates // 2].copy()
+                + ABBA_TEMPLATES[: nb_templates // 2].copy()
+            )
             random.shuffle(self.templates)
         if tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
@@ -506,33 +529,39 @@ class IOIDataset:
             assert N == len(prompts), f"{N} and {len(prompts)}"
             self.ioi_prompts = prompts
 
-        all_ids = [prompt["T_ID"] for prompt in self.ioi_prompts]
+        all_ids = [prompt["TEMPLATE_IDX"] for prompt in self.ioi_prompts]
         all_ids_ar = np.array(all_ids)
         self.groups = []
         for id in list(set(all_ids)):
             self.groups.append(np.where(all_ids_ar == id)[0])
 
-        small_group_warning = False
+        small_groups = []
         for group in self.groups:
             if len(group) < 5:
-                small_group_warning = True
-        if small_group_warning:
-            print("Warning: some groups have less than 5 prompts")
+                small_groups.append(len(group))
+        if len(small_groups) > 0:
+            warnings.warn(
+                f"Some groups have less than 5 prompts, they have lengths {small_groups}"
+            )
 
-        self.text_prompts = [prompt["text"] for prompt in self.ioi_prompts]  # a list of strings
+        self.text_prompts = [
+            prompt["text"] for prompt in self.ioi_prompts
+        ]  # a list of strings
 
         self.templates_by_prompt = []  # for each prompt if it's ABBA or BABA
         for i in range(N):
-            if self.text_prompts[i].index(self.ioi_prompts[i]["IO"]) < self.text_prompts[i].index(
-                self.ioi_prompts[i]["S"]
-            ):
+            if self.text_prompts[i].index(
+                self.ioi_prompts[i]["IO"]
+            ) < self.text_prompts[i].index(self.ioi_prompts[i]["S"]):
                 self.templates_by_prompt.append("ABBA")
             else:
                 self.templates_by_prompt.append("BABA")
 
         # print(self.ioi_prompts, "that's that")
         self.toks = torch.Tensor(
-            self.tokenizer([prompt["text"] for prompt in self.ioi_prompts], padding=True).input_ids
+            self.tokenizer(
+                [prompt["text"] for prompt in self.ioi_prompts], padding=True
+            ).input_ids
         ).type(torch.int)
 
         self.word_idx = get_idx_dict(self.ioi_prompts, self.tokenizer)
@@ -540,10 +569,19 @@ class IOIDataset:
             k: v for k, v in self.word_idx.items() if k in ALL_SEM
         }  # the semantic indices that kevin uses
         self.N = N
-        self.max_len = max([len(self.tokenizer(prompt["text"]).input_ids) for prompt in self.ioi_prompts])
+        self.max_len = max(
+            [
+                len(self.tokenizer(prompt["text"]).input_ids)
+                for prompt in self.ioi_prompts
+            ]
+        )
 
-        self.io_tokenIDs = [self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts]
-        self.s_tokenIDs = [self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts]
+        self.io_tokenIDs = [
+            self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts
+        ]
+        self.s_tokenIDs = [
+            self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts
+        ]
 
     def gen_flipped_prompts(self, flip):
         """Return a IOIDataset where the name to flip has been replaced by a random name."""
@@ -577,4 +615,4 @@ class IOIDataset:
         raise NotImplementedError()
 
     def __len__(self):
-        return self.N
+        return
