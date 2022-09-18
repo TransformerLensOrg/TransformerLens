@@ -77,8 +77,6 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-
-
 #%%
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
@@ -90,6 +88,7 @@ if torch.cuda.is_available():
 print_gpu_mem("Gpt2 loaded")
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
 from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
@@ -118,12 +117,12 @@ def get_basic_extracted_model(model, ioi_dataset, circuit=CIRCUIT):
     return model
 
 
-circuit = CIRCUIT
+circuit = CIRCUIT.copy()
 
 model = get_basic_extracted_model(model, ioi_dataset, circuit)
 torch.cuda.empty_cache()
 
-metric = probs
+metric = logit_diff
 
 circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
     model, ioi_dataset, std=True
@@ -145,21 +144,14 @@ results = {}
 results["ldiff_circuit"] = circuit_baseline_diff
 vertices = []
 
-extra_ablate_classes = list(circuit.keys())  # [
-# "previous token",
-# "induction",
-# ]
+extra_ablate_classes = list(circuit.keys())
 
 xs = [baseline_ldiff, circuit_baseline_diff]
 ys = [baseline_prob, circuit_baseline_prob]
 both = [xs, ys]
 labels = ["baseline", "circuit"]
 
-for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
-    if extra_ablate_subset == []:
-        continue
-    if len(extra_ablate_subset) != 1:
-        continue
+for extra_ablate_subset in extra_ablate_classes:
     for circuit_class in list(circuit.keys()):
         if circuit_class not in extra_ablate_subset:
             continue
@@ -178,6 +170,7 @@ for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
         heads_to_keep=heads_to_keep,
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
+        mean_dataset=abca_dataset,
     )
     labels.append(str(extra_ablate_subset))
     torch.cuda.empty_cache()
@@ -186,8 +179,7 @@ for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
         torch.cuda.empty_cache()
         both[i].append(ans)
 
-        if i == 1 and len(extra_ablate_subset) == 1:
-            print("Warn use IO probs")
+        if len(extra_ablate_subset) == 1 and metric == a_metric:
             if extra_ablate_subset[0] not in results:
                 results[extra_ablate_subset[0]] = {}
             results[extra_ablate_subset[0]]["metric_calc"] = ans

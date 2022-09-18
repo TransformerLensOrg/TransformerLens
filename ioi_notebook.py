@@ -79,6 +79,7 @@ from ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
     NAMES,
+    gen_flipped_prompts,
     gen_prompt_uniform,
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
@@ -1091,6 +1092,8 @@ for ablate_negative in [
         ioi_dataset = IOIDataset(
             prompt_type=template_type, N=N, symmetric=False, prompts=prompts
         )
+        abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+        print(ioi_dataset.text_prompts[0], abca_dataset.text_prompts[0])
         assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
         assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
         for key in ioi_dataset.sem_tok_idx.keys():
@@ -1103,7 +1106,7 @@ for ablate_negative in [
         model.reset_hooks()
         ld_initial = logit_diff(model, ioi_dataset)
 
-        model.reset_hooks() 
+        model.reset_hooks()
 
         heads_to_keep = get_heads_circuit(
             ioi_dataset,
@@ -1116,6 +1119,7 @@ for ablate_negative in [
             ioi_dataset=ioi_dataset,
             heads_to_keep=heads_to_keep,
             mlps_to_remove={},
+            # mean_dataset = abca_dataset,
         )
 
         ld_final = logit_diff(model, ioi_dataset)
@@ -1142,7 +1146,7 @@ for ablate_negative in [
         y=y_label,
         hover_data=["sentence"],
         text="beg",
-        title=f"Change in logit diff when {ablate_calibration=}",
+        title=f"Change in logit diff when {ablate_negative=}",
     ).show()
 #%% # let's check that the circuit isn't changing relative to which template we are using
 

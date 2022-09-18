@@ -229,6 +229,7 @@ def do_circuit_extraction(
     heads_to_keep=None,  # as above for heads
     mlps_to_keep=None,  # as above for mlps
     ioi_dataset=None,
+    mean_dataset=None,
     model=None,
     metric=None,
     exclude_heads=[],
@@ -237,6 +238,8 @@ def do_circuit_extraction(
     ..._to_remove means the indices ablated away. Otherwise the indices not ablated away.
 
     `exclude_heads` is a list of heads that actually we won't put any hooks on. Just keep them as is
+
+    if `mean_dataset` is None, just use the ioi_dataset for mean
     """
 
     # check if we are either in keep XOR remove move from the args
@@ -253,10 +256,12 @@ def do_circuit_extraction(
         metric=metric, dataset=ioi_dataset.text_prompts, relative_metric=False
     )  # TODO make dummy metric
 
+    if mean_dataset is None:
+        mean_dataset = ioi_dataset
     config = AblationConfig(
         abl_type="custom",
         abl_fn=ablation,
-        mean_dataset=ioi_dataset.text_prompts,  # TODO nb of prompts useless ?
+        mean_dataset=mean_dataset.text_prompts,  # TODO nb of prompts useless ?
         target_module="attn_head",
         head_circuit="result",
         cache_means=True,  # circuit extraction *has* to cache means. the get_mean reset the
