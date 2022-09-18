@@ -961,7 +961,7 @@ show_attention_patterns(
 
 #%% # run normal ablation experiments
 num_templates = 10  # len(ABBA_TEMPLATES)
-template_type = "BABA"
+template_type = "ABBA"
 if template_type == "ABBA":
     templates = ABBA_TEMPLATES[:num_templates]
 elif template_type == "BABA":
@@ -1119,7 +1119,7 @@ for ablate_negative in [
             ioi_dataset=ioi_dataset,
             heads_to_keep=heads_to_keep,
             mlps_to_remove={},
-            # mean_dataset = abca_dataset,
+            mean_dataset=abca_dataset,
         )
 
         ld_final = logit_diff(model, ioi_dataset)
