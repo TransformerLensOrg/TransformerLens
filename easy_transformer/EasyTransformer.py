@@ -680,7 +680,9 @@ class EasyTransformer(HookedRootModule):
         for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
-            residual = block(residual, cache[i])  # [batch, pos, d_model]
+            residual = block(
+                residual, cache[i] if cache is not None else None
+            )  # [batch, pos, d_model]
         if return_type is None:
             return None
         else:
