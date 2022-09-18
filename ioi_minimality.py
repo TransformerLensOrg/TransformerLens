@@ -200,7 +200,7 @@ for i, circuit_class in enumerate(
     for v in tqdm(list(circuit[circuit_class])):
         new_heads_to_keep = get_heads_circuit(
             ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
-        )  # TODOTODOTODO I'm not sure this is right for the line plot use case
+        )
         v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
         assert v not in new_heads_to_keep.keys()
         new_heads_to_keep[v] = v_indices
@@ -216,35 +216,6 @@ for i, circuit_class in enumerate(
         ldiff_with_v = logit_diff(model, ioi_dataset, std=True)
         results[circuit_class]["vs"][v] = ldiff_with_v
         torch.cuda.empty_cache()
-#%% # uh dont run this for the biig multicolor
-fig = go.Figure()
-
-xs = [str(s) for s in list(results["vs"].keys())]
-
-fig.add_trace(
-    go.Bar(
-        x=xs,
-        y=[
-            results["vs"][v][0] - results["ldiff_circuit"] for v in results["vs"].keys()
-        ],
-        base=[results["ldiff_broken_circuit"] for _ in results["vs"].keys()],
-        name="Change in logit difference when adding back",
-    )
-)
-
-
-# for val in ["baseline_ldiff", "circuit_baseline_diff", "ldiff_broken_circuit"]:
-#     fig.add_trace(
-#         go.Scatter(x=xs, y=[eval(val) for _ in range(len(xs))], mode="lines", name=val)
-#     )
-
-fig.update_layout(
-    title=f"Effect of adding a head to the circuit where are all {extra_ablate_classes} ablated",
-    xaxis_title="Head",
-    yaxis_title="Logit difference",
-)
-
-fig.show()
 #%%
 fig = go.Figure()
 
