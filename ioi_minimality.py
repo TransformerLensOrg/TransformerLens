@@ -139,7 +139,7 @@ print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
 print(f"{baseline_prob=}, {baseline_prob_std=}")
 #%% TODO Explain the way we're doing the minimal circuit experiment here
 results = {}
-results["ldiff_broken_circuit"] = circuit_baseline_diff
+results["ldiff_circuit"] = circuit_baseline_diff
 vertices = []
 
 extra_ablate_classes = [
@@ -182,7 +182,9 @@ for extra_ablate_subset in tqdm(all_subsets(extra_ablate_classes)):
         both[i].append(ans)
 
         if i == 0 and len(extra_ablate_subset) == 1:
-            results[extra_ablate_subset[0]] = ans
+            if extra_ablate_subset[0] not in results:
+                results[extra_ablate_subset[0]] = {}
+            results[extra_ablate_subset[0]]["ldiff_broken_circuit"] = ans
 
 fig = px.scatter(x=xs, y=ys, text=labels)
 fig.update_traces(textposition="top center")
@@ -194,7 +196,7 @@ fig.show()
 for i, circuit_class in enumerate(
     [key for key in circuit.keys() if key in extra_ablate_classes]
 ):
-    results["vs"] = {}
+    results[circuit_class]["vs"] = {}
     for v in tqdm(list(circuit[circuit_class])):
         new_heads_to_keep = heads_to_keep.copy()
         v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
@@ -210,9 +212,9 @@ for i, circuit_class in enumerate(
         )
         torch.cuda.empty_cache()
         ldiff_with_v = logit_diff(model, ioi_dataset, std=True)
-        results["vs"][v] = ldiff_with_v
+        results[circuit_class]["vs"][v] = ldiff_with_v
         torch.cuda.empty_cache()
-#%%
+#%% # uh only run this for the biig multicolor
 fig = go.Figure()
 
 xs = [str(s) for s in list(results["vs"].keys())]
@@ -221,8 +223,7 @@ fig.add_trace(
     go.Bar(
         x=xs,
         y=[
-            results["vs"][v][0] - results["ldiff_broken_circuit"]
-            for v in results["vs"].keys()
+            results["vs"][v][0] - results["ldiff_circuit"] for v in results["vs"].keys()
         ],
         base=[results["ldiff_broken_circuit"] for _ in results["vs"].keys()],
         name="Change in logit difference when adding back",
@@ -279,7 +280,7 @@ fig.add_shape(
 
 fig.add_trace(
     go.Scatter(
-        x=["name mover"],
+        x=["induction"],
         y=[3.3],
         text=["Logit difference of M"],
         mode="text",
@@ -308,7 +309,7 @@ fig.add_shape(
 
 fig.add_trace(
     go.Scatter(
-        x=["name mover"],
+        x=["induction"],
         y=[3.8],
         text=["Logit difference of C"],
         mode="text",
