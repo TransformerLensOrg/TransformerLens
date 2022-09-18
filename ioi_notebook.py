@@ -880,7 +880,6 @@ show_attention_patterns(model, [(5, 5), (5, 8), (5, 9), (6, 9)], ioi_dataset[:2]
 
 # %%
 acba_dataset = ioi_dataset.gen_flipped_prompts("S")  # we flip the first occurence of S
-
 acba_dataset.text_prompts[0], ioi_dataset.text_prompts[0]
 
 # %%

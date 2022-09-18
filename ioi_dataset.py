@@ -366,10 +366,10 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
 
 def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
     name_idx_dict = dict((idx_type, []) for idx_type in idx_types)
+    double_s2 = False
     for prompt in prompts:
         t = prompt["text"].split(" ")
         toks = tokenizer.tokenize(" ".join(t[:-1]))
-        idxs = []
         for idx_type in idx_types:
             if "2" in idx_type:
                 idx = (
@@ -379,10 +379,15 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
                     )
                     - 1
                 )
+                found_s2 = True
             else:
                 idx = toks.index(tokenizer.tokenize(" " + prompt[idx_type])[0])
-
             name_idx_dict[idx_type].append(idx)
+        if "S" in idx_types and "S2" in idx_types:
+            if name_idx_dict["S"][-1] == name_idx_dict["S2"][-1]:
+                double_s2 = True
+    if double_s2:
+        warnings.warn("S2 index has been computed as the same for S and S2")
 
     return [torch.tensor(name_idx_dict[idx_type]) for idx_type in idx_types]
 
@@ -460,6 +465,7 @@ def get_idx_dict(ioi_prompts, tokenizer):
     )  # if there is "," and '.' in the prompt, only the '.' index will be kept.
     verb_idxs = get_word_idxs(ioi_prompts, VERBS, tokenizer)
     and_idxs = get_word_idxs(ioi_prompts, [" and"], tokenizer)
+
     return {
         "IO": IO_idxs,
         "IO-1": IO_idxs - 1,
@@ -487,7 +493,14 @@ class IOIDataset:
         symmetric=False,
         prefixes=None,
         nb_templates=None,
+        ioi_prompts_for_word_idxs=None,
     ):
+        """
+        ioi_prompts_for_word_idxs:
+            if you want to use a different set of prompts to get the word indices, you can pass it here
+            (example use case: making a ABCA dataset)
+        """
+
         assert (
             (prompts is not None) or (not symmetric) or (N % 2 == 0)
         ), f"{symmetric} {N}"
@@ -564,7 +577,10 @@ class IOIDataset:
             ).input_ids
         ).type(torch.int)
 
-        self.word_idx = get_idx_dict(self.ioi_prompts, self.tokenizer)
+        if ioi_prompts_for_word_idxs is None:
+            ioi_prompts_for_word_idxs = self.ioi_prompts
+        self.word_idx = get_idx_dict(ioi_prompts_for_word_idxs, self.tokenizer)
+
         self.sem_tok_idx = {
             k: v for k, v in self.word_idx.items() if k in ALL_SEM
         }  # the semantic indices that kevin uses
@@ -588,14 +604,15 @@ class IOIDataset:
         assert flip in ["S", "S2", "IO"]
 
         flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, (flip, "RAND"))
-        fliped_ioi_dataset = IOIDataset(
+        flipped_ioi_dataset = IOIDataset(
             prompt_type=self.prompt_type,
             N=self.N,
             tokenizer=self.tokenizer,
             prompts=flipped_prompts,
             prefixes=self.prefixes,
+            ioi_prompts_for_word_idxs=self.ioi_prompts,
         )
-        return fliped_ioi_dataset
+        return flipped_ioi_dataset
 
     def __getitem__(self, key):
         sliced_prompts = self.ioi_prompts[key]
