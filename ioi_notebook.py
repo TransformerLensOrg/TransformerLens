@@ -1103,8 +1103,7 @@ for ablate_negative in [
         model.reset_hooks()
         ld_initial = logit_diff(model, ioi_dataset)
 
-        model.reset_hooks()  # TODO find other instances of model deletion
-        seq_len = ioi_dataset.toks.shape[1]
+        model.reset_hooks() 
 
         heads_to_keep = get_heads_circuit(
             ioi_dataset,
@@ -1116,7 +1115,7 @@ for ablate_negative in [
             model=model,
             ioi_dataset=ioi_dataset,
             heads_to_keep=heads_to_keep,
-            mlps_to_keep={},
+            mlps_to_remove={},
         )
 
         ld_final = logit_diff(model, ioi_dataset)
@@ -1608,8 +1607,6 @@ exclude_heads = [(layer, head) for layer in range(7) for head in range(12)]
 
 #%% # which part matters for these previous token heads?
 # things seem to not care when we
-
-from ioi_circuit_extraction import CIRCUIT
 
 circuit = CIRCUIT.copy()
 lds = {}
