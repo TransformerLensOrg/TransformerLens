@@ -96,7 +96,6 @@ from ioi_circuit_extraction import (
     CIRCUIT,
     SMALL_CIRCUIT,
     RELEVANT_TOKENS,
-    ARTHUR_CIRCUIT,
     get_extracted_idx,
     get_heads_circuit,
     do_circuit_extraction,
@@ -118,7 +117,7 @@ def get_basic_extracted_model(model, ioi_dataset, circuit=CIRCUIT):
     return model
 
 
-circuit = ARTHUR_CIRCUIT
+circuit = CIRCUIT
 
 model = get_basic_extracted_model(model, ioi_dataset, circuit)
 torch.cuda.empty_cache()
@@ -191,7 +190,6 @@ fig.update_traces(textposition="top center")
 fig.show()
 #%%
 # METRIC((C \ W) \cup \{ v \})
-# TODO TODO TODO sort the minimality plot
 
 for i, circuit_class in enumerate(
     [key for key in circuit.keys() if key in extra_ablate_classes]

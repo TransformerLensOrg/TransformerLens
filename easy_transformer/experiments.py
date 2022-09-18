@@ -2,6 +2,7 @@
 # Import stuff
 from typing import Callable, Union, List, Tuple, Any
 import torch
+import warnings
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -312,6 +313,9 @@ class EasyAblation(EasyExperiment):
         self.groups = groups  # list of (list of indices of element of the group)
 
         if self.semantic_indices is not None:  # blue pen project
+            warnings.warn(
+                "`semantic_indices` is not None, this is probably not what you want to do"
+            )
             self.max_len = max(
                 [len(self.model.tokenizer(t).input_ids) for t in self.cfg.mean_dataset]
             )

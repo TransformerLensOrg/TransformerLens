@@ -1695,5 +1695,56 @@ px.scatter(
     color="misc",
     title=ioi_dataset.prompt_type,
 )
+#%% evidence for the S2 story
+# ablating V for everywhere except S2 barely affects LD. But ablating all V has LD go to almost 0
+from ioi_circuit_extraction import ARTHUR_CIRCUIT
 
-# %%
+heads_to_keep = {}
+
+for circuit_class in ARTHUR_CIRCUIT.keys():
+    for head in ARTHUR_CIRCUIT[circuit_class]:
+        heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
+
+model, abl = do_circuit_extraction(
+    model=model,
+    heads_to_keep=heads_to_keep,
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+
+for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
+    # use abl.mean_cache
+    cur_tensor_name = f"blocks.{layer}.attn.hook_v"
+    s2_token_idxs = get_extracted_idx(["S2"], ioi_dataset)
+    mean_cached_values = (
+        abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
+    )
+
+    def s2_v_ablation_hook(
+        z, act, hook
+    ):  # batch, seq, head dim, because get_act_hook hides scary things from us
+        cur_layer = int(hook.name.split(".")[1])
+        cur_head_idx = hook.ctx["idx"]
+
+        assert hook.name == f"blocks.{cur_layer}.attn.hook_v", hook.name
+        assert len(list(z.shape)) == 3, z.shape
+        assert list(z.shape) == list(act.shape), (z.shape, act.shape)
+
+        true_s2_values = z[:, s2_token_idxs, :].clone()
+        z = (
+            mean_cached_values.cuda()
+        )  # hope that we don't see chaning values of mean_cached_values...
+        z[:, s2_token_idxs, :] = true_s2_values
+
+        return z
+
+    cur_hook = get_act_hook(
+        s2_v_ablation_hook,
+        alt_act=abl.mean_cache[cur_tensor_name],
+        idx=head_idx,
+        dim=2,
+    )
+    model.add_hook(cur_tensor_name, cur_hook)
+
+new_ld, new_ld_std = logit_diff(model, ioi_dataset.text_prompts, std=True)
+new_ld, new_ld_std
