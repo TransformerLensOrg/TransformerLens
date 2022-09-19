@@ -764,7 +764,7 @@ model.reset_hooks()  ##before patching
 show_attention_patterns(
     model,
     [(9, 9)],
-    ioi_dataset.text_prompts[IDX : IDX + 1],
+    ioi_dataset[IDX : IDX + 1],
     mode="val",
     title_suffix=" Pre-patching",
 )
@@ -803,7 +803,7 @@ model.add_hook(hk_name, hk)  # we patch head 8.6
 show_attention_patterns(
     model,
     [(9, 9)],
-    ioi_dataset.text_prompts[IDX : IDX + 1],
+    ioi_dataset[IDX : IDX + 1],
     mode="val",
     title_suffix=" Post-patching",
 )
@@ -816,7 +816,7 @@ show_attention_patterns(
 
 # %%
 show_attention_patterns(
-    model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset.text_prompts[IDX : IDX + 1]
+    model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset[IDX : IDX + 1]
 )
 
 # %% [markdown]
@@ -873,7 +873,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
 # #### Duplicate tokens heads
 
 # %%
-show_attention_patterns(model, [(0, 1), (0, 10), (3, 0)], ioi_dataset.text_prompts[:2])
+show_attention_patterns(model, [(0, 1), (0, 10), (3, 0)], ioi_dataset[:2])
 
 # %% [markdown]
 # #### Induction-ish heads
@@ -938,7 +938,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
 # %%
 show_attention_patterns(
-    model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_dataset.text_prompts[34:35]
+    model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_dataset[34:35]
 )
 
 # %% [markdown]
@@ -1093,7 +1093,6 @@ for ablate_negative in [
             prompt_type=template_type, N=N, symmetric=False, prompts=prompts
         )
         abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
-        print(ioi_dataset.text_prompts[0], abca_dataset.text_prompts[0])
         assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
         assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
         for key in ioi_dataset.sem_tok_idx.keys():
