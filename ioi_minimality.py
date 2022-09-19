@@ -316,14 +316,14 @@ fig.update_layout(
 )
 
 fig.show()
-# %%
+# %% # see what's ip
 circuit = CIRCUIT.copy()
 lds = {}
 prbs = {}
 
 from ioi_utils import probs
 
-ioi_dataset = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
+ioi_dataset = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 torch.cuda.empty_cache()
 
@@ -382,3 +382,56 @@ for i, circuit_class in enumerate(["name mover"]):
         metric_calc = metric(model, ioi_dataset, std=True)
         torch.cuda.empty_cache()
         print(extra_v, metric_calc)
+#%% # new experiment idea: the duplicators and induction heads shouldn't care where their attention is going, provided that
+# it goes to either S or S+1.
+
+for j in range(2, 4):
+    s_positions = ioi_dataset.word_idx["S"]
+
+    # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
+    def attention_pattern_modifier(
+        z, hook
+    ):  # batch, seq, head dim, because get_act_hook hides scary things from us
+        cur_layer = int(hook.name.split(".")[1])
+        cur_head_idx = hook.ctx["idx"]
+
+        assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
+        assert (
+            len(list(z.shape)) == 3
+        ), z.shape  # batch, seq (attending_query), attending_key
+
+        prior_stuff = []
+
+        for i in range(-1, 2):
+            prior_stuff.append(z[:, s_positions + i, :].clone())
+            # print(prior_stuff[-1].shape, torch.sum(prior_stuff[-1]))
+
+        for i in range(-1, 2):
+            z[:, s_positions + i, :] = prior_stuff[
+                (i + j) % 3
+            ]  # +1 is the do nothing one
+
+        return z
+
+    model.reset_hooks()
+    ld = logit_diff(model, ioi_dataset)
+    # print(f"{ld=}")
+
+    circuit_classes = ["induction"]
+    circuit_classes = ["duplicate token"]
+    circuit_classes = ["duplicate token", "induction"]
+
+    for circuit_class in circuit_classes:
+        for layer, head_idx in circuit[circuit_class]:
+            cur_hook = get_act_hook(
+                attention_pattern_modifier,
+                alt_act=None,
+                idx=head_idx,
+                dim=1,
+            )
+            model.add_hook(f"blocks.{layer}.attn.hook_attn", cur_hook)
+
+    ld2 = logit_diff(model, ioi_dataset)
+    print(
+        f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
+    )
