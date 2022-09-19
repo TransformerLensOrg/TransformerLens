@@ -3,6 +3,7 @@ import warnings
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
+from ioi_utils import probs
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
@@ -315,29 +316,69 @@ fig.update_layout(
 )
 
 fig.show()
-#%%
-
-cur_stuff = []
-for circuit_class in CIRCUIT.keys():
-    if circuit_class == "negative":
-        continue
-    for head in CIRCUIT[circuit_class]:
-        for relevant_token in RELEVANT_TOKENS[head]:
-            cur_stuff.append((head, relevant_token))
-heads = {head: [] for head, _ in cur_stuff}
-for head, val in cur_stuff:
-    heads[head].append(val)
-heads_to_keep = {}
-for head in heads.keys():
-    heads_to_keep[head] = get_extracted_idx(heads[head], ioi_dataset)
-model.reset_hooks()
-
-model, _ = do_circuit_extraction(
-    model=model,
-    heads_to_keep=heads_to_keep,
-    mlps_to_remove={},
-    ioi_dataset=ioi_dataset,
-)
-
-scatter_attention_and_contribution(model, 9, 9, ioi_dataset.ioi_prompts)
 # %%
+circuit = CIRCUIT.copy()
+lds = {}
+prbs = {}
+
+from ioi_utils import probs
+
+ioi_dataset = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
+abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+torch.cuda.empty_cache()
+
+for ioi_dataset in [ioi_dataset]:  # [ioi_dataset_baba, ioi_dataset_abba]:
+    for S in all_subsets(["S+1", "and"]):
+        heads_to_keep = get_heads_circuit(
+            ioi_dataset,
+            excluded_classes=["previous token"],  # , "duplicate token"],
+            circuit=CIRCUIT,
+        )
+        torch.cuda.empty_cache()
+
+        for layer, head_idx in circuit["previous token"]:
+            heads_to_keep[(layer, head_idx)] = get_extracted_idx(S, ioi_dataset)
+
+        model.reset_hooks()
+        model, _ = do_circuit_extraction(
+            model=model,
+            mlps_to_remove={},
+            heads_to_keep=heads_to_keep,
+            ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
+        )
+        torch.cuda.empty_cache()
+
+        lds[tuple(S)] = logit_diff(model, ioi_dataset)
+        prbs[tuple(S)] = probs(model, ioi_dataset)
+        print(S, lds[tuple(S)], prbs[tuple(S)])
+#%% # see the other NMS
+vs = []
+xs = []
+for v, a in results["name mover"]["vs"].items():
+    vs.append(v)
+    xs.append(a[0].item() - 1.0138)
+print(vs, xs)
+#%% # run Alex's experiment
+for i, circuit_class in enumerate(["name mover"]):
+    for extra_v in [(11, 9), (9, 0)]:
+        new_heads_to_keep = get_heads_circuit(
+            ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
+        )
+        for v in [extra_v] + [(9, 7), (11, 1)]:
+            v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
+            assert v not in new_heads_to_keep.keys()
+            new_heads_to_keep[v] = v_indices
+
+        model.reset_hooks()
+        model, _ = do_circuit_extraction(
+            model=model,
+            heads_to_keep=new_heads_to_keep,
+            mlps_to_remove={},
+            ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
+        )
+        torch.cuda.empty_cache()
+        metric_calc = metric(model, ioi_dataset, std=True)
+        torch.cuda.empty_cache()
+        print(extra_v, metric_calc)
