@@ -206,7 +206,6 @@ class LayerNorm(nn.Module):
 
         """
         LayerNorm with optional length parameter
-
         length (Optional[int]): If the dimension of the LayerNorm. If not provided, assumed to be d_model
         """
         super().__init__()
@@ -481,11 +480,9 @@ class EasyTransformer(HookedRootModule):
     """
     This class implements a full Transformer using the above components, with
     HookPoints on every interesting activation. It inherits from HookedRootModule.
-
     It can be initialised with a model name, and then will automatically load the model weights
     for that model, loads them into this model, as well as fold in LayerNorm and center
     the weights.
-
     It can also be initilised with an EasyTransformerConfig or a config dictionary, which can be used to instantiate a custom model without loading pretrained weights and will instead use Pytorch's default weight initialisation.
     """
 
@@ -650,7 +647,6 @@ class EasyTransformer(HookedRootModule):
         cache: Optional[EasyTransformerKeyValueCache] = None,
     ):
         """Input is either a batch of tokens ([batch, pos]) or a text string.
-
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
         """
         if type(input) == str or type(input) == list:
@@ -715,6 +711,7 @@ class EasyTransformer(HookedRootModule):
         self,
         input: Union[str, list, torch.Tensor],
         max_new_tokens: int,
+        device: Optional[torch.device] = None,
         stop_at_eos: bool = True,
         pad_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
@@ -756,8 +753,15 @@ class EasyTransformer(HookedRootModule):
             tokens = input
         assert isinstance(tokens, torch.Tensor)
         B, S = tokens.shape
+        if device is None:
+            device = (
+                torch.device("cuda")
+                if torch.cuda.is_available()
+                else torch.device("cpu")
+            )
+        tokens = tokens.to(device)
         if use_cache:
-            cache = EasyTransformerKeyValueCache.init_cache(self.cfg, B)
+            cache = EasyTransformerKeyValueCache.init_cache(self.cfg, device, B)
         else:
             cache = None
         if stop_at_eos and pad_token_id is None:
@@ -1017,10 +1021,8 @@ class EasyTransformer(HookedRootModule):
     @classmethod
     def from_config(cls, cfg):
         """Used to generate a model from a config object to train from
-
         Args:
             cfg (EasyTransformerConfig): Config for the model
-
         Returns:
             EasyTransformer: An initialised EasyTransformer model
         """
@@ -1317,7 +1319,6 @@ class EasyTransformer(HookedRootModule):
     def init_weights(self):
         """
         Initialize weights according to default Pytorch initialization.
-
         LayerNorm weights are already initialized to 1.0 (and biases to 0.0)
         in the constructor
         """
@@ -1362,12 +1363,10 @@ class EasyTransformer(HookedRootModule):
         self, logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
     ):
         """Cross entropy loss for the language model.
-
         Args:
             logits (torch.Tensor): Logits. Shape [batch, pos, d_vocab]
             tokens (torch.Tensor[int64]): Input tokens. Shape [batch, pos]
             return_per_token (bool, optional): Whether to return the log probs predicted for the correct token, or the loss (ie mean of the predicted log probs). Defaults to False.
-
         Returns:
             _type_: _description_
         """
