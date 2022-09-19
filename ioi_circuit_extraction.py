@@ -127,7 +127,7 @@ def get_circuit_replacement_hook(
                 z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
                     i,
                     heads2[(layer, hook.ctx["idx"])][i],
-                    :,  # TODO, this was heads2???
+                    :,
                 ]
 
         return z

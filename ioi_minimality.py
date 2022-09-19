@@ -316,7 +316,7 @@ fig.update_layout(
 )
 
 fig.show()
-# %% # see what's ip
+# %% # show some previous token head importance results (not that important)
 circuit = CIRCUIT.copy()
 lds = {}
 prbs = {}

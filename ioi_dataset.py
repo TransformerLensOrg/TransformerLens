@@ -379,7 +379,6 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
                     )
                     - 1
                 )
-                found_s2 = True
             else:
                 idx = toks.index(tokenizer.tokenize(" " + prompt[idx_type])[0])
             name_idx_dict[idx_type].append(idx)

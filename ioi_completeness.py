@@ -157,7 +157,7 @@ from ioi_utils import probs
 #%%
 
 run_original = True
-circuit = CIRCUIT
+circuit = CIRCUIT.copy()
 
 cur_metric = probs # partial(probs, type="s")
 
@@ -412,7 +412,8 @@ ax.legend()
 plt.xlabel("Logit diff of broken circuit")
 plt.ylabel("Logit diff of complement of G")
 
-plt.xlim(-0.01, 0.1)
+warnings.warn("Increase x lim if plotting logit diffs not probs")
+plt.xlim(-0.01, 0.1) 
 plt.ylim(-0.01, 0.1)
 plt.show()
 

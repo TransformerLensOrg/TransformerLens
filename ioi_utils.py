@@ -77,7 +77,6 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         "val",
     ]  # value weighted attention or attn for attention probas
     assert type(ioi_dataset) == IOIDataset
-    texts = ioi_dataset.text_prompts
 
     for (layer, head) in heads:
         cache = {}
@@ -89,10 +88,10 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
             cache=cache, names=lambda x: x in good_names
         )  # shape: batch head_no seq_len seq_len
 
-        
+
         logits = model(ioi_dataset.text_prompts)
 
-        for i, text in enumerate(texts):
+        for i, text in enumerate(ioi_dataset.text_prompts):
             assert len(list(cache.items())) == 1 + int(mode == "val"), len(
                 list(cache.items())
             )
