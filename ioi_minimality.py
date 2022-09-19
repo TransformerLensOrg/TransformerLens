@@ -102,9 +102,17 @@ from ioi_circuit_extraction import (
     list_diff,
 )
 
+circuit = CIRCUIT.copy()
 
-def get_basic_extracted_model(model, ioi_dataset, circuit=CIRCUIT):
-    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[], circuit=circuit)
+
+def get_basic_extracted_model(model, ioi_dataset, mean_dataset=None, circuit=circuit):
+    if mean_dataset is None:
+        mean_dataset = ioi_dataset
+    heads_to_keep = get_heads_circuit(
+        ioi_dataset,
+        excluded_classes=[],
+        circuit=circuit,
+    )
     torch.cuda.empty_cache()
 
     model.reset_hooks()
@@ -113,13 +121,17 @@ def get_basic_extracted_model(model, ioi_dataset, circuit=CIRCUIT):
         heads_to_keep=heads_to_keep,
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
+        mean_dataset=abca_dataset,
     )
     return model
 
 
-circuit = CIRCUIT.copy()
-
-model = get_basic_extracted_model(model, ioi_dataset, circuit)
+model = get_basic_extracted_model(
+    model,
+    ioi_dataset,
+    mean_dataset=abca_dataset,
+    circuit=circuit,
+)
 torch.cuda.empty_cache()
 
 metric = logit_diff
@@ -151,7 +163,8 @@ ys = [baseline_prob, circuit_baseline_prob]
 both = [xs, ys]
 labels = ["baseline", "circuit"]
 
-for extra_ablate_subset in extra_ablate_classes:
+for extra_ablate in tqdm(extra_ablate_classes):
+    extra_ablate_subset = [extra_ablate]
     for circuit_class in list(circuit.keys()):
         if circuit_class not in extra_ablate_subset:
             continue
@@ -208,6 +221,7 @@ for i, circuit_class in enumerate(
             heads_to_keep=new_heads_to_keep,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
         )
         torch.cuda.empty_cache()
         metric_calc = metric(model, ioi_dataset, std=True)
