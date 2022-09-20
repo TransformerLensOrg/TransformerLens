@@ -723,6 +723,7 @@ class EasyTransformer(HookedRootModule):
         num_beams: int = 1,
         num_return_sequences: int = 1,
         use_cache: bool = True,
+        return_type: Optional[str] = None,
     ):
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -740,8 +741,9 @@ class EasyTransformer(HookedRootModule):
             num_beams (int): Number of beams to use for beam search. If 1, use greedy search
             num_return_sequences (int): Number of sequences to return for beam search
             use_cache (bool): If True, create and use cache to speed up generation
+            return_type (str, *optional*): The type of the output to return - either a string (str), a list of strings (list), or a tensor of tokens (tensor). If None, defaults to input type.
         Returns:
-            outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
+            outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens - by default returns same type as input
         """
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
@@ -751,6 +753,15 @@ class EasyTransformer(HookedRootModule):
             tokens = self.to_tokens(input)
         else:
             tokens = input
+
+        if return_type is None:
+            if type(input) == str:
+                return_type = "str"
+            elif type(input) == list:
+                return_type = "list"
+            else:
+                return_type = "tensor"
+
         assert isinstance(tokens, torch.Tensor)
         B, S = tokens.shape
         if device is None:
@@ -777,7 +788,13 @@ class EasyTransformer(HookedRootModule):
         self.eval()
         if not do_sample and num_beams == 1:
             return self.greedy_search(
-                tokens, max_new_tokens, stop_at_eos, pad_token_id, eos_token_id, cache
+                tokens,
+                max_new_tokens,
+                stop_at_eos,
+                pad_token_id,
+                eos_token_id,
+                cache,
+                return_type,
             )
         elif not do_sample and num_beams > 1:
             raise NotImplementedError("Beam search not implemented yet")
@@ -809,6 +826,7 @@ class EasyTransformer(HookedRootModule):
                 temperature,
                 freq_penalty,
                 cache,
+                return_type,
             )
 
     def greedy_search(
@@ -819,6 +837,7 @@ class EasyTransformer(HookedRootModule):
         pad_token_id: Optional[int] = None,
         eos_token_id: Optional[int] = None,
         cache: Optional[EasyTransformerKeyValueCache] = None,
+        return_type: Optional[str] = None,
     ):
         """
         Greedily sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -829,6 +848,7 @@ class EasyTransformer(HookedRootModule):
             pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
             eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
             cache (EasyTransformerKeyValueCache, *optional*): Cache to use for the model. If None, no cache is used
+            return_type (str, *optional*): The type of the output to return - either a string (str), a list of strings (list), or a tensor of tokens (tensor). If None, defaults to tensor.
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
         """
@@ -860,6 +880,13 @@ class EasyTransformer(HookedRootModule):
                 tokens = next_tokens.unsqueeze(-1)
             else:
                 tokens = outputs
+
+        if return_type is not None and return_type == "str":
+            assert self.tokenizer is not None
+            outputs = self.tokenizer.batch_decode(outputs)[0]
+        elif return_type is not None and return_type == "list":
+            assert self.tokenizer is not None
+            outputs = self.tokenizer.batch_decode(outputs)
 
         return outputs
 
@@ -927,6 +954,7 @@ class EasyTransformer(HookedRootModule):
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
         cache: Optional[EasyTransformerKeyValueCache] = None,
+        return_type: Optional[str] = None,
     ):
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -941,6 +969,7 @@ class EasyTransformer(HookedRootModule):
             temperature (float): Temperature for sampling. Higher values will make the model more random
             freq_penalty (float): Frequency penalty for sampling. Higher values will make the model more random
             cache (EasyTransformerKeyValueCache, *optional*): Cache to use for the model. If None, no cache is used
+            return_type (str, *optional*): If "str", return a string. If "list", return a list of strings. If None, return a tensor
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
         """
@@ -1007,6 +1036,13 @@ class EasyTransformer(HookedRootModule):
                 tokens = next_tokens.unsqueeze(-1)
             else:
                 tokens = outputs
+
+        if return_type is not None and return_type == "str":
+            assert self.tokenizer is not None
+            outputs = self.tokenizer.batch_decode(outputs)[0]
+        elif return_type is not None and return_type == "list":
+            assert self.tokenizer is not None
+            outputs = self.tokenizer.batch_decode(outputs)
 
         return outputs
 
