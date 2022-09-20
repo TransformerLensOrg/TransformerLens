@@ -229,25 +229,43 @@ for i, circuit_class in enumerate(
         results[circuit_class]["vs"][v] = metric_calc
         torch.cuda.empty_cache()
 #%%
-fig = go.Figure()
 
-for G in list(extra_ablate_classes):
-    if len(circuit[G]) > 4:
-        warnings.warn("just plotting first 4 vertices per class")
+xs = []
+initial_ys = []
+final_ys = []
+all_colors = px.colors.qualitative.Dark2
+
+fig = go.Figure()
+for j, G in enumerate(list(extra_ablate_classes)):
     for i, v in enumerate(list(circuit[G])[:4]):
-        fig.add_trace(
-            go.Bar(
-                x=[G],
-                y=[results[G]["vs"][v][0] - results[G]["metric_calc"]],
-                base=results[G]["metric_calc"],
-                width=1 / (len(CIRCUIT[G]) + 1),
-                offset=(i - 3 / 2) / (len(CIRCUIT[G]) + 1),
-                marker_color=["crimson", "royalblue", "darkorange", "limegreen"][i],
-                text=f"{v}",
-                name=f"{v}",
-                textposition="outside",
-            )
-        )
+        xs.append(str(v))
+        initial_ys.append(results[G]["metric_calc"])
+        final_ys.append(results[G]["vs"][v][0])
+
+initial_ys = torch.Tensor(initial_ys)
+final_ys = torch.Tensor(final_ys)
+
+fig.add_trace(
+    go.Bar(
+        x=xs,
+        y=final_ys - initial_ys,
+        base=initial_ys,
+    )
+)
+
+# fig.add_trace(
+#     go.Bar(
+#         x=[G],
+#         y=[results[G]["vs"][v][0] - results[G]["metric_calc"]],
+#         base=results[G]["metric_calc"],
+#         width=1 / (len(CIRCUIT[G]) + 1),
+#         offset=(i - 3 / 2) / (len(CIRCUIT[G]) + 1),
+#         marker_color=["crimson", "royalblue", "darkorange", "limegreen"][i],
+#         text=f"{v}",
+#         name=f"{v}",
+#         textposition="outside",
+#     )
+# )
 
 fig.add_shape(
     type="line",
