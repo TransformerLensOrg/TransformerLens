@@ -6,11 +6,7 @@ import plotly.express as px
 import gc
 import einops
 
-<<<<<<< HEAD
-from interp.circuit.projects.ioi.ioi_methods import N_LAYER
-=======
 from ioi_dataset import IOIDataset
->>>>>>> ad6f1af8141719a34a5af4f0611d577c1a504bf1
 
 # other utils
 
@@ -114,18 +110,10 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
             good_names.append(f"blocks.{layer}.attn.hook_v")
         model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
 
-
-<<<<<<< HEAD
-        for i, text in enumerate(texts):
-            assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
-=======
         logits = model(ioi_dataset.text_prompts)
 
         for i, text in enumerate(ioi_dataset.text_prompts):
-            assert len(list(cache.items())) == 1 + int(mode == "val"), len(
-                list(cache.items())
-            )
->>>>>>> ad6f1af8141719a34a5af4f0611d577c1a504bf1
+            assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
             toks = model.tokenizer(text)["input_ids"]
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
@@ -219,25 +207,14 @@ def scatter_attention_and_contribution(
             (s_dir, [s1_pos, s2_pos], "S"),
         ]:
             prob = sum(
-                [
-                    cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos]
-                    .detach()
-                    .cpu()
-                    for pos in posses
-                ]
+                [cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos].detach().cpu() for pos in posses]
             )
-            resid = (
-                cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :]
-                .detach()
-                .cpu()
-            )
+            resid = cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :].detach().cpu()
             dot = torch.einsum("a,a->", resid, dire)
             df.append([prob, dot, tok_type, prompt["text"]])
 
     # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(
-        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
-    )
+    viz_df = pd.DataFrame(df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"])
     fig = px.scatter(
         viz_df,
         x=f"Attn Prob on Name",
@@ -305,9 +282,7 @@ def posses(model, ioi_dataset, all=False, std=False):
     """
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
-    end_logits = logits[
-        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :
-    ]  # batch * vocab_size
+    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
 
     positions = torch.argsort(end_logits, dim=1)
     io_positions = positions[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs]
@@ -322,9 +297,7 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
 
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
-    end_logits = logits[
-        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :
-    ]  # batch * vocab_size
+    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
     end_probs = torch.softmax(end_logits, dim=1)
 
     if type == "io":
