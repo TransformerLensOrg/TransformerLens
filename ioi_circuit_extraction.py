@@ -27,7 +27,7 @@ def list_diff(l1, l2):
     return list(set(l1).difference(set(l2_)))
 
 
-def turn_keep_in_rmv(to_keep, max_len):
+def turn_keep_into_rmv(to_keep, max_len):
     to_rmv = {}
     for t in to_keep.keys():
         to_rmv[t] = []
@@ -47,8 +47,8 @@ def process_heads_and_mlps(
     assert (heads_to_remove is None) != (heads_to_keep is None)
     assert (mlps_to_keep is None) != (mlps_to_remove is None)
 
-    n_layers = model.cfg["n_layers"]
-    n_heads = model.cfg["n_heads"]
+    n_layers = model.cfg.n_layers
+    n_heads = model.cfg.n_heads
 
     dataset_length = len(ioi_dataset.text_prompts)
 
@@ -59,7 +59,7 @@ def process_heads_and_mlps(
         for l in range(n_layers):
             if l not in mlps_to_keep:
                 mlps[l] = [[] for _ in range(dataset_length)]
-        mlps = turn_keep_in_rmv(
+        mlps = turn_keep_into_rmv(
             mlps, ioi_dataset.max_len
         )  # TODO check that this is still right for the max_len of maybe shortened datasets
 
@@ -71,7 +71,7 @@ def process_heads_and_mlps(
             for h in range(n_heads):
                 if (l, h) not in heads_to_keep:
                     heads[(l, h)] = [[] for _ in range(dataset_length)]
-        heads = turn_keep_in_rmv(heads, ioi_dataset.max_len)
+        heads = turn_keep_into_rmv(heads, ioi_dataset.max_len)
     return heads, mlps
     # print(mlps, heads)
 
@@ -81,7 +81,7 @@ def get_circuit_replacement_hook(
     mlps_to_remove=None,
     heads_to_keep=None,
     mlps_to_keep=None,
-    heads_to_remove2=None,
+    heads_to_remove2=None,  # TODO @Alex ehat are these
     mlps_to_remove2=None,
     heads_to_keep2=None,
     mlps_to_keep2=None,
@@ -122,7 +122,11 @@ def get_circuit_replacement_hook(
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
             for i in range(dataset_length):  # we use the idx from contex to get the head
-                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[i, heads2[(layer, hook.ctx["idx"])][i], :]
+                z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
+                    i,
+                    heads2[(layer, hook.ctx["idx"])][i],
+                    :,
+                ]
 
         return z
 
@@ -146,27 +150,36 @@ def get_extracted_idx(idx_list: list[str], ioi_dataset):
     return int_idx
 
 
-CIRCUIT = {
+SMALL_CIRCUIT = {
     "name mover": [
-        (9, 0),
-        (9, 6),  # ori
-        (9, 7),
-        (9, 9),  # ori
-        (10, 0),  # ori
-        (10, 1),
-        (10, 2),  # ~
-        (10, 6),
-        (10, 10),
-        (11, 1),  # ~
-        (11, 6),  # ~
-        (11, 9),  # ~
-    ],  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
-    "negative": [(10, 7), (11, 10), (11, 2)],
+        (9, 6),
+        (9, 9),
+        (10, 0),
+    ],
+    "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
     "duplicate token": [(0, 1), (0, 10), (3, 0)],
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
+
+CIRCUIT = SMALL_CIRCUIT.copy()
+for head in [
+    (9, 0),
+    (9, 7),
+    (10, 1),
+    (10, 2),  # ~
+    (10, 6),
+    (10, 10),
+    (11, 1),  # ~
+    (11, 6),  # ~
+    (11, 9),  # ~
+]:
+    CIRCUIT["name mover"].append(head)
+
+ARTHUR_CIRCUIT = CIRCUIT.copy()
+ARTHUR_CIRCUIT.pop("duplicate token")
+ARTHUR_CIRCUIT["induction"] = [(5, 5), (6, 9)]
 
 RELEVANT_TOKENS = {}
 for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
@@ -182,16 +195,16 @@ for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
 
 
-def get_heads_circuit(ioi_dataset, excluded_classes=["negative"], mlp0=False):
+def get_heads_circuit(ioi_dataset, excluded_classes=[], mlp0=False, circuit=CIRCUIT):
     for excluded_class in excluded_classes:
-        assert excluded_class in CIRCUIT.keys()
+        assert excluded_class in circuit.keys()
 
     heads_to_keep = {}
 
-    for circuit_class in CIRCUIT.keys():
+    for circuit_class in circuit.keys():
         if circuit_class in excluded_classes:
             continue
-        for head in CIRCUIT[circuit_class]:
+        for head in circuit[circuit_class]:
             heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
 
     if mlp0:
@@ -210,14 +223,17 @@ def do_circuit_extraction(
     heads_to_keep=None,  # as above for heads
     mlps_to_keep=None,  # as above for mlps
     ioi_dataset=None,
+    mean_dataset=None,
     model=None,
     metric=None,
+    exclude_heads=[],
 ):
     """
-    if `ablate` then ablate all `heads` and `mlps`
-        and keep everything else same
-    otherwise, ablate everything else
-        and keep `heads` and `mlps` the same
+    ..._to_remove means the indices ablated away. Otherwise the indices not ablated away.
+
+    `exclude_heads` is a list of heads that actually we won't put any hooks on. Just keep them as is
+
+    if `mean_dataset` is None, just use the ioi_dataset for mean
     """
 
     # check if we are either in keep XOR remove move from the args
@@ -234,10 +250,12 @@ def do_circuit_extraction(
         metric=metric, dataset=ioi_dataset.text_prompts, relative_metric=False
     )  # TODO make dummy metric
 
+    if mean_dataset is None:
+        mean_dataset = ioi_dataset
     config = AblationConfig(
         abl_type="custom",
         abl_fn=ablation,
-        mean_dataset=ioi_dataset.text_prompts,  # TODO nb of prompts useless ?
+        mean_dataset=mean_dataset.text_prompts,  # TODO nb of prompts useless ?
         target_module="attn_head",
         head_circuit="result",
         cache_means=True,  # circuit extraction *has* to cache means. the get_mean reset the
@@ -254,6 +272,8 @@ def do_circuit_extraction(
     model.reset_hooks()
 
     for layer, head in heads.keys():
+        if (layer, head) in exclude_heads:
+            continue
         model.add_hook(*abl.get_hook(layer, head))
     for layer in mlps.keys():
         model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))

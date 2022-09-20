@@ -185,22 +185,26 @@ def update_nm(new_nms, reset=False):
     global CIRCUIT, ALL_NODES, RELEVANT_TOKENS
     if reset:
         new_nms = [
-            (9, 0),
-            (9, 6),  # ori
-            (9, 7),
-            (9, 9),  # ori
+            (9, 0),  ###
+            (9, 6),  # ori ###
+            (9, 7),  ###
+            (9, 9),  # ori  ###
             (10, 0),  # ori
-            (10, 1),
-            (10, 2),  # ~
-            (10, 6),
-            (10, 10),
-            (11, 1),  # ~
-            (11, 6),  # ~
-            (11, 9),  # ~
+            (10, 1),  ###
+            (10, 2),  # ~ ###
+            (10, 6),  ###
+            (10, 10),  ###
+            (11, 1),  # ~ ###
+            (11, 6),  # ~ negative h
+            (11, 9),  # ~ ###
+            (11, 2),  ###10
         ]
     CIRCUIT = {
         "name mover": new_nms.copy(),  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
-        "negative": [(10, 7), (11, 10)],
+        "negative": [
+            (10, 7),
+            (11, 10),
+        ],
         "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
         "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
         "duplicate token": [(0, 1), (0, 10), (3, 0)],
@@ -305,7 +309,7 @@ model.reset_hooks()
 model, _ = do_circuit_extraction(
     model=model,
     heads_to_remove=get_heads_from_nodes(
-        [((10, 7), "end"), ((11, 10), "end"),((10, 0), "end"), ((9, 6), "end"), ((9, 9), "end")], ioi_dataset
+        [((10, 7), "end"), ((11, 10), "end"), ((10, 0), "end"), ((9, 6), "end"), ((9, 9), "end")], ioi_dataset
     ),
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
@@ -322,8 +326,8 @@ mtx = writing_direction_heatmap(
 mtx_flat = mtx.flatten()
 all_sorted_idx = np.abs(mtx_flat).argsort()
 for i in range(20):
-    x,y = np.unravel_index(all_sorted_idx[-i-1], mtx.shape) 
-    print( mtx_flat[all_sorted_idx[-i-1]], (y,x))
+    x, y = np.unravel_index(all_sorted_idx[-i - 1], mtx.shape)
+    print(mtx_flat[all_sorted_idx[-i - 1]], (y, x))
 
 
 # %%

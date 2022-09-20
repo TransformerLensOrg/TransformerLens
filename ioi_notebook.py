@@ -6,7 +6,6 @@
 #
 # ### Task
 # We're interested in GPT-2 ability to complete sentences like "Alice and Bob went to the store, Alice gave a bottle of milk to"...
-#
 # GPT-2 knows that it have to output a name that is not the subject (Alice) and that was present in the context: Bob.
 # The first apparition of Alice is called "S" (or sometimes "S1") for "Subject", and Bob is the indirect object ("IO"). Even if the sentences we generate contains the last word of the sentence "Bob", we'll never look at the transformer output here. What's matter is the next-token prediction on the token "to", sometime called the "end" token.
 #
@@ -19,8 +18,8 @@
 # <img src="https://i.imgur.com/PPtTQRh.png">
 
 # %% [markdown]
-# ## Import
-# # %%
+# ## Importsf
+from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
@@ -51,6 +50,7 @@ from easy_transformer.experiments import (
     PatchingConfig,
     get_act_hook,
 )
+from functools import partial
 from typing import Any, Callable, Dict, List, Set, Tuple, Union, Optional, Iterable
 import itertools
 import numpy as np
@@ -79,16 +79,32 @@ from ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
     NAMES,
+    gen_flipped_prompts,
     gen_prompt_uniform,
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    all_subsets,
     clear_gpu_mem,
     show_tokens,
     show_pp,
     show_attention_patterns,
     safe_del,
+)
+from ioi_circuit_extraction import (
+    do_circuit_extraction,
+    gen_prompt_uniform,
+    get_act_hook,
+    get_circuit_replacement_hook,
+    get_extracted_idx,
+    get_heads_circuit,
+    join_lists,
+    list_diff,
+    process_heads_and_mlps,
+    turn_keep_into_rmv,
+    CIRCUIT,
+    ARTHUR_CIRCUIT,
 )
 
 
@@ -96,8 +112,6 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-
-
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -115,19 +129,36 @@ print_gpu_mem("Gpt2 loaded")
 # %% [markdown]
 # Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
-
-
 # %%
 # IOI Dataset initialisation
-N = 200
+N = 100
+ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
+ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
-# %% [markdown]
-# ioi_dataset`ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
 
+def logit_diff(model, ioi_dataset, all=False):
+    """Difference between the IO and the S logits (at the "to" token)"""
+    logits = model(ioi_dataset.text_prompts).detach()
+    IO_logits = logits[
+        torch.arange(ioi_dataset.N),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.io_tokenIDs,
+    ]
+    S_logits = logits[
+        torch.arange(ioi_dataset.N),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.s_tokenIDs,
+    ]
+    if all:
+        return IO_logits - S_logits
+    return (IO_logits - S_logits).mean().detach().cpu()
+
+
+# %% [markdown]
+# ioi_dataset `ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
 # %%
 [(k, int(ioi_dataset.word_idx[k][0])) for k in ioi_dataset.word_idx.keys()]
-
 # %%
 [
     (i, t)
@@ -135,20 +166,15 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
         show_tokens(ioi_dataset.ioi_prompts[0]["text"], model, return_list=True)
     )
 ]
-
 # %% [markdown]
-# The `ioi_dataset` ca also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
-
+# The `ioi_dataset` can also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
 # %%
 flipped = ioi_dataset.gen_flipped_prompts("S2")
 pprint(flipped.ioi_prompts[:5])
-
 # %% [markdown]
 # IOIDataset contains many other useful features, see the definition of the class in the cell `Dataset class` for more info!
-
 # %% [markdown]
 # We also import open web text sentences to compute means that are not correlated with our IOI distribution.
-
 # %%
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
@@ -159,35 +185,12 @@ owb_seqs = [
     )
     for i in range(ioi_dataset.N)
 ]
-
-
 # %% [markdown]
-
 # # <h1><b>Initial evidence</b></h1>
-
 # %% [markdown]
 # ### Layer Ablations
-
 # %% [markdown]
 # The first series of experiment: we define our metric, here, how much the logit for IO is bigger than S, we ablate part of the network and see what matters. Globally, it shows that the behavior is distributed accross many parts of the network, we cannot draw much conclusion from this alone.
-
-# %%
-def logit_diff(model, text_prompts):
-    """Difference between the IO and the S logits (at the "to" token)"""
-    logits = model(text_prompts).detach()
-    IO_logits = logits[
-        torch.arange(len(text_prompts)),
-        ioi_dataset.word_idx["end"],
-        ioi_dataset.io_tokenIDs,
-    ]
-    S_logits = logits[
-        torch.arange(len(text_prompts)),
-        ioi_dataset.word_idx["end"],
-        ioi_dataset.s_tokenIDs,
-    ]
-    return (IO_logits - S_logits).mean().detach().cpu()
-
-
 # %%
 def mean_at_end(
     z, mean, hook
@@ -199,9 +202,7 @@ def mean_at_end(
 
 
 # %%
-metric = ExperimentMetric(
-    metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True
-)
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
 config_mlp = AblationConfig(
     abl_type="custom",
     abl_fn=mean_at_end,
@@ -209,7 +210,7 @@ config_mlp = AblationConfig(
     target_module="mlp",
     head_circuit="result",
     cache_means=True,
-    verbose=True,
+    verbose=False,
 )
 abl_mlp = EasyAblation(model, config_mlp, metric)
 mlp_result = abl_mlp.run_ablation()
@@ -221,7 +222,7 @@ config_attn_layer = AblationConfig(
     target_module="attn_layer",
     head_circuit="result",
     cache_means=True,
-    verbose=True,
+    verbose=False,
 )
 abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
 attn_result = abl_attn_layer.run_ablation()
@@ -239,12 +240,9 @@ fig = px.imshow(
 fig.update_layout(
     yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"])
 )
-
 fig.show()
-
 # %%
 len(ioi_dataset.text_prompts)
-
 # %% [markdown]
 # ### Attention Heads Ablations
 
@@ -252,16 +250,14 @@ len(ioi_dataset.text_prompts)
 # #### Mean ablation
 
 # %%
-metric = ExperimentMetric(
-    metric=logit_diff, dataset=ioi_dataset.text_prompts, relative_metric=True
-)
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
 config = AblationConfig(
     abl_type="mean",
     mean_dataset=owb_seqs,
     target_module="attn_head",
     head_circuit="result",
     cache_means=True,
-    verbose=True,
+    verbose=False,
 )
 abl = EasyAblation(model, config, metric)
 result = abl.run_ablation()
@@ -275,7 +271,8 @@ px.imshow(
 ).show()
 
 # %% [markdown]
-# Blue squares corresponds to head that when ablated makes the logit diff *bigger*. (the color are inverted relative to the picture of the slides because here we plot the relative variation vs the relative *drop* in the presentation plots)
+# Blue squares corresponds to head that when ablated makes the logit diff *bigger*. (the color are
+# inverted relative to the picture of the slides because here we plot the relative variation vs the relative *drop* in the presentation plots)
 
 # %% [markdown]
 # #### Zero ablations
@@ -286,13 +283,16 @@ def zero_at_end(z, mean, hook):
     return z
 
 
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
+
 config = AblationConfig(
     abl_type="custom",
     abl_fn=zero_at_end,
     target_module="attn_head",
     head_circuit="result",
     cache_means=True,
-    verbose=True,
+    mean_dataset=ioi_dataset.text_prompts,
+    verbose=False,  # TODO new version of experiments has a bug with verbose
 )
 abl = EasyAblation(model, config, metric)
 result = abl.run_ablation()
@@ -325,7 +325,8 @@ config = AblationConfig(
     target_module="attn_head",
     head_circuit="z",
     cache_means=True,
-    verbose=True,
+    mean_dataset=ioi_dataset.text_prompts,
+    verbose=False,
 )
 abl = EasyAblation(model, config, metric)
 result = abl.run_ablation()
@@ -337,19 +338,41 @@ px.imshow(
     color_continuous_midpoint=0,
     color_continuous_scale="RdBu",
 ).show()
-
 # %% [markdown]
 # ### Which head write in the direction Embed(IO) - Embed(S) ?
-
 #%%
+
+MODEL_CFG = model.cfg
+MODEL_EPS = model.cfg.eps
+
+
+def get_layer_norm_div(x, eps=MODEL_EPS):
+    mean = x.mean(dim=-1, keepdim=True)
+    new_x = (x - mean).detach().clone()
+    return (new_x.var(dim=-1, keepdim=True).mean() + eps).sqrt()
+
+
+def layer_norm(x, cfg=MODEL_CFG):
+    return LayerNormPre(cfg)(x)
+
+
+def pytorch_layer_norm(x, eps=MODEL_EPS):
+    return torch.nn.LayerNorm(normalized_shape=x.shape[-1], eps=eps)(x)
+
+
+m = torch.randn(2, 3, 4)
+assert torch.allclose(layer_norm(m), pytorch_layer_norm(m))
+
+
 def writing_direction_heatmap(
     model,
     ioi_dataset,
-    mode="attn_out",
+    show=["attn"],  # can add "mlp" to this
     return_vals=False,
     dir_mode="IO - S",
-    unembed_mode="normal",  # or "Neel"
+    unembed_mode="normal",
     title="",
+    verbose=False,
 ):
     """
     Plot the dot product between how much each attention head
@@ -357,26 +380,28 @@ def writing_direction_heatmap(
     the (correct) IO token and the incorrect S token
     """
 
-    n_heads = model.cfg["n_heads"]
-    n_layers = model.cfg["n_layers"]
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
+    d_model = model.cfg.d_model
 
     model_unembed = (
         model.unembed.W_U.detach().cpu()
     )  # note that for GPT2 embeddings and unembeddings are tides such that W_E = Transpose(W_U)
 
-    if mode == "attn_out":  # heads, layers
-        vals = torch.zeros(size=(n_heads, n_layers))
-    elif mode == "mlp":
-        vals = torch.zeros(size=(1, n_layers))
-    else:
-        raise NotImplementedError()
+    unembed_bias = model.unembed.b_U.detach().cpu()
 
-    N = ioi_dataset.N
-    for i in range(ioi_dataset.N):
+    attn_vals = torch.zeros(size=(n_heads, n_layers))
+    mlp_vals = torch.zeros(size=(n_layers,))
+    model.reset_hooks()
+    logit_diffs = logit_diff(model, ioi_dataset, all=True).cpu()
+
+    for i in tqdm(range(ioi_dataset.N)):
         io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
         s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
         io_dir = model_unembed[io_tok]
         s_dir = model_unembed[s_tok]
+        unembed_bias_io = unembed_bias[io_tok]
+        unembed_bias_s = unembed_bias[s_tok]
         if dir_mode == "IO - S":
             dire = io_dir - s_dir
         elif dir_mode == "IO":
@@ -388,43 +413,100 @@ def writing_direction_heatmap(
 
         model.reset_hooks()
         cache = {}
-        model.cache_all(cache)  # TODO maybe speed up by only caching relevant things
-
+        model.cache_all(
+            cache, device="cpu"
+        )  # TODO maybe speed up by only caching relevant things
         logits = model(ioi_dataset.text_prompts[i])
 
+        res_stream_sum = torch.zeros(size=(d_model,))
+        res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]  # .detach().cpu()
+        # the pos and token embeddings
+
+        layer_norm_div = get_layer_norm_div(
+            cache["blocks.11.hook_resid_post"][0, -2, :]
+        )
+
         for lay in range(n_layers):
-            if mode == "attn_out":
-                cur = cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
-            elif mode == "mlp":
-                cur = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :]
-            vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
+            cur_attn = (
+                cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
+                # + model.blocks[lay].attn.b_O.detach()  # / n_heads
+            )
+            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :][0]
 
-    vals /= N
-    show_pp(vals, xlabel="head no", ylabel="layer no", title=title)
+            # check that we're really extracting the right thing
+            res_stream_sum += torch.sum(cur_attn, dim=0)
+            res_stream_sum += model.blocks[lay].attn.b_O.detach().cpu()
+            res_stream_sum += cur_mlp
+            assert torch.allclose(
+                res_stream_sum,
+                cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach(),
+                rtol=1e-3,
+                atol=1e-3,
+            ), lay
+
+            cur_mlp -= cur_mlp.mean()
+            for i in range(n_heads):
+                cur_attn[i] -= cur_attn[i].mean()
+                # we layer norm the end result of the residual stream,
+                # (which firstly centres the residual stream)
+                # so to estimate "amount written in the IO-S direction"
+                # we centre each head's output
+            cur_attn /= layer_norm_div  # ... and then apply the layer norm division
+            cur_mlp /= layer_norm_div
+
+            attn_vals[:n_heads, lay] += torch.einsum(
+                "ha,a->h", cur_attn.cpu(), dire.cpu()
+            )
+            mlp_vals[lay] = torch.einsum("a,a->", cur_mlp.cpu(), dire.cpu())
+
+        res_stream_sum -= res_stream_sum.mean()
+        res_stream_sum = (
+            layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+        )
+
+        cur_writing = (
+            torch.einsum("a,a->", res_stream_sum, dire)
+            + unembed_bias_io
+            - unembed_bias_s
+        )
+
+        assert i == 11 or torch.allclose(  # ??? and it's way off, too
+            cur_writing,
+            logit_diffs[i],
+            rtol=1e-2,
+            atol=1e-2,
+        ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+
+    attn_vals /= ioi_dataset.N
+    mlp_vals /= ioi_dataset.N
+    if "attn" in show:
+        show_pp(attn_vals, xlabel="head no", ylabel="layer no", title=title)
+    if "mlp" in show:
+        show_pp(mlp_vals.unsqueeze(0), xlabel="", ylabel="layer no", title=title)
     if return_vals:
-        return vals
+        return attn_vals, mlp_vals
 
 
-attn_vals = writing_direction_heatmap(
+torch.cuda.empty_cache()
+attn_vals, mlp_vals = writing_direction_heatmap(
     model,
-    ioi_dataset[:51],
+    ioi_dataset,
     return_vals=True,
-    mode="attn_out",
+    show=["attn", "mlp"],
     dir_mode="IO - S",
-    title="Attention head output into IO - S token unembedding (GPT2)",
+    title="Output into IO - S token unembedding direction",
+    verbose=True,
 )
 # %% [markdown]
 # We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
-
 # %%
-show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset.text_prompts[:1])
-
+show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 # %%
-show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset.text_prompts[:1])
-
+show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset[:1])
+#%%
+show_attention_patterns(model, [(11, 2)], ioi_dataset[:1])
 # %% [markdown]
 # ### Plot attention vs direction
-
 # %% [markdown]
 # We want to investigate what are the head we observed doing. By plotting attention patterns we see that they are paying preferential attention to IO.
 
@@ -454,79 +536,11 @@ top_heads
 # <h2>Copying</h2>
 # CLAIM: heads 9.6, 9.9 and 10.0 copy the IO into the residual stream, <b>by attending to the IO token</b>
 #%% # the more attention, the more writing
-def scatter_attention_and_contribution(
-    model,
-    layer_no,
-    head_no,
-    prompts,
-    gpt_model="gpt2",
-    return_vals=False,
-):
-    """
-    Plot a scatter plot
-    for each input sequence with the attention paid to IO and S
-    and the amount that is written in the IO and S directions
-    """
-    n_heads = model.cfg["n_heads"]
-    n_layers = model.cfg["n_layers"]
-    model_unembed = model.unembed.W_U.detach().cpu()
-    N = len(prompts)
-    df = []
-    for prompt in tqdm(prompts):
-        io_tok = model.tokenizer(" " + prompt["IO"])["input_ids"][0]
-        s_tok = model.tokenizer(" " + prompt["S"])["input_ids"][0]
-        toks = model.tokenizer(prompt["text"])["input_ids"]
-        io_pos = toks.index(io_tok)
-        s1_pos = toks.index(s_tok)
-        s2_pos = toks[s1_pos + 1 :].index(s_tok) + (s1_pos + 1)
-        assert toks[-1] == io_tok
+from ioi_utils import scatter_attention_and_contribution
 
-        io_dir = model_unembed[io_tok].detach().cpu()
-        s_dir = model_unembed[s_tok].detach().cpu()
-
-        model.reset_hooks()
-        cache = {}
-        model.cache_all(cache)
-
-        logits = model(prompt["text"])
-
-        for dire, posses, tok_type in [
-            (io_dir, [io_pos], "IO"),
-            (s_dir, [s1_pos, s2_pos], "S"),
-        ]:
-            prob = sum(
-                [
-                    cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos]
-                    .detach()
-                    .cpu()
-                    for pos in posses
-                ]
-            )
-            resid = (
-                cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :]
-                .detach()
-                .cpu()
-            )
-            dot = torch.einsum("a,a->", resid, dire)
-            df.append([prob, dot, tok_type, prompt["text"]])
-
-    # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(
-        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
-    )
-    fig = px.scatter(
-        viz_df,
-        x=f"Attn Prob on Name",
-        y=f"Dot w Name Embed",
-        color="Name Type",
-        hover_data=["text"],
-        title=f"How Strong {layer_no}.{head_no} Writes in the Name Embed Direction Relative to Attn Prob",
-    )
-    fig.show()
-    if return_vals:
-        return viz_df
-
-
+scatter_attention_and_contribution(
+    model, 11, 2, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
+)
 scatter_attention_and_contribution(
     model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
 )
@@ -544,8 +558,6 @@ scatter_attention_and_contribution(
     ioi_dataset.ioi_prompts[:500],
     gpt_model="gpt2",
 )
-
-
 # %% [markdown]
 # They all demonstrate a straightforward relationship: the more they pay attention to a token, the more they write in its direction. A.k.a. they are just copying the token embedding of this position.
 
@@ -640,17 +652,12 @@ scatter_attention_and_contribution(
 scatter_attention_and_contribution(
     model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
 )
-
-
 # %% [markdown]
 # ### Patching experiments
-
 # %% [markdown]
 # What causes name mover heads to pay attention to IO? To figure this out, we'll patch activation from sentences like "A..B..C..to"  to "A..B..B..to" where A, B and C are differents names.
-
 # %%
 print_gpu_mem()
-
 # %%
 abca_dataset = ioi_dataset.gen_flipped_prompts(
     "S2"
@@ -660,8 +667,7 @@ pprint(abca_dataset.text_prompts[:5])
 # %%
 pprint(ioi_dataset.text_prompts[:5])
 
-# %%
-
+# %% # here...
 HEAD = 9  # head 9.9, 9.6, 10.0 show similar plots in the exeprimetns, try changing the values!
 LAYER = 9
 hook_name = f"blocks.{LAYER}.attn.hook_attn"
@@ -724,8 +730,6 @@ def patch_last_tokens(
 
 
 # %%
-
-
 config = PatchingConfig(
     source_dataset=abca_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
@@ -748,12 +752,10 @@ for i, key in enumerate(["IO", "S", "S2"]):
     px.imshow(
         result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
-        title=f'Variation in attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "to"',
+        title=f'Variation in attention probs of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "to"',
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
     ).show()
-
-
 # %% [markdown]
 # We can clearly identify the S2-inhibition heads: 8.6, 8.10, 7.3 and 7.9. Patching them with activation from ABC causes 9.9 to pay less attention to IO and more to S and S2. To have a a better sense of what is going on behind these plots, we can see how patching impact the attention patterns of 9.9 on sample sentences.
 
@@ -769,15 +771,11 @@ model.reset_hooks()  ##before patching
 show_attention_patterns(
     model,
     [(9, 9)],
-    ioi_dataset.text_prompts[IDX : IDX + 1],
+    ioi_dataset[IDX : IDX + 1],
     mode="val",
     title_suffix=" Pre-patching",
 )
-
-
 # %%
-
-
 def one_sentence_patching(z, source_act, hook):  # we patch at the "to" token
     # print(source_act.shape, z.shape)
     z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[
@@ -812,12 +810,10 @@ model.add_hook(hk_name, hk)  # we patch head 8.6
 show_attention_patterns(
     model,
     [(9, 9)],
-    ioi_dataset.text_prompts[IDX : IDX + 1],
+    ioi_dataset[IDX : IDX + 1],
     mode="val",
     title_suffix=" Post-patching",
 )
-
-
 # %% [markdown]
 # Here we plotted attention probas weighed by the values. We observe that patching one single head at one tokens reduce by 40% the attentions on the IO token.
 #
@@ -827,27 +823,27 @@ show_attention_patterns(
 
 # %%
 show_attention_patterns(
-    model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset.text_prompts[IDX : IDX + 1]
+    model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset[IDX : IDX + 1]
 )
 
 # %% [markdown]
 # #### Patching at S2
-
 # %% [markdown]
 # What happend if we patch at S2 instead of END?
-
 # %%
-
-
-# %%
-def patch_s2(z, source_act, hook):  # we patch at the "to" token
-    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = source_act[
-        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]
-    ]
+def patch_positions(
+    z, source_act, hook, positions=["S2"]
+):  # we patch at the "to" token
+    for pos in positions:
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+        ]
     return z
 
 
 # %%
+positions = ["end"]
+patcher = partial(patch_positions, positions=positions)
 
 config = PatchingConfig(
     source_dataset=abca_dataset.text_prompts,
@@ -856,7 +852,7 @@ config = PatchingConfig(
     head_circuit="result",
     cache_act=True,
     verbose=False,
-    patch_fn=patch_s2,
+    patch_fn=patcher,
     layers=(0, LAYER),
 )
 
@@ -872,7 +868,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
     px.imshow(
         result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
-        title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "S2"',
+        title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on {positions}',
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
     ).show()
@@ -884,15 +880,14 @@ for i, key in enumerate(["IO", "S", "S2"]):
 # #### Duplicate tokens heads
 
 # %%
-show_attention_patterns(model, [(0, 1), (0, 10), (3, 0)], ioi_dataset.text_prompts[:2])
+show_attention_patterns(model, [(0, 1), (0, 10), (3, 0)], ioi_dataset[:2])
 
 # %% [markdown]
 # #### Induction-ish heads
 
 # %%
-show_attention_patterns(
-    model, [(5, 5), (5, 8), (5, 9), (6, 9)], ioi_dataset.text_prompts[:2]
-)
+
+show_attention_patterns(model, [(5, 5), (5, 8), (5, 9), (6, 9)], ioi_dataset[:2])
 
 # %% [markdown]
 # ### More patching: patching at S+1
@@ -906,7 +901,6 @@ show_attention_patterns(
 
 # %%
 acba_dataset = ioi_dataset.gen_flipped_prompts("S")  # we flip the first occurence of S
-
 acba_dataset.text_prompts[0], ioi_dataset.text_prompts[0]
 
 # %%
@@ -951,7 +945,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
 # %%
 show_attention_patterns(
-    model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_dataset.text_prompts[34:35]
+    model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_dataset[34:35]
 )
 
 # %% [markdown]
@@ -974,7 +968,7 @@ show_attention_patterns(
 
 #%% # run normal ablation experiments
 num_templates = 10  # len(ABBA_TEMPLATES)
-template_type = "BABA"
+template_type = "ABBA"
 if template_type == "ABBA":
     templates = ABBA_TEMPLATES[:num_templates]
 elif template_type == "BABA":
@@ -1093,21 +1087,19 @@ template_prompts = [
     for i in range(len(templates))
 ]
 
-for ablate_calibration in [
+circuit = CIRCUIT.copy()
+
+for ablate_negative in [
     False,
     True,
 ]:
     ld_data = []
-    score_data = []
-    probs_data = []
-    sprobs_data = []
-    io_logits_data = []
-    s_logits_data = []
     for template_idx in tqdm(range(num_templates)):
         prompts = template_prompts[template_idx]
         ioi_dataset = IOIDataset(
             prompt_type=template_type, N=N, symmetric=False, prompts=prompts
         )
+        abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
         assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
         assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
         for key in ioi_dataset.sem_tok_idx.keys():
@@ -1117,172 +1109,27 @@ for ablate_calibration in [
             ), f"{key} {ioi_dataset.sem_tok_idx[key]}"
             # check that semantic ablation = normal ablation
 
-        model.reset_hooks()  # TODO find other instances of model deletion
-
-        seq_len = ioi_dataset.toks.shape[1]
-        head_indices_to_ablate = {
-            (i % 12, i // 12): [
-                list(range(seq_len)) for _ in range(len(ioi_dataset.text_prompts))
-            ]
-            for i in range(12 * 12)
-        }
-
-        mlp_indices_to_ablate = [[] for _ in range(model.cfg["n_heads"])]
-
-        for head in [
-            (0, 1),
-            (0, 10),
-            (3, 0),
-        ]:
-            head_indices_to_ablate[head] = [
-                i for i in range(seq_len) if i != ioi_dataset.sem_tok_idx["S2"][0]
-            ]
-
-        for head in [
-            (4, 11),
-            (2, 2),
-            (2, 9),
-        ]:
-            head_indices_to_ablate[head] = [
-                i
-                for i in range(seq_len)
-                if i
-                not in [
-                    ioi_dataset.sem_tok_idx["S"][0],
-                    ioi_dataset.sem_tok_idx["and"][0],
-                ]
-            ]
-
-        for head in [
-            (5, 8),
-            (5, 9),
-            (5, 5),
-            (6, 9),
-        ]:
-            head_indices_to_ablate[head] = [
-                i for i in range(seq_len) if i not in [ioi_dataset.sem_tok_idx["S2"][0]]
-            ]
-
-        end_heads = [
-            (7, 3),
-            (7, 9),
-            (8, 6),
-            (8, 10),
-            (9, 6),
-            (9, 9),
-            (10, 0),
-        ]
-
-        if not ablate_calibration:
-            end_heads += [(10, 7), (11, 12)]
-
-        for head in end_heads:
-            head_indices_to_ablate[head] = [
-                i
-                for i in range(seq_len)
-                if i not in [ioi_dataset.sem_tok_idx["end"][0]]
-            ]
-
-        # define the ablation function for ALL parts of the model at once
-        def ablation(z, mean, hook):
-            layer = int(hook.name.split(".")[1])
-            head_idx = hook.ctx["idx"]
-            head = (layer, head_idx)
-
-            if "mlp_out" in hook.name:
-                # ablate the relevant parts
-                for i in range(z.shape[0]):
-                    z[i, mlp_indices_to_ablate[layer]] = mean[
-                        i, mlp_indices_to_ablate[layer]
-                    ].to(z.device)
-
-            if (
-                "attn.hook_result" in hook.name
-            ):  # and (layer, head) not in heads_to_keep:
-                # ablate
-                assert (
-                    len(z.shape) == 3
-                ), z.shape  # we specifically get sent the relevant head
-                assert 12 not in list(
-                    z.shape
-                ), "Yikes, probably dim kept back is wrong, should be head dim"
-
-                # see above
-                for i in range(z.shape[0]):
-                    z[i, head_indices_to_ablate[head]] = mean[
-                        i, head_indices_to_ablate[head]
-                    ].to(z.device)
-
-            return z
-
-        ld_metric = ExperimentMetric(
-            metric=logit_diff_target, dataset=ioi_dataset, relative_metric=False
-        )
-        score_metric = ExperimentMetric(
-            metric=score, dataset=ioi_dataset, relative_metric=False
-        )
-        ld_metric.set_baseline(model)
-        score_metric.set_baseline(model)
-        probs_metric = ExperimentMetric(
-            metric=io_probs, dataset=ioi_dataset, relative_metric=False
-        )
-        probs_metric.set_baseline(model)
-        sprobs_metric = ExperimentMetric(
-            metric=lambda x, y: io_probs(x, y, mode="S"),
-            dataset=ioi_dataset,
-            relative_metric=False,
-        )
-        sprobs_metric.set_baseline(model)
-        io_logits_metric = ExperimentMetric(
-            metric=lambda x, y: logit_diff_target(x, y, all=True)[0],
-            dataset=ioi_dataset,
-            relative_metric=False,
-        )
-        io_logits_metric.set_baseline(model)
-        s_logits_metric = ExperimentMetric(
-            metric=lambda x, y: logit_diff_target(x, y, all=True)[1],
-            dataset=ioi_dataset,
-            relative_metric=False,
-        )
-        s_logits_metric.set_baseline(model)
-
-        config = AblationConfig(
-            abl_type="custom",
-            abl_fn=ablation,
-            mean_dataset=ioi_dataset.text_prompts,
-            target_module="attn_head",
-            head_circuit="result",
-            cache_means=True,
-            verbose=True,
-        )
-
-        abl = EasyAblation(
-            model, config, ld_metric
-        )  # , semantic_indices=ioi_dataset.sem_tok_idx) # semantic indices should not be necessary
+        model.reset_hooks()
+        ld_initial = logit_diff(model, ioi_dataset)
 
         model.reset_hooks()
-        for layer in range(12):
-            for head in range(12):
-                model.add_hook(*abl.get_hook(layer, head))
-            model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
-        # compute a bunch of datasets
-        ld = ld_metric.compute_metric(model)
-        ld_data.append((ld_metric.baseline, ld))
-        cur_score = score_metric.compute_metric(model)
-        score_data.append((score_metric.baseline, cur_score))
-        cur_probs = probs_metric.compute_metric(model)
-        probs_data.append((probs_metric.baseline, cur_probs))
+        heads_to_keep = get_heads_circuit(
+            ioi_dataset,
+            circuit=circuit,
+            excluded_classes=["negative"] if ablate_negative else [],
+        )
 
-        s_probs = sprobs_metric.compute_metric(
-            model
-        )  # s probs is like 0.003 for most ablate calibration heads # or is is that low
-        # print(f"{s_probs=}")
-        sprobs_data.append((sprobs_metric.baseline, s_probs))
-        io_logits = io_logits_metric.compute_metric(model)
-        io_logits_data.append((io_logits_metric.baseline, io_logits))
-        s_logits = s_logits_metric.compute_metric(model)
-        s_logits_data.append((s_logits_metric.baseline, s_logits))
+        model, abl = do_circuit_extraction(
+            model=model,
+            ioi_dataset=ioi_dataset,
+            heads_to_keep=heads_to_keep,
+            mlps_to_remove={},
+            mean_dataset=abca_dataset,
+        )
+
+        ld_final = logit_diff(model, ioi_dataset)
+        ld_data.append((ld_initial, ld_final))
 
     xs = [ld_data[i][0].item() for i in range(num_templates)]
     ys = [ld_data[i][1].item() for i in range(num_templates)]
@@ -1305,7 +1152,7 @@ for ablate_calibration in [
         y=y_label,
         hover_data=["sentence"],
         text="beg",
-        title=f"Change in logit diff when {ablate_calibration=}",
+        title=f"Change in logit diff when {ablate_negative=}",
     ).show()
 #%% # let's check that the circuit isn't changing relative to which template we are using
 
@@ -1338,13 +1185,13 @@ for template_idx in tqdm(range(num_templates)):
         ), f"{key} {ioi_dataset.sem_tok_idx[key]}"
         # check that semantic ablation = normal ablation
 
-    vals = writing_direction_heatmap(
+    attn_vals, mlp_vals = writing_direction_heatmap(
         model,
         ioi_dataset,
         title=f"Writing Direction Heatmap for {template_idx}",
         return_vals=True,
     )
-    three_d[template_idx] = vals
+    three_d[template_idx] = attn_vals
     continue
 show_pp(three_d, animate_axis=0, title="Writing Direction Heatmap for all templates")
 
@@ -1358,15 +1205,7 @@ ld = logit_diff_target(model, ioi_dataset[:N], all=True)
 from ioi_circuit_extraction import turn_keep_into_rmv, list_diff
 
 # %% # sanity check
-
-from ioi_circuit_extraction import (
-    process_heads_and_mlps,
-    get_circuit_replacement_hook,
-    do_circuit_extraction,
-    turn_keep_into_rmv,
-)
-
-if False:
+if True:  # I think this is some test
     type(ioi_dataset)
     old_ld = logit_diff_target(model, ioi_dataset[:N])
     model, abl_cricuit_extr = do_circuit_extraction(
@@ -1392,7 +1231,7 @@ if False:
         target_module="attn_head",
         head_circuit="result",
         cache_means=True,
-    )  #  abl_fn=mean_at_end) # mean_dataset=owb_seqs, target_module="mlp", head_circuit="result", cache_means=True, verbose=True)
+    )
     abl = EasyAblation(
         model,
         config,
@@ -1406,7 +1245,7 @@ if False:
 
 
 #%%
-def score_metric(model, ioi_dataset, k=1, target_dataset=None, all=False):
+def score_target(model, ioi_dataset, k=1, target_dataset=None, all=False):
     if target_dataset is None:
         target_dataset = ioi_dataset
     text_prompts = ioi_dataset.text_prompts
@@ -1476,7 +1315,7 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
 
 # %%  Running circuit extraction
 
-from ioi_utils import (
+from ioi_circuit_extraction import (
     join_lists,
     CIRCUIT,
     RELEVANT_TOKENS,
@@ -1490,7 +1329,7 @@ mlps_to_keep = {}
 
 model.reset_hooks()
 old_ld, old_std = logit_diff_target(model, ioi_dataset, all=True, std=True)
-old_score = score_metric(model, ioi_dataset)
+old_score = score_target(model, ioi_dataset)
 model.reset_hooks()
 model, _ = do_circuit_extraction(
     mlps_to_remove={},  # we have to keep every mlps
@@ -1501,7 +1340,7 @@ model, _ = do_circuit_extraction(
 )
 
 ldiff, std = logit_diff_target(model, ioi_dataset, std=True, all=True)
-score = score_metric(model, ioi_dataset)  # k=K ??
+score = score_target(model, ioi_dataset)  # k=K ??
 
 # %%
 print(f"Logit difference = {ldiff.mean().item()} +/- {std}. score={score.item()}")
@@ -1533,6 +1372,7 @@ px.scatter(
     color="misc",
     title=f"Prompt type = {ioi_dataset.prompt_type}",
 )
+
 
 # %%
 for key in ioi_dataset.word_idx:
@@ -1631,7 +1471,7 @@ old_ld, old_std = logit_diff_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
-old_score = score_metric(
+old_score = score_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
 )
 model.reset_hooks()
@@ -1639,7 +1479,7 @@ old_ld_source, old_std_source = logit_diff_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
-old_score_source = score_metric(
+old_score_source = score_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
 )
 model.reset_hooks()
@@ -1660,13 +1500,13 @@ model, _ = do_global_patching(
 ldiff_target, std_ldiff_target = logit_diff_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, std=True, all=True
 )
-score_target = score_metric(
+score_target_result = score_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
 )
 ldiff_source, std_ldiff_source = logit_diff_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, std=True, all=True
 )
-score_source = score_metric(
+score_source = score_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
 )
 # %%
@@ -1677,7 +1517,7 @@ print(
     f"Original logit_diff on SOURCE dataset (no patching yet!) = {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
 )
 print(
-    f"logit_diff on TARGET dataset (*AFTER* patching) = {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target}"
+    f"logit_diff on TARGET dataset (*AFTER* patching) = {ldiff_target.mean()} +/- {std_ldiff_target}. Score {score_target_result}"
 )
 print(
     f"Logit_diff on SOURCE dataset (*AFTER* patching) = {ldiff_source.mean()} +/- {std_ldiff_source}. Score {score_source}"
@@ -1711,3 +1551,55 @@ px.scatter(
     color="misc",
     title=ioi_dataset.prompt_type,
 )
+#%% evidence for the S2 story
+# ablating V for everywhere except S2 barely affects LD. But ablating all V has LD go to almost 0
+from ioi_circuit_extraction import ARTHUR_CIRCUIT, get_extracted_idx, RELEVANT_TOKENS
+
+heads_to_keep = {}
+
+for circuit_class in ARTHUR_CIRCUIT.keys():
+    for head in ARTHUR_CIRCUIT[circuit_class]:
+        heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
+
+model, abl = do_circuit_extraction(
+    model=model,
+    heads_to_keep=heads_to_keep,
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+
+for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
+    # use abl.mean_cache
+    cur_tensor_name = f"blocks.{layer}.attn.hook_v"
+    s2_token_idxs = get_extracted_idx(["S2"], ioi_dataset)
+    mean_cached_values = (
+        abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
+    )
+
+    def s2_v_ablation_hook(
+        z, act, hook
+    ):  # batch, seq, head dim, because get_act_hook hides scary things from us
+        cur_layer = int(hook.name.split(".")[1])
+        cur_head_idx = hook.ctx["idx"]
+
+        assert hook.name == f"blocks.{cur_layer}.attn.hook_v", hook.name
+        assert len(list(z.shape)) == 3, z.shape
+        assert list(z.shape) == list(act.shape), (z.shape, act.shape)
+
+        true_s2_values = z[:, s2_token_idxs, :].clone()
+        z = (
+            mean_cached_values.cuda()
+        )  # hope that we don't see chaning values of mean_cached_values...
+        # z[:, s2_token_idxs, :] = true_s2_values
+
+        return z
+
+    cur_hook = get_act_hook(
+        s2_v_ablation_hook,
+        alt_act=abl.mean_cache[cur_tensor_name],
+        idx=head_idx,
+        dim=2,
+    )
+    model.add_hook(cur_tensor_name, cur_hook)
+
+new_ld = logit_diff(model, ioi_dataset)
