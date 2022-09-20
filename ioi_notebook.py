@@ -556,13 +556,17 @@ scatter_attention_and_contribution(
 # To ensure that the name movers heads are indeed only copying information, we conduct a "check copying circuit" experiment. This means that we only keep the first layer of the transformer and apply the OV circuit of the head and decode the logits from that. Every other component of the transformer is deleted (i.e. zero ablated).
 #
 #%%
-def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
+def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False):
     cache = {}
     model.cache_some(cache, lambda x: x == "blocks.0.hook_resid_post")
     model(ioi_dataset.text_prompts)
+    if neg:
+        sign = -1
+    else:
+        sign = 1
     z_0 = model.blocks[1].ln1(cache["blocks.0.hook_resid_post"])
     v = z_0 @ model.blocks[layer].attn.W_V[head].T + model.blocks[layer].attn.b_V[head]
-    o = torch.einsum("sph,dh->spd", v, model.blocks[layer].attn.W_O[head])
+    o = sign*torch.einsum("sph,dh->spd", v, model.blocks[layer].attn.W_O[head])
     logits = model.unembed(model.ln_final(o))
     k = 5
     n_right = 0
@@ -603,22 +607,25 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False):
                         )
                     )
     percent_right = (n_right / (ioi_dataset.N * 3)) * 100
-    print(f"Copy circuit for head {layer}.{head} : Top {k} accuracy: {percent_right}%")
+    print(f"Copy circuit for head {layer}.{head} (sign={sign}) : Top {k} accuracy: {percent_right}%")
+    return percent_right
 
 
+neg_sign = True
 print(" --- Name Mover heads --- ")
-check_copy_circuit(model, 9, 9, ioi_dataset)
-check_copy_circuit(model, 10, 0, ioi_dataset)
-check_copy_circuit(model, 9, 6, ioi_dataset)
+
+check_copy_circuit(model, 9, 9, ioi_dataset,neg = neg_sign)
+check_copy_circuit(model, 10, 0, ioi_dataset, neg = neg_sign)
+check_copy_circuit(model, 9, 6, ioi_dataset, neg = neg_sign)
 
 print(" --- Calibration heads --- ")
-check_copy_circuit(model, 10, 7, ioi_dataset)
-check_copy_circuit(model, 11, 10, ioi_dataset)
+check_copy_circuit(model, 10, 7, ioi_dataset, neg = neg_sign)
+check_copy_circuit(model, 11, 10, ioi_dataset, neg = neg_sign)
 
 print(" ---  Random heads for control ---  ")
-check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
-check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
-check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset)
+check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset ,neg = neg_sign)
+check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset,neg = neg_sign)
+check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset,neg = neg_sign)
 #%% [markdown]
 # For calibration heads, we observe a reverse trend to name movers, the more is pays attention to a name, the more it write in its *oposite* direction. Why is that?
 # You need to remember the training objective of the transformer: it has to predict accurate probability distribution over all the next tokens.
