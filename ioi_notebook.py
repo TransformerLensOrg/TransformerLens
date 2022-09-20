@@ -1604,7 +1604,7 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
 
 new_ld = logit_diff(model, ioi_dataset)
 #%% # how frequently does the model predict the correct name?
-for i in range(20):
+for i in tqdm(range(1000)):
     ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-    lds = logit_diff(model, ioi_dataset)
-    assert (lds > 0).all()
+    prbs = probs(model, ioi_dataset)
+    print(prbs.mean())

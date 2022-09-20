@@ -59,6 +59,7 @@ from ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
     NAMES,
+    gen_flipped_prompts,
     gen_prompt_uniform,
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
@@ -100,6 +101,7 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
@@ -183,6 +185,7 @@ if run_original:
             heads_to_keep=heads_to_keep,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
         )
         torch.cuda.empty_cache()
         cur_metric_broken_circuit, std_broken_circuit = cur_metric(
@@ -206,6 +209,7 @@ if run_original:
             heads_to_remove=G_heads_to_remove,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
         )
         torch.cuda.empty_cache()
         cur_metric_cobble, std_cobble_circuit = cur_metric(
