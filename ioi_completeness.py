@@ -1,4 +1,5 @@
 #%%
+import warnings
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -159,7 +160,7 @@ from ioi_utils import probs
 run_original = True
 circuit = CIRCUIT.copy()
 
-cur_metric = probs # partial(probs, type="s")
+cur_metric = logit_diff  # partial(probs, type="s")
 
 if run_original:
     circuit_perf = []
@@ -276,6 +277,16 @@ if run_original:
                 ].cur_metric_cobble.std(),
             }
         )
+
+        perf_by_sets[-1]["mean_abs_diff"] = abs(
+            perf_by_sets[-1]["mean_cur_metric_broken"]
+            - perf_by_sets[-1]["mean_cur_metric_cobble"]
+        )
+
+    circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
+    print(
+        f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
+    )
 
     # plot sets
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
@@ -413,7 +424,7 @@ plt.xlabel("Logit diff of broken circuit")
 plt.ylabel("Logit diff of complement of G")
 
 warnings.warn("Increase x lim if plotting logit diffs not probs")
-plt.xlim(-0.01, 0.1) 
+plt.xlim(-0.01, 0.1)
 plt.ylim(-0.01, 0.1)
 plt.show()
 

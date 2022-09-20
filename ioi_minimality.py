@@ -122,7 +122,7 @@ def get_basic_extracted_model(model, ioi_dataset, mean_dataset=None, circuit=cir
         heads_to_keep=heads_to_keep,
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
-        mean_dataset=mean`_dataset,
+        mean_dataset=mean_dataset,
     )
     return model
 
