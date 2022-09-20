@@ -137,9 +137,7 @@ torch.cuda.empty_cache()
 
 metric = logit_diff
 
-circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
-    model, ioi_dataset, std=True
-)
+circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
 circuit_baseline_prob, circuit_baseline_prob_std = probs(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
@@ -173,9 +171,7 @@ for extra_ablate in tqdm(extra_ablate_classes):
             vertices.append((layer, idx))
 
     # compute METRIC(C \ W)
-    heads_to_keep = get_heads_circuit(
-        ioi_dataset, excluded_classes=extra_ablate_subset, circuit=circuit
-    )
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=extra_ablate_subset, circuit=circuit)
     torch.cuda.empty_cache()
 
     model.reset_hooks()
@@ -204,14 +200,10 @@ fig.show()
 #%%
 # METRIC((C \ W) \cup \{ v \})
 
-for i, circuit_class in enumerate(
-    [key for key in circuit.keys() if key in extra_ablate_classes]
-):
+for i, circuit_class in enumerate([key for key in circuit.keys() if key in extra_ablate_classes]):
     results[circuit_class]["vs"] = {}
     for v in tqdm(list(circuit[circuit_class])):
-        new_heads_to_keep = get_heads_circuit(
-            ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
-        )
+        new_heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[circuit_class], circuit=circuit)
         v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
         assert v not in new_heads_to_keep.keys()
         new_heads_to_keep[v] = v_indices
@@ -380,9 +372,7 @@ print(vs, xs)
 #%% # run Alex's experiment
 for i, circuit_class in enumerate(["name mover"]):
     for extra_v in [(11, 9), (9, 0)]:
-        new_heads_to_keep = get_heads_circuit(
-            ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
-        )
+        new_heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[circuit_class], circuit=circuit)
         for v in [extra_v] + [(9, 7), (11, 1)]:
             v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
             assert v not in new_heads_to_keep.keys()
@@ -407,16 +397,12 @@ for j in range(2, 4):
     s_positions = ioi_dataset.word_idx["S"]
 
     # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
-    def attention_pattern_modifier(
-        z, hook
-    ):  # batch, seq, head dim, because get_act_hook hides scary things from us
+    def attention_pattern_modifier(z, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
         cur_layer = int(hook.name.split(".")[1])
         cur_head_idx = hook.ctx["idx"]
 
         assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
-        assert (
-            len(list(z.shape)) == 3
-        ), z.shape  # batch, seq (attending_query), attending_key
+        assert len(list(z.shape)) == 3, z.shape  # batch, seq (attending_query), attending_key
 
         prior_stuff = []
 
@@ -425,9 +411,7 @@ for j in range(2, 4):
             # print(prior_stuff[-1].shape, torch.sum(prior_stuff[-1]))
 
         for i in range(-1, 2):
-            z[:, s_positions + i, :] = prior_stuff[
-                (i + j) % 3
-            ]  # +1 is the do nothing one
+            z[:, s_positions + i, :] = prior_stuff[(i + j) % 3]  # +1 is the do nothing one
 
         return z
 

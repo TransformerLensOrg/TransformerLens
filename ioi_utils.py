@@ -28,17 +28,24 @@ def show_tokens(tokens, model, return_list=False):
         print("|".join(text_tokens))
 
 
-def show_pp(m, xlabel="", ylabel="", title="", bartitle="", animate_axis=None):
+def show_pp(
+    m,
+    xlabel="",
+    ylabel="",
+    title="",
+    bartitle="",
+    animate_axis=None,
+    highlight_points=None,
+    highlight_name="",
+    **kwargs,
+):
     """
     Plot a heatmap of the values in the matrix `m`
     """
 
     if animate_axis is None:
         fig = px.imshow(
-            m.T,
-            title=title if title else "",
-            color_continuous_scale="RdBu",
-            color_continuous_midpoint=0,
+            m.T, title=title if title else "", color_continuous_scale="RdBu", color_continuous_midpoint=0, **kwargs
         )
 
     else:
@@ -48,6 +55,7 @@ def show_pp(m, xlabel="", ylabel="", title="", bartitle="", animate_axis=None):
             animation_frame=animate_axis,
             color_continuous_scale="RdBu",
             color_continuous_midpoint=0,
+            **kwargs,
         )
 
     fig.update_layout(
@@ -64,7 +72,23 @@ def show_pp(m, xlabel="", ylabel="", title="", bartitle="", animate_axis=None):
         xaxis_title="",
     )
 
-    fig.update_layout(yaxis_title=ylabel, xaxis_title=xlabel)
+    if highlight_points is not None:
+        fig.add_scatter(
+            x=highlight_points[1],
+            y=highlight_points[0],
+            mode="markers",
+            marker=dict(color="green", size=10, opacity=0.5),
+            name=highlight_name,
+        )
+
+    fig.update_layout(
+        yaxis_title=ylabel,
+        xaxis_title=xlabel,
+        xaxis_range=[-0.5, m.T.shape[0] - 0.5],
+        showlegend=True,
+        legend=dict(x=-0.1),
+    )
+    fig.update_yaxes(range=[m.T.shape[1] - 0.5, -0.5], autorange=False)
     fig.show()
 
 
@@ -84,17 +108,12 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         good_names = [f"blocks.{layer}.attn.hook_attn"]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
-        model.cache_some(
-            cache=cache, names=lambda x: x in good_names
-        )  # shape: batch head_no seq_len seq_len
-
+        model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
 
         logits = model(ioi_dataset.text_prompts)
 
         for i, text in enumerate(ioi_dataset.text_prompts):
-            assert len(list(cache.items())) == 1 + int(mode == "val"), len(
-                list(cache.items())
-            )
+            assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
             toks = model.tokenizer(text)["input_ids"]
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
@@ -188,25 +207,14 @@ def scatter_attention_and_contribution(
             (s_dir, [s1_pos, s2_pos], "S"),
         ]:
             prob = sum(
-                [
-                    cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos]
-                    .detach()
-                    .cpu()
-                    for pos in posses
-                ]
+                [cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos].detach().cpu() for pos in posses]
             )
-            resid = (
-                cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :]
-                .detach()
-                .cpu()
-            )
+            resid = cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :].detach().cpu()
             dot = torch.einsum("a,a->", resid, dire)
             df.append([prob, dot, tok_type, prompt["text"]])
 
     # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(
-        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
-    )
+    viz_df = pd.DataFrame(df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"])
     fig = px.scatter(
         viz_df,
         x=f"Attn Prob on Name",
@@ -274,9 +282,7 @@ def posses(model, ioi_dataset, all=False, std=False):
     """
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
-    end_logits = logits[
-        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :
-    ]  # batch * vocab_size
+    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
 
     positions = torch.argsort(end_logits, dim=1)
     io_positions = positions[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs]
@@ -291,9 +297,7 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
 
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
-    end_logits = logits[
-        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :
-    ]  # batch * vocab_size
+    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
     end_probs = torch.softmax(end_logits, dim=1)
 
     if type == "io":

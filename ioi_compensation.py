@@ -83,25 +83,42 @@ from ioi_circuit_extraction import (
 
 from functools import partial
 
+from ioi_completeness import circuit_from_nodes_logit_diff, get_heads_from_nodes
+
 ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 
 
-def get_heads_from_nodes(nodes, ioi_dataset):
-    heads_to_keep_tok = {}
-    for h, t in nodes:
-        if h not in heads_to_keep_tok:
-            heads_to_keep_tok[h] = []
-        if t not in heads_to_keep_tok[h]:
-            heads_to_keep_tok[h].append(t)
+def logit_diff(model, ioi_dataset, logits=None, all=False, std=False):
+    """
+    Difference between the IO and the S logits at the "to" token
+    """
+    if logits is None:
+        text_prompts = ioi_dataset.text_prompts
+        logits = model(text_prompts).detach()
+    L = ioi_dataset.N
+    IO_logits = logits[
+        torch.arange(L),
+        ioi_dataset.word_idx["end"][:L],
+        ioi_dataset.io_tokenIDs[:L],
+    ]
+    S_logits = logits[
+        torch.arange(L),
+        ioi_dataset.word_idx["end"][:L],
+        ioi_dataset.s_tokenIDs[:L],
+    ]
 
-    heads_to_keep = {}
-    for h in heads_to_keep_tok:
-        heads_to_keep[h] = get_extracted_idx(heads_to_keep_tok[h], ioi_dataset)
-
-    return heads_to_keep
+    if all and not std:
+        return (IO_logits - S_logits).detach().cpu()
+    if std:
+        if all:
+            first_bit = (IO_logits - S_logits).detach().cpu()
+        else:
+            first_bit = (IO_logits - S_logits).mean().detach().cpu()
+        return first_bit, torch.std(IO_logits - S_logits).detach().cpu()
+    return (IO_logits - S_logits).mean().detach().cpu()
 
 
 # %%
@@ -121,6 +138,97 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
 # %%
 
+CIRCUIT = {
+    "name mover": [
+        (9, 0),
+        (9, 6),  # ori
+        (9, 7),
+        (9, 9),  # ori
+        (10, 0),  # ori
+        (10, 1),
+        (10, 2),  # ~
+        (10, 6),
+        (10, 10),
+        (11, 1),  # ~
+        (11, 6),  # ~
+        (11, 9),  # ~
+    ],
+    "negative": [(10, 7), (11, 10), (11, 2)],
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "duplicate token": [(0, 1), (0, 10), (3, 0)],
+    "previous token": [(2, 2), (2, 9), (4, 11)],
+}
+
+
+RELEVANT_TOKENS = {}
+for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
+    RELEVANT_TOKENS[head] = ["end"]
+
+for head in CIRCUIT["induction"]:
+    RELEVANT_TOKENS[head] = ["S2"]
+
+for head in CIRCUIT["duplicate token"]:
+    RELEVANT_TOKENS[head] = ["S2"]
+
+for head in CIRCUIT["previous token"]:
+    RELEVANT_TOKENS[head] = ["S+1", "and"]
+
+
+ALL_NODES = []  # a node is a tuple (head, token)
+for h in RELEVANT_TOKENS:
+    for tok in RELEVANT_TOKENS[h]:
+        ALL_NODES.append((h, tok))
+
+
+def update_nm(new_nms, reset=False):
+    global CIRCUIT, ALL_NODES, RELEVANT_TOKENS
+    if reset:
+        new_nms = [
+            (9, 0),  ###
+            (9, 6),  # ori ###
+            (9, 7),  ###
+            (9, 9),  # ori  ###
+            (10, 0),  # ori
+            (10, 1),  ###
+            (10, 2),  # ~ ###
+            (10, 6),  ###
+            (10, 10),  ###
+            (11, 1),  # ~ ###
+            (11, 6),  # ~ negative h
+            (11, 9),  # ~ ###
+            (11, 2),  ###10
+        ]
+    CIRCUIT = {
+        "name mover": new_nms.copy(),  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
+        "negative": [
+            (10, 7),
+            (11, 10),
+        ],
+        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+        "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+        "duplicate token": [(0, 1), (0, 10), (3, 0)],
+        "previous token": [(2, 2), (2, 9), (4, 11)],
+    }
+
+    RELEVANT_TOKENS = {}
+    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
+        RELEVANT_TOKENS[head] = ["end"]
+
+    for head in CIRCUIT["induction"]:
+        RELEVANT_TOKENS[head] = ["S2"]
+
+    for head in CIRCUIT["duplicate token"]:
+        RELEVANT_TOKENS[head] = ["S2"]
+
+    for head in CIRCUIT["previous token"]:
+        RELEVANT_TOKENS[head] = ["S+1", "and"]
+
+    ALL_NODES = []  # a node is a tuple (head, token)
+    for h in RELEVANT_TOKENS:
+        for tok in RELEVANT_TOKENS[h]:
+            ALL_NODES.append((h, tok))
+
 
 def writing_direction_heatmap(
     model,
@@ -130,6 +238,8 @@ def writing_direction_heatmap(
     dir_mode="IO - S",
     unembed_mode="normal",  # or "Neel"
     title="",
+    highlight_heads=None,
+    highlight_name="",
 ):
     """
     Plot the dot product between how much each attention head
@@ -137,8 +247,8 @@ def writing_direction_heatmap(
     the (correct) IO token and the incorrect S token
     """
 
-    n_heads = model.cfg.n_heads
-    n_layers = model.cfg.n_layers
+    n_heads = model.cfg["n_heads"]
+    n_layers = model.cfg["n_layers"]
 
     model_unembed = (
         model.unembed.W_U.detach().cpu()
@@ -156,6 +266,7 @@ def writing_direction_heatmap(
     model.cache_all(cache)  # TODO maybe speed up by only caching relevant things
 
     logits = model(ioi_dataset.text_prompts)
+    ld, std = logit_diff(model, ioi_dataset, logits=logits, std=True, all=False)
 
     for i in range(ioi_dataset.N):
         io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
@@ -173,50 +284,215 @@ def writing_direction_heatmap(
 
         for lay in range(n_layers):
             if mode == "attn_out":
-                cur = cache[f"blocks.{lay}.attn.hook_result"][
-                    i, ioi_dataset.word_idx["end"][i], :, :
-                ]
+                cur = cache[f"blocks.{lay}.attn.hook_result"][i, ioi_dataset.word_idx["end"][i], :, :]
             elif mode == "mlp":
                 cur = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :]
             vals[:, lay] += torch.einsum("ha,a->h", cur.cpu(), dire.cpu())
 
     vals /= N
-    show_pp(vals, xlabel="head no", ylabel="layer no", title=title)
+    vals /= cache["ln_final.hook_scale"][range(ioi_dataset.N), ioi_dataset.word_idx["end"][i]].mean().cpu()
+    show_pp(
+        vals,
+        xlabel="head no",
+        ylabel="layer no",
+        title=title + f" Logit diff: {ld:.2f} +/- {std:.2f}",
+        highlight_points=highlight_heads,
+        highlight_name=highlight_name,
+    )
     if return_vals:
         return vals
 
+
+# %% check if we see distributed name movers
 
 model.reset_hooks()
 model, _ = do_circuit_extraction(
     model=model,
     heads_to_remove=get_heads_from_nodes(
-        [
-            ((9, 6), "end"),
-            ((9, 9), "end"),
-            ((10, 0), "end"),
-            ((10, 10), "end"),
-            ((10, 6), "end"),
-            ((10, 2), "end"),
-            ((11, 3), "end"),
-            ((10, 8), "end"),
-        ],
-        ioi_dataset,
+        [((10, 7), "end"), ((11, 10), "end"), ((10, 0), "end"), ((9, 6), "end"), ((9, 9), "end")], ioi_dataset
     ),
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
 )
 
+mtx = writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    mode="attn_out",
+    dir_mode="IO - S",
+    return_vals=True,
+    title="Attention head output into IO - S token unembedding (GPT2). Neg Heads and NM KO",
+)
+mtx_flat = mtx.flatten()
+all_sorted_idx = np.abs(mtx_flat).argsort()
+for i in range(20):
+    x, y = np.unravel_index(all_sorted_idx[-i - 1], mtx.shape)
+    print(mtx_flat[all_sorted_idx[-i - 1]], (y, x))
+
+
+# %%
+
+model.reset_hooks()
+writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    mode="attn_out",
+    dir_mode="IO - S",
+    title="Attention head output into IO - S token unembedding (GPT2) WT",
+)
+
+
+J = [
+    # ((9, 6), "end"),
+    # ((9, 9), "end"),
+    # ((10, 0), "end"),
+    # ((10, 10), "end"),
+    # ((10, 6), "end"),
+    # ((10, 2), "end"),
+    # ((11, 2), "end"),
+    # ((10, 1), "end"),
+    # ((11, 6), "end"),
+    # ((11, 9), "end"),
+    # ((11, 1), "end"),
+    # ((9, 7), "end"),
+    # ((9, 0), "end"),
+    # ((11, 3), "end"),
+    # ((10, 7), "end"),  # neg head
+    # ((11, 10), "end"),  # neg head
+    # legible name movers
+    ((9, 6), "end"),
+    ((9, 9), "end"),
+    ((10, 0), "end"),
+    ((10, 10), "end"),
+    ((10, 6), "end"),
+    ((10, 1), "end"),
+    ((9, 0), "end"),
+    ((10, 2), "end"),  # ~
+    ((11, 2), "end"),  # ~
+    ((11, 6), "end"),  # ~
+    ((11, 9), "end"),  # ~
+    ((11, 1), "end"),  # ~
+    ((9, 7), "end"),  # todo
+    ((10, 9), "end"),  # todo
+]
+
+J_heads = [j[0] for j in J]
+
+to_highlight = [[j[0] for j in J_heads], [j[1] for j in J_heads]]
+
+update_nm(J_heads)
+J = []
+C_minus_J = list(set(ALL_NODES.copy()) - set(J.copy()))
+
+model.reset_hooks()
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_keep=get_heads_from_nodes(C_minus_J, ioi_dataset),  # C\J
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+
+
 # model.reset_hooks()
-dir_val = writing_direction_heatmap(
+dir_val_C_m_J = writing_direction_heatmap(
     model,
     ioi_dataset,
     return_vals=True,
     mode="attn_out",
     dir_mode="IO - S",
-    title="Attention head output into IO - S token unembedding (GPT2)",
+    title="Attention head output into IO - S token unembedding (GPT2) C",
+)
+
+model.reset_hooks()
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_remove=get_heads_from_nodes(J, ioi_dataset),  # M\J
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+dir_val_M_m_J = writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    return_vals=True,
+    mode="attn_out",
+    dir_mode="IO - S",
+)
+
+show_pp(
+    dir_val_M_m_J - dir_val_C_m_J,
+    xlabel="head no",
+    ylabel="layer no",
+    title="Difference IO-S writting matrices between M and C",
+    highlight_points=to_highlight,
+    highlight_name="Name movers",
 )
 
 # %% compensation mecanism exploration plot h(R + k*(IO-S)) vs R + k*(IO-S)
+
+J = []
+
+for IT in range(14):
+
+    J_heads = [j[0] for j in J]
+
+    to_highlight = [[j[0] for j in J_heads], [j[1] for j in J_heads]]
+
+    update_nm(J_heads)
+
+    C_minus_J = list(set(ALL_NODES.copy()) - set(J.copy()))
+
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=get_heads_from_nodes(C_minus_J, ioi_dataset),  # C\J
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+
+    # model.reset_hooks()
+    dir_val_C_m_J = writing_direction_heatmap(
+        model,
+        ioi_dataset,
+        return_vals=True,
+        mode="attn_out",
+        dir_mode="IO - S",
+        title="Attention head output into IO - S token unembedding (GPT2) C",
+    )
+
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_remove=get_heads_from_nodes(J, ioi_dataset),  # M\J
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+
+    dir_val_M_m_J = writing_direction_heatmap(
+        model,
+        ioi_dataset,
+        return_vals=True,
+        mode="attn_out",
+        dir_mode="IO - S",
+    )
+
+    diff = (dir_val_M_m_J - dir_val_C_m_J).numpy()
+    show_pp(
+        diff,
+        xlabel="head no",
+        ylabel="layer no",
+        title="Difference IO-S writting matrices between M and C",
+        highlight_points=to_highlight,
+        highlight_name="selected so far",
+    )
+
+    head, layer = np.where(diff == diff.max())
+    head = int(head[0])
+    layer = int(layer[0])
+
+    J.append(((layer, head), "end"))
+
+
+# %%
 
 
 def compensation_plot(
@@ -231,9 +507,12 @@ def compensation_plot(
     output with `IO-S`, the difference between the unembeds between
     the (correct) IO token and the incorrect S token
     """
+    assert layer_to_get is None or type(layer_to_get) == int or layer_to_get == "final_logit_diff"
 
-    n_heads = model.cfg.n_heads
-    n_layers = model.cfg.n_layers
+    if layer_to_get == "final_logit_diff":
+        n_heads = 1
+    else:
+        n_heads = model.cfg["n_heads"]
 
     model_unembed = (
         model.unembed.W_U.detach()
@@ -241,12 +520,8 @@ def compensation_plot(
 
     io_dir = model_unembed[ioi_dataset.io_tokenIDs]
     s_dir = model_unembed[ioi_dataset.s_tokenIDs]
-    random_dir1 = model_unembed[
-        np.random.randint(0, model_unembed.shape[0], size=ioi_dataset.N)
-    ]
-    random_dir2 = model_unembed[
-        np.random.randint(0, model_unembed.shape[0], size=ioi_dataset.N)
-    ]
+    random_dir1 = model_unembed[np.random.randint(0, model_unembed.shape[0], size=ioi_dataset.N)]
+    random_dir2 = model_unembed[np.random.randint(0, model_unembed.shape[0], size=ioi_dataset.N)]
 
     IO_m_S_dirs = io_dir - s_dir  # random_dir2 - random_dir1
 
@@ -257,7 +532,7 @@ def compensation_plot(
     else:
         layer_to_get = layer_to_get
     cache = {}
-    model.cache_some(cache, lambda x: x == f"blocks.{layer_to_get}.attn.hook_result")
+    model.cache_some(cache, lambda x: x in [f"blocks.{layer_to_get}.attn.hook_result", "ln_final.hook_scale"])
     for K in K_values:
 
         for hp in model.hook_points():
@@ -266,9 +541,7 @@ def compensation_plot(
 
         def write_IO_m_S_in_resid(z, hook):
             """Add the IO - S direction to the residual. Shape of z is (batch, seq_len, embed_dim)"""
-            z[:, ioi_dataset.word_idx["end"], :] = (
-                z[:, ioi_dataset.word_idx["end"], :] + K * IO_m_S_dirs
-            )
+            z[:, ioi_dataset.word_idx["end"], :] = z[:, ioi_dataset.word_idx["end"], :] + K * IO_m_S_dirs
             return z
 
         # model.cache_all(cache)
@@ -279,32 +552,27 @@ def compensation_plot(
             reset_hooks_start=False,
             reset_hooks_end=False,
         )
-        head_out = cache[f"blocks.{layer_to_get}.attn.hook_result"][
-            range(ioi_dataset.N), ioi_dataset.word_idx["end"], :, :
-        ]  # keep only the end token
-        vals = (
-            torch.einsum("bhd,bd->bh", head_out, IO_m_S_dirs)
-            .mean(dim=0)
-            .detach()
-            .cpu()
-            .numpy()
-        )
-        vals_k.append(vals)
+
+        if layer_to_get == "final_logit_diff":
+            ld = logit_diff(model, ioi_dataset, logits)
+            final_layer_norm_scaling = cache["ln_final.hook_scale"][0, -1].item()
+            vals_k.append(ld * final_layer_norm_scaling)
+        else:
+            head_out = cache[f"blocks.{layer_to_get}.attn.hook_result"][
+                range(ioi_dataset.N), ioi_dataset.word_idx["end"], :, :
+            ]  # keep only the end token
+            vals = torch.einsum("bhd,bd->bh", head_out, IO_m_S_dirs).mean(dim=0).detach().cpu().numpy()
+            vals_k.append(vals)
 
     vals_k = np.array(vals_k)
-    df = pd.DataFrame(
-        vals_k,
-        index=K_values,
-        columns=[f"Head {layer_to_get}.{h}" for h in range(n_heads)],
-    )
+    df = pd.DataFrame(vals_k, index=K_values, columns=[f"Head {layer_to_get}.{h}" for h in range(n_heads)])
     df.index.name = "K"
 
     fig = px.line(df)
     fig.update_layout(
-        title=f"Heads from Layer {layer_to_get} writting in the (IO-S) direction vs k*(IO-S) in resid {layer}"
-        + title,
+        title=f"Heads from Layer {layer_to_get} writting in the (IO-S) direction vs k*(IO-S) in resid {layer}" + title,
         xaxis_title=f"k",
-        yaxis_title="H(R + k*(IO-S)).IO-S",
+        yaxis_title="H(R + k*(IO-S)).IO-S" if layer_to_get != "final_logit_diff" else "logit diff (pre final LN)",
     )
     fig.show()
 
@@ -314,6 +582,7 @@ model, _ = do_circuit_extraction(
     model=model,
     heads_to_remove=get_heads_from_nodes(
         [
+            ((9, 0), "end"),
             ((9, 6), "end"),
             ((9, 9), "end"),
             ((10, 0), "end"),
@@ -323,13 +592,230 @@ model, _ = do_circuit_extraction(
             ((11, 3), "end"),
             ((11, 2), "end"),
             ((10, 1), "end"),
+            ((10, 7), "end"),
+            ((10, 7), "end"),
+            ((11, 10), "end"),
         ],
         ioi_dataset,
     ),
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
 )
-for l in [10, 11]:
-    compensation_plot(model, ioi_dataset, layer=l, layer_to_get=l)
+
+compensation_plot(model, ioi_dataset, layer=9, layer_to_get="final_logit_diff")
+
+# %% Open web text example finding
+webtext = load_dataset("stas/openwebtext-10k")
+
+max_nb_tok = 100
+nb_seq = 1000
+owt_seqs = [webtext["train"]["text"][i][:2000] for i in range(nb_seq)]
+
+# %%
+def get_gray_scale(val, min_val, max_val):
+    max_col = 255
+    min_col = 232
+    max_val = max_val
+    min_val = min_val
+    val = val
+    return int(min_col + ((max_col - min_col) / (max_val - min_val)) * (val - min_val))
+
+
+def print_toks_with_color(toks, color, show_low=False, show_high=False, show_all=False):
+    min_v = min(color)
+    max_v = max(color)
+    for i, t in enumerate(toks):
+        c = get_gray_scale(color[i], min_v, max_v)
+        text_c = 232 if c > 240 else 255
+        show_value = show_all
+        if show_low and c < 232 + 5:
+            show_value = True
+        if show_high and c > 255 - 5:
+            show_value = True
+
+        if show_value:
+            if len(str(np.round(color[i], 2)).split(".")) > 1:
+                val = str(np.round(color[i], 2)).split(".")[0] + "." + str(np.round(color[i], 2)).split(".")[1][:2]
+            else:
+                val = str(np.round(color[i], 2))
+            print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}({val})\033[0;0m", end="")
+        else:
+            print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}\033[0;0m", end="")
+
+
+def find_owt_stimulus(model, owt_sentences, l, h):
+    cache = {}
+    model.cache_some(cache, lambda x: x in [f"blocks.{l}.attn.hook_result"], device="cpu")
+    toks = model.tokenizer(owt_sentences, padding=False).input_ids
+    print_gpu_mem("pre run")
+
+    prod = []
+    for i, sentence in tqdm(enumerate(owt_sentences)):
+        model([sentence])
+        # print_gpu_mem("post run")
+        n_seq = len(owt_sentences)
+        attn_result = cache[f"blocks.{l}.attn.hook_result"][0, :-1, h, :].cpu()  # nb seq, seq_len-1, embed dim
+
+        model_unembed = (
+            model.unembed.W_U.detach().cpu()
+        )  # note that for GPT2 embeddings and unembeddings are tided such that W_E = Transpose(W_U)
+
+        next_tok = toks[i][1:]  # nb_seq, seq_len-1
+        next_tok_dir = model_unembed[next_tok]  # nb_seq, seq_len-1, dim
+        # print(next_tok_dir.shape, attn_result.shape)
+        prod.append(torch.einsum("hd,hd->h", attn_result, next_tok_dir).detach().cpu().numpy())
+    print_gpu_mem("post run")
+
+    min_prod = np.array([np.min(prod[i]) for i in range(len(prod))])
+    max_prod = np.array([np.max(prod[i]) for i in range(len(prod))])
+
+    # select 5 sequence with max and min prod values
+    max_seq_idx = np.argsort(max_prod, axis=0)[-5:]
+    min_seq_idx = np.argsort(min_prod, axis=0)[:5]
+
+    # print(max_seq_idx)
+
+    max_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in max_seq_idx]
+    min_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in min_seq_idx]
+    max_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in max_seq_idx]
+    min_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in min_seq_idx]
+
+    print("\033[2;31;43m MAX ACTIVATION \033[0;0m")
+
+    for seq_nb, s in enumerate(max_seq):
+        # print(len(s), len(max_seq_vals[seq_nb]))
+        print_toks_with_color(s, max_seq_vals[seq_nb], show_high=True)
+        print("\n=========================\n")
+
+    print("\033[2;31;43m Min ACTIVATION \033[0;0m")
+
+    for seq_nb, s in enumerate(min_seq):
+        print_toks_with_color(s, min_seq_vals[seq_nb], show_low=True)
+        print("\n=========================\n")
+
+    # return max_seq, min_seq
+
+
+find_owt_stimulus(model, owt_seqs, 11, 1)
+# %%
+import torch.nn.functional as F
+
+
+def get_per_token_loss(model, seqs):
+    toks = model.tokenizer(seqs, padding=False).input_ids
+    all_losses = []
+    for i, sentence in tqdm(enumerate(seqs)):
+        logits = model(sentence)
+        next_tok = toks[i][1:]  # nb_seq, seq_len-1
+        log_probs = F.log_softmax(logits, dim=-1).cpu()
+        pred_log_probs = log_probs[0, range(len(next_tok)), next_tok]
+        all_losses.append(np.concatenate([-pred_log_probs.detach().cpu().numpy(), np.array([0])]))
+    return all_losses
+
+
+update_nm(None, reset=True)
+
+all_losses_M = get_per_token_loss(model, owt_seqs[100:])
+print_toks_with_color(show_tokens(owt_seqs[0], model, return_list=True), all_losses[0], show_high=True)
+
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_keep=get_heads_from_nodes(
+        ALL_NODES,
+        ioi_dataset,
+    ),
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+all_losses_C = get_per_token_loss(model, owt_seqs[100:])
+
+
+# %%
+
+
+def get_head_param(model, module, layer, head):
+    if module == "OV":
+        W_v = model.blocks[layer].attn.W_V[head]
+        W_o = model.blocks[layer].attn.W_O[head]
+        W_ov = torch.einsum("hd,bh->db", W_v, W_o)
+        return W_ov
+    if module == "QK":
+        W_k = model.blocks[layer].attn.W_K[head]
+        W_q = model.blocks[layer].attn.W_Q[head]
+        W_qk = torch.einsum("hd,hb->db", W_q, W_k)
+        return W_qk
+    if module == "Q":
+        W_q = model.blocks[layer].attn.W_Q[head]
+        return W_q
+    if module == "K":
+        W_k = model.blocks[layer].attn.W_K[head]
+        return W_k
+    if module == "V":
+        W_v = model.blocks[layer].attn.W_V[head]
+        return W_v
+    if module == "O":
+        W_o = model.blocks[layer].attn.W_O[head]
+        return W_o
+    raise ValueError(f"module {module} not supported")
+
+
+def compute_composition(model, l1, h1, l2, h2, module_1, module_2):
+    W_1 = get_head_param(model, module_1, l1, h1).detach()
+    W_2 = get_head_param(model, module_2, l2, h2).detach()
+    W_12 = torch.einsum("db,bc->dc", W_2, W_1)
+    comp_score = torch.norm(W_12) / (torch.norm(W_1) * torch.norm(W_2))
+
+    return comp_score.cpu().numpy()
+
+
+def test_composition_layers(model, l1, h1, l2, h2, module_1, module_2):
+
+    n_heads = model.cfg["n_heads"]
+    scores = []
+    for h_a in range(n_heads):
+        for h_b in range(n_heads):
+            print(f"head {h_a} vs {h_b}")
+            if h_a == h1 and h_b == h2:
+                interaction_idx = idx
+            scores.append(compute_composition(model, l1, h_a, l2, h_b, module_1, module_2))
+            idx += 1
+    print(
+        f"Interaction is the {np.count_nonzero(np.array(scores) > scores[interaction_idx])}th most important interaction"
+    )
+
+
+def plot_composition(model, targ_l, targ_h, targ_module, test_module):
+    n_heads = model.cfg["n_heads"]
+    n_layers = model.cfg["n_layers"]
+
+    shape1 = get_head_param(model, targ_module, targ_l, targ_h).detach().cpu().numpy().shape
+    shape2 = get_head_param(model, test_module, 0, 0).detach().cpu().numpy().shape
+    # sample 10 random matrices and compute the baseline composition score
+    baseline_scores = []
+    for _ in range(10):
+        W_1 = np.random.randn(*shape1)
+        W_2 = np.random.randn(*shape2)
+        W_12 = np.einsum("db,bc->dc", W_2, W_1)
+        comp_score = np.linalg.norm(W_12) / (np.linalg.norm(W_1) * np.linalg.norm(W_2))
+        baseline_scores.append(comp_score)
+    baseline_score = np.mean(baseline_scores)
+
+    scores = np.zeros((targ_l, n_heads))
+    for l in range(targ_l):
+        for h in range(n_heads):
+            scores[l, h] = compute_composition(model, l, h, targ_l, targ_h, test_module, targ_module) - baseline_score
+    fig = px.imshow(
+        scores,
+        title=f"Composition from {test_module} to {targ_module} of {targ_l}.{targ_h}",
+        color_continuous_scale="RdBu",
+        color_continuous_midpoint=0,
+    )
+    fig.update_layout(
+        xaxis_title="Head",
+        yaxis_title="Layer",
+    )
+    fig.show()
+    return scores
+
 
 # %%
