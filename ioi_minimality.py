@@ -174,6 +174,8 @@ print(f"{circuit_baseline_diff=}, {circuit_baseline_diff_std=}")
 print(f"{circuit_baseline_prob=}, {circuit_baseline_prob_std=}")
 print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
 print(f"{baseline_prob=}, {baseline_prob_std=}")
+
+circuit_baseline_diffs = [None, circuit_baseline_diff, ld]
 #%% TODO Explain the way we're doing the minimal circuit experiment here
 all_results = [{}, {}, {}]
 
@@ -206,7 +208,9 @@ for i in range(1, max_ind):
             excluded_heads = []
         elif i == 2:
             heads_to_keep = {}
-            excluded_heads = naive_heads
+            excluded_heads = naive_heads.copy()
+            for head in circuit[class_to_ablate]:
+                excluded_heads.remove(head)
         else:
             raise NotImplementedError()
         torch.cuda.empty_cache()
@@ -279,9 +283,14 @@ for i in range(1, max_ind):
             results[circuit_class]["vs"][v] = metric_calc
             torch.cuda.empty_cache()
 #%%
+circuit_idx = 1
+circuit = circuits[circuit_idx]
+results = all_results[circuit_idx]
+
 xs = []
 initial_ys = []
 final_ys = []
+
 ac = px.colors.qualitative.Dark2
 cc = {
     "name mover": ac[0],
@@ -292,11 +301,12 @@ cc = {
     "previous token": ac[6],
 }
 
-colors = []
+relevant_classes = list(circuit.keys())
+relevant_classes.remove("name mover")
 
 fig = go.Figure()
-
-for j, G in enumerate(list(circuit.keys())):
+colors = []
+for j, G in enumerate(relevant_classes):
     for i, v in enumerate(list(circuit[G])):
         xs.append(str(v))
         initial_ys.append(results[G]["metric_calc"])
@@ -314,38 +324,73 @@ fig.add_trace(
         base=initial_ys,
         marker_color=colors,
         width=[1.0 for _ in range(len(xs))],
+        name="",
     )
 )
 
-for circuit_class in list(circuit.keys()):
+all_vs = []
+
+for circuit_class in relevant_classes:
     vs = circuit[circuit_class]
+    vs_str = [str(v) for v in vs]
+    all_vs.extend(vs_str)
     fig.add_trace(
         go.Scatter(
-            x=circuit[circuit_class],
-            y=[baseline_ldiff for _ in range(len(vs))],
-            # color=px.Constant("This year"),
-            # labels=dict(x="Fruit", y="Amount", color="Time Period"),
+            x=vs_str,
+            y=[results[circuit_class]["metric_calc"] for _ in range(len(vs))],
+            line=dict(color=cc[circuit_class]),
+            name=circuit_class,  # labels=dict(x="vertex", y="metric"),
         )
     )
-    break
+
+fig.add_trace(
+    go.Scatter(
+        x=all_vs,
+        y=[
+            (baseline_prob if metric == probs else baseline_ldiff)
+            for _ in range(len(all_vs))
+        ],
+        name="Baseline model performance",
+        line=dict(color="black"),
+        fill="toself",
+        mode="lines",
+    )
+)
+
+fig.add_trace(
+    go.Scatter(
+        x=all_vs,
+        y=[circuit_baseline_diffs[circuit_idx] for _ in range(len(all_vs))],
+        name="Circuit performance",
+        line=dict(color="blue"),
+        fill="toself",
+        mode="lines",
+    )
+)
+
+fig.update_layout(
+    title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
+    xaxis_title="Attention head",
+    yaxis_title="Average logit diff",
+)
 
 fig.show()
 #%%
-# fig.add_shape(
-#     type="line",
-#     xref="x",
-#     x0=-0.50,  # TODO sort out axl these lines5
-#     x1=8,
-#     yref="y",
-#     y0=baseline_prob if metric == probs else baseline_ldiff,
-#     y1=baseline_prob if metric == probs else baseline_ldiff,
-#     line_width=1,
-#     line=dict(
-#         color="blue",
-#         width=4,
-#         dash="dashdot",
-#     ),
-# )
+fig.add_shape(
+    type="line",
+    xref="x",
+    x0=-0.50,  # TODO sort out axl these lines5
+    x1=8,
+    yref="y",
+    y0=baseline_prob if metric == probs else baseline_ldiff,
+    y1=baseline_prob if metric == probs else baseline_ldiff,
+    line_width=1,
+    line=dict(
+        color="blue",
+        width=4,
+        dash="dashdot",
+    ),
+)
 
 fig.add_trace(
     go.Scatter(
@@ -389,7 +434,7 @@ fig.add_trace(
     )
 )
 
-fig.update_layout(showlegend=False)
+# fig.update_layout(showlegend=False)
 
 fig.update_layout(
     title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
