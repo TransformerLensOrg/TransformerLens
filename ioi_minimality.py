@@ -252,14 +252,6 @@ for i in range(1, max_ind):
 for i in range(1, max_ind):
     results = all_results[i]
     circuit = circuits[i]
-    if i == 1:
-        circuit_name_movers = set(circuit["name mover"])
-        ordered_name_movers_set = set(vertices)
-        assert (
-            circuit_name_movers == ordered_name_movers_set
-        ), f"{circuit_name_movers=}, {ordered_name_movers_set=}"
-        circuit["name mover"] = vertices.copy()
-
     for index, circuit_class in enumerate(
         [key for key in circuit.keys() if key in list(circuit.keys())]
     ):
@@ -273,15 +265,14 @@ for i in range(1, max_ind):
                 new_heads_to_keep = get_heads_circuit(
                     ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
                 )
-                # v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
+                v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
                 assert v not in new_heads_to_keep.keys()
-                # new_heads_to_keep[v] = v_indices
+                new_heads_to_keep[v] = v_indices
 
-                for w in circuit[circuit_class][vidx + 1 :]:
-                    new_heads_to_keep[w] = get_extracted_idx(
-                        RELEVANT_TOKENS[w], ioi_dataset
-                    )
-
+                # for w in circuit[circuit_class][vidx + 1 :]:
+                #     new_heads_to_keep[w] = get_extracted_idx(
+                #         RELEVANT_TOKENS[w], ioi_dataset
+                #     )
                 # ablate all the boys up to the current. Then also ablate this on
 
             elif i == 2:
