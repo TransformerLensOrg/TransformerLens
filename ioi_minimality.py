@@ -92,6 +92,7 @@ print_gpu_mem("Gpt2 loaded")
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+mean_dataset = abca_dataset
 
 from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
@@ -123,7 +124,7 @@ model, _ = do_circuit_extraction(
     heads_to_keep={},
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
-    mean_dataset=abca_dataset,
+    mean_dataset=mean_dataset,
     exclude_heads=naive_heads,
 )
 
@@ -156,7 +157,7 @@ def get_basic_extracted_model(
 model = get_basic_extracted_model(
     model,
     ioi_dataset,
-    mean_dataset=abca_dataset,
+    mean_dataset=mean_dataset,
     circuit=circuits[1],
 )
 torch.cuda.empty_cache()
@@ -228,7 +229,7 @@ for i in range(1, max_ind):
             heads_to_keep=heads_to_keep,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
+            mean_dataset=mean_dataset,
             exclude_heads=excluded_heads,
         )
         labels.append(str(class_to_ablate))
@@ -292,7 +293,7 @@ for i in range(1, max_ind):
                 heads_to_keep=new_heads_to_keep,
                 mlps_to_remove={},
                 ioi_dataset=ioi_dataset,
-                mean_dataset=abca_dataset,
+                mean_dataset=mean_dataset,
                 exclude_heads=excluded_heads,
             )
             torch.cuda.empty_cache()
