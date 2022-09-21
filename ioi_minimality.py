@@ -123,7 +123,7 @@ model, _ = do_circuit_extraction(
     heads_to_keep={},
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
-    mean_dataset=ioi_dataset,
+    mean_dataset=abca_dataset,
     exclude_heads=naive_heads,
 )
 
@@ -156,7 +156,7 @@ def get_basic_extracted_model(
 model = get_basic_extracted_model(
     model,
     ioi_dataset,
-    mean_dataset=ioi_dataset,
+    mean_dataset=abca_dataset,
     circuit=circuits[1],
 )
 torch.cuda.empty_cache()
@@ -292,7 +292,7 @@ for i in range(1, max_ind):
                 heads_to_keep=new_heads_to_keep,
                 mlps_to_remove={},
                 ioi_dataset=ioi_dataset,
-                mean_dataset=ioi_dataset,
+                mean_dataset=abca_dataset,
                 exclude_heads=excluded_heads,
             )
             torch.cuda.empty_cache()
@@ -319,9 +319,7 @@ cc = {
     "previous token": ac[6],
 }
 
-# relevant_classes = list(circuit.keys())
-relevant_classes = ["name mover"]
-# relevant_classes.remove("name mover")
+relevant_classes = list(circuit.keys())
 
 fig = go.Figure()
 colors = []
@@ -392,7 +390,7 @@ fig.add_trace(
 fig.update_layout(
     # title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
     xaxis_title="Attention head",
-    yaxis_title="Average IO probabilities",
+    yaxis_title="Average logit difference",
 )
 
 fig.update_xaxes(
