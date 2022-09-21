@@ -123,8 +123,10 @@ from ioi_circuit_extraction import (
     list_diff,
 )
 
+alex_greedy_things = False
 old_circuit = True
-if old_circuit:
+
+if alex_greedy_things:
     print("WARINING: USING OLD CIRCUIT")
 
     CIRCUIT = {
@@ -143,11 +145,13 @@ if old_circuit:
     for head in CIRCUIT["duplicate token"]:
         RELEVANT_TOKENS[head] = ["S2"]
 
+    ALL_NODES = []  # a node is a tuple (head, token)
+    for h in RELEVANT_TOKENS:
+        for tok in RELEVANT_TOKENS[h]:
+            ALL_NODES.append((h, tok))
 
-ALL_NODES = []  # a node is a tuple (head, token)
-for h in RELEVANT_TOKENS:
-    for tok in RELEVANT_TOKENS[h]:
-        ALL_NODES.append((h, tok))
+else:
+    circuit = CIRCUIT.copy()
 
 
 def logit_diff(model, ioi_dataset, logits=None, all=False, std=False):
@@ -386,6 +390,7 @@ def greed_search_max_brok_cob_diff(
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
 
+
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -424,11 +429,11 @@ if __name__ != "__main__":
 # %%
 circuit = CIRCUIT.copy()
 
-cur_metric = probs  # partial(probs, type="s")
+cur_metric = logit_diff  # partial(probs, type="s")
+
+run_original = True
 if run_original:
-
     circuit_perf = []
-
     for G in list(circuit.keys()) + ["none"]:
         if G == "ablation":
             continue
