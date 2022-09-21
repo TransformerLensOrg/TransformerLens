@@ -108,7 +108,7 @@ from ioi_circuit_extraction import (
 )
 
 #%% # do some initial experiments with the naive circuit
-circuits = [None, CIRCUIT.copy(), NAIVE_CIRCUIT.copy()]
+circuits = [None, CIRCUIT.copy(), SMALL_CIRCUIT.copy()]
 
 metric = logit_diff
 
@@ -188,7 +188,7 @@ circuit_baseline_metric = [None, circuit_baseline_metric, circuit2_baseline_metr
 all_results = [{}, {}, {}]
 
 max_ind = 3
-for i in range(1, max_ind):
+for i in range(2, max_ind):
     print(f"Doing circuit {i} of {max_ind-1}")
     circuit = circuits[i]
     results = all_results[i]
@@ -250,7 +250,7 @@ for i in range(1, max_ind):
 #%%
 # METRIC((C \ W) \cup \{ v \})
 
-for i in range(1, max_ind):
+for i in range(2, max_ind):
     results = all_results[i]
     circuit = circuits[i]
     for index, circuit_class in enumerate(
@@ -302,7 +302,7 @@ for i in range(1, max_ind):
             torch.cuda.empty_cache()
 # and now 9.9 kills it!!
 #%%
-circuit_idx = 1
+circuit_idx = 2
 circuit = circuits[circuit_idx]
 results = all_results[circuit_idx]
 

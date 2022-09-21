@@ -163,7 +163,7 @@ SMALL_CIRCUIT = {
         (9, 9),
         (10, 0),
     ],
-    "negative": [(10, 7), (11, 10)],
+    "negative": [],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "induction": [(5, 5), (6, 9)],  # [(5, 5), (5, 8), (5, 9), (6, 9)],
     "duplicate token": [(0, 1), (0, 10), (3, 0)],
@@ -180,6 +180,9 @@ for head in [
     (11, 2),
 ]:
     CIRCUIT["name mover"].append(head)
+
+for head in [(10, 7), (11, 10)]:
+    CIRCUIT["negative"].append(head)
 
 ARTHUR_CIRCUIT = deepcopy(CIRCUIT)
 ARTHUR_CIRCUIT.pop("duplicate token")
