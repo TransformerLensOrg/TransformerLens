@@ -1,6 +1,7 @@
 #%%
 import warnings
 from time import ctime
+from copy import deepcopy
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -106,9 +107,9 @@ from ioi_circuit_extraction import (
 )
 
 #%% # do some initial experiments with the naive circuit
-circuits = [None, SMALL_CIRCUIT.copy(), NAIVE_CIRCUIT.copy()]
+circuits = [None, CIRCUIT.copy(), NAIVE_CIRCUIT.copy()]
 
-metric = probs
+metric = logit_diff
 
 naive_heads = []
 for heads in circuits[2].values():
@@ -248,28 +249,41 @@ for i in range(1, max_ind):
 #%%
 # METRIC((C \ W) \cup \{ v \})
 
-extra_excludes = [(9, 6), (10, 0)]
-
 for i in range(1, max_ind):
     results = all_results[i]
     circuit = circuits[i]
+    if i == 1:
+        circuit_name_movers = set(circuit["name mover"])
+        ordered_name_movers_set = set(vertices)
+        assert (
+            circuit_name_movers == ordered_name_movers_set
+        ), f"{circuit_name_movers=}, {ordered_name_movers_set=}"
+        circuit["name mover"] = vertices.copy()
+
     for index, circuit_class in enumerate(
         [key for key in circuit.keys() if key in list(circuit.keys())]
     ):
+        extra_excludes = deepcopy(circuit[circuit_class])
+
         results[circuit_class]["vs"] = {}
-        for v in tqdm(list(circuit[circuit_class])):
+        for vidx, v in enumerate(tqdm(list(circuit[circuit_class]))):
             if i == 1:
                 excluded_heads = []
+
                 new_heads_to_keep = get_heads_circuit(
                     ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
                 )
-                v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
+                # v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
                 assert v not in new_heads_to_keep.keys()
-                new_heads_to_keep[v] = v_indices
-                for w in extra_excludes:
+                # new_heads_to_keep[v] = v_indices
+
+                for w in circuit[circuit_class][vidx + 1 :]:
                     new_heads_to_keep[w] = get_extracted_idx(
                         RELEVANT_TOKENS[w], ioi_dataset
                     )
+
+                # ablate all the boys up to the current. Then also ablate this on
+
             elif i == 2:
                 new_heads_to_keep = {}  # hmm
                 excluded_heads = [v]
@@ -291,7 +305,7 @@ for i in range(1, max_ind):
                 exclude_heads=excluded_heads,
             )
             torch.cuda.empty_cache()
-            metric_calc = metric(model, ioi_dataset, std=True)
+            metric_calc = metric(model, ioi_dataset, std=False)
             results[circuit_class]["vs"][v] = metric_calc
             torch.cuda.empty_cache()
 # and now 9.9 kills it!!
@@ -314,8 +328,8 @@ cc = {
     "previous token": ac[6],
 }
 
-relevant_classes = list(circuit.keys())
-# relevant_classes = ["name mover"]
+# relevant_classes = list(circuit.keys())
+relevant_classes = ["name mover"]
 # relevant_classes.remove("name mover")
 
 fig = go.Figure()
@@ -324,7 +338,7 @@ for j, G in enumerate(relevant_classes):
     for i, v in enumerate(list(circuit[G])):
         xs.append(str(v))
         initial_ys.append(results[G]["metric_calc"])
-        final_ys.append(results[G]["vs"][v][0])
+        final_ys.append(results[G]["vs"][v].item())
         colors.append(cc[G])
 
 
@@ -387,7 +401,7 @@ fig.add_trace(
 fig.update_layout(
     # title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
     xaxis_title="Attention head",
-    yaxis_title="Average logit diff",
+    yaxis_title="Average IO probabilities",
 )
 
 fig.update_xaxes(
@@ -509,30 +523,27 @@ for v, a in results["name mover"]["vs"].items():
     vs.append(v)
     xs.append(a[0].item() - 1.0138)
 print(vs, xs)
-#%% # run Alex's experiment
-for i, circuit_class in enumerate(["name mover"]):
-    for extra_v in [[(11, 9)], [(9, 0)], []]:
-        new_heads_to_keep = get_heads_circuit(
-            ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
-        )
-        if extra_v is not None:
-            for v in extra_v + [(9, 7), (11, 1)]:
-                v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
-                assert v not in new_heads_to_keep.keys()
-                new_heads_to_keep[v] = v_indices
+#%% # check that really ablate 9.9+9.6 is worse than just 9.9 ???
+for poppers in [[(9, 9)], [(9, 9), (9, 6)], [(9, 6)]]:
+    new_heads_to_keep = get_heads_circuit(
+        ioi_dataset, excluded_classes=[], circuit=circuit
+    )
 
-        model.reset_hooks()
-        model, _ = do_circuit_extraction(
-            model=model,
-            heads_to_keep=new_heads_to_keep,
-            mlps_to_remove={},
-            ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
-        )
-        torch.cuda.empty_cache()
-        metric_calc = metric(model, ioi_dataset, std=True)
-        torch.cuda.empty_cache()
-        print(extra_v, metric_calc)
+    for popper in poppers:
+        new_heads_to_keep.pop(popper)
+
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=new_heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=ioi_dataset,
+    )
+    torch.cuda.empty_cache()
+    metric_calc = metric(model, ioi_dataset, std=True)
+    torch.cuda.empty_cache()
+    print(metric_calc)
 #%% # new experiment idea: the duplicators and induction heads shouldn't care where their attention is going, provided that
 # it goes to either S or S+1.
 
