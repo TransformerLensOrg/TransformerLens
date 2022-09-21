@@ -1,5 +1,6 @@
 #%%
 import warnings
+from time import ctime
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -242,6 +243,8 @@ for i in range(1, max_ind):
 #%%
 # METRIC((C \ W) \cup \{ v \})
 
+extra_excludes = [(9, 7), (11, 1)]
+
 for i in range(1, max_ind):
     results = all_results[i]
     circuit = circuits[i]
@@ -257,6 +260,10 @@ for i in range(1, max_ind):
                 v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
                 assert v not in new_heads_to_keep.keys()
                 new_heads_to_keep[v] = v_indices
+                for w in extra_excludes:
+                    new_heads_to_keep[w] = get_extracted_idx(
+                        RELEVANT_TOKENS[w], ioi_dataset
+                    )
                 excluded_heads = []
             elif i == 2:
                 new_heads_to_keep = {}
@@ -302,7 +309,8 @@ cc = {
 }
 
 relevant_classes = list(circuit.keys())
-relevant_classes.remove("name mover")
+relevant_classes = ["name mover"]
+# relevant_classes.remove("name mover")
 
 fig = go.Figure()
 colors = []
@@ -328,6 +336,8 @@ fig.add_trace(
     )
 )
 
+fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+
 all_vs = []
 
 for circuit_class in relevant_classes:
@@ -339,7 +349,7 @@ for circuit_class in relevant_classes:
             x=vs_str,
             y=[results[circuit_class]["metric_calc"] for _ in range(len(vs))],
             line=dict(color=cc[circuit_class]),
-            name=circuit_class,  # labels=dict(x="vertex", y="metric"),
+            name=circuit_class,
         )
     )
 
@@ -369,17 +379,24 @@ fig.add_trace(
 )
 
 fig.update_layout(
-    title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
+    # title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
     xaxis_title="Attention head",
     yaxis_title="Average logit diff",
 )
 
+fig.update_xaxes(
+    gridcolor="black",
+    gridwidth=0.1,
+    # minor=dict(showgrid=False),  # please plotly, just do what I want
+)
+fig.update_yaxes(gridcolor="black", gridwidth=0.1)
+fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
 #%%
 fig.add_shape(
     type="line",
     xref="x",
-    x0=-0.50,  # TODO sort out axl these lines5
+    x0=-0.50,
     x1=8,
     yref="y",
     y0=baseline_prob if metric == probs else baseline_ldiff,
@@ -488,14 +505,15 @@ for v, a in results["name mover"]["vs"].items():
 print(vs, xs)
 #%% # run Alex's experiment
 for i, circuit_class in enumerate(["name mover"]):
-    for extra_v in [(11, 9), (9, 0)]:
+    for extra_v in [[(11, 9)], [(9, 0)], []]:
         new_heads_to_keep = get_heads_circuit(
             ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
         )
-        for v in [extra_v] + [(9, 7), (11, 1)]:
-            v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
-            assert v not in new_heads_to_keep.keys()
-            new_heads_to_keep[v] = v_indices
+        if extra_v is not None:
+            for v in extra_v + [(9, 7), (11, 1)]:
+                v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
+                assert v not in new_heads_to_keep.keys()
+                new_heads_to_keep[v] = v_indices
 
         model.reset_hooks()
         model, _ = do_circuit_extraction(
