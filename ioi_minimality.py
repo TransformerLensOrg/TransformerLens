@@ -106,14 +106,16 @@ from ioi_circuit_extraction import (
 )
 
 #%% # do some initial experiments with the naive circuit
-circuits = [None, CIRCUIT.copy(), NAIVE_CIRCUIT.copy()]
+circuits = [None, SMALL_CIRCUIT.copy(), NAIVE_CIRCUIT.copy()]
+
+metric = probs
 
 naive_heads = []
 for heads in circuits[2].values():
     naive_heads += heads
 
 model.reset_hooks()
-ld0 = logit_diff(model, ioi_dataset)
+model_baseline_metric = metric(model, ioi_dataset)
 
 model, _ = do_circuit_extraction(
     model=model,
@@ -124,8 +126,8 @@ model, _ = do_circuit_extraction(
     exclude_heads=naive_heads,
 )
 
-ld = logit_diff(model, ioi_dataset)
-print(f"{ld0=} {ld=}")
+circuit2_baseline_metric = metric(model, ioi_dataset)
+print(f"{model_baseline_metric=} {circuit2_baseline_metric=}")
 #%%
 def get_basic_extracted_model(
     model, ioi_dataset, mean_dataset=None, circuit=circuits[1]
@@ -158,8 +160,6 @@ model = get_basic_extracted_model(
 )
 torch.cuda.empty_cache()
 
-metric = logit_diff
-
 circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
     model, ioi_dataset, std=True
 )
@@ -176,7 +176,12 @@ print(f"{circuit_baseline_prob=}, {circuit_baseline_prob_std=}")
 print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
 print(f"{baseline_prob=}, {baseline_prob_std=}")
 
-circuit_baseline_diffs = [None, circuit_baseline_diff, ld]
+if metric == logit_diff:
+    circuit_baseline_metric = circuit_baseline_diff
+else:
+    circuit_baseline_metric = circuit_baseline_prob
+
+circuit_baseline_metric = [None, circuit_baseline_metric, circuit2_baseline_metric]
 #%% TODO Explain the way we're doing the minimal circuit experiment here
 all_results = [{}, {}, {}]
 
@@ -243,7 +248,7 @@ for i in range(1, max_ind):
 #%%
 # METRIC((C \ W) \cup \{ v \})
 
-extra_excludes = [(9, 7), (11, 1)]
+extra_excludes = [(9, 6), (10, 0)]
 
 for i in range(1, max_ind):
     results = all_results[i]
@@ -254,6 +259,7 @@ for i in range(1, max_ind):
         results[circuit_class]["vs"] = {}
         for v in tqdm(list(circuit[circuit_class])):
             if i == 1:
+                excluded_heads = []
                 new_heads_to_keep = get_heads_circuit(
                     ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
                 )
@@ -264,9 +270,8 @@ for i in range(1, max_ind):
                     new_heads_to_keep[w] = get_extracted_idx(
                         RELEVANT_TOKENS[w], ioi_dataset
                     )
-                excluded_heads = []
             elif i == 2:
-                new_heads_to_keep = {}
+                new_heads_to_keep = {}  # hmm
                 excluded_heads = [v]
                 for other_circuit_class in list(circuit.keys()):
                     if other_circuit_class == circuit_class:
@@ -282,13 +287,14 @@ for i in range(1, max_ind):
                 heads_to_keep=new_heads_to_keep,
                 mlps_to_remove={},
                 ioi_dataset=ioi_dataset,
-                mean_dataset=abca_dataset,
+                mean_dataset=ioi_dataset,
                 exclude_heads=excluded_heads,
             )
             torch.cuda.empty_cache()
             metric_calc = metric(model, ioi_dataset, std=True)
             results[circuit_class]["vs"][v] = metric_calc
             torch.cuda.empty_cache()
+# and now 9.9 kills it!!
 #%%
 circuit_idx = 1
 circuit = circuits[circuit_idx]
@@ -309,7 +315,7 @@ cc = {
 }
 
 relevant_classes = list(circuit.keys())
-relevant_classes = ["name mover"]
+# relevant_classes = ["name mover"]
 # relevant_classes.remove("name mover")
 
 fig = go.Figure()
@@ -370,7 +376,7 @@ fig.add_trace(
 fig.add_trace(
     go.Scatter(
         x=all_vs,
-        y=[circuit_baseline_diffs[circuit_idx] for _ in range(len(all_vs))],
+        y=[circuit_baseline_metric[circuit_idx] for _ in range(len(all_vs))],
         name="Circuit performance",
         line=dict(color="blue"),
         fill="toself",

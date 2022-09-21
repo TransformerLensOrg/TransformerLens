@@ -1,3 +1,4 @@
+from copy import deepcopy
 from easy_transformer.experiments import (
     ExperimentMetric,
     AblationConfig,
@@ -169,7 +170,7 @@ SMALL_CIRCUIT = {
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
 
-CIRCUIT = SMALL_CIRCUIT.copy()
+CIRCUIT = deepcopy(SMALL_CIRCUIT)
 for head in [
     (9, 0),
     (9, 7),
@@ -183,7 +184,7 @@ for head in [
 ]:
     CIRCUIT["name mover"].append(head)
 
-ARTHUR_CIRCUIT = CIRCUIT.copy()
+ARTHUR_CIRCUIT = deepcopy(CIRCUIT)
 ARTHUR_CIRCUIT.pop("duplicate token")
 ARTHUR_CIRCUIT["induction"] = [(5, 5), (6, 9)]
 
