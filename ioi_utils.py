@@ -8,6 +8,16 @@ import einops
 
 from ioi_dataset import IOIDataset
 
+ALL_COLORS = px.colors.qualitative.Dark2
+CLASSES_COLORS = {
+    "name mover": ALL_COLORS[0],
+    "negative": ALL_COLORS[1],
+    "s2 inhibition": ALL_COLORS[2],
+    "induction": ALL_COLORS[5],
+    "duplicate token": ALL_COLORS[3],
+    "previous token": ALL_COLORS[6],
+}
+
 # other utils
 
 
@@ -45,7 +55,11 @@ def show_pp(
 
     if animate_axis is None:
         fig = px.imshow(
-            m.T, title=title if title else "", color_continuous_scale="RdBu", color_continuous_midpoint=0, **kwargs
+            m.T,
+            title=title if title else "",
+            color_continuous_scale="RdBu",
+            color_continuous_midpoint=0,
+            **kwargs,
         )
 
     else:
@@ -108,12 +122,16 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         good_names = [f"blocks.{layer}.attn.hook_attn"]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
-        model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
+        model.cache_some(
+            cache=cache, names=lambda x: x in good_names
+        )  # shape: batch head_no seq_len seq_len
 
         logits = model(ioi_dataset.text_prompts)
 
         for i, text in enumerate(ioi_dataset.text_prompts):
-            assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
+            assert len(list(cache.items())) == 1 + int(mode == "val"), len(
+                list(cache.items())
+            )
             toks = model.tokenizer(text)["input_ids"]
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
@@ -207,14 +225,25 @@ def scatter_attention_and_contribution(
             (s_dir, [s1_pos, s2_pos], "S"),
         ]:
             prob = sum(
-                [cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos].detach().cpu() for pos in posses]
+                [
+                    cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos]
+                    .detach()
+                    .cpu()
+                    for pos in posses
+                ]
             )
-            resid = cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :].detach().cpu()
+            resid = (
+                cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :]
+                .detach()
+                .cpu()
+            )
             dot = torch.einsum("a,a->", resid, dire)
             df.append([prob, dot, tok_type, prompt["text"]])
 
     # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"])
+    viz_df = pd.DataFrame(
+        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
+    )
     fig = px.scatter(
         viz_df,
         x=f"Attn Prob on Name",
@@ -282,7 +311,9 @@ def posses(model, ioi_dataset, all=False, std=False):
     """
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
-    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
+    end_logits = logits[
+        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :
+    ]  # batch * vocab_size
 
     positions = torch.argsort(end_logits, dim=1)
     io_positions = positions[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs]
@@ -297,7 +328,9 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
 
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
-    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
+    end_logits = logits[
+        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :
+    ]  # batch * vocab_size
     end_probs = torch.softmax(end_logits, dim=1)
 
     if type == "io":

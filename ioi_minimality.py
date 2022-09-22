@@ -68,6 +68,8 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    ALL_COLORS,
+    CLASSES_COLORS,
     clear_gpu_mem,
     show_tokens,
     show_pp,
@@ -310,15 +312,8 @@ xs = []
 initial_ys = []
 final_ys = []
 
-ac = px.colors.qualitative.Dark2
-cc = {
-    "name mover": ac[0],
-    "negative": ac[1],
-    "s2 inhibition": ac[2],
-    "induction": ac[5],
-    "duplicate token": ac[3],
-    "previous token": ac[6],
-}
+ac = ALL_COLORS
+cc = CLASSES_COLORS
 
 relevant_classes = list(circuit.keys())
 

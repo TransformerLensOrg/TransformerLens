@@ -79,8 +79,6 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-
-
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -115,6 +113,7 @@ abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
 from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
+    SMALL_CIRCUIT,
     join_lists,
     CIRCUIT,
     RELEVANT_TOKENS,
@@ -390,29 +389,9 @@ def greed_search_max_brok_cob_diff(
 
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
-
-
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
-#%% # plot writing in the IO - S direction
-
-if __name__ == "__main__":
-
-    model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
-
-    print_gpu_mem("About to load model")
-    model = EasyTransformer(
-        model_name, use_attn_result=True
-    )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
-    device = "cuda"
-    if torch.cuda.is_available():
-        model.to(device)
-    print_gpu_mem("Gpt2 loaded")
-
-    # IOI Dataset initialisation
-    N = 400
-    ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
 # owb_seqs = [
@@ -426,7 +405,9 @@ if __name__ != "__main__":
     run_original = False
 
 # %%
-circuit = CIRCUIT.copy()
+from ioi_circuit_extraction import SMALL_CIRCUIT
+
+circuit = SMALL_CIRCUIT.copy()
 cur_metric = logit_diff  # partial(probs, type="s")
 mean_dataset = abca_dataset
 
@@ -680,6 +661,7 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
 
 if run_original:
     fig, ax = plt.subplots(1, 1, figsize=(20, 10))
+    ax.patch.set_facecolor("white")
 
     ax.axvline(c="grey", lw=1)
     ax.axhline(c="grey", lw=1)
@@ -705,16 +687,16 @@ if run_original:
             n_std=1,
         )
 
-    xs2 = np.asarray(list(range(-100, 700))) / 100
-    ys2 = np.asarray(list(range(-100, 700))) / 100
+    xs2 = np.asarray(list(range(-200, 800))) / 100
+    ys2 = np.asarray(list(range(-200, 800))) / 100
     ax.plot(xs2, ys2)
     ax.legend()
     plt.xlabel("Logit diff of broken circuit")
     plt.ylabel("Logit diff of complement of G")
 
 warnings.warn("Increase x lim if plotting logit diffs not probs")
-plt.xlim(-0.01, 0.1)
-plt.ylim(-0.01, 0.1)
+plt.xlim(-3, 7)
+plt.ylim(-3, 7)
 plt.show()
 
 # %% gready circuit breaking
