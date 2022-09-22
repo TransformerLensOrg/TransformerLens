@@ -1,5 +1,6 @@
 #%%
 import warnings
+from time import ctime
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -412,14 +413,12 @@ if __name__ == "__main__":
     # IOI Dataset initialisation
     N = 400
     ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
 # owb_seqs = [
 #     "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
 #     for i in range(ioi_dataset.N)
 # ]
-
 
 run_original = True
 
@@ -428,8 +427,8 @@ if __name__ != "__main__":
 
 # %%
 circuit = CIRCUIT.copy()
-
 cur_metric = logit_diff  # partial(probs, type="s")
+mean_dataset = abca_dataset
 
 run_original = True
 if run_original:
@@ -452,7 +451,7 @@ if run_original:
             heads_to_keep=heads_to_keep,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
+            mean_dataset=mean_dataset,
         )
         torch.cuda.empty_cache()
         cur_metric_broken_circuit, std_broken_circuit = cur_metric(
@@ -476,12 +475,13 @@ if run_original:
             heads_to_remove=G_heads_to_remove,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
+            mean_dataset=mean_dataset,
         )
         torch.cuda.empty_cache()
         cur_metric_cobble, std_cobble_circuit = cur_metric(
             model, ioi_dataset, std=True, all=True
         )
+        print(cur_metric_cobble.mean(), cur_metric_broken_circuit.mean())
         torch.cuda.empty_cache()
         # metric(M\G)
 
@@ -526,33 +526,38 @@ if run_original:
                 )
             ]
         )
+
+        fig.update_xaxes(gridcolor="black", gridwidth=0.1)
+        fig.update_yaxes(gridcolor="black", gridwidth=0.1)
+        fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+        fig.write_image(f"svgs/circuit_completeness_at_{ctime()}.svg")
+
         fig.show()
 
     # by sets
     perf_by_sets = []
     for i in range(len(circuit) + 1):
+        cur_metric_brokens = circuit_perf.iloc[
+            i * ioi_dataset.N : (i + 1) * ioi_dataset.N
+        ].cur_metric_broken
+
+        cur_metric_cobbles = circuit_perf.iloc[
+            i * ioi_dataset.N : (i + 1) * ioi_dataset.N
+        ].cur_metric_cobble
+
         perf_by_sets.append(
             {
                 "removed_group": circuit_perf.iloc[i * ioi_dataset.N].removed_group,
-                "mean_cur_metric_broken": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].cur_metric_broken.mean(),
-                "mean_cur_metric_cobble": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].cur_metric_cobble.mean(),
-                "std_cur_metric_broken": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].cur_metric_broken.std(),
-                "std_cur_metric_cobble": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].cur_metric_cobble.std(),
+                "mean_cur_metric_broken": cur_metric_brokens.mean(),
+                "mean_cur_metric_cobble": cur_metric_cobbles.mean(),
+                "std_cur_metric_broken": cur_metric_brokens.std(),
+                "std_cur_metric_cobble": cur_metric_cobbles.std(),
             }
         )
 
         perf_by_sets[-1]["mean_abs_diff"] = abs(
-            perf_by_sets[-1]["mean_cur_metric_broken"]
-            - perf_by_sets[-1]["mean_cur_metric_cobble"]
-        )
+            cur_metric_brokens - cur_metric_cobbles
+        ).mean()
 
     circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
     print(
@@ -585,6 +590,10 @@ if run_original:
         ]
     )
 
+    fig.update_xaxes(gridcolor="black", gridwidth=0.1)
+    fig.update_yaxes(gridcolor="black", gridwidth=0.1)
+    fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+    fig.write_image(f"svgs/circuit_completeness_plusses_at_{ctime()}.svg")
     fig.show()
 #%%
 # plot the covariance ellipsoid
@@ -1088,6 +1097,3 @@ def compute_cobble_broken_diff(
         orientation="h",
         color=head_classes,
     )
-
-
-# %%
