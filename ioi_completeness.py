@@ -1,5 +1,6 @@
 #%%
 import warnings
+from numpy import sin, cos, pi
 from time import ctime
 from dataclasses import dataclass
 from tqdm import tqdm
@@ -98,8 +99,10 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 100
-ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+N = 150
+ioi_dataset = IOIDataset(
+    prompt_type="mixed", N=N, tokenizer=model.tokenizer, nb_templates=6
+)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
 # %%
@@ -115,6 +118,7 @@ from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
     SMALL_CIRCUIT,
     join_lists,
+    MED_CIRCUIT,
     CIRCUIT,
     RELEVANT_TOKENS,
     get_extracted_idx,
@@ -123,27 +127,26 @@ from ioi_circuit_extraction import (
     list_diff,
 )
 
-alex_greedy_things = False
+alex_greedy_things = True
 old_circuit = True
 
 if alex_greedy_things:
-    print("WARINING: USING OLD CIRCUIT")
 
-    CIRCUIT = {
-        "name mover": [
-            (9, 6),  # ori
-            (9, 9),  # ori
-            (10, 0),  # ori
-        ],  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "duplicate token": [(1, 11), (0, 10), (3, 0)],
-    }
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
+    #     CIRCUIT = {
+    #         "name mover": [
+    #             (9, 6),  # ori
+    #             (9, 9),  # ori
+    #             (10, 0),  # ori
+    #         ],  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
+    #         "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    #         "duplicate token": [(1, 11), (0, 10), (3, 0)],
+    #     }
+    # RELEVANT_TOKENS = {}
+    # for head in CIRCUIT["name mover"] + CIRCUIT["s2 inhibition"]:
+    #     RELEVANT_TOKENS[head] = ["end"]
 
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
+    # for head in CIRCUIT["duplicate token"]:
+    #     RELEVANT_TOKENS[head] = ["S2"]
 
     ALL_NODES = []  # a node is a tuple (head, token)
     for h in RELEVANT_TOKENS:
@@ -405,9 +408,7 @@ if __name__ != "__main__":
     run_original = False
 
 # %%
-from ioi_circuit_extraction import SMALL_CIRCUIT
-
-circuit = SMALL_CIRCUIT.copy()
+circuit = CIRCUIT.copy()
 cur_metric = logit_diff  # partial(probs, type="s")
 mean_dataset = abca_dataset
 
@@ -699,6 +700,116 @@ plt.xlim(-3, 7)
 plt.ylim(-3, 7)
 plt.show()
 
+#%% # more freaking ellipse-ing
+
+# function plotErrorEllipse(ctx, mu, Sigma, p) {
+#   p = p || 0.95;
+
+#   var s = -2 * Math.log(1 - p);
+
+#   var a = Sigma[0][0];
+#   var b = Sigma[0][1];
+#   var c = Sigma[1][0];
+#   var d = Sigma[1][1];
+
+#   var tmp = Math.sqrt((a - d) * (a - d) + 4 * b * c);
+#   var V = [
+#     [-(tmp - a + d) / (2 * c), (tmp + a - d) / (2 * c)],
+#     [1, 1]
+#   ];
+#   var sqrtD = [
+#     Math.sqrt(s * (a + d - tmp) / 2),
+#     Math.sqrt(s * (a + d + tmp) / 2)
+#   ];
+
+#   var norm1 = Math.hypot(V[0][0], 1);
+#   var norm2 = Math.hypot(V[0][1], 1);
+#   V[0][0] /= norm1;
+#   V[1][0] /= norm1;
+#   V[0][1] /= norm2;
+#   V[1][1] /= norm2;
+
+#   var ndx = sqrtD[0] < sqrtD[1] ? 1 : 0;
+
+#   var x1 = mu[0] + V[0][ndx] * sqrtD[ndx];
+#   var y1 = mu[1] + V[1][ndx] * sqrtD[ndx];
+
+#   var x2 = mu[0] + V[0][1 - ndx] * sqrtD[1 - ndx];
+#   var y2 = mu[1] + V[1][1 - ndx] * sqrtD[1 - ndx];
+
+#   ctx.ellipse(
+#           mu[0], mu[1], # centre
+#           Math.hypot(x1 - mu[0], y1 - mu[1]), # minor axis
+#           Math.hypot(x2 - mu[0], y2 - mu[1]), # major axis
+#           Math.atan2(y1 - mu[1], x1 - mu[0]), # rotation
+#           0, Math.PI * 2,
+#           false);
+# }
+#%%
+
+
+def ellipse_arc(x_center=0, y_center=0, ax1=[1, 0], ax2=[0, 1], a=1, b=1, N=100):
+    # x_center, y_center the coordinates of ellipse center
+    # ax1 ax2 two orthonormal vectors representing the ellipse axis directions
+    # a, b the ellipse parameters
+    if abs(np.linalg.norm(ax1) - 1) > 1e-06 or abs(np.linalg.norm(ax2) - 1) > 1e-06:
+        raise ValueError("ax1, ax2 must be unit vectors")
+    if abs(np.dot(ax1, ax2)) > 1e-06:
+        raise ValueError("ax1, ax2 must be orthogonal vectors")
+    t = np.linspace(0, 2 * pi, N)
+    # ellipse parameterization with respect to a system of axes of directions a1, a2
+    xs = a * cos(t)
+    ys = b * sin(t)
+    # rotation matrix
+    R = np.array([ax1, ax2]).T
+    # coordinate of the  ellipse points with respect to the system of axes [1, 0], [0,1] with origin (0,0)
+    xp, yp = np.dot(R, [xs, ys])
+    x = xp + x_center
+    y = yp + y_center
+    return x, y
+
+
+def ellipse_wht(mu, sigma):
+    """
+    Returns x, y and theta of confidence ellipse
+    """
+    vals, vecs = np.linalg.eigh(sigma)
+    order = vals.argsort()[::-1]
+    vals, vecs = vals[order], vecs[:, order]
+    theta = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+    # Width and height are "full" widths, not radius # TODO check if this copilot black magic makes sense
+    width, height = 2 * np.sqrt(vals)
+    return width, height, theta
+
+
+def plot_ellipse(fig, xs, ys, nstd=1):
+    mu = np.mean(xs), np.mean(ys)
+    sigma = np.cov(xs, ys)
+    w, h, t = ellipse_wht(mu, sigma)
+    print(w, h, t)
+    w *= nstd
+    h *= nstd
+    x, y = ellipse_arc(
+        x_center=mu[0],
+        y_center=mu[1],
+        ax1=[cos(t), sin(t)],
+        ax2=[-sin(t), cos(t)],
+        a=h,
+        b=w,
+    )
+    fig.add_scatter(
+        x=x, y=y, marker=dict(size=20, color="MediumPurple")
+    )  # , line=dict(width=2))
+
+
+# EXAMPLE
+fig = go.Figure()
+x_center = 1
+y_center = 0.75
+data = np.random.multivariate_normal([x_center, y_center], [[1, 0.5], [0.5, 1]], 1000)
+plot_ellipse(fig, data[:, 0], data[:, 1])
+fig.add_trace(go.Scatter(x=data[:, 0], y=data[:, 1], mode="markers"))
+fig.show()
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
@@ -770,9 +881,8 @@ def circuit_from_heads_logit_diff(
     )
     return logit_diff(model, ioi_dataset, all=all)
 
-    # %% Run experiment
 
-
+# %% Run experiment
 greedy_heuristic = "max_brok_cob_diff"
 
 
@@ -804,6 +914,15 @@ def compute_cobble_broken_diff(
 
     return np.abs(ldiff_broken - ldiff_cobble)
 
+
+#%%
+
+small_ioi_dataset = IOIDataset(
+    N=40, tokenizer=model.tokenizer, nb_templates=2, prompt_type="mixed"
+)
+torch.cuda.empty_cache()
+
+if True:
     assert greedy_heuristic in ["max_brok", "max_brok_cob_diff"]
 
     NODES_PER_STEP = 10

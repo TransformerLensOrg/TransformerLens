@@ -170,19 +170,26 @@ SMALL_CIRCUIT = {
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
 
+MED_CIRCUIT = deepcopy(SMALL_CIRCUIT)
 CIRCUIT = deepcopy(SMALL_CIRCUIT)
-for head in [
-    (9, 9),
-    (9, 6),
-    (10, 0),
-    (10, 10),
-    (10, 6),
-    (11, 2),
+
+
+for head, _ in [
+    ((10, 10), "end"),
+    ((10, 6), "end"),
+    ((11, 2), "end"),
+    ((10, 2), "end"),
+    ((10, 1), "end"),
+    ((11, 6), "end"),
+    ((11, 9), "end"),
+    ((9, 0), "end"),
+    ((9, 7), "end"),
 ]:
     CIRCUIT["name mover"].append(head)
 
 for head in [(10, 7), (11, 10)]:
-    CIRCUIT["negative"].append(head)
+    for circuit in [CIRCUIT, MED_CIRCUIT]:
+        circuit["negative"].append(head)
 
 ARTHUR_CIRCUIT = deepcopy(CIRCUIT)
 ARTHUR_CIRCUIT.pop("duplicate token")

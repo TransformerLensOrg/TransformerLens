@@ -582,3 +582,4 @@ for j in range(2, 4):
     print(
         f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
     )
+# %%
