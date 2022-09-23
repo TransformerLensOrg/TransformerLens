@@ -71,6 +71,7 @@ from ioi_utils import (
     show_attention_patterns,
     safe_del,
 )
+from copy import deepcopy
 
 from functools import partial
 
@@ -123,7 +124,7 @@ from ioi_circuit_extraction import (
     list_diff,
 )
 
-old_circuit = True
+old_circuit = False
 if old_circuit:
     print("WARINING: USING OLD CIRCUIT")
 
@@ -391,6 +392,8 @@ if __name__ == "__main__":
     # IOI Dataset initialisation
     N = 400
     ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+    abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+    print("CIRCUIT STUDIED : ", CIRCUIT)
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
@@ -564,18 +567,20 @@ if run_original:
 # plot the covariance ellipsoid
 # as in https://matplotlib.org/3.1.1/gallery/statistics/confidence_ellipse.html#sphx-glr-gallery-statistics-confidence-ellipse-py
 
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 
-xs = {}
-ys = {}
-for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
-    xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_broken.values
-    ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_cobble.values
-    xs[G] = [float(x) for x in xs[G]]
-    ys[G] = [float(y) for y in ys[G]]
+if run_original:
+    xs = {}
+    ys = {}
+    for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
+        xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_broken.values
+        ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_cobble.values
+        xs[G] = [float(x) for x in xs[G]]
+        ys[G] = [float(y) for y in ys[G]]
 
 
 def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):

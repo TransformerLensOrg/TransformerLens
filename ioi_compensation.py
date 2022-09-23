@@ -135,7 +135,7 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 200
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-
+mean_dataset = ioi_dataset.gen_flipped_prompts("S2")
 # %%
 
 CIRCUIT = {
@@ -152,10 +152,11 @@ CIRCUIT = {
         (11, 1),  # ~
         (11, 6),  # ~
         (11, 9),  # ~
+        (11, 2),
     ],
-    "negative": [(10, 7), (11, 10), (11, 2)],
+    "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "induction": [(5, 5), (6, 9), (5, 8), (5, 9)],  # (5, 8), (5, 9),
     "duplicate token": [(0, 1), (0, 10), (3, 0)],
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
@@ -181,7 +182,7 @@ for h in RELEVANT_TOKENS:
         ALL_NODES.append((h, tok))
 
 
-def update_nm(new_nms, reset=False):
+def update_nm(new_nms=[], reset=False):
     global CIRCUIT, ALL_NODES, RELEVANT_TOKENS
     if reset:
         new_nms = [
@@ -247,8 +248,8 @@ def writing_direction_heatmap(
     the (correct) IO token and the incorrect S token
     """
 
-    n_heads = model.cfg["n_heads"]
-    n_layers = model.cfg["n_layers"]
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
 
     model_unembed = (
         model.unembed.W_U.detach().cpu()
@@ -313,6 +314,7 @@ model, _ = do_circuit_extraction(
     ),
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
+    mean_dataset=mean_dataset,
 )
 
 mtx = writing_direction_heatmap(
@@ -343,45 +345,16 @@ writing_direction_heatmap(
 
 
 J = [
-    # ((9, 6), "end"),
-    # ((9, 9), "end"),
-    # ((10, 0), "end"),
-    # ((10, 10), "end"),
-    # ((10, 6), "end"),
-    # ((10, 2), "end"),
-    # ((11, 2), "end"),
-    # ((10, 1), "end"),
-    # ((11, 6), "end"),
-    # ((11, 9), "end"),
-    # ((11, 1), "end"),
-    # ((9, 7), "end"),
-    # ((9, 0), "end"),
-    # ((11, 3), "end"),
-    # ((10, 7), "end"),  # neg head
-    # ((11, 10), "end"),  # neg head
-    # legible name movers
-    ((9, 6), "end"),
-    ((9, 9), "end"),
-    ((10, 0), "end"),
-    ((10, 10), "end"),
-    ((10, 6), "end"),
-    ((10, 1), "end"),
-    ((9, 0), "end"),
-    ((10, 2), "end"),  # ~
-    ((11, 2), "end"),  # ~
-    ((11, 6), "end"),  # ~
-    ((11, 9), "end"),  # ~
-    ((11, 1), "end"),  # ~
-    ((9, 7), "end"),  # todo
-    ((10, 9), "end"),  # todo
+    ((10, 7), "end"),
+    ((11, 10), "end"),
 ]
 
 J_heads = [j[0] for j in J]
 
 to_highlight = [[j[0] for j in J_heads], [j[1] for j in J_heads]]
 
-update_nm(J_heads)
-J = []
+update_nm(reset=True)
+
 C_minus_J = list(set(ALL_NODES.copy()) - set(J.copy()))
 
 model.reset_hooks()
@@ -390,8 +363,9 @@ model, _ = do_circuit_extraction(
     heads_to_keep=get_heads_from_nodes(C_minus_J, ioi_dataset),  # C\J
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
+    mean_dataset=mean_dataset,
 )
-
+ld_cmj, std_cmj = logit_diff(model, ioi_dataset, std=True, all=False)
 
 # model.reset_hooks()
 dir_val_C_m_J = writing_direction_heatmap(
@@ -400,7 +374,7 @@ dir_val_C_m_J = writing_direction_heatmap(
     return_vals=True,
     mode="attn_out",
     dir_mode="IO - S",
-    title="Attention head output into IO - S token unembedding (GPT2) C",
+    title=f"Writting dir C\J",
 )
 
 model.reset_hooks()
@@ -409,22 +383,85 @@ model, _ = do_circuit_extraction(
     heads_to_remove=get_heads_from_nodes(J, ioi_dataset),  # M\J
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
+    mean_dataset=mean_dataset,
 )
+
+ld_mmj, std_mmj = logit_diff(model, ioi_dataset, std=True, all=False)
+
 dir_val_M_m_J = writing_direction_heatmap(
     model,
     ioi_dataset,
     return_vals=True,
     mode="attn_out",
     dir_mode="IO - S",
+    title=f"Writting dir M\J",
 )
 
 show_pp(
     dir_val_M_m_J - dir_val_C_m_J,
     xlabel="head no",
     ylabel="layer no",
-    title="Difference IO-S writting matrices between M and C",
+    title=f"Difference IO-S writting matrices between M and C LD: {ld_mmj - ld_cmj:.2f} +/- {std_mmj + std_cmj:.2f}",
     highlight_points=to_highlight,
     highlight_name="Name movers",
+)
+
+
+# %% Find a faithfull naive circuit
+
+
+def get_relevant_node(circuit):
+    RELEVANT_TOKENS = {}
+    for head in circuit["name mover"] + circuit["negative"] + circuit["s2 inhibition"]:
+        RELEVANT_TOKENS[head] = ["end"]
+
+    for head in circuit["induction"]:
+        RELEVANT_TOKENS[head] = ["S2"]
+
+    for head in circuit["duplicate token"]:
+        RELEVANT_TOKENS[head] = ["S2"]
+
+    for head in circuit["previous token"]:
+        RELEVANT_TOKENS[head] = ["S+1", "and"]
+
+    ALL_NODES = []  # a node is a tuple (head, token)
+    for h in RELEVANT_TOKENS:
+        for tok in RELEVANT_TOKENS[h]:
+            ALL_NODES.append((h, tok))
+    return ALL_NODES
+
+
+NAIVE_CIRCUIT = {
+    "name mover": [
+        (9, 6),
+        (9, 9),
+        (10, 0),
+    ],
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "negative": [],
+    "duplicate token": [],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "previous token": [(2, 2), (2, 9), (4, 11)],
+}
+naive_nodes = get_relevant_node(NAIVE_CIRCUIT)
+model.reset_hooks()
+CIRCUIT = NAIVE_CIRCUIT.copy()
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_keep=get_heads_from_nodes(naive_nodes, ioi_dataset),  # C\J
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=mean_dataset,
+)
+
+
+dir_val_C_m_J = writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    return_vals=True,
+    mode="attn_out",
+    dir_mode="IO - S",
+    title="Attention head output into IO - S token unembedding (GPT2) C",
 )
 
 # %% compensation mecanism exploration plot h(R + k*(IO-S)) vs R + k*(IO-S)

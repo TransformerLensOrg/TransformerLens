@@ -122,9 +122,7 @@ def get_circuit_replacement_hook(
                 # TODO can this i loop be vectorized?
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(
-                dataset_length
-            ):  # we use the idx from contex to get the head
+            for i in range(dataset_length):  # we use the idx from contex to get the head
                 z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
                     i,
                     heads2[(layer, hook.ctx["idx"])][i],
@@ -136,9 +134,7 @@ def get_circuit_replacement_hook(
     return circuit_replmt_hook, heads, mlps
 
 
-def join_lists(
-    l1, l2
-):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
+def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
     assert len(l1) == len(l2)
     assert type(l1[0]) == list and type(l2[0]) == int
     l = []
@@ -150,9 +146,7 @@ def join_lists(
 def get_extracted_idx(idx_list: list[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [
-            int(x) for x in list(ioi_dataset.word_idx[idx_name])
-        ]  # torch to python objects
+        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
@@ -165,18 +159,22 @@ SMALL_CIRCUIT = {
     ],
     "negative": [],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (6, 9)],  # [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],  # [(5, 5), (6, 9)],  #
     "duplicate token": [(0, 1), (0, 10), (3, 0)],
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
 
 CIRCUIT = deepcopy(SMALL_CIRCUIT)
 for head in [
-    (9, 9),
-    (9, 6),
-    (10, 0),
-    (10, 10),
+    (9, 0),
+    (9, 7),
+    (10, 1),
+    (10, 2),  # ~
     (10, 6),
+    (10, 10),
+    (11, 1),  # ~
+    (11, 6),  # ~
+    (11, 9),  # ~
     (11, 2),
 ]:
     CIRCUIT["name mover"].append(head)
@@ -282,7 +280,7 @@ def do_circuit_extraction(
         model,
         config,
         metric,
-        semantic_indices=ioi_dataset.sem_tok_idx,
+        semantic_indices=None,  # ioi_dataset.sem_tok_idx,
         mean_by_groups=True,  # TO CHECK CIRCUIT BY GROUPS
         groups=ioi_dataset.groups,
     )
