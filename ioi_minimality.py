@@ -68,6 +68,8 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    ALL_COLORS,
+    CLASS_COLORS,
     clear_gpu_mem,
     show_tokens,
     show_pp,
@@ -310,15 +312,8 @@ xs = []
 initial_ys = []
 final_ys = []
 
-ac = px.colors.qualitative.Dark2
-cc = {
-    "name mover": ac[0],
-    "negative": ac[1],
-    "s2 inhibition": ac[2],
-    "induction": ac[5],
-    "duplicate token": ac[3],
-    "previous token": ac[6],
-}
+ac = ALL_COLORS
+cc = CLASS_COLORS
 
 relevant_classes = list(circuit.keys())
 
@@ -587,3 +582,4 @@ for j in range(2, 4):
     print(
         f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
     )
+# %%

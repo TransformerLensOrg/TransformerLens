@@ -1,5 +1,7 @@
 #%%
 import warnings
+from numpy import sin, cos, pi
+from time import ctime
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -65,13 +67,25 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    CLASS_COLORS,
     clear_gpu_mem,
     show_tokens,
     show_pp,
     show_attention_patterns,
     safe_del,
+    plot_ellipse,
 )
 from copy import deepcopy
+
+plotly_colors = [
+    "#636EFA",
+    "#EF553B",
+    "#00CC96",
+    "#AB63FA",
+    "#FFA15A",
+    "#19D3F3",
+    "#FF6692",
+]
 
 from functools import partial
 
@@ -79,8 +93,6 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-
-
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -100,8 +112,8 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 100
-ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+N = 150
+ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer, nb_templates=6)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
 # %%
@@ -115,7 +127,9 @@ abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
 from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
+    SMALL_CIRCUIT,
     join_lists,
+    MED_CIRCUIT,
     CIRCUIT,
     RELEVANT_TOKENS,
     get_extracted_idx,
@@ -124,31 +138,34 @@ from ioi_circuit_extraction import (
     list_diff,
 )
 
-old_circuit = False
-if old_circuit:
-    print("WARINING: USING OLD CIRCUIT")
+alex_greedy_things = True
+old_circuit = True
 
-    CIRCUIT = {
-        "name mover": [
-            (9, 6),  # ori
-            (9, 9),  # ori
-            (10, 0),  # ori
-        ],  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "duplicate token": [(1, 11), (0, 10), (3, 0)],
-    }
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
+if alex_greedy_things:
 
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
+    #     CIRCUIT = {
+    #         "name mover": [
+    #             (9, 6),  # ori
+    #             (9, 9),  # ori
+    #             (10, 0),  # ori
+    #         ],  # , (10, 10), (10, 6)],  # 10, 10 and 10.6 weak nm
+    #         "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    #         "duplicate token": [(1, 11), (0, 10), (3, 0)],
+    #     }
+    # RELEVANT_TOKENS = {}
+    # for head in CIRCUIT["name mover"] + CIRCUIT["s2 inhibition"]:
+    #     RELEVANT_TOKENS[head] = ["end"]
 
+    # for head in CIRCUIT["duplicate token"]:
+    #     RELEVANT_TOKENS[head] = ["S2"]
 
-ALL_NODES = []  # a node is a tuple (head, token)
-for h in RELEVANT_TOKENS:
-    for tok in RELEVANT_TOKENS[h]:
-        ALL_NODES.append((h, tok))
+    ALL_NODES = []  # a node is a tuple (head, token)
+    for h in RELEVANT_TOKENS:
+        for tok in RELEVANT_TOKENS[h]:
+            ALL_NODES.append((h, tok))
+
+else:
+    circuit = CIRCUIT.copy()
 
 
 def logit_diff(model, ioi_dataset, logits=None, all=False, std=False):
@@ -370,7 +387,6 @@ def greed_search_max_brok_cob_diff(
 
 #%% [markdown]
 # TODO Explain the way we're doing Jacob's circuit extraction experiment here
-
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -402,7 +418,6 @@ if __name__ == "__main__":
 #     for i in range(ioi_dataset.N)
 # ]
 
-
 run_original = True
 
 if __name__ != "__main__":
@@ -410,12 +425,12 @@ if __name__ != "__main__":
 
 # %%
 circuit = CIRCUIT.copy()
-cur_metric = logit_diff
-# cur_metric = probs  # partial(probs, type="s")
+cur_metric = logit_diff  # partial(probs, type="s")
+mean_dataset = abca_dataset
+
+run_original = True
 if run_original:
-
     circuit_perf = []
-
     for G in list(circuit.keys()) + ["none"]:
         if G == "ablation":
             continue
@@ -434,7 +449,7 @@ if run_original:
             heads_to_keep=heads_to_keep,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
+            mean_dataset=mean_dataset,
         )
         torch.cuda.empty_cache()
         cur_metric_broken_circuit, std_broken_circuit = cur_metric(model, ioi_dataset, std=True, all=True)
@@ -456,13 +471,15 @@ if run_original:
             heads_to_remove=G_heads_to_remove,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
+            mean_dataset=mean_dataset,
         )
+
         torch.cuda.empty_cache()
         cur_metric_cobble, std_cobble_circuit = cur_metric(model, ioi_dataset, std=True, all=True)
+        print(cur_metric_cobble.mean(), cur_metric_broken_circuit.mean())
         torch.cuda.empty_cache()
-        # metric(M\G)
 
+        # metric(M\G)
         for i in range(len(cur_metric_cobble)):
             circuit_perf.append(
                 {
@@ -477,59 +494,117 @@ if run_original:
 # %%
 show_scatter = True
 circuit_perf_scatter = []
+eps = 1.2
 
 # by points
+if show_scatter:
+    fig = go.Figure()
+    # fig = px.scatter(
+    #     circuit_perf,
+    #     x="cur_metric_broken",
+    #     y="cur_metric_cobble",
+    #     hover_data=["sentence", "template"],
+    #     color="removed_group",
+    #     opacity=1.0,
+    # )
+
+    all_xs = []
+    all_ys = []
+
+    for i, circuit_class in enumerate(set(circuit_perf.removed_group)):
+        xs = list(circuit_perf[circuit_perf["removed_group"] == circuit_class]["cur_metric_broken"])
+        ys = list(circuit_perf[circuit_perf["removed_group"] == circuit_class]["cur_metric_cobble"])
+
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                # hover_data=["sentence", "template"], # TODO get this working
+                mode="markers",
+                marker=dict(color=CLASS_COLORS[circuit_class], size=3),
+                # name=circuit_vlass,
+                showlegend=False,
+                # color=CLASS_COLORS[circuit_class],
+                # opacity=1.0,
+            )
+        )
+
+        all_xs += xs
+        all_ys += ys
+        plot_ellipse(
+            fig,
+            xs,
+            ys,
+            color=CLASS_COLORS[circuit_class],
+            name=circuit_class,
+        )
+
+    minx = min(min(all_xs), min(all_ys))
+    maxx = max(max(all_xs), max(all_ys))
+    fig.update_layout(
+        shapes=[
+            dict(
+                type="line",
+                xref="x",
+                x0=minx,
+                x1=maxx,
+                yref="y",
+                y0=minx,
+                y1=maxx,
+            )
+        ]
+    )
+
+    xs = np.linspace(minx, maxx, 100)
+    ys_max = xs + eps
+    ys_min = xs - eps
+
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys_min,
+            mode="lines",
+            name="THIS ONE IS HIDDEN",
+            showlegend=False,
+            line=dict(color="grey"),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys_max,
+            mode="lines",
+            name=f"Completeness region, epsilon={eps}",
+            fill="tonexty",
+            line=dict(color="grey"),
+        )
+    )
+
+    fig.update_xaxes(gridcolor="black", gridwidth=0.1)
+    fig.update_yaxes(gridcolor="black", gridwidth=0.1)
+    fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+    fig.write_image(f"svgs/circuit_completeness_at_{ctime()}.svg")
+    fig.show()
+#%%
 if run_original:
-    if show_scatter:
-        fig = px.scatter(
-            circuit_perf,
-            x="cur_metric_broken",
-            y="cur_metric_cobble",
-            hover_data=["sentence", "template"],
-            color="removed_group",
-            opacity=1.0,
-        )
-
-        fig.update_layout(
-            shapes=[
-                # adds line at y=5
-                dict(
-                    type="line",
-                    xref="x",
-                    x0=-2,
-                    x1=12,
-                    yref="y",
-                    y0=-2,
-                    y1=12,
-                )
-            ]
-        )
-        fig.show()
-
     # by sets
     perf_by_sets = []
     for i in range(len(circuit) + 1):
+        cur_metric_brokens = circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].cur_metric_broken
+
+        cur_metric_cobbles = circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].cur_metric_cobble
+
         perf_by_sets.append(
             {
                 "removed_group": circuit_perf.iloc[i * ioi_dataset.N].removed_group,
-                "mean_cur_metric_broken": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].cur_metric_broken.mean(),
-                "mean_cur_metric_cobble": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].cur_metric_cobble.mean(),
-                "std_cur_metric_broken": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].cur_metric_broken.std(),
-                "std_cur_metric_cobble": circuit_perf.iloc[
-                    i * ioi_dataset.N : (i + 1) * ioi_dataset.N
-                ].cur_metric_cobble.std(),
+                "mean_cur_metric_broken": cur_metric_brokens.mean(),
+                "mean_cur_metric_cobble": cur_metric_cobbles.mean(),
+                "std_cur_metric_broken": cur_metric_brokens.std(),
+                "std_cur_metric_cobble": cur_metric_cobbles.std(),
             }
         )
 
-        perf_by_sets[-1]["mean_abs_diff"] = abs(
-            perf_by_sets[-1]["mean_cur_metric_broken"] - perf_by_sets[-1]["mean_cur_metric_cobble"]
-        )
+        perf_by_sets[-1]["mean_abs_diff"] = abs(cur_metric_brokens - cur_metric_cobbles).mean()
 
     circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
     print(
@@ -562,122 +637,11 @@ if run_original:
         ]
     )
 
+    fig.update_xaxes(gridcolor="black", gridwidth=0.1)
+    fig.update_yaxes(gridcolor="black", gridwidth=0.1)
+    fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+    fig.write_image(f"svgs/circuit_completeness_plusses_at_{ctime()}.svg")
     fig.show()
-#%%
-# plot the covariance ellipsoid
-# as in https://matplotlib.org/3.1.1/gallery/statistics/confidence_ellipse.html#sphx-glr-gallery-statistics-confidence-ellipse-py
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
-import matplotlib.transforms as transforms
-
-if run_original:
-    xs = {}
-    ys = {}
-    for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
-        xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_broken.values
-        ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_cobble.values
-        xs[G] = [float(x) for x in xs[G]]
-        ys[G] = [float(y) for y in ys[G]]
-
-
-def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
-    """
-    Create a plot of the covariance confidence ellipse of `x` and `y`
-
-    Parameters
-    ----------
-    x, y : array_like, shape (n, )
-        Input data.
-
-    ax : matplotlib.axes.Axes
-        The axes object to draw the ellipse into.
-
-    n_std : float
-        The number of standard deviations to determine the ellipse's radiuses.
-
-    Returns
-    -------
-    matplotlib.patches.Ellipse
-
-    Other parameters
-    ----------------
-    kwargs : `~matplotlib.patches.Patch` properties
-    """
-    if x.size != y.size:
-        raise ValueError("x and y must be the same size")
-
-    cov = np.cov(x, y)
-    pearson = cov[0, 1] / np.sqrt(cov[0, 0] * cov[1, 1])
-    # Using a special case to obtain the eigenvalues of this
-    # two-dimensionl dataset.
-    ell_radius_x = np.sqrt(1 + pearson)
-    ell_radius_y = np.sqrt(1 - pearson)
-    ellipse = Ellipse(
-        (0, 0),
-        width=ell_radius_x * 2,
-        height=ell_radius_y * 2,
-        facecolor=facecolor,
-        **kwargs,
-    )
-
-    # Calculating the stdandard deviation of x from
-    # the squareroot of the variance and multiplying
-    # with the given number of standard deviations.
-    scale_x = np.sqrt(cov[0, 0]) * n_std
-    mean_x = np.mean(x)
-
-    # calculating the stdandard deviation of y ...
-    scale_y = np.sqrt(cov[1, 1]) * n_std
-    mean_y = np.mean(y)
-
-    transf = transforms.Affine2D().rotate_deg(45).scale(scale_x, scale_y).translate(mean_x, mean_y)
-
-    ellipse.set_transform(transf + ax.transData)
-    return ax.add_patch(ellipse)
-
-
-if run_original:
-    fig, ax = plt.subplots(1, 1, figsize=(20, 10))
-
-    ax.axvline(c="grey", lw=1)
-    ax.axhline(c="grey", lw=1)
-
-    colors = [
-        "#636EFA",
-        "#EF553B",
-        "#00CC96",
-        "#AB63FA",
-        "#FFA15A",
-        "#19D3F3",
-        "#FF6692",
-    ]
-    # the plotly colors
-
-    for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
-        ax.scatter(list(xs[G]), list(ys[G]), s=5, label=G, c=colors[i])
-        confidence_ellipse(
-            np.asarray(xs[G]),
-            np.asarray(ys[G]),
-            ax,
-            edgecolor=colors[i],
-            n_std=1,
-        )
-
-    xs2 = np.asarray(list(range(-100, 700))) / 100
-    ys2 = np.asarray(list(range(-100, 700))) / 100
-    ax.plot(xs2, ys2)
-    ax.legend()
-    plt.xlabel("Logit diff of broken circuit")
-    plt.ylabel("Logit diff of complement of G")
-
-    print("Increase x lim if plotting logit diffs not probs")
-    plt.xlim(-0.01, 0.1)
-    plt.ylim(-0.01, 0.1)
-    plt.show()
-
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
@@ -745,9 +709,8 @@ def circuit_from_heads_logit_diff(model, ioi_dataset, heads_to_rmv=None, heads_t
     )
     return logit_diff(model, ioi_dataset, all=all)
 
-    # %% Run experiment
 
-
+# %% Run experiment
 greedy_heuristic = "max_brok_cob_diff"
 
 
@@ -777,6 +740,13 @@ def compute_cobble_broken_diff(model, ioi_dataset, nodes):  # red teaming the ci
 
     return np.abs(ldiff_broken - ldiff_cobble)
 
+
+#%%
+
+small_ioi_dataset = IOIDataset(N=40, tokenizer=model.tokenizer, nb_templates=2, prompt_type="mixed")
+torch.cuda.empty_cache()
+
+if True:
     assert greedy_heuristic in ["max_brok", "max_brok_cob_diff"]
 
     NODES_PER_STEP = 10
@@ -1045,6 +1015,3 @@ def compute_cobble_broken_diff(model, ioi_dataset, nodes):  # red teaming the ci
         orientation="h",
         color=head_classes,
     )
-
-
-# %%

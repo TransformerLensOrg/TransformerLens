@@ -1,3 +1,6 @@
+import plotly.graph_objects as go
+import numpy as np
+from numpy import sin, cos, pi
 from typing import List, Tuple, Dict, Union, Optional, Callable, Any
 from tqdm import tqdm
 import pandas as pd
@@ -7,6 +10,17 @@ import gc
 import einops
 
 from ioi_dataset import IOIDataset
+
+ALL_COLORS = px.colors.qualitative.Dark2
+CLASS_COLORS = {
+    "name mover": ALL_COLORS[0],
+    "negative": ALL_COLORS[1],
+    "s2 inhibition": ALL_COLORS[2],
+    "induction": ALL_COLORS[5],
+    "duplicate token": ALL_COLORS[3],
+    "previous token": ALL_COLORS[6],
+    "none": ALL_COLORS[7],
+}
 
 # other utils
 
@@ -45,7 +59,11 @@ def show_pp(
 
     if animate_axis is None:
         fig = px.imshow(
-            m.T, title=title if title else "", color_continuous_scale="RdBu", color_continuous_midpoint=0, **kwargs
+            m.T,
+            title=title if title else "",
+            color_continuous_scale="RdBu",
+            color_continuous_midpoint=0,
+            **kwargs,
         )
 
     else:
@@ -354,3 +372,67 @@ def all_subsets(L: List) -> List[List]:
     else:
         rest = all_subsets(L[1:])
         return rest + [[L[0]] + subset for subset in rest]  # thanks copilot
+
+
+# some ellipse shit
+
+
+def ellipse_arc(x_center=0, y_center=0, ax1=[1, 0], ax2=[0, 1], a=1, b=1, N=100):
+    # x_center, y_center the coordinates of ellipse center
+    # ax1 ax2 two orthonormal vectors representing the ellipse axis directions
+    # a, b the ellipse parameters
+    if abs(np.linalg.norm(ax1) - 1) > 1e-06 or abs(np.linalg.norm(ax2) - 1) > 1e-06:
+        raise ValueError("ax1, ax2 must be unit vectors")
+    if abs(np.dot(ax1, ax2)) > 1e-06:
+        raise ValueError("ax1, ax2 must be orthogonal vectors")
+    t = np.linspace(0, 2 * pi, N)
+    # ellipse parameterization with respect to a system of axes of directions a1, a2
+    xs = a * cos(t)
+    ys = b * sin(t)
+    # rotation matrix
+    R = np.array([ax1, ax2]).T
+    # coordinate of the  ellipse points with respect to the system of axes [1, 0], [0,1] with origin (0,0)
+    xp, yp = np.dot(R, [xs, ys])
+    x = xp + x_center
+    y = yp + y_center
+    return x, y
+
+
+def ellipse_wht(mu, sigma):
+    """
+    Returns x, y and theta of confidence ellipse
+    """
+    vals, vecs = np.linalg.eigh(sigma)
+    order = vals.argsort()[::-1]
+    vals, vecs = vals[order], vecs[:, order]
+
+    theta = np.arctan2(*vecs[:, 0][::-1])  # grr copilot why degrees
+    if theta < 0:
+        theta += 2 * pi
+    width, height = 2 * np.sqrt(vals)
+    return width, height, theta
+
+
+def plot_ellipse(fig, xs, ys, color="MediumPurple", nstd=1, name=""):
+    mu = np.mean(xs), np.mean(ys)
+    sigma = np.cov(xs, ys)
+    w, h, t = ellipse_wht(mu, sigma)
+    print(w, h, t)
+    w *= nstd
+    h *= nstd
+    x, y = ellipse_arc(
+        x_center=mu[0],
+        y_center=mu[1],
+        ax1=[cos(t), sin(t)],
+        ax2=[-sin(t), cos(t)],
+        a=w,
+        b=h,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=y,
+            marker=dict(size=20, color=color),
+            name=name,
+        )
+    )

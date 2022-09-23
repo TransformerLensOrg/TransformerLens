@@ -164,6 +164,7 @@ SMALL_CIRCUIT = {
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
 
+MED_CIRCUIT = deepcopy(SMALL_CIRCUIT)
 CIRCUIT = deepcopy(SMALL_CIRCUIT)
 for head in [
     (9, 0),
@@ -180,7 +181,8 @@ for head in [
     CIRCUIT["name mover"].append(head)
 
 for head in [(10, 7), (11, 10)]:
-    CIRCUIT["negative"].append(head)
+    for circuit in [CIRCUIT, MED_CIRCUIT]:
+        circuit["negative"].append(head)
 
 ARTHUR_CIRCUIT = deepcopy(CIRCUIT)
 ARTHUR_CIRCUIT.pop("duplicate token")
@@ -199,7 +201,7 @@ for head in CIRCUIT["duplicate token"]:
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
 
-NAIVE_CIRCUIT = {
+ALEX_NAIVE_CIRCUIT = {
     "name mover": [
         (10, 6),
         (9, 9),
@@ -207,6 +209,16 @@ NAIVE_CIRCUIT = {
     ],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "duplicate token": [(1, 11), (0, 10), (3, 0)],
+}
+
+
+NAIVE_CIRCUIT = {
+    "name mover": [(9, 6), (9, 9), (10, 0)],
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 9)],
+    "duplicate token": [(3, 0), (0, 10)],
+    "previous token": [(2, 2), (4, 11)],
+    "negative": [],
 }
 
 
@@ -294,3 +306,7 @@ def do_circuit_extraction(
         model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
     return model, abl
+
+
+if __name__ == "__main__":
+    print(CIRCUIT)
