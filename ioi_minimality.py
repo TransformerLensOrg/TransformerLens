@@ -1,5 +1,7 @@
 #%%
 import warnings
+from time import ctime
+from copy import deepcopy
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -90,6 +92,7 @@ print_gpu_mem("Gpt2 loaded")
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+mean_dataset = abca_dataset
 
 from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
@@ -97,16 +100,40 @@ from ioi_circuit_extraction import (
     CIRCUIT,
     SMALL_CIRCUIT,
     RELEVANT_TOKENS,
+    NAIVE_CIRCUIT,
     get_extracted_idx,
     get_heads_circuit,
     do_circuit_extraction,
     list_diff,
 )
 
-circuit = CIRCUIT.copy()
+#%% # do some initial experiments with the naive circuit
+circuits = [None, CIRCUIT.copy(), SMALL_CIRCUIT.copy()]
 
+metric = logit_diff
 
-def get_basic_extracted_model(model, ioi_dataset, mean_dataset=None, circuit=circuit):
+naive_heads = []
+for heads in circuits[2].values():
+    naive_heads += heads
+
+model.reset_hooks()
+model_baseline_metric = metric(model, ioi_dataset)
+
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_keep={},
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=mean_dataset,
+    exclude_heads=naive_heads,
+)
+
+circuit2_baseline_metric = metric(model, ioi_dataset)
+print(f"{model_baseline_metric=} {circuit2_baseline_metric=}")
+#%%
+def get_basic_extracted_model(
+    model, ioi_dataset, mean_dataset=None, circuit=circuits[1]
+):
     if mean_dataset is None:
         mean_dataset = ioi_dataset
     heads_to_keep = get_heads_circuit(
@@ -130,14 +157,14 @@ def get_basic_extracted_model(model, ioi_dataset, mean_dataset=None, circuit=cir
 model = get_basic_extracted_model(
     model,
     ioi_dataset,
-    mean_dataset=abca_dataset,
-    circuit=circuit,
+    mean_dataset=mean_dataset,
+    circuit=circuits[1],
 )
 torch.cuda.empty_cache()
 
-metric = logit_diff
-
-circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(model, ioi_dataset, std=True)
+circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
+    model, ioi_dataset, std=True
+)
 torch.cuda.empty_cache()
 circuit_baseline_prob, circuit_baseline_prob_std = probs(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
@@ -150,101 +177,236 @@ print(f"{circuit_baseline_diff=}, {circuit_baseline_diff_std=}")
 print(f"{circuit_baseline_prob=}, {circuit_baseline_prob_std=}")
 print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
 print(f"{baseline_prob=}, {baseline_prob_std=}")
+
+if metric == logit_diff:
+    circuit_baseline_metric = circuit_baseline_diff
+else:
+    circuit_baseline_metric = circuit_baseline_prob
+
+circuit_baseline_metric = [None, circuit_baseline_metric, circuit2_baseline_metric]
 #%% TODO Explain the way we're doing the minimal circuit experiment here
-results = {}
-results["ldiff_circuit"] = circuit_baseline_diff
-vertices = []
+all_results = [{}, {}, {}]
 
-extra_ablate_classes = list(circuit.keys())
+max_ind = 3
+for i in range(2, max_ind):
+    print(f"Doing circuit {i} of {max_ind-1}")
+    circuit = circuits[i]
+    results = all_results[i]
+    results["ldiff_circuit"] = circuit_baseline_diff
+    vertices = []
 
-xs = [baseline_ldiff, circuit_baseline_diff]
-ys = [baseline_prob, circuit_baseline_prob]
-both = [xs, ys]
-labels = ["baseline", "circuit"]
+    xs = [baseline_ldiff, circuit_baseline_diff]
+    ys = [baseline_prob, circuit_baseline_prob]
+    both = [xs, ys]
+    labels = ["baseline", "circuit"]
 
-for extra_ablate in tqdm(extra_ablate_classes):
-    extra_ablate_subset = [extra_ablate]
-    for circuit_class in list(circuit.keys()):
-        if circuit_class not in extra_ablate_subset:
-            continue
-        for layer, idx in circuit[circuit_class]:
-            vertices.append((layer, idx))
+    for class_to_ablate in tqdm(circuit.keys()):
+        for circuit_class in list(circuit.keys()):
+            if circuit_class != class_to_ablate:
+                continue
+            for layer, idx in circuit[circuit_class]:
+                vertices.append((layer, idx))
 
-    # compute METRIC(C \ W)
-    heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=extra_ablate_subset, circuit=circuit)
-    torch.cuda.empty_cache()
+        # compute METRIC(C \ W)
 
-    model.reset_hooks()
-    model, _ = do_circuit_extraction(
-        model=model,
-        heads_to_keep=heads_to_keep,
-        mlps_to_remove={},
-        ioi_dataset=ioi_dataset,
-        mean_dataset=abca_dataset,
-    )
-    labels.append(str(extra_ablate_subset))
-    torch.cuda.empty_cache()
-    for i, a_metric in enumerate([logit_diff, probs]):
-        ans, std = a_metric(model, ioi_dataset, std=True)
+        if i == 1:
+            heads_to_keep = get_heads_circuit(
+                ioi_dataset, excluded_classes=[class_to_ablate], circuit=circuit
+            )
+            excluded_heads = []
+        elif i == 2:
+            heads_to_keep = {}
+            excluded_heads = naive_heads.copy()
+            for head in circuit[class_to_ablate]:
+                excluded_heads.remove(head)
+        else:
+            raise NotImplementedError()
         torch.cuda.empty_cache()
-        both[i].append(ans)
-
-        if len(extra_ablate_subset) == 1 and metric == a_metric:
-            if extra_ablate_subset[0] not in results:
-                results[extra_ablate_subset[0]] = {}
-            results[extra_ablate_subset[0]]["metric_calc"] = ans
-
-fig = px.scatter(x=xs, y=ys, text=labels)
-fig.update_traces(textposition="top center")
-fig.show()
-#%%
-# METRIC((C \ W) \cup \{ v \})
-
-for i, circuit_class in enumerate([key for key in circuit.keys() if key in extra_ablate_classes]):
-    results[circuit_class]["vs"] = {}
-    for v in tqdm(list(circuit[circuit_class])):
-        new_heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[circuit_class], circuit=circuit)
-        v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
-        assert v not in new_heads_to_keep.keys()
-        new_heads_to_keep[v] = v_indices
 
         model.reset_hooks()
         model, _ = do_circuit_extraction(
             model=model,
-            heads_to_keep=new_heads_to_keep,
+            heads_to_keep=heads_to_keep,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
+            mean_dataset=mean_dataset,
+            exclude_heads=excluded_heads,
         )
+        labels.append(str(class_to_ablate))
         torch.cuda.empty_cache()
-        metric_calc = metric(model, ioi_dataset, std=True)
-        results[circuit_class]["vs"][v] = metric_calc
-        torch.cuda.empty_cache()
+        for j, a_metric in enumerate([logit_diff, probs]):
+            ans, std = a_metric(model, ioi_dataset, std=True)
+            torch.cuda.empty_cache()
+            both[j].append(ans)
+
+            if metric == a_metric:
+                if class_to_ablate not in results:
+                    results[class_to_ablate] = {}
+                results[class_to_ablate]["metric_calc"] = ans
+
+    fig = px.scatter(x=xs, y=ys, text=labels)
+    fig.update_traces(textposition="top center")
+    fig.show()
 #%%
-fig = go.Figure()
+# METRIC((C \ W) \cup \{ v \})
 
-for G in list(extra_ablate_classes):
-    if len(circuit[G]) > 4:
-        warnings.warn("just plotting first 4 vertices per class")
-    for i, v in enumerate(list(circuit[G])[:4]):
-        fig.add_trace(
-            go.Bar(
-                x=[G],
-                y=[results[G]["vs"][v][0] - results[G]["metric_calc"]],
-                base=results[G]["metric_calc"],
-                width=1 / (len(CIRCUIT[G]) + 1),
-                offset=(i - 3 / 2) / (len(CIRCUIT[G]) + 1),
-                marker_color=["crimson", "royalblue", "darkorange", "limegreen"][i],
-                text=f"{v}",
-                name=f"{v}",
-                textposition="outside",
+for i in range(2, max_ind):
+    results = all_results[i]
+    circuit = circuits[i]
+    for index, circuit_class in enumerate(
+        [key for key in circuit.keys() if key in list(circuit.keys())]
+    ):
+        extra_excludes = deepcopy(circuit[circuit_class])
+
+        results[circuit_class]["vs"] = {}
+        for vidx, v in enumerate(tqdm(list(circuit[circuit_class]))):
+            if i == 1:
+                excluded_heads = []
+
+                new_heads_to_keep = get_heads_circuit(
+                    ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
+                )
+                v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
+                assert v not in new_heads_to_keep.keys()
+                new_heads_to_keep[v] = v_indices
+
+                # for w in circuit[circuit_class][vidx + 1 :]:
+                #     new_heads_to_keep[w] = get_extracted_idx(
+                #         RELEVANT_TOKENS[w], ioi_dataset
+                #     )
+                # ablate all the boys up to the current. Then also ablate this on
+
+            elif i == 2:
+                new_heads_to_keep = {}  # hmm
+                excluded_heads = [v]
+                for other_circuit_class in list(circuit.keys()):
+                    if other_circuit_class == circuit_class:
+                        continue
+                    for layer, idx in circuit[other_circuit_class]:
+                        excluded_heads.append((layer, idx))
+            else:
+                raise NotImplementedError()
+
+            model.reset_hooks()
+            model, _ = do_circuit_extraction(
+                model=model,
+                heads_to_keep=new_heads_to_keep,
+                mlps_to_remove={},
+                ioi_dataset=ioi_dataset,
+                mean_dataset=mean_dataset,
+                exclude_heads=excluded_heads,
             )
-        )
+            torch.cuda.empty_cache()
+            metric_calc = metric(model, ioi_dataset, std=False)
+            results[circuit_class]["vs"][v] = metric_calc
+            torch.cuda.empty_cache()
+# and now 9.9 kills it!!
+#%%
+circuit_idx = 2
+circuit = circuits[circuit_idx]
+results = all_results[circuit_idx]
 
+xs = []
+initial_ys = []
+final_ys = []
+
+ac = px.colors.qualitative.Dark2
+cc = {
+    "name mover": ac[0],
+    "negative": ac[1],
+    "s2 inhibition": ac[2],
+    "induction": ac[5],
+    "duplicate token": ac[3],
+    "previous token": ac[6],
+}
+
+relevant_classes = list(circuit.keys())
+
+fig = go.Figure()
+colors = []
+for j, G in enumerate(relevant_classes):
+    for i, v in enumerate(list(circuit[G])):
+        xs.append(str(v))
+        initial_ys.append(results[G]["metric_calc"])
+        final_ys.append(results[G]["vs"][v].item())
+        colors.append(cc[G])
+
+
+initial_ys = torch.Tensor(initial_ys)
+final_ys = torch.Tensor(final_ys)
+
+fig.add_trace(
+    go.Bar(
+        x=xs,
+        y=final_ys - initial_ys,
+        base=initial_ys,
+        marker_color=colors,
+        width=[1.0 for _ in range(len(xs))],
+        name="",
+    )
+)
+
+fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+
+all_vs = []
+
+for circuit_class in relevant_classes:
+    vs = circuit[circuit_class]
+    vs_str = [str(v) for v in vs]
+    all_vs.extend(vs_str)
+    fig.add_trace(
+        go.Scatter(
+            x=vs_str,
+            y=[results[circuit_class]["metric_calc"] for _ in range(len(vs))],
+            line=dict(color=cc[circuit_class]),
+            name=circuit_class,
+        )
+    )
+
+fig.add_trace(
+    go.Scatter(
+        x=all_vs,
+        y=[
+            (baseline_prob if metric == probs else baseline_ldiff)
+            for _ in range(len(all_vs))
+        ],
+        name="Baseline model performance",
+        line=dict(color="black"),
+        fill="toself",
+        mode="lines",
+    )
+)
+
+fig.add_trace(
+    go.Scatter(
+        x=all_vs,
+        y=[circuit_baseline_metric[circuit_idx] for _ in range(len(all_vs))],
+        name="Circuit performance",
+        line=dict(color="blue"),
+        fill="toself",
+        mode="lines",
+    )
+)
+
+fig.update_layout(
+    # title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
+    xaxis_title="Attention head",
+    yaxis_title="Average logit difference",
+)
+
+fig.update_xaxes(
+    gridcolor="black",
+    gridwidth=0.1,
+    # minor=dict(showgrid=False),  # please plotly, just do what I want
+)
+fig.update_yaxes(gridcolor="black", gridwidth=0.1)
+fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
+fig.show()
+#%%
 fig.add_shape(
     type="line",
     xref="x",
-    x0=-2,
+    x0=-0.50,
     x1=8,
     yref="y",
     y0=baseline_prob if metric == probs else baseline_ldiff,
@@ -299,7 +461,7 @@ fig.add_trace(
     )
 )
 
-fig.update_layout(showlegend=False)
+# fig.update_layout(showlegend=False)
 
 fig.update_layout(
     title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
@@ -351,27 +513,27 @@ for v, a in results["name mover"]["vs"].items():
     vs.append(v)
     xs.append(a[0].item() - 1.0138)
 print(vs, xs)
-#%% # run Alex's experiment
-for i, circuit_class in enumerate(["name mover"]):
-    for extra_v in [(11, 9), (9, 0)]:
-        new_heads_to_keep = get_heads_circuit(ioi_dataset, excluded_classes=[circuit_class], circuit=circuit)
-        for v in [extra_v] + [(9, 7), (11, 1)]:
-            v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
-            assert v not in new_heads_to_keep.keys()
-            new_heads_to_keep[v] = v_indices
+#%% # check that really ablate 9.9+9.6 is worse than just 9.9 ???
+for poppers in [[(9, 9)], [(9, 9), (9, 6)], [(9, 6)]]:
+    new_heads_to_keep = get_heads_circuit(
+        ioi_dataset, excluded_classes=[], circuit=circuit
+    )
 
-        model.reset_hooks()
-        model, _ = do_circuit_extraction(
-            model=model,
-            heads_to_keep=new_heads_to_keep,
-            mlps_to_remove={},
-            ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
-        )
-        torch.cuda.empty_cache()
-        metric_calc = metric(model, ioi_dataset, std=True)
-        torch.cuda.empty_cache()
-        print(extra_v, metric_calc)
+    for popper in poppers:
+        new_heads_to_keep.pop(popper)
+
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=new_heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=ioi_dataset,
+    )
+    torch.cuda.empty_cache()
+    metric_calc = metric(model, ioi_dataset, std=True)
+    torch.cuda.empty_cache()
+    print(metric_calc)
 #%% # new experiment idea: the duplicators and induction heads shouldn't care where their attention is going, provided that
 # it goes to either S or S+1.
 
@@ -379,12 +541,16 @@ for j in range(2, 4):
     s_positions = ioi_dataset.word_idx["S"]
 
     # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
-    def attention_pattern_modifier(z, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
+    def attention_pattern_modifier(
+        z, hook
+    ):  # batch, seq, head dim, because get_act_hook hides scary things from us
         cur_layer = int(hook.name.split(".")[1])
         cur_head_idx = hook.ctx["idx"]
 
         assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
-        assert len(list(z.shape)) == 3, z.shape  # batch, seq (attending_query), attending_key
+        assert (
+            len(list(z.shape)) == 3
+        ), z.shape  # batch, seq (attending_query), attending_key
 
         prior_stuff = []
 
@@ -393,7 +559,9 @@ for j in range(2, 4):
             # print(prior_stuff[-1].shape, torch.sum(prior_stuff[-1]))
 
         for i in range(-1, 2):
-            z[:, s_positions + i, :] = prior_stuff[(i + j) % 3]  # +1 is the do nothing one
+            z[:, s_positions + i, :] = prior_stuff[
+                (i + j) % 3
+            ]  # +1 is the do nothing one
 
         return z
 

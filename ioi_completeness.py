@@ -1,4 +1,5 @@
 #%%
+import warnings
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -58,6 +59,7 @@ from ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
     NAMES,
+    gen_flipped_prompts,
     gen_prompt_uniform,
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
@@ -99,6 +101,7 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
@@ -428,6 +431,7 @@ if run_original:
             heads_to_keep=heads_to_keep,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
         )
         torch.cuda.empty_cache()
         cur_metric_broken_circuit, std_broken_circuit = cur_metric(model, ioi_dataset, std=True, all=True)
@@ -449,6 +453,7 @@ if run_original:
             heads_to_remove=G_heads_to_remove,
             mlps_to_remove={},
             ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
         )
         torch.cuda.empty_cache()
         cur_metric_cobble, std_cobble_circuit = cur_metric(model, ioi_dataset, std=True, all=True)
@@ -519,6 +524,15 @@ if run_original:
             }
         )
 
+        perf_by_sets[-1]["mean_abs_diff"] = abs(
+            perf_by_sets[-1]["mean_cur_metric_broken"] - perf_by_sets[-1]["mean_cur_metric_cobble"]
+        )
+
+    circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
+    print(
+        f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
+    )
+
     # plot sets
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
     fig = px.scatter(
@@ -555,14 +569,13 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 
-if run_original:
-    xs = {}
-    ys = {}
-    for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
-        xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_broken.values
-        ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_cobble.values
-        xs[G] = [float(x) for x in xs[G]]
-        ys[G] = [float(y) for y in ys[G]]
+xs = {}
+ys = {}
+for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
+    xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_broken.values
+    ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_cobble.values
+    xs[G] = [float(x) for x in xs[G]]
+    ys[G] = [float(y) for y in ys[G]]
 
 
 def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
@@ -627,7 +640,15 @@ if run_original:
     ax.axvline(c="grey", lw=1)
     ax.axhline(c="grey", lw=1)
 
-    colors = ["#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A", "#19D3F3", "#FF6692"]
+    colors = [
+        "#636EFA",
+        "#EF553B",
+        "#00CC96",
+        "#AB63FA",
+        "#FFA15A",
+        "#19D3F3",
+        "#FF6692",
+    ]
     # the plotly colors
 
     for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
@@ -760,7 +781,10 @@ def compute_cobble_broken_diff(model, ioi_dataset, nodes):  # red teaming the ci
     if greedy_heuristic == "max_brok":
         nodes_logit_diff_small_data = partial(circuit_from_nodes_logit_diff, model, small_ioi_dataset)
         all_sets_max_brok = greed_search_max_broken(
-            nodes_logit_diff_small_data, NODES_PER_STEP=NODES_PER_STEP, NB_SETS=NB_SETS, NB_ITER=NB_ITER
+            nodes_logit_diff_small_data,
+            NODES_PER_STEP=NODES_PER_STEP,
+            NB_SETS=NB_SETS,
+            NB_ITER=NB_ITER,
         )
         title_suffix = "min metric(C\G) "
         all_sets = all_sets_max_brok.copy()
@@ -769,7 +793,10 @@ def compute_cobble_broken_diff(model, ioi_dataset, nodes):  # red teaming the ci
         # find G tht maximizes |metric(C\G) - metric(M\G)|
         nodes_cob_brok_diff_small_data = partial(compute_cobble_broken_diff, model, small_ioi_dataset)
         all_set_max_brok_cob_diff = greed_search_max_brok_cob_diff(
-            nodes_cob_brok_diff_small_data, NODES_PER_STEP=NODES_PER_STEP, NB_SETS=NB_SETS, NB_ITER=NB_ITER
+            nodes_cob_brok_diff_small_data,
+            NODES_PER_STEP=NODES_PER_STEP,
+            NB_SETS=NB_SETS,
+            NB_ITER=NB_ITER,
         )
         title_suffix = "max |metric(C\G) - metric(M\G)| "
 

@@ -18,7 +18,7 @@
 # <img src="https://i.imgur.com/PPtTQRh.png">
 
 # %% [markdown]
-# ## Importsf
+# ## Imports
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
@@ -50,6 +50,7 @@ from easy_transformer.experiments import (
     PatchingConfig,
     get_act_hook,
 )
+from time import ctime
 from functools import partial
 from typing import Any, Callable, Dict, List, Set, Tuple, Union, Optional, Iterable
 import itertools
@@ -135,6 +136,13 @@ N = 100
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+abca_dataset = ioi_dataset.gen_flipped_prompts(
+    "S2"
+)  # we flip the second b for a random c
+pprint(abca_dataset.text_prompts[:5])
+
+abca_dataset_abba = ioi_dataset_abba.gen_flipped_prompts("S2")
+abca_dataset_baba = ioi_dataset_baba.gen_flipped_prompts("S2")
 
 
 def logit_diff(model, ioi_dataset, all=False):
@@ -659,17 +667,11 @@ scatter_attention_and_contribution(
 # %%
 print_gpu_mem()
 # %%
-abca_dataset = ioi_dataset.gen_flipped_prompts(
-    "S2"
-)  # we flip the second b for a random c
-pprint(abca_dataset.text_prompts[:5])
-
-# %%
 pprint(ioi_dataset.text_prompts[:5])
 
 # %% # here...
 HEAD = 9  # head 9.9, 9.6, 10.0 show similar plots in the exeprimetns, try changing the values!
-LAYER = 9
+LAYER = 11
 hook_name = f"blocks.{LAYER}.attn.hook_attn"
 
 text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
@@ -842,7 +844,8 @@ def patch_positions(
 
 
 # %%
-positions = ["end"]
+LAYER = 9
+positions = ["S2"]
 patcher = partial(patch_positions, positions=positions)
 
 config = PatchingConfig(
@@ -865,13 +868,17 @@ result = patching.run_patching()
 
 
 for i, key in enumerate(["IO", "S", "S2"]):
-    px.imshow(
+    fig = px.imshow(
         result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
         title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on {positions}',
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
-    ).show()
+    )
+
+    fig.write_image(f"svgs/99S2 {key} at {ctime()}.svg")
+    fig.show()
+
 
 # %% [markdown]
 # A bunch of other head appear, in layer earlier than the S2-inhibition heads: 0.1, 0.10, 3.0 and 5.5, 5.8, 5.9, 6.9. We claim that they influence the values that S2 will read. Let's visualize their attention patterns.
@@ -1603,3 +1610,8 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
     model.add_hook(cur_tensor_name, cur_hook)
 
 new_ld = logit_diff(model, ioi_dataset)
+#%% # how frequently does the model predict the correct name?
+for i in tqdm(range(1000)):
+    ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+    prbs = probs(model, ioi_dataset)
+    print(prbs.mean())
