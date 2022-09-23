@@ -1,3 +1,5 @@
+import numpy as np
+from numpy import sin, cos, pi
 from typing import List, Tuple, Dict, Union, Optional, Callable, Any
 from tqdm import tqdm
 import pandas as pd
@@ -353,3 +355,60 @@ def all_subsets(L: List) -> List[List]:
     else:
         rest = all_subsets(L[1:])
         return rest + [[L[0]] + subset for subset in rest]  # thanks copilot
+
+
+# some ellipse shit
+
+
+def ellipse_arc(x_center=0, y_center=0, ax1=[1, 0], ax2=[0, 1], a=1, b=1, N=100):
+    # x_center, y_center the coordinates of ellipse center
+    # ax1 ax2 two orthonormal vectors representing the ellipse axis directions
+    # a, b the ellipse parameters
+    if abs(np.linalg.norm(ax1) - 1) > 1e-06 or abs(np.linalg.norm(ax2) - 1) > 1e-06:
+        raise ValueError("ax1, ax2 must be unit vectors")
+    if abs(np.dot(ax1, ax2)) > 1e-06:
+        raise ValueError("ax1, ax2 must be orthogonal vectors")
+    t = np.linspace(0, 2 * pi, N)
+    # ellipse parameterization with respect to a system of axes of directions a1, a2
+    xs = a * cos(t)
+    ys = b * sin(t)
+    # rotation matrix
+    R = np.array([ax1, ax2]).T
+    # coordinate of the  ellipse points with respect to the system of axes [1, 0], [0,1] with origin (0,0)
+    xp, yp = np.dot(R, [xs, ys])
+    x = xp + x_center
+    y = yp + y_center
+    return x, y
+
+
+def ellipse_wht(mu, sigma):
+    """
+    Returns x, y and theta of confidence ellipse
+    """
+    vals, vecs = np.linalg.eigh(sigma)
+    order = vals.argsort()[::-1]
+    vals, vecs = vals[order], vecs[:, order]
+    theta = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+    # Width and height are "full" widths, not radius # TODO check if this copilot black magic makes sense
+    width, height = 2 * np.sqrt(vals)
+    return width, height, theta
+
+
+def plot_ellipse(fig, xs, ys, nstd=1):
+    mu = np.mean(xs), np.mean(ys)
+    sigma = np.cov(xs, ys)
+    w, h, t = ellipse_wht(mu, sigma)
+    print(w, h, t)
+    w *= nstd
+    h *= nstd
+    x, y = ellipse_arc(
+        x_center=mu[0],
+        y_center=mu[1],
+        ax1=[cos(t), sin(t)],
+        ax2=[-sin(t), cos(t)],
+        a=h,
+        b=w,
+    )
+    fig.add_scatter(
+        x=x, y=y, marker=dict(size=20, color="MediumPurple")
+    )  # , line=dict(width=2))
