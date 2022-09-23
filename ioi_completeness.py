@@ -1111,3 +1111,29 @@ if True:
         orientation="h",
         color=head_classes,
     )
+#%%
+xs = np.linspace(-1, 5, 100)
+ys1 = xs.copy() + 1.1
+ys2 = xs.copy() - 1.1
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys1,
+        mode="lines",
+        name="y=x+1.1",
+        showlegend=False,
+        line=dict(color="blue"),
+    )
+)
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys2,
+        mode="lines",
+        name="y=x-1.1",
+        fill="tonexty",
+        line=dict(color="blue"),
+    )
+)
+fig.show()
