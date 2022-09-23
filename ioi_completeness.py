@@ -404,8 +404,8 @@ if __name__ != "__main__":
 
 # %%
 circuit = CIRCUIT.copy()
-
-cur_metric = probs  # partial(probs, type="s")
+cur_metric = logit_diff
+# cur_metric = probs  # partial(probs, type="s")
 if run_original:
 
     circuit_perf = []
@@ -555,13 +555,14 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 
-xs = {}
-ys = {}
-for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
-    xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_broken.values
-    ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_cobble.values
-    xs[G] = [float(x) for x in xs[G]]
-    ys[G] = [float(y) for y in ys[G]]
+if run_original:
+    xs = {}
+    ys = {}
+    for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
+        xs[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_broken.values
+        ys[G] = circuit_perf.loc[circuit_perf["removed_group"] == G].cur_metric_cobble.values
+        xs[G] = [float(x) for x in xs[G]]
+        ys[G] = [float(y) for y in ys[G]]
 
 
 def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
@@ -646,10 +647,10 @@ if run_original:
     plt.xlabel("Logit diff of broken circuit")
     plt.ylabel("Logit diff of complement of G")
 
-warnings.warn("Increase x lim if plotting logit diffs not probs")
-plt.xlim(-0.01, 0.1)
-plt.ylim(-0.01, 0.1)
-plt.show()
+    print("Increase x lim if plotting logit diffs not probs")
+    plt.xlim(-0.01, 0.1)
+    plt.ylim(-0.01, 0.1)
+    plt.show()
 
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):

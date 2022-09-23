@@ -95,7 +95,7 @@ def show_pp(
 # Plot attention patterns weighted by value norm
 
 
-def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=""):
+def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix="", return_fig=False, return_mtx=False):
     assert mode in [
         "attn",
         "val",
@@ -142,8 +142,12 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
                     "tickfont": dict(size=8),
                 },
             )
-
-            fig.show()
+            if return_fig and not return_mtx:
+                return fig
+            elif return_mtx and not return_fig:
+                return attn if mode == "attn" else cont
+            else:
+                fig.show()
 
 
 def safe_del(a):
@@ -167,13 +171,27 @@ def get_indices_from_sql_file(fname, trial_id):
     return list(map(int, df[df.trial_id == trial_id].param_value.values))
 
 
+global last_time
+last_time = None
+import time
+
+
+def get_time(s):
+    global last_time
+    if last_time is None:
+        last_time = time.time()
+    else:
+        print(f"Time elapsed - {s} -: {time.time() - last_time}")
+        last_time = time.time()
+
+
 def scatter_attention_and_contribution(
     model,
     layer_no,
     head_no,
-    prompts,
-    gpt_model="gpt2",
+    ioi_dataset,
     return_vals=False,
+    return_fig=False,
 ):
     """
     Plot a scatter plot
@@ -184,7 +202,13 @@ def scatter_attention_and_contribution(
     n_layers = model.cfg.n_layers
     model_unembed = model.unembed.W_U.detach().cpu()
     df = []
-    for prompt in tqdm(prompts):
+    cache = {}
+    model.cache_all(cache)
+
+    logits = model(ioi_dataset.text_prompts)
+
+    for i, prompt in tqdm(enumerate(ioi_dataset.ioi_prompts)):
+
         io_tok = model.tokenizer(" " + prompt["IO"])["input_ids"][0]
         s_tok = model.tokenizer(" " + prompt["S"])["input_ids"][0]
         toks = model.tokenizer(prompt["text"])["input_ids"]
@@ -193,23 +217,28 @@ def scatter_attention_and_contribution(
         s2_pos = toks[s1_pos + 1 :].index(s_tok) + (s1_pos + 1)
         assert toks[-1] == io_tok
 
-        io_dir = model_unembed[io_tok].detach().cpu()
-        s_dir = model_unembed[s_tok].detach().cpu()
+        io_dir = model_unembed[io_tok].detach()
+        s_dir = model_unembed[s_tok].detach()
 
         # model.reset_hooks() # should allow things to be done with ablated models
-        cache = {}
-        model.cache_all(cache)
-
-        logits = model(prompt["text"])
 
         for dire, posses, tok_type in [
             (io_dir, [io_pos], "IO"),
             (s_dir, [s1_pos, s2_pos], "S"),
         ]:
             prob = sum(
-                [cache[f"blocks.{layer_no}.attn.hook_attn"][0, head_no, -2, pos].detach().cpu() for pos in posses]
+                [
+                    cache[f"blocks.{layer_no}.attn.hook_attn"][i, head_no, ioi_dataset.word_idx["end"][i], pos]
+                    .detach()
+                    .cpu()
+                    for pos in posses
+                ]
             )
-            resid = cache[f"blocks.{layer_no}.attn.hook_result"][0, -2, head_no, :].detach().cpu()
+            resid = (
+                cache[f"blocks.{layer_no}.attn.hook_result"][i, ioi_dataset.word_idx["end"][i], head_no, :]
+                .detach()
+                .cpu()
+            )
             dot = torch.einsum("a,a->", resid, dire)
             df.append([prob, dot, tok_type, prompt["text"]])
 
@@ -221,11 +250,16 @@ def scatter_attention_and_contribution(
         y=f"Dot w Name Embed",
         color="Name Type",
         hover_data=["text"],
+        color_discrete_sequence=["rgb(114,255,100)", "rgb(201,165,247)"],
         title=f"How Strong {layer_no}.{head_no} Writes in the Name Embed Direction Relative to Attn Prob",
     )
-    fig.show()
+
     if return_vals:
         return viz_df
+    if return_fig:
+        return fig
+    else:
+        fig.show()
 
 
 # metrics

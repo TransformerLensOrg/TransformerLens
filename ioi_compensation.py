@@ -608,7 +608,7 @@ compensation_plot(model, ioi_dataset, layer=9, layer_to_get="final_logit_diff")
 webtext = load_dataset("stas/openwebtext-10k")
 
 max_nb_tok = 100
-nb_seq = 1000
+nb_seq = 300
 owt_seqs = [webtext["train"]["text"][i][:2000] for i in range(nb_seq)]
 
 # %%
