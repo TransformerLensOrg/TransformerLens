@@ -303,3 +303,7 @@ def do_circuit_extraction(
         model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
     return model, abl
+
+
+if __name__ == "__main__":
+    print(CIRCUIT)

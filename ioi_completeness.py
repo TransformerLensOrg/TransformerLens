@@ -67,6 +67,7 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    CLASSES_COLORS,
     clear_gpu_mem,
     show_tokens,
     show_pp,
@@ -74,6 +75,16 @@ from ioi_utils import (
     safe_del,
     plot_ellipse,
 )
+
+plotly_colors = [
+    "#636EFA",
+    "#EF553B",
+    "#00CC96",
+    "#AB63FA",
+    "#FFA15A",
+    "#19D3F3",
+    "#FF6692",
+]
 
 from functools import partial
 
@@ -460,14 +471,15 @@ if run_original:
             ioi_dataset=ioi_dataset,
             mean_dataset=mean_dataset,
         )
+
         torch.cuda.empty_cache()
         cur_metric_cobble, std_cobble_circuit = cur_metric(
             model, ioi_dataset, std=True, all=True
         )
         print(cur_metric_cobble.mean(), cur_metric_broken_circuit.mean())
         torch.cuda.empty_cache()
-        # metric(M\G)
 
+        # metric(M\G)
         for i in range(len(cur_metric_cobble)):
             circuit_perf.append(
                 {
@@ -484,39 +496,56 @@ show_scatter = True
 circuit_perf_scatter = []
 
 # by points
-if run_original:
-    if show_scatter:
-        fig = px.scatter(
-            circuit_perf,
-            x="cur_metric_broken",
-            y="cur_metric_cobble",
-            hover_data=["sentence", "template"],
-            color="removed_group",
-            opacity=1.0,
-        )
+if show_scatter:
+    fig = px.scatter(
+        circuit_perf,
+        x="cur_metric_broken",
+        y="cur_metric_cobble",
+        hover_data=["sentence", "template"],
+        color="removed_group",
+        opacity=1.0,
+    )
 
-        fig.update_layout(
-            shapes=[
-                # adds line at y=5
-                dict(
-                    type="line",
-                    xref="x",
-                    x0=-2,
-                    x1=12,
-                    yref="y",
-                    y0=-2,
-                    y1=12,
-                )
+    fig.update_layout(
+        shapes=[
+            # adds line at y=5
+            dict(
+                type="line",
+                xref="x",
+                x0=-2,
+                x1=12,
+                yref="y",
+                y0=-2,
+                y1=12,
+            )
+        ]
+    )
+
+    for i, circuit_class in enumerate(set(circuit_perf.removed_group)):
+        xs = list(
+            circuit_perf[circuit_perf["removed_group"] == circuit_class][
+                "cur_metric_broken"
             ]
         )
+        ys = list(
+            circuit_perf[circuit_perf["removed_group"] == circuit_class][
+                "cur_metric_cobble"
+            ]
+        )
+        plot_ellipse(
+            fig,
+            xs,
+            ys,
+            color=CLASSES_COLORS[circuit_class],
+        )
 
-        fig.update_xaxes(gridcolor="black", gridwidth=0.1)
-        fig.update_yaxes(gridcolor="black", gridwidth=0.1)
-        fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
-        fig.write_image(f"svgs/circuit_completeness_at_{ctime()}.svg")
-
-        fig.show()
-
+    fig.update_xaxes(gridcolor="black", gridwidth=0.1)
+    fig.update_yaxes(gridcolor="black", gridwidth=0.1)
+    fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+    fig.write_image(f"svgs/circuit_completeness_at_{ctime()}.svg")
+    fig.show()
+#%%
+if run_original:
     # by sets
     perf_by_sets = []
     for i in range(len(circuit) + 1):
@@ -603,7 +632,8 @@ fig = go.Figure()
 plot_ellipse(fig, xs[G], ys[G])
 fig.add_trace(go.Scatter(x=xs[G], y=ys[G], mode="markers", name=G))
 fig.show()
-#%%
+
+
 def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
     """
     Create a plot of the covariance confidence ellipse of `x` and `y`
@@ -671,17 +701,6 @@ if run_original:
 
     ax.axvline(c="grey", lw=1)
     ax.axhline(c="grey", lw=1)
-
-    colors = [
-        "#636EFA",
-        "#EF553B",
-        "#00CC96",
-        "#AB63FA",
-        "#FFA15A",
-        "#19D3F3",
-        "#FF6692",
-    ]
-    # the plotly colors
 
     for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
         ax.scatter(list(xs[G]), list(ys[G]), s=5, label=G, c=colors[i])
