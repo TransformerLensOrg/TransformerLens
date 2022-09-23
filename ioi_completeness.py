@@ -494,6 +494,7 @@ if run_original:
 # %%
 show_scatter = True
 circuit_perf_scatter = []
+eps = 1.2
 
 # by points
 if show_scatter:
@@ -506,20 +507,8 @@ if show_scatter:
         opacity=1.0,
     )
 
-    fig.update_layout(
-        shapes=[
-            # adds line at y=5
-            dict(
-                type="line",
-                xref="x",
-                x0=-2,
-                x1=12,
-                yref="y",
-                y0=-2,
-                y1=12,
-            )
-        ]
-    )
+    all_xs = []
+    all_ys = []
 
     for i, circuit_class in enumerate(set(circuit_perf.removed_group)):
         xs = list(
@@ -532,12 +521,55 @@ if show_scatter:
                 "cur_metric_cobble"
             ]
         )
+        all_xs += xs
+        all_ys += ys
         plot_ellipse(
             fig,
             xs,
             ys,
             color=CLASSES_COLORS[circuit_class],
         )
+
+    minx = min(min(all_xs), min(all_ys))
+    maxx = max(max(all_xs), max(all_ys))
+    fig.update_layout(
+        shapes=[
+            dict(
+                type="line",
+                xref="x",
+                x0=minx,
+                x1=maxx,
+                yref="y",
+                y0=minx,
+                y1=maxx,
+            )
+        ]
+    )
+
+    xs = np.linspace(minx, maxx, 100)
+    ys_max = xs + eps
+    ys_min = xs - eps
+
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys_min,
+            mode="lines",
+            name="y=x+1.1",
+            showlegend=False,
+            line=dict(color="grey"),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys_max,
+            mode="lines",
+            name="y=x-1.1",
+            fill="tonexty",
+            line=dict(color="grey"),
+        )
+    )
 
     fig.update_xaxes(gridcolor="black", gridwidth=0.1)
     fig.update_yaxes(gridcolor="black", gridwidth=0.1)
@@ -607,122 +639,6 @@ if run_original:
     fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
     fig.write_image(f"svgs/circuit_completeness_plusses_at_{ctime()}.svg")
     fig.show()
-#%%
-# plot the covariance ellipsoid
-# as in https://matplotlib.org/3.1.1/gallery/statistics/confidence_ellipse.html#sphx-glr-gallery-statistics-confidence-ellipse-py
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
-import matplotlib.transforms as transforms
-
-xs = {}
-ys = {}
-for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
-    xs[G] = circuit_perf.loc[
-        circuit_perf["removed_group"] == G
-    ].cur_metric_broken.values
-    ys[G] = circuit_perf.loc[
-        circuit_perf["removed_group"] == G
-    ].cur_metric_cobble.values
-    xs[G] = [float(x) for x in xs[G]]
-    ys[G] = [float(y) for y in ys[G]]
-
-fig = go.Figure()
-plot_ellipse(fig, xs[G], ys[G])
-fig.add_trace(go.Scatter(x=xs[G], y=ys[G], mode="markers", name=G))
-fig.show()
-
-
-def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
-    """
-    Create a plot of the covariance confidence ellipse of `x` and `y`
-
-    Parameters
-    ----------
-    x, y : array_like, shape (n, )
-        Input data.
-
-    ax : matplotlib.axes.Axes
-        The axes object to draw the ellipse into.
-
-    n_std : float
-        The number of standard deviations to determine the ellipse's radiuses.
-
-    Returns
-    -------
-    matplotlib.patches.Ellipse
-
-    Other parameters
-    ----------------
-    kwargs : `~matplotlib.patches.Patch` properties
-    """
-    if x.size != y.size:
-        raise ValueError("x and y must be the same size")
-
-    cov = np.cov(x, y)
-    pearson = cov[0, 1] / np.sqrt(cov[0, 0] * cov[1, 1])
-    # Using a special case to obtain the eigenvalues of this
-    # two-dimensionl dataset.
-    ell_radius_x = np.sqrt(1 + pearson)
-    ell_radius_y = np.sqrt(1 - pearson)
-    ellipse = Ellipse(
-        (0, 0),
-        width=ell_radius_x * 2,
-        height=ell_radius_y * 2,
-        facecolor=facecolor,
-        **kwargs,
-    )
-
-    # Calculating the stdandard deviation of x from
-    # the squareroot of the variance and multiplying
-    # with the given number of standard deviations.
-    scale_x = np.sqrt(cov[0, 0]) * n_std
-    mean_x = np.mean(x)
-
-    # calculating the stdandard deviation of y ...
-    scale_y = np.sqrt(cov[1, 1]) * n_std
-    mean_y = np.mean(y)
-
-    transf = (
-        transforms.Affine2D()
-        .rotate_deg(45)
-        .scale(scale_x, scale_y)
-        .translate(mean_x, mean_y)
-    )
-
-    ellipse.set_transform(transf + ax.transData)
-    return ax.add_patch(ellipse)
-
-
-if run_original:
-    fig, ax = plt.subplots(1, 1, figsize=(20, 10))
-    ax.patch.set_facecolor("white")
-
-    ax.axvline(c="grey", lw=1)
-    ax.axhline(c="grey", lw=1)
-
-    for i, G in enumerate(list(CIRCUIT.keys()) + ["none"]):
-        ax.scatter(list(xs[G]), list(ys[G]), s=5, label=G, c=colors[i])
-        confidence_ellipse(
-            np.asarray(xs[G]),
-            np.asarray(ys[G]),
-            ax,
-            edgecolor=colors[i],
-            n_std=1,
-        )
-
-    xs2 = np.asarray(list(range(-200, 800))) / 100
-    ys2 = np.asarray(list(range(-200, 800))) / 100
-    ax.plot(xs2, ys2)
-    ax.legend()
-    plt.xlabel("Logit diff of broken circuit")
-    plt.ylabel("Logit diff of complement of G")
-
-warnings.warn("Increase x lim if plotting logit diffs not probs")
-plt.xlim(-3, 7)
-plt.ylim(-3, 7)
-plt.show()
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
@@ -1111,29 +1027,3 @@ if True:
         orientation="h",
         color=head_classes,
     )
-#%%
-xs = np.linspace(-1, 5, 100)
-ys1 = xs.copy() + 1.1
-ys2 = xs.copy() - 1.1
-fig = go.Figure()
-fig.add_trace(
-    go.Scatter(
-        x=xs,
-        y=ys1,
-        mode="lines",
-        name="y=x+1.1",
-        showlegend=False,
-        line=dict(color="blue"),
-    )
-)
-fig.add_trace(
-    go.Scatter(
-        x=xs,
-        y=ys2,
-        mode="lines",
-        name="y=x-1.1",
-        fill="tonexty",
-        line=dict(color="blue"),
-    )
-)
-fig.show()
