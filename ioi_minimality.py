@@ -69,7 +69,7 @@ from ioi_dataset import (
 )
 from ioi_utils import (
     ALL_COLORS,
-    CLASSES_COLORS,
+    CLASS_COLORS,
     clear_gpu_mem,
     show_tokens,
     show_pp,
@@ -313,7 +313,7 @@ initial_ys = []
 final_ys = []
 
 ac = ALL_COLORS
-cc = CLASSES_COLORS
+cc = CLASS_COLORS
 
 relevant_classes = list(circuit.keys())
 

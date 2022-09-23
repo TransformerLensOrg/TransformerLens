@@ -12,7 +12,7 @@ import einops
 from ioi_dataset import IOIDataset
 
 ALL_COLORS = px.colors.qualitative.Dark2
-CLASSES_COLORS = {
+CLASS_COLORS = {
     "name mover": ALL_COLORS[0],
     "negative": ALL_COLORS[1],
     "s2 inhibition": ALL_COLORS[2],
@@ -391,15 +391,14 @@ def ellipse_wht(mu, sigma):
     order = vals.argsort()[::-1]
     vals, vecs = vals[order], vecs[:, order]
 
-    theta = np.arctan2(*vecs[:, 0][::-1])
+    theta = np.arctan2(*vecs[:, 0][::-1])  # grr copilot why degrees
     if theta < 0:
         theta += 2 * pi
-    # Width and height are "full" widths, not radius # TODO check if this copilot black magic makes sense
     width, height = 2 * np.sqrt(vals)
     return width, height, theta
 
 
-def plot_ellipse(fig, xs, ys, color="MediumPurple", nstd=1, text="bananas"):
+def plot_ellipse(fig, xs, ys, color="MediumPurple", nstd=1, name=""):
     mu = np.mean(xs), np.mean(ys)
     sigma = np.cov(xs, ys)
     w, h, t = ellipse_wht(mu, sigma)
@@ -419,6 +418,6 @@ def plot_ellipse(fig, xs, ys, color="MediumPurple", nstd=1, text="bananas"):
             x=x,
             y=y,
             marker=dict(size=20, color=color),
-            # label=text,
+            name=name,
         )
     )

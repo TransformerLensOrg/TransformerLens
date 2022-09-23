@@ -173,7 +173,6 @@ SMALL_CIRCUIT = {
 MED_CIRCUIT = deepcopy(SMALL_CIRCUIT)
 CIRCUIT = deepcopy(SMALL_CIRCUIT)
 
-
 for head, _ in [
     ((10, 10), "end"),
     ((10, 6), "end"),
@@ -208,7 +207,7 @@ for head in CIRCUIT["duplicate token"]:
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
 
-NAIVE_CIRCUIT = {
+ALEX_NAIVE_CIRCUIT = {
     "name mover": [
         (10, 6),
         (9, 9),
@@ -216,6 +215,16 @@ NAIVE_CIRCUIT = {
     ],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "duplicate token": [(1, 11), (0, 10), (3, 0)],
+}
+
+
+NAIVE_CIRCUIT = {
+    "name mover": [(9, 6), (9, 9), (10, 0)],
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 9)],
+    "duplicate token": [(3, 0), (0, 10)],
+    "previous token": [(2, 2), (4, 11)],
+    "negative": [],
 }
 
 

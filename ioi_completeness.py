@@ -67,7 +67,7 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
-    CLASSES_COLORS,
+    CLASS_COLORS,
     clear_gpu_mem,
     show_tokens,
     show_pp,
@@ -498,14 +498,15 @@ eps = 1.2
 
 # by points
 if show_scatter:
-    fig = px.scatter(
-        circuit_perf,
-        x="cur_metric_broken",
-        y="cur_metric_cobble",
-        hover_data=["sentence", "template"],
-        color="removed_group",
-        opacity=1.0,
-    )
+    fig = go.Figure()
+    # fig = px.scatter(
+    #     circuit_perf,
+    #     x="cur_metric_broken",
+    #     y="cur_metric_cobble",
+    #     hover_data=["sentence", "template"],
+    #     color="removed_group",
+    #     opacity=1.0,
+    # )
 
     all_xs = []
     all_ys = []
@@ -521,13 +522,29 @@ if show_scatter:
                 "cur_metric_cobble"
             ]
         )
+
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                # hover_data=["sentence", "template"], # TODO get this working
+                mode="markers",
+                marker=dict(color=CLASS_COLORS[circuit_class], size=3),
+                # name=circuit_vlass,
+                showlegend=False,
+                # color=CLASS_COLORS[circuit_class],
+                # opacity=1.0,
+            )
+        )
+
         all_xs += xs
         all_ys += ys
         plot_ellipse(
             fig,
             xs,
             ys,
-            color=CLASSES_COLORS[circuit_class],
+            color=CLASS_COLORS[circuit_class],
+            name=circuit_class,
         )
 
     minx = min(min(all_xs), min(all_ys))
@@ -555,7 +572,7 @@ if show_scatter:
             x=xs,
             y=ys_min,
             mode="lines",
-            name="y=x+1.1",
+            name="THIS ONE IS HIDDEN",
             showlegend=False,
             line=dict(color="grey"),
         )
@@ -565,7 +582,7 @@ if show_scatter:
             x=xs,
             y=ys_max,
             mode="lines",
-            name="y=x-1.1",
+            name=f"Completeness region, epsilon={eps}",
             fill="tonexty",
             line=dict(color="grey"),
         )
