@@ -7,6 +7,7 @@ from tqdm import tqdm
 import pandas as pd
 from ioi_utils import probs
 from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
+from ioi_utils import probs, logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
@@ -15,7 +16,6 @@ from easy_transformer.utils import (
     get_corner,
     print_gpu_mem,
 )  # helper functions
-from ioi_utils import *
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.EasyTransformer import (
     EasyTransformer,
@@ -76,7 +76,16 @@ from ioi_utils import (
     show_attention_patterns,
     safe_del,
 )
-
+from ioi_circuit_extraction import (
+    ALEX_NAIVE,
+    join_lists,
+    CIRCUIT,
+    RELEVANT_TOKENS,
+    get_extracted_idx,
+    get_heads_circuit,
+    do_circuit_extraction,
+    list_diff,
+)
 
 ipython = get_ipython()
 if ipython is not None:
@@ -84,7 +93,6 @@ if ipython is not None:
     ipython.magic("autoreload 2")
 #%%
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
-
 print_gpu_mem("About to load model")
 model = EasyTransformer(model_name, use_attn_result=True)
 device = "cuda"
@@ -96,21 +104,9 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
 
-from ioi_circuit_extraction import (
-    ARTHUR_CIRCUIT,
-    join_lists,
-    CIRCUIT,
-    SMALL_CIRCUIT,
-    RELEVANT_TOKENS,
-    NAIVE_CIRCUIT,
-    get_extracted_idx,
-    get_heads_circuit,
-    do_circuit_extraction,
-    list_diff,
-)
-
 #%% # do some initial experiments with the naive circuit
-circuits = [None, CIRCUIT.copy(), SMALL_CIRCUIT.copy()]
+circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
+circuit = circuits[1]
 
 metric = logit_diff
 
@@ -140,7 +136,7 @@ def get_basic_extracted_model(
         mean_dataset = ioi_dataset
     heads_to_keep = get_heads_circuit(
         ioi_dataset,
-        excluded_classes=[],
+        excluded=[],
         circuit=circuit,
     )
     torch.cuda.empty_cache()
@@ -186,162 +182,82 @@ else:
     circuit_baseline_metric = circuit_baseline_prob
 
 circuit_baseline_metric = [None, circuit_baseline_metric, circuit2_baseline_metric]
-#%% TODO Explain the way we're doing the minimal circuit experiment here
-all_results = [{}, {}, {}]
+#%% # assemble the J
+J = {}
 
-max_ind = 2
-for i in range(1, max_ind):
-    print(f"Doing circuit {i} of {max_ind-1}")
-    circuit = circuits[i]
-    results = all_results[i]
-    results["ldiff_circuit"] = circuit_baseline_diff
-    vertices = []
+for circuit_class in circuit.keys():
+    for head in circuit[circuit_class]:
+        J[head] = [circuit_class]
+J[(5, 8)] = [(5, 8)]  # [(5, 5), (6, 9), (5, 8)]
+J[(5, 9)] = [(5, 9)]  # [(5, 5), (6, 9), (5, 9)]  # these weird ass heads
 
-    xs = [baseline_ldiff, circuit_baseline_diff]
-    ys = [baseline_prob, circuit_baseline_prob]
-    both = [xs, ys]
-    labels = ["baseline", "circuit"]
-
-    for class_to_ablate in tqdm(circuit.keys()):
-        for circuit_class in list(circuit.keys()):
-            if circuit_class != class_to_ablate:
-                continue
-            for layer, idx in circuit[circuit_class]:
-                vertices.append((layer, idx))
-
-        # compute METRIC(C \ W)
-
-        if i == 1:
-            heads_to_keep = get_heads_circuit(
-                ioi_dataset, excluded_classes=[class_to_ablate], circuit=circuit
-            )
-            excluded_heads = []
-        elif i == 2:
-            heads_to_keep = {}
-            excluded_heads = naive_heads.copy()
-            for head in circuit[class_to_ablate]:
-                excluded_heads.remove(head)
+# rebuild J
+for head in J.keys():
+    new_j_entry = []
+    for entry in J[head]:
+        if isinstance(entry, str):
+            for head2 in circuits[1][entry]:
+                new_j_entry.append(head2)
+        elif isinstance(entry, tuple):
+            new_j_entry.append(entry)
         else:
-            raise NotImplementedError()
-        torch.cuda.empty_cache()
+            raise NotImplementedError(head, entry)
+    assert head in new_j_entry, (head, new_j_entry)
+    J[head] = list(set(new_j_entry))
 
-        model.reset_hooks()
-        model, _ = do_circuit_extraction(
-            model=model,
-            heads_to_keep=heads_to_keep,
-            mlps_to_remove={},
-            ioi_dataset=ioi_dataset,
-            mean_dataset=mean_dataset,
-            exclude_heads=excluded_heads,
-        )
-        labels.append(str(class_to_ablate))
-        torch.cuda.empty_cache()
-        for j, a_metric in enumerate([logit_diff, probs]):
-            ans, std = a_metric(model, ioi_dataset, std=True)
-            torch.cuda.empty_cache()
-            both[j].append(ans)
+for i, head in enumerate(circuit["name mover"]):
+    old_entry = J[head]
+    for other_head in circuit["name mover"]:
+        J[head].remove(other_head)
+    for other_head in circuit["name mover"][: i + 1]:
+        J[head].append(other_head)
 
-            if metric == a_metric:
-                if class_to_ablate not in results:
-                    results[class_to_ablate] = {}
-                results[class_to_ablate]["metric_calc"] = ans
+# for i, head in enumerate(circuit["name mover"]):
+    # J[head] += [(10, 7), (11, 10)]
 
-    fig = px.scatter(x=xs, y=ys, text=labels)
-    fig.update_traces(textposition="top center")
-    fig.show()
-#%%
-# METRIC((C \ W) \cup \{ v \})
+for i, head in enumerate(circuit["induction"]):
+    J[head] += [(10, 7), (11, 10)]
 
-for i in range(1, max_ind):
-    results = all_results[i]
-    circuit = circuits[i]
-    for index, circuit_class in enumerate(
-        [key for key in circuit.keys() if key in list(circuit.keys())]
-    ):
-        extra_excludes = deepcopy(circuit[circuit_class])
+J[(9, 6)] = [(9, 9), (9, 6)]
+J[(10, 10)] = [(9, 9), (10, 10)]
+J[(11, 1)] += [(9, 7)]# J[(11, 1)][:1] + J[(11, 1)][-5:]
+#%% 
+results = {}
 
-        results[circuit_class]["vs"] = {}
-        for vidx, v in enumerate(tqdm(list(circuit[circuit_class]))):
-            if i == 1:
-                excluded_heads = []
+if False:
+    results_cache = {}  # massively speeds up future runs
 
+for circuit_class in circuit.keys():
+    for head in circuits[1][circuit_class]:
+        results[head] = [None, None]
+        base = frozenset(J[head])
+        summit_list = deepcopy(J[head])
+        summit_list.remove(head)
+        summit = frozenset(summit_list)
+
+        for idx, ablated_stuff in enumerate([base, summit]):
+            if ablated_stuff not in results_cache:  # see the if False line
                 new_heads_to_keep = get_heads_circuit(
-                    ioi_dataset, excluded_classes=[circuit_class], circuit=circuit
+                    ioi_dataset, excluded=ablated_stuff, circuit=circuit
                 )
-                v_indices = get_extracted_idx(RELEVANT_TOKENS[v], ioi_dataset)
-                assert v not in new_heads_to_keep.keys()
-                new_heads_to_keep[v] = v_indices
+                model.reset_hooks()
+                model, _ = do_circuit_extraction(
+                    model=model,
+                    heads_to_keep=new_heads_to_keep,
+                    mlps_to_remove={},
+                    ioi_dataset=ioi_dataset,
+                    mean_dataset=mean_dataset,
+                )
+                torch.cuda.empty_cache()
+                metric_calc = metric(model, ioi_dataset, std=False)
+                results_cache[ablated_stuff] = metric_calc
+                print("Do sad thing")
+            results[head][idx] = results_cache[ablated_stuff]
 
-                # for w in circuit[circuit_class][vidx + 1 :]:
-                #     new_heads_to_keep[w] = get_extracted_idx(
-                #         RELEVANT_TOKENS[w], ioi_dataset
-                #     )
-                # ablate all the boys up to the current. Then also ablate this on
-
-            elif i == 2:
-                new_heads_to_keep = {}  # hmm
-                excluded_heads = [v]
-                for other_circuit_class in list(circuit.keys()):
-                    if other_circuit_class == circuit_class:
-                        continue
-                    for layer, idx in circuit[other_circuit_class]:
-                        excluded_heads.append((layer, idx))
-            else:
-                raise NotImplementedError()
-
-            model.reset_hooks()
-            model, _ = do_circuit_extraction(
-                model=model,
-                heads_to_keep=new_heads_to_keep,
-                mlps_to_remove={},
-                ioi_dataset=ioi_dataset,
-                mean_dataset=mean_dataset,
-                exclude_heads=excluded_heads,
-            )
-            torch.cuda.empty_cache()
-            metric_calc = metric(model, ioi_dataset, std=False)
-            results[circuit_class]["vs"][v] = metric_calc
-            torch.cuda.empty_cache()
-
-
-# %%
-
-test_circuit({'name mover': [(9, 6),
-  (9, 9),
-  (10, 0),
-  (9, 0),
-  (9, 7),
-  (10, 1),
-  (10, 2),
-  (10, 6),
-  (10, 10),
-  (11, 1),
-  (11, 6),
-  (11, 9),
-  (11, 2)],
- 'negative': [(10, 7), (11, 10)],
- 's2 inhibition': [(7, 3), (7, 9), (8, 6), (8, 10)],
- 'induction': [(5, 5), (5, 8), (5, 9), (6, 9)],
- 'duplicate token': [(0, 1), (0, 10), (3, 0)],
- 'previous token': [(2, 2), (2, 9), (4, 11)]})
-
-
-# %% MINIMALITY RESULTS, HAND CHOSEN SETS
-# problem for: 9.0, 9.7, 11.1, 11.9, (induct: 5.8, 5.9)
-
-sets[]
-
-# For name movers : one by one
-
-
-
-
-# and now 9.9 kills it!!
+        print(
+            f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}"
+        )
 #%%
-circuit_idx = 1
-circuit = circuits[circuit_idx]
-results = all_results[circuit_idx]
-
 xs = []
 initial_ys = []
 final_ys = []
@@ -356,10 +272,13 @@ colors = []
 for j, G in enumerate(relevant_classes):
     for i, v in enumerate(list(circuit[G])):
         xs.append(str(v))
-        initial_ys.append(results[G]["metric_calc"])
-        final_ys.append(results[G]["vs"][v].item())
-        colors.append(cc[G])
 
+        initial_y = results[v][0]
+        final_y = results[v][1]
+
+        initial_ys.append(initial_y)
+        final_ys.append(final_y)
+        colors.append(cc[G])
 
 initial_ys = torch.Tensor(initial_ys)
 final_ys = torch.Tensor(final_ys)
@@ -379,18 +298,18 @@ fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
 
 all_vs = []
 
-for circuit_class in relevant_classes:
-    vs = circuit[circuit_class]
-    vs_str = [str(v) for v in vs]
-    all_vs.extend(vs_str)
-    fig.add_trace(
-        go.Scatter(
-            x=vs_str,
-            y=[results[circuit_class]["metric_calc"] for _ in range(len(vs))],
-            line=dict(color=cc[circuit_class]),
-            name=circuit_class,
-        )
-    )
+# for circuit_class in relevant_classes:
+#     vs = circuit[circuit_class]
+#     vs_str = [str(v) for v in vs]
+#     all_vs.extend(vs_str)
+#     fig.add_trace(
+#         go.Scatter(
+#             x=vs_str,
+#             y=[results[circuit_class]["metric_calc"] for _ in range(len(vs))],
+#             line=dict(color=cc[circuit_class]),
+#             name=circuit_class,
+#         )
+#     )
 
 fig.add_trace(
     go.Scatter(
@@ -514,7 +433,7 @@ for ioi_dataset in [ioi_dataset]:  # [ioi_dataset_baba, ioi_dataset_abba]:
     for S in all_subsets(["S+1", "and"]):
         heads_to_keep = get_heads_circuit(
             ioi_dataset,
-            excluded_classes=["previous token"],  # , "duplicate token"],
+            excluded=["previous token"],  # , "duplicate token"],
             circuit=CIRCUIT,
         )
         torch.cuda.empty_cache()
@@ -544,9 +463,7 @@ for v, a in results["name mover"]["vs"].items():
 print(vs, xs)
 #%% # check that really ablate 9.9+9.6 is worse than just 9.9 ???
 for poppers in [[(9, 9)], [(9, 9), (9, 6)], [(9, 6)]]:
-    new_heads_to_keep = get_heads_circuit(
-        ioi_dataset, excluded_classes=[], circuit=circuit
-    )
+    new_heads_to_keep = get_heads_circuit(ioi_dataset, excluded=[], circuit=circuit)
 
     for popper in poppers:
         new_heads_to_keep.pop(popper)

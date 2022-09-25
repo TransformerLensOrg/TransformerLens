@@ -122,7 +122,9 @@ def get_circuit_replacement_hook(
                 # TODO can this i loop be vectorized?
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(dataset_length):  # we use the idx from contex to get the head
+            for i in range(
+                dataset_length
+            ):  # we use the idx from contex to get the head
                 z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
                     i,
                     heads2[(layer, hook.ctx["idx"])][i],
@@ -134,7 +136,9 @@ def get_circuit_replacement_hook(
     return circuit_replmt_hook, heads, mlps
 
 
-def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
+def join_lists(
+    l1, l2
+):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
     assert len(l1) == len(l2)
     assert type(l1[0]) == list and type(l2[0]) == int
     l = []
@@ -146,20 +150,22 @@ def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the in
 def get_extracted_idx(idx_list: list[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
+        int_idx_to_add = [
+            int(x) for x in list(ioi_dataset.word_idx[idx_name])
+        ]  # torch to python objects
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
 
 SMALL_CIRCUIT = {
     "name mover": [
-        (9, 6),
         (9, 9),
         (10, 0),
+        (9, 6),
     ],
     "negative": [],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],  # [(5, 5), (6, 9)],  #
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
     "duplicate token": [(0, 1), (0, 10), (3, 0)],
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
@@ -167,8 +173,7 @@ SMALL_CIRCUIT = {
 MED_CIRCUIT = deepcopy(SMALL_CIRCUIT)
 CIRCUIT = deepcopy(SMALL_CIRCUIT)
 
-
-for head in [(10, 10), (10, 2), (11, 2), (10, 6), (10, 1), (11, 6), (11, 9), (11, 1), (9, 7)]:
+for head in [(10, 10), (10, 2), (11, 2), (10, 6), (10, 1), (11, 6), (11, 9), (9, 7), (11, 1)]:
     CIRCUIT["name mover"].append(head)
 
 for head in [(10, 7), (11, 10)]:
@@ -192,18 +197,18 @@ for head in CIRCUIT["duplicate token"]:
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1", "and"]
 
-ALEX_NAIVE_CIRCUIT = {
-    "name mover": [
-        (10, 6),
-        (9, 9),
-        (10, 2),
-    ],
-    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "duplicate token": [(1, 11), (0, 10), (3, 0)],
-}
+# ALEX_NAIVE_CIRCUIT = {
+#     "name mover": [
+#         (10, 6),
+#         (9, 9),
+#         (10, 2),
+#     ],
+#     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+#     "duplicate token": [(1, 11), (0, 10), (3, 0)],
+# }
 
 
-NAIVE_CIRCUIT = {
+ALEX_NAIVE = {
     "name mover": [(9, 6), (9, 9), (10, 0)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "induction": [(5, 5), (5, 9)],
@@ -213,16 +218,20 @@ NAIVE_CIRCUIT = {
 }
 
 
-def get_heads_circuit(ioi_dataset, excluded_classes=[], mlp0=False, circuit=CIRCUIT):
-    for excluded_class in excluded_classes:
-        assert excluded_class in circuit.keys()
+def get_heads_circuit(ioi_dataset, excluded=[], mlp0=False, circuit=CIRCUIT):
+    for excluded_thing in excluded:
+        assert (
+            isinstance(excluded_thing, tuple) or excluded_thing in circuit.keys()
+        ), excluded_thing
 
     heads_to_keep = {}
 
     for circuit_class in circuit.keys():
-        if circuit_class in excluded_classes:
+        if circuit_class in excluded:
             continue
         for head in circuit[circuit_class]:
+            if head in excluded:
+                continue
             heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
 
     if mlp0:
