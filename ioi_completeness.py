@@ -406,7 +406,7 @@ if __name__ == "__main__":
     print_gpu_mem("Gpt2 loaded")
 
     # IOI Dataset initialisation
-    N = 400
+    N = 200
     ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
     abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
     print("CIRCUIT STUDIED : ", CIRCUIT)

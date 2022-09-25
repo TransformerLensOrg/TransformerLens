@@ -83,7 +83,7 @@ from ioi_circuit_extraction import (
 
 from functools import partial
 
-from ioi_completeness import circuit_from_nodes_logit_diff, get_heads_from_nodes
+from ioi_utils import circuit_from_nodes_logit_diff, get_heads_from_nodes
 
 ipython = get_ipython()
 if ipython is not None:
@@ -241,6 +241,7 @@ def writing_direction_heatmap(
     title="",
     highlight_heads=None,
     highlight_name="",
+    return_ld=False,
 ):
     """
     Plot the dot product between how much each attention head
@@ -300,7 +301,9 @@ def writing_direction_heatmap(
         highlight_points=highlight_heads,
         highlight_name=highlight_name,
     )
-    if return_vals:
+    if return_vals and return_ld:
+        return vals, ld
+    elif return_vals:
         return vals
 
 
@@ -467,8 +470,8 @@ dir_val_C_m_J = writing_direction_heatmap(
 # %% compensation mecanism exploration plot h(R + k*(IO-S)) vs R + k*(IO-S)
 
 J = []
-
-for IT in range(14):
+all_diff = []
+for IT in range(20):
 
     J_heads = [j[0] for j in J]
 
@@ -484,16 +487,18 @@ for IT in range(14):
         heads_to_keep=get_heads_from_nodes(C_minus_J, ioi_dataset),  # C\J
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
+        mean_dataset=mean_dataset,
     )
 
     # model.reset_hooks()
-    dir_val_C_m_J = writing_direction_heatmap(
+    dir_val_C_m_J, ld_C_m_J = writing_direction_heatmap(
         model,
         ioi_dataset,
         return_vals=True,
         mode="attn_out",
         dir_mode="IO - S",
         title="Attention head output into IO - S token unembedding (GPT2) C",
+        return_ld=True,
     )
 
     model.reset_hooks()
@@ -502,14 +507,16 @@ for IT in range(14):
         heads_to_remove=get_heads_from_nodes(J, ioi_dataset),  # M\J
         mlps_to_remove={},
         ioi_dataset=ioi_dataset,
+        mean_dataset=mean_dataset,
     )
 
-    dir_val_M_m_J = writing_direction_heatmap(
+    dir_val_M_m_J, ld_M_m_J = writing_direction_heatmap(
         model,
         ioi_dataset,
         return_vals=True,
         mode="attn_out",
         dir_mode="IO - S",
+        return_ld=True,
     )
 
     diff = (dir_val_M_m_J - dir_val_C_m_J).numpy()
@@ -517,7 +524,7 @@ for IT in range(14):
         diff,
         xlabel="head no",
         ylabel="layer no",
-        title="Difference IO-S writting matrices between M and C",
+        title=f"Difference IO-S writting matrices between M and C {ld_M_m_J - ld_C_m_J:.2f}",
         highlight_points=to_highlight,
         highlight_name="selected so far",
     )
@@ -527,6 +534,53 @@ for IT in range(14):
     layer = int(layer[0])
 
     J.append(((layer, head), "end"))
+    all_diff.append(ld_M_m_J - ld_C_m_J)
+
+# %%
+fig = px.line(y=all_diff, x=range(len(all_diff)), title="LD(M\J)- LD(C\J)) after adding NM head by head")
+
+fig.update_layout(
+    xaxis=dict(tickmode="array", tickvals=list(range(len(all_diff))), ticktext=[str(h) for h, t in J]),
+    xaxis_title="head added",
+    yaxis_title="LD(M\J)- LD(C\J))",
+)
+
+
+fig.show()
+
+
+fig = px.line(y=all_diff, x=range(len(all_diff)), title="LD(M\J)- LD(C\J)) after adding NM head by head")
+
+fig.update_layout(
+    xaxis=dict(tickmode="array", tickvals=list(range(len(all_diff))), ticktext=[str(h) for h, t in J]),
+    xaxis_title="head added",
+    yaxis_title="LD(M\J)- LD(C\J))",
+)
+
+
+fig.show()
+
+
+fig.show()
+
+fig = px.line(
+    y=[(all_diff[i] - all_diff[i + 1]) for i in range(len(all_diff) - 1)],
+    x=range(len(all_diff) - 1),
+    title="diff of diff after adding NM head by head",
+)
+
+fig.update_layout(
+    xaxis=dict(tickmode="array", tickvals=list(range(len(all_diff))), ticktext=[str(h) for h, t in J]),
+    xaxis_title="head added",
+    yaxis_title="LD(M\J)- LD(C\J))",
+)
+
+fig.add_shape(
+    # Line Vertical
+    dict(type="line", x0=0, y0=0.1, x1=20, y1=0.1, line=dict(color="Red", width=1))
+)
+
+fig.show()
 
 
 # %%
