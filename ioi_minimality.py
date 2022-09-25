@@ -76,7 +76,16 @@ from ioi_utils import (
     show_attention_patterns,
     safe_del,
 )
-
+from ioi_circuit_extraction import (
+    ALEX_NAIVE,
+    join_lists,
+    CIRCUIT,
+    RELEVANT_TOKENS,
+    get_extracted_idx,
+    get_heads_circuit,
+    do_circuit_extraction,
+    list_diff,
+)
 
 ipython = get_ipython()
 if ipython is not None:
@@ -94,17 +103,6 @@ N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
-
-from ioi_circuit_extraction import (
-    # ALEX_NAIVE,
-    join_lists,
-    CIRCUIT,
-    RELEVANT_TOKENS,
-    get_extracted_idx,
-    get_heads_circuit,
-    do_circuit_extraction,
-    list_diff,
-)
 
 #%% # do some initial experiments with the naive circuit
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
@@ -219,9 +217,11 @@ for i, head in enumerate(circuit["name mover"]):
 
 for i, head in enumerate(circuit["induction"]):
     J[head] += [(10, 7), (11, 10)]
-# for v in circuit["name mover"][:3]:
-# J[head].append(v)
-#%%
+
+J[(9, 6)] = [(9, 9), (9, 6)]
+J[(10, 10)] = [(9, 9), (10, 10)]
+J[(11, 1)] += [(9, 7)]# J[(11, 1)][:1] + J[(11, 1)][-5:]
+#%% 
 results = {}
 
 if False:
