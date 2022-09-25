@@ -132,13 +132,11 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 100
+N = 200
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts(
-    "S2"
-)  # we flip the second b for a random c
+abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
 pprint(abca_dataset.text_prompts[:5])
 
 abca_dataset_abba = ioi_dataset_abba.gen_flipped_prompts("S2")
@@ -168,12 +166,7 @@ def logit_diff(model, ioi_dataset, all=False):
 # %%
 [(k, int(ioi_dataset.word_idx[k][0])) for k in ioi_dataset.word_idx.keys()]
 # %%
-[
-    (i, t)
-    for (i, t) in enumerate(
-        show_tokens(ioi_dataset.ioi_prompts[0]["text"], model, return_list=True)
-    )
-]
+[(i, t) for (i, t) in enumerate(show_tokens(ioi_dataset.ioi_prompts[0]["text"], model, return_list=True))]
 # %% [markdown]
 # The `ioi_dataset` can also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
 # %%
@@ -186,11 +179,7 @@ pprint(flipped.ioi_prompts[:5])
 # %%
 webtext = load_dataset("stas/openwebtext-10k")
 owb_seqs = [
-    "".join(
-        show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[
-            : ioi_dataset.max_len
-        ]
-    )
+    "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
     for i in range(ioi_dataset.N)
 ]
 # %% [markdown]
@@ -200,12 +189,10 @@ owb_seqs = [
 # %% [markdown]
 # The first series of experiment: we define our metric, here, how much the logit for IO is bigger than S, we ablate part of the network and see what matters. Globally, it shows that the behavior is distributed accross many parts of the network, we cannot draw much conclusion from this alone.
 # %%
-def mean_at_end(
-    z, mean, hook
-):  # to ablate at particular indices, we have to define a custom ablation function
-    z[
+def mean_at_end(z, mean, hook):  # to ablate at particular indices, we have to define a custom ablation function
+    z[torch.arange(len(ioi_dataset.ioi_prompts)), ioi_dataset.word_idx["end"], :] = mean[
         torch.arange(len(ioi_dataset.ioi_prompts)), ioi_dataset.word_idx["end"], :
-    ] = mean[torch.arange(len(ioi_dataset.ioi_prompts)), ioi_dataset.word_idx["end"], :]
+    ]
     return z
 
 
@@ -245,9 +232,7 @@ fig = px.imshow(
     color_continuous_scale="RdBu",
 )
 
-fig.update_layout(
-    yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"])
-)
+fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
 fig.show()
 # %%
 len(ioi_dataset.text_prompts)
@@ -421,18 +406,14 @@ def writing_direction_heatmap(
 
         model.reset_hooks()
         cache = {}
-        model.cache_all(
-            cache, device="cpu"
-        )  # TODO maybe speed up by only caching relevant things
+        model.cache_all(cache, device="cpu")  # TODO maybe speed up by only caching relevant things
         logits = model(ioi_dataset.text_prompts[i])
 
         res_stream_sum = torch.zeros(size=(d_model,))
         res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]  # .detach().cpu()
         # the pos and token embeddings
 
-        layer_norm_div = get_layer_norm_div(
-            cache["blocks.11.hook_resid_post"][0, -2, :]
-        )
+        layer_norm_div = get_layer_norm_div(cache["blocks.11.hook_resid_post"][0, -2, :])
 
         for lay in range(n_layers):
             cur_attn = (
@@ -462,21 +443,13 @@ def writing_direction_heatmap(
             cur_attn /= layer_norm_div  # ... and then apply the layer norm division
             cur_mlp /= layer_norm_div
 
-            attn_vals[:n_heads, lay] += torch.einsum(
-                "ha,a->h", cur_attn.cpu(), dire.cpu()
-            )
+            attn_vals[:n_heads, lay] += torch.einsum("ha,a->h", cur_attn.cpu(), dire.cpu())
             mlp_vals[lay] = torch.einsum("a,a->", cur_mlp.cpu(), dire.cpu())
 
         res_stream_sum -= res_stream_sum.mean()
-        res_stream_sum = (
-            layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
-        )
+        res_stream_sum = layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
 
-        cur_writing = (
-            torch.einsum("a,a->", res_stream_sum, dire)
-            + unembed_bias_io
-            - unembed_bias_s
-        )
+        cur_writing = torch.einsum("a,a->", res_stream_sum, dire) + unembed_bias_io - unembed_bias_s
 
         assert i == 11 or torch.allclose(  # ??? and it's way off, too
             cur_writing,
@@ -536,9 +509,7 @@ def max_2d(m, k=1):
 
 k = 5
 print(f"Top {k} heads (by magnitude):")
-top_heads = max_2d(
-    torch.abs(attn_vals.T), k=k
-)  # remove abs to just get positive contributors
+top_heads = max_2d(torch.abs(attn_vals.T), k=k)  # remove abs to just get positive contributors
 top_heads
 #%% [markdown]
 # <h2>Copying</h2>
@@ -546,18 +517,10 @@ top_heads
 #%% # the more attention, the more writing
 from ioi_utils import scatter_attention_and_contribution
 
-scatter_attention_and_contribution(
-    model, 11, 2, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
-scatter_attention_and_contribution(
-    model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
-scatter_attention_and_contribution(
-    model, 9, 6, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
-scatter_attention_and_contribution(
-    model, 10, 0, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
+scatter_attention_and_contribution(model, 11, 2, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 9, 6, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 10, 0, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
 #%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
 scatter_attention_and_contribution(
     model,
@@ -586,7 +549,7 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False
         sign = 1
     z_0 = model.blocks[1].ln1(cache["blocks.0.hook_resid_post"])
     v = z_0 @ model.blocks[layer].attn.W_V[head].T + model.blocks[layer].attn.b_V[head]
-    o = sign*torch.einsum("sph,dh->spd", v, model.blocks[layer].attn.W_O[head])
+    o = sign * torch.einsum("sph,dh->spd", v, model.blocks[layer].attn.W_O[head])
     logits = model.unembed(model.ln_final(o))
     k = 5
     n_right = 0
@@ -596,9 +559,7 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False
         for word in ["IO", "S", "S2"]:
             pred_tokens = [
                 model.tokenizer.decode(token)
-                for token in torch.topk(
-                    logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k
-                ).indices
+                for token in torch.topk(logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k).indices
             ]
             if "S" in word:
                 name = "S"
@@ -617,9 +578,7 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False
                                 f"({i+1}):{model.tokenizer.decode(token)}"
                                 for i, token in enumerate(
                                     torch.topk(
-                                        logits[
-                                            seq_idx, ioi_dataset.word_idx[word][seq_idx]
-                                        ],
+                                        logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]],
                                         k,
                                     ).indices
                                 )
@@ -634,18 +593,18 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False
 neg_sign = True
 print(" --- Name Mover heads --- ")
 
-check_copy_circuit(model, 9, 9, ioi_dataset,neg = neg_sign)
-check_copy_circuit(model, 10, 0, ioi_dataset, neg = neg_sign)
-check_copy_circuit(model, 9, 6, ioi_dataset, neg = neg_sign)
+check_copy_circuit(model, 9, 9, ioi_dataset, neg=neg_sign)
+check_copy_circuit(model, 10, 0, ioi_dataset, neg=neg_sign)
+check_copy_circuit(model, 9, 6, ioi_dataset, neg=neg_sign)
 
 print(" --- Calibration heads --- ")
-check_copy_circuit(model, 10, 7, ioi_dataset, neg = neg_sign)
-check_copy_circuit(model, 11, 10, ioi_dataset, neg = neg_sign)
+check_copy_circuit(model, 10, 7, ioi_dataset, neg=neg_sign)
+check_copy_circuit(model, 11, 10, ioi_dataset, neg=neg_sign)
 
 print(" ---  Random heads for control ---  ")
-check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset ,neg = neg_sign)
-check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset,neg = neg_sign)
-check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset,neg = neg_sign)
+check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset, neg=neg_sign)
+check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset, neg=neg_sign)
+check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_dataset, neg=neg_sign)
 #%% [markdown]
 # For calibration heads, we observe a reverse trend to name movers, the more is pays attention to a name, the more it write in its *oposite* direction. Why is that?
 # You need to remember the training objective of the transformer: it has to predict accurate probability distribution over all the next tokens.
@@ -654,12 +613,8 @@ check_copy_circuit(model, random.randint(0, 11), random.randint(0, 11), ioi_data
 
 # You can see this similarly as open loop / closed loop optimization. It's easier to make a good guess by making previous rough estimate more precise than making a good guess in one shot.
 #%%
-scatter_attention_and_contribution(
-    model, 10, 7, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
-scatter_attention_and_contribution(
-    model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2"
-)
+scatter_attention_and_contribution(model, 10, 7, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 11, 10, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
 # %% [markdown]
 # ### Patching experiments
 # %% [markdown]
@@ -670,55 +625,53 @@ print_gpu_mem()
 pprint(ioi_dataset.text_prompts[:5])
 
 # %% # here...
-HEAD = 9  # head 9.9, 9.6, 10.0 show similar plots in the exeprimetns, try changing the values!
-LAYER = 11
-hook_name = f"blocks.{LAYER}.attn.hook_attn"
+
+heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
+heads_by_layer = {9: [6, 9], 10: [0]}
+layers = [9, 10]
+hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
 
 text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
 
 
-def attention_probs(
-    model, text_prompts
-):  # we have to redefine logit differences to use the new abba dataset
+def attention_probs(model, text_prompts):  # we have to redefine logit differences to use the new abba dataset
     """Difference between the IO and the S logits at the "to" token"""
     cache_patched = {}
-    model.cache_some(
-        cache_patched, lambda x: x == hook_name
-    )  # we only cache the activation we're interested
+    model.cache_some(cache_patched, lambda x: x in hook_names)  # we only cache the activation we're interested
     logits = model(text_prompts).detach()
 
     # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
     model.reset_hooks()
     cache_baseline = {}
-    model.cache_some(
-        cache_baseline, lambda x: x == hook_name
-    )  # we only cache the activation we're interested
+    model.cache_some(cache_baseline, lambda x: x in hook_names)  # we only cache the activation we're interested
     logits = model(text_prompts).detach()
     # attn score of head HEAD at token "to" (end) to token IO
 
-    attn_probs_variation = []
+    attn_probs_variation_by_keys = []
     for key in ["IO", "S", "S2"]:
-        attn_probs_patched = cache_patched[hook_name][
-            torch.arange(len(text_prompts)),
-            HEAD,
-            ioi_dataset.word_idx["end"],
-            ioi_dataset.word_idx[key],
-        ]
-        attn_probs_base = cache_baseline[hook_name][
-            torch.arange(len(text_prompts)),
-            HEAD,
-            ioi_dataset.word_idx["end"],
-            ioi_dataset.word_idx[key],
-        ]
-        attn_probs_variation.append(
-            ((attn_probs_patched - attn_probs_base) / attn_probs_base)
-            .mean()
-            .unsqueeze(dim=0)
-        )
+        attn_probs_variation = []
+        for i, hook_name in enumerate(hook_names):
+            layer = layers[i]
+            for head in heads_by_layer[layer]:
+                attn_probs_patched = cache_patched[hook_name][
+                    torch.arange(len(text_prompts)),
+                    head,
+                    ioi_dataset.word_idx["end"],
+                    ioi_dataset.word_idx[key],
+                ]
+                attn_probs_base = cache_baseline[hook_name][
+                    torch.arange(len(text_prompts)),
+                    head,
+                    ioi_dataset.word_idx["end"],
+                    ioi_dataset.word_idx[key],
+                ]
+                attn_probs_variation.append(
+                    ((attn_probs_patched - attn_probs_base) / attn_probs_base).mean().unsqueeze(dim=0)
+                )
+        attn_probs_variation_by_keys.append(torch.cat(attn_probs_variation).mean(dim=0, keepdim=True))
 
-    attn_probs_variation = torch.cat(attn_probs_variation, dim=0)
-
-    return attn_probs_variation.detach().cpu()
+    attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
+    return attn_probs_variation_by_keys.detach().cpu()
 
 
 # %%
@@ -740,27 +693,73 @@ config = PatchingConfig(
     cache_act=True,
     verbose=False,
     patch_fn=patch_last_tokens,
-    layers=(0, LAYER),
+    layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
 
 patching = EasyPatching(model, config, metric)
 result = patching.run_patching()
 
 for i, key in enumerate(["IO", "S", "S2"]):
-    px.imshow(
+    fig = px.imshow(
         result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
-        title=f'Variation in attention probs of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "to"',
+        title=f'Variation in attention probs of Head {str(heads_to_measure)} from token "to" to {key} after Patching ABC->ABB on "to"',
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
-    ).show()
+    )
+    fig.write_image(f"svgs/variation_average_nm_attn_prob_key_{key}_patching_ABC_END.svg")
+    fig.show()
 # %% [markdown]
 # We can clearly identify the S2-inhibition heads: 8.6, 8.10, 7.3 and 7.9. Patching them with activation from ABC causes 9.9 to pay less attention to IO and more to S and S2. To have a a better sense of what is going on behind these plots, we can see how patching impact the attention patterns of 9.9 on sample sentences.
 
+# To have more confidence in these result, we can run a similar experiment by ABC-knock out the same heads
+# %% Cross check with
+
+
+def ablate_end(z, mean, hook):
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]] = mean[
+        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]
+    ]
+    return z
+
+
+abl_config = AblationConfig(
+    abl_type="custom",
+    mean_dataset=abca_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+    abl_fn=ablate_end,
+    layers=(0, max(layers) - 1),
+)
+
+metric = ExperimentMetric(attention_probs, ioi_dataset.text_prompts, relative_metric=False, scalar_metric=False)
+
+ablation = EasyAblation(
+    model,
+    abl_config,
+    metric,
+    semantic_indices=None,
+    mean_by_groups=True,
+    groups=ioi_dataset.groups,  # abc ablation
+)
+
+result = ablation.run_ablation()
+
+for i, key in enumerate(["IO", "S", "S2"]):
+    fig = px.imshow(
+        result[:, :, i],
+        labels={"y": "Layer", "x": "Head"},
+        title=f'Average attention proba of Heads {str(heads_to_measure)}  from token "to" to {key} after ABC-ablation END',
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    )
+
+    fig.write_image(f"svgs/ABC-ablation at END average nm probs to key-{key} at {ctime()}.svg")
+    fig.show()
 # %%
 print_gpu_mem()
 
@@ -768,6 +767,10 @@ print_gpu_mem()
 # #### Plotting attention patterns
 
 # %%
+
+LAYER = 9
+HEAD = 9
+
 IDX = 8
 model.reset_hooks()  ##before patching
 show_attention_patterns(
@@ -780,9 +783,7 @@ show_attention_patterns(
 # %%
 def one_sentence_patching(z, source_act, hook):  # we patch at the "to" token
     # print(source_act.shape, z.shape)
-    z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[
-        0, ioi_dataset.word_idx["end"][IDX]
-    ]
+    z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[0, ioi_dataset.word_idx["end"][IDX]]
     return z
 
 
@@ -824,18 +825,14 @@ show_attention_patterns(
 # Attention pattern of S2-inihibition heads. They seems to generally track the subject on key words such as "and" and "to".
 
 # %%
-show_attention_patterns(
-    model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset[IDX : IDX + 1]
-)
+show_attention_patterns(model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset[IDX : IDX + 1])
 
 # %% [markdown]
 # #### Patching at S2
 # %% [markdown]
 # What happend if we patch at S2 instead of END?
 # %%
-def patch_positions(
-    z, source_act, hook, positions=["S2"]
-):  # we patch at the "to" token
+def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
     for pos in positions:
         z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
             torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
@@ -856,12 +853,10 @@ config = PatchingConfig(
     cache_act=True,
     verbose=False,
     patch_fn=patcher,
-    layers=(0, LAYER),
+    layers=(0, max(layers) - 1),
 )
 
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
 
 patching = EasyPatching(model, config, metric)
 result = patching.run_patching()
@@ -871,14 +866,60 @@ for i, key in enumerate(["IO", "S", "S2"]):
     fig = px.imshow(
         result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
-        title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on {positions}',
+        title=f'Average attention proba of Heads {str(heads_to_measure)} from token "to" to {key} after Patching ABC->ABB on {positions}',
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
     )
 
-    fig.write_image(f"svgs/99S2 {key} at {ctime()}.svg")
+    fig.write_image(f"svgs/patching at S2 average nm {key} at {ctime()}.svg")
     fig.show()
 
+
+# %% cross check with the same experiment with ablation
+
+
+def ablate_s2(z, mean, hook):
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = mean[
+        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]
+    ]
+    return z
+
+
+abl_config = AblationConfig(
+    abl_type="custom",
+    mean_dataset=abca_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+    abl_fn=ablate_s2,
+    layers=(0, max(layers) - 1),
+)
+
+metric = ExperimentMetric(attention_probs, ioi_dataset.text_prompts, relative_metric=False, scalar_metric=False)
+
+ablation = EasyAblation(
+    model,
+    abl_config,
+    metric,
+    semantic_indices=None,
+    mean_by_groups=True,
+    groups=ioi_dataset.groups,
+)
+
+result = ablation.run_ablation()
+
+for i, key in enumerate(["IO", "S", "S2"]):
+    fig = px.imshow(
+        result[:, :, i],
+        labels={"y": "Layer", "x": "Head"},
+        title=f'Average attention proba of Heads {str(heads_to_measure)}  from token "to" to {key} after ABC-ablation S2',
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    )
+
+    fig.write_image(f"svgs/ABC-ablation at S2 average nm probs to key-{key} at {ctime()}.svg")
+    fig.show()
 
 # %% [markdown]
 # A bunch of other head appear, in layer earlier than the S2-inhibition heads: 0.1, 0.10, 3.0 and 5.5, 5.8, 5.9, 6.9. We claim that they influence the values that S2 will read. Let's visualize their attention patterns.
@@ -928,32 +969,79 @@ config = PatchingConfig(
     cache_act=True,
     verbose=False,
     patch_fn=patch_s_plus_1,
-    layers=(0, LAYER),
+    layers=(0, max(layers) - 1),
 )
 
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
 
 patching = EasyPatching(model, config, metric)
 result = patching.run_patching()
 
 for i, key in enumerate(["IO", "S", "S2"]):
-    px.imshow(
+    fig = px.imshow(
         result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
-        title=f'Attention proba of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on S+1',
+        title=f'Average attention proba of Heads {str(heads_to_measure)}  from token "to" to {key} after Patching ABC->ABB on S+1',
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
-    ).show()
+    )
+
+    fig.write_image(f"svgs/patching average S+1 (ACB, ABB) nm {key} at {ctime()}.svg")
+    fig.show()
+
+
+# %% Check with a similar ablation
+
+
+def ablate_s_plus_1(z, mean, hook):
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"] + 1] = mean[
+        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"] + 1
+    ]
+    return z
+
+
+abl_config = AblationConfig(
+    abl_type="custom",
+    mean_dataset=abca_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+    abl_fn=ablate_s_plus_1,
+    layers=(0, max(layers) - 1),
+)
+
+metric = ExperimentMetric(attention_probs, ioi_dataset.text_prompts, relative_metric=False, scalar_metric=False)
+
+ablation = EasyAblation(
+    model,
+    abl_config,
+    metric,
+    semantic_indices=None,
+    mean_by_groups=True,
+    groups=ioi_dataset.groups,
+)
+
+result = ablation.run_ablation()
+
+for i, key in enumerate(["IO", "S", "S2"]):
+    fig = px.imshow(
+        result[:, :, i],
+        labels={"y": "Layer", "x": "Head"},
+        title=f'Average attention proba of Heads {str(heads_to_measure)}  from token "to" to {key} after ABC-ablation S+1',
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    )
+
+    fig.write_image(f"svgs/ABC-ablation at S+1 average nm probs to key-{key} at {ctime()}.svg")
+    fig.show()
+
 
 # %% [markdown]
 # It seems that the heads 4.11, 4.7, 4.3, 2.2 and 5.6 are important. Let's look at their patterns. The majority of them look like they're attending to the previous tokens.
 
 # %%
-show_attention_patterns(
-    model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_dataset[34:35]
-)
+show_attention_patterns(model, [(4, 7), (5, 6), (4, 11), (2, 2), (4, 3)], ioi_dataset[34:35])
 
 # %% [markdown]
 # Here is the (approximative) story of what's going on here:
@@ -1036,9 +1124,7 @@ def score(model, ioi_dataset, all=False, verbose=False):
     assert len(list(end_logits.shape)) == 2, end_logits.shape
     top_10s_standard = torch.topk(end_logits, dim=1, k=10).values[:, -1]
     good_enough = end_logits > top_10s_standard.unsqueeze(-1)
-    selected_logits = good_enough[
-        torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs[:L]
-    ]
+    selected_logits = good_enough[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs[:L]]
 
     # is IO > S ???
     IO_logits = logits[
@@ -1054,9 +1140,7 @@ def score(model, ioi_dataset, all=False, verbose=False):
     IO_greater_than_S = (IO_logits - S_logits) > 0
 
     # calculate percentage passing both tests
-    answer = torch.sum(
-        (selected_logits & IO_greater_than_S).float()
-    ).detach().cpu() / len(text_prompts)
+    answer = torch.sum((selected_logits & IO_greater_than_S).float()).detach().cpu() / len(text_prompts)
 
     selected = torch.sum(selected_logits) / len(text_prompts)
     greater = torch.sum(IO_greater_than_S) / len(text_prompts)
@@ -1103,17 +1187,13 @@ for ablate_negative in [
     ld_data = []
     for template_idx in tqdm(range(num_templates)):
         prompts = template_prompts[template_idx]
-        ioi_dataset = IOIDataset(
-            prompt_type=template_type, N=N, symmetric=False, prompts=prompts
-        )
+        ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
         abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
         assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
         assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
         for key in ioi_dataset.sem_tok_idx.keys():
             idx = ioi_dataset.sem_tok_idx[key][0]
-            assert torch.all(
-                ioi_dataset.sem_tok_idx[key] == idx
-            ), f"{key} {ioi_dataset.sem_tok_idx[key]}"
+            assert torch.all(ioi_dataset.sem_tok_idx[key] == idx), f"{key} {ioi_dataset.sem_tok_idx[key]}"
             # check that semantic ablation = normal ablation
 
         model.reset_hooks()
@@ -1180,16 +1260,12 @@ three_d = torch.zeros(size=(num_templates, 12, 12))
 
 for template_idx in tqdm(range(num_templates)):
     prompts = template_prompts[template_idx]
-    ioi_dataset = IOIDataset(
-        prompt_type=template_type, N=N, symmetric=False, prompts=prompts
-    )
+    ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
     assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
     assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
     for key in ioi_dataset.sem_tok_idx.keys():
         idx = ioi_dataset.sem_tok_idx[key][0]
-        assert torch.all(
-            ioi_dataset.sem_tok_idx[key] == idx
-        ), f"{key} {ioi_dataset.sem_tok_idx[key]}"
+        assert torch.all(ioi_dataset.sem_tok_idx[key] == idx), f"{key} {ioi_dataset.sem_tok_idx[key]}"
         # check that semantic ablation = normal ablation
 
     attn_vals, mlp_vals = writing_direction_heatmap(
@@ -1263,15 +1339,11 @@ def score_target(model, ioi_dataset, k=1, target_dataset=None, all=False):
     end_logits = logits[
         torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"][:L], :
     ]  # batch * sequence length * vocab_size
-    io_logits = end_logits[
-        torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]
-    ]
+    io_logits = end_logits[torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]]
     assert len(list(end_logits.shape)) == 2, end_logits.shape
     top_10s_standard = torch.topk(end_logits, dim=1, k=k).values[:, -1]
     good_enough = end_logits >= top_10s_standard.unsqueeze(-1)
-    selected_logits = good_enough[
-        torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]
-    ]
+    selected_logits = good_enough[torch.arange(len(text_prompts)), target_dataset.io_tokenIDs[:L]]
     # print(torch.argmax(end_logits, dim=-1))
     # is IO > S ???
     IO_logits = logits[
@@ -1287,9 +1359,7 @@ def score_target(model, ioi_dataset, k=1, target_dataset=None, all=False):
     IO_greater_than_S = (IO_logits - S_logits) > 0
 
     # calculate percentage passing both tests
-    answer = torch.sum(
-        (selected_logits & IO_greater_than_S).float()
-    ).detach().cpu() / len(text_prompts)
+    answer = torch.sum((selected_logits & IO_greater_than_S).float()).detach().cpu() / len(text_prompts)
 
     selected = torch.sum(selected_logits) / len(text_prompts)
     greater = torch.sum(IO_greater_than_S) / len(text_prompts)
@@ -1303,19 +1373,14 @@ def print_top_k(model, ioi_dataset, K=1, n=10):
     end_logits = logits[
         torch.arange(len(ioi_dataset.text_prompts)), ioi_dataset.word_idx["end"], :
     ]  # batch * sequence length * vocab_size
-    probs = np.around(
-        torch.nn.functional.log_softmax(end_logits, dim=-1).cpu().numpy(), 2
-    )
+    probs = np.around(torch.nn.functional.log_softmax(end_logits, dim=-1).cpu().numpy(), 2)
     topk = torch.topk(end_logits, dim=1, k=K).indices
     for x in range(n):
         print("-------------------")
         print(ioi_dataset.text_prompts[x])
         print(
             " ".join(
-                [
-                    f"({i+1}):{model.tokenizer.decode(token)} : {probs[x][token]}"
-                    for i, token in enumerate(topk[x])
-                ]
+                [f"({i+1}):{model.tokenizer.decode(token)} : {probs[x][token]}" for i, token in enumerate(topk[x])]
             )
         )
 
@@ -1359,9 +1424,7 @@ df = pd.DataFrame(
         "Random (for separation)": np.random.random(len(ldiff)),
         "beg": [prompt[:10] for prompt in ioi_dataset.text_prompts],
         "sentence": [prompt for prompt in ioi_dataset.text_prompts],
-        "#tokens before first name": [
-            prompt.count("Then") for prompt in ioi_dataset.text_prompts
-        ],
+        "#tokens before first name": [prompt.count("Then") for prompt in ioi_dataset.text_prompts],
         "template": ioi_dataset.templates_by_prompt,
         "misc": [
             (str(prompt.count("Then")) + str(ioi_dataset.templates_by_prompt[i]))
@@ -1474,21 +1537,15 @@ target_heads_to_keep, target_mlps_to_keep = get_heads_circuit(
 
 K = 1
 model.reset_hooks()
-old_ld, old_std = logit_diff_target(
-    model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True
-)
+old_ld, old_std = logit_diff_target(model, target_ioi_dataset, target_dataset=target_ioi_dataset, all=True, std=True)
 model.reset_hooks()
-old_score = score_target(
-    model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
-)
+old_score = score_target(model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K)
 model.reset_hooks()
 old_ld_source, old_std_source = logit_diff_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, all=True, std=True
 )
 model.reset_hooks()
-old_score_source = score_target(
-    model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
-)
+old_score_source = score_target(model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K)
 model.reset_hooks()
 model, _ = do_global_patching(
     source_mlps_to_patch=source_mlps_to_keep,
@@ -1507,19 +1564,13 @@ model, _ = do_global_patching(
 ldiff_target, std_ldiff_target = logit_diff_target(
     model, target_ioi_dataset, target_dataset=target_ioi_dataset, std=True, all=True
 )
-score_target_result = score_target(
-    model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K
-)
+score_target_result = score_target(model, target_ioi_dataset, target_dataset=target_ioi_dataset, k=K)
 ldiff_source, std_ldiff_source = logit_diff_target(
     model, target_ioi_dataset, target_dataset=source_ioi_dataset, std=True, all=True
 )
-score_source = score_target(
-    model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K
-)
+score_source = score_target(model, target_ioi_dataset, target_dataset=source_ioi_dataset, k=K)
 # %%
-print(
-    f"Original logit_diff on TARGET dataset (no patching yet!) = {old_ld.mean()} +/- {old_std}. Score {old_score}"
-)
+print(f"Original logit_diff on TARGET dataset (no patching yet!) = {old_ld.mean()} +/- {old_std}. Score {old_score}")
 print(
     f"Original logit_diff on SOURCE dataset (no patching yet!) = {old_ld_source.mean()} +/- {old_std_source}. Score {old_score_source}"
 )
@@ -1535,15 +1586,10 @@ df = pd.DataFrame(
         "Random (for interactivity)": np.random.random(len(ldiff_source)),
         "beg": [prompt["text"][:10] for prompt in ioi_dataset.ioi_prompts],
         "sentence": [prompt["text"] for prompt in ioi_dataset.ioi_prompts],
-        "#tokens before first name": [
-            prompt["text"].count("Then") for prompt in ioi_dataset.ioi_prompts
-        ],
+        "#tokens before first name": [prompt["text"].count("Then") for prompt in ioi_dataset.ioi_prompts],
         "template": ioi_dataset.templates_by_prompt,
         "misc": [
-            (
-                str(prompt["text"].count("Then"))
-                + str(ioi_dataset.templates_by_prompt[i])
-            )
+            (str(prompt["text"].count("Then")) + str(ioi_dataset.templates_by_prompt[i]))
             for (i, prompt) in enumerate(ioi_dataset.ioi_prompts)
         ],
     }
@@ -1579,13 +1625,9 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
     # use abl.mean_cache
     cur_tensor_name = f"blocks.{layer}.attn.hook_v"
     s2_token_idxs = get_extracted_idx(["S2"], ioi_dataset)
-    mean_cached_values = (
-        abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
-    )
+    mean_cached_values = abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
 
-    def s2_v_ablation_hook(
-        z, act, hook
-    ):  # batch, seq, head dim, because get_act_hook hides scary things from us
+    def s2_v_ablation_hook(z, act, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
         cur_layer = int(hook.name.split(".")[1])
         cur_head_idx = hook.ctx["idx"]
 
@@ -1594,9 +1636,7 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
         assert list(z.shape) == list(act.shape), (z.shape, act.shape)
 
         true_s2_values = z[:, s2_token_idxs, :].clone()
-        z = (
-            mean_cached_values.cuda()
-        )  # hope that we don't see chaning values of mean_cached_values...
+        z = mean_cached_values.cuda()  # hope that we don't see chaning values of mean_cached_values...
         # z[:, s2_token_idxs, :] = true_s2_values
 
         return z
