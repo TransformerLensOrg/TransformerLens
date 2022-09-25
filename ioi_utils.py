@@ -10,6 +10,7 @@ import gc
 import einops
 
 from ioi_dataset import IOIDataset
+from ioi_circuit_extraction import do_circuit_extraction
 
 ALL_COLORS = px.colors.qualitative.Dark2
 CLASS_COLORS = {
@@ -21,6 +22,9 @@ CLASS_COLORS = {
     "previous token": ALL_COLORS[6],
     "none": ALL_COLORS[7],
 }
+
+
+from ioi_circuit_extraction import get_extracted_idx
 
 # other utils
 
@@ -436,3 +440,47 @@ def plot_ellipse(fig, xs, ys, color="MediumPurple", nstd=1, name=""):
             name=name,
         )
     )
+
+
+def get_heads_from_nodes(nodes, ioi_dataset):
+    heads_to_keep_tok = {}
+    for h, t in nodes:
+        if h not in heads_to_keep_tok:
+            heads_to_keep_tok[h] = []
+        if t not in heads_to_keep_tok[h]:
+            heads_to_keep_tok[h].append(t)
+
+    heads_to_keep = {}
+    for h in heads_to_keep_tok:
+        heads_to_keep[h] = get_extracted_idx(heads_to_keep_tok[h], ioi_dataset)
+
+    return heads_to_keep
+
+
+def get_heads_from_nodes(nodes, ioi_dataset):
+    heads_to_keep_tok = {}
+    for h, t in nodes:
+        if h not in heads_to_keep_tok:
+            heads_to_keep_tok[h] = []
+        if t not in heads_to_keep_tok[h]:
+            heads_to_keep_tok[h].append(t)
+
+    heads_to_keep = {}
+    for h in heads_to_keep_tok:
+        heads_to_keep[h] = get_extracted_idx(heads_to_keep_tok[h], ioi_dataset)
+
+    return heads_to_keep
+
+
+def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
+    """Take a list of nodes, return the logit diff of the circuit described by the nodes"""
+    heads_to_keep = get_heads_from_nodes(nodes, ioi_dataset)
+    # print(heads_to_keep)
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+    return logit_diff(model, ioi_dataset, all=False)
