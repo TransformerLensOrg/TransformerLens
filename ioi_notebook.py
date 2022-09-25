@@ -670,94 +670,101 @@ print_gpu_mem()
 pprint(ioi_dataset.text_prompts[:5])
 
 # %% # here...
-HEAD = 9  # head 9.9, 9.6, 10.0 show similar plots in the exeprimetns, try changing the values!
-LAYER = 11
-hook_name = f"blocks.{LAYER}.attn.hook_attn"
+circuit = CIRCUIT.copy()
+average_changes = torch.zeros(size = (12, 12, 3))
+no_times_used = torch.zeros(size = (12,))
+for layer, head_idx in tqdm(circuit["name mover"]):
+    hook_name = f"blocks.{layer}.attn.hook_attn"
+    text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
 
-text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
+    def attention_probs(
+        model, text_prompts
+    ):  # we have to redefine logit differences to use the new abba dataset
+        """Difference between the IO and the S logits at the "to" token"""
+        cache_patched = {}
+        model.cache_some(
+            cache_patched, lambda x: x == hook_name
+        )  # we only cache the activation we're interested
+        logits = model(text_prompts).detach()
 
+        # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
+        model.reset_hooks()
+        cache_baseline = {}
+        model.cache_some(
+            cache_baseline, lambda x: x == hook_name
+        )  # we only cache the activation we're interested
+        logits = model(text_prompts).detach()
+        # attn score of head HEAD at token "to" (end) to token IO
 
-def attention_probs(
-    model, text_prompts
-):  # we have to redefine logit differences to use the new abba dataset
-    """Difference between the IO and the S logits at the "to" token"""
-    cache_patched = {}
-    model.cache_some(
-        cache_patched, lambda x: x == hook_name
-    )  # we only cache the activation we're interested
-    logits = model(text_prompts).detach()
+        attn_probs_variation = []
+        for key in ["IO", "S", "S2"]:
+            attn_probs_patched = cache_patched[hook_name][
+                torch.arange(len(text_prompts)),
+                head_idx,
+                ioi_dataset.word_idx["end"],
+                ioi_dataset.word_idx[key],
+            ]
+            attn_probs_base = cache_baseline[hook_name][
+                torch.arange(len(text_prompts)),
+                head_idx,
+                ioi_dataset.word_idx["end"],
+                ioi_dataset.word_idx[key],
+            ]
+            attn_probs_variation.append(
+                ((attn_probs_patched - attn_probs_base) / attn_probs_base)
+                .mean()
+                .unsqueeze(dim=0)
+            )
 
-    # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
-    model.reset_hooks()
-    cache_baseline = {}
-    model.cache_some(
-        cache_baseline, lambda x: x == hook_name
-    )  # we only cache the activation we're interested
-    logits = model(text_prompts).detach()
-    # attn score of head HEAD at token "to" (end) to token IO
+        attn_probs_variation = torch.cat(attn_probs_variation, dim=0)
 
-    attn_probs_variation = []
-    for key in ["IO", "S", "S2"]:
-        attn_probs_patched = cache_patched[hook_name][
-            torch.arange(len(text_prompts)),
-            HEAD,
-            ioi_dataset.word_idx["end"],
-            ioi_dataset.word_idx[key],
+        return attn_probs_variation.detach().cpu()
+
+    def patch_last_tokens(
+        z, source_act, hook
+    ):  # we patch at the "to" token. We have to use custom patching when we specify particular tokens to ablate.
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]] = source_act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]
         ]
-        attn_probs_base = cache_baseline[hook_name][
-            torch.arange(len(text_prompts)),
-            HEAD,
-            ioi_dataset.word_idx["end"],
-            ioi_dataset.word_idx[key],
-        ]
-        attn_probs_variation.append(
-            ((attn_probs_patched - attn_probs_base) / attn_probs_base)
-            .mean()
-            .unsqueeze(dim=0)
-        )
+        return z
 
-    attn_probs_variation = torch.cat(attn_probs_variation, dim=0)
+    config = PatchingConfig(
+        source_dataset=abca_dataset.text_prompts,
+        target_dataset=ioi_dataset.text_prompts,
+        target_module="attn_head",
+        head_circuit="result",  # we patch "result", the result of the attention head
+        cache_act=True,
+        verbose=False,
+        patch_fn=patch_last_tokens,
+        layers=(0, layer),
+    )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 
-    return attn_probs_variation.detach().cpu()
+    metric = ExperimentMetric(
+        attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
+    )
 
+    patching = EasyPatching(model, config, metric)
+    result = patching.run_patching()
+    no_times_used[:layer] += 1.0
+    average_changes[:layer] += result
 
-# %%
-def patch_last_tokens(
-    z, source_act, hook
-):  # we patch at the "to" token. We have to use custom patching when we specify particular tokens to ablate.
-    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]] = source_act[
-        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]
-    ]
-    return z
-
-
-# %%
-config = PatchingConfig(
-    source_dataset=abca_dataset.text_prompts,
-    target_dataset=ioi_dataset.text_prompts,
-    target_module="attn_head",
-    head_circuit="result",  # we patch "result", the result of the attention head
-    cache_act=True,
-    verbose=False,
-    patch_fn=patch_last_tokens,
-    layers=(0, LAYER),
-)  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
-
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
-
-patching = EasyPatching(model, config, metric)
-result = patching.run_patching()
-
-for i, key in enumerate(["IO", "S", "S2"]):
-    px.imshow(
-        result[:, :, i],
-        labels={"y": "Layer", "x": "Head"},
-        title=f'Variation in attention probs of Head {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on "to"',
-        color_continuous_midpoint=0,
-        color_continuous_scale="RdBu",
-    ).show()
+    for i, key in enumerate(["IO", "S", "S2"]):
+        px.imshow(
+            result[:, :, i],
+            labels={"y": "Layer", "x": "Head"},
+            title=f'Variation in attention probs of Head {layer}.{head_idx} from token "to" to {key} after Patching ABC->ABB on "to"',
+            color_continuous_midpoint=0,
+            color_continuous_scale="RdBu",
+        ).show()
+average_changes /= no_times_used.unsqueeze(dim=1).unsqueeze(dim=1)
+#%%
+px.imshow(
+    average_changes[:, :, 0],
+    labels={"y": "Layer", "x": "Head"},
+    title=f'Average change in attention of name movers from "to" to IO after Patching ABC->ABB on "to"',
+    color_continuous_midpoint=0,
+    color_continuous_scale="PRGn",
+).show()
 # %% [markdown]
 # We can clearly identify the S2-inhibition heads: 8.6, 8.10, 7.3 and 7.9. Patching them with activation from ABC causes 9.9 to pay less attention to IO and more to S and S2. To have a a better sense of what is going on behind these plots, we can see how patching impact the attention patterns of 9.9 on sample sentences.
 
