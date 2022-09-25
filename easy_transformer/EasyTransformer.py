@@ -303,8 +303,11 @@ class Attention(nn.Module):
         attn_scores = (
             torch.einsum("bpih,bqih->bipq", q, k) / self.attn_scale
         )  # [batch, head_index, query_pos, key_pos]
+        if self.cfg.attention_dir == 'causal':
+            # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
+            attn_scores = self.causal_mask(attn_scores) # [batch, head_index, query_pos, key_pos]
         attn_scores = self.hook_attn_scores(
-            self.causal_mask(attn_scores)
+            attn_scores
         )  # [batch, head_index, query_pos, key_pos]
         attn_matrix = self.hook_attn(
             F.softmax(attn_scores, dim=-1)
