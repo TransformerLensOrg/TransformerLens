@@ -540,6 +540,7 @@ if run_original:
                 "std_off_diagonal": np.std(off_diagonals),
                 "color": CLASS_COLORS[G],
                 "my_arrow_color": "red",
+                "symbol": "diamond-x",
             }
         )
 
@@ -605,7 +606,7 @@ elif circuit == ALEX_NAIVE:
             new_y = deepcopy(y)
             new_y["removed_group"] = x
             new_y["color"] = "black"
-            new_y["meann_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
+            new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
             new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
             new_y["symbol"] = "arrow-bar-left"
             if x.split()[1] in ["24", "25", "33", "38", "9"]:
@@ -656,37 +657,16 @@ for cp_idx, cur_perf_by_sets in enumerate([full_circuit_perf_by_sets, perf_by_se
         continue
 
     for perf in cur_perf_by_sets:
-        symbol = "diamond-x"
-        if "mean_cur_metric_broken" in perf:
-            x = perf["mean_cur_metric_broken"]
-            color = perf["color"]
-            name = perf["removed_group"]
-        else:
-            name = perf["removed_set_id"]
-            symbol = "arrow-bar-left"
-            color = "black"
-            x = perf["mean_ldiff_broken"]
-
-
-        if "mean_cur_metric_cobble" in perf:
-            y = perf["mean_cur_metric_cobble"]
-        else:
-            y = perf["mean_ldiff_cobble"]
-        if name == "Set 38" or name == "Set 23":
-            name = "greedy set"
-        showlegend=True
-        if "Set" in name:
-            showlegend=False
         fig.add_trace(
             go.Scatter(
-                x=[x],
-                y=[y],
+                x=[perf["mean_cur_metric_broken"]],
+                y=[perf["mean_cur_metric_cobble"]],
                 mode="markers",
-                name=name,
+                name=perf["removed_group"],
                 marker=dict(
-                    symbol=symbol, size=10, color=color
+                    symbol=perf["symbol"], size=10, color=perf["color"]
                 ),
-                showlegend=showlegend,
+                showlegend="Set" not in perf["removed_group"],
             )
         )
         # if "on_diagonal" not in perf:
