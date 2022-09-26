@@ -499,14 +499,6 @@ eps = 1.2
 # by points
 if show_scatter:
     fig = go.Figure()
-    # fig = px.scatter(
-    #     circuit_perf,
-    #     x="cur_metric_broken",
-    #     y="cur_metric_cobble",
-    #     hover_data=["sentence", "template"],
-    #     color="removed_group",
-    #     opacity=1.0,
-    # )
 
     all_xs = []
     all_ys = []
@@ -585,64 +577,7 @@ if show_scatter:
     fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
     fig.write_image(f"svgs/circuit_completeness_at_{ctime()}.svg")
     fig.show()
-#%%
-if run_original:
-    # by sets
-    perf_by_sets = []
-    for i in range(len(circuit) + 1):
-        cur_metric_brokens = circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].cur_metric_broken
-
-        cur_metric_cobbles = circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].cur_metric_cobble
-
-        perf_by_sets.append(
-            {
-                "removed_group": circuit_perf.iloc[i * ioi_dataset.N].removed_group,
-                "mean_cur_metric_broken": cur_metric_brokens.mean(),
-                "mean_cur_metric_cobble": cur_metric_cobbles.mean(),
-                "std_cur_metric_broken": cur_metric_brokens.std(),
-                "std_cur_metric_cobble": cur_metric_cobbles.std(),
-            }
-        )
-
-        perf_by_sets[-1]["mean_abs_diff"] = abs(cur_metric_brokens - cur_metric_cobbles).mean()
-
-    circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
-    print(
-        f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
-    )
-
-    # plot sets
-    df_perf_by_sets = pd.DataFrame(perf_by_sets)
-    fig = px.scatter(
-        perf_by_sets,
-        x="mean_cur_metric_broken",
-        y="mean_cur_metric_cobble",
-        color="removed_group",
-        error_x="std_cur_metric_broken",
-        error_y="std_cur_metric_cobble",
-    )
-
-    fig.update_layout(
-        shapes=[
-            # adds line at y=5
-            dict(
-                type="line",
-                xref="x",
-                x0=0,
-                x1=6,
-                yref="y",
-                y0=0,
-                y1=6,
-            )
-        ]
-    )
-
-    fig.update_xaxes(gridcolor="black", gridwidth=0.1)
-    fig.update_yaxes(gridcolor="black", gridwidth=0.1)
-    fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
-    fig.write_image(f"svgs/circuit_completeness_plusses_at_{ctime()}.svg")
-    fig.show()
-# %% gready circuit breaking
+# %% [markdown] Gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
     for h, t in nodes:
