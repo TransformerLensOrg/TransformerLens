@@ -443,7 +443,7 @@ if __name__ != "__main__":
     run_original = False
 
 # %%
-circuit = deepcopy(CIRCUIT)
+circuit = deepcopy(ALEX_NAIVE)    
 # circuit["induction"].remove((5, 8))
 # circuit["induction"].remove((5, 9))
 
@@ -605,7 +605,7 @@ for x, y in avg_things.items():
 #%% # if run_original: ...
 minx = -2
 maxx = 8
-eps = 1.2
+eps = 1.4
 
 print(
     f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
@@ -618,6 +618,8 @@ sqrt_n_reduction = True
 
 if len(dat) == 59:
     dat = [dat[54], dat[23], dat[36], dat[3], dat[2]]
+if len(perf_by_sets) == 7:
+    perf_by_sets += dat
 
 xs = np.linspace(minx, maxx, 100)
 ys_max = xs + eps
@@ -665,7 +667,7 @@ for cp_idx, cur_perf_by_sets in enumerate([full_circuit_perf_by_sets, perf_by_se
             y = perf["mean_cur_metric_cobble"]
         else:
             y = perf["mean_ldiff_cobble"]
-        if name == "Set 38":
+        if name == "Set 38" or name == "Set 23":
             name = "greedy set"
         showlegend=True
         if "Set" in name:
