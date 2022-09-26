@@ -5,6 +5,7 @@ if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 import warnings
+import json
 from numpy import sin, cos, pi
 from time import ctime
 from dataclasses import dataclass
@@ -443,8 +444,8 @@ if __name__ != "__main__":
 
 # %%
 circuit = deepcopy(CIRCUIT)
-circuit["induction"].remove((5, 8))
-circuit["induction"].remove((5, 9))
+# circuit["induction"].remove((5, 8))
+# circuit["induction"].remove((5, 9))
 
 cur_metric = logit_diff  # partial(probs, type="s")
 mean_dataset = abca_dataset
@@ -552,10 +553,59 @@ if run_original:
     circuit_perf = pd.DataFrame(circuit_perf)
     circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
+#%% [markdown] Do some faithfulness
+model.reset_hooks()
+logit_diff_M = logit_diff(model, ioi_dataset)
+
+for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
+    heads_to_keep = get_heads_circuit(
+        ioi_dataset, excluded=[], circuit=circuit
+    )
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=mean_dataset,
+    )
+    
+    logit_diff_circuit = logit_diff(model, ioi_dataset)
+    print(f"{logit_diff_circuit=}")
+#%%
+def get_df_from_csv(fname):
+    df = pd.read_csv(fname)
+    return df
+
+def get_list_of_dicts_from_df(df):
+    return [dict(x) for x in df.to_dict("records")]
+
+def read_json_from_file(fname):
+    with open(fname) as f:
+        return json.load(f)
+
+dat = get_list_of_dicts_from_df(get_df_from_csv("greedy_data.csv"))
+dat2 = read_json_from_file("greedy_naive_data.json")
+
+avg_things = {"Empty set": {"mean_ldiff_broken" : 0, "mean_ldiff_cobble": 0}}
+for i in range(1, 62):
+    avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
+for x in dat2:
+    avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
+    avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
+for x in avg_things.keys():
+    avg_things[x]["mean_ldiff_broken"] /= 150
+    avg_things[x]["mean_ldiff_cobble"] /= 150
+avg_things.pop("Empty set")
+for x, y in avg_things.items():
+    new_y = deepcopy(y)
+    new_y["removed_set_id"] = x
+    if x.split()[1] in ["24", "25", "33", "38", "9"]:
+        perf_by_sets.append(new_y)
+
 #%% # if run_original: ...
-minx = -1
-maxx = 7
-eps = 1.0
+minx = -2
+maxx = 8
+eps = 1.2
 
 print(
     f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
@@ -564,27 +614,81 @@ fig = go.Figure()
 
 full_circuit_perf_by_sets = torch.load("full_perf_by_sets.pt")
 skip_old = True
+sqrt_n_reduction = True
+
+if len(dat) == 59:
+    dat = [dat[54], dat[23], dat[36], dat[3], dat[2]]
+
+xs = np.linspace(minx, maxx, 100)
+ys_max = xs + eps
+ys_min = xs - eps
+
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys_min,
+        mode="lines",
+        name="THIS ONE IS HIDDEN",
+        showlegend=False,
+        line=dict(color="grey", width=0),
+    )
+)
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys_max,
+        mode="lines",
+        name=f"eps={eps}",
+        fill="tonexty",
+        line=dict(color="grey", width=0),
+    )
+)
 
 for cp_idx, cur_perf_by_sets in enumerate([full_circuit_perf_by_sets, perf_by_sets]):
     if cp_idx == 0 and skip_old:
         continue
+
     for perf in cur_perf_by_sets:
-        x = perf["mean_cur_metric_broken"]
-        y = perf["mean_cur_metric_cobble"]
+        symbol = "diamond-x"
+        if "mean_cur_metric_broken" in perf:
+            x = perf["mean_cur_metric_broken"]
+            color = perf["color"]
+            name = perf["removed_group"]
+        else:
+            name = perf["removed_set_id"]
+            symbol = "arrow-bar-left"
+            color = "black"
+            x = perf["mean_ldiff_broken"]
+
+
+        if "mean_cur_metric_cobble" in perf:
+            y = perf["mean_cur_metric_cobble"]
+        else:
+            y = perf["mean_ldiff_cobble"]
+        if name == "Set 38":
+            name = "greedy set"
+        showlegend=True
+        if "Set" in name:
+            showlegend=False
         fig.add_trace(
             go.Scatter(
-                x=[perf["mean_cur_metric_broken"]],
-                y=[perf["mean_cur_metric_cobble"]],
+                x=[x],
+                y=[y],
                 mode="markers",
-                name=perf["removed_group"],
+                name=name,
                 marker=dict(
-                    symbol=["x", "diamond-x"][cp_idx], size=10, color=perf["color"]
+                    symbol=symbol, size=10, color=color
                 ),
-                showlegend=True,
+                showlegend=showlegend,
             )
         )
+        # if "on_diagonal" not in perf:
+        continue
         on_diagonals = perf["on_diagonal"]
         off_diagonals = perf["off_diagonal"]
+        if sqrt_n_reduction:
+            on_diagonals /= np.sqrt(N)
+            off_diagonals /= np.sqrt(N)
         add_arrow(
             fig,
             [x, y],
@@ -601,35 +705,9 @@ for cp_idx, cur_perf_by_sets in enumerate([full_circuit_perf_by_sets, perf_by_se
 # don't show legend
 # fig.update_layout(showlegend=False)
 
-
-xs = np.linspace(minx, maxx, 100)
-ys_max = xs + eps
-ys_min = xs - eps
-
-fig.add_trace(
-    go.Scatter(
-        x=xs,
-        y=ys_min,
-        mode="lines",
-        name="THIS ONE IS HIDDEN",
-        showlegend=False,
-        line=dict(color="grey"),
-    )
-)
-fig.add_trace(
-    go.Scatter(
-        x=xs,
-        y=ys_max,
-        mode="lines",
-        name=f"eps={eps}",
-        fill="tonexty",
-        line=dict(color="grey"),
-    )
-)
-
 # label the x axis as the broken circuit
-fig.update_xaxes(title_text="Broken Circuit")
-fig.update_yaxes(title_text="Cobbled Circuit")
+fig.update_xaxes(title_text="F(C \ K)")
+fig.update_yaxes(title_text="F(M \ K)")
 fig.update_xaxes(showgrid=True, gridcolor="black", gridwidth=1)
 fig.update_yaxes(showgrid=True, gridcolor="black", gridwidth=1)
 fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")

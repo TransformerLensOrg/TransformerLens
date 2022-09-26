@@ -486,8 +486,30 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     return logit_diff(model, ioi_dataset, all=False)
 
 def basis_change(x, y):
-    """Rotate x, y by pi/4"""
-    return x + y / np.sqrt(2), -x + y / np.sqrt(2)
+    """
+    Change the basis (1, 0) and (0, 1) to the basis
+    1/sqrt(2) (1, 1) and 1/sqrt(2) (-1, 1)
+    """
 
-if __name__ == "__main__":
-    print(basis_change(1, 2))
+    return (x + y) / np.sqrt(2), (y - x) / np.sqrt(2)
+
+
+def add_arrow(fig, end_point, start_point, color="black"):
+    x_start, y_start = start_point
+    x_end, y_end = end_point
+    fig.add_annotation(
+        x=x_start,
+        y=y_start,
+        ax=x_end,
+        ay=y_end,
+        xref="x",
+        yref="y",
+        axref="x",
+        ayref="y",
+        text="",  # if you want only the arrow
+        showarrow=True,
+        arrowhead=3,
+        arrowsize=1,
+        arrowwidth=1,
+        arrowcolor=color,
+    )

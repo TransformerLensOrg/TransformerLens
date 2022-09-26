@@ -195,7 +195,7 @@ for head in CIRCUIT["duplicate token"]:
     RELEVANT_TOKENS[head] = ["S2"]
 
 for head in CIRCUIT["previous token"]:
-    RELEVANT_TOKENS[head] = ["S+1", "and"]
+    RELEVANT_TOKENS[head] = ["S+1"]
 
 # ALEX_NAIVE_CIRCUIT = {
 #     "name mover": [
