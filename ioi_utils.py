@@ -484,3 +484,10 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
         ioi_dataset=ioi_dataset,
     )
     return logit_diff(model, ioi_dataset, all=False)
+
+def basis_change(x, y):
+    """Rotate x, y by pi/4"""
+    return x + y / np.sqrt(2), -x + y / np.sqrt(2)
+
+if __name__ == "__main__":
+    print(basis_change(1, 2))
