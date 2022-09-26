@@ -112,19 +112,16 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 150
+N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer, nb_templates=6)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
-
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
 # owb_seqs = [
 #     "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
 #     for i in range(ioi_dataset.N)
 # ]
-
 #%%
-
 from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
     SMALL_CIRCUIT,
@@ -406,7 +403,7 @@ if __name__ == "__main__":
     print_gpu_mem("Gpt2 loaded")
 
     # IOI Dataset initialisation
-    N = 200
+    N = 100
     ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
     abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
     print("CIRCUIT STUDIED : ", CIRCUIT)
@@ -436,12 +433,12 @@ if run_original:
             continue
         print_gpu_mem(G)
         # compute METRIC( C \ G )
-        # excluded_classes = ["negative"]
-        excluded_classes = []
+        # excluded = ["negative"]
+        excluded = []
         if G != "none":
-            excluded_classes.append(G)
+            excluded.append(G)
         heads_to_keep = get_heads_circuit(
-            ioi_dataset, excluded_classes=excluded_classes, circuit=circuit
+            ioi_dataset, excluded=excluded, circuit=circuit
         )  # TODO check the MLP stuff
 
         model, _ = do_circuit_extraction(
@@ -461,7 +458,7 @@ if run_original:
         if G != "none":
             excl_class.remove(G)
         G_heads_to_remove = get_heads_circuit(
-            ioi_dataset, excluded_classes=excl_class, circuit=circuit
+            ioi_dataset, excluded=excl_class, circuit=circuit
         )  # TODO check the MLP stuff
         torch.cuda.empty_cache()
 

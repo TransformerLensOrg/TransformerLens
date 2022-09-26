@@ -108,7 +108,6 @@ from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
 )
 
-
 ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
