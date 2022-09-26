@@ -220,7 +220,7 @@ for i, head in enumerate(circuit["induction"]):
 
 J[(9, 6)] = [(9, 9), (9, 6)]
 J[(10, 10)] = [(9, 9), (10, 10)]
-J[(11, 1)] += [(9, 7)]# J[(11, 1)][:1] + J[(11, 1)][-5:]
+J[(11, 1)] += [(9, 7)] # J[(11, 1)][:1] + J[(11, 1)][-5:]
 #%% 
 results = {}
 
@@ -283,11 +283,21 @@ for j, G in enumerate(relevant_classes):
 initial_ys = torch.Tensor(initial_ys)
 final_ys = torch.Tensor(final_ys)
 
+y = final_ys - initial_ys
+
+if True:
+    base = [0.0 for _ in range(len(xs))]
+    warnings.warn("Base is 0")
+    y = abs(y)
+else:
+    base = initial_ys
+
+
 fig.add_trace(
     go.Bar(
         x=xs,
-        y=final_ys - initial_ys,
-        base=initial_ys,
+        y=y,
+        base=base,
         marker_color=colors,
         width=[1.0 for _ in range(len(xs))],
         name="",
@@ -339,7 +349,7 @@ fig.add_trace(
 fig.update_layout(
     # title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
     xaxis_title="Attention head",
-    yaxis_title="Average logit difference",
+    yaxis_title="Change in logit difference",
 )
 
 fig.update_xaxes(
@@ -350,6 +360,18 @@ fig.update_xaxes(
 fig.update_yaxes(gridcolor="black", gridwidth=0.1)
 fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
+#%%
+
+idx = 0
+for j, G in enumerate(relevant_classes):
+    for i, v in enumerate(list(circuit[G])):
+        head = circuit[G][idx]
+        group = str(G)
+        start = initial_ys[idx]
+        end = final_ys[idx]
+        print(f"{head} & {group} & {start} & {end} \\\\")
+        print("\\hline")
+        idx += 1
 #%%
 fig.add_shape(
     type="line",
@@ -419,7 +441,7 @@ fig.update_layout(
 
 fig.show()
 # %% # show some previous token head importance results (not that important)
-circuit = CIRCUIT.copy()
+circuit = ALEX_NAIVE.copy()
 lds = {}
 prbs = {}
 

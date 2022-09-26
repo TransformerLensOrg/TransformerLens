@@ -442,10 +442,8 @@ run_original = True
 if __name__ != "__main__":
     run_original = False
 
-# %%
+# %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper
 circuit = deepcopy(ALEX_NAIVE)    
-# circuit["induction"].remove((5, 8))
-# circuit["induction"].remove((5, 9))
 
 cur_metric = logit_diff  # partial(probs, type="s")
 mean_dataset = abca_dataset
@@ -583,25 +581,37 @@ def read_json_from_file(fname):
     with open(fname) as f:
         return json.load(f)
 
-dat = get_list_of_dicts_from_df(get_df_from_csv("greedy_data.csv"))
-dat2 = read_json_from_file("greedy_naive_data.json")
-
-avg_things = {"Empty set": {"mean_ldiff_broken" : 0, "mean_ldiff_cobble": 0}}
-for i in range(1, 62):
-    avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
-for x in dat2:
-    avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
-    avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
-for x in avg_things.keys():
-    avg_things[x]["mean_ldiff_broken"] /= 150
-    avg_things[x]["mean_ldiff_cobble"] /= 150
-avg_things.pop("Empty set")
-for x, y in avg_things.items():
-    new_y = deepcopy(y)
-    new_y["removed_set_id"] = x
-    if x.split()[1] in ["24", "25", "33", "38", "9"]:
-        perf_by_sets.append(new_y)
-
+if circuit == CIRCUIT:
+    dat = get_list_of_dicts_from_df(get_df_from_csv("greedy_data.csv"))
+    if len(dat) == 59:l
+    dat = [dat[54], dat[23], dat[36], dat[3], dat[2]]
+    if len(perf_by_sets) == 7:
+        perf_by_sets += dat
+    raise NotImplementedError(circuit)
+elif circuit == ALEX_NAIVE:
+    dat2 = read_json_from_file("greedy_naive_data.json")
+    avg_things = {"Empty set": {"mean_ldiff_broken" : 0, "mean_ldiff_cobble": 0}}
+    for i in range(1, 62):
+        avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
+    for x in dat2:
+        avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
+        avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
+    for x in avg_things.keys():
+        avg_things[x]["mean_ldiff_broken"] /= 150
+        avg_things[x]["mean_ldiff_cobble"] /= 150
+    avg_things.pop("Empty set")
+    if len(perf_by_sets) == 7:
+        for x, y in avg_things.items():
+            new_y = deepcopy(y)
+            new_y["removed_group"] = x
+            new_y["color"] = "black"
+            new_y["meann_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
+            new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
+            new_y["symbol"] = "arrow-bar-left"
+            if x.split()[1] in ["24", "25", "33", "38", "9"]:
+                perf_by_sets.append(new_y)
+else:
+    raise NotImplementedError()
 #%% # if run_original: ...
 minx = -2
 maxx = 8
@@ -615,11 +625,6 @@ fig = go.Figure()
 full_circuit_perf_by_sets = torch.load("full_perf_by_sets.pt")
 skip_old = True
 sqrt_n_reduction = True
-
-if len(dat) == 59:
-    dat = [dat[54], dat[23], dat[36], dat[3], dat[2]]
-if len(perf_by_sets) == 7:
-    perf_by_sets += dat
 
 xs = np.linspace(minx, maxx, 100)
 ys_max = xs + eps
