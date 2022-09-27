@@ -582,41 +582,49 @@ def read_json_from_file(fname):
     with open(fname) as f:
         return json.load(f)
 
-if circuit == CIRCUIT:
-    dat = get_list_of_dicts_from_df(get_df_from_csv("greedy_data.csv"))
-    if len(dat) == 59:l
-    dat = [dat[54], dat[23], dat[36], dat[3], dat[2]]
-    if len(perf_by_sets) == 7:
-        perf_by_sets += dat
-    raise NotImplementedError(circuit)
-elif circuit == ALEX_NAIVE:
-    dat2 = read_json_from_file("greedy_naive_data.json")
+fname = "greedy_naive_data.json"
+
+if fname[-4:] == ".csv":
+    dat = get_list_of_dicts_from_df(get_df_from_csv(fname)) 
+    # dat = read_json_from_file(fname)
     avg_things = {"Empty set": {"mean_ldiff_broken" : 0, "mean_ldiff_cobble": 0}}
     for i in range(1, 62):
         avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
-    for x in dat2:
+    for x in dat:
         avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
         avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
     for x in avg_things.keys():
         avg_things[x]["mean_ldiff_broken"] /= 150
         avg_things[x]["mean_ldiff_cobble"] /= 150
     avg_things.pop("Empty set")
-    if len(perf_by_sets) == 7:
-        for x, y in avg_things.items():
-            new_y = deepcopy(y)
-            new_y["removed_group"] = x
-            new_y["color"] = "black"
-            new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
-            new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
-            new_y["symbol"] = "arrow-bar-left"
-            if x.split()[1] in ["24", "25", "33", "38", "9"]:
-                perf_by_sets.append(new_y)
+    # if len(dat) == 59:
+    # dat = [dat[54], dat[23], dat[36], dat[3], dat[2]]
+    # if len(perf_by_sets) == 7:
+    #     perf_by_sets += dat
+elif fname[-5:] == ".json":
+    dat = read_json_from_file(fname)
+    pass
 else:
-    raise NotImplementedError()
+    raise ValueError("Unknown file type")
+
+if len(perf_by_sets) > 7:
+    perf_by_sets = perf_by_sets[:7]
+
+if len(perf_by_sets) == 7:
+    for x, y in avg_things.items():
+        new_y = deepcopy(y)
+        new_y["removed_group"] = x
+        new_y["color"] = "black"
+        new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
+        new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
+        new_y["symbol"] = "arrow-bar-left"
+        if x.split()[1] in ["24", "25", "33", "38", "9"]:
+            perf_by_sets.append(new_y)
 #%% # if run_original: ...
 minx = -2
 maxx = 8
 eps = 1.4
+warnings.warn("set these better!!!")
 
 print(
     f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
@@ -662,11 +670,11 @@ for cp_idx, cur_perf_by_sets in enumerate([full_circuit_perf_by_sets, perf_by_se
                 x=[perf["mean_cur_metric_broken"]],
                 y=[perf["mean_cur_metric_cobble"]],
                 mode="markers",
-                name=perf["removed_group"],
+                name="Greedy set" if "Set" in perf["removed_group"] else perf["removed_group"],
                 marker=dict(
                     symbol=perf["symbol"], size=10, color=perf["color"]
                 ),
-                showlegend="Set" not in perf["removed_group"],
+                showlegend="25" in perf["removed_group"] or "Set" not in perf["removed_group"], 
             )
         )
         # if "on_diagonal" not in perf:
@@ -715,6 +723,7 @@ fig.update_yaxes(
     scaleanchor="x",
     scaleratio=1,
 )
+
 
 fig.write_image(f"svgs/circuit_completeness_plusses_at_{ctime()}.svg")
 fig.show()
