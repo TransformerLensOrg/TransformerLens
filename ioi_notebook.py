@@ -109,7 +109,6 @@ from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
 )
 
-
 ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
@@ -759,7 +758,6 @@ def attention_probs(
     cache_patched = {}
     model.cache_some(cache_patched, lambda x: x in hook_names)  # we only cache the activation we're interested
     logits = model(text_prompts).detach()
-
     # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
     model.reset_hooks()
     cache_baseline = {}
@@ -796,16 +794,33 @@ def attention_probs(
     attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
     return attn_probs_variation_by_keys.detach().cpu()
 
+circuit = CIRCUIT.copy()
+average_changes = torch.zeros(size = (12, 12, 3))
+no_times_used = torch.zeros(size = (12,))
 
-# %%
-def patch_last_tokens(
-    z, source_act, hook
-):  # we patch at the "to" token. We have to use custom patching when we specify particular tokens to ablate.
-    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]] = source_act[
-        torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]
-    ]
-    return z
+for idx, (layer, head_idx) in enumerate(tqdm(circuit["name mover"])):
+    print(idx, "of", len(circuit["name mover"]))
+    hook_name = f"blocks.{layer}.attn.hook_attn"
+    text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
 
+    def patch_particular_token(
+        z, source_act, hook, token_type
+    ):  # we patch at the "to" token. We have to use custom patching when we specify particular tokens to ablate.
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[token_type]] = source_act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[token_type]
+        ]
+        return z
+
+    config = PatchingConfig(
+        source_dataset=abca_dataset.text_prompts,
+        target_dataset=ioi_dataset.text_prompts,
+        target_module="attn_head",
+        head_circuit="result",  # we patch "result", the result of the attention head
+        cache_act=True,
+        verbose=False,
+        patch_fn=partial(patch_particular_token, token_type="IO"), # AND CHANGE THIS SHIT!
+        layers=(0, layer),
+    )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 
 # %%
 config = PatchingConfig(

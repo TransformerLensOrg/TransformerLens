@@ -3,4 +3,5 @@ arthurs_experiments.py
 *.pt
 *.db 
 *.pdf
-*.svg
+*.svg 
+*.csv

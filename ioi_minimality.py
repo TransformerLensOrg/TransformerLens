@@ -220,11 +220,11 @@ for i, head in enumerate(circuit["induction"]):
 
 J[(9, 6)] = [(9, 9), (9, 6)]
 J[(10, 10)] = [(9, 9), (10, 10)]
-J[(11, 1)] += [(9, 7)]# J[(11, 1)][:1] + J[(11, 1)][-5:]
+J[(11, 1)] += [(9, 7)] # J[(11, 1)][:1] + J[(11, 1)][-5:]
 #%% 
 results = {}
 
-if False:
+if "results_cache" not in dir():
     results_cache = {}  # massively speeds up future runs
 
 for circuit_class in circuit.keys():
@@ -258,41 +258,75 @@ for circuit_class in circuit.keys():
             f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}"
         )
 #%%
-xs = []
-initial_ys = []
-final_ys = []
-
 ac = ALL_COLORS
-cc = CLASS_COLORS
+cc = CLASS_COLORS.copy()
 
 relevant_classes = list(circuit.keys())
 
 fig = go.Figure()
-colors = []
-for j, G in enumerate(relevant_classes):
-    for i, v in enumerate(list(circuit[G])):
-        xs.append(str(v))
 
+for j, G in enumerate(relevant_classes + ["distributed name mover"]):
+    xs = []
+    initial_ys = []
+    final_ys = []
+    colors = []
+    names = []
+    widths = []
+    if G == "distributed name mover":
+        curvys = list(circuit["name mover"])
+        for head in [(9, 6), (9, 9), (10, 0)]:
+            curvys.remove(head)
+    elif G == "name mover":
+        curvys = [(9, 6), (9, 9), (10, 0)]
+    else:
+        curvys = list(circuit[G])
+    curvys = sorted(curvys, key=lambda x: -abs(results[x][1] - results[x][0]))
+
+    for v in curvys: # i, v in enumerate(list(circuit[G])):
+            # if G == "name mover":
+            #     if v in [(9, 9), (9, 6), (10, 0)]:
+            #         widths.append(1)
+            #         names.append("name mover")
+            #         colors.append(cc[G])
+            #     else:
+            #         widths.append(0.2)
+            #         names.append("dis")    
+            #         colors.append("rgb(27,100,119)")
+            # else:
+            #     widths.append(1)
+            #     colors.append(cc[G])
+            #     names.append(G)
+        colors.append(cc[G])
+        xs.append(str(v))
         initial_y = results[v][0]
         final_y = results[v][1]
 
         initial_ys.append(initial_y)
         final_ys.append(final_y)
-        colors.append(cc[G])
 
-initial_ys = torch.Tensor(initial_ys)
-final_ys = torch.Tensor(final_ys)
+    initial_ys = torch.Tensor(initial_ys)
+    final_ys = torch.Tensor(final_ys)
 
-fig.add_trace(
-    go.Bar(
-        x=xs,
-        y=final_ys - initial_ys,
-        base=initial_ys,
-        marker_color=colors,
-        width=[1.0 for _ in range(len(xs))],
-        name="",
+    y = final_ys - initial_ys
+
+    if True:
+        base = [0.0 for _ in range(len(xs))]
+        warnings.warn("Base is 0")
+        y = abs(y)
+    else:
+        base = initial_ys
+
+    fig.add_trace(
+        go.Bar(
+            x=xs,
+            y=y,
+            base=base,
+            marker_color=colors,
+            width=[1.0 for _ in range(len(xs))], ## if G != "dis" else [0.2 for _ in range(len(xs))],
+            name=G,
+        )
     )
-)
+
 
 fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
 
@@ -339,7 +373,7 @@ fig.add_trace(
 fig.update_layout(
     # title="Change in logit diff when ablating all of a circuit node class when adding back one attention head",
     xaxis_title="Attention head",
-    yaxis_title="Average logit difference",
+    yaxis_title="Change in logit difference",
 )
 
 fig.update_xaxes(
@@ -347,9 +381,27 @@ fig.update_xaxes(
     gridwidth=0.1,
     # minor=dict(showgrid=False),  # please plotly, just do what I want
 )
+fig.update_layout(legend=dict(
+    yanchor="top",
+    y=0.99,
+    xanchor="left",
+    x=0.01
+))
 fig.update_yaxes(gridcolor="black", gridwidth=0.1)
 fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
+#%%
+
+idx = 0
+for j, G in enumerate(relevant_classes):
+    for i, v in enumerate(list(circuit[G])):
+        head = circuit[G][idx]
+        group = str(G)
+        start = initial_ys[idx]
+        end = final_ys[idx]
+        print(f"{head} & {group} & {start} & {end} \\\\")
+        print("\\hline")
+        idx += 1
 #%%
 fig.add_shape(
     type="line",
@@ -419,7 +471,7 @@ fig.update_layout(
 
 fig.show()
 # %% # show some previous token head importance results (not that important)
-circuit = CIRCUIT.copy()
+circuit = ALEX_NAIVE.copy()
 lds = {}
 prbs = {}
 

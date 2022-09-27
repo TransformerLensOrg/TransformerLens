@@ -21,6 +21,7 @@ CLASS_COLORS = {
     "duplicate token": ALL_COLORS[3],
     "previous token": ALL_COLORS[6],
     "none": ALL_COLORS[7],
+    "distributed name mover": "rgb(27,100,119)",
 }
 
 
@@ -488,3 +489,32 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
         ioi_dataset=ioi_dataset,
     )
     return logit_diff(model, ioi_dataset, all=False)
+
+def basis_change(x, y):
+    """
+    Change the basis (1, 0) and (0, 1) to the basis
+    1/sqrt(2) (1, 1) and 1/sqrt(2) (-1, 1)
+    """
+
+    return (x + y) / np.sqrt(2), (y - x) / np.sqrt(2)
+
+
+def add_arrow(fig, end_point, start_point, color="black"):
+    x_start, y_start = start_point
+    x_end, y_end = end_point
+    fig.add_annotation(
+        x=x_start,
+        y=y_start,
+        ax=x_end,
+        ay=y_end,
+        xref="x",
+        yref="y",
+        axref="x",
+        ayref="y",
+        text="",  # if you want only the arrow
+        showarrow=True,
+        arrowhead=3,
+        arrowsize=1,
+        arrowwidth=1,
+        arrowcolor=color,
+    )

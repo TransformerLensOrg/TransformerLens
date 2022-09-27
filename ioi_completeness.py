@@ -1,7 +1,14 @@
 #%%
 import json
 from statistics import mean
+from IPython import get_ipython
+
+ipython = get_ipython()
+if ipython is not None:
+    ipython.magic("load_ext autoreload")
+    ipython.magic("autoreload 2")
 import warnings
+import json
 from numpy import sin, cos, pi
 from time import ctime
 from dataclasses import dataclass
@@ -55,9 +62,9 @@ import einops
 from pprint import pprint
 import gc
 from datasets import load_dataset
-from IPython import get_ipython
 import matplotlib.pyplot as plt
 import random as rd
+
 
 from ioi_dataset import (
     IOIDataset,
@@ -69,6 +76,8 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    basis_change,
+    add_arrow,
     CLASS_COLORS,
     clear_gpu_mem,
     show_tokens,
@@ -92,10 +101,6 @@ plotly_colors = [
 
 from functools import partial
 
-ipython = get_ipython()
-if ipython is not None:
-    ipython.magic("load_ext autoreload")
-    ipython.magic("autoreload 2")
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -127,13 +132,10 @@ abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 # ]
 
 #%%
-
 from ioi_circuit_extraction import (
-    ARTHUR_CIRCUIT,
-    SMALL_CIRCUIT,
     join_lists,
-    MED_CIRCUIT,
     CIRCUIT,
+    ALEX_NAIVE,
     RELEVANT_TOKENS,
     get_extracted_idx,
     get_heads_circuit,
@@ -403,6 +405,24 @@ run_original = True
 
 if __name__ != "__main__":
     run_original = False
+#%% [markdown] Do some faithfulness
+model.reset_hooks()
+logit_diff_M = logit_diff(model, ioi_dataset)
+
+for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
+    heads_to_keep = get_heads_circuit(ioi_dataset, excluded=[], circuit=circuit)
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=mean_dataset,
+    )
+
+    logit_diff_circuit = logit_diff(model, ioi_dataset)
+    print(f"{logit_diff_circuit=}")
+# %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
+circuit = deepcopy(CIRCUIT)
 
 # %%
 circuit = CIRCUIT.copy()
@@ -413,7 +433,8 @@ mean_dataset = abca_dataset
 run_original = True
 if run_original:
     circuit_perf = []
-    for G in list(circuit.keys()) + ["none"]:
+    perf_by_sets = []
+    for G in tqdm(list(circuit.keys()) + ["none"]):
         if G == "ablation":
             continue
         print_gpu_mem(G)
@@ -462,6 +483,8 @@ if run_original:
         torch.cuda.empty_cache()
 
         # metric(M\G)
+        on_diagonals = []
+        off_diagonals = []
         for i in range(len(cur_metric_cobble)):
             circuit_perf.append(
                 {
@@ -472,158 +495,179 @@ if run_original:
                     "template": ioi_dataset.templates_by_prompt[i],
                 }
             )
-    circuit_perf = pd.DataFrame(circuit_perf)
-# %%
-show_scatter = True
-circuit_perf_scatter = []
-eps = 1.2
 
-# by points
-if show_scatter:
-    fig = go.Figure()
-    # fig = px.scatter(
-    #     circuit_perf,
-    #     x="cur_metric_broken",
-    #     y="cur_metric_cobble",
-    #     hover_data=["sentence", "template"],
-    #     color="removed_group",
-    #     opacity=1.0,
-    # )
-
-    all_xs = []
-    all_ys = []
-
-    for i, circuit_class in enumerate(set(circuit_perf.removed_group)):
-        xs = list(circuit_perf[circuit_perf["removed_group"] == circuit_class]["cur_metric_broken"])
-        ys = list(circuit_perf[circuit_perf["removed_group"] == circuit_class]["cur_metric_cobble"])
-
-        fig.add_trace(
-            go.Scatter(
-                x=xs,
-                y=ys,
-                # hover_data=["sentence", "template"], # TODO get this working
-                mode="markers",
-                marker=dict(color=CLASS_COLORS[circuit_class], size=3),
-                # name=circuit_vlass,
-                showlegend=False,
-                # color=CLASS_COLORS[circuit_class],
-                # opacity=1.0,
+            x, y = basis_change(
+                circuit_perf[-1]["cur_metric_broken"],
+                circuit_perf[-1]["cur_metric_cobble"],
             )
-        )
-
-        all_xs += xs
-        all_ys += ys
-        plot_ellipse(
-            fig,
-            xs,
-            ys,
-            color=CLASS_COLORS[circuit_class],
-            name=circuit_class,
-        )
-
-    minx = min(min(all_xs), min(all_ys))
-    maxx = max(max(all_xs), max(all_ys))
-    fig.update_layout(
-        shapes=[
-            dict(
-                type="line",
-                xref="x",
-                x0=minx,
-                x1=maxx,
-                yref="y",
-                y0=minx,
-                y1=maxx,
-            )
-        ]
-    )
-
-    xs = np.linspace(minx, maxx, 100)
-    ys_max = xs + eps
-    ys_min = xs - eps
-
-    fig.add_trace(
-        go.Scatter(
-            x=xs,
-            y=ys_min,
-            mode="lines",
-            name="THIS ONE IS HIDDEN",
-            showlegend=False,
-            line=dict(color="grey"),
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=xs,
-            y=ys_max,
-            mode="lines",
-            name=f"Completeness region, epsilon={eps}",
-            fill="tonexty",
-            line=dict(color="grey"),
-        )
-    )
-
-    fig.update_xaxes(gridcolor="black", gridwidth=0.1)
-    fig.update_yaxes(gridcolor="black", gridwidth=0.1)
-    fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
-    fig.write_image(f"svgs/circuit_completeness_at_{ctime()}.svg")
-    fig.show()
-#%%
-if run_original:
-    # by sets
-    perf_by_sets = []
-    for i in range(len(circuit) + 1):
-        cur_metric_brokens = circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].cur_metric_broken
-
-        cur_metric_cobbles = circuit_perf.iloc[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].cur_metric_cobble
+            circuit_perf[-1]["on_diagonal"] = x
+            circuit_perf[-1]["off_diagonal"] = y
+            on_diagonals.append(x)
+            off_diagonals.append(y)
 
         perf_by_sets.append(
             {
-                "removed_group": circuit_perf.iloc[i * ioi_dataset.N].removed_group,
-                "mean_cur_metric_broken": cur_metric_brokens.mean(),
-                "mean_cur_metric_cobble": cur_metric_cobbles.mean(),
-                "std_cur_metric_broken": cur_metric_brokens.std(),
-                "std_cur_metric_cobble": cur_metric_cobbles.std(),
+                "removed_group": G,
+                "mean_cur_metric_broken": cur_metric_broken_circuit.mean(),
+                "mean_cur_metric_cobble": cur_metric_cobble.mean(),
+                "std_cur_metric_broken": cur_metric_broken_circuit.std(),
+                "std_cur_metric_cobble": cur_metric_cobble.std(),
+                "on_diagonal": np.mean(on_diagonals),
+                "off_diagonal": np.mean(off_diagonals),
+                "std_on_diagonal": np.std(on_diagonals),
+                "std_off_diagonal": np.std(off_diagonals),
+                "color": CLASS_COLORS[G],
+                "symbol": "diamond-x",
             }
         )
 
-        perf_by_sets[-1]["mean_abs_diff"] = abs(cur_metric_brokens - cur_metric_cobbles).mean()
+        perf_by_sets[-1]["mean_abs_diff"] = abs(
+            perf_by_sets[-1]["mean_cur_metric_broken"] - perf_by_sets[-1]["mean_cur_metric_cobble"]
+        ).mean()
 
+    circuit_perf = pd.DataFrame(circuit_perf)
     circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
-    print(
-        f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
-    )
-
-    # plot sets
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
-    fig = px.scatter(
-        perf_by_sets,
-        x="mean_cur_metric_broken",
-        y="mean_cur_metric_cobble",
-        color="removed_group",
-        error_x="std_cur_metric_broken",
-        error_y="std_cur_metric_cobble",
-    )
+#%% [markdown] Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
+fname = "greedy_naive_data.csv"
 
-    fig.update_layout(
-        shapes=[
-            # adds line at y=5
-            dict(
-                type="line",
-                xref="x",
-                x0=0,
-                x1=6,
-                yref="y",
-                y0=0,
-                y1=6,
-            )
-        ]
-    )
 
-    fig.update_xaxes(gridcolor="black", gridwidth=0.1)
-    fig.update_yaxes(gridcolor="black", gridwidth=0.1)
-    fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
-    fig.write_image(f"svgs/circuit_completeness_plusses_at_{ctime()}.svg")
-    fig.show()
+def get_df_from_csv(fname):
+    df = pd.read_csv(fname)
+    return df
+
+
+def get_list_of_dicts_from_df(df):
+    return [dict(x) for x in df.to_dict("records")]
+
+
+def read_json_from_file(fname):
+    with open(fname) as f:
+        return json.load(f)
+
+
+if fname[-4:] == ".csv":
+    dat = get_list_of_dicts_from_df(get_df_from_csv(fname))
+    # dat = read_json_from_file(fname)
+    avg_things = {"Empty set": {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0}}
+    for i in range(1, 62):
+        avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
+    for x in dat:
+        avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
+        avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
+    for x in avg_things.keys():
+        avg_things[x]["mean_ldiff_broken"] /= 150
+        avg_things[x]["mean_ldiff_cobble"] /= 150
+    avg_things.pop("Empty set")
+
+elif fname[-5:] == ".json":
+    dat = read_json_from_file(fname)
+    avg_things = {"Empty set": {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0}}
+    for i in range(1, 62):
+        avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
+    for x in dat:
+        avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
+        avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
+    for x in avg_things.keys():
+        avg_things[x]["mean_ldiff_broken"] /= 150
+        avg_things[x]["mean_ldiff_cobble"] /= 150
+    avg_things.pop("Empty set")
+else:
+    raise ValueError("Unknown file type")
+
+if len(perf_by_sets) > 7:
+    perf_by_sets = perf_by_sets[:7]
+
+if len(perf_by_sets) == 7:
+    for x, y in avg_things.items():
+        new_y = deepcopy(y)
+        new_y["removed_group"] = x
+        new_y["color"] = "black"
+        new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
+        new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
+        new_y["symbol"] = "arrow-bar-left"
+        if x.split()[1] in ["1", "2", "3", "4", "5"]:
+            perf_by_sets.append(new_y)
+#%% [markdown] make the figure
+print(
+    f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
+)
+
+fig = go.Figure()
+
+## add the grey region
+
+# parameters (how wide, high and epsilon value)
+minx = -1
+maxx = 8
+eps = 1.4
+
+# make the region
+xs = np.linspace(minx - 1, maxx + 1, 100)
+ys_max = xs + eps
+ys_min = xs - eps
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys_min,
+        mode="lines",
+        name="THIS ONE IS HIDDEN",
+        showlegend=False,
+        line=dict(color="grey", width=0),
+    )
+)
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys_max,
+        mode="lines",
+        name=f"eps={eps}",
+        fill="tonexty",
+        line=dict(color="grey", width=0),
+    )
+)
+
+for perf in perf_by_sets:
+    fig.add_trace(
+        go.Scatter(
+            x=[perf["mean_cur_metric_broken"]],
+            y=[perf["mean_cur_metric_cobble"]],
+            mode="markers",
+            name="Greedy set"
+            if "Set" in perf["removed_group"]
+            else perf["removed_group"],  # should make there not be loads of Set markers, just one greedy marker
+            marker=dict(symbol=perf["symbol"], size=10, color=perf["color"]),
+            showlegend=(("1" in perf["removed_group"]) or ("Set" not in perf["removed_group"])),
+        )
+    )
+    continue
+
+
+# fig.update_layout(showlegend=False) #
+
+fig.update_xaxes(title_text="F(C \ K)")
+fig.update_yaxes(title_text="F(M \ K)")
+fig.update_xaxes(showgrid=True, gridcolor="black", gridwidth=1)
+fig.update_yaxes(showgrid=True, gridcolor="black", gridwidth=1)
+fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+
+# USE THESE LINES TO SCALE SVGS PROPERLY
+fig.update_xaxes(range=[minx, maxx])
+fig.update_yaxes(range=[minx, maxx])
+fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+
+fig.update_yaxes(
+    scaleanchor="x",
+    scaleratio=1,
+)
+
+fpath = f"circuit_completeness_plusses_at_{ctime()}"
+if os.path.exists("/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer/svgs"):
+    fpath = "svgs/" + fpath
+
+fig.write_image(fpath)
+fig.show()
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
