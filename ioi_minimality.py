@@ -259,31 +259,50 @@ for circuit_class in circuit.keys():
         )
 #%%
 ac = ALL_COLORS
-cc = CLASS_COLORS
+cc = CLASS_COLORS.copy()
 
 relevant_classes = list(circuit.keys())
 
 fig = go.Figure()
 
-for j, G in enumerate(relevant_classes):
+for j, G in enumerate(relevant_classes + ["distributed name mover"]):
     xs = []
     initial_ys = []
     final_ys = []
     colors = []
     names = []
-    curvys = list(circuit[G])
+    widths = []
+    if G == "distributed name mover":
+        curvys = list(circuit["name mover"])
+        for head in [(9, 6), (9, 9), (10, 0)]:
+            curvys.remove(head)
+    elif G == "name mover":
+        curvys = [(9, 6), (9, 9), (10, 0)]
+    else:
+        curvys = list(circuit[G])
     curvys = sorted(curvys, key=lambda x: -abs(results[x][1] - results[x][0]))
 
     for v in curvys: # i, v in enumerate(list(circuit[G])):
+            # if G == "name mover":
+            #     if v in [(9, 9), (9, 6), (10, 0)]:
+            #         widths.append(1)
+            #         names.append("name mover")
+            #         colors.append(cc[G])
+            #     else:
+            #         widths.append(0.2)
+            #         names.append("dis")    
+            #         colors.append("rgb(27,100,119)")
+            # else:
+            #     widths.append(1)
+            #     colors.append(cc[G])
+            #     names.append(G)
+        colors.append(cc[G])
         xs.append(str(v))
-        names.append(G)
-
         initial_y = results[v][0]
         final_y = results[v][1]
 
         initial_ys.append(initial_y)
         final_ys.append(final_y)
-        colors.append(cc[G])
 
     initial_ys = torch.Tensor(initial_ys)
     final_ys = torch.Tensor(final_ys)
@@ -303,7 +322,7 @@ for j, G in enumerate(relevant_classes):
             y=y,
             base=base,
             marker_color=colors,
-            width=[1.0 for _ in range(len(xs))],
+            width=[1.0 for _ in range(len(xs))], ## if G != "dis" else [0.2 for _ in range(len(xs))],
             name=G,
         )
     )
@@ -362,6 +381,12 @@ fig.update_xaxes(
     gridwidth=0.1,
     # minor=dict(showgrid=False),  # please plotly, just do what I want
 )
+fig.update_layout(legend=dict(
+    yanchor="top",
+    y=0.99,
+    xanchor="left",
+    x=0.01
+))
 fig.update_yaxes(gridcolor="black", gridwidth=0.1)
 fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
