@@ -394,6 +394,8 @@ if __name__ == "__main__":
     abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
     print("CIRCUIT STUDIED : ", CIRCUIT)
 
+mean_dataset = abca_dataset
+
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
 # owb_seqs = [
@@ -428,7 +430,6 @@ circuit = deepcopy(CIRCUIT)
 circuit = CIRCUIT.copy()
 cur_metric = logit_diff  # partial(probs, type="io")  #
 
-mean_dataset = abca_dataset
 
 run_original = True
 if run_original:
@@ -529,7 +530,7 @@ if run_original:
     circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
 #%% [markdown] Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
-fname = "greedy_naive_data.csv"
+fname = "sets/greedy_circuit_perf_natural_circuit_rd_Search.json"
 
 
 def get_df_from_csv(fname):
@@ -548,7 +549,6 @@ def read_json_from_file(fname):
 
 if fname[-4:] == ".csv":
     dat = get_list_of_dicts_from_df(get_df_from_csv(fname))
-    # dat = read_json_from_file(fname)
     avg_things = {"Empty set": {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0}}
     for i in range(1, 62):
         avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
@@ -586,7 +586,7 @@ if len(perf_by_sets) == 7:
         new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
         new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
         new_y["symbol"] = "arrow-bar-left"
-        if x.split()[1] in ["1", "2", "3", "4", "5"]:
+        if x.split()[1] in [str(i) for i in range(1, 50)]:
             perf_by_sets.append(new_y)
 #%% [markdown] make the figure
 print(
@@ -626,14 +626,14 @@ fig.add_trace(
         line=dict(color="grey", width=0),
     )
 )
-
-for perf in perf_by_sets:
+rd_set_added = False
+for perf in perf_by_sets[::-1]:
     fig.add_trace(
         go.Scatter(
             x=[perf["mean_cur_metric_broken"]],
             y=[perf["mean_cur_metric_cobble"]],
             mode="markers",
-            name="Greedy set"
+            name="Random set"
             if "Set" in perf["removed_group"]
             else perf["removed_group"],  # should make there not be loads of Set markers, just one greedy marker
             marker=dict(symbol=perf["symbol"], size=10, color=perf["color"]),
@@ -661,8 +661,9 @@ fig.update_yaxes(
     scaleanchor="x",
     scaleratio=1,
 )
+import os
 
-fpath = f"circuit_completeness_plusses_at_{ctime()}"
+fpath = f"circuit_completeness_plusses_at_{ctime()}.svg"
 if os.path.exists("/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer/svgs"):
     fpath = "svgs/" + fpath
 
