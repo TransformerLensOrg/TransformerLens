@@ -224,7 +224,7 @@ J[(11, 1)] += [(9, 7)] # J[(11, 1)][:1] + J[(11, 1)][-5:]
 #%% 
 results = {}
 
-if False:
+if "results_cache" not in dir():
     results_cache = {}  # massively speeds up future runs
 
 for circuit_class in circuit.keys():
@@ -258,20 +258,25 @@ for circuit_class in circuit.keys():
             f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}"
         )
 #%%
-xs = []
-initial_ys = []
-final_ys = []
-
 ac = ALL_COLORS
 cc = CLASS_COLORS
 
 relevant_classes = list(circuit.keys())
 
 fig = go.Figure()
-colors = []
+
 for j, G in enumerate(relevant_classes):
-    for i, v in enumerate(list(circuit[G])):
+    xs = []
+    initial_ys = []
+    final_ys = []
+    colors = []
+    names = []
+    curvys = list(circuit[G])
+    curvys = sorted(curvys, key=lambda x: -abs(results[x][1] - results[x][0]))
+
+    for v in curvys: # i, v in enumerate(list(circuit[G])):
         xs.append(str(v))
+        names.append(G)
 
         initial_y = results[v][0]
         final_y = results[v][1]
@@ -280,29 +285,29 @@ for j, G in enumerate(relevant_classes):
         final_ys.append(final_y)
         colors.append(cc[G])
 
-initial_ys = torch.Tensor(initial_ys)
-final_ys = torch.Tensor(final_ys)
+    initial_ys = torch.Tensor(initial_ys)
+    final_ys = torch.Tensor(final_ys)
 
-y = final_ys - initial_ys
+    y = final_ys - initial_ys
 
-if True:
-    base = [0.0 for _ in range(len(xs))]
-    warnings.warn("Base is 0")
-    y = abs(y)
-else:
-    base = initial_ys
+    if True:
+        base = [0.0 for _ in range(len(xs))]
+        warnings.warn("Base is 0")
+        y = abs(y)
+    else:
+        base = initial_ys
 
-
-fig.add_trace(
-    go.Bar(
-        x=xs,
-        y=y,
-        base=base,
-        marker_color=colors,
-        width=[1.0 for _ in range(len(xs))],
-        name="",
+    fig.add_trace(
+        go.Bar(
+            x=xs,
+            y=y,
+            base=base,
+            marker_color=colors,
+            width=[1.0 for _ in range(len(xs))],
+            name=G,
+        )
     )
-)
+
 
 fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
 

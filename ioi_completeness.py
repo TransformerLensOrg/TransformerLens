@@ -441,9 +441,26 @@ run_original = True
 
 if __name__ != "__main__":
     run_original = False
+#%% [markdown] Do some faithfulness
+model.reset_hooks()
+logit_diff_M = logit_diff(model, ioi_dataset)
 
-# %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper
-circuit = deepcopy(ALEX_NAIVE)    
+for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
+    heads_to_keep = get_heads_circuit(
+        ioi_dataset, excluded=[], circuit=circuit
+    )
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=mean_dataset,
+    )
+    
+    logit_diff_circuit = logit_diff(model, ioi_dataset)
+    print(f"{logit_diff_circuit=}")
+# %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
+circuit = deepcopy(CIRCUIT)    
 
 cur_metric = logit_diff  # partial(probs, type="s")
 mean_dataset = abca_dataset
@@ -463,7 +480,7 @@ if run_original:
             excluded_classes.append(G)
         heads_to_keep = get_heads_circuit(
             ioi_dataset, excluded=excluded_classes, circuit=circuit
-        )  # TODO check the MLP stuff
+        )
 
         model, _ = do_circuit_extraction(
             model=model,
@@ -539,7 +556,6 @@ if run_original:
                 "std_on_diagonal": np.std(on_diagonals),
                 "std_off_diagonal": np.std(off_diagonals),
                 "color": CLASS_COLORS[G],
-                "my_arrow_color": "red",
                 "symbol": "diamond-x",
             }
         )
@@ -552,25 +568,9 @@ if run_original:
     circuit_perf = pd.DataFrame(circuit_perf)
     circuit_classes = sorted(perf_by_sets, key=lambda x: -x["mean_abs_diff"])
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
-#%% [markdown] Do some faithfulness
-model.reset_hooks()
-logit_diff_M = logit_diff(model, ioi_dataset)
+#%% [markdown] Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
+fname = "greedy_naive_data.csv"
 
-for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
-    heads_to_keep = get_heads_circuit(
-        ioi_dataset, excluded=[], circuit=circuit
-    )
-    model, _ = do_circuit_extraction(
-        model=model,
-        heads_to_keep=heads_to_keep,
-        mlps_to_remove={},
-        ioi_dataset=ioi_dataset,
-        mean_dataset=mean_dataset,
-    )
-    
-    logit_diff_circuit = logit_diff(model, ioi_dataset)
-    print(f"{logit_diff_circuit=}")
-#%%
 def get_df_from_csv(fname):
     df = pd.read_csv(fname)
     return df
@@ -581,8 +581,6 @@ def get_list_of_dicts_from_df(df):
 def read_json_from_file(fname):
     with open(fname) as f:
         return json.load(f)
-
-fname = "greedy_naive_data.json"
 
 if fname[-4:] == ".csv":
     dat = get_list_of_dicts_from_df(get_df_from_csv(fname)) 
@@ -597,13 +595,19 @@ if fname[-4:] == ".csv":
         avg_things[x]["mean_ldiff_broken"] /= 150
         avg_things[x]["mean_ldiff_cobble"] /= 150
     avg_things.pop("Empty set")
-    # if len(dat) == 59:
-    # dat = [dat[54], dat[23], dat[36], dat[3], dat[2]]
-    # if len(perf_by_sets) == 7:
-    #     perf_by_sets += dat
+
 elif fname[-5:] == ".json":
     dat = read_json_from_file(fname)
-    pass
+    avg_things = {"Empty set": {"mean_ldiff_broken" : 0, "mean_ldiff_cobble": 0}}
+    for i in range(1, 62):
+        avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
+    for x in dat:
+        avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
+        avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
+    for x in avg_things.keys():
+        avg_things[x]["mean_ldiff_broken"] /= 150
+        avg_things[x]["mean_ldiff_cobble"] /= 150
+    avg_things.pop("Empty set")
 else:
     raise ValueError("Unknown file type")
 
@@ -618,27 +622,26 @@ if len(perf_by_sets) == 7:
         new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
         new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
         new_y["symbol"] = "arrow-bar-left"
-        if x.split()[1] in ["24", "25", "33", "38", "9"]:
+        if x.split()[1] in ["1", "2", "3", "4", "5"]:
             perf_by_sets.append(new_y)
-#%% # if run_original: ...
-minx = -2
-maxx = 8
-eps = 1.4
-warnings.warn("set these better!!!")
-
+#%% [markdown] make the figure
 print(
     f"The circuit class with maximum difference is {circuit_classes[0]['removed_group']} with difference {circuit_classes[0]['mean_abs_diff']}"
 )
+
 fig = go.Figure()
 
-full_circuit_perf_by_sets = torch.load("full_perf_by_sets.pt")
-skip_old = True
-sqrt_n_reduction = True
+## add the grey region
 
-xs = np.linspace(minx, maxx, 100)
+# parameters (how wide, high and epsilon value)
+minx = -1
+maxx = 8
+eps = 1.4
+
+# make the region
+xs = np.linspace(minx-1, maxx+1, 100)
 ys_max = xs + eps
 ys_min = xs - eps
-
 fig.add_trace(
     go.Scatter(
         x=xs,
@@ -660,72 +663,46 @@ fig.add_trace(
     )
 )
 
-for cp_idx, cur_perf_by_sets in enumerate([full_circuit_perf_by_sets, perf_by_sets]):
-    if cp_idx == 0 and skip_old:
-        continue
-
-    for perf in cur_perf_by_sets:
-        fig.add_trace(
-            go.Scatter(
-                x=[perf["mean_cur_metric_broken"]],
-                y=[perf["mean_cur_metric_cobble"]],
-                mode="markers",
-                name="Greedy set" if "Set" in perf["removed_group"] else perf["removed_group"],
-                marker=dict(
-                    symbol=perf["symbol"], size=10, color=perf["color"]
-                ),
-                showlegend="25" in perf["removed_group"] or "Set" not in perf["removed_group"], 
-            )
+for perf in perf_by_sets:
+    fig.add_trace(
+        go.Scatter(
+            x=[perf["mean_cur_metric_broken"]],
+            y=[perf["mean_cur_metric_cobble"]],
+            mode="markers",
+            name="Greedy set" if "Set" in perf["removed_group"] else perf["removed_group"], # should make there not be loads of Set markers, just one greedy marker 
+            marker=dict(
+                symbol=perf["symbol"], size=10, color=perf["color"]
+            ),
+            showlegend=( ("1" in perf["removed_group"]) or ("Set" not in perf["removed_group"]) ), 
         )
-        # if "on_diagonal" not in perf:
-        continue
-        on_diagonals = perf["on_diagonal"]
-        off_diagonals = perf["off_diagonal"]
-        if sqrt_n_reduction:
-            on_diagonals /= np.sqrt(N)
-            off_diagonals /= np.sqrt(N)
-        add_arrow(
-            fig,
-            [x, y],
-            [x - (off_diagonals / (2**0.5)), y + (off_diagonals / (2**0.5))],
-            color=perf["my_arrow_color"],
-        )
-        add_arrow(
-            fig,
-            [x, y],
-            [x + (off_diagonals / (2**0.5)), y - (off_diagonals / (2**0.5))],
-            color=perf["my_arrow_color"],
-        )
+    )
+    continue
 
-# don't show legend
-# fig.update_layout(showlegend=False)
 
-# label the x axis as the broken circuit
+# fig.update_layout(showlegend=False) # 
+
 fig.update_xaxes(title_text="F(C \ K)")
 fig.update_yaxes(title_text="F(M \ K)")
 fig.update_xaxes(showgrid=True, gridcolor="black", gridwidth=1)
 fig.update_yaxes(showgrid=True, gridcolor="black", gridwidth=1)
 fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
-# fig.update_xaxes(showline=True, linewidth=2, linecolor="black")
-# fig.update_yaxes(showline=True, linewidth=2, linecolor="black")
+
+# USE THESE LINES TO SCALE SVGS PROPERLY
+fig.update_xaxes(range=[minx, maxx])
+fig.update_yaxes(range=[minx, maxx])
 fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
 fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
-
-# fig.update_layout(
-#     autosize=False,
-#     width=600,
-#     height=500,
-#     # margin=dict(l=50, r=50, b=100, t=100, pad=4),
-#     paper_bgcolor="white",
-# )
 
 fig.update_yaxes(
     scaleanchor="x",
     scaleratio=1,
 )
 
+fpath = f"circuit_completeness_plusses_at_{ctime()}"
+if os.path.exists("/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer/svgs"):
+    fpath = "svgs/" + fpath
 
-fig.write_image(f"svgs/circuit_completeness_plusses_at_{ctime()}.svg")
+fig.write_image(fpath)
 fig.show()
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
