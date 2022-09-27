@@ -19,6 +19,7 @@
 
 # %% [markdown]
 # ## Imports
+from turtle import color
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
@@ -132,7 +133,7 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 200
+N = 500
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
@@ -234,6 +235,34 @@ fig = px.imshow(
 
 fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
 fig.show()
+
+
+# %% ABC-mean ablation of mlps
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
+config_mlp = AblationConfig(
+    abl_type="mean",
+    mean_dataset=abca_dataset.text_prompts,
+    target_module="mlp",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+)
+abl_mlp = EasyAblation(
+    model,
+    config_mlp,
+    metric,
+    mean_by_groups=True,
+    groups=ioi_dataset.groups,  # abc ablation
+)
+mlp_result = abl_mlp.run_ablation()
+fig = show_pp(
+    mlp_result.T,
+    title="Logit Difference Variation after ABC-mean KO of MLPs at all tokens",
+    xlabel="Layer",
+    ylabel="MLP",
+    return_fig=True,
+)
+fig.write_image("svgs/abc_ablate_mlps.svg")
 # %%
 len(ioi_dataset.text_prompts)
 # %% [markdown]
@@ -366,6 +395,7 @@ def writing_direction_heatmap(
     unembed_mode="normal",
     title="",
     verbose=False,
+    return_figs=False,
 ):
     """
     Plot the dot product between how much each attention head
@@ -385,7 +415,6 @@ def writing_direction_heatmap(
 
     attn_vals = torch.zeros(size=(n_heads, n_layers))
     mlp_vals = torch.zeros(size=(n_layers,))
-    model.reset_hooks()
     logit_diffs = logit_diff(model, ioi_dataset, all=True).cpu()
 
     for i in tqdm(range(ioi_dataset.N)):
@@ -404,7 +433,6 @@ def writing_direction_heatmap(
         else:
             raise NotImplementedError()
 
-        model.reset_hooks()
         cache = {}
         model.cache_all(cache, device="cpu")  # TODO maybe speed up by only caching relevant things
         logits = model(ioi_dataset.text_prompts[i])
@@ -460,16 +488,21 @@ def writing_direction_heatmap(
 
     attn_vals /= ioi_dataset.N
     mlp_vals /= ioi_dataset.N
+    all_figs = []
     if "attn" in show:
-        show_pp(attn_vals, xlabel="head no", ylabel="layer no", title=title)
+        all_figs.append(show_pp(attn_vals, xlabel="head no", ylabel="layer no", title=title, return_fig=True))
     if "mlp" in show:
-        show_pp(mlp_vals.unsqueeze(0), xlabel="", ylabel="layer no", title=title)
+        all_figs.append(show_pp(mlp_vals.unsqueeze(0).T, xlabel="", ylabel="layer no", title=title, return_fig=True))
+    if return_figs and return_vals:
+        return all_figs, attn_vals, mlp_vals
     if return_vals:
         return attn_vals, mlp_vals
+    if return_figs:
+        return all_figs
 
 
 torch.cuda.empty_cache()
-attn_vals, mlp_vals = writing_direction_heatmap(
+all_figs, attn_vals, mlp_vals = writing_direction_heatmap(
     model,
     ioi_dataset,
     return_vals=True,
@@ -477,7 +510,14 @@ attn_vals, mlp_vals = writing_direction_heatmap(
     dir_mode="IO - S",
     title="Output into IO - S token unembedding direction",
     verbose=True,
+    return_figs=True,
 )
+modules = ["attn", "mlp"]
+
+for i, fig in enumerate(all_figs):
+    fig.write_image(f"svgs/writing_direction_heatmap_module_{modules[i]}.svg")
+
+
 # %% [markdown]
 # We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
 # %%
@@ -504,23 +544,101 @@ def max_2d(m, k=1):
         x = ind // m.shape[1]
         y = ind - x * m.shape[1]
         out.append((x, y))
-    return out
+    return out, mf[inds]
 
 
-k = 5
+k = 20
 print(f"Top {k} heads (by magnitude):")
-top_heads = max_2d(torch.abs(attn_vals.T), k=k)  # remove abs to just get positive contributors
-top_heads
+all_grps = []
+top_heads, vals = max_2d(torch.abs(attn_vals.T), k=k)  # remove abs to just get positive contributors
+for i in range(len(top_heads)):
+    grp = "None"
+    for gr in CIRCUIT.keys():
+        if top_heads[i] in CIRCUIT[gr]:
+            grp = gr
+    all_grps.append(grp)
+
+    print(f"{top_heads[i]}: {vals[i]} {grp}")
+head_names = [str(top_heads[i]) for i in range(len(top_heads))]
+
+
+grps_color = {
+    "None": "rgb(150, 150, 150)",
+    "name mover": "rgb(27, 158, 119)",
+    "negative": "rgb(217, 95, 2)",
+    "s2 inhibition": "rgb(117, 112, 179)",
+    "induction": "rgb(231, 41, 138)",
+    "duplicate token": "rgb(102, 166, 30)",
+    "previous token": "rgb(230, 171, 2)",
+}
+
+all_colors = [
+    "rgb(27, 158, 119)",
+    "rgb(217, 95, 2)",
+    "rgb(117, 112, 179)",
+    "rgb(150, 150, 150)",
+]  # , "rgb(102, 166, 30)", "rgb(230, 171, 2)"]
+all_groups = list(grps_color.keys())
+
+colors = [all_groups.index(all_grps[i]) for i in range(len(top_heads))]
+
+fig = px.bar(vals, color_discrete_sequence=all_colors, color=all_grps)
+fig.update_layout(
+    title=f"Head projection on IO-S",
+    xaxis_title="Head",
+    yaxis_title="Projection on IO-S",
+    xaxis={
+        "ticktext": head_names,
+        "tickvals": list(range(len(head_names))),
+        "tickfont": dict(size=13),
+        "side": "bottom",
+    },
+    height=400,
+)
+fig.show()
+fig.write_image("svgs/head_projection_on_IO-S_bar_chart.svg")
+
+
+# %% After KO
+from ioi_circuit_extraction import (
+    join_lists,
+    CIRCUIT,
+    RELEVANT_TOKENS,
+    get_extracted_idx,
+    get_heads_circuit,
+    do_circuit_extraction,
+    list_diff,
+)
+from ioi_utils import get_heads_from_nodes
+
+model.reset_hooks()
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_remove=get_heads_from_nodes([((9, 9), "end"), ((10, 0), "end"), ((9, 6), "end")], ioi_dataset),  # C\J
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=abca_dataset,
+)
+
 #%% [markdown]
 # <h2>Copying</h2>
 # CLAIM: heads 9.6, 9.9 and 10.0 copy the IO into the residual stream, <b>by attending to the IO token</b>
 #%% # the more attention, the more writing
 from ioi_utils import scatter_attention_and_contribution
 
-scatter_attention_and_contribution(model, 11, 2, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 9, 9, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 9, 6, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
-scatter_attention_and_contribution(model, 10, 0, ioi_dataset.ioi_prompts[:500], gpt_model="gpt2")
+scatter_attention_and_contribution(model, 11, 2, ioi_dataset)
+scatter_attention_and_contribution(model, 9, 9, ioi_dataset)
+scatter_attention_and_contribution(model, 9, 6, ioi_dataset)
+scatter_attention_and_contribution(model, 10, 0, ioi_dataset)
+
+# %%
+df = scatter_attention_and_contribution(model, 10, 7, ioi_dataset, return_vals=True)
+df.columns = [c.replace(" ", "_") for c in df.columns]
+a1, a2 = df["Attn_Prob_on_Name"].to_numpy(), df["Dot_w_Name_Embed"].to_numpy()
+a2 = [float(x) for x in a2]
+a1 = [float(x) for x in a1]
+print(np.corrcoef(a1, a2))
+
 #%% # for control purposes, check that there is unlikely to be a correlation between attention and writing for unimportant heads
 scatter_attention_and_contribution(
     model,
@@ -634,7 +752,9 @@ hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
 text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
 
 
-def attention_probs(model, text_prompts):  # we have to redefine logit differences to use the new abba dataset
+def attention_probs(
+    model, text_prompts, variation=True
+):  # we have to redefine logit differences to use the new abba dataset
     """Difference between the IO and the S logits at the "to" token"""
     cache_patched = {}
     model.cache_some(cache_patched, lambda x: x in hook_names)  # we only cache the activation we're interested
@@ -665,9 +785,12 @@ def attention_probs(model, text_prompts):  # we have to redefine logit differenc
                     ioi_dataset.word_idx["end"],
                     ioi_dataset.word_idx[key],
                 ]
-                attn_probs_variation.append(
-                    ((attn_probs_patched - attn_probs_base) / attn_probs_base).mean().unsqueeze(dim=0)
-                )
+                if variation:
+                    attn_probs_variation.append(
+                        ((attn_probs_patched - attn_probs_base) / attn_probs_base).mean().unsqueeze(dim=0)
+                    )
+                else:
+                    attn_probs_variation.append(attn_probs_patched.mean().unsqueeze(dim=0))
         attn_probs_variation_by_keys.append(torch.cat(attn_probs_variation).mean(dim=0, keepdim=True))
 
     attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)

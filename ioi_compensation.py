@@ -140,23 +140,22 @@ mean_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
 CIRCUIT = {
     "name mover": [
-        (9, 0),
-        (9, 6),  # ori
-        (9, 7),
-        (9, 9),  # ori
-        (10, 0),  # ori
-        (10, 1),
-        (10, 2),  # ~
-        (10, 6),
+        (9, 9),  # by importance
+        (10, 0),
+        (9, 6),
         (10, 10),
-        (11, 1),  # ~
-        (11, 6),  # ~
-        (11, 9),  # ~
+        (10, 2),
         (11, 2),
+        (10, 6),
+        (10, 1),
+        (11, 6),
+        (11, 9),
+        (11, 1),
+        (9, 7),
     ],
     "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (6, 9), (5, 8), (5, 9)],  # (5, 8), (5, 9),
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
     "duplicate token": [(0, 1), (0, 10), (3, 0)],
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
@@ -173,7 +172,7 @@ for head in CIRCUIT["duplicate token"]:
     RELEVANT_TOKENS[head] = ["S2"]
 
 for head in CIRCUIT["previous token"]:
-    RELEVANT_TOKENS[head] = ["S+1", "and"]
+    RELEVANT_TOKENS[head] = ["S+1"]
 
 
 ALL_NODES = []  # a node is a tuple (head, token)
@@ -242,6 +241,7 @@ def writing_direction_heatmap(
     highlight_heads=None,
     highlight_name="",
     return_ld=False,
+    return_figs=False,
 ):
     """
     Plot the dot product between how much each attention head
@@ -293,18 +293,24 @@ def writing_direction_heatmap(
 
     vals /= N
     vals /= cache["ln_final.hook_scale"][range(ioi_dataset.N), ioi_dataset.word_idx["end"][i]].mean().cpu()
-    show_pp(
-        vals,
-        xlabel="head no",
-        ylabel="layer no",
-        title=title + f" Logit diff: {ld:.2f} +/- {std:.2f}",
-        highlight_points=highlight_heads,
-        highlight_name=highlight_name,
+    all_figs = []
+    all_figs.append(
+        show_pp(
+            vals,
+            xlabel="head no",
+            ylabel="layer no",
+            title=title + f" Logit diff: {ld:.2f} +/- {std:.2f}",
+            highlight_points=highlight_heads,
+            highlight_name=highlight_name,
+            return_fig=True,
+        )
     )
-    if return_vals and return_ld:
-        return vals, ld
-    elif return_vals:
+    if return_figs and return_vals:
+        return all_figs, vals
+    if return_vals:
         return vals
+    if return_figs:
+        return all_figs
 
 
 # %% check if we see distributed name movers
@@ -787,6 +793,7 @@ def find_owt_stimulus(model, owt_sentences, l, h):
     # return max_seq, min_seq
 
 
+# %%
 find_owt_stimulus(model, owt_seqs, 11, 1)
 # %%
 import torch.nn.functional as F
@@ -807,7 +814,7 @@ def get_per_token_loss(model, seqs):
 update_nm(None, reset=True)
 
 all_losses_M = get_per_token_loss(model, owt_seqs[100:])
-print_toks_with_color(show_tokens(owt_seqs[0], model, return_list=True), all_losses[0], show_high=True)
+print_toks_with_color(show_tokens(owt_seqs[0], model, return_list=True), all_losses_M[0], show_high=True)
 
 model, _ = do_circuit_extraction(
     model=model,

@@ -122,9 +122,7 @@ def get_circuit_replacement_hook(
                 # TODO can this i loop be vectorized?
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(
-                dataset_length
-            ):  # we use the idx from contex to get the head
+            for i in range(dataset_length):  # we use the idx from contex to get the head
                 z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
                     i,
                     heads2[(layer, hook.ctx["idx"])][i],
@@ -136,9 +134,7 @@ def get_circuit_replacement_hook(
     return circuit_replmt_hook, heads, mlps
 
 
-def join_lists(
-    l1, l2
-):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
+def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
     assert len(l1) == len(l2)
     assert type(l1[0]) == list and type(l2[0]) == int
     l = []
@@ -150,9 +146,7 @@ def join_lists(
 def get_extracted_idx(idx_list: list[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [
-            int(x) for x in list(ioi_dataset.word_idx[idx_name])
-        ]  # torch to python objects
+        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
@@ -195,7 +189,7 @@ for head in CIRCUIT["duplicate token"]:
     RELEVANT_TOKENS[head] = ["S2"]
 
 for head in CIRCUIT["previous token"]:
-    RELEVANT_TOKENS[head] = ["S+1", "and"]
+    RELEVANT_TOKENS[head] = ["S+1"]
 
 # ALEX_NAIVE_CIRCUIT = {
 #     "name mover": [
@@ -220,9 +214,7 @@ ALEX_NAIVE = {
 
 def get_heads_circuit(ioi_dataset, excluded=[], mlp0=False, circuit=CIRCUIT):
     for excluded_thing in excluded:
-        assert (
-            isinstance(excluded_thing, tuple) or excluded_thing in circuit.keys()
-        ), excluded_thing
+        assert isinstance(excluded_thing, tuple) or excluded_thing in circuit.keys(), excluded_thing
 
     heads_to_keep = {}
 

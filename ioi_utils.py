@@ -55,6 +55,7 @@ def show_pp(
     animate_axis=None,
     highlight_points=None,
     highlight_name="",
+    return_fig=False,
     **kwargs,
 ):
     """
@@ -106,12 +107,15 @@ def show_pp(
     fig.update_layout(
         yaxis_title=ylabel,
         xaxis_title=xlabel,
-        xaxis_range=[-0.5, m.T.shape[0] - 0.5],
+        xaxis_range=[-0.5, m.shape[0] - 0.5],
         showlegend=True,
         legend=dict(x=-0.1),
     )
-    fig.update_yaxes(range=[m.T.shape[1] - 0.5, -0.5], autorange=False)
+    if highlight_points is not None:
+        fig.update_yaxes(range=[m.shape[1] - 0.5, -0.5], autorange=False)
     fig.show()
+    if return_fig:
+        return fig
 
 
 # Plot attention patterns weighted by value norm
