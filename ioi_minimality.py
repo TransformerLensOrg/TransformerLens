@@ -218,8 +218,8 @@ for i, head in enumerate(circuit["name mover"]):
 for i, head in enumerate(circuit["induction"]):
     J[head] += [(10, 7), (11, 10)]
 
-J[(9, 6)] = [(9, 9), (9, 6)]
-J[(10, 10)] = [(9, 9), (10, 10)]
+# J[(9, 6)] = [(9, 9), (9, 6)]
+# J[(10, 10)] = [(9, 9), (10, 10)]
 J[(11, 1)] += [(9, 7)] # J[(11, 1)][:1] + J[(11, 1)][-5:]
 #%% 
 results = {}
@@ -262,17 +262,19 @@ ac = ALL_COLORS
 cc = CLASS_COLORS.copy()
 
 relevant_classes = list(circuit.keys())
-
 fig = go.Figure()
 
-for j, G in enumerate(relevant_classes + ["distributed name mover"]):
+initial_y_cache = {}
+final_y_cache = {}
+
+for j, G in enumerate(relevant_classes + ["backup name mover"]):
     xs = []
     initial_ys = []
     final_ys = []
     colors = []
     names = []
     widths = []
-    if G == "distributed name mover":
+    if G == "backup name mover":
         curvys = list(circuit["name mover"])
         for head in [(9, 6), (9, 9), (10, 0)]:
             curvys.remove(head)
@@ -306,6 +308,8 @@ for j, G in enumerate(relevant_classes + ["distributed name mover"]):
 
     initial_ys = torch.Tensor(initial_ys)
     final_ys = torch.Tensor(final_ys)
+    initial_y_cache[G] = initial_ys
+    final_y_cache[G] = final_ys
 
     y = final_ys - initial_ys
 
@@ -391,15 +395,27 @@ fig.update_yaxes(gridcolor="black", gridwidth=0.1)
 fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
 #%%
+def capitalise(name):
+    """
+    turn each word into a capitalised word
+    """
+    return " ".join([word.capitalize() for word in name.split(" ")])
 
 idx = 0
-for j, G in enumerate(relevant_classes):
-    for i, v in enumerate(list(circuit[G])):
-        head = circuit[G][idx]
+for j, G in enumerate(relevant_classes + ["backup name mover"]):
+    initial_ys = initial_y_cache[G]
+    final_ys = final_y_cache[G]
+    for i in range(len(initial_ys)): ## , v in enumerate(list(circuit[G])):
+        head = circuit[G][i] if G != "backup name mover" else circuit["name mover"][i]
         group = str(G)
-        start = initial_ys[idx]
-        end = final_ys[idx]
-        print(f"{head} & {group} & {start} & {end} \\\\")
+        start = initial_ys[i]
+        end = final_ys[i]
+        name = capitalise(group)
+        if name == "S2 Inhibition": name = "S Inhibition"
+        K = J[head]
+        if G == "backup name mover":
+            K = "All previous NMs and distributed NMs"
+        print(f"{head} & {name} & {K} & {start:.2f} & {end:.2f} \\\\")
         print("\\hline")
         idx += 1
 #%%

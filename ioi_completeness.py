@@ -637,7 +637,7 @@ for perf in perf_by_sets[::-1]:
             if "Set" in perf["removed_group"]
             else perf["removed_group"],  # should make there not be loads of Set markers, just one greedy marker
             marker=dict(symbol=perf["symbol"], size=10, color=perf["color"]),
-            showlegend=(("1" in perf["removed_group"]) or ("Set" not in perf["removed_group"])),
+            showlegend=(("49" in perf["removed_group"]) or ("Set" not in perf["removed_group"])),
         )
     )
     continue
