@@ -193,7 +193,7 @@ class HookedRootModule(nn.Module):
                         hp.add_hook(hook, dir="fwd")
         for name, hook in bwd_hooks:
             if type(name) == str:
-                self.mod_dict[name].add_hook(hook, dir="fwd")
+                self.mod_dict[name].add_hook(hook, dir="bwd")
             else:
                 # Otherwise, name is a Boolean function on names
                 for hook_name, hp in self.hook_dict:
