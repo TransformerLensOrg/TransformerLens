@@ -490,6 +490,7 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     )
     return logit_diff(model, ioi_dataset, all=False)
 
+
 def basis_change(x, y):
     """
     Change the basis (1, 0) and (0, 1) to the basis

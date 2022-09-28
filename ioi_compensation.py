@@ -318,9 +318,7 @@ def writing_direction_heatmap(
 model.reset_hooks()
 model, _ = do_circuit_extraction(
     model=model,
-    heads_to_remove=get_heads_from_nodes(
-        [((10, 7), "end"), ((11, 10), "end"), ((10, 0), "end"), ((9, 6), "end"), ((9, 9), "end")], ioi_dataset
-    ),
+    heads_to_remove=get_heads_from_nodes([((9, 6), "end"), ((9, 9), "end"), ((10, 0), "end")], ioi_dataset),
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
     mean_dataset=mean_dataset,
