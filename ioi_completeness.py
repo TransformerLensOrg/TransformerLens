@@ -120,7 +120,7 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 200
+N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 
@@ -594,14 +594,19 @@ def read_json_from_file(fname):
     with open(fname) as f:
         return json.load(f)
 
+
 perf_by_sets = []
 
-circuit_to_import = "naive"
+circuit_to_import = "natural"
 
-fnames = [f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_random_search.json",f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_max_brok_cob_diff.json",f"sets/perf_{circuit_to_import}_circuit_by_classes.json"]
+fnames = [
+    f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_random_search.json",
+    f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_max_brok_cob_diff.json",
+    f"sets/perf_{circuit_to_import}_circuit_by_classes.json",
+]
 
-sets_type = ["random_search","greedy", "class" ]
-for k,fname in enumerate(fnames):
+sets_type = ["random_search", "greedy", "class"]
+for k, fname in enumerate(fnames):
     if fname[-4:] == ".csv":
         dat = get_list_of_dicts_from_df(get_df_from_csv(fname))
         avg_things = {"Empty set": {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0}}
@@ -621,17 +626,15 @@ for k,fname in enumerate(fnames):
         for x in dat:
             if not x["removed_set_id"] in avg_things:
                 avg_things[x["removed_set_id"]] = {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0, "mean_dist": 0}
-            
+
             avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
             avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
-            avg_things[x["removed_set_id"]]["mean_dist"] += np.abs(x["ldiff_broken"] - x["ldiff_cobble"])
         for x in avg_things.keys():
             avg_things[x]["mean_ldiff_broken"] /= 150
             avg_things[x]["mean_ldiff_cobble"] /= 150
-            avg_things[x]["mean_dist"] /= 150
+            avg_things[x]["mean_dist"] = np.abs(avg_things[x]["mean_ldiff_broken"] - avg_things[x]["mean_ldiff_cobble"])
     else:
         raise ValueError("Unknown file type")
-
 
     all_dists = [avg_things[x]["mean_dist"] for x in avg_things.keys()]
     print(f"Max dist {circuit_to_import} - {sets_type[k]}: {max(all_dists)}")
@@ -658,16 +661,16 @@ for k,fname in enumerate(fnames):
                 new_y["symbol"] = "circle"
         new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
         new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
-        
-        if (nb_set-1 not in [0 ,5,  3  , 6, 23]) and sets_type[k] == "greedy" and circuit_to_import == "natural":
-            nb_set +=1
+
+        if (nb_set - 1 not in [0, 5, 3, 6, 23]) and sets_type[k] == "greedy" and circuit_to_import == "natural":
+            nb_set += 1
             continue
 
         if x == "Empty set":
-            nb_set +=1
+            nb_set += 1
             continue
         perf_by_sets.append(new_y)
-        nb_set +=1
+        nb_set += 1
 
 
 #%% [markdown] make the figure
@@ -679,12 +682,11 @@ fig = go.Figure()
 # parameters (how wide, high and epsilon value)
 minx = -2
 maxx = 6
-eps = 1.
+eps = 1.0
 
 # make the region
 xs = np.linspace(minx - 1, maxx + 1, 100)
 ys = xs
-
 
 
 fig.add_trace(
@@ -699,7 +701,7 @@ fig.add_trace(
 
 
 rd_set_added = False
-for i,perf in enumerate(perf_by_sets):
+for i, perf in enumerate(perf_by_sets):
     fig.add_trace(
         go.Scatter(
             x=[perf["mean_cur_metric_broken"]],
@@ -1300,55 +1302,55 @@ compute_cobble_broken_diff(
 )
 
 # %%
-    # %% greedy minimality experiments
+# %% greedy minimality experiments
 
-    model.reset_hooks()
-    small_ioi_dataset = IOIDataset(prompt_type="mixed", N=30, tokenizer=model.tokenizer, nb_templates=2)
+model.reset_hooks()
+small_ioi_dataset = IOIDataset(prompt_type="mixed", N=30, tokenizer=model.tokenizer, nb_templates=2)
 
-    best_J = {}  # list of candidate sets for each node
-    best_scores = {}  # list of scores for each node
-    for v in tqdm(ALL_NODES):
-        minimality_test_v = partial(test_minimality, model, small_ioi_dataset, v)
-        best_J[v] = greed_search_max_brok_cob_diff(
-            minimality_test_v,
-            init_set=[v],
-            NODES_PER_STEP=5,
-            NB_SETS=1,
-            NB_ITER=10,
-            verbose=False,
-        )
-        if len(best_J[v]) == 0:  # if the greedy search did not find any set, we use the set with the node itself
-            all_but_v = ALL_NODES.copy()
-            all_but_v.remove(v)
-            best_J[v] = [{"circuit_nodes": all_but_v, "removed_nodes": [v]}]
-
-    ioi_dataset = IOIDataset(prompt_type="mixed", N=200, tokenizer=model.tokenizer)
-
-    for v in tqdm(ALL_NODES):  # validate the best sets
-        minimality_scores = [
-            test_minimality(model, ioi_dataset, v, node_set["removed_nodes"], absolute=False) for node_set in best_J[v]
-        ]
-        best_J[v] = best_J[v][np.argmax(minimality_scores)]
-        best_scores[v] = np.max(minimality_scores)
-        print(f"v={v}, J={best_J[v]}, score={best_scores[v]}")
-
-    for v, J in best_J.items():
-        print(f"v={v}, score={best_scores[v]}")
-
-    # %%
-    if circuit_to_study == "natural_circuit":
-        head_classes = []
-        for h, tok in best_scores.keys():
-            for group in CIRCUIT:
-                if h in CIRCUIT[group]:
-                    head_classes.append(group)
-                    break
-    else:
-        head_classes = ["none" for i in range(len(best_scores))]
-
-    px.bar(
-        x=list(best_scores.values()),
-        y=[str(k) for k in best_scores.keys()],
-        orientation="h",
-        color=head_classes,
+best_J = {}  # list of candidate sets for each node
+best_scores = {}  # list of scores for each node
+for v in tqdm(ALL_NODES):
+    minimality_test_v = partial(test_minimality, model, small_ioi_dataset, v)
+    best_J[v] = greed_search_max_brok_cob_diff(
+        minimality_test_v,
+        init_set=[v],
+        NODES_PER_STEP=5,
+        NB_SETS=1,
+        NB_ITER=10,
+        verbose=False,
     )
+    if len(best_J[v]) == 0:  # if the greedy search did not find any set, we use the set with the node itself
+        all_but_v = ALL_NODES.copy()
+        all_but_v.remove(v)
+        best_J[v] = [{"circuit_nodes": all_but_v, "removed_nodes": [v]}]
+
+ioi_dataset = IOIDataset(prompt_type="mixed", N=200, tokenizer=model.tokenizer)
+
+for v in tqdm(ALL_NODES):  # validate the best sets
+    minimality_scores = [
+        test_minimality(model, ioi_dataset, v, node_set["removed_nodes"], absolute=False) for node_set in best_J[v]
+    ]
+    best_J[v] = best_J[v][np.argmax(minimality_scores)]
+    best_scores[v] = np.max(minimality_scores)
+    print(f"v={v}, J={best_J[v]}, score={best_scores[v]}")
+
+for v, J in best_J.items():
+    print(f"v={v}, score={best_scores[v]}")
+
+# %%
+if circuit_to_study == "natural_circuit":
+    head_classes = []
+    for h, tok in best_scores.keys():
+        for group in CIRCUIT:
+            if h in CIRCUIT[group]:
+                head_classes.append(group)
+                break
+else:
+    head_classes = ["none" for i in range(len(best_scores))]
+
+px.bar(
+    x=list(best_scores.values()),
+    y=[str(k) for k in best_scores.keys()],
+    orientation="h",
+    color=head_classes,
+)

@@ -19,7 +19,6 @@
 
 # %% [markdown]
 # ## Imports
-from turtle import color
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
@@ -132,7 +131,7 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 500
+N = 150
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
@@ -546,6 +545,13 @@ def max_2d(m, k=1):
     return out, mf[inds]
 
 
+attn_vals = writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    return_vals=True,
+    dir_mode="IO - S",
+    title="Output into IO - S token unembedding direction",
+)
 k = 20
 print(f"Top {k} heads (by magnitude):")
 all_grps = []
@@ -794,9 +800,11 @@ def attention_probs(
     attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
     return attn_probs_variation_by_keys.detach().cpu()
 
+
+# %%
 circuit = CIRCUIT.copy()
-average_changes = torch.zeros(size = (12, 12, 3))
-no_times_used = torch.zeros(size = (12,))
+average_changes = torch.zeros(size=(12, 12, 3))
+no_times_used = torch.zeros(size=(12,))
 
 for idx, (layer, head_idx) in enumerate(tqdm(circuit["name mover"])):
     print(idx, "of", len(circuit["name mover"]))
@@ -818,11 +826,24 @@ for idx, (layer, head_idx) in enumerate(tqdm(circuit["name mover"])):
         head_circuit="result",  # we patch "result", the result of the attention head
         cache_act=True,
         verbose=False,
-        patch_fn=partial(patch_particular_token, token_type="IO"), # AND CHANGE THIS SHIT!
+        patch_fn=partial(patch_particular_token, token_type="IO"),  # AND CHANGE THIS SHIT!
         layers=(0, layer),
     )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 
 # %%
+
+
+def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
+    for pos in positions:
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+        ]
+    return z
+
+
+patch_last_tokens = partial(patch_positions, positions=["end"])
+
+
 config = PatchingConfig(
     source_dataset=abca_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
@@ -970,12 +991,6 @@ show_attention_patterns(model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset[ID
 # %% [markdown]
 # What happend if we patch at S2 instead of END?
 # %%
-def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
-    for pos in positions:
-        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
-            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
-        ]
-    return z
 
 
 # %%

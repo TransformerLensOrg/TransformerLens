@@ -21,7 +21,7 @@ CLASS_COLORS = {
     "duplicate token": ALL_COLORS[3],
     "previous token": ALL_COLORS[6],
     "none": ALL_COLORS[7],
-    "distributed name mover": "rgb(27,100,119)",
+    "backup name mover": "rgb(27,100,119)",
 }
 
 
