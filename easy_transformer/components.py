@@ -348,3 +348,41 @@ class TransformerBlock(nn.Module):
         )  # [batch, pos, d_model]
         resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         return resid_post
+
+class AttnOnlyBlock(nn.Module):
+    def __init__(self, cfg: Union[Dict, EasyTransformerConfig], block_index):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = EasyTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        if self.cfg.normalization_type == "LN":
+            self.ln1 = LayerNorm(cfg)
+        elif self.cfg.normalization_type == "LNPre":
+            # We've folded in LayerNorm weights, so just need the center + scale parts
+            self.ln1 = LayerNormPre(cfg)
+        elif self.cfg.normalization_type is None:
+            self.ln1 = nn.Identity()
+        else:
+            logging.warning(
+                f"Invalid normalization_type passed in {self.cfg.normalization_type}"
+            )
+
+        if not self.cfg.use_local_attn:
+            self.attn = Attention(cfg, "global")
+        else:
+            assert self.cfg.attn_types is not None
+            attn_type = self.cfg.attn_types[block_index]
+            self.attn = Attention(cfg, attn_type)
+
+        self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
+
+    def forward(self, x):
+        resid_pre = self.hook_resid_pre(x)  # [batch, pos, d_model]
+        normalized_resid_pre = self.ln1(resid_pre)
+        attn_out = self.hook_attn_out(
+            self.attn(normalized_resid_pre)
+        )  # [batch, pos, d_model]
+        resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
+        return resid_post
