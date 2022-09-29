@@ -71,23 +71,6 @@ def lm_cross_entropy_loss(
     else:
         return -predicted_log_probs.mean()
 
-def lm_cross_entropy_loss(
-        self, logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
-    ):
-    """Accuracy for the language model, gives the accuracy for predicting the NEXT token.
-
-    Args:
-        logits (torch.Tensor): Logits. Shape [batch, pos, d_vocab]
-        tokens (torch.Tensor[int64]): Input tokens. Shape [batch, pos]
-        return_per_token (bool, optional): Whether to return the boolean array for successful prediction of each next token, or the overall accuracy. Defaults to False.
-    """
-    top_prediction = logits.argmax(dim=-1)
-    correct_matches = top_prediction[:, :-1] == tokens[:, 1:]
-    if return_per_token:
-        return correct_matches
-    else:
-        return correct_matches.sum()/correct_matches.numel()
-
 def lm_accuracy(logits, tokens, return_per_token=False):
     """ Cross-Entropy Accuracy for Language Modelling. We measure the accuracy on the logits for predicting the NEXT token.
     
