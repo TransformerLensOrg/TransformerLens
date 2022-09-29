@@ -189,8 +189,10 @@ J = {}
 for circuit_class in circuit.keys():
     for head in circuit[circuit_class]:
         J[head] = [circuit_class]
-J[(5, 8)] = [(5, 8)]  # [(5, 5), (6, 9), (5, 8)]
-J[(5, 9)] = [(5, 9)]  # [(5, 5), (6, 9), (5, 9)]  # these weird ass heads
+J[(5, 8)] = [(5, 8)]
+J[(5, 9)] = [(5, 9)]  
+for i, head in enumerate(circuit["induction"]):
+    J[head] += [(10, 7), (11, 10)]
 
 # rebuild J
 for head in J.keys():
@@ -206,22 +208,10 @@ for head in J.keys():
     assert head in new_j_entry, (head, new_j_entry)
     J[head] = list(set(new_j_entry))
 
+# name mover shit
 for i, head in enumerate(circuit["name mover"]):
     old_entry = J[head]
-    for other_head in circuit["name mover"]:
-        J[head].remove(other_head)
-    for other_head in circuit["name mover"][: i + 1]:
-        J[head].append(other_head)
-
-# for i, head in enumerate(circuit["name mover"]):
-    # J[head] += [(10, 7), (11, 10)]
-
-for i, head in enumerate(circuit["induction"]):
-    J[head] += [(10, 7), (11, 10)]
-
-# J[(9, 6)] = [(9, 9), (9, 6)]
-# J[(10, 10)] = [(9, 9), (10, 10)]
-# J[(11, 1)] += [(9, 7)] # J[(11, 1)][:1] + J[(11, 1)][-5:]
+    J[head] = deepcopy(circuit["name mover"][: i + 1]) # turn into the previous things
 #%% 
 results = {}
 
@@ -233,7 +223,7 @@ for circuit_class in circuit.keys():
         results[head] = [None, None]
         base = frozenset(J[head])
         summit_list = deepcopy(J[head])
-        summit_list.remove(head)
+        summit_list.remove(head) # and this will error if you don't have a head in J!!!
         summit = frozenset(summit_list)
 
         for idx, ablated_stuff in enumerate([base, summit]):
