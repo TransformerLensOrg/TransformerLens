@@ -167,12 +167,35 @@ SMALL_CIRCUIT = {
 MED_CIRCUIT = deepcopy(SMALL_CIRCUIT)
 CIRCUIT = deepcopy(SMALL_CIRCUIT)
 
-for head in [(10, 10), (10, 2), (11, 2), (10, 6), (10, 1), (11, 6), (11, 9), (9, 7), (11, 1)]:
+for head in [(10, 10), (10, 2), (11, 2), (10, 6), (10, 1), (11, 9), (9, 7), (11, 3), (11, 11)]:
     CIRCUIT["name mover"].append(head)
 
 for head in [(10, 7), (11, 10)]:
     for circuit in [CIRCUIT, MED_CIRCUIT]:
         circuit["negative"].append(head)
+
+CIRCUIT = {
+        "name mover": [
+            (9, 9),  # by importance
+            (10, 0),
+            (9, 6),
+            (10, 10),
+            (10, 6),
+            (10, 2),
+            (10, 1),
+            (11, 2),
+            (11, 9),
+            (11, 3),
+            (9, 7),
+            (9, 0),
+            (11, 11),
+        ],
+        "negative": [(10, 7), (11, 10)],
+        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+        "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+        "duplicate token": [(0, 1), (0, 10), (3, 0)],
+        "previous token": [(2, 2), (2, 9), (4, 11)],
+}
 
 ARTHUR_CIRCUIT = deepcopy(CIRCUIT)
 ARTHUR_CIRCUIT.pop("duplicate token")

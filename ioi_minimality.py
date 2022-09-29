@@ -126,8 +126,8 @@ model, _ = do_circuit_extraction(
     exclude_heads=naive_heads,
 )
 
-circuit2_baseline_metric = metric(model, ioi_dataset)
-print(f"{model_baseline_metric=} {circuit2_baseline_metric=}")
+circuit_baseline_metric = metric(model, ioi_dataset)
+print(f"{model_baseline_metric=} {circuit_baseline_metric=}")
 #%%
 def get_basic_extracted_model(
     model, ioi_dataset, mean_dataset=None, circuit=circuits[1]
