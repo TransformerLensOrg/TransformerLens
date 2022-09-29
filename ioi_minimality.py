@@ -181,7 +181,7 @@ if metric == logit_diff:
 else:
     circuit_baseline_metric = circuit_baseline_prob
 
-circuit_baseline_metric = [None, circuit_baseline_metric, circuit2_baseline_metric]
+circuit_baseline_metric = [None, circuit_baseline_metric, circuit_baseline_metric]
 #%% # assemble the J
 J = {}
 
@@ -220,7 +220,7 @@ for i, head in enumerate(circuit["induction"]):
 
 # J[(9, 6)] = [(9, 9), (9, 6)]
 # J[(10, 10)] = [(9, 9), (10, 10)]
-J[(11, 1)] += [(9, 7)] # J[(11, 1)][:1] + J[(11, 1)][-5:]
+# J[(11, 1)] += [(9, 7)] # J[(11, 1)][:1] + J[(11, 1)][-5:]
 #%% 
 results = {}
 
