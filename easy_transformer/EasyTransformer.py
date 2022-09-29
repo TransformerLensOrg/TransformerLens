@@ -21,6 +21,7 @@ from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
 from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
+from easy_transformer.utils import lm_cross_entropy_loss
 
 # TODO: Add Bloom, GPT-J and GPT-NeoX
 """
@@ -157,12 +158,20 @@ class EasyTransformer(HookedRootModule):
         self.pos_embed = PosEmbed(self.cfg)
         self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
 
-        self.blocks = nn.ModuleList(
-            [
-                TransformerBlock(self.cfg, block_index)
-                for block_index in range(self.cfg.n_layers)
-            ]
-        )
+        if self.cfg.attn_only:
+            self.blocks = nn.ModuleList(
+                [
+                    AttnOnlyBlock(self.cfg, block_index)
+                    for block_index in range(self.cfg.n_layers)
+                ]
+            )
+        else:
+            self.blocks = nn.ModuleList(
+                [
+                    TransformerBlock(self.cfg, block_index)
+                    for block_index in range(self.cfg.n_layers)
+                ]
+            )
         if self.cfg.normalization_type == "LN":
             self.ln_final = LayerNorm(self.cfg)
         elif self.cfg.normalization_type == "LNPre":
@@ -211,7 +220,7 @@ class EasyTransformer(HookedRootModule):
             if return_type == "logits":
                 return logits
             else:
-                loss = self.cross_entropy_loss(logits, tokens)
+                loss = lm_cross_entropy_loss(logits, tokens)
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
@@ -424,44 +433,20 @@ class EasyTransformer(HookedRootModule):
             init_linear_weight_and_bias(
                 self.blocks[l].attn.W_O, self.blocks[l].attn.b_O
             )
-            init_linear_weight_and_bias(
-                self.blocks[l].mlp.W_in, self.blocks[l].mlp.b_in
-            )
-            init_linear_weight_and_bias(
-                self.blocks[l].mlp.W_out, self.blocks[l].mlp.b_out
-            )
-
-            if self.cfg.gated_act_fn:
+            if not self.cfg.attn_only:
                 init_linear_weight_and_bias(
-                    self.blocks[l].mlp.W_gate, self.blocks[l].mlp.b_gate
+                    self.blocks[l].mlp.W_in, self.blocks[l].mlp.b_in
+                )
+                init_linear_weight_and_bias(
+                    self.blocks[l].mlp.W_out, self.blocks[l].mlp.b_out
                 )
 
+                if self.cfg.gated_act_fn:
+                    init_linear_weight_and_bias(
+                        self.blocks[l].mlp.W_gate, self.blocks[l].mlp.b_gate
+                    )
+
         init_linear_weight_and_bias(self.unembed.W_U, self.unembed.b_U)
-
-    def cross_entropy_loss(
-        self, logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
-    ):
-        """Cross entropy loss for the language model.
-
-        Args:
-            logits (torch.Tensor): Logits. Shape [batch, pos, d_vocab]
-            tokens (torch.Tensor[int64]): Input tokens. Shape [batch, pos]
-            return_per_token (bool, optional): Whether to return the log probs predicted for the correct token, or the loss (ie mean of the predicted log probs). Defaults to False.
-
-        Returns:
-            _type_: _description_
-        """
-        log_probs = F.log_softmax(logits, dim=-1)
-        # Use torch.gather to find the log probs of the correct tokens
-        # Offsets needed because we're predicting the NEXT token (this means the final logit is meaningless)
-        # None and [..., 0] needed because the tensor used in gather must have the same rank.
-        predicted_log_probs = log_probs[..., :-1, :].gather(
-            dim=-1, index=tokens[..., 1:, None]
-        )[..., 0]
-        if return_per_token:
-            return -predicted_log_probs
-        else:
-            return -predicted_log_probs.mean()
     
     def fill_missing_keys(self, state_dict):
         """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
