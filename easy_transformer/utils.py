@@ -19,7 +19,7 @@ def print_gpu_mem(step_name=""):
     )
 
 
-def get_corner(tensor, n=2):
+def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
     if len(tensor.shape) == 0:
         return tensor

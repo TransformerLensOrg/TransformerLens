@@ -48,6 +48,7 @@ class EasyTransformerConfig:
             biases) and 'LNPre' (use LayerNorm, but no weights & biases). Defaults to 
             None
         gated_act_fn (bool): Whether a gated activation function is being used (geglu, reglu, swiglu). Automatically set from act_fn. Used to determine whether to create an extra MLP weight matrix W_gate
+        device(str): The device to use for the model. Defaults to 'cuda' if available, else 'cpu
         attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2 style) or bidirectional attention. Options are 'causal' and 'bidirectional'. Defaults to 'causal'
     """
 
@@ -73,6 +74,7 @@ class EasyTransformerConfig:
     init_mode: str = 'gpt2'
     normalization_type: Optional[str] = None
     gated_act_fn: bool = False
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
     attention_dir: str = 'causal'
 
     def __post_init__(self):
