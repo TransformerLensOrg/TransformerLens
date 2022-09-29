@@ -105,6 +105,7 @@ abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
 
 #%% # do some initial experiments with the naive circuit
+# UH         IS THIS JUST NOT GOOD?
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
 circuit = circuits[1]
 
@@ -156,7 +157,7 @@ model = get_basic_extracted_model(
     model,
     ioi_dataset,
     mean_dataset=mean_dataset,
-    circuit=circuits[1],
+    circuit=circuits[2],
 )
 torch.cuda.empty_cache()
 
