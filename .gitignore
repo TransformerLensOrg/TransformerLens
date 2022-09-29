@@ -1,1 +1,6 @@
 __pycache__
+Testing_Notebook.ipynb
+\.*
+easy_transformer/scratch.py
+wandb*
+easy_transformer\.egg*

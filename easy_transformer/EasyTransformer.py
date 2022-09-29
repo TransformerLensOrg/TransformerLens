@@ -182,8 +182,8 @@ class EasyTransformer(HookedRootModule):
         self.setup()
         self.to(self.cfg.device)
 
-    def forward(self, input, return_type: Optional[str] = "logits"):
-        """Input is either a batch of tokens ([batch, pos]) or a text string.
+    def forward(self, input: Union[str, torch.Tensor], return_type: Optional[str] = "logits", prepend_bos: bool = True) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
         """
@@ -192,7 +192,7 @@ class EasyTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
-            tokens = self.to_tokens(input)
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
@@ -229,9 +229,35 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, text):
-        assert self.tokenizer is not None
-        return self.tokenizer(text, return_tensors="pt", padding=True)["input_ids"].to(self.cfg.device)
+    def to_tokens(self, input, prepend_bos=True):
+        assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
+        if prepend_bos:
+            if isinstance(input, str):
+                input = self.tokenizer.bos_token + input
+            else:
+                input = [self.tokenizer.bos_token + string for string in input]
+        return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"].to(self.cfg.device)
+    
+    def to_str_tokens(self, input, prepend_bos=True):
+        """Method to map text or tokens to a list of tokens as strings, for a SINGLE input.
+
+        Args:
+            input (Union[str, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should be a tensor of shape [pos] or [1, pos]
+            prepend_bos (bool, optional): Whether to prepend a BOS token. Only applies if input is a string. Defaults to True.
+
+        Returns:
+            str_tokens: List of individual tokens as strings
+        """
+        if isinstance(input, str):
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos).squeeze()
+        elif isinstance(input, torch.Tensor):
+            tokens = input
+            tokens = tokens.squeeze() # Get rid of a trivial batch dimension
+            assert tokens.dim() == 1, f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+        else:
+            raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
+        str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+        return str_tokens
 
     @classmethod
     def from_pretrained(cls, 
