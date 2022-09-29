@@ -2,6 +2,54 @@ from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 import einops
 import torch
 
+VALID_PRETRAINED_MODEL_NAMES = set(
+    [
+        "gpt2",
+        "gpt2-medium",
+        "gpt2-large",
+        "gpt2-xl",
+        "facebook/opt-125m",
+        "facebook/opt-1.3b",
+        "facebook/opt-2.7b",
+        "facebook/opt-6.7b",
+        "facebook/opt-13b",
+        "facebook/opt-30b",
+        "facebook/opt-66b",
+        "EleutherAI/gpt-neo-125M",
+        "EleutherAI/gpt-neo-1.3B",
+        "EleutherAI/gpt-neo-2.7B",
+        "stanford-gpt2-small-A",
+        "stanford-gpt2-small-B",
+        "stanford-gpt2-small-C",
+        "stanford-gpt2-small-D",
+        "stanford-gpt2-small-E",
+        "stanford-gpt2-medium-A",
+        "stanford-gpt2-medium-B",
+        "stanford-gpt2-medium-C",
+        "stanford-gpt2-medium-D",
+        "stanford-gpt2-medium-E",
+    ]
+)
+
+PRETRAINED_MODEL_NAMES_DICT = {
+    "stanford-gpt2-small-A": "stanford-crfm/alias-gpt2-small-x21",
+    "stanford-gpt2-small-B": "stanford-crfm/battlestar-gpt2-small-x49",
+    "stanford-gpt2-small-C": "stanford-crfm/caprica-gpt2-small-x81",
+    "stanford-gpt2-small-D": "stanford-crfm/darkmatter-gpt2-small-x343",
+    "stanford-gpt2-small-E": "stanford-crfm/expanse-gpt2-small-x777",
+    "stanford-gpt2-medium-A": "stanford-crfm/arwen-gpt2-medium-x21",
+    "stanford-gpt2-medium-B": "stanford-crfm/beren-gpt2-medium-x49",
+    "stanford-gpt2-medium-C": "stanford-crfm/celebrimbor-gpt2-medium-x81",
+    "stanford-gpt2-medium-D": "stanford-crfm/durin-gpt2-medium-x343",
+    "stanford-gpt2-medium-E": "stanford-crfm/eowyn-gpt2-medium-x777",
+}
+# The steps for which there are checkpoints in the stanford crfm models - provided as reference
+STANFORD_CRFM_CHECKPOINTS = (
+    list(range(0, 100, 10))
+    + list(range(100, 2000, 50))
+    + list(range(2000, 20000, 100))
+    + list(range(20000, 400000 + 1, 1000))
+)
 
 def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     state_dict = {}

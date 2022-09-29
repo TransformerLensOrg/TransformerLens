@@ -43,7 +43,7 @@ class Unembed(nn.Module):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_U = nn.Parameter(torch.empty(self.cfg.d_vocab, self.cfg.d_model))
-        self.b_U = nn.Parameter(torch.empty(self.cfg.d_vocab))
+        self.b_U = nn.Parameter(torch.zeros(self.cfg.d_vocab))
 
     def forward(self, tokens):
         return (
@@ -155,10 +155,10 @@ class Attention(nn.Module):
         self.W_O = nn.Parameter(
             torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
         )
-        self.b_Q = nn.Parameter(torch.empty(self.cfg.n_heads, self.cfg.d_head))
-        self.b_K = nn.Parameter(torch.empty(self.cfg.n_heads, self.cfg.d_head))
-        self.b_V = nn.Parameter(torch.empty(self.cfg.n_heads, self.cfg.d_head))
-        self.b_O = nn.Parameter(torch.empty(self.cfg.d_model))
+        self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head))
+        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head))
+        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head))
+        self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model))
 
         self.attn_type = attn_type
         # Create a query_pos x key_pos mask, with True iff that query position
@@ -245,13 +245,13 @@ class MLP(nn.Module):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_in = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
-        self.b_in = nn.Parameter(torch.empty(self.cfg.d_mlp))
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp))
         if self.cfg.gated_act_fn:
             self.W_gate = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
-            self.b_gate = nn.Parameter(torch.empty(self.cfg.d_mlp))
+            self.b_gate = nn.Parameter(torch.zeros(self.cfg.d_mlp))
             self.hook_gate = HookPoint()
         self.W_out = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
-        self.b_out = nn.Parameter(torch.empty(self.cfg.d_model))
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model))
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
@@ -313,8 +313,8 @@ class TransformerBlock(nn.Module):
             self.ln1 = LayerNormPre(cfg)
             self.ln2 = LayerNormPre(cfg)
         elif self.cfg.normalization_type is None:
-            # If it's None, don't create either layer
-            pass
+            self.ln1 = nn.Identity()
+            self.ln2 = nn.Identity()
         else:
             logging.warning(
                 f"Invalid normalization_type passed in {self.cfg.normalization_type}"
@@ -336,19 +336,13 @@ class TransformerBlock(nn.Module):
 
     def forward(self, x):
         resid_pre = self.hook_resid_pre(x)  # [batch, pos, d_model]
-        if self.cfg.normalization_type is not None:
-            normalized_resid_pre = self.ln1(resid_pre)
-        else:
-            normalized_resid_pre = resid_pre
+        normalized_resid_pre = self.ln1(resid_pre)
         attn_out = self.hook_attn_out(
             self.attn(normalized_resid_pre)
         )  # [batch, pos, d_model]
         resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
-
-        if self.cfg.normalization_type is not None:
-            normalized_resid_mid = self.ln2(resid_mid)
-        else:
-            normalized_resid_mid = resid_mid
+        
+        normalized_resid_mid = self.ln2(resid_mid)
         mlp_out = self.hook_mlp_out(
             self.mlp(normalized_resid_mid)
         )  # [batch, pos, d_model]

@@ -48,6 +48,7 @@ class EasyTransformerConfig:
             biases) and 'LNPre' (use LayerNorm, but no weights & biases). Defaults to 
             None
         gated_act_fn (bool): Whether a gated activation function is being used (geglu, reglu, swiglu). Automatically set from act_fn. Used to determine whether to create an extra MLP weight matrix W_gate
+        device(str): The device to use for the model. Defaults to 'cuda' if available, else 'cpu
     """
 
     d_model: int
@@ -72,6 +73,7 @@ class EasyTransformerConfig:
     init_mode: str = 'gpt2'
     normalization_type: Optional[str] = None
     gated_act_fn: bool = False
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"

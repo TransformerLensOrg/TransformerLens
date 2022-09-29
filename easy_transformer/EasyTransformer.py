@@ -22,55 +22,6 @@ from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
 
-VALID_MODEL_NAMES = set(
-    [
-        "gpt2",
-        "gpt2-medium",
-        "gpt2-large",
-        "gpt2-xl",
-        "facebook/opt-125m",
-        "facebook/opt-1.3b",
-        "facebook/opt-2.7b",
-        "facebook/opt-6.7b",
-        "facebook/opt-13b",
-        "facebook/opt-30b",
-        "facebook/opt-66b",
-        "EleutherAI/gpt-neo-125M",
-        "EleutherAI/gpt-neo-1.3B",
-        "EleutherAI/gpt-neo-2.7B",
-        "stanford-gpt2-small-A",
-        "stanford-gpt2-small-B",
-        "stanford-gpt2-small-C",
-        "stanford-gpt2-small-D",
-        "stanford-gpt2-small-E",
-        "stanford-gpt2-medium-A",
-        "stanford-gpt2-medium-B",
-        "stanford-gpt2-medium-C",
-        "stanford-gpt2-medium-D",
-        "stanford-gpt2-medium-E",
-    ]
-)
-
-MODEL_NAMES_DICT = {
-    "stanford-gpt2-small-A": "stanford-crfm/alias-gpt2-small-x21",
-    "stanford-gpt2-small-B": "stanford-crfm/battlestar-gpt2-small-x49",
-    "stanford-gpt2-small-C": "stanford-crfm/caprica-gpt2-small-x81",
-    "stanford-gpt2-small-D": "stanford-crfm/darkmatter-gpt2-small-x343",
-    "stanford-gpt2-small-E": "stanford-crfm/expanse-gpt2-small-x777",
-    "stanford-gpt2-medium-A": "stanford-crfm/arwen-gpt2-medium-x21",
-    "stanford-gpt2-medium-B": "stanford-crfm/beren-gpt2-medium-x49",
-    "stanford-gpt2-medium-C": "stanford-crfm/celebrimbor-gpt2-medium-x81",
-    "stanford-gpt2-medium-D": "stanford-crfm/durin-gpt2-medium-x343",
-    "stanford-gpt2-medium-E": "stanford-crfm/eowyn-gpt2-medium-x777",
-}
-# The steps for which there are checkpoints in the stanford crfm models - provided as reference
-STANFORD_CRFM_CHECKPOINTS = (
-    list(range(0, 100, 10))
-    + list(range(100, 2000, 50))
-    + list(range(2000, 20000, 100))
-    + list(range(20000, 400000 + 1, 1000))
-)
-
 # TODO: Add Bloom, GPT-J and GPT-NeoX
 """
 EleutherAI/gpt-j-6B
@@ -96,6 +47,10 @@ class EasyTransformer(HookedRootModule):
 
     It can also be initilised with an EasyTransformerConfig or a config dictionary, which can be used to instantiate a custom model without loading pretrained weights and will instead use Pytorch's default weight initialisation.
     """
+    
+    VALID_PRETRAINED_MODEL_NAMES = weight_conversion.VALID_PRETRAINED_MODEL_NAMES
+    PRETRAINED_MODEL_NAMES_DICT = weight_conversion.PRETRAINED_MODEL_NAMES_DICT
+    STANFORD_CRFM_CHECKPOINTS = weight_conversion.STANFORD_CRFM_CHECKPOINTS
 
     def __init__(
         self,
@@ -148,11 +103,11 @@ class EasyTransformer(HookedRootModule):
             self.checkpoint = None
         else:
             assert (
-                model_name in VALID_MODEL_NAMES
-            ), f"Invalid model name: {model_name}. Valid model names are: {VALID_MODEL_NAMES}"
+                model_name in self.VALID_PRETRAINED_MODEL_NAMES
+            ), f"Invalid model name: {model_name}. Valid model names are: {self.VALID_PRETRAINED_MODEL_NAMES}"
             self.model_name = model_name
-            if self.model_name in MODEL_NAMES_DICT:
-                self.full_model_name = MODEL_NAMES_DICT[self.model_name]
+            if self.model_name in self.PRETRAINED_MODEL_NAMES_DICT:
+                self.full_model_name = self.PRETRAINED_MODEL_NAMES_DICT[self.model_name]
             else:
                 self.full_model_name = self.model_name
             self.model_type = self.get_model_type(self.full_model_name)
@@ -169,8 +124,8 @@ class EasyTransformer(HookedRootModule):
                         )
                     else:
                         assert (
-                            checkpoint in STANFORD_CRFM_CHECKPOINTS
-                        ), f"Checkpoint {checkpoint} is not valid. Available checkpoints are {STANFORD_CRFM_CHECKPOINTS}"
+                            checkpoint in self.STANFORD_CRFM_CHECKPOINTS
+                        ), f"Checkpoint {checkpoint} is not valid. Available checkpoints are {self.STANFORD_CRFM_CHECKPOINTS}"
                         self.hf_model = AutoModelForCausalLM.from_pretrained(
                             self.full_model_name, revision=f"checkpoint-{checkpoint}"
                         )
@@ -225,6 +180,7 @@ class EasyTransformer(HookedRootModule):
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
         self.setup()
+        self.to(self.cfg.device)
 
     def forward(self, input, return_type: Optional[str] = "logits"):
         """Input is either a batch of tokens ([batch, pos]) or a text string.
@@ -263,6 +219,7 @@ class EasyTransformer(HookedRootModule):
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
+                
     def set_tokenizer(self, tokenizer):
         """
         Sets the tokenizer to use for this model.
@@ -274,7 +231,7 @@ class EasyTransformer(HookedRootModule):
 
     def to_tokens(self, text):
         assert self.tokenizer is not None
-        return self.tokenizer(text, return_tensors="pt", padding=True)["input_ids"]
+        return self.tokenizer(text, return_tensors="pt", padding=True)["input_ids"].to(self.cfg.device)
 
     @classmethod
     def from_pretrained(cls, 
@@ -308,6 +265,7 @@ class EasyTransformer(HookedRootModule):
             state_dict = weight_conversion.convert_opt_weights(model.hf_model, model.cfg)
         else:
             logging.warning(f"Invalid model_type, no weights are stored to load: {model.model_type}, generated from model name {model.model_name}")
+        state_dict = model.fill_missing_keys(state_dict)
         if fold_ln:
             state_dict = model.fold_layer_norm(state_dict)
         if center_writing_weights:
@@ -317,9 +275,6 @@ class EasyTransformer(HookedRootModule):
         # Need to delete the HuggingFace model so it isn't counted as a submodule
         del model.hf_model
         model.load_state_dict(state_dict)
-        if not keep_original_model and model.hf_model is not None:
-            # Delete the original model to save memory
-            del model.hf_model
         return model
 
     @classmethod
@@ -482,6 +437,29 @@ class EasyTransformer(HookedRootModule):
         else:
             return -predicted_log_probs.mean()
     
+    def fill_missing_keys(self, state_dict):
+        """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
+
+        Args:
+            state_dict (dict): State dict from a pretrained model
+
+        Returns:
+            dict: State dict with missing keys filled in
+        """
+        # Get the default state dict
+        default_state_dict = self.state_dict()
+        # Get the keys that are missing from the pretrained model
+        missing_keys = set(default_state_dict.keys()) - set(state_dict.keys())
+        # Fill in the missing keys with the default initialization
+        for key in missing_keys:
+            if 'hf_model' in key:
+                # Skip keys that are from the HuggingFace model, if loading from HF.
+                continue
+            if 'W_' in key:
+                logging.warning("Missing key for a weight matrix in pretrained, filled in with an empty tensor: {}".format(key))
+            state_dict[key] = default_state_dict[key]
+        return state_dict
+    
     def fold_layer_norm(self, state_dict: Dict[str, torch.Tensor]):
         """Takes in a state dict from a pretrained model, formatted to be consistent with EasyTransformer but with LayerNorm weights and biases. Folds these into the neighbouring weights.
 
@@ -489,22 +467,24 @@ class EasyTransformer(HookedRootModule):
             state_dict (Dict[str, torch.Tensor]): State dict of pretrained model
         """
         for l in range(self.cfg.n_layers):
-            # Fold ln1 into attention
-            state_dict[f"blocks.{l}.attn.W_Q"] = state_dict[f"blocks.{l}.attn.W_Q"] * state_dict[f"blocks.{l}.ln1.w"]
-            state_dict[f"blocks.{l}.attn.W_K"] = state_dict[f"blocks.{l}.attn.W_K"] * state_dict[f"blocks.{l}.ln1.w"]
-            state_dict[f"blocks.{l}.attn.W_V"] = state_dict[f"blocks.{l}.attn.W_V"] * state_dict[f"blocks.{l}.ln1.w"]
-            
+            # Fold ln1 into attention - it's important to fold biases first, 
+            # since biases depend on weights but not vice versa
             state_dict[f"blocks.{l}.attn.b_Q"] = state_dict[f"blocks.{l}.attn.b_Q"] + state_dict[f"blocks.{l}.attn.W_Q"] @ state_dict[f"blocks.{l}.ln1.b"]
             state_dict[f"blocks.{l}.attn.b_K"] = state_dict[f"blocks.{l}.attn.b_K"] + state_dict[f"blocks.{l}.attn.W_K"] @ state_dict[f"blocks.{l}.ln1.b"]
             state_dict[f"blocks.{l}.attn.b_V"] = state_dict[f"blocks.{l}.attn.b_V"] + state_dict[f"blocks.{l}.attn.W_V"] @ state_dict[f"blocks.{l}.ln1.b"]
             
+            state_dict[f"blocks.{l}.attn.W_Q"] = state_dict[f"blocks.{l}.attn.W_Q"] * state_dict[f"blocks.{l}.ln1.w"]
+            state_dict[f"blocks.{l}.attn.W_K"] = state_dict[f"blocks.{l}.attn.W_K"] * state_dict[f"blocks.{l}.ln1.w"]
+            state_dict[f"blocks.{l}.attn.W_V"] = state_dict[f"blocks.{l}.attn.W_V"] * state_dict[f"blocks.{l}.ln1.w"]
+            
+            
             # Fold ln2 into MLP
-            state_dict[f"blocks.{l}.mlp.W_in"] = state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"]
             state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[f"blocks.{l}.mlp.b_in"] + state_dict[f"blocks.{l}.mlp.W_in"] @ state_dict[f"blocks.{l}.ln2.b"]
+            state_dict[f"blocks.{l}.mlp.W_in"] = state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"]
             del state_dict[f"blocks.{l}.ln1.w"], state_dict[f"blocks.{l}.ln1.b"], state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
         # Fold ln_final into Unembed
-        state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"]
         state_dict[f"unembed.b_U"] = state_dict[f"unembed.W_U"] @ state_dict[f"ln_final.b"]
+        state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"]
         del state_dict[f"ln_final.w"], state_dict[f"ln_final.b"]
         return state_dict
     
@@ -516,12 +496,15 @@ class EasyTransformer(HookedRootModule):
         state_dict['pos_embed.W_pos'] = state_dict['pos_embed.W_pos'] - state_dict['pos_embed.W_pos'].mean(0, keepdim=True)
         for l in range(self.cfg.n_layers):
             state_dict[f'blocks.{l}.attn.W_O'] = state_dict[f'blocks.{l}.attn.W_O'] - state_dict[f'blocks.{l}.attn.W_O'].mean(1, keepdim=True) # W_O is [head_index, d_model, d_head]
+            state_dict[f'blocks.{l}.attn.b_O'] = state_dict[f'blocks.{l}.attn.b_O'] - state_dict[f'blocks.{l}.attn.b_O'].mean() # b_O is [d_model]
             state_dict[f'blocks.{l}.mlp.W_out'] = state_dict[f'blocks.{l}.mlp.W_out'] - state_dict[f'blocks.{l}.mlp.W_out'].mean(0, keepdim=True)
+            state_dict[f'blocks.{l}.mlp.b_out'] = state_dict[f'blocks.{l}.mlp.b_out'] - state_dict[f'blocks.{l}.mlp.b_out'].mean()
         return state_dict
     
     def center_unembed(self, state_dict: Dict[str, torch.Tensor]):
         """Centers the unembedding weights W_U. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. As softmax is translation invariant, this changes the logits but not the log probs, and makes the model logits more interpretable.
         """
         state_dict['unembed.W_U'] = state_dict['unembed.W_U'] - state_dict['unembed.W_U'].mean(0, keepdim=True)
+        state_dict['unembed.b_U'] = state_dict['unembed.b_U'] - state_dict['unembed.b_U'].mean()
         return state_dict
         
