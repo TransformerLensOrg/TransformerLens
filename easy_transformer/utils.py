@@ -49,8 +49,7 @@ def to_numpy(tensor, flat=False):
     else:
         return tensor.detach().cpu().numpy()
 
-def lm_cross_entropy_loss(
-        self, logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
+def lm_cross_entropy_loss(logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
     ):
     """Cross entropy loss for the language model, gives the loss for predicting the NEXT token.
 
