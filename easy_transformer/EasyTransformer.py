@@ -203,7 +203,9 @@ class EasyTransformer(HookedRootModule):
             ), "Must provide a tokenizer if passing a string to the model"
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
-            tokens = input
+            # Moves tokens to the device of the model by default
+            # Maybe this is annoying - let me know if you want an option to disable
+            tokens = input.to(self.cfg.device)
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         pos_embed = self.hook_pos_embed(self.pos_embed(tokens))  # [batch, pos, d_model]
         residual = embed + pos_embed  # [batch, pos, d_model]
