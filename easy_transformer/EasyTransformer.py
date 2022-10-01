@@ -17,7 +17,7 @@ from transformers import (
 )
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from easy_transformer import EasyTransformerConfig
 
 from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
