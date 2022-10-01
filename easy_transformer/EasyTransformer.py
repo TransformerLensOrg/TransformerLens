@@ -203,7 +203,9 @@ class EasyTransformer(HookedRootModule):
             ), "Must provide a tokenizer if passing a string to the model"
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
-            tokens = input
+            # Moves tokens to the device of the model by default
+            # Maybe this is annoying - let me know if you want an option to disable
+            tokens = input.to(self.cfg.device)
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         pos_embed = self.hook_pos_embed(self.pos_embed(tokens))  # [batch, pos, d_model]
         residual = embed + pos_embed  # [batch, pos, d_model]
@@ -405,48 +407,27 @@ class EasyTransformer(HookedRootModule):
 
     def init_weights(self):
         """
-        Initialize weights according to default Pytorch initialization.
+        Initialize weights matrices with a normal of std=initializer_range (default=0.02) and truncated between [-2, 2]. This roughly follows the GPT-2 paper's scheme (but with truncation, and not halving the std for W_pos).
 
-        LayerNorm weights are already initialized to 1.0 (and biases to 0.0)
-        in the constructor
+        LayerNorm weights are already initialized to 1.0, and all biases are initialized to 0.0 (including LayerNorm), so this just initializes weight matrices. 
+        
+        Weight matrices are set to empty by default (to save space + compute, since they're the bulk of the parameters), so it is important to call this if you are not loading in pretrained weights! Note that this function assumes that weight names being with W_
+
+        Set seed here to ensure determinism.
+
+        This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but no one has gotten round to updating it?
+        https://github.com/pytorch/pytorch/issues/18182
+        
+        PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the same values?! https://github.com/pytorch/pytorch/issues/72253
+        
         """
-        # Initialize weights with std 1/sqrt(d_model) so the vector has variance 1
-        nn.init.normal_(self.embed.W_E, std=self.cfg.d_model ** (-0.5))
-        nn.init.normal_(self.pos_embed.W_pos, std=self.cfg.d_model ** (-0.5))
-
-        def init_linear_weight_and_bias(weight, bias):
-            nn.init.kaiming_uniform_(weight, a=np.sqrt(5))
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(weight)
-            bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
-            nn.init.uniform_(bias, -bound, bound)
-
-        for l in range(self.cfg.n_layers):
-            init_linear_weight_and_bias(
-                self.blocks[l].attn.W_Q, self.blocks[l].attn.b_Q
-            )
-            init_linear_weight_and_bias(
-                self.blocks[l].attn.W_K, self.blocks[l].attn.b_K
-            )
-            init_linear_weight_and_bias(
-                self.blocks[l].attn.W_V, self.blocks[l].attn.b_V
-            )
-            init_linear_weight_and_bias(
-                self.blocks[l].attn.W_O, self.blocks[l].attn.b_O
-            )
-            if not self.cfg.attn_only:
-                init_linear_weight_and_bias(
-                    self.blocks[l].mlp.W_in, self.blocks[l].mlp.b_in
-                )
-                init_linear_weight_and_bias(
-                    self.blocks[l].mlp.W_out, self.blocks[l].mlp.b_out
-                )
-
-                if self.cfg.gated_act_fn:
-                    init_linear_weight_and_bias(
-                        self.blocks[l].mlp.W_gate, self.blocks[l].mlp.b_gate
-                    )
-
-        init_linear_weight_and_bias(self.unembed.W_U, self.unembed.b_U)
+        
+        if self.cfg.seed is not None:
+            torch.manual_seed(self.cfg.seed)
+        
+        for name, param in self.named_parameters():
+            if "W_" in name:
+                nn.init.trunc_normal_(param, std=self.cfg.initializer_range)
     
     def fill_missing_keys(self, state_dict):
         """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.

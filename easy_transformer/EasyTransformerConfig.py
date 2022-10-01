@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
 import torch
 import torch.nn as nn
+import random
+import numpy as np
 
 
 @dataclass
@@ -60,6 +62,8 @@ class EasyTransformerConfig:
             Defaults to 'causal'
         attn_only (bool): Whether to only use attention layers, no feedforward 
             layers. Defaults to False
+        seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and NumPy) and to initialize weights. If set to None, does nothing.
+        initializer_range (float): The standard deviation of the truncated normal used to initialise the weights.
     """
 
     d_model: int
@@ -87,9 +91,15 @@ class EasyTransformerConfig:
     device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
     attention_dir: str = 'causal'
     attn_only: bool = False
+    seed: int = 42
+    initializer_range: float = 0.02
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
+        if self.seed is not None:
+            random.seed(self.seed)
+            torch.manual_seed(self.seed)
+            np.random.seed(self.seed)
         if self.use_local_attn:
             assert (
                 self.window_size is not None
@@ -106,6 +116,7 @@ class EasyTransformerConfig:
         if not self.attn_only:
             assert self.d_mlp is not None, "d_mlp must be specified for non-attn-only models"
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
+        
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
