@@ -1,4 +1,4 @@
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from easy_transformer import EasyTransformerConfig
 import einops
 import torch
 
@@ -110,7 +110,7 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     state_dict["ln_final.b"] = gpt2.transformer.ln_f.bias
     return state_dict
 
-def convert_neo_weights(neo, cfg):
+def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neo.transformer.wte.weight.T
@@ -156,7 +156,7 @@ def convert_neo_weights(neo, cfg):
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
 
-def convert_opt_weights(opt, cfg):
+def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = opt.model.decoder.embed_tokens.weight.T
