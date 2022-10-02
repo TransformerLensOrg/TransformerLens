@@ -17,5 +17,6 @@ setup(
         "pandas",
         "datasets",
         "wandb",
+        "fancy_einsum",
     ],
 )

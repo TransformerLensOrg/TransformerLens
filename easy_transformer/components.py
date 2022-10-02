@@ -16,6 +16,8 @@ from easy_transformer.utils import (
 )
 from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
+from fancy_einsum import einsum
+
 # Embed & Unembed
 class Embed(nn.Module):
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
@@ -23,14 +25,12 @@ class Embed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_E = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_vocab))
+        self.W_E = nn.Parameter(torch.empty(self.cfg.d_vocab, self.cfg.d_model))
 
     def forward(self, tokens):
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
-        return einops.rearrange(
-            self.W_E[:, tokens], "d_model batch pos -> batch pos d_model"
-        )
+        return self.W_E[tokens, :] # Shape [batch pos d_model]
 
 
 class Unembed(nn.Module):
@@ -39,12 +39,13 @@ class Unembed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_U = nn.Parameter(torch.empty(self.cfg.d_vocab, self.cfg.d_model))
+        self.W_U = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_vocab))
         self.b_U = nn.Parameter(torch.zeros(self.cfg.d_vocab))
 
-    def forward(self, tokens):
+    def forward(self, residual):
         return (
-            torch.einsum("vm,bpm->bpv", self.W_U, tokens) + self.b_U
+            einsum("batch pos d_model, d_model vocab -> batch pos vocab", 
+                   residual, self.W_U) + self.b_U
         )  # [batch, pos, d_vocab]
 
 
@@ -55,11 +56,13 @@ class PosEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_pos = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.n_ctx))
+        self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model))
 
-    def forward(self, x):
+    def forward(self, tokens):
+        # Tokens have shape [batch, pos]
         # Output shape [pos, d_model] - will be broadcast along batch dim
-        return self.W_pos[:, : x.size(-1)].T  # [pos, d_model]
+        tokens_length = tokens.size(-1)
+        return self.W_pos[:tokens_length, :]  # [pos, d_model]
 
 
 # LayerNormPre
@@ -141,16 +144,16 @@ class Attention(nn.Module):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_Q = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model)
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
         )
         self.W_K = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model)
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
         )
         self.W_V = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model)
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
         )
         self.W_O = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
+            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model)
         )
         self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head))
         self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head))
@@ -190,16 +193,25 @@ class Attention(nn.Module):
 
     def forward(self, x):
         q = self.hook_q(
-            torch.einsum("ihm,bpm->bpih", self.W_Q, x) + self.b_Q
+            einsum("batch pos d_model, head_index d_model d_head \
+                -> batch pos head_index d_head", 
+                        x, self.W_Q) + self.b_Q
         )  # [batch, pos, head_index, d_head]
         k = self.hook_k(
-            torch.einsum("ihm,bpm->bpih", self.W_K, x) + self.b_K
+            einsum("batch pos d_model, head_index d_model d_head \
+                -> batch pos head_index d_head", 
+                        x, self.W_K) + self.b_K
         )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
-            torch.einsum("ihm,bpm->bpih", self.W_V, x) + self.b_V
+            einsum("batch pos d_model, head_index d_model d_head \
+                -> batch pos head_index d_head", 
+                        x, self.W_V) + self.b_V
         )  # [batch, pos, head_index, d_head]
         attn_scores = (
-            torch.einsum("bpih,bqih->bipq", q, k) / self.attn_scale
+            einsum("batch query_pos head_index d_head, \
+                batch key_pos head_index d_head \
+                -> batch head_index query_pos key_pos", 
+                   q, k) / self.attn_scale
         )  # [batch, head_index, query_pos, key_pos]
         if self.cfg.attention_dir == 'causal':
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
@@ -208,11 +220,18 @@ class Attention(nn.Module):
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]
         z = self.hook_z(
-            torch.einsum("bpih,biqp->bqih", v, attn_matrix)
+            einsum("batch key_pos head_index d_head, \
+                batch head_index query_pos key_pos -> \
+                batch query_pos head_index d_head", 
+                v, attn_matrix)
         )  # [batch, pos, head_index, d_head]
         if self.cfg.use_attn_result:
             result = self.hook_result(
-                torch.einsum("imh,bqih->bqim", self.W_O, z)
+                einsum("batch pos head_index d_head, \
+                        head_index d_head d_model -> \
+                        batch pos head_index d_model", 
+                       z, 
+                       self.W_O)
             )  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(
@@ -222,8 +241,12 @@ class Attention(nn.Module):
             )  # [batch, pos, d_model]
         else:
             out = (
-                torch.einsum("idh,bqih->bqd", self.W_O, z) + self.b_O
-            )  # [batch, pos, d_model]
+                    einsum("batch pos head_index d_head, \
+                        head_index d_head d_model -> \
+                        batch pos d_model", 
+                        z, 
+                        self.W_O)
+                ) + self.b_O  # [batch, pos, d_model]
         return out
 
     def causal_mask(self, attn_scores):
@@ -241,9 +264,9 @@ class MLP(nn.Module):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_in = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
+        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp))
-        self.W_out = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
+        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model))
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
@@ -265,14 +288,15 @@ class MLP(nn.Module):
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 
     def forward(self, x):
+        # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            torch.einsum("md,bpd->bpm", self.W_in, x) + self.b_in
+            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in) + self.b_in
         )  # [batch, pos, d_mlp]
         post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
         if self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post_ln(self.ln(post_act))
         mlp_out = (
-            torch.einsum("dm,bpm->bpd", self.W_out, post_act) + self.b_out
+            einsum("batch pos d_mlp, d_mlp d_model -> batch pos d_model", post_act, self.W_out) + self.b_out
         )  # [batch, pos, d_model]
         return mlp_out
 
