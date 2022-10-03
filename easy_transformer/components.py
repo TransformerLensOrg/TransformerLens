@@ -225,7 +225,17 @@ class Attention(nn.Module):
                 batch query_pos head_index d_head", 
                 v, attn_matrix)
         )  # [batch, pos, head_index, d_head]
-        if self.cfg.use_attn_result:
+        if not self.cfg.use_attn_result:
+            out = (
+                    einsum("batch pos head_index d_head, \
+                        head_index d_head d_model -> \
+                        batch pos d_model", 
+                        z, 
+                        self.W_O)
+                ) + self.b_O  # [batch, pos, d_model]
+        else:
+            # Explicitly calculate the attention result so it can be accessed by a hook
+            # This is off by default because it can easily eat through your GPU memory.
             result = self.hook_result(
                 einsum("batch pos head_index d_head, \
                         head_index d_head d_model -> \
@@ -239,14 +249,6 @@ class Attention(nn.Module):
                 )
                 + self.b_O
             )  # [batch, pos, d_model]
-        else:
-            out = (
-                    einsum("batch pos head_index d_head, \
-                        head_index d_head d_model -> \
-                        batch pos d_model", 
-                        z, 
-                        self.W_O)
-                ) + self.b_O  # [batch, pos, d_model]
         return out
 
     def causal_mask(self, attn_scores):
