@@ -61,6 +61,7 @@ class EasyTransformerConfig:
         seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and NumPy) and to initialize weights. If set to None, does nothing.
         initializer_range (float): The standard deviation of the truncated normal used to initialise the weights.
         init_weights (bool): Whether to initialize the weights. Defaults to True. If False, does not initialize weights.
+        scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention weights by 1/(layer_idx+1), used by Mistral (Stanford) models for numerical stability when training in FP16. Defaults to False.
     """
 
     n_layers: int
@@ -89,6 +90,7 @@ class EasyTransformerConfig:
     seed: int = 42
     initializer_range: float = 0.02
     init_weights: bool = True
+    scale_attn_by_inverse_layer_idx: bool = False
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"

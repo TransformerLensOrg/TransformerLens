@@ -138,7 +138,14 @@ class LayerNorm(nn.Module):
 
 # Attention
 class Attention(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig], attn_type="global"):
+    def __init__(self, cfg: Union[Dict, EasyTransformerConfig], attn_type="global", layer_id=None):
+        """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
+
+        Args:
+            cfg (Union[Dict, EasyTransformerConfig]): Config
+            attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
+            layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
+        """
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -178,10 +185,15 @@ class Attention(nn.Module):
 
         self.register_buffer("IGNORE", torch.tensor(-1e5))
 
+        self.layer_id = layer_id
+
+        # attn_scale is a constant that we divide the attention scores by pre-softmax. I'm not entirely sure why it matters, but it's probably a mix of softmax not being scale invariant and numerical stability?
         if self.cfg.use_attn_scale:
             self.attn_scale = np.sqrt(self.cfg.d_head)
         else:
             self.attn_scale = 1.0
+        if self.cfg.scale_attn_by_inverse_layer_idx:
+            self.attn_scale *= (self.layer_id + 1)
 
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
@@ -326,11 +338,11 @@ class TransformerBlock(nn.Module):
             )
 
         if not self.cfg.use_local_attn:
-            self.attn = Attention(cfg, "global")
+            self.attn = Attention(cfg, "global", block_index)
         else:
             assert self.cfg.attn_types is not None
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = Attention(cfg, attn_type)
+            self.attn = Attention(cfg, attn_type, block_index)
         self.mlp = MLP(cfg)
 
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
@@ -373,11 +385,11 @@ class AttnOnlyBlock(nn.Module):
             )
 
         if not self.cfg.use_local_attn:
-            self.attn = Attention(cfg, "global")
+            self.attn = Attention(cfg, "global", block_index)
         else:
             assert self.cfg.attn_types is not None
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = Attention(cfg, attn_type)
+            self.attn = Attention(cfg, attn_type, block_index)
 
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
