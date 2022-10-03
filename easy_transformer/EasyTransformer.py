@@ -218,6 +218,7 @@ class EasyTransformer(HookedRootModule):
                         center_unembed = True,
                         checkpoint = None,
                         hf_model = None,
+                        device = None,
                         **kwargs):
         """Class method to load a pretrained model from HuggingFace and to automatically convert and load those weights into EasyTransformer format.
         
@@ -232,6 +233,7 @@ class EasyTransformer(HookedRootModule):
             center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). 
                 Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
             keep_original_model (bool, optional): Whether to delete the model loaded from    HuggingFace (stored as model.hf_model). Defaults to False.
+            device (str, optional): The device to load the model onto. By default will load to CUDA if available, else CPU
         """
         assert (
             (model_name in cls.VALID_PRETRAINED_MODEL_NAMES) or (model_name in cls.PRETRAINED_MODEL_NAMES_DICT)
@@ -269,6 +271,8 @@ class EasyTransformer(HookedRootModule):
         cfg = cls.convert_hf_config(
             hf_model.config, model_family=model_family
         )
+        if device is not None:
+            cfg.device = device
         cfg.checkpoint = checkpoint
         cfg.model_family = model_family
         cfg.model_name = model_name
@@ -283,6 +287,9 @@ class EasyTransformer(HookedRootModule):
 
         # Load model weights, and fold in layer norm weights
         if model_family == "gpt2":
+            state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
+        elif model_family == "mistral":
+            # Stanford (Mistral) models have identical structure to GPT-2, but scale attention scores by 1/(layer_id+1) before softmax.
             state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
         elif model_family == "neo":
             state_dict = weight_conversion.convert_neo_weights(hf_model, model.cfg)
@@ -300,7 +307,9 @@ class EasyTransformer(HookedRootModule):
 
     @classmethod
     def get_model_family(cls, model_name):
-        if "gpt2" in model_name or "stanford" in model_name:
+        if "stanford" in model_name:
+            return "mistral"
+        elif "gpt2" in model_name and "stanford" not in model_name:
             return "gpt2"
         elif "opt" in model_name:
             return "opt"
@@ -331,6 +340,7 @@ class EasyTransformer(HookedRootModule):
                 "use_attn_scale": False,
                 "use_local_attn": True,
                 "window_size": hf_config.window_size,
+                "scale_attn_by_inverse_layer_idx": False,
             }
         elif model_family == "gpt2":
             cfg_dict = {
@@ -345,6 +355,22 @@ class EasyTransformer(HookedRootModule):
                 "act_fn": hf_config.activation_function,
                 "use_attn_scale": True,
                 "use_local_attn": False,
+                "scale_attn_by_inverse_layer_idx": False,
+            }
+        elif model_family == "mistral":
+            cfg_dict = {
+                "d_model": hf_config.n_embd,
+                "d_head": hf_config.n_embd // hf_config.n_head,
+                "n_heads": hf_config.n_head,
+                "d_mlp": hf_config.n_embd * 4,
+                "n_layers": hf_config.n_layer,
+                "n_ctx": hf_config.n_ctx,
+                "eps": hf_config.layer_norm_epsilon,
+                "d_vocab": hf_config.vocab_size,
+                "act_fn": hf_config.activation_function,
+                "use_attn_scale": True,
+                "use_local_attn": False,
+                "scale_attn_by_inverse_layer_idx": True,
             }
         elif model_family == "opt":
             cfg_dict = {
@@ -359,6 +385,7 @@ class EasyTransformer(HookedRootModule):
                 "act_fn": hf_config.activation_function,
                 "use_attn_scale": True,
                 "use_local_attn": False,
+                "scale_attn_by_inverse_layer_idx": False,
             }
         elif model_family == "gptj":
             raise NotImplementedError
