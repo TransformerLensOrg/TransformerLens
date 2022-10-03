@@ -6,7 +6,7 @@ import gc
 import datasets
 import einops
 from transformers import AutoTokenizer
-
+import random
 
 def get_sample_from_dataset(sequences, nb_sample=2, print_len=10):
     rd_idx = np.random.randint(0, len(sequences), 3)
@@ -106,12 +106,24 @@ def solu(input):
     """
     return input * F.softmax(input, dim=-1)
 
+
+def keep_single_column(
+        dataset: datasets.arrow_dataset.Dataset,
+        col_name: str):
+    """
+    Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful when we want to tokenize and mix together different strings
+    """
+    for key in dataset.features:
+        if key != col_name:
+            dataset = dataset.remove_columns(key)
+    return dataset
+
 def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset, 
                              tokenizer: AutoTokenizer, 
-                             streaming=False, 
-                             max_length=1024, 
-                             column_name='text', 
-                             add_bos_token=True):
+                             streaming: bool=False, 
+                             max_length: int=1024, 
+                             column_name: str='text', 
+                             add_bos_token: bool=True):
     """Helper function to tokenizer and concatenate a dataset of text. This converts the text to tokens, concatenates them (separated by EOS tokens) and then reshapes them into a 2D array of shape (____, sequence_length), dropping the last batch. Tokenizers are much faster if parallelised, so we chop the string into 20, feed it into the tokenizer, in parallel with padding, then remove padding at the end. 
     
     This tokenization is useful for training language models, as it allows us to efficiently train on a large corpus of text of varying lengths (without, eg, a lot of truncation or padding). Further, for models with absolute positional encodings, this avoids privileging early tokens (eg, news articles often begin with CNN, and models may learn to use early positional encodings to predict these)
@@ -127,6 +139,7 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
     Returns:
         datasets.arrow_dataset.Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
     """
+    dataset = keep_single_column(dataset, column_name)
     if tokenizer.pad_token is None:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
         tokenizer.add_special_tokens({'pad_token': "<PAD>"})
@@ -160,3 +173,8 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
     tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=4 if not streaming else None, remove_columns=[column_name])
     tokenized_dataset.set_format(type='torch', columns=['tokens'])
     return tokenized_dataset
+
+def set_seed_everywhere(seed):
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)

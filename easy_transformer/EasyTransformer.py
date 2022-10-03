@@ -39,14 +39,10 @@ https://huggingface.co/docs/transformers/model_doc/bloom
 # Full transformer
 class EasyTransformer(HookedRootModule):
     """
-    This class implements a full Transformer using the above components, with
+    This class implements a full Transformer using the components in ./components.py, with
     HookPoints on every interesting activation. It inherits from HookedRootModule.
 
-    It can be initialised with a model name, and then will automatically load the model weights
-    for that model, loads them into this model, as well as fold in LayerNorm and center
-    the weights.
-
-    It can also be initilised with an EasyTransformerConfig or a config dictionary, which can be used to instantiate a custom model without loading pretrained weights and will instead use Pytorch's default weight initialisation.
+    It can have a pretrained Transformer's weights automatically loaded in via the EasyTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or EasyTransformerConfig object. 
     """
     
     VALID_PRETRAINED_MODEL_NAMES = weight_conversion.VALID_PRETRAINED_MODEL_NAMES
@@ -55,98 +51,37 @@ class EasyTransformer(HookedRootModule):
 
     def __init__(
         self,
-        model_name,
-        cfg=None,
-        use_attn_result=False,
-        model=None,
-        keep_original_model=False,
-        checkpoint=None,
-        fold_ln=True,
+        cfg,
+        tokenizer = None,
+        move_to_device = True,
     ):
         """
-        model_name (str: The name of the model to load, via HuggingFace. If
-            "custom", then cfg must be provided.
-        cfg (EasyTransformerConfig, *optional*): The config to use for the
-            model. If not provided, a model name must be passed via model_name.
+        Model initialization. Note that if you want to load the model from pretrained weights, you should use the EasyTransformer.from_pretrained() class method instead of this one.
+
+        cfg Union[EasyTransformerConfig, Dict]: The config to use for the
+            model. 
         tokenizer (*optional): The tokenizer to use for the model. If not
-            provided, initialized to None, though the user must initialize one
-            before passing strings to the model.
-        use_attn_result (bool): Says whether to explicitly calculate the amount
-            each head adds to the residual stream (with a hook) and THEN add it
-            up, vs just calculating the sum. This can be very memory intensive
-            for large models, so defaults to False
-        model: The model loaded from HuggingFace or separately initialized. If
-            None, it is automatically loaded from HuggingFace if model_name is
-            passed - this just saves memory if the model was already loaded into
-            RAM.
-        keep_original_model (bool): If False, the original model is deleted,
-            otherwise it's kept as a self.model attribute
-        center_weights (bool): If True, the weights are centered
-        checkpoint (int, *optional): The checkpoint number of the model to load
-            if it is a model with multiple possible checkpoints to load from.
+            provided, it is inferred from cfg.tokenizer_name or initialized to None. 
+            If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
+        move_to_device (bool): Whether to move the model to the device specified in cfg.
+            device.
         """
         super().__init__()
-        if model_name == "custom":
-            assert cfg is not None, "Must provide a config for custom model"
-            self.cfg = cfg
-            self.model_name = cfg.model_name
-            self.model_type = cfg.model_type
-            if self.cfg.tokenizer_name is not None:
-                self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            else:
-                # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
-                self.tokenizer = None
-            self.use_attn_result = use_attn_result
-            self.hf_model = None
-            self.keep_original_model = False
-            # We're initializing a model, no need to load weights from a checkpoint
-            self.checkpoint = None
-        else:
-            assert (
-                model_name in self.VALID_PRETRAINED_MODEL_NAMES
-            ), f"Invalid model name: {model_name}. Valid model names are: {self.VALID_PRETRAINED_MODEL_NAMES}"
-            self.model_name = model_name
-            if self.model_name in self.PRETRAINED_MODEL_NAMES_DICT:
-                self.full_model_name = self.PRETRAINED_MODEL_NAMES_DICT[self.model_name]
-            else:
-                self.full_model_name = self.model_name
-            self.model_type = self.get_model_type(self.full_model_name)
-            if model is not None:
-                self.hf_model = model
-            else:
-                if checkpoint is not None:
-                    if "stanford" not in self.model_name:
-                        logging.warning(
-                            f"Loading checkpoints is not supported for the model {self.model_name}. Loading without checkpoints"
-                        )
-                        self.hf_model = AutoModelForCausalLM.from_pretrained(
-                            self.full_model_name
-                        )
-                    else:
-                        assert (
-                            checkpoint in self.STANFORD_CRFM_CHECKPOINTS
-                        ), f"Checkpoint {checkpoint} is not valid. Available checkpoints are {self.STANFORD_CRFM_CHECKPOINTS}"
-                        self.hf_model = AutoModelForCausalLM.from_pretrained(
-                            self.full_model_name, revision=f"checkpoint-{checkpoint}"
-                        )
-                else:
-                    self.hf_model = AutoModelForCausalLM.from_pretrained(
-                        self.full_model_name
-                    )
-
-            self.cfg = self.convert_hf_config(
-                self.hf_model.config, model_type=self.model_type
-            )
-            self.cfg.use_attn_result = use_attn_result
-            self.cfg.checkpoint = checkpoint
-            self.cfg.model_type = self.model_type
-            self.cfg.model_name = self.model_name
-            self.cfg.tokenizer_name = self.full_model_name
-            self.cfg.normalization_type = "LNPre" if fold_ln else "LN"
+        if isinstance(cfg, Dict):
+            cfg = EasyTransformerConfig(**cfg)
+        self.cfg = cfg
+        if tokenizer is not None:
+            self.tokenizer = tokenizer
+        if self.cfg.tokenizer_name is not None:
+            # If we have a tokenizer name, we can load it from HuggingFace
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        else:
+            # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
+            self.tokenizer = None
+        
         if not self.cfg.d_vocab:
+            # If we have a tokenizer, vocab size can be inferred from it.
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if d_vocab is not provided"
@@ -186,6 +121,12 @@ class EasyTransformer(HookedRootModule):
             )
         self.unembed = Unembed(self.cfg)
 
+        if self.cfg.init_weights:
+            self.init_weights()
+
+        if move_to_device:
+            self.to(self.cfg.device)
+        
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
         self.setup()
@@ -275,67 +216,90 @@ class EasyTransformer(HookedRootModule):
                         fold_ln = True, 
                         center_writing_weights = True, 
                         center_unembed = True,
-                        keep_original_model = False,
+                        checkpoint = None,
+                        hf_model = None,
                         **kwargs):
         """Class method to load a pretrained model from HuggingFace and to automatically convert and load those weights into EasyTransformer format.
+        
+        See fold_layer_norm for more details on the folding and centering.
 
         Args:
             model_name (str): The model name - must be in VALID_MODEL_NAMES
-            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the subsequent linear layer. This does not change the computation. Defaults to True.
-            center_writing_weights (bool, optional): Whether to center weights writing to the residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
-            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
-            keep_original_model (bool, optional): Whether to delete the model loaded from HuggingFace (stored as model.hf_model). Defaults to False.
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the 
+                subsequent linear layer. This does not change the computation. Defaults to True.
+            center_writing_weights (bool, optional): Whether to center weights writing to   
+                the residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
+            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). 
+                Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
+            keep_original_model (bool, optional): Whether to delete the model loaded from    HuggingFace (stored as model.hf_model). Defaults to False.
         """
-        model = cls(model_name, fold_ln=fold_ln, **kwargs)
+        assert (
+            (model_name in cls.VALID_PRETRAINED_MODEL_NAMES) or (model_name in cls.PRETRAINED_MODEL_NAMES_DICT)
+        ), f"Invalid model name: {model_name}. Valid model names are: {cls.VALID_PRETRAINED_MODEL_NAMES}"
+
+        # hf_model_name is the model's name on HuggingFace
+        if model_name in cls.PRETRAINED_MODEL_NAMES_DICT:
+            hf_model_name = cls.PRETRAINED_MODEL_NAMES_DICT[model_name]
+        else:
+            hf_model_name = model_name
+        # The model family (eg "gpt2" or "neo")
+        model_family = cls.get_model_family(hf_model_name)
+        
+        if hf_model is None:
+            if checkpoint is not None:
+                if "stanford" not in model_name:
+                    logging.warning(
+                        f"Loading checkpoints is not supported for the model {model_name}. Loading without checkpoints"
+                    )
+                    hf_model = AutoModelForCausalLM.from_pretrained(
+                        hf_model_name
+                    )
+                else:
+                    assert (
+                        checkpoint in cls.STANFORD_CRFM_CHECKPOINTS
+                    ), f"Checkpoint {checkpoint} is not valid. Available checkpoints are {cls.STANFORD_CRFM_CHECKPOINTS}"
+                    hf_model = AutoModelForCausalLM.from_pretrained(
+                        hf_model_name, revision=f"checkpoint-{checkpoint}"
+                    )
+            else:
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    hf_model_name
+                )
+
+        cfg = cls.convert_hf_config(
+            hf_model.config, model_family=model_family
+        )
+        cfg.checkpoint = checkpoint
+        cfg.model_family = model_family
+        cfg.model_name = model_name
+
+        cfg.normalization_type = "LNPre" if fold_ln else "LN"
+        cfg.tokenizer_name = hf_model_name
+        cfg.init_weights = False
+        tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer_name)
+        tokenizer.pad_token = tokenizer.eos_token
+
+        model = cls(cfg, **kwargs)
 
         # Load model weights, and fold in layer norm weights
-        if model.model_type == "gpt2":
-            state_dict = weight_conversion.convert_gpt2_weights(model.hf_model, model.cfg)
-        elif model.model_type == "neo":
-            state_dict = weight_conversion.convert_neo_weights(model.hf_model, model.cfg)
-        elif model.model_type == "gptj":
-            state_dict = weight_conversion.convert_gptj_weights(model.hf_model, model.cfg)
-        elif model.model_type == "neox":
-            state_dict = weight_conversion.convert_neox_weights(model.hf_model, model.cfg)
-        elif model.model_type == "opt":
-            state_dict = weight_conversion.convert_opt_weights(model.hf_model, model.cfg)
+        if model_family == "gpt2":
+            state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
+        elif model_family == "neo":
+            state_dict = weight_conversion.convert_neo_weights(hf_model, model.cfg)
+        elif model_family == "opt":
+            state_dict = weight_conversion.convert_opt_weights(hf_model, model.cfg)
         else:
-            logging.warning(f"Invalid model_type, no weights are stored to load: {model.model_type}, generated from model name {model.model_name}")
-        state_dict = model.fill_missing_keys(state_dict)
-        if fold_ln:
-            state_dict = model.fold_layer_norm(state_dict)
-        if center_writing_weights:
-            state_dict = model.center_writing_weights(state_dict)
-        if center_unembed:
-            state_dict = model.center_unembed(state_dict)
-        # Need to delete the HuggingFace model so it isn't counted as a submodule
-        del model.hf_model
-        model.load_state_dict(state_dict)
-        model.to(model.cfg.device)
+            raise ValueError(f"Loading weights from this model family is not currently supported: {model_family}, generated from model name {model_name}. Feel free to open an issue on GitHub to request this feature.")
+        
+        model.load_and_process_state_dict(state_dict, 
+                        fold_ln=fold_ln, 
+                        center_writing_weights=center_writing_weights, 
+                        center_unembed=center_unembed,
+                        move_dict_to_device=True)
         return model
 
     @classmethod
-    def from_config(cls, cfg):
-        """Used to generate a model from a config object to train from
-
-        Args:
-            cfg (EasyTransformerConfig): Config for the model
-
-        Returns:
-            EasyTransformer: An initialised EasyTransformer model
-        """
-        if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig(**cfg)
-        model = cls(
-            "custom",
-            cfg,
-            use_attn_result=cfg.use_attn_result,
-        )
-        model.init_weights()
-        model.to(model.cfg.device)
-        return model
-
-    def get_model_type(self, model_name):
+    def get_model_family(cls, model_name):
         if "gpt2" in model_name or "stanford" in model_name:
             return "gpt2"
         elif "opt" in model_name:
@@ -349,9 +313,10 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"Invalid model name: {model_name}")
 
-    def convert_hf_config(self, hf_config, model_type):
+    @classmethod
+    def convert_hf_config(cls, hf_config, model_family):
         cfg_dict = {}
-        if model_type == "neo":
+        if model_family == "neo":
             cfg_dict = {
                 "d_model": hf_config.hidden_size,
                 "d_head": hf_config.hidden_size // hf_config.num_heads,
@@ -367,7 +332,7 @@ class EasyTransformer(HookedRootModule):
                 "use_local_attn": True,
                 "window_size": hf_config.window_size,
             }
-        elif model_type == "gpt2":
+        elif model_family == "gpt2":
             cfg_dict = {
                 "d_model": hf_config.n_embd,
                 "d_head": hf_config.n_embd // hf_config.n_head,
@@ -381,7 +346,7 @@ class EasyTransformer(HookedRootModule):
                 "use_attn_scale": True,
                 "use_local_attn": False,
             }
-        elif model_type == "opt":
+        elif model_family == "opt":
             cfg_dict = {
                 "d_model": hf_config.hidden_size,
                 "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
@@ -395,20 +360,18 @@ class EasyTransformer(HookedRootModule):
                 "use_attn_scale": True,
                 "use_local_attn": False,
             }
-        elif model_type == "gptj":
+        elif model_family == "gptj":
             raise NotImplementedError
-        elif model_type == "neox":
+        elif model_family == "neox":
             raise NotImplementedError
         else:
             raise NotImplementedError
-        cfg_dict["model_name"] = self.model_name
-        cfg_dict["model_type"] = model_type
         cfg = EasyTransformerConfig.from_dict(cfg_dict)
         return cfg
 
     def init_weights(self):
         """
-        Initialize weights matrices with a normal of std=initializer_range (default=0.02) and truncated between [-2, 2]. This roughly follows the GPT-2 paper's scheme (but with truncation, and not halving the std for W_pos).
+        Initialize weights matrices with a normal of std=initializer_range (default=0.02). This roughly follows the GPT-2 paper's scheme (but with truncation, and not halving the std for W_pos).
 
         LayerNorm weights are already initialized to 1.0, and all biases are initialized to 0.0 (including LayerNorm), so this just initializes weight matrices. 
         
@@ -419,8 +382,9 @@ class EasyTransformer(HookedRootModule):
         This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but no one has gotten round to updating it?
         https://github.com/pytorch/pytorch/issues/18182
         
-        PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the same values?! https://github.com/pytorch/pytorch/issues/72253
-        
+        PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the exact same weights?! https://github.com/pytorch/pytorch/issues/72253
+
+        The best paper I've found on transformer initialization is the muP paper, but haven't integrated those ideas yet: https://arxiv.org/abs/2203.03466
         """
         
         if self.cfg.seed is not None:
@@ -428,10 +392,44 @@ class EasyTransformer(HookedRootModule):
         
         for name, param in self.named_parameters():
             if "W_" in name:
-                nn.init.trunc_normal_(param, std=self.cfg.initializer_range)
+                nn.init.normal_(param, std=self.cfg.initializer_range)
     
+    def load_and_process_state_dict(self, 
+                                    state_dict: Dict[str, torch.Tensor], 
+                                    fold_ln: bool=True, 
+                                    center_writing_weights: bool = True, 
+                                    center_unembed: bool = True,
+                                    move_dict_to_device: bool = True):
+        """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
+        
+        See fold_layer_norm for more details on the folding and centering.
+
+        Args:
+            state_dict (dict): The state dict of the model, in EasyTransformer format
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the   
+                subsequent linear layer. This does not change the computation. Defaults to True.
+            center_writing_weights (bool, optional): Whether to center weights writing to the 
+                residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
+            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). 
+                Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
+            move_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
+        """
+        if move_dict_to_device:
+            state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
+        state_dict = self.fill_missing_keys(state_dict)
+        if fold_ln:
+            state_dict = self.fold_layer_norm(state_dict)
+        if center_writing_weights:
+            state_dict = self.center_writing_weights(state_dict)
+        if center_unembed:
+            state_dict = self.center_unembed(state_dict)
+        self.load_state_dict(state_dict)
+
+
     def fill_missing_keys(self, state_dict):
         """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
+
+        This function is assumed to be run before weights are initialized.
 
         Args:
             state_dict (dict): State dict from a pretrained model
@@ -524,7 +522,7 @@ class EasyTransformer(HookedRootModule):
     
     
     def center_writing_weights(self, state_dict: Dict[str, torch.Tensor]):
-        """Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and W_out. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. As LayerNorm centers before reading from the residual stream, this doesn't change the computation.
+        """Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and W_out. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. See fold_layer_norm for more details.
         """
         state_dict['embed.W_E'] = state_dict['embed.W_E'] - state_dict['embed.W_E'].mean(-1, keepdim=True)
         state_dict['pos_embed.W_pos'] = state_dict['pos_embed.W_pos'] - state_dict['pos_embed.W_pos'].mean(-1, keepdim=True)
@@ -541,4 +539,10 @@ class EasyTransformer(HookedRootModule):
         state_dict['unembed.W_U'] = state_dict['unembed.W_U'] - state_dict['unembed.W_U'].mean(-1, keepdim=True)
         state_dict['unembed.b_U'] = state_dict['unembed.b_U'] - state_dict['unembed.b_U'].mean()
         return state_dict
+    
+    def set_use_attn_result(self, use_attn_result):
+        """
+        Toggles whether to explicitly calculate and expose the result for each attention head - useful for interpretability but can easily burn through GPU memory.
+        """
+        self.cfg.use_attn_result = use_attn_result
         

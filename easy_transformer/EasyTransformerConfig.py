@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
+from easy_transformer.utils import set_seed_everywhere
 import torch
 import torch.nn as nn
 import random
@@ -30,12 +31,11 @@ class EasyTransformerConfig:
         use_attn_scale (bool): whether to scale the attention weights by
         1/sqrt(d_head)
         use_local_attn (bool): whether to use local attention
-        model_name (str, *optional*): the name of the model, used to load
+        model_name (str): the name of the model, used to load
             weights from HuggingFace or initialized to "custom" if not passed
-        model_type (str, *optional*): the type of the model, used to help load
+        model_family (str, *optional*): the family of the model, used to help load
             weights from HuggingFace or initialized to "custom" if not passed
-        full_model_name (str, *optional*): the full name of the model,
-            initialized to "custom" if not passed
+        checkpoint (str, *optional*): the checkpoint to load weights from, if using a checkpointed pretrained model.
         tokenizer_name (str, *optional*): the full name of the model, passed into 
             HuggingFace to access the tokenizer. Only used when passing in custom 
             config, if loading from pretrained then this is not needed.
@@ -60,13 +60,15 @@ class EasyTransformerConfig:
             layers. Defaults to False
         seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and NumPy) and to initialize weights. If set to None, does nothing.
         initializer_range (float): The standard deviation of the truncated normal used to initialise the weights.
+        init_weights (bool): Whether to initialize the weights. Defaults to True. If False, does not initialize weights.
     """
 
+    n_layers: int
     d_model: int
+    n_ctx: int
     d_head: int
     n_heads: int
-    n_layers: int
-    n_ctx: int
+    model_name: str = "custom"
     d_mlp: Optional[int] = None
     act_fn: Optional[str] = None
     d_vocab: Optional[int] = None
@@ -74,10 +76,8 @@ class EasyTransformerConfig:
     use_attn_result: bool = False
     use_attn_scale: bool = True
     use_local_attn: bool = False
-    model_name: Optional[str] = None
-    model_type: Optional[str] = None
+    model_family: Optional[str] = None
     checkpoint: Optional[int] = None
-    full_model_name: Optional[str] = None
     tokenizer_name: Optional[str] = None
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
@@ -88,13 +88,12 @@ class EasyTransformerConfig:
     attn_only: bool = False
     seed: int = 42
     initializer_range: float = 0.02
+    init_weights: bool = True
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
         if self.seed is not None:
-            random.seed(self.seed)
-            torch.manual_seed(self.seed)
-            np.random.seed(self.seed)
+            set_seed_everywhere(self.seed)
         if self.use_local_attn:
             assert (
                 self.window_size is not None
@@ -102,10 +101,6 @@ class EasyTransformerConfig:
             assert (
                 self.attn_types is not None
             ), "attn_types must be specified for local attention"
-        if self.model_name is None:
-            self.model_name = "custom"
-            self.model_type = "custom"
-            self.full_model_name = "custom"
         if not self.attn_only:
             assert self.d_mlp is not None, "d_mlp must be specified for non-attn-only models"
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
