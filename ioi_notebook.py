@@ -132,7 +132,7 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 500
+N = 150
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
@@ -515,8 +515,6 @@ modules = ["attn", "mlp"]
 
 for i, fig in enumerate(all_figs):
     fig.write_image(f"svgs/writing_direction_heatmap_module_{modules[i]}.svg")
-
-
 # %% [markdown]
 # We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
 # %%
@@ -524,7 +522,9 @@ show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 # %%
 show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset[:1])
 #%%
-show_attention_patterns(model, [(11, 2)], ioi_dataset[:1])
+att = show_attention_patterns(model, [(8, 10)], abca_dataset[:2], return_mtx=True, mode="attn")
+
+
 # %% [markdown]
 # ### Plot attention vs direction
 # %% [markdown]

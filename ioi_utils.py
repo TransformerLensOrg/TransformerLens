@@ -138,10 +138,13 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
 
         logits = model(ioi_dataset.text_prompts)
+        attn_results = torch.zeros(size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len))
+        attn_results += -20
 
         for i, text in enumerate(ioi_dataset.text_prompts):
             assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
             toks = model.tokenizer(text)["input_ids"]
+            current_length = len(toks)
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
             if mode == "val":
@@ -172,10 +175,16 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
             if return_fig and not return_mtx:
                 return fig
             elif return_mtx and not return_fig:
-                return attn if mode == "attn" else cont
+                attn_results[i,:current_length,:current_length] = attn.clone().cpu()
             else:
                 fig.show()
 
+        if return_fig and not return_mtx:
+            return fig
+        elif return_mtx and not return_fig:
+            if mode == "attn": 
+                return attn_results
+            raise NotImplementedError()
 
 def safe_del(a):
     """Try and delete a even if it doesn't yet exist"""
