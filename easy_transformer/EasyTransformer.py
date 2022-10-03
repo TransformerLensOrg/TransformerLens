@@ -63,15 +63,8 @@ class EasyTransformer(HookedRootModule):
         tokenizer (*optional): The tokenizer to use for the model. If not
             provided, it is inferred from cfg.tokenizer_name or initialized to None. 
             If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
-        model: The model loaded from HuggingFace or separately initialized. If
-            None, it is automatically loaded from HuggingFace if model_name is
-            passed - this just saves memory if the model was already loaded into
-            RAM.
-        keep_original_model (bool): If False, the original model is deleted,
-            otherwise it's kept as a self.model attribute
-        center_weights (bool): If True, the weights are centered
-        checkpoint (int, *optional): The checkpoint number of the model to load
-            if it is a model with multiple possible checkpoints to load from.
+        move_to_device (bool): Whether to move the model to the device specified in cfg.
+            device.
         """
         super().__init__()
         if isinstance(cfg, Dict):
@@ -227,13 +220,18 @@ class EasyTransformer(HookedRootModule):
                         hf_model = None,
                         **kwargs):
         """Class method to load a pretrained model from HuggingFace and to automatically convert and load those weights into EasyTransformer format.
+        
+        See fold_layer_norm for more details on the folding and centering.
 
         Args:
             model_name (str): The model name - must be in VALID_MODEL_NAMES
-            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the subsequent linear layer. This does not change the computation. Defaults to True.
-            center_writing_weights (bool, optional): Whether to center weights writing to the residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
-            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
-            keep_original_model (bool, optional): Whether to delete the model loaded from HuggingFace (stored as model.hf_model). Defaults to False.
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the 
+                subsequent linear layer. This does not change the computation. Defaults to True.
+            center_writing_weights (bool, optional): Whether to center weights writing to   
+                the residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
+            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). 
+                Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
+            keep_original_model (bool, optional): Whether to delete the model loaded from    HuggingFace (stored as model.hf_model). Defaults to False.
         """
         assert (
             (model_name in cls.VALID_PRETRAINED_MODEL_NAMES) or (model_name in cls.PRETRAINED_MODEL_NAMES_DICT)
@@ -403,12 +401,17 @@ class EasyTransformer(HookedRootModule):
                                     center_unembed: bool = True,
                                     move_dict_to_device: bool = True):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
+        
+        See fold_layer_norm for more details on the folding and centering.
 
         Args:
             state_dict (dict): The state dict of the model, in EasyTransformer format
-            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the subsequent linear layer. This does not change the computation. Defaults to True.
-            center_writing_weights (bool, optional): Whether to center weights writing to the residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
-            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the   
+                subsequent linear layer. This does not change the computation. Defaults to True.
+            center_writing_weights (bool, optional): Whether to center weights writing to the 
+                residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
+            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). 
+                Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
             move_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
         """
         if move_dict_to_device:
@@ -519,7 +522,7 @@ class EasyTransformer(HookedRootModule):
     
     
     def center_writing_weights(self, state_dict: Dict[str, torch.Tensor]):
-        """Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and W_out. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. As LayerNorm centers before reading from the residual stream, this doesn't change the computation.
+        """Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and W_out. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. See fold_layer_norm for more details.
         """
         state_dict['embed.W_E'] = state_dict['embed.W_E'] - state_dict['embed.W_E'].mean(-1, keepdim=True)
         state_dict['pos_embed.W_pos'] = state_dict['pos_embed.W_pos'] - state_dict['pos_embed.W_pos'].mean(-1, keepdim=True)
