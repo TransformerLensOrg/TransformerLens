@@ -106,44 +106,6 @@ def solu(input):
     """
     return input * F.softmax(input, dim=-1)
 
-
-def reglu(input, gate):
-    """
-    ReGLU activation function as described by
-    https://arxiv.org/pdf/2002.05202.pdf.
-    """
-    return F.relu(gate) * input
-
-
-def geglu(input, gate, use_gelu_new=False):
-    """
-    GeGLU activation function as described by
-    https://arxiv.org/pdf/2002.05202.pdf.
-    """
-    if use_gelu_new:
-        return gelu_new(gate) * input
-    else:
-        return F.gelu(gate) * input
-
-
-def swiglu(input, gate):
-    """
-    SwiGLU activation function as described by
-    https://arxiv.org/pdf/2002.05202.pdf.
-    """
-    return F.silu(gate) * input
-
-def keep_single_column(
-    dataset: datasets.arrow_dataset.Dataset, 
-    col_name: str):
-    """
-    Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful when we want to tokenize and mix together different strings
-    """
-    for key in dataset.features:
-        if key != col_name:
-            dataset = dataset.remove_columns(key)
-    return dataset
-
 def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset, 
                              tokenizer: AutoTokenizer, 
                              streaming: bool=False, 

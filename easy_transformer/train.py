@@ -1,5 +1,5 @@
-from easy_transformer.EasyTransformer import EasyTransformer
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from easy_transformer import EasyTransformer
+from easy_transformer import EasyTransformerConfig
 from dataclasses import dataclass
 from typing import Optional, Callable
 from torch.utils.data import Dataset, DataLoader
