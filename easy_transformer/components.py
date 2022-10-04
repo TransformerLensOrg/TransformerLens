@@ -231,8 +231,6 @@ class Attention(nn.Module):
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
 
         """
-        kv_cache_pos_offset = past_kv_cache_entry.past_keys.shape[1]
-
         if self.cfg.positional_embedding_type != "shortformer":
             # Normal attention
             q = self.hook_q(
@@ -257,14 +255,11 @@ class Attention(nn.Module):
         
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
+            kv_cache_pos_offset = past_kv_cache_entry.past_keys.size(1)
             k, v = past_kv_cache_entry.append(k, v)
-            kv_cache_pos_offset = past_kv_cache_entry.past_keys.shape
         else:
             # Not using a cache
             kv_cache_pos_offset = 0
-
-
-
 
         attn_scores = (
             einsum("batch query_pos head_index d_head, \

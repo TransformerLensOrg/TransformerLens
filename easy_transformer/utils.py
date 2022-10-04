@@ -187,7 +187,7 @@ def sample_logits(
     top_p: Optional[int] = None, 
     temperature: float = 1.0, 
     freq_penalty: float = 0.0,
-    input_tokens: Optional[torch.Tensor] = None):
+    tokens: Optional[torch.Tensor] = None):
     """ 
     Sample from the logits, in order to generate text
 
@@ -207,15 +207,14 @@ def sample_logits(
         return final_logits.argmax(dim=-1)
     else:
         # Sample from the distribution
-        assert (top_k is None) or (top_p is None), "top_k={top_k} and top_p={top_p} are mutually exclusive, can't specify both"
 
         final_logits = final_logits / temperature
         if freq_penalty > 0:
-            assert input_tokens is not None, "Must provide input_tokens if applying a frequency penalty"
+            assert tokens is not None, "Must provide input_tokens if applying a frequency penalty"
             for batch_index in range(final_logits.shape[0]):
                 # torch.bincount returns a tensor of length d_vocab, with the number of occurences of each token in the tokens.
                 final_logits[batch_index] = final_logits[batch_index] - freq_penalty * torch.bincount(
-                    input_tokens[batch_index], minlength=final_logits.shape[-1]
+                    tokens[batch_index], minlength=final_logits.shape[-1]
                 )
         if top_k is not None:
             assert top_k > 0, "top_k has to be greater than 0"

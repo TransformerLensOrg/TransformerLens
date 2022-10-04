@@ -186,7 +186,7 @@ class EasyTransformer(HookedRootModule):
             # residual + block(residual)
             residual = block(
                 residual, 
-                past_kv_cache = past_kv_cache[i] if past_kv_cache is not None else None, # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
+                past_kv_cache_entry = past_kv_cache[i] if past_kv_cache is not None else None, # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed = shortformer_pos_embed
             )  # [batch, pos, d_model]
         if return_type is None:
@@ -577,13 +577,13 @@ class EasyTransformer(HookedRootModule):
     @torch.inference_mode()
     def generate(
         self,
-        input: Union[str, torch.Tensor],
-        max_new_tokens: int,
+        input: Union[str, torch.Tensor] = "",
+        max_new_tokens: int = 10,
         stop_at_eos: bool = True,
         eos_token_id: Optional[int] = None,
         do_sample: bool = False,
         top_k: Optional[int] = None,
-        top_p: float = 1.0,
+        top_p: Optional[float] = None,
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
         num_return_sequences: int = 1,
@@ -623,7 +623,7 @@ class EasyTransformer(HookedRootModule):
         else:
             tokens = input
 
-        if return_type == "default":
+        if return_type == "input":
             if type(input) == str:
                 return_type = "str"
             else:
@@ -649,12 +649,16 @@ class EasyTransformer(HookedRootModule):
         
         # Currently nothing in EasyTransformer changes with eval, but this is here in case that changes in the future
         self.eval()
-        for _ in tqdm(range(max_new_tokens)):
+        for index in tqdm.tqdm(range(max_new_tokens)):
             # While generating, we keep generating logits, throw away all but the final logits, and then use those logits to sample from the distribution
             # We keep adding the sampled tokens to the end of tokens.
             if use_past_kv_cache:
                 # We just take the final tokens, as a [batch, 1] tensor
-                logits = self.forward(tokens[:, -1:], return_type="logits", past_kv_cache=past_kv_cache)
+                if index>0:
+                    logits = self.forward(tokens[:, -1:], return_type="logits", past_kv_cache=past_kv_cache)
+                else:
+                    logits = self.forward(tokens, return_type="logits", past_kv_cache=past_kv_cache)
+
             else:
                 # We input the entire sequence, as a [batch, pos] tensor, since we aren't using the cache
                 logits = self.forward(tokens, return_type="logits")
