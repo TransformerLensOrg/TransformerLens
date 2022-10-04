@@ -105,6 +105,28 @@ abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
 
 #%% # do some initial experiments with the naive circuit
+
+CIRCUIT = {
+    "name mover": [
+        (9, 9),  # by importance
+        (10, 0),
+        (9, 6),
+        (10, 10),
+        (10, 6),
+        (10, 2),
+        (10, 1),
+        (11, 2),
+        (11, 9),
+        (9, 7),
+        (11, 3),
+    ],
+    "negative": [(10, 7), (11, 10)],
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "duplicate token": [(0, 1), (0, 10), (3, 0)],
+    "previous token": [(2, 2), (2, 9), (4, 11)],
+}
+
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
 circuit = circuits[1]
 
@@ -203,9 +225,7 @@ for head in J.keys():
 
 for i, head in enumerate(circuit["name mover"]):
     old_entry = J[head]
-    for other_head in circuit["name mover"]:
-        if other_head != head:
-            J[head].remove(other_head)
+    J[head] = []
     for other_head in circuit["name mover"][: i + 1]:
         J[head].append(other_head)
 
@@ -217,7 +237,7 @@ for i, head in enumerate(circuit["induction"]):
 
 # J[(9, 6)] = [(9, 9), (9, 6)]
 # J[(10, 10)] = [(9, 9), (10, 10)]
-J[(11, 1)] += [(9, 7)]  # J[(11, 1)][:1] + J[(11, 1)][-5:]
+J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]  # by importance
 #%%
 results = {}
 

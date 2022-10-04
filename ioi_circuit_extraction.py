@@ -168,17 +168,17 @@ MED_CIRCUIT = deepcopy(SMALL_CIRCUIT)
 CIRCUIT = deepcopy(SMALL_CIRCUIT)
 
 for head in [
-    (9, 9),
+    (9, 9),  # by importance
     (10, 0),
     (9, 6),
     (10, 10),
-    (10, 2),
-    (11, 2),
     (10, 6),
+    (10, 2),
     (10, 1),
-    (11, 6),
-    (9, 0),
+    (11, 2),
+    (11, 9),
     (9, 7),
+    (11, 3),
 ]:
     CIRCUIT["name mover"].append(head)
 
