@@ -203,17 +203,30 @@ class Attention(nn.Module):
         self.hook_attn = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
 
+        # This parameter is pointer to model.pos_embed.W_pos and is used only with shortformer style attention. It is initializaed to None and is loaded in separately with shortformer_load_pos_embeds.
+        # See shortformer_load_pos_embeds for more details.
+        if self.cfg.positional_embedding_type == "shortformer":
+            self.shortformer_W_pos = None
+            # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
+            self.hook_attn_input = HookPoint() # [batch, pos, d_model]
+        
+
     def forward(self, x):
-        q = self.hook_q(
-            einsum("batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head", 
-                        x, self.W_Q) + self.b_Q
-        )  # [batch, pos, head_index, d_head]
-        k = self.hook_k(
-            einsum("batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head", 
-                        x, self.W_K) + self.b_K
-        )  # [batch, pos, head_index, d_head]
+        if self.cfg.positional_embedding_type != "shortformer":
+            # Normal attention
+            q = self.hook_q(
+                einsum("batch pos d_model, head_index d_model d_head \
+                    -> batch pos head_index d_head", 
+                            x, self.W_Q) + self.b_Q
+            )  # [batch, pos, head_index, d_head]
+            k = self.hook_k(
+                einsum("batch pos d_model, head_index d_model d_head \
+                    -> batch pos head_index d_head", 
+                            x, self.W_K) + self.b_K
+            )  # [batch, pos, head_index, d_head]
+        else:
+            # Weird shortformer attention
+            q, k = self.shortformer_calculate_qk(x)
         v = self.hook_v(
             einsum("batch pos d_model, head_index d_model d_head \
                 -> batch pos head_index d_head", 
@@ -269,6 +282,42 @@ class Attention(nn.Module):
             attn_scores,
             self.IGNORE,
         )
+    
+    def shortformer_load_pos_embeds(self, W_pos):
+        """ 
+        This is a very hacky way to implement positional embeddings for shortformer style models, which do not add positional embeddings into the residual stream but instead add it in to the queries and keys immediately before multiplying by W_Q and W_K, and NOT having it around for the values or MLPs. 
+
+        This function adds in W_pos as a bonus parameter to the attention layer, with the same W_pos shared across all layers. This is pretty hacky, since it involves adding a parameter not included at initialization, and pollutes the state dict (the model's state dict now includes a bunch of copies of W_pos alas). I chose this implementation because it avoided changing the API for the layer (either init or forward), which felt messier.
+
+        The original intention was to use this to do more efficient caching: caching is hard with absolute positional embeddings, since you can't translate the context window without recomputing the entire thing, but easier if the prior values and residual stream terms are the same. I've implemented it because it makes it easier for models to form induction heads. I'm not entirely sure why, though hypothesise that it's because there's two ways for induction heads to form with positional embeddings in the residual stream and only one with shortformer style positional embeddings.
+
+
+        https://arxiv.org/abs/2012.15832
+        """
+        assert self.cfg.positional_embedding_type == 'shortformer', f"This function is only for shortformer style attention, while positional embedding type is {self.cfg.positional_embedding_type}"
+        assert W_pos.shape == (self.cfg.n_ctx, self.cfg.d_model), f"Shortformer position embeddings must be of shape (n_ctx, d_model). They have shape: {W_pos.shape}"
+
+        # As far as I can tell, self.W_pos = W_pos and self.W_pos = nn.Parameter(W_pos) are equivalent? The parameters are updated in lockstep, though in the latter each parameter has a separate gradient buffer, which are combined by the optimizer? PyTorch is weird man...
+        self.shortformer_W_pos = W_pos
+    
+    def shortformer_calculate_qk(self, x):
+        ctx_length = x.size(1)
+        # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
+        attn_input = self.hook_attn_input(
+            x + 
+            self.shortformer_W_pos[:ctx_length, :]
+            ) # [batch, pos, d_model]
+        q = self.hook_q(
+            einsum("batch pos d_model, head_index d_model d_head \
+                -> batch pos head_index d_head", 
+                        attn_input, self.W_Q) + self.b_Q
+        )  # [batch, pos, head_index, d_head]
+        k = self.hook_k(
+            einsum("batch pos d_model, head_index d_model d_head \
+                -> batch pos head_index d_head", 
+                        attn_input, self.W_K) + self.b_K
+        )  # [batch, pos, head_index, d_head]
+        return (q, k)
 
 
 # MLP Layers

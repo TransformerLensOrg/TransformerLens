@@ -121,6 +121,11 @@ class EasyTransformer(HookedRootModule):
             )
         self.unembed = Unembed(self.cfg)
 
+        if self.cfg.positional_embedding_type == "shortformer":
+            # Load in positional embeddings to each attn layer to use for shortformer style attention, rather than adding to the residual stream.
+            for block in self.blocks:
+                block.attn.shortformer_load_pos_embeds(self.pos_embed.W_pos)
+
         if self.cfg.init_weights:
             self.init_weights()
 
@@ -148,7 +153,11 @@ class EasyTransformer(HookedRootModule):
             tokens = input.to(self.cfg.device)
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         pos_embed = self.hook_pos_embed(self.pos_embed(tokens))  # [batch, pos, d_model]
-        residual = embed + pos_embed  # [batch, pos, d_model]
+        if self.cfg.positional_embedding_type != "shortformer":
+            # If we're using shortformer style attention, we don't add the positional embedding to the residual stream
+            residual = embed + pos_embed  # [batch, pos, d_model]
+        else:
+            residual = embed
         for block in self.blocks:
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)

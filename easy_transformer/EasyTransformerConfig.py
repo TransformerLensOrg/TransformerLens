@@ -62,6 +62,7 @@ class EasyTransformerConfig:
         initializer_range (float): The standard deviation of the truncated normal used to initialise the weights.
         init_weights (bool): Whether to initialize the weights. Defaults to True. If False, does not initialize weights.
         scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention weights by 1/(layer_idx+1), used by Mistral (Stanford) models for numerical stability when training in FP16. Defaults to False.
+        positional_embedding_type (str): The positional embedding used. Options are 'learned' (ie GPT-2 style) and 'shortformer'. Defaults to 'learned'.
     """
 
     n_layers: int
@@ -91,6 +92,7 @@ class EasyTransformerConfig:
     initializer_range: float = 0.02
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
+    positional_embedding_type: str = 'learned'
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
