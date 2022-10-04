@@ -105,6 +105,7 @@ abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
 
 #%% # do some initial experiments with the naive circuit
+<<<<<<< HEAD
 
 CIRCUIT = {
     "name mover": [
@@ -127,6 +128,9 @@ CIRCUIT = {
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
 
+=======
+# UH         IS THIS JUST NOT GOOD?
+>>>>>>> 43eeb1a3ec59b30098261fb8749d97b3b6911b29
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
 circuit = circuits[1]
 
@@ -148,8 +152,8 @@ model, _ = do_circuit_extraction(
     exclude_heads=naive_heads,
 )
 
-circuit2_baseline_metric = metric(model, ioi_dataset)
-print(f"{model_baseline_metric=} {circuit2_baseline_metric=}")
+circuit_baseline_metric = metric(model, ioi_dataset)
+print(f"{model_baseline_metric=} {circuit_baseline_metric=}")
 #%%
 def get_basic_extracted_model(model, ioi_dataset, mean_dataset=None, circuit=circuits[1]):
     if mean_dataset is None:
@@ -176,7 +180,7 @@ model = get_basic_extracted_model(
     model,
     ioi_dataset,
     mean_dataset=mean_dataset,
-    circuit=circuits[1],
+    circuit=circuits[2],
 )
 torch.cuda.empty_cache()
 
@@ -199,15 +203,17 @@ if metric == logit_diff:
 else:
     circuit_baseline_metric = circuit_baseline_prob
 
-circuit_baseline_metric = [None, circuit_baseline_metric, circuit2_baseline_metric]
+circuit_baseline_metric = [None, circuit_baseline_metric, circuit_baseline_metric]
 #%% # assemble the J
 J = {}
 
 for circuit_class in circuit.keys():
     for head in circuit[circuit_class]:
         J[head] = [circuit_class]
-J[(5, 8)] = [(5, 8)]  # [(5, 5), (6, 9), (5, 8)]
-J[(5, 9)] = [(5, 9)]  # [(5, 5), (6, 9), (5, 9)]  # these weird ass heads
+J[(5, 8)] = [(5, 8)]
+J[(5, 9)] = [(5, 9)]  
+for i, head in enumerate(circuit["induction"]):
+    J[head] += [(10, 7), (11, 10)]
 
 # rebuild J
 for head in J.keys():
@@ -223,8 +229,10 @@ for head in J.keys():
     assert head in new_j_entry, (head, new_j_entry)
     J[head] = list(set(new_j_entry))
 
+# name mover shit
 for i, head in enumerate(circuit["name mover"]):
     old_entry = J[head]
+<<<<<<< HEAD
     J[head] = []
     for other_head in circuit["name mover"][: i + 1]:
         J[head].append(other_head)
@@ -239,6 +247,10 @@ for i, head in enumerate(circuit["induction"]):
 # J[(10, 10)] = [(9, 9), (10, 10)]
 J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]  # by importance
 #%%
+=======
+    J[head] = deepcopy(circuit["name mover"][: i + 1]) # turn into the previous things
+#%% 
+>>>>>>> 43eeb1a3ec59b30098261fb8749d97b3b6911b29
 results = {}
 
 if "results_cache" not in dir():
@@ -249,7 +261,7 @@ for circuit_class in circuit.keys():
         results[head] = [None, None]
         base = frozenset(J[head])
         summit_list = deepcopy(J[head])
-        summit_list.remove(head)
+        summit_list.remove(head) # and this will error if you don't have a head in J!!!
         summit = frozenset(summit_list)
 
         for idx, ablated_stuff in enumerate([base, summit]):
