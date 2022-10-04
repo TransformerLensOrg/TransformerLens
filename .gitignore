@@ -1,1 +1,13 @@
 __pycache__
+Testing_Notebook.ipynb
+\.*
+easy_transformer/scratch.py
+wandb*
+easy_transformer\.egg*
+MANIFEST.in
+settings.ini
+_proc
+core.py
+*.yml
+nbs
+_modidx.py

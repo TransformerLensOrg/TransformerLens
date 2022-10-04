@@ -129,14 +129,18 @@ class HookedRootModule(nn.Module):
         self.remove_all_hook_fns(direction)
         self.is_caching = False
 
-    def cache_all(self, cache, incl_bwd=False, device="cuda", remove_batch_dim=False):
+    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
         # Caches all activations wrapped in a HookPoint
         # Remove batch dim is a utility for single batch inputs that removes the batch 
         # dimension from the cached activations - use ONLY for batches of size 1
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.cache_some(cache, lambda x: True, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
 
-    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device="cuda", remove_batch_dim=False):
+    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device=None, remove_batch_dim=False):
         """Cache a list of hook provided by names, Boolean function on names"""
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.is_caching = True
         def save_hook(tensor, hook):
             if remove_batch_dim:
@@ -193,7 +197,7 @@ class HookedRootModule(nn.Module):
                         hp.add_hook(hook, dir="fwd")
         for name, hook in bwd_hooks:
             if type(name) == str:
-                self.mod_dict[name].add_hook(hook, dir="fwd")
+                self.mod_dict[name].add_hook(hook, dir="bwd")
             else:
                 # Otherwise, name is a Boolean function on names
                 for hook_name, hp in self.hook_dict:

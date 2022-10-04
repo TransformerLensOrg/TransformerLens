@@ -1,23 +1,31 @@
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
+from easy_transformer.utils import set_seed_everywhere
 import torch
 import torch.nn as nn
+import random
+import numpy as np
 
 
 @dataclass
 class EasyTransformerConfig:
     """
     Configuration class to store the configuration of a EasyTransformer model.
+
+    See further_comments.md for more details on the more complex arguments.
+
     Args:
         d_model (int): The dimensionality of the embeddings.
         d_head (int): The dimensionality of each attention head.
         n_heads (int): The number of attention heads.
-        d_mlp (int): The dimensionality of the feedforward mlp network.
         n_layers (int): The number of attention layers.
         n_ctx (int): The maximum sequence length.
+        d_mlp (int, *optional*): The dimensionality of the feedforward mlp network. Must 
+            be set unless using an attn-only model.
         d_vocab (int): The size of the vocabulary. If not set, will be automatically set 
             from the tokenizer's vocab size.
-        act_fn (str): The activation function to use. Always lowercase. Supports ['relu', 'gelu', 'silu', 'glu'm 'gelu_new', 'solu_ln', 'reglu', 'geglu', 'swiglu'].
+        act_fn (str, *optional"): The activation function to use. Always lowercase. 
+            Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln']. Must be set unless using an attn-only model.
         eps (float): The epsilon value to use for layer normalization. Defaults to 1e-5
         use_attn_result (bool): whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
@@ -26,12 +34,11 @@ class EasyTransformerConfig:
         use_attn_scale (bool): whether to scale the attention weights by
         1/sqrt(d_head)
         use_local_attn (bool): whether to use local attention
-        model_name (str, *optional*): the name of the model, used to load
+        model_name (str): the name of the model, used to load
             weights from HuggingFace or initialized to "custom" if not passed
-        model_type (str, *optional*): the type of the model, used to help load
+        model_family (str, *optional*): the family of the model, used to help load
             weights from HuggingFace or initialized to "custom" if not passed
-        full_model_name (str, *optional*): the full name of the model,
-            initialized to "custom" if not passed
+        checkpoint (str, *optional*): the checkpoint to load weights from, if using a checkpointed pretrained model.
         tokenizer_name (str, *optional*): the full name of the model, passed into 
             HuggingFace to access the tokenizer. Only used when passing in custom 
             config, if loading from pretrained then this is not needed.
@@ -47,34 +54,62 @@ class EasyTransformerConfig:
             are None (no normalization), 'LN' (use LayerNorm, including weights & 
             biases) and 'LNPre' (use LayerNorm, but no weights & biases). Defaults to 
             None
-        gated_act_fn (bool): Whether a gated activation function is being used (geglu, reglu, swiglu). Automatically set from act_fn. Used to determine whether to create an extra MLP weight matrix W_gate
+        device(str): The device to use for the model. Defaults to 'cuda' if available, 
+            else 'cpu
+        attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2 
+            style) or bidirectional attention. Options are 'causal' and 'bidirectional'. 
+            Defaults to 'causal'
+        attn_only (bool): Whether to only use attention layers, no feedforward 
+            layers. Defaults to False
+        seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and 
+            NumPy) and to initialize weights. If set to None, does nothing.
+        initializer_range (float): The standard deviation of the truncated normal used to initialise the weights.
+        init_weights (bool): Whether to initialize the weights. Defaults to True. If False, does not initialize weights.
+        scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention weights by 1/(layer_id
+            +1), used by Mistral (Stanford) models for numerical stability when training in FP16.
+            Defaults to False.
+        positional_embedding_type (str): The positional embedding used. Options are 'standard' (ie
+            GPT-2 style, absolute, randomly initialized learned positional embeddings, directly added
+            to the residual stream) and 'shortformer' (GPT-2 style absolute & 
+            learned, but rather than being added to the residual stream they're only added to the 
+            inputs to the keys and the queries (ie key = W_K(res_stream + pos_embed), but values and 
+            MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
+            supported. Defaults to 'standard'.
     """
 
+    n_layers: int
     d_model: int
+    n_ctx: int
     d_head: int
     n_heads: int
-    d_mlp: int
-    n_layers: int
-    n_ctx: int
-    act_fn: str
+    model_name: str = "custom"
+    d_mlp: Optional[int] = None
+    act_fn: Optional[str] = None
     d_vocab: Optional[int] = None
     eps: float = 1e-5
     use_attn_result: bool = False
     use_attn_scale: bool = True
     use_local_attn: bool = False
-    model_name: Optional[str] = None
-    model_type: Optional[str] = None
+    model_family: Optional[str] = None
     checkpoint: Optional[int] = None
-    full_model_name: Optional[str] = None
     tokenizer_name: Optional[str] = None
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = 'gpt2'
     normalization_type: Optional[str] = None
-    gated_act_fn: bool = False
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    attention_dir: str = 'causal'
+    attn_only: bool = False
+    seed: int = 42
+    initializer_range: float = 0.02
+    init_weights: bool = True
+    scale_attn_by_inverse_layer_idx: bool = False
+    positional_embedding_type: str = 'standard'
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
+        if self.seed is not None:
+            set_seed_everywhere(self.seed)
         if self.use_local_attn:
             assert (
                 self.window_size is not None
@@ -82,12 +117,10 @@ class EasyTransformerConfig:
             assert (
                 self.attn_types is not None
             ), "attn_types must be specified for local attention"
-        if self.model_name is None:
-            self.model_name = "custom"
-            self.model_type = "custom"
-            self.full_model_name = "custom"
-        if self.act_fn in ['reglu', 'geglu', 'swiglu']:
-            self.gated_act_fn = True
+        if not self.attn_only:
+            assert self.d_mlp is not None, "d_mlp must be specified for non-attn-only models"
+            assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
+        
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
