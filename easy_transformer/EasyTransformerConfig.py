@@ -62,11 +62,15 @@ class EasyTransformerConfig:
             NumPy) and to initialize weights. If set to None, does nothing.
         initializer_range (float): The standard deviation of the truncated normal used to initialise the weights.
         init_weights (bool): Whether to initialize the weights. Defaults to True. If False, does not initialize weights.
-            scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention weights by 1/(layer_idx+1), used by Mistral (Stanford)
-            models for numerical stability when training in FP16. Defaults to False.
-        positional_embedding_type (str): The positional embedding used. Options are 'standard' (ie GPT-2 style, absolute, randomly initialized learned positional embeddings, directly added to the residual stream) and 'shortformer' (GPT-2 style absolute & 
-            learned, but rather than being added to the residual stream they're only added to the inputs to the keys and the queries (ie 
-            key = W_K(res_stream + pos_embed), but values and MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
+        scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention weights by 1/(layer_id
+            +1), used by Mistral (Stanford) models for numerical stability when training in FP16.
+            Defaults to False.
+        positional_embedding_type (str): The positional embedding used. Options are 'standard' (ie
+            GPT-2 style, absolute, randomly initialized learned positional embeddings, directly added
+            to the residual stream) and 'shortformer' (GPT-2 style absolute & 
+            learned, but rather than being added to the residual stream they're only added to the 
+            inputs to the keys and the queries (ie key = W_K(res_stream + pos_embed), but values and 
+            MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
             supported. Defaults to 'standard'.
     """
 
