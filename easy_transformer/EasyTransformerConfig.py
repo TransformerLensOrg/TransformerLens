@@ -11,6 +11,9 @@ import numpy as np
 class EasyTransformerConfig:
     """
     Configuration class to store the configuration of a EasyTransformer model.
+
+    See further_comments.md for more details on the more complex arguments.
+
     Args:
         d_model (int): The dimensionality of the embeddings.
         d_head (int): The dimensionality of each attention head.

@@ -178,3 +178,39 @@ def set_seed_everywhere(seed):
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
+
+
+def sample_logits(input_tokens, logits, top_k = 5, top_p = None, temperature = 1.0, freq_penalty = 0.0):
+    if temperature == 0.0:
+        # Greedy sampling
+        pass
+    else:
+        # Sample from the distribution
+        # To do xor on bools, we use !=
+        assert (top_k is None) != (top_p is None), "top_k={top_k} and top_p={top_p} are mutually exclusive, can't specify both"
+    logits = logits / temperature
+    if freq_penalty > 0:
+        for b in range(logits.shape[0]):
+            # torch.bincount returns a tensor of length d_vocab, with the number of occurences of each token in the tokens.
+            logits[b] = logits[b] - freq_penalty * torch.bincount(
+                input_tokens[b], minlength=logits.shape[-1]
+            )
+    if top_k is not None:
+        assert top_k > 0, "top_k has to be greater than 0"
+        top_logits, top_idx = logits.topk(top_k, dim=-1)
+        indices_to_remove = logits < top_logits[..., -1].unsqueeze(-1)
+        logits = logits.masked_fill(indices_to_remove, -float("inf"))
+    if top_p < 1.0:
+        assert top_p > 0.0, "top_p has to be greater than 0"
+        sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+        cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
+        sorted_indices_to_remove = cumulative_probs > top_p
+        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
+            ..., :-1
+        ].clone()
+        sorted_indices_to_remove[..., 0] = 0
+        indices_to_remove = sorted_indices_to_remove.scatter(
+            1, sorted_indices, sorted_indices_to_remove
+        )
+        logits = logits.masked_fill(indices_to_remove, -float("inf"))
+    return torch.distributions.categorical.Categorical(logits=logits).sample()

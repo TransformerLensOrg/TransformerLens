@@ -18,6 +18,11 @@ from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
 from fancy_einsum import einsum
 
+from easy_transformer.caching import (
+    EasyTransformerKeyValueCache,
+    EasyTransformerKeyValueCacheEntry,
+)
+
 # Embed & Unembed
 class Embed(nn.Module):
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
@@ -58,11 +63,16 @@ class PosEmbed(nn.Module):
         self.cfg = cfg
         self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model))
 
-    def forward(self, tokens):
-        # Tokens have shape [batch, pos]
-        # Output shape [pos, d_model] - will be broadcast along batch dim
+    def forward(
+        self, 
+        tokens: torch.Tensor, 
+        past_kv_pos_offset: int = 0):
+        """Tokens have shape [batch, pos]
+        past_kv_pos_offset is the length of tokens in the past_kv_cache (if used, defaults to zero if unused)
+        Output shape [pos, d_model] - will be broadcast along batch dim"""
+
         tokens_length = tokens.size(-1)
-        return self.W_pos[:tokens_length, :]  # [pos, d_model]
+        return self.W_pos[past_kv_pos_offset:tokens_length + past_kv_pos_offset, :]  # [pos, d_model]
 
 
 # LayerNormPre
@@ -141,6 +151,8 @@ class Attention(nn.Module):
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig], attn_type="global", layer_id=None):
         """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
 
+        Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+
         Args:
             cfg (Union[Dict, EasyTransformerConfig]): Config
             attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
@@ -168,8 +180,8 @@ class Attention(nn.Module):
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model))
 
         self.attn_type = attn_type
-        # Create a query_pos x key_pos mask, with True iff that query position
-        # can attend to that key position
+        # Create a max_ctx x max_ctx mask, with True iff that query position
+        # can attend to that key position (query is first axis, key is second axis)
         causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
         if self.attn_type == "global":
             # For global attention, this is a lower triangular matrix - key <= query
@@ -203,35 +215,57 @@ class Attention(nn.Module):
         self.hook_attn = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
 
-        # This parameter is pointer to model.pos_embed.W_pos and is used only with shortformer style attention. It is initializaed to None and is loaded in separately with shortformer_load_pos_embeds.
-        # See shortformer_load_pos_embeds for more details.
+        # See EasyTransformerConfig for more details.
         if self.cfg.positional_embedding_type == "shortformer":
-            self.shortformer_W_pos = None
             # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
             self.hook_attn_input = HookPoint() # [batch, pos, d_model]
         
 
-    def forward(self, x):
+    def forward(self, 
+            resid_pre: torch.Tensor, 
+            shortformer_pos_embed: Optional[torch.Tensor] = None,
+            past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None
+        ):
+        """
+        shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See EasyTransformerConfig for more details
+        past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
+
+        """
+        kv_cache_pos_offset = past_kv_cache_entry.past_keys.shape[1]
+
         if self.cfg.positional_embedding_type != "shortformer":
             # Normal attention
             q = self.hook_q(
                 einsum("batch pos d_model, head_index d_model d_head \
                     -> batch pos head_index d_head", 
-                            x, self.W_Q) + self.b_Q
+                            resid_pre, self.W_Q) + self.b_Q
             )  # [batch, pos, head_index, d_head]
             k = self.hook_k(
                 einsum("batch pos d_model, head_index d_model d_head \
                     -> batch pos head_index d_head", 
-                            x, self.W_K) + self.b_K
+                            resid_pre, self.W_K) + self.b_K
             )  # [batch, pos, head_index, d_head]
         else:
-            # Weird shortformer attention
-            q, k = self.shortformer_calculate_qk(x)
+            # Weird shortformer attention see EasyTransformerConfig for details
+            q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
         v = self.hook_v(
             einsum("batch pos d_model, head_index d_model d_head \
                 -> batch pos head_index d_head", 
-                        x, self.W_V) + self.b_V
+                        resid_pre, self.W_V) + self.b_V
         )  # [batch, pos, head_index, d_head]
+
+        
+        if past_kv_cache_entry is not None:
+            # Appends the new keys and values to the cached values, and automatically updates the cache
+            k, v = past_kv_cache_entry.append(k, v)
+            kv_cache_pos_offset = past_kv_cache_entry.past_keys.shape
+        else:
+            # Not using a cache
+            kv_cache_pos_offset = 0
+
+
+
+
         attn_scores = (
             einsum("batch query_pos head_index d_head, \
                 batch key_pos head_index d_head \
@@ -240,7 +274,10 @@ class Attention(nn.Module):
         )  # [batch, head_index, query_pos, key_pos]
         if self.cfg.attention_dir == 'causal':
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
-            attn_scores = self.causal_mask(attn_scores) # [batch, head_index, query_pos, key_pos]
+            attn_scores = self.apply_causal_mask(
+                attn_scores, 
+                kv_cache_pos_offset
+            ) # [batch, head_index, query_pos, key_pos]
         attn_matrix = self.hook_attn(
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]
@@ -276,36 +313,27 @@ class Attention(nn.Module):
             )  # [batch, pos, d_model]
         return out
 
-    def causal_mask(self, attn_scores):
+    def apply_causal_mask(self, attn_scores, past_kv_pos_offset):
+        # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it's just a single token.
+        query_ctx_length = attn_scores.size(-2)
+        # The key context length is the number of positions in the past - this includes all positions in the cache
+        # If not caching, query_ctx_length == key_ctx_length
+        key_ctx_length = attn_scores.size(-1)
+
+        assert query_ctx_length + past_kv_pos_offset == key_ctx_length, f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
         return torch.where(
-            self.mask[: attn_scores.size(-2), : attn_scores.size(-1)],
+            self.mask[
+                past_kv_pos_offset : past_kv_pos_offset + query_ctx_length,
+                : key_ctx_length,
+            ],
             attn_scores,
             self.IGNORE,
         )
     
-    def shortformer_load_pos_embeds(self, W_pos):
-        """ 
-        This is a very hacky way to implement positional embeddings for shortformer style models, which do not add positional embeddings into the residual stream but instead add it in to the queries and keys immediately before multiplying by W_Q and W_K, and NOT having it around for the values or MLPs. 
-
-        This function adds in W_pos as a bonus parameter to the attention layer, with the same W_pos shared across all layers. This is pretty hacky, since it involves adding a parameter not included at initialization, and pollutes the state dict (the model's state dict now includes a bunch of copies of W_pos alas). I chose this implementation because it avoided changing the API for the layer (either init or forward), which felt messier.
-
-        The original intention was to use this to do more efficient caching: caching is hard with absolute positional embeddings, since you can't translate the context window without recomputing the entire thing, but easier if the prior values and residual stream terms are the same. I've implemented it because it makes it easier for models to form induction heads. I'm not entirely sure why, though hypothesise that it's because there's two ways for induction heads to form with positional embeddings in the residual stream and only one with shortformer style positional embeddings.
-
-
-        https://arxiv.org/abs/2012.15832
-        """
-        assert self.cfg.positional_embedding_type == 'shortformer', f"This function is only for shortformer style attention, while positional embedding type is {self.cfg.positional_embedding_type}"
-        assert W_pos.shape == (self.cfg.n_ctx, self.cfg.d_model), f"Shortformer position embeddings must be of shape (n_ctx, d_model). They have shape: {W_pos.shape}"
-
-        # As far as I can tell, self.W_pos = W_pos and self.W_pos = nn.Parameter(W_pos) are equivalent? The parameters are updated in lockstep, though in the latter each parameter has a separate gradient buffer, which are combined by the optimizer? PyTorch is weird man...
-        self.shortformer_W_pos = W_pos
-    
-    def shortformer_calculate_qk(self, x):
-        ctx_length = x.size(1)
+    def shortformer_calculate_qk(self, x, shortformer_pos_embed):
         # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
         attn_input = self.hook_attn_input(
-            x + 
-            self.shortformer_W_pos[:ctx_length, :]
+            x + shortformer_pos_embed
             ) # [batch, pos, d_model]
         q = self.hook_q(
             einsum("batch pos d_model, head_index d_model d_head \
@@ -373,14 +401,17 @@ class TransformerBlock(nn.Module):
         self.cfg = cfg
         if self.cfg.normalization_type == "LN":
             self.ln1 = LayerNorm(cfg)
-            self.ln2 = LayerNorm(cfg)
+            if not self.cfg.attn_only:
+                self.ln2 = LayerNorm(cfg)
         elif self.cfg.normalization_type == "LNPre":
             # We've folded in LayerNorm weights, so just need the center + scale parts
             self.ln1 = LayerNormPre(cfg)
-            self.ln2 = LayerNormPre(cfg)
+            if not self.cfg.attn_only:
+                self.ln2 = LayerNormPre(cfg)
         elif self.cfg.normalization_type is None:
             self.ln1 = nn.Identity()
-            self.ln2 = nn.Identity()
+            if not self.cfg.attn_only:
+                self.ln2 = nn.Identity()
         else:
             logging.warning(
                 f"Invalid normalization_type passed in {self.cfg.normalization_type}"
@@ -392,63 +423,47 @@ class TransformerBlock(nn.Module):
             assert self.cfg.attn_types is not None
             attn_type = self.cfg.attn_types[block_index]
             self.attn = Attention(cfg, attn_type, block_index)
-        self.mlp = MLP(cfg)
+        if not self.cfg.attn_only:
+            self.mlp = MLP(cfg)
 
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
-        self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
+        if not self.cfg.attn_only:
+            self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
 
-    def forward(self, x):
-        resid_pre = self.hook_resid_pre(x)  # [batch, pos, d_model]
+    def forward(
+            self, 
+            resid_pre: torch.Tensor, 
+            shortformer_pos_embed: Optional[torch.Tensor] = None,
+            past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
+        ):
+        """A single Transformer block.
+
+        Args:
+            resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
+            cache (EasyTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
+            shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See EasyTransformerConfig for details. Defaults to None.
+
+        Returns:
+            _type_: _description_
+        """
+        resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
         normalized_resid_pre = self.ln1(resid_pre)
         attn_out = self.hook_attn_out(
-            self.attn(normalized_resid_pre)
+            self.attn(
+                normalized_resid_pre, 
+                shortformer_pos_embed = shortformer_pos_embed,
+                past_kv_cache_entry = past_kv_cache_entry)
         )  # [batch, pos, d_model]
-        resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
-        
-        normalized_resid_mid = self.ln2(resid_mid)
-        mlp_out = self.hook_mlp_out(
-            self.mlp(normalized_resid_mid)
-        )  # [batch, pos, d_model]
-        resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
-        return resid_post
-
-class AttnOnlyBlock(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig], block_index):
-        super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
-        if self.cfg.normalization_type == "LN":
-            self.ln1 = LayerNorm(cfg)
-        elif self.cfg.normalization_type == "LNPre":
-            # We've folded in LayerNorm weights, so just need the center + scale parts
-            self.ln1 = LayerNormPre(cfg)
-        elif self.cfg.normalization_type is None:
-            self.ln1 = nn.Identity()
+        if not self.cfg.attn_only:
+            resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
+            normalized_resid_mid = self.ln2(resid_mid)
+            mlp_out = self.hook_mlp_out(
+                self.mlp(normalized_resid_mid)
+            )  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         else:
-            logging.warning(
-                f"Invalid normalization_type passed in {self.cfg.normalization_type}"
-            )
-
-        if not self.cfg.use_local_attn:
-            self.attn = Attention(cfg, "global", block_index)
-        else:
-            assert self.cfg.attn_types is not None
-            attn_type = self.cfg.attn_types[block_index]
-            self.attn = Attention(cfg, attn_type, block_index)
-
-        self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
-        self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
-        self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
-
-    def forward(self, x):
-        resid_pre = self.hook_resid_pre(x)  # [batch, pos, d_model]
-        normalized_resid_pre = self.ln1(resid_pre)
-        attn_out = self.hook_attn_out(
-            self.attn(normalized_resid_pre)
-        )  # [batch, pos, d_model]
-        resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
         return resid_post

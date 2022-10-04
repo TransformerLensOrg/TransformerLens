@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 import einops
 import logging
+import tqdm.auto as tqdm
 
 from functools import *
 
@@ -19,9 +20,14 @@ from transformers import (
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer import EasyTransformerConfig
 
+from easy_transformer.caching import (
+    EasyTransformerKeyValueCache,
+    EasyTransformerKeyValueCacheEntry,
+)
+
 from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
-from easy_transformer.utils import lm_cross_entropy_loss
+from easy_transformer.utils import lm_cross_entropy_loss, sample_logits
 
 
 """
@@ -70,6 +76,8 @@ class EasyTransformer(HookedRootModule):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig(**cfg)
+        elif isinstance(cfg, str):
+            raise ValueError("Please pass in a config dictionary or EasyTransformerConfig object. If you want to load a pretrained model, use EasyTransformer.from_pretrained() instead.")
         self.cfg = cfg
         if tokenizer is not None:
             self.tokenizer = tokenizer
@@ -93,21 +101,14 @@ class EasyTransformer(HookedRootModule):
 
         self.pos_embed = PosEmbed(self.cfg)
         self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
-
-        if self.cfg.attn_only:
-            self.blocks = nn.ModuleList(
-                [
-                    AttnOnlyBlock(self.cfg, block_index)
-                    for block_index in range(self.cfg.n_layers)
-                ]
-            )
-        else:
-            self.blocks = nn.ModuleList(
-                [
-                    TransformerBlock(self.cfg, block_index)
-                    for block_index in range(self.cfg.n_layers)
-                ]
-            )
+        
+        self.blocks = nn.ModuleList(
+            [
+                TransformerBlock(self.cfg, block_index)
+                for block_index in range(self.cfg.n_layers)
+            ]
+        )
+        
         if self.cfg.normalization_type == "LN":
             self.ln_final = LayerNorm(self.cfg)
         elif self.cfg.normalization_type == "LNPre":
@@ -122,11 +123,6 @@ class EasyTransformer(HookedRootModule):
             )
         self.unembed = Unembed(self.cfg)
 
-        if self.cfg.positional_embedding_type == "shortformer":
-            # Load in positional embeddings to each attn layer to use for shortformer style attention, rather than adding to the residual stream.
-            for block in self.blocks:
-                block.attn.shortformer_load_pos_embeds(self.pos_embed.W_pos)
-
         if self.cfg.init_weights:
             self.init_weights()
 
@@ -137,7 +133,13 @@ class EasyTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
-    def forward(self, input: Union[str, torch.Tensor], return_type: Optional[str] = "logits", prepend_bos: bool = True) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    def forward(
+        self, 
+        input: Union[str, torch.Tensor], 
+        return_type: Optional[str] = "logits", 
+        prepend_bos: bool = True, 
+        past_kv_cache: Optional[EasyTransformerKeyValueCache] = None
+        ) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
@@ -149,20 +151,44 @@ class EasyTransformer(HookedRootModule):
             ), "Must provide a tokenizer if passing a string to the model"
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
-            # Moves tokens to the device of the model by default
-            # Maybe this is annoying - let me know if you want an option to disable
-            tokens = input.to(self.cfg.device)
+            tokens = input
+        assert isinstance(tokens, torch.Tensor)
+        # If we're doing caching, then we reuse keys and values from previous runs, as that's the only 
+        # way that past activations will affect the final logits. The cache contains those so we don't 
+        # need to recompute them. This is useful for generating text. As we have absolute positional 
+        # encodings, to implement this we have a `pos_offset` variable, defaulting to zero, which says 
+        # to offset which positional encodings are used (cached keys and values were calculated with 
+        # their own positional encodings).
+        if past_kv_cache is None:
+            pos_offset = 0
+        else:
+            batch_size, ctx_length = tokens.shape
+            cached_batch_size, cache_ctx_length, num_heads_in_cache, d_head_in_cache = past_kv_cache[0].past_keys.shape
+            assert cached_batch_size == batch_size
+            assert num_heads_in_cache == self.cfg.n_heads
+            assert d_head_in_cache == self.cfg.d_head
+            # If we want to generate from the empty string, we'd pass in an empty cache, so we need to handle that case
+            assert cache_ctx_length == 0 or ctx_length == 1, "Pass in one token at a time after loading cache"
+            pos_offset = cache_ctx_length
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
-        pos_embed = self.hook_pos_embed(self.pos_embed(tokens))  # [batch, pos, d_model]
+        pos_embed = self.hook_pos_embed(
+            self.pos_embed(tokens, pos_offset)
+        )  # [batch, pos, d_model]
         if self.cfg.positional_embedding_type != "shortformer":
             residual = embed + pos_embed  # [batch, pos, d_model]
+            shortformer_pos_embed = None
         else:
-            # If we're using shortformer style attention, we don't add the positional embedding to the residual stream
+            # If we're using shortformer style attention, we don't add the positional embedding to the residual stream. See EasyTransformerConfig for details
             residual = embed
-        for block in self.blocks:
+            shortformer_pos_embed = pos_embed
+        for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
-            residual = block(residual)  # [batch, pos, d_model]
+            residual = block(
+                residual, 
+                past_kv_cache = past_kv_cache[i] if past_kv_cache is not None else None, # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
+                shortformer_pos_embed = shortformer_pos_embed
+            )  # [batch, pos, d_model]
         if return_type is None:
             return None
         else:
@@ -199,17 +225,23 @@ class EasyTransformer(HookedRootModule):
                 input = [self.tokenizer.bos_token + string for string in input]
         return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"].to(self.cfg.device)
     
-    def to_str_tokens(self, input, prepend_bos=True):
-        """Method to map text or tokens to a list of tokens as strings, for a SINGLE input.
+    def to_str_tokens(
+        self, 
+        input: Union[str, torch.Tensor, list], 
+        prepend_bos: bool = True
+        ):
+        """Method to map text, a list of text or tokens to a list of tokens as strings
 
         Args:
-            input (Union[str, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should be a tensor of shape [pos] or [1, pos]
+            input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should be a tensor of shape [pos] or [1, pos]
             prepend_bos (bool, optional): Whether to prepend a BOS token. Only applies if input is a string. Defaults to True.
 
         Returns:
             str_tokens: List of individual tokens as strings
         """
-        if isinstance(input, str):
+        if isinstance(input, list):
+            return list(map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input))
+        elif isinstance(input, str):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos).squeeze()
         elif isinstance(input, torch.Tensor):
             tokens = input
@@ -486,45 +518,7 @@ class EasyTransformer(HookedRootModule):
         return state_dict
     
     def fold_layer_norm(self, state_dict: Dict[str, torch.Tensor]):
-        """Takes in a state dict from a pretrained model, formatted to be consistent with EasyTransformer but with LayerNorm weights and biases. Folds these into the neighbouring weights.
-        
-        What is LayerNorm Folding?
-        Mathematically, LayerNorm is the following:
-        x1 = x0 - x0.mean()
-        x2 = x1 / ((x1**2).mean()).sqrt()
-        x3 = x2 * w
-        x4 = x3 + b
-        
-        Apart from dividing by the norm, these are all pretty straightforwards operations from a linear algebra perspective. And from an interpretability perspective, if anything is linear, it's really easy and you can mostly ignore it (everything breaks up into sums, you can freely change basis, don't need to track interference between terms, etc) - the hard part is engaging with non-linearities!
-        
-        A key thing to bear in mind is that EVERY time we read from the residual stream, we apply a LayerNorm - this gives us a lot of leverage to reason about it!
-        
-        So let's translate this into linear algebra notation.
-        x0 is a vector in R^n
-        
-        x1 = x0 - x0.mean() 
-            = x0 - (x0.mean()) * ones (broadcasting, ones=torch.ones(n))
-            = (x0 @ ones/sqrt(n)) * ones/sqrt(n). ones has norm sqrt(n), so ones/sqrt(n) is the unit vector in the diagonal direction. We're just projecting x0 onto this (fixed) vector and subtracting that value off. Alternately, we're projecting onto the n-1 dimensional subspace orthogonal to ones.
-            
-            Since LayerNorm is applied EVERY time we read from the stream, the model just never uses the ones direction of the residual stream, so it's essentially just decreasing d_model by one. We can simulate this by just centering all matrices writing to the residual stream.
-            Why is removing this dimension useful? I have no idea! I'm not convinced it is...
-        
-        x2 = x1 / ((x1**2).mean()).sqrt() (Ignoring eps)
-           = (x1 / x1.norm()) * sqrt(n)
-           This is a projection onto the unit sphere (well, sphere of radius sqrt(n) - the norm of ones). This is fundamentally non-linear, eg doubling the input keeps the output exactly the same.  
-           This is by far the most irritating part of LayerNorm. I THINK it's mostly useful for numerical stability reasons and not used to do useful computation by the model, but I could easily be wrong! And interpreting a circuit containing LayerNorm sounds like a nightmare...
-           In practice, you can mostly get aware with ignore this and treating the scaling factor as a constant, since it does apply across the entire residual stream for each token - this makes it a "global" property of the model's calculation, so for any specific question it hopefully doesn't matter that much. But when you're considering a sufficiently important circuit that it's a good fraction of the norm of the residual stream, it's probably worth thinking about.
-        
-        x3 = x2 * w
-           = x2 @ W_ln (W_ln is a diagonal matrix with the weights of the LayerNorm)
-           This is really easy to deal with - we're about to be input to a linear layer, and can say (x2 @ W_ln) @ W = x2 @ (W_ln @ W) = x2 @ W_eff - we can just fold the LayerNorm weights into the linear layer weights.
-        
-        x4 = x3 + b is similarly easy - x4 @ W + B = x2 @ W_eff + B_eff, where W_eff = W_ln @ W and B_eff = B + b @ W
-        
-        This function is calculating W_eff and B_eff for each layer reading from the residual stream and replacing W and B with those
-        
-        
-        See this for more: https://transformer-circuits.pub/2021/framework/index.html#:~:text=Handling%20Layer%20Normalization
+        """Takes in a state dict from a pretrained model, formatted to be consistent with EasyTransformer but with LayerNorm weights and biases. Folds these into the neighbouring weights. See EasyTransformerConfig for more details
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of pretrained model
@@ -580,3 +574,240 @@ class EasyTransformer(HookedRootModule):
         """
         self.cfg.use_attn_result = use_attn_result
         
+    @torch.inference_mode()
+    def generate(
+        self,
+        input: Union[str, torch.Tensor],
+        max_new_tokens: int,
+        stop_at_eos: bool = True,
+        eos_token_id: Optional[int] = None,
+        do_sample: bool = False,
+        top_k: Optional[int] = None,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
+        freq_penalty: float = 0.0,
+        num_return_sequences: int = 1,
+        use_past_kv_cache: bool = True,
+        prepend_bos = True,
+        return_type: Optional[str] = "input",
+    ):
+        """
+        Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
+
+        To avoid fiddling with ragged tensors, if we input a batch of text and some sequences finish (by producing an EOT token), we keep running the model on the entire batch, but throw away the output for a finished sequence and just keep adding EOTs to pad.
+
+        Args:
+            input (int): Either a batch of tokens ([batch, pos]) or a text string (this will be converted to a batch of tokens with batch size 1)
+            max_new_tokens (int): Maximum number of tokens to generate
+            stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
+            eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
+            do_sample (bool): If True, sample from the model's output distribution. Otherwise, use greedy search (take the max logit each time).
+            top_k (int): Number of tokens to sample from. If None, sample from all tokens
+            top_p (float): Probability mass to sample from. If 1.0, sample from all tokens. If <1.0, we take the top tokens with cumulative probability >= top_p
+            temperature (float): Temperature for sampling. Higher values will make the model more random (limit of temp -> 0 is just taking the top token, limit of temp -> inf is sampling from a uniform distribution)
+            freq_penalty (float): Frequency penalty for sampling - how much to penalise previous tokens. Higher values will make the model more random
+            use_past_kv_cache (bool): If True, create and use cache to speed up generation
+            prepend_bos (bool): If True, prepend the model's bos_token_id to the input, if it's a string. Irrelevant if input is a tensor.
+            return_type (str, *optional*): The type of the output to return - either a string (str), a tensor of tokens (tensor) or whatever the format of the input was (input). 
+        Returns:
+            outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens - by default returns same type as input
+        """
+        if type(input) == str:
+            # If text, convert to tokens (batch_size=1)
+            assert (
+                self.tokenizer is not None
+            ), "Must provide a tokenizer if passing a string to the model"
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+        else:
+            tokens = input
+
+        if return_type == "default":
+            if type(input) == str:
+                return_type = "str"
+            else:
+                return_type = "tensor"
+
+        assert isinstance(tokens, torch.Tensor)
+        batch_size, ctx_length = tokens.shape
+        tokens = tokens.to(self.cfg.device)
+        if use_past_kv_cache:
+            past_kv_cache = EasyTransformerKeyValueCache.init_cache(self.cfg, self.cfg.device, batch_size)
+        else:
+            past_kv_cache = None
+
+        if stop_at_eos and eos_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+
+            eos_token_id = self.tokenizer.eos_token_id
+            
+            # An array to track which sequences in the batch have finished - if batch_size == 1 it does nothing.
+            unfinished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
+        
+        # Currently nothing in EasyTransformer changes with eval, but this is here in case that changes in the future
+        self.eval()
+
+        for _ in tqdm(range(max_new_tokens)):
+            # While generating, 
+            logits = self.forward(tokens, return_type="logits", past_kv_cache=past_kv_cache)
+            next_tokens = sample_logits(
+                outputs,
+                logits[:, -1, :],
+                top_k=top_k,
+                top_p=top_p,
+                temperature=temperature,
+                freq_penalty=freq_penalty,
+            )
+            if stop_at_eos:
+                # For all unfinished sequences, add on the next token. If a sequence finished, we throw away the generated token and instead add an EOS token to pad.
+                next_tokens = next_tokens * unfinished_sequences + eos_token_id * (
+                    1 - unfinished_sequences
+                )
+                unfinished_sequences.mul_((next_tokens != eos_token_id).long())
+            outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
+            if past_kv_cache is not None:
+                tokens = next_tokens.unsqueeze(-1)
+            else:
+                tokens = outputs
+
+        if not do_sample:
+            return self.greedy_search(
+                tokens,
+                max_new_tokens,
+                stop_at_eos,
+                eos_token_id,
+                past_kv_cache,
+                return_type,
+            )
+        else:
+            return self.sample(
+                tokens,
+                max_new_tokens,
+                stop_at_eos,
+                eos_token_id,
+                top_k,
+                top_p,
+                temperature,
+                freq_penalty,
+                past_kv_cache,
+                return_type,
+            )
+
+    # def greedy_search(
+    #     self,
+    #     tokens: torch.Tensor,
+    #     max_new_tokens: int,
+    #     stop_at_eos: bool = True,
+    #     pad_token_id: Optional[int] = None,
+    #     eos_token_id: Optional[int] = None,
+    #     past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
+    #     return_type: Optional[str] = None,
+    # ):
+    #     """
+    #     Greedily sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
+    #     Args:
+    #         tokens (torch.Tensor): A batch of tokens ([batch, pos])
+    #         max_new_tokens (int): Maximum number of tokens to generate
+    #         stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
+    #         pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
+    #         eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
+    #         past_kv_cache (EasyTransformerKeyValueCache, *optional*): Cache to use for past keys and values for the model. If None, no cache is used
+    #         return_type (str, *optional*): The type of the output to return - either a string (str), a list of strings (list), or a tensor of tokens (tensor). If None, defaults to tensor.
+    #     Returns:
+    #         outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
+    #     """
+    #     B, S = tokens.shape
+    #     outputs = tokens
+    #     unfinished_sequences = tokens.new(tokens.shape[0]).fill_(1)
+
+    #     if stop_at_eos and pad_token_id is None:
+    #         assert (
+    #             self.tokenizer is not None and self.tokenizer.pad_token_id is not None
+    #         ), "Must pass a pad_token_id if stop_at_eos is True and tokenizer is None or has no pad_token_id"
+    #         pad_token_id = self.tokenizer.pad_token_id
+    #     if stop_at_eos and eos_token_id is None:
+    #         assert (
+    #             self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+    #         ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+    #         eos_token_id = self.tokenizer.eos_token_id
+
+    #     for _ in tqdm.tqdm(range(max_new_tokens)):
+    #         logits = self(tokens, return_type="logits", past_kv_cache=past_kv_cache)
+    #         next_tokens = torch.argmax(logits[:, -1, :], dim=-1)
+    #         if stop_at_eos:
+    #             next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
+    #                 1 - unfinished_sequences
+    #             )
+    #             unfinished_sequences.mul_((next_tokens != eos_token_id).long())
+    #         outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
+    #         if past_kv_cache is not None:
+    #             tokens = next_tokens.unsqueeze(-1)
+    #         else:
+    #             tokens = outputs
+
+    #     if return_type is not None and return_type == "str":
+    #         assert self.tokenizer is not None
+    #         outputs = self.tokenizer.batch_decode(outputs)[0]
+    #     elif return_type is not None and return_type == "list":
+    #         assert self.tokenizer is not None
+    #         outputs = self.tokenizer.batch_decode(outputs)
+
+    #     return outputs
+
+    def sample(
+        self,
+        tokens: torch.Tensor,
+        max_new_tokens: int,
+        stop_at_eos: bool = True,
+        eos_token_id: Optional[int] = None,
+        temperature: float = 1.0,
+        top_k: Optional[int] = None,
+        top_p: float = 1.0,
+        freq_penalty: float = 0.0,
+        cache: Optional[EasyTransformerKeyValueCache] = None,
+        return_type: Optional[str] = None,
+    ):
+        """
+        Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
+
+        If temperature == 0.0, greedy search is used instead.
+
+        Args:
+            tokens (torch.Tensor): A batch of tokens ([batch, pos])
+            max_new_tokens (int): Maximum number of tokens to generate
+            stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
+            pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
+            eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
+            top_k (int): Number of tokens to sample from. If None, sample from all tokens
+            top_p (float): Probability mass to sample from. If 1.0, sample from all tokens
+            temperature (float): Temperature for sampling. Higher values will make the model more random
+            freq_penalty (float): Frequency penalty for sampling. Higher values will make the model more random
+            cache (EasyTransformerKeyValueCache, *optional*): Cache to use for the model. If None, no cache is used
+            return_type (str, *optional*): If "str", return a string. If "list", return a list of strings. If None, return a tensor
+        Returns:
+            outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
+        """
+        B, S = tokens.shape
+        outputs = tokens
+
+        if stop_at_eos and pad_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.pad_token_id is not None
+            ), "Must pass a pad_token_id if stop_at_eos is True and tokenizer is None or has no pad_token_id"
+            pad_token_id = self.tokenizer.pad_token_id
+        if stop_at_eos and eos_token_id is None:
+            assert (
+                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
+            ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+            eos_token_id = self.tokenizer.eos_token_id
+
+
+        if return_type is not None and return_type == "str":
+            assert self.tokenizer is not None
+            outputs = self.tokenizer.batch_decode(outputs)[0]
+        elif return_type is not None and return_type == "list":
+            assert self.tokenizer is not None
+            outputs = self.tokenizer.batch_decode(outputs)
+
+        return outputs
