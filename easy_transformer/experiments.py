@@ -68,7 +68,7 @@ class ExperimentMetric:
             assert len(out.shape) == 0, "Output of scalar metric has shape of length > 0"
         self.shape = out.shape
         if self.relative_metric:
-            out = (out / self.baseline) - 1
+            out = (out / abs(self.baseline)) - 1
         return out
 
 
