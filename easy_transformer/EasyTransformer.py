@@ -23,8 +23,9 @@ from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
 from easy_transformer.utils import lm_cross_entropy_loss
 
-# TODO: Add Bloom, GPT-J and GPT-NeoX
+
 """
+TODO: Add Bloom, GPT-J and GPT-NeoX
 EleutherAI/gpt-j-6B
 EleutherAI/gpt-neox-20b
 bloom-350m
@@ -121,6 +122,11 @@ class EasyTransformer(HookedRootModule):
             )
         self.unembed = Unembed(self.cfg)
 
+        if self.cfg.positional_embedding_type == "shortformer":
+            # Load in positional embeddings to each attn layer to use for shortformer style attention, rather than adding to the residual stream.
+            for block in self.blocks:
+                block.attn.shortformer_load_pos_embeds(self.pos_embed.W_pos)
+
         if self.cfg.init_weights:
             self.init_weights()
 
@@ -148,7 +154,11 @@ class EasyTransformer(HookedRootModule):
             tokens = input.to(self.cfg.device)
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         pos_embed = self.hook_pos_embed(self.pos_embed(tokens))  # [batch, pos, d_model]
-        residual = embed + pos_embed  # [batch, pos, d_model]
+        if self.cfg.positional_embedding_type != "shortformer":
+            residual = embed + pos_embed  # [batch, pos, d_model]
+        else:
+            # If we're using shortformer style attention, we don't add the positional embedding to the residual stream
+            residual = embed
         for block in self.blocks:
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
@@ -317,7 +327,8 @@ class EasyTransformer(HookedRootModule):
             return "neox"
         elif model_name == "EleutherAI/gpt-j-6B":
             return "gptj"
-        elif "neo" in model_name:
+        elif model_name in ['EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B',]:
+            # Important to exclude GPT-J and GPT-NeoX, they have different config.
             return "neo"
         else:
             raise ValueError(f"Invalid model name: {model_name}")
@@ -387,10 +398,6 @@ class EasyTransformer(HookedRootModule):
                 "use_local_attn": False,
                 "scale_attn_by_inverse_layer_idx": False,
             }
-        elif model_family == "gptj":
-            raise NotImplementedError
-        elif model_family == "neox":
-            raise NotImplementedError
         else:
             raise NotImplementedError
         cfg = EasyTransformerConfig.from_dict(cfg_dict)
