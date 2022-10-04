@@ -596,6 +596,8 @@ class EasyTransformer(HookedRootModule):
 
         To avoid fiddling with ragged tensors, if we input a batch of text and some sequences finish (by producing an EOT token), we keep running the model on the entire batch, but throw away the output for a finished sequence and just keep adding EOTs to pad.
 
+        This supports entering a single string, but not a list of strings - if the strings don't tokenize to exactly the same length, this gets messy. If that functionality is needed, convert them to a batch of tokens and input that instead.
+
         Args:
             input (int): Either a batch of tokens ([batch, pos]) or a text string (this will be converted to a batch of tokens with batch size 1)
             max_new_tokens (int): Maximum number of tokens to generate
@@ -642,57 +644,45 @@ class EasyTransformer(HookedRootModule):
 
             eos_token_id = self.tokenizer.eos_token_id
             
-            # An array to track which sequences in the batch have finished - if batch_size == 1 it does nothing.
-            unfinished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
+            # An array to track which sequences in the batch have finished.
+            finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
         
         # Currently nothing in EasyTransformer changes with eval, but this is here in case that changes in the future
         self.eval()
-
         for _ in tqdm(range(max_new_tokens)):
-            # While generating, 
-            logits = self.forward(tokens, return_type="logits", past_kv_cache=past_kv_cache)
-            next_tokens = sample_logits(
-                outputs,
-                logits[:, -1, :],
+            # While generating, we keep generating logits, throw away all but the final logits, and then use those logits to sample from the distribution
+            # We keep adding the sampled tokens to the end of tokens.
+            if use_past_kv_cache:
+                # We just take the final tokens, as a [batch, 1] tensor
+                logits = self.forward(tokens[:, -1:], return_type="logits", past_kv_cache=past_kv_cache)
+            else:
+                # We input the entire sequence, as a [batch, pos] tensor, since we aren't using the cache
+                logits = self.forward(tokens, return_type="logits")
+            final_logits = logits[:, -1, :]
+
+            sampled_tokens = sample_logits(
+                final_logits,
                 top_k=top_k,
                 top_p=top_p,
                 temperature=temperature,
                 freq_penalty=freq_penalty,
+                tokens=tokens,
             )
+            
             if stop_at_eos:
                 # For all unfinished sequences, add on the next token. If a sequence finished, we throw away the generated token and instead add an EOS token to pad.
-                next_tokens = next_tokens * unfinished_sequences + eos_token_id * (
-                    1 - unfinished_sequences
-                )
-                unfinished_sequences.mul_((next_tokens != eos_token_id).long())
-            outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
-            if past_kv_cache is not None:
-                tokens = next_tokens.unsqueeze(-1)
-            else:
-                tokens = outputs
+                sampled_tokens[finished_sequences] = eos_token_id
+                finished_sequences.logical_or_(sampled_tokens == eos_token_id)
+            
+            tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
 
-        if not do_sample:
-            return self.greedy_search(
-                tokens,
-                max_new_tokens,
-                stop_at_eos,
-                eos_token_id,
-                past_kv_cache,
-                return_type,
-            )
+            if stop_at_eos and finished_sequences.all():
+                break
+        
+        if return_type == "str":
+            return self.tokenizer.decode(tokens[0])
         else:
-            return self.sample(
-                tokens,
-                max_new_tokens,
-                stop_at_eos,
-                eos_token_id,
-                top_k,
-                top_p,
-                temperature,
-                freq_penalty,
-                past_kv_cache,
-                return_type,
-            )
+            return tokens
 
     # def greedy_search(
     #     self,
