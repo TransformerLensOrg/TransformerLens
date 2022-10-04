@@ -58,11 +58,16 @@ class EasyTransformerConfig:
             Defaults to 'causal'
         attn_only (bool): Whether to only use attention layers, no feedforward 
             layers. Defaults to False
-        seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and NumPy) and to initialize weights. If set to None, does nothing.
+        seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and 
+            NumPy) and to initialize weights. If set to None, does nothing.
         initializer_range (float): The standard deviation of the truncated normal used to initialise the weights.
         init_weights (bool): Whether to initialize the weights. Defaults to True. If False, does not initialize weights.
-        scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention weights by 1/(layer_idx+1), used by Mistral (Stanford) models for numerical stability when training in FP16. Defaults to False.
-        positional_embedding_type (str): The positional embedding used. Options are 'learned' (ie GPT-2 style) and 'shortformer'. Defaults to 'learned'.
+            scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention weights by 1/(layer_idx+1), used by Mistral (Stanford)
+            models for numerical stability when training in FP16. Defaults to False.
+        positional_embedding_type (str): The positional embedding used. Options are 'standard' (ie GPT-2 style, absolute, randomly initialized learned positional embeddings, directly added to the residual stream) and 'shortformer' (GPT-2 style absolute & 
+            learned, but rather than being added to the residual stream they're only added to the inputs to the keys and the queries (ie 
+            key = W_K(res_stream + pos_embed), but values and MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
+            supported. Defaults to 'standard'.
     """
 
     n_layers: int
@@ -92,7 +97,7 @@ class EasyTransformerConfig:
     initializer_range: float = 0.02
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
-    positional_embedding_type: str = 'learned'
+    positional_embedding_type: str = 'standard'
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
