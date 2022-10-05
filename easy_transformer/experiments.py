@@ -371,7 +371,30 @@ class EasyAblation(EasyExperiment):
         self.act_cache = {}
         self.model.reset_hooks()
         self.model.cache_all(self.act_cache)
-        self.model(self.cfg.mean_dataset)
+        toks = self.model.to_tokens(self.cfg.mean_dataset)
+
+        # this snippet as preprocessing for random ablation
+        # max length of something that was tokenized
+        max_len = toks.shape[1]
+        batch_size = toks.shape[0]
+        # find the indices that are padding
+        are_padding = (toks == self.model.tokenizer.pad_token_id).float()
+        # this calculates the index of the first token that's padding in each sequence
+        self.first_pad_index = -torch.sum(are_padding, dim=1).long() + max_len
+        # for each sequence position, get the places where
+        # we can sample from (i.e. not padding)
+        self.allowable_indices = [[] for _ in range(max_len)]
+        self.allowable_lengths = []
+        for i in range(max_len):
+            for j in range(len(self.cfg.mean_dataset)):
+                if self.first_pad_index[j] > i:
+                    self.allowable_indices[i].append(j)
+            self.allowable_lengths.append(len(self.allowable_indices[i]))
+            # pad out self.allowable_indices to be the same length
+            self.allowable_indices[i] += [1e9 for _ in range(batch_size - self.allowable_lengths[i])] # 1e9 so will bug if we clip out of range
+        # self.allowable_indices = torch.tensor(self.allowable_indices).long().T
+        logits = self.model(toks)
+
         self.mean_cache = {}
         for hk in self.act_cache.keys():
             if "blocks" in hk:  # TODO optimize to cache only the right activations
@@ -395,12 +418,13 @@ class EasyAblation(EasyExperiment):
 
         if self.cfg.abl_type == "random":
 
+            # presume that the thing here has size batch * seq_len * ...
+
             mean = get_random_sample(
-                z.clone().flatten(start_dim=0, end_dim=1),
-                (
-                    self.cfg.batch_size,
-                    self.cfg.max_seq_len,
-                ),
+                z.clone(),
+                self.allowable_lengths,
+                self.allowable_indices,
+                self.first_pad_index,
             )
 
         if self.mean_by_groups:
@@ -444,6 +468,7 @@ class EasyAblation(EasyExperiment):
                     seq_no_sem_at_pos.append(seq)
 
             self.seq_no_sem.append(seq_no_sem_at_pos.copy())
+
 
     def update_setup(self, hook_name):
         if self.cfg.abl_type == "random":
@@ -526,7 +551,27 @@ def get_act_hook(fn, alt_act=None, idx=None, dim=None):
     return custom_hook
 
 
-def get_random_sample(activation_set, output_shape):
+def get_random_sample(z, allowable_lengths, allowable_indices, first_pad_index):
+    """
+    z has shape batch_size * seq_len * ...
+    allowable_indices has size seq_len, and gives a list for each of the indices of which dataset examples don't have padding at that places
+    """
+
+    batch_size = z.shape[0]
+    seq_len = z.shape[1]
+    indices = torch.Tensor(np.random.randint(low=np.zeros((batch_size, 1)), high=allowable_lengths)).long() # crazy broadcasting
+
+    # I think index_select or something could do this more cleverly but ehh
+    new_z = z.clone()
+    for i in range(batch_size):
+        for j in range(seq_len):
+            if j >= first_pad_index[i]:
+                continue
+            new_z[i, j] = z[allowable_indices[j][indices[i, j]], j]
+    return new_z
+
+
+def old_get_random_sample(activation_set, output_shape):
     """activation_set: shape (N, ... ). Generate a tensor of shape (batch,seq_len,...) made of vectors sampled from activation_set"""
     N = activation_set.shape[0]
     ori_shape = activation_set.shape[1:]

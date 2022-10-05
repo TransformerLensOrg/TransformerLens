@@ -149,8 +149,9 @@ config = AblationConfig(
     nb_metric_iteration=1,
     max_seq_len=ioi_dataset.max_len,
 )
-abl = EasyAblation(model, config, metric, mean_by_groups=True, groups=ioi_dataset.groups)
+abl = EasyAblation(model, config, metric) # , mean_by_groups=True, groups=ioi_dataset.groups)
 
+assert False
 def ablation_hook(z, act, hook):  
     # batch, seq, head dim, because get_act_hook hides scary things from us
     # TODO probably change this to random ablation when that arrives
