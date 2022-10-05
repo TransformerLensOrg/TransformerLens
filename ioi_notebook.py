@@ -1793,3 +1793,175 @@ for i in tqdm(range(1000)):
     ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
     prbs = probs(model, ioi_dataset)
     print(prbs.mean())
+#%% [markdown] some of Arthur's experiments for sake of saving them
+#%%
+ys = []
+warnings.warn("ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices")
+fig = go.Figure()
+for idx, dataset in enumerate([ioi_dataset[:20], abca_dataset[:20]]):
+    cur_ys = []
+    # cur_end_to = # maybe average over them all???
+    att = show_attention_patterns(model, [(8, 6)], dataset, return_mtx=True, mode="attn")
+    for key in ioi_dataset.word_idx.keys():
+        end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
+        # print(key, end_to_s2.mean().item())
+        cur_ys.append(end_to_s2.mean().item())
+    fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, name=["IOI", "ABCA"][idx]))
+# set the title
+fig.update_layout(title_text="Attention from END to S2")
+fig.show()
+#%% # Q: can we just replace S2 Inhibition Heads with 1.0 attention to S2?
+# A: pretty much yes
+
+from ioi_circuit_extraction import CIRCUIT
+from ioi_utils import probs, logit_diff
+circuit = CIRCUIT.copy()
+
+heads_to_keep = get_heads_circuit(
+    ioi_dataset,
+    circuit=circuit,
+)
+
+heads = circuit["s2 inhibition"].copy()
+
+for change in [False, True]:
+    model.reset_hooks()
+    
+    model, abl = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+    )
+
+    if change:
+        for layer, head in heads:
+            hook_name = f"blocks.{layer}.attn.hook_attn"
+            def s2_ablation_hook(z, act, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
+                assert z.shape == act.shape, (z.shape, act.shape)
+                z = act
+                return z
+
+            act = torch.zeros(size=(ioi_dataset.N, model.cfg.n_heads, ioi_dataset.max_len, ioi_dataset.max_len))
+            act[torch.arange(ioi_dataset.N), :, ioi_dataset.word_idx["end"][:ioi_dataset.N], ioi_dataset.word_idx["S2"][:ioi_dataset.N]] = 0.5
+            cur_hook = get_act_hook(
+                s2_ablation_hook,
+                alt_act=act,
+                idx=head,
+                dim=1,
+            )
+            model.add_hook(hook_name, cur_hook)
+
+    io_probs = probs(model, ioi_dataset)
+    print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}") 
+#%% evidence for the S2 story
+# ablating V for everywhere except S2 barely affects LD. But ablating all V has LD go to almost 0
+
+model.reset_hooks()
+model, abl = do_circuit_extraction(
+    model=model,
+    heads_to_keep=heads_to_keep,
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+)
+
+for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
+    # break
+    cur_tensor_name = f"blocks.{layer}.attn.hook_q"
+    s2_token_idxs = get_extracted_idx(["S2"], ioi_dataset)
+    mean_cached_values = abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
+
+    def s2_v_ablation_hook(z, act, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
+        cur_layer = int(hook.name.split(".")[1])
+        cur_head_idx = hook.ctx["idx"]
+
+        assert hook.name == f"blocks.{cur_layer}.attn.hook_q", hook.name
+        assert len(list(z.shape)) == 3, z.shape
+        assert list(z.shape) == list(act.shape), (z.shape, act.shape)
+
+        z = mean_cached_values.cuda()  # hope that we don't see chaning values of mean_cached_values...
+        return z
+
+    cur_hook = get_act_hook(
+        s2_v_ablation_hook,
+        alt_act=abl.mean_cache[cur_tensor_name],
+        idx=head_idx,
+        dim=2,
+    )
+    model.add_hook(cur_tensor_name, cur_hook)
+
+new_ld = logit_diff(model, ioi_dataset)
+new_probs = probs(model, ioi_dataset)
+print(f"{new_ld=}, {new_probs=}")
+#%% # try the harder experiment where we ablate all previous stuff and see what matters for Q and K...
+
+heads_to_patch = circuit["s2 inhibition"].copy()
+cache_names = set([f"blocks.{patch_layer}.attn.hook_k" for patch_layer, _ in heads_to_patch])
+
+logit_diffs = torch.zeros(size=(12, 12))
+model.reset_hooks()
+base_ld = logit_diff(model, ioi_dataset)
+print(f"base_ld={base_ld}")
+model, abl = do_circuit_extraction(
+    model=model,
+    heads_to_keep=heads_to_keep, # uhhhh I think we want this just for the average values???
+    mlps_to_remove={},
+    ioi_dataset=abca_dataset,
+)
+
+for layer in range(12):
+    for head_idx in range(12):
+        # do a run where we ablate (head, layer)
+        cur_tensor_name = f"blocks.{layer}.attn.hook_result"
+        mean_cached_values = abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
+
+        def ablation_hook(z, act, hook):  
+            # batch, seq, head dim, because get_act_hook hides scary things from us
+            # TODO probably change this to random ablation when that arrives
+            cur_layer = int(hook.name.split(".")[1])
+            cur_head_idx = hook.ctx["idx"]
+
+            assert hook.name == f"blocks.{cur_layer}.attn.hook_result", hook.name
+            assert len(list(z.shape)) == 3, z.shape
+            assert list(z.shape) == list(act.shape), (z.shape, act.shape)
+
+            z = mean_cached_values.cuda()  # hope that we don't see changing values of mean_cached_values...
+            return z
+
+        cur_hook = get_act_hook(
+            ablation_hook,
+            alt_act=abl.mean_cache[cur_tensor_name],
+            idx=head_idx,
+            dim=2,
+        )
+        model.reset_hooks()
+        model.add_hook(cur_tensor_name, cur_hook)
+        cache = {}
+
+        model.cache_some(cache, lambda x: x in cache_names)
+        torch.cuda.empty_cache()
+        logit_diff(model, ioi_dataset)
+        # all_cached[(layer, head_idx)] = cache[f"blocks.{S2_HEAD}.attn.hook_q"].cpu().detach()
+
+        model.reset_hooks()
+        for patch_layer, patch_head in heads_to_patch:
+            def patch_in_q(z, act, hook):
+                # assert hook.name == f"blocks.{patch_head}.attn.hook_q", hook.name # OOH ERR, is commenting this out ok???
+                assert len(list(z.shape)) == 3, z.shape
+                assert list(z.shape) == list(act.shape), (z.shape, act.shape)
+                z = act.cuda()
+                return z
+
+            s2_hook = get_act_hook(
+                patch_in_q,
+                alt_act=cache[f"blocks.{patch_layer}.attn.hook_k"],
+                idx=patch_head, 
+                dim=2,
+            )
+            model.add_hook(f"blocks.{patch_layer}.attn.hook_k", s2_hook)
+
+        ld = logit_diff(model, ioi_dataset)
+        logit_diffs[layer, head_idx] = ld.detach().cpu()
+        print(f"{layer=}, {head_idx=}, {ld=}")
+
+show_pp((logit_diffs - base_ld).T, xlabel="layer", ylabel="head", title="Change in logit diff")
