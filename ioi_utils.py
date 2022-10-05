@@ -135,8 +135,8 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         good_names = [f"blocks.{layer}.attn.hook_attn"]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
+        model.reset_hooks()
         model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
-
         logits = model(ioi_dataset.text_prompts)
         attn_results = torch.zeros(size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len))
         attn_results += -20
@@ -175,7 +175,7 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
             if return_fig and not return_mtx:
                 return fig
             elif return_mtx and not return_fig:
-                attn_results[i,:current_length,:current_length] = attn.clone().cpu()
+                attn_results[i,:current_length,:current_length] = attn[:current_length, :current_length].clone().cpu()
             else:
                 fig.show()
 
@@ -318,7 +318,7 @@ def handle_all_and_std(returning, all, std):
     return (returning).mean().detach().cpu()
 
 
-def logit_diff(model, ioi_dataset, all=False, std=False):
+def logit_diff(model, ioi_dataset, all=False, std=False): # changed by Arthur to take dataset object, :pray: no big backwards compatibility issues
     """
     Difference between the IO and the S logits at the "to" token
     """
