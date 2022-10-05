@@ -233,6 +233,85 @@ fig = px.imshow(
 
 fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
 fig.show()
+#%% Mean everywhere
+
+config_mlp = AblationConfig(
+    abl_type="mean",
+    mean_dataset=owb_seqs,
+    target_module="mlp",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+)
+abl_mlp = EasyAblation(model, config_mlp, metric)
+mlp_result = abl_mlp.run_ablation()
+
+config_attn_layer = AblationConfig(
+    abl_type="mean",
+    mean_dataset=owb_seqs,
+    target_module="attn_layer",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+)
+abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
+attn_result = abl_attn_layer.run_ablation()
+
+layer_ablation = torch.cat([mlp_result, attn_result], dim=0)
+
+fig = px.imshow(
+    layer_ablation,
+    labels={"x": "Layer"},
+    title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+)
+
+fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
+fig.show()
+
+
+# %% random ablation
+
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
+config_mlp = AblationConfig(
+    abl_type="random",
+    mean_dataset=owb_seqs,
+    target_module="mlp",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+    nb_metric_iteration=10,
+    max_seq_len=ioi_dataset.max_len,
+)
+abl_mlp = EasyAblation(model, config_mlp, metric)
+mlp_result = abl_mlp.run_ablation()
+
+config_attn_layer = AblationConfig(
+    abl_type="random",
+    mean_dataset=owb_seqs,
+    target_module="attn_layer",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+    nb_metric_iteration=10,
+    max_seq_len=ioi_dataset.max_len,
+)
+abl_attn_layer = EasyAblation(model, config_attn_layer, metric)
+attn_result = abl_attn_layer.run_ablation()
+
+layer_ablation = torch.cat([mlp_result, attn_result], dim=0)
+
+fig = px.imshow(
+    layer_ablation,
+    labels={"x": "Layer"},
+    title="Logit Difference Variation after Random Ablation at all tokens",
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+)
+
+fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
+fig.show()
 
 
 # %% ABC-mean ablation of mlps
@@ -286,6 +365,30 @@ px.imshow(
     result,
     labels={"y": "Layer", "x": "Head"},
     title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+).show()
+
+# %%
+
+metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
+config = AblationConfig(
+    abl_type="random",
+    mean_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_means=True,
+    verbose=False,
+    nb_metric_iteration=1,
+    max_seq_len=ioi_dataset.max_len,
+)
+abl = EasyAblation(model, config, metric)
+result = abl.run_ablation()
+plotly.offline.init_notebook_mode(connected=True)
+px.imshow(
+    result,
+    labels={"y": "Layer", "x": "Head"},
+    title="Logit Difference Variation after Random Ablation (on Open Web text) at all tokens",
     color_continuous_midpoint=0,
     color_continuous_scale="RdBu",
 ).show()
@@ -1838,6 +1941,7 @@ px.imshow(induction_scores_array, labels={"y": "Layer", "x": "Head"}, color_cont
 
 # %%
 from ioi_utils import compute_next_tok_dot_prod
+import torch.nn.functional as F
 
 IDX = 0
 
@@ -1846,16 +1950,17 @@ def zero_ablate(hook, z):
     return torch.zeros_like(z)
 
 
-head_mask = torch.zeros(model.cfg.n_heads, model.cfg.n_heads)
-head_mask[5, 5] = 1
-head_mask[6, 9] = 1
+head_mask = torch.empty((12, 12), dtype=torch.bool)
+head_mask = torch.fill(head_mask, False)
+head_mask[5, 5] = True
+head_mask[6, 9] = False
 
-attn_head_mask = induction_scores_array > 0.8
+attn_head_mask = head_mask
 
 
 def prune_attn_heads(value, hook):
     # Value has shape [batch, pos, index, d_head]
-    mask = attn_head_mask[hook.layer()]
+    mask = head_mask[hook.layer()]
     value[:, :, mask] = 0.0
     return value
 
@@ -1864,8 +1969,57 @@ def filter_value_hooks(name):
     return name.split(".")[-1] == "hook_v"
 
 
+def compute_logit_probs(rand_tokens_repeat, model):
+    induction_logits = model(rand_tokens_repeat)
+    induction_log_probs = F.log_softmax(induction_logits, dim=-1)
+    induction_pred_log_probs = torch.gather(
+        induction_log_probs[:, :-1].cuda(), -1, rand_tokens_repeat[:, 1:, None].cuda()
+    )[..., 0]
+    return induction_pred_log_probs[:, seq_len:].mean().cpu().detach().numpy()
+
+
+compute_logit_probs(rand_tokens_repeat, model)
+
+# %%
+induct_head = [(5, 1), (7, 2), (7, 10), (6, 9)]
+all_means = []
+for k in range(len(induct_head) + 1):
+    results = []
+    for _ in range(10):
+        head_mask = torch.empty((12, 12), dtype=torch.bool)
+        head_mask = torch.fill(head_mask, False)
+        rd_set = rd.sample(induct_head, k=k)
+        for (l, h) in rd_set:
+            head_mask[l, h] = True
+
+        def prune_attn_heads(value, hook):
+            # Value has shape [batch, pos, index, d_head]
+            mask = head_mask[hook.layer()]
+            value[:, :, mask] = 0.0
+            return value
+
+        model.reset_hooks()
+        model.add_hook(filter_value_hooks, prune_attn_heads)
+        results.append(compute_logit_probs(rand_tokens_repeat, model))
+
+    results = np.array(results)
+    all_means.append(results.mean())
+
+fig = px.bar(
+    all_means, title="Loss on repeated random tokens sequences (average on 10 random set of KO heads) 5.5 excluded"
+)
+
+
+fig.update_layout(
+    xaxis_title="Number of induction head zero-KO",
+    yaxis_title="Induction loss",
+)
+fig.show()
+# %%
 model.add_hook(filter_value_hooks, prune_attn_heads)
 
+
+# model.reset_hooks()
 prod = np.zeros((model.cfg.n_layers, model.cfg.n_heads, len(rand_tokens_repeat[IDX])))
 for layer in range(12):
     for head in range(12):
