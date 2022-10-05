@@ -180,6 +180,7 @@ class AblationConfig(ExperimentConfig):
         assert not (abl_type == "random" and self.nb_metric_iteration < 0)
         assert not (abl_type != "random" and self.nb_metric_iteration != 1)
         assert not (abl_type == "random" and not (cache_means)), "You must cache mean for random ablation"
+        assert not (abl_type == "random" and self.head_circuit in ["attn", "attn scores"]), "Random ablation is not implemented for attention circuit"
 
         if abl_type == "random" and (batch_size is None or max_seq_len is None):
             warnings.warn(
