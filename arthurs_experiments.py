@@ -1131,7 +1131,7 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
 new_ld = logit_diff(model, ioi_dataset)
 new_probs = probs(model, ioi_dataset)
 print(f"{new_ld=}, {new_probs=}")
-#%% # try the harder experiment where we ablate all previous stuff and see what matters for Q and K...
+#%% # new shit: attention probs on S2 is the score
 
 heads_to_patch = circuit["s2 inhibition"].copy()
 attn_circuit_template = "blocks.{patch_layer}.attn.hook_k"
@@ -1152,7 +1152,7 @@ experiment_metric = ExperimentMetric(metric=metric, dataset=ioi_dataset, relativ
 config = AblationConfig(
     abl_type="random",
     mean_dataset=abca_dataset.text_prompts,
-    target_module="attn_head",
+    target_module="mlp",
     head_circuit="result",
     cache_means=True,
     verbose=False,
