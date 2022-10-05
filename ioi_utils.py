@@ -322,15 +322,14 @@ def logit_diff(model, ioi_dataset, all=False, std=False):
     """
     Difference between the IO and the S logits at the "to" token
     """
-    text_prompts = ioi_dataset.text_prompts
-    logits = model(text_prompts).detach()
+    logits = model(ioi_dataset.toks.long()).detach()
     IO_logits = logits[
-        torch.arange(len(text_prompts)),
+        torch.arange(len(ioi_dataset)),
         ioi_dataset.word_idx["end"],
         ioi_dataset.io_tokenIDs,
     ]
     S_logits = logits[
-        torch.arange(len(text_prompts)),
+        torch.arange(len(ioi_dataset)),
         ioi_dataset.word_idx["end"],
         ioi_dataset.s_tokenIDs,
     ]
