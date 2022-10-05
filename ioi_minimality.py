@@ -105,7 +105,32 @@ abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
 
 #%% # do some initial experiments with the naive circuit
+<<<<<<< HEAD
+
+CIRCUIT = {
+    "name mover": [
+        (9, 9),  # by importance
+        (10, 0),
+        (9, 6),
+        (10, 10),
+        (10, 6),
+        (10, 2),
+        (10, 1),
+        (11, 2),
+        (11, 9),
+        (9, 7),
+        (11, 3),
+    ],
+    "negative": [(10, 7), (11, 10)],
+    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "duplicate token": [(0, 1), (0, 10), (3, 0)],
+    "previous token": [(2, 2), (2, 9), (4, 11)],
+}
+
+=======
 # UH         IS THIS JUST NOT GOOD?
+>>>>>>> 43eeb1a3ec59b30098261fb8749d97b3b6911b29
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
 circuit = circuits[1]
 
@@ -130,9 +155,7 @@ model, _ = do_circuit_extraction(
 circuit_baseline_metric = metric(model, ioi_dataset)
 print(f"{model_baseline_metric=} {circuit_baseline_metric=}")
 #%%
-def get_basic_extracted_model(
-    model, ioi_dataset, mean_dataset=None, circuit=circuits[1]
-):
+def get_basic_extracted_model(model, ioi_dataset, mean_dataset=None, circuit=circuits[1]):
     if mean_dataset is None:
         mean_dataset = ioi_dataset
     heads_to_keep = get_heads_circuit(
@@ -161,9 +184,7 @@ model = get_basic_extracted_model(
 )
 torch.cuda.empty_cache()
 
-circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
-    model, ioi_dataset, std=True
-)
+circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
 circuit_baseline_prob, circuit_baseline_prob_std = probs(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
@@ -211,8 +232,25 @@ for head in J.keys():
 # name mover shit
 for i, head in enumerate(circuit["name mover"]):
     old_entry = J[head]
+<<<<<<< HEAD
+    J[head] = []
+    for other_head in circuit["name mover"][: i + 1]:
+        J[head].append(other_head)
+
+# for i, head in enumerate(circuit["name mover"]):
+# J[head] += [(10, 7), (11, 10)]
+
+for i, head in enumerate(circuit["induction"]):
+    J[head] += [(10, 7), (11, 10)]
+
+# J[(9, 6)] = [(9, 9), (9, 6)]
+# J[(10, 10)] = [(9, 9), (10, 10)]
+J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]  # by importance
+#%%
+=======
     J[head] = deepcopy(circuit["name mover"][: i + 1]) # turn into the previous things
 #%% 
+>>>>>>> 43eeb1a3ec59b30098261fb8749d97b3b6911b29
 results = {}
 
 if "results_cache" not in dir():
@@ -228,9 +266,7 @@ for circuit_class in circuit.keys():
 
         for idx, ablated_stuff in enumerate([base, summit]):
             if ablated_stuff not in results_cache:  # see the if False line
-                new_heads_to_keep = get_heads_circuit(
-                    ioi_dataset, excluded=ablated_stuff, circuit=circuit
-                )
+                new_heads_to_keep = get_heads_circuit(ioi_dataset, excluded=ablated_stuff, circuit=circuit)
                 model.reset_hooks()
                 model, _ = do_circuit_extraction(
                     model=model,
@@ -245,9 +281,7 @@ for circuit_class in circuit.keys():
                 print("Do sad thing")
             results[head][idx] = results_cache[ablated_stuff]
 
-        print(
-            f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}"
-        )
+        print(f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}")
 #%%
 ac = ALL_COLORS
 cc = CLASS_COLORS.copy()
@@ -275,20 +309,20 @@ for j, G in enumerate(relevant_classes + ["backup name mover"]):
         curvys = list(circuit[G])
     curvys = sorted(curvys, key=lambda x: -abs(results[x][1] - results[x][0]))
 
-    for v in curvys: # i, v in enumerate(list(circuit[G])):
-            # if G == "name mover":
-            #     if v in [(9, 9), (9, 6), (10, 0)]:
-            #         widths.append(1)
-            #         names.append("name mover")
-            #         colors.append(cc[G])
-            #     else:
-            #         widths.append(0.2)
-            #         names.append("dis")    
-            #         colors.append("rgb(27,100,119)")
-            # else:
-            #     widths.append(1)
-            #     colors.append(cc[G])
-            #     names.append(G)
+    for v in curvys:  # i, v in enumerate(list(circuit[G])):
+        # if G == "name mover":
+        #     if v in [(9, 9), (9, 6), (10, 0)]:
+        #         widths.append(1)
+        #         names.append("name mover")
+        #         colors.append(cc[G])
+        #     else:
+        #         widths.append(0.2)
+        #         names.append("dis")
+        #         colors.append("rgb(27,100,119)")
+        # else:
+        #     widths.append(1)
+        #     colors.append(cc[G])
+        #     names.append(G)
         colors.append(cc[G])
         xs.append(str(v))
         initial_y = results[v][0]
@@ -317,7 +351,7 @@ for j, G in enumerate(relevant_classes + ["backup name mover"]):
             y=y,
             base=base,
             marker_color=colors,
-            width=[1.0 for _ in range(len(xs))], ## if G != "dis" else [0.2 for _ in range(len(xs))],
+            width=[1.0 for _ in range(len(xs))],  ## if G != "dis" else [0.2 for _ in range(len(xs))],
             name=G,
         )
     )
@@ -343,10 +377,7 @@ all_vs = []
 fig.add_trace(
     go.Scatter(
         x=all_vs,
-        y=[
-            (baseline_prob if metric == probs else baseline_ldiff)
-            for _ in range(len(all_vs))
-        ],
+        y=[(baseline_prob if metric == probs else baseline_ldiff) for _ in range(len(all_vs))],
         name="Baseline model performance",
         line=dict(color="black"),
         fill="toself",
@@ -376,12 +407,7 @@ fig.update_xaxes(
     gridwidth=0.1,
     # minor=dict(showgrid=False),  # please plotly, just do what I want
 )
-fig.update_layout(legend=dict(
-    yanchor="top",
-    y=0.99,
-    xanchor="left",
-    x=0.01
-))
+fig.update_layout(legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
 fig.update_yaxes(gridcolor="black", gridwidth=0.1)
 fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
@@ -389,23 +415,26 @@ fig.show()
 
 assert False
 
+
 def capitalise(name):
     """
     turn each word into a capitalised word
     """
     return " ".join([word.capitalize() for word in name.split(" ")])
 
+
 idx = 0
 for j, G in enumerate(relevant_classes + ["backup name mover"]):
     initial_ys = initial_y_cache[G]
     final_ys = final_y_cache[G]
-    for i in range(len(initial_ys)): ## , v in enumerate(list(circuit[G])):
+    for i in range(len(initial_ys)):  ## , v in enumerate(list(circuit[G])):
         head = circuit[G][i] if G != "backup name mover" else circuit["name mover"][i]
         group = str(G)
         start = initial_ys[i]
         end = final_ys[i]
         name = capitalise(group)
-        if name == "S2 Inhibition": name = "S Inhibition"
+        if name == "S2 Inhibition":
+            name = "S Inhibition"
         K = J[head]
         if G == "backup name mover":
             K = "All previous NMs and distributed NMs"
@@ -549,16 +578,12 @@ for j in range(2, 4):
     s_positions = ioi_dataset.word_idx["S"]
 
     # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
-    def attention_pattern_modifier(
-        z, hook
-    ):  # batch, seq, head dim, because get_act_hook hides scary things from us
+    def attention_pattern_modifier(z, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
         cur_layer = int(hook.name.split(".")[1])
         cur_head_idx = hook.ctx["idx"]
 
         assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
-        assert (
-            len(list(z.shape)) == 3
-        ), z.shape  # batch, seq (attending_query), attending_key
+        assert len(list(z.shape)) == 3, z.shape  # batch, seq (attending_query), attending_key
 
         prior_stuff = []
 
@@ -567,9 +592,7 @@ for j in range(2, 4):
             # print(prior_stuff[-1].shape, torch.sum(prior_stuff[-1]))
 
         for i in range(-1, 2):
-            z[:, s_positions + i, :] = prior_stuff[
-                (i + j) % 3
-            ]  # +1 is the do nothing one
+            z[:, s_positions + i, :] = prior_stuff[(i + j) % 3]  # +1 is the do nothing one
 
         return z
 

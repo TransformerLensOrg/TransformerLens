@@ -631,4 +631,4 @@ class IOIDataset:
         raise NotImplementedError()
 
     def __len__(self):
-        return
+        return self.N

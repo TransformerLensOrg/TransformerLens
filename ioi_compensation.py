@@ -63,13 +63,7 @@ from ioi_dataset import (
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
 )
-from ioi_utils import (
-    clear_gpu_mem,
-    show_tokens,
-    show_pp,
-    show_attention_patterns,
-    safe_del,
-)
+from ioi_utils import clear_gpu_mem, show_tokens, show_pp, show_attention_patterns, safe_del, compute_next_tok_dot_prod
 
 from ioi_circuit_extraction import (
     join_lists,
@@ -152,6 +146,7 @@ CIRCUIT = {
         (11, 9),
         (11, 1),
         (9, 7),
+        (11, 3),
     ],
     "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
@@ -318,9 +313,7 @@ def writing_direction_heatmap(
 model.reset_hooks()
 model, _ = do_circuit_extraction(
     model=model,
-    heads_to_remove=get_heads_from_nodes(
-        [((10, 7), "end"), ((11, 10), "end"), ((10, 0), "end"), ((9, 6), "end"), ((9, 9), "end")], ioi_dataset
-    ),
+    heads_to_remove=get_heads_from_nodes([((9, 6), "end"), ((9, 9), "end"), ((10, 0), "end")], ioi_dataset),
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
     mean_dataset=mean_dataset,
@@ -705,105 +698,40 @@ compensation_plot(model, ioi_dataset, layer=9, layer_to_get="final_logit_diff")
 webtext = load_dataset("stas/openwebtext-10k")
 
 max_nb_tok = 100
-nb_seq = 300
+nb_seq = 1000
 owt_seqs = [webtext["train"]["text"][i][:2000] for i in range(nb_seq)]
 
 # %%
-def get_gray_scale(val, min_val, max_val):
-    max_col = 255
-    min_col = 232
-    max_val = max_val
-    min_val = min_val
-    val = val
-    return int(min_col + ((max_col - min_col) / (max_val - min_val)) * (val - min_val))
+
+from ioi_utils import get_time, find_owt_stimulus, print_toks_with_color
+import os
 
 
-def print_toks_with_color(toks, color, show_low=False, show_high=False, show_all=False):
-    min_v = min(color)
-    max_v = max(color)
-    for i, t in enumerate(toks):
-        c = get_gray_scale(color[i], min_v, max_v)
-        text_c = 232 if c > 240 else 255
-        show_value = show_all
-        if show_low and c < 232 + 5:
-            show_value = True
-        if show_high and c > 255 - 5:
-            show_value = True
-
-        if show_value:
-            if len(str(np.round(color[i], 2)).split(".")) > 1:
-                val = str(np.round(color[i], 2)).split(".")[0] + "." + str(np.round(color[i], 2)).split(".")[1][:2]
-            else:
-                val = str(np.round(color[i], 2))
-            print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}({val})\033[0;0m", end="")
-        else:
-            print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}\033[0;0m", end="")
-
-
-def find_owt_stimulus(model, owt_sentences, l, h):
-    cache = {}
-    model.cache_some(cache, lambda x: x in [f"blocks.{l}.attn.hook_result"], device="cpu")
-    toks = model.tokenizer(owt_sentences, padding=False).input_ids
-    print_gpu_mem("pre run")
-
-    prod = []
-    for i, sentence in tqdm(enumerate(owt_sentences)):
-        model([sentence])
-        # print_gpu_mem("post run")
-        n_seq = len(owt_sentences)
-        attn_result = cache[f"blocks.{l}.attn.hook_result"][0, :-1, h, :].cpu()  # nb seq, seq_len-1, embed dim
-
-        model_unembed = (
-            model.unembed.W_U.detach().cpu()
-        )  # note that for GPT2 embeddings and unembeddings are tided such that W_E = Transpose(W_U)
-
-        next_tok = toks[i][1:]  # nb_seq, seq_len-1
-        next_tok_dir = model_unembed[next_tok]  # nb_seq, seq_len-1, dim
-        # print(next_tok_dir.shape, attn_result.shape)
-        prod.append(torch.einsum("hd,hd->h", attn_result, next_tok_dir).detach().cpu().numpy())
-    print_gpu_mem("post run")
-
-    min_prod = np.array([np.min(prod[i]) for i in range(len(prod))])
-    max_prod = np.array([np.max(prod[i]) for i in range(len(prod))])
-
-    # select 5 sequence with max and min prod values
-    max_seq_idx = np.argsort(max_prod, axis=0)[-5:]
-    min_seq_idx = np.argsort(min_prod, axis=0)[:5]
-
-    # print(max_seq_idx)
-
-    max_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in max_seq_idx]
-    min_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in min_seq_idx]
-    max_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in max_seq_idx]
-    min_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in min_seq_idx]
-
-    print("\033[2;31;43m MAX ACTIVATION \033[0;0m")
-
-    for seq_nb, s in enumerate(max_seq):
-        # print(len(s), len(max_seq_vals[seq_nb]))
-        print_toks_with_color(s, max_seq_vals[seq_nb], show_high=True)
-        print("\n=========================\n")
-
-    print("\033[2;31;43m Min ACTIVATION \033[0;0m")
-
-    for seq_nb, s in enumerate(min_seq):
-        print_toks_with_color(s, min_seq_vals[seq_nb], show_low=True)
-        print("\n=========================\n")
-
-    # return max_seq, min_seq
+# return max_seq, min_seq
 
 
 # %%
-find_owt_stimulus(model, owt_seqs, 11, 1)
+model.reset_hooks()
+for l in range(4, 12):
+    for h in range(12):
+        clear_gpu_mem()
+        print(f"Layer {l} Head {h}")
+        find_owt_stimulus(model, owt_seqs, l, h, export_to_html=True, batch_size=10, k=30)
+
 # %%
 import torch.nn.functional as F
 
 
-def get_per_token_loss(model, seqs):
+def get_per_token_loss(model, seqs, batch_seq=False):
     toks = model.tokenizer(seqs, padding=False).input_ids
     all_losses = []
+    if batch_seq:
+        all_logits = model(seqs)
     for i, sentence in tqdm(enumerate(seqs)):
-        logits = model(sentence)
+        if not batch_seq:
+            logits = model(sentence)
+        else:
+            logits = all_logits[i]
         next_tok = toks[i][1:]  # nb_seq, seq_len-1
         log_probs = F.log_softmax(logits, dim=-1).cpu()
         pred_log_probs = log_probs[0, range(len(next_tok)), next_tok]
@@ -811,10 +739,10 @@ def get_per_token_loss(model, seqs):
     return all_losses
 
 
-update_nm(None, reset=True)
-
-all_losses_M = get_per_token_loss(model, owt_seqs[100:])
-print_toks_with_color(show_tokens(owt_seqs[0], model, return_list=True), all_losses_M[0], show_high=True)
+# update_nm(None, reset=True)
+model.reset_hooks()
+all_losses_M = get_per_token_loss(model, owt_seqs[:100])
+print_toks_with_color(show_tokens(owt_seqs[0], model, return_list=True), all_losses_M[0], show_high=True, show_low=True)
 
 model, _ = do_circuit_extraction(
     model=model,
@@ -825,7 +753,7 @@ model, _ = do_circuit_extraction(
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
 )
-all_losses_C = get_per_token_loss(model, owt_seqs[100:])
+all_losses_C = get_per_token_loss(model, owt_seqs[:100], batch_seq=True)
 
 
 # %%

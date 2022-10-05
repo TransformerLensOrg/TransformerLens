@@ -499,6 +499,7 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     )
     return logit_diff(model, ioi_dataset, all=False)
 
+
 def basis_change(x, y):
     """
     Change the basis (1, 0) and (0, 1) to the basis
@@ -527,3 +528,185 @@ def add_arrow(fig, end_point, start_point, color="black"):
         arrowwidth=1,
         arrowcolor=color,
     )
+
+
+def compute_next_tok_dot_prod(
+    model,
+    sentences,
+    l,
+    h,
+    batch_size=1,
+    seq_tokenized=False,
+):
+    """Compute dot product of model's next token logits with the logits of the next token in the sentences. Support batch_size > 1"""
+    assert len(sentences) % batch_size == 0
+    cache = {}
+    model.cache_some(cache, lambda x: x in [f"blocks.{l}.attn.hook_result"], device="cuda")
+    if seq_tokenized:
+        toks = sentences
+    else:
+        toks = model.tokenizer(sentences, padding=False).input_ids
+
+    prod = []
+    model_unembed = (
+        model.unembed.W_U.detach().cpu()
+    )  # note that for GPT2 embeddings and unembeddings are tided such that W_E = Transpose(W_U)
+    for i in tqdm(range(len(sentences) // batch_size)):
+        # get_time("pre forward")
+        model.run_with_hooks(
+            sentences[i * batch_size : (i + 1) * batch_size], reset_hooks_start=False, reset_hooks_end=False
+        )
+        # get_time("post forward")
+        # print_gpu_mem("post run")
+        # get_time("pre prod")
+        n_seq = len(sentences)
+        for s in range(batch_size):
+            idx = i * batch_size + s
+
+            attn_result = cache[f"blocks.{l}.attn.hook_result"][
+                s, : (len(toks[idx]) - 1), h, :
+            ].cpu()  # nb seq, seq_len-1, embed dim
+            next_tok = toks[idx][1:]  # nb_seq, seq_len-1
+
+            next_tok_dir = model_unembed[next_tok]  # nb_seq, seq_len-1, dim
+            # print(attn_result.shape, next_tok_dir.shape, len(toks[idx]) - 1)
+            # print(next_tok_dir.shape, attn_result.shape)
+            prod.append(torch.einsum("hd,hd->h", attn_result, next_tok_dir).detach().cpu().numpy())
+        # get_time("post prod")
+    # print_gpu_mem("post run")
+    return prod
+
+
+def get_gray_scale(val, min_val, max_val):
+    max_col = 255
+    min_col = 232
+    max_val = max_val
+    min_val = min_val
+    val = val
+    return int(min_col + ((max_col - min_col) / (max_val - min_val)) * (val - min_val))
+
+
+def get_opacity(val, min_val, max_val):
+    max_val = max_val
+    min_val = min_val
+    return (val - min_val) / (max_val - min_val)
+
+
+def print_toks_with_color(toks, color, show_low=False, show_high=False, show_all=False):
+    min_v = min(color)
+    max_v = max(color)
+    for i, t in enumerate(toks):
+        c = get_gray_scale(color[i], min_v, max_v)
+        text_c = 232 if c > 240 else 255
+        show_value = show_all
+        if show_low and c < 232 + 5:
+            show_value = True
+        if show_high and c > 255 - 5:
+            show_value = True
+
+        if show_value:
+            if len(str(np.round(color[i], 2)).split(".")) > 1:
+                val = str(np.round(color[i], 2)).split(".")[0] + "." + str(np.round(color[i], 2)).split(".")[1][:2]
+            else:
+                val = str(np.round(color[i], 2))
+            print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}({val})\033[0;0m", end="")
+        else:
+            print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}\033[0;0m", end="")
+
+
+def tok_color_scale_to_html(toks, color):
+    # print(len(toks), len(color))
+    min_v = min(color)
+    max_v = max(color)
+    # display mix and max color in header
+    html = (
+        f'<span style="background-color: rgba({255},{0},{0}, {0})">Min: {min_v:.2f} </span>'
+        + " "
+        + f'<span style="background-color: rgba({255},{0},{0}, {255})">Max: {max_v:.2f}</span>'
+        + "<br><br><br>"
+    )
+    for i, t in enumerate(toks):
+        op = get_opacity(color[i], min_v, max_v)
+
+        html += f'<span style="background-color: rgba({255},{0},{0}, {op})">{t}</span>'
+    return html
+
+
+def export_tok_col_to_file(folder, head, layer, tok_col, toks, chunck_name):
+    if not os.path.isdir(folder):
+        os.mkdir(folder)
+
+    if not os.path.isdir(os.path.join(folder, f"layer_{layer}_head_{head}")):
+        os.mkdir(os.path.join(folder, f"layer_{layer}_head_{head}"))
+
+    filename = f"{folder}/layer_{layer}_head_{head}/layer_{layer}_head_{head}_{chunck_name}.html"
+    all_html = ""
+    for i in range(len(tok_col)):
+        all_html += f"<br><br><br>==============Sequence {i}=============<br><br><br>" + tok_color_scale_to_html(
+            toks[i], tok_col[i]
+        )
+    with open(filename, "w") as f:
+        f.write(all_html)
+
+
+def find_owt_stimulus(
+    model, owt_sentences, l, h, k=5, batch_size=1, export_to_html=False, folder="OWT_stimulus_by_head"
+):
+    prod = compute_next_tok_dot_prod(model, owt_sentences, l, h, batch_size=batch_size)
+
+    min_prod = np.array([np.min(prod[i]) for i in range(len(prod))])
+    max_prod = np.array([np.max(prod[i]) for i in range(len(prod))])
+
+    # select 5 sequence with max and min prod values
+    max_seq_idx = np.argsort(max_prod, axis=0)[-k:]
+    min_seq_idx = np.argsort(min_prod, axis=0)[:k]
+
+    # print(max_seq_idx)
+    random_idx = np.random.choice(len(owt_sentences), k)
+
+    max_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in max_seq_idx]
+    min_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in min_seq_idx]
+    random_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in random_idx]
+    max_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in max_seq_idx]
+    min_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in min_seq_idx]
+    random_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in random_idx]
+
+    if export_to_html:
+        export_tok_col_to_file(
+            folder,
+            h,
+            l,
+            max_seq_vals,
+            max_seq,
+            "max",
+        )
+        export_tok_col_to_file(
+            folder,
+            h,
+            l,
+            min_seq_vals,
+            min_seq,
+            "min",
+        )
+        export_tok_col_to_file(
+            folder,
+            h,
+            l,
+            random_seq_vals,
+            random_seq,
+            "random",
+        )
+    else:
+
+        print("\033[2;31;43m MAX ACTIVATION \033[0;0m")
+
+        for seq_nb, s in enumerate(max_seq):
+            # print(len(s), len(max_seq_vals[seq_nb]))
+            print_toks_with_color(s, max_seq_vals[seq_nb], show_high=True)
+            print("\n=========================\n")
+
+        print("\033[2;31;43m Min ACTIVATION \033[0;0m")
+
+        for seq_nb, s in enumerate(min_seq):
+            print_toks_with_color(s, min_seq_vals[seq_nb], show_low=True)
+            print("\n=========================\n")
