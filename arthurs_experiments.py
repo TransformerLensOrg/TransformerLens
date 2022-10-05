@@ -1141,13 +1141,14 @@ logit_diffs = torch.zeros(size=(12, 12))
 mlps = torch.zeros(size=(12,))
 model.reset_hooks()
 
-S2_HEAD = 7
-S2_LAYER = 9
+S2_LAYER = 7
+S2_HEAD = 9
 metric = partial(attention_on_token, head_idx=S2_HEAD, layer=S2_LAYER, token="S2")
+model.reset_hooks()
 base_metric = metric(model, ioi_dataset)
 print(f"{base_metric=}")
 
-experiment_metric = ExperimentMetric(metric=metric, dataset=abca_dataset, relative_metric=True)
+experiment_metric = ExperimentMetric(metric=metric, dataset=ioi_dataset, relative_metric=False)
 config = AblationConfig(
     abl_type="random",
     mean_dataset=abca_dataset.text_prompts,
@@ -1159,7 +1160,10 @@ config = AblationConfig(
     max_seq_len=ioi_dataset.max_len,
 )
 abl = EasyAblation(model, config, experiment_metric) # , mean_by_groups=True, groups=ioi_dataset.groups)
-
+e()
+result = abl.run_experiment()
+show_pp((result-base_metric).T, xlabel="head", ylabel="layer", title="attention on S2 change when ablated")
+#%%
 for layer in range(12):
     for head_idx in [None] + list(range(12)):
         # do a run where we ablate (head, layer)
@@ -1172,7 +1176,7 @@ for layer in range(12):
             cur_tensor_name = f"blocks.{layer}.attn.hook_result"
             mean_cached_values = abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
 
-        def ablation_hook(z, act, hook):  
+        def ablation_hook(z, act, hook): 
             # batch, seq, head dim, because get_act_hook hides scary things from us
             cur_layer = int(hook.name.split(".")[1])
             cur_head_idx = hook.ctx["idx"]

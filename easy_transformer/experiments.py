@@ -328,6 +328,7 @@ class EasyAblation(EasyExperiment):
             (semantic_indices is not None) and (config.head_circuit in ["hook_attn_scores", "hook_attn"])
         )  # not implemented (surely not very useful)
         assert not (mean_by_groups and groups is None)
+        assert not (mean_by_groups and config.abl_type != "mean")
         self.semantic_indices = semantic_indices
 
         self.mean_by_groups = mean_by_groups
