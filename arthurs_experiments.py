@@ -7,6 +7,7 @@
 # % do completeness, minimality NOT methods first
 #%%
 from easy_transformer import EasyTransformer
+from functools import partial
 import logging
 import sys
 from ioi_circuit_extraction import *
@@ -75,6 +76,7 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    attention_on_token,
     clear_gpu_mem,
     show_tokens,
     show_pp,
@@ -185,9 +187,6 @@ for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
 
 fig.update_layout(title_text="Attention from END to S2")
 fig.show()
-#%% [markdown] see if we can get meaning from layer 0, and just the MLP thing???
-
-
 
 #%%
 my_toks = [2215,
@@ -1141,9 +1140,14 @@ cache_names = set([attn_circuit_template.format(patch_layer=patch_layer) for pat
 logit_diffs = torch.zeros(size=(12, 12))
 mlps = torch.zeros(size=(12,))
 model.reset_hooks()
-base_ld = logit_diff(model, ioi_dataset)
-print(f"base_ld={base_ld}")
-metric = ExperimentMetric(metric=logit_diff, dataset=abca_dataset, relative_metric=True)
+
+S2_HEAD = 7
+S2_LAYER = 9
+metric = partial(attention_on_token, head_idx=S2_HEAD, layer=S2_LAYER, token="S2")
+base_metric = metric(model, ioi_dataset)
+print(f"{base_metric=}")
+
+experiment_metric = ExperimentMetric(metric=metric, dataset=abca_dataset, relative_metric=True)
 config = AblationConfig(
     abl_type="random",
     mean_dataset=abca_dataset.text_prompts,
@@ -1154,7 +1158,7 @@ config = AblationConfig(
     nb_metric_iteration=1,
     max_seq_len=ioi_dataset.max_len,
 )
-abl = EasyAblation(model, config, metric) # , mean_by_groups=True, groups=ioi_dataset.groups)
+abl = EasyAblation(model, config, experiment_metric) # , mean_by_groups=True, groups=ioi_dataset.groups)
 
 for layer in range(12):
     for head_idx in [None] + list(range(12)):
@@ -1170,7 +1174,6 @@ for layer in range(12):
 
         def ablation_hook(z, act, hook):  
             # batch, seq, head dim, because get_act_hook hides scary things from us
-            # TODO probably change this to random ablation when that arrives
             cur_layer = int(hook.name.split(".")[1])
             cur_head_idx = hook.ctx["idx"]
 
@@ -1193,7 +1196,7 @@ for layer in range(12):
 
         model.cache_some(cache, lambda x: x in cache_names)
         torch.cuda.empty_cache()
-        logit_diff(model, ioi_dataset)
+        metric(model, ioi_dataset)
         # all_cached[(layer, head_idx)] = cache[f"blocks.{S2_HEAD}.attn.hook_q"].cpu().detach()
 
         model.reset_hooks()
@@ -1213,7 +1216,7 @@ for layer in range(12):
             )
             model.add_hook(attn_circuit_template.format(patch_layer=patch_layer), s2_hook)
 
-        ld = logit_diff(model, ioi_dataset)
+        ld = metric(model, ioi_dataset)
 
         if head_idx is None:
             mlps[layer] = ld.detach().cpu()
@@ -1222,7 +1225,7 @@ for layer in range(12):
 
         print(f"{layer=}, {head_idx=}, {ld=}")
 
-att_heads_mean_diff = logit_diffs - base_ld
+att_heads_mean_diff = logit_diffs - base_metric
 show_pp(att_heads_mean_diff.T, ylabel="layer", xlabel="head", title=f"Change in logit diff: {torch.sum(att_heads_mean_diff)}")
 mlps_mean_diff = mlps - base_ld
 show_pp(mlps_mean_diff.T.unsqueeze(0), ylabel="layer", xlabel="head", title=f"Change in logit diff, MLPs: {torch.sum(mlps_mean_diff)}")

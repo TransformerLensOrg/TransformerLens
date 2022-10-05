@@ -345,7 +345,7 @@ def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, st
     cache = {}
     model.cache_some(cache, lambda x: x==hook_name) 
     # shape is batch * head * from * to
-    logits = model(ioi_dataset)
+    logits = model(ioi_dataset.toks.long()).detach()
     atts = cache[hook_name][torch.arange(ioi_dataset.N), head_idx, ioi_dataset.word_idx["end"], ioi_dataset.word_idx[token]]
     return handle_all_and_std(atts, all, std)
 
