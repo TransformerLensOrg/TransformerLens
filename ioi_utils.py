@@ -122,7 +122,7 @@ def show_pp(
 # Plot attention patterns weighted by value norm
 
 
-def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix="", return_fig=False, return_mtx=False):
+def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix="", return_fig=False, return_mtx=False): # Arthur edited for one of my experiments, things work well
     assert mode in [
         "attn",
         "val",
@@ -135,7 +135,6 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         good_names = [f"blocks.{layer}.attn.hook_attn"]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
-        model.reset_hooks()
         model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
         logits = model(ioi_dataset.text_prompts)
         attn_results = torch.zeros(size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len))
@@ -335,6 +334,20 @@ def logit_diff(model, ioi_dataset, all=False, std=False): # changed by Arthur to
     ]
 
     return handle_all_and_std(IO_logits - S_logits, all, std)
+
+
+def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, std=False):
+    """
+    Get the attention on token `token` from the end position
+    """
+
+    hook_name = "blocks.{}.attn.hook_attn".format(layer)
+    cache = {}
+    model.cache_some(cache, lambda x: x==hook_name) 
+    # shape is batch * head * from * to
+    logits = model(ioi_dataset)
+    atts = cache[hook_name][torch.arange(ioi_dataset.N), head_idx, ioi_dataset.word_idx["end"], ioi_dataset.word_idx[token]]
+    return handle_all_and_std(atts, all, std)
 
 
 def positions(x: torch.Tensor):
