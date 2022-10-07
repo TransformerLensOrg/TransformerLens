@@ -127,7 +127,7 @@ ablate_these += [(5, 9),
  (3, 7),
  (5, 2),
  (6, 5)]
-# ablate_these = [0]
+ablate_these = []
 # run some below cell to see the max impactful heads
 
 for this in ablate_these:
@@ -161,25 +161,25 @@ for this in ablate_these:
         idx=head_idx, 
         dim=2 if head_idx is not None else None,
     )
-    # break
     model.add_hook(cur_tensor_name, cur_hook)
-    #break
-#%% [markdown] After adding some hooks we see that yeah MLP0 ablations destroy S2 probs -> this one is at end
-ys = [] # ehhh cell seems fucked - redesign variable input lengths please....
-warnings.warn("ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices")
+
+# [markdown] After adding some hooks we see that yeah MLP0 ablations destroy S2 probs -> this one is at end
+
+#%%
+ys = []
 fig = go.Figure()
 for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
     cur_ys = []
     att = show_attention_patterns(model, [(8, 10)], dataset, return_mtx=True, mode="attn")
     for key in ioi_dataset.word_idx.keys():
         end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
-        # print(key, end_to_s2.mean().item())
+        # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
         cur_ys.append(end_to_s2.mean().item())
-    fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, name=["IOI", "ABCA"][idx]))
+        print(key, end_to_s2.std())
+    fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=[0.5*cur_y for y in cur_ys], name=["IOI", "ABCA"][idx]))
 
 fig.update_layout(title_text="Attention from END to S2")
 fig.show()
-
 #%%
 my_toks = [2215,
  5335,
