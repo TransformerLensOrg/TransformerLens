@@ -328,7 +328,7 @@ class EasyAblation(EasyExperiment):
             (semantic_indices is not None) and (config.head_circuit in ["hook_attn_scores", "hook_attn"])
         )  # not implemented (surely not very useful)
         assert not (mean_by_groups and groups is None)
-        assert not (mean_by_groups and config.abl_type != "mean")
+        assert not (mean_by_groups and config.abl_type not in ["mean", "custom"])
         self.semantic_indices = semantic_indices
 
         self.mean_by_groups = mean_by_groups
@@ -417,9 +417,7 @@ class EasyAblation(EasyExperiment):
         mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
 
         if self.cfg.abl_type == "random":
-
             # presume that the thing here has size batch * seq_len * ...
-
             mean = get_random_sample(
                 z.clone(),
                 self.allowable_lengths,

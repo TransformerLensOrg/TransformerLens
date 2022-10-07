@@ -13,6 +13,7 @@ import sys
 from ioi_circuit_extraction import *
 import optuna
 from ioi_dataset import *
+from ioi_utils import max_2d
 import IPython
 from tqdm import tqdm
 import pandas as pd
@@ -96,53 +97,15 @@ model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
-#%%
-# commented out the below to make IPython thing work
-
-# from ioi_utils import logit_diff
-
-# def baseline(remove_neg=True):
-#     cur_stuff = []
-#     for circuit_class in CIRCUIT.keys():
-#         if circuit_class == "negative" and remove_neg:
-#             continue
-#         for head in CIRCUIT[circuit_class]:
-#             for relevant_token in RELEVANT_TOKENS[head]:
-#                 cur_stuff.append((head, relevant_token))
-#     heads = {head: [] for head, _ in cur_stuff}
-#     for head, val in cur_stuff:
-#         heads[head].append(val)
-#     heads_to_keep = {}
-#     for head in heads.keys():
-#         heads_to_keep[head] = get_extracted_idx(heads[head], ioi_dataset)
-#     model.reset_hooks()
-#     new_model, _ = do_circuit_extraction(
-#         model=model,
-#         heads_to_keep=heads_to_keep,
-#         mlps_to_remove={},
-#         ioi_dataset=ioi_dataset,
-#     )
-#     torch.cuda.empty_cache()
-#     ldiff, std = logit_diff(new_model, ioi_dataset, std=True)
-#     torch.cuda.empty_cache()
-#     del new_model
-#     torch.cuda.empty_cache()
-#     return ldiff, std
-
-# e()
-# bl, bl_std = baseline()
-# print("BASELINE (remove neg):", bl, bl_std)
-# e()
-# bl_neg, bl_neg_std = baseline(remove_neg=False)
-# print("BASELINE NEG:", bl_neg, bl_neg_std)
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
 from ioi_utils import logit_diff
-cur_tensor_name = f"blocks.0.hook_mlp_out"
+
+model.reset_hooks()
 metric = ExperimentMetric(metric=logit_diff, dataset=abca_dataset, relative_metric=True)
 config = AblationConfig(
     abl_type="random",
     mean_dataset=abca_dataset.text_prompts,
-    target_module="attn_head",
+    target_module="mlp",
     head_circuit="result",
     cache_means=True,
     verbose=False,
@@ -150,36 +113,64 @@ config = AblationConfig(
     max_seq_len=ioi_dataset.max_len,
 )
 abl = EasyAblation(model, config, metric) # , mean_by_groups=True, groups=ioi_dataset.groups)
+e()
 
-assert False
-def ablation_hook(z, act, hook):  
-    # batch, seq, head dim, because get_act_hook hides scary things from us
-    # TODO probably change this to random ablation when that arrives
-    cur_layer = int(hook.name.split(".")[1])
-    cur_head_idx = hook.ctx["idx"]
+ablate_these = [1, 2, 3] # single numbers for MLPs, tuples for heads
+# ablate_these = max_2d(-result, 10)[0] 
+ablate_these += [(5, 9),
+ (5, 8),
+ (0, 10),
+ (4, 6),
+ (3, 10),
+ (4, 0),
+ (3, 8),
+ (3, 7),
+ (5, 2),
+ (6, 5)]
+# ablate_these = [0]
+# run some below cell to see the max impactful heads
 
-    assert hook.name == cur_tensor_name, hook.name
-    assert len(list(z.shape)) == 3, z.shape
-    assert list(z.shape) == list(act.shape), (z.shape, act.shape)
+for this in ablate_these:
+    if isinstance(this, int):
+        layer = this
+        head_idx = None
+        cur_tensor_name = f"blocks.{layer}.hook_mlp_out"
+    elif isinstance(this, tuple):
+        layer, head_idx = this
+        cur_tensor_name = f"blocks.{layer}.attn.hook_result"
+    else:
+        raise ValueError(this)
 
-    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = act[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]]  # hope that we don't see changing values of mean_cached_values...
-    return z
+    def ablation_hook(z, act, hook):  
+        # batch, seq, head dim, because get_act_hook hides scary things from us
+        # TODO probably change this to random ablation when that arrives
+        cur_layer = int(hook.name.split(".")[1])
+        cur_head_idx = hook.ctx["idx"]
 
-cur_hook = get_act_hook(
-    ablation_hook,
-    alt_act=abl.mean_cache[cur_tensor_name],
-    idx=None, 
-    dim=None, #  None for MLPs
-)
-model.add_hook(cur_tensor_name, cur_hook)
+        # assert hook.name == cur_tensor_name, (hook.name, cur_tensor_name)
+        # sad, that only works when cur_tensor_name doesn't change (?!)
+        assert len(list(z.shape)) == 3, z.shape
+        assert list(z.shape) == list(act.shape), (z.shape, act.shape)
+
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = act[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]]  # hope that we don't see changing values of mean_cached_values...
+        return z
+
+    cur_hook = get_act_hook(
+        ablation_hook,
+        alt_act=abl.mean_cache[cur_tensor_name],
+        idx=head_idx, 
+        dim=2 if head_idx is not None else None,
+    )
+    # break
+    model.add_hook(cur_tensor_name, cur_hook)
+    #break
 #%% [markdown] After adding some hooks we see that yeah MLP0 ablations destroy S2 probs -> this one is at end
-
 ys = [] # ehhh cell seems fucked - redesign variable input lengths please....
 warnings.warn("ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices")
 fig = go.Figure()
 for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
     cur_ys = []
-    att = show_attention_patterns(model, [(8, 6)], dataset, return_mtx=True, mode="attn")
+    att = show_attention_patterns(model, [(8, 10)], dataset, return_mtx=True, mode="attn")
     for key in ioi_dataset.word_idx.keys():
         end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
         # print(key, end_to_s2.mean().item())
@@ -1153,7 +1144,7 @@ experiment_metric = ExperimentMetric(metric=metric, dataset=ioi_dataset, relativ
 config = AblationConfig(
     abl_type="random",
     mean_dataset=abca_dataset.text_prompts,
-    target_module="mlp",
+    target_module="attn_head",
     head_circuit="result",
     cache_means=True,
     verbose=False,

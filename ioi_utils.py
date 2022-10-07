@@ -47,6 +47,21 @@ def show_tokens(tokens, model, return_list=False):
         print("|".join(text_tokens))
 
 
+def max_2d(m, k=1):
+    """Get the max of a matrix"""
+    if len(m.shape) != 2:
+        raise NotImplementedError()
+    mf = m.flatten()
+    inds = torch.topk(mf, k=k).indices
+    out = []
+    for ind in inds:
+        ind = ind.item()
+        x = ind // m.shape[1]
+        y = ind - x * m.shape[1]
+        out.append((x, y))
+    return out, mf[inds]
+
+
 def show_pp(
     m,
     xlabel="",

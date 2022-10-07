@@ -22,7 +22,6 @@
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
@@ -131,7 +130,7 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 150
+N = 100
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
@@ -158,8 +157,6 @@ def logit_diff(model, ioi_dataset, all=False):
     if all:
         return IO_logits - S_logits
     return (IO_logits - S_logits).mean().detach().cpu()
-
-
 # %% [markdown]
 # ioi_dataset `ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
 # %%
@@ -633,20 +630,7 @@ att = show_attention_patterns(model, [(8, 10)], abca_dataset[:2], return_mtx=Tru
 # We want to investigate what are the head we observed doing. By plotting attention patterns we see that they are paying preferential attention to IO.
 
 # %%
-def max_2d(m, k=1):
-    """Get the max of a matrix"""
-    if len(m.shape) != 2:
-        raise NotImplementedError()
-    mf = m.flatten()
-    inds = torch.topk(mf, k=k).indices
-    out = []
-    for ind in inds:
-        ind = ind.item()
-        x = ind // m.shape[1]
-        y = ind - x * m.shape[1]
-        out.append((x, y))
-    return out, mf[inds]
-
+from ioi_utils import max_2d
 
 attn_vals = writing_direction_heatmap(
     model,
@@ -934,8 +918,6 @@ for idx, (layer, head_idx) in enumerate(tqdm(circuit["name mover"])):
     )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 
 # %%
-
-
 def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
     for pos in positions:
         z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
@@ -978,8 +960,6 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
 # To have more confidence in these result, we can run a similar experiment by ABC-knock out the same heads
 # %% Cross check with
-
-
 def ablate_end(z, mean, hook):
     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]] = mean[
         torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]
@@ -1024,12 +1004,9 @@ for i, key in enumerate(["IO", "S", "S2"]):
     fig.show()
 # %%
 print_gpu_mem()
-
 # %% [markdown]
 # #### Plotting attention patterns
-
 # %%
-
 LAYER = 9
 HEAD = 9
 
@@ -1094,9 +1071,6 @@ show_attention_patterns(model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset[ID
 # %% [markdown]
 # What happend if we patch at S2 instead of END?
 # %%
-
-
-# %%
 LAYER = 9
 positions = ["S2"]
 patcher = partial(patch_positions, positions=positions)
@@ -1113,10 +1087,8 @@ config = PatchingConfig(
 )
 
 metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
-
 patching = EasyPatching(model, config, metric)
 result = patching.run_patching()
-
 
 for i, key in enumerate(["IO", "S", "S2"]):
     fig = px.imshow(
@@ -1129,11 +1101,44 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
     fig.write_image(f"svgs/patching at S2 average nm {key} at {ctime()}.svg")
     fig.show()
+#%% [markdown] ...  but does anything change when we choose the metric of probability of S Inhibition heads?
+from ioi_utils import attention_on_token 
 
+LAYER = 8
+HEAD = 6
 
+def metric_function(model, text_prompts):
+    return attention_on_token(model, ioi_dataset[:len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S2")
+
+config = PatchingConfig(
+    source_dataset=abca_dataset.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="mlp",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=patcher,
+    layers=(0, LAYER-1),
+)
+metric = ExperimentMetric(metric_function, config.target_dataset, relative_metric=False, scalar_metric=False)
+patching = EasyPatching(model, config, metric)
+result = patching.run_patching()
+#%%
+model.reset_hooks()
+baseline = metric_function(model, ioi_dataset.text_prompts)
+print("The baseline is", baseline)
+
+fig = px.imshow(
+    result[:, :] - baseline,
+    labels={"y": "Layer", "x": "Head"},
+    title=f'Average {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on {positions}',
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+)
+
+fig.write_image(f"svgs/patching at S2 average S2 at {ctime()}.svg")
+fig.show()
 # %% cross check with the same experiment with ablation
-
-
 def ablate_s2(z, mean, hook):
     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = mean[
         torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]
@@ -2037,6 +2042,7 @@ for layer in range(12):
 
 
 # %%
+
 
 POS = 130
 K = 1
