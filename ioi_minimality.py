@@ -105,32 +105,7 @@ abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
 
 #%% # do some initial experiments with the naive circuit
-<<<<<<< HEAD
-
-CIRCUIT = {
-    "name mover": [
-        (9, 9),  # by importance
-        (10, 0),
-        (9, 6),
-        (10, 10),
-        (10, 6),
-        (10, 2),
-        (10, 1),
-        (11, 2),
-        (11, 9),
-        (9, 7),
-        (11, 3),
-    ],
-    "negative": [(10, 7), (11, 10)],
-    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0)],
-    "previous token": [(2, 2), (2, 9), (4, 11)],
-}
-
-=======
 # UH         IS THIS JUST NOT GOOD?
->>>>>>> 43eeb1a3ec59b30098261fb8749d97b3b6911b29
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
 circuit = circuits[1]
 
@@ -232,25 +207,8 @@ for head in J.keys():
 # name mover shit
 for i, head in enumerate(circuit["name mover"]):
     old_entry = J[head]
-<<<<<<< HEAD
-    J[head] = []
-    for other_head in circuit["name mover"][: i + 1]:
-        J[head].append(other_head)
-
-# for i, head in enumerate(circuit["name mover"]):
-# J[head] += [(10, 7), (11, 10)]
-
-for i, head in enumerate(circuit["induction"]):
-    J[head] += [(10, 7), (11, 10)]
-
-# J[(9, 6)] = [(9, 9), (9, 6)]
-# J[(10, 10)] = [(9, 9), (10, 10)]
-J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]  # by importance
-#%%
-=======
     J[head] = deepcopy(circuit["name mover"][: i + 1]) # turn into the previous things
 #%% 
->>>>>>> 43eeb1a3ec59b30098261fb8749d97b3b6911b29
 results = {}
 
 if "results_cache" not in dir():
@@ -412,9 +370,6 @@ fig.update_yaxes(gridcolor="black", gridwidth=0.1)
 fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
 #%% # THIS IS JUST FOR LATEX
-
-assert False
-
 
 def capitalise(name):
     """
@@ -578,12 +533,13 @@ for j in range(2, 4):
     s_positions = ioi_dataset.word_idx["S"]
 
     # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
-    def attention_pattern_modifier(z, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
+    def attention_pattern_modifier(z, hook):
         cur_layer = int(hook.name.split(".")[1])
         cur_head_idx = hook.ctx["idx"]
 
         assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
-        assert len(list(z.shape)) == 3, z.shape  # batch, seq (attending_query), attending_key
+        assert len(list(z.shape)) == 3, z.shape  
+        # batch, seq (attending_query), attending_key
 
         prior_stuff = []
 
@@ -618,4 +574,3 @@ for j in range(2, 4):
     print(
         f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
     )
-# %%
