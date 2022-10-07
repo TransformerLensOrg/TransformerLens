@@ -550,11 +550,21 @@ for j in range(2, 5):
             # print(i, model.tokenizer.decode(ioi_dataset.toks[i][some_atts[i]]), ":", model.tokenizer.decode(ioi_dataset.toks[i][:6]))
         # print(some_atts.shape)
 
+        # prior_stuff = []
+        # for i in range(0, 2):
+        #     prior_stuff.append(z[torch.arange(ioi_dataset.N), s2_positions, s_positions + i].clone())
+        # for i in range(0, 2):
+        #     z[torch.arange(ioi_dataset.N), s2_positions, s_positions + i] =  prior_stuff[(i + j) % 2] # +1 is the do nothing one # ([0, 1][(i+j)%2]) is way beyond scope
+
         prior_stuff = []
-        for i in range(0, 2):
-            prior_stuff.append(z[torch.arange(ioi_dataset.N), s2_positions, s_positions + i].clone())
-        for i in range(0, 2):
-            z[torch.arange(ioi_dataset.N), s2_positions, s_positions + i] =  prior_stuff[(i + j) % 2] # +1 is the do nothing one # ([0, 1][(i+j)%2]) is way beyond scope
+        prior_stuff.append(z[torch.arange(ioi_dataset.N), s2_positions, 0].clone())
+        prior_stuff.append(z[torch.arange(ioi_dataset.N), s2_positions, s_positions].clone())
+
+        # z[torch.arange(ioi_dataset.N), s2_positions, 0] = prior_stuff[(0 + j) % 2]
+        # z[torch.arange(ioi_dataset.N), s2_positions, s_positions] = prior_stuff[(1 + j) % 2]
+
+        z[torch.arange(ioi_dataset.N), s2_positions, :] = 0 #  prior_stuff[(1 + j) % 2]
+        z[torch.arange(ioi_dataset.N), s2_positions, 1+s_positions] = 0.5 #  prior_stuff[(1 + j) % 2]
 
         # z[torch.arange(ioi_dataset.N), s2_positions, s_positions] = 0 
         # z[torch.arange(ioi_dataset.N), s2_positions, s_positions + 1] = 1
@@ -565,8 +575,8 @@ for j in range(2, 5):
     model.reset_hooks()
     ld = logit_diff(model, ioi_dataset)
 
-    # circuit_classes = ["induction"]
-    circuit_classes = ["duplicate token"]
+    circuit_classes = ["induction"]
+    # circuit_classes = ["duplicate token"]
     # circuit_classes = ["duplicate token", "induction"]
     # circuit_classes = ["previous token"]
 
