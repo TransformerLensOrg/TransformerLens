@@ -529,8 +529,9 @@ for poppers in [[(9, 9)], [(9, 9), (9, 6)], [(9, 6)]]:
 #%% # new experiment idea: the duplicators and induction heads shouldn't care where their attention is going, provided that
 # it goes to either S or S+1.
 
-for j in range(2, 4):
+for j in range(2, 5):
     s_positions = ioi_dataset.word_idx["S"]
+    s2_positions = ioi_dataset.word_idx["S2"]
 
     # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
     def attention_pattern_modifier(z, hook):
@@ -541,24 +542,31 @@ for j in range(2, 4):
         assert len(list(z.shape)) == 3, z.shape  
         # batch, seq (attending_query), attending_key
 
+        # cur = z[torch.arange(ioi_dataset.N), s2_positions, s_positions+1]
+        # print(cur)
+        # print(f"{cur.shape=}")
+        # some_atts = torch.argmax(cur, dim=1) 
+        # for i in range(20):
+            # print(i, model.tokenizer.decode(ioi_dataset.toks[i][some_atts[i]]), ":", model.tokenizer.decode(ioi_dataset.toks[i][:6]))
+        # print(some_atts.shape)
+
         prior_stuff = []
-
         for i in range(-1, 2):
-            prior_stuff.append(z[:, s_positions + i, :].clone())
-            # print(prior_stuff[-1].shape, torch.sum(prior_stuff[-1]))
+            
+        prior_stuff.append(z[torch.arange(ioi_dataset.N), s2_positions, s_positions - 1  + i].clone())
 
-        for i in range(-1, 2):
-            z[:, s_positions + i, :] = prior_stuff[(i + j) % 3]  # +1 is the do nothing one
+        # for i in range(-1, 2):
+            # z[torch.arange(ioi_dataset.N), s2_positions, s_positions - 1 + i] = prior_stuff[(i + j) % 3]  # +1 is the do nothing one
 
         return z
 
     model.reset_hooks()
     ld = logit_diff(model, ioi_dataset)
-    # print(f"{ld=}")
 
     circuit_classes = ["induction"]
-    circuit_classes = ["duplicate token"]
-    circuit_classes = ["duplicate token", "induction"]
+    # circuit_classes = ["duplicate token"]
+    # circuit_classes = ["duplicate token", "induction"]
+    # circuit_classes = ["previous token"]
 
     for circuit_class in circuit_classes:
         for layer, head_idx in circuit[circuit_class]:
