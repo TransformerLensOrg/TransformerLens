@@ -8,6 +8,7 @@
 #%%
 from easy_transformer import EasyTransformer
 from functools import partial
+from ioi_utils import logit_diff, probs
 import logging
 import sys
 from ioi_circuit_extraction import *
@@ -1240,9 +1241,6 @@ for heads_raw in circuit["s2 inhibition"]: #  + circuit["name mover"]:
 # it goes to either S or S+1.
 
 for j in range(2, 5):
-    s_positions = ioi_dataset.word_idx["S"]
-    s2_positions = ioi_dataset.word_idx["S2"]
-
     # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
     def attention_pattern_modifier(z, hook):
         cur_layer = int(hook.name.split(".")[1])
@@ -1270,27 +1268,18 @@ for j in range(2, 5):
         # z[torch.arange(ioi_dataset.N), s2_positions, 0] = prior_stuff[(0 + j) % 2]
         # z[torch.arange(ioi_dataset.N), s2_positions, s_positions] = prior_stuff[(1 + j) % 2]
 
+        z[torch.arange(ioi_dataset.N), s2_positions, :] = 0
+
         for key in ioi_dataset.word_idx.keys():
-            if key == "end":
-                continue
-            # z[torch.arange(ioi_dataset.N), s2_positions, ioi_dataset.word_idx[key]] = average_attention[]
-
-        z[torch.arange(ioi_dataset.N), s2_positions, :] = 0 #  prior_stuff[(1 + j) % 2]
-        z[torch.arange(ioi_dataset.N), s2_positions, 1+s_positions] = 0.5 #  prior_stuff[(1 + j) % 2]
-
-        # z[torch.arange(ioi_dataset.N), s2_positions, s_positions] = 0 
-        # z[torch.arange(ioi_dataset.N), s2_positions, s_positions + 1] = 1
-        # z[torch.arange(ioi_dataset.N), s2_positions, 0] = 0
+            z[torch.arange(ioi_dataset.N), s2_positions, ioi_dataset.word_idx[key]] = average_attention[(cur_layer, cur_head_idx)][key]
 
         return z
 
+    F = logit_diff # or logit diff
     model.reset_hooks()
-    ld = logit_diff(model, ioi_dataset)
+    ld = F(model, ioi_dataset)
 
-    circuit_classes = ["induction"]
-    # circuit_classes = ["duplicate token"]
-    # circuit_classes = ["duplicate token", "induction"]
-    # circuit_classes = ["previous token"]
+    circuit_classes = ["s2 inhibition"]
 
     for circuit_class in circuit_classes:
         for layer, head_idx in circuit[circuit_class]:
@@ -1302,7 +1291,98 @@ for j in range(2, 5):
             )
             model.add_hook(f"blocks.{layer}.attn.hook_attn", cur_hook)
 
-    ld2 = logit_diff(model, ioi_dataset)
+    ld2 = F(model, ioi_dataset)
     print(
         f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
     )
+#%%
+model.reset_hooks()
+cache_baseline = {}
+model.cache_some(cache_baseline, lambda x: x in hook_names)  # we only cache the activation we're interested
+logits = model(ioi_dataset.text_prompts).detach()
+
+def attention_probs(
+    model, text_prompts, variation=True
+):  # we have to redefine logit differences to use the new abba dataset
+    """Difference between the IO and the S logits at the "to" token"""
+    cache_patched = {}
+    model.cache_some(cache_patched, lambda x: x in hook_names)  # we only cache the activation we're interested
+    logits = model(text_prompts).detach()
+    # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
+    # ... but do this elsewhere as otherwise we fucked
+    # attn score of head HEAD at token "to" (end) to token IO
+
+    attn_probs_variation_by_keys = []
+    for key in ["IO", "S", "S2"]:
+        attn_probs_variation = []
+        for i, hook_name in enumerate(hook_names):
+            layer = layers[i]
+            for head in heads_by_layer[layer]:
+                attn_probs_patched = cache_patched[hook_name][
+                    torch.arange(len(text_prompts)),
+                    head,
+                    ioi_dataset.word_idx["end"],
+                    ioi_dataset.word_idx[key],
+                ]
+                attn_probs_base = cache_baseline[hook_name][
+                    torch.arange(len(text_prompts)),
+                    head,
+                    ioi_dataset.word_idx["end"],
+                    ioi_dataset.word_idx[key],
+                ]
+                if variation:
+                    attn_probs_variation.append(
+                        ((attn_probs_patched - attn_probs_base) / attn_probs_base).mean().unsqueeze(dim=0)
+                    )
+                else:
+                    attn_probs_variation.append(attn_probs_patched.mean().unsqueeze(dim=0))
+        attn_probs_variation_by_keys.append(torch.cat(attn_probs_variation).mean(dim=0, keepdim=True))
+
+    attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
+    return attn_probs_variation_by_keys.detach().cpu()
+# %%
+heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
+heads_by_layer = {9: [6, 9], 10: [0]}
+layers = [9, 10]
+hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
+
+text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
+
+def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
+    for pos in positions:
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+        ]
+    return z
+
+
+patch_last_tokens = partial(patch_positions, positions=["end"])
+
+
+config = PatchingConfig(
+    source_dataset=abca_dataset.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",  # we patch "result", the result of the attention head
+    cache_act=True,
+    verbose=False,
+    patch_fn=patch_last_tokens,
+    layers=(0, max(layers) - 1),
+)  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
+
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
+
+patching = EasyPatching(model, config, metric)
+result = patching.run_patching()
+
+for i, key in enumerate(["IO", "S", "S2"]):
+    fig = px.imshow(
+        result[:, :, i],
+        labels={"y": "Layer", "x": "Head"},
+        title=f'Variation in attention probs of Head {str(heads_to_measure)} from token "to" to {key} after Patching ABC->ABB on "to"',
+        color_continuous_midpoint=0,
+        color_continuous_scale="RdBu",
+    )
+    fig.write_image(f"svgs/variation_average_nm_attn_prob_key_{key}_patching_ABC_END.svg")
+    fig.show()
+# %%

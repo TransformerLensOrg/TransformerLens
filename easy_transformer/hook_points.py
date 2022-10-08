@@ -59,6 +59,7 @@ class HookPoint(nn.Module):
 
             handle = self.register_forward_hook(full_hook)
             self.fwd_hooks.append(handle)
+            return handle # WARNING: added by Arthur to do patching better
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
             def full_hook(module, module_input, module_output):
@@ -66,6 +67,7 @@ class HookPoint(nn.Module):
 
             handle = self.register_full_backward_hook(full_hook)
             self.bwd_hooks.append(handle)
+            return handle # WARNING: added by Arthur to do patching better
         else:
             raise ValueError(f"Invalid direction {dir}")
 
@@ -176,12 +178,15 @@ class HookedRootModule(nn.Module):
 
     def add_hook(self, name, hook, dir="fwd"):
         if type(name) == str:
-            self.mod_dict[name].add_hook(hook, dir=dir)
+            handle = self.mod_dict[name].add_hook(hook, dir=dir)
+            return handle
         else:
             # Otherwise, name is a Boolean function on names
+            handles = []
             for hook_name, hp in self.hook_dict.items():
                 if name(hook_name):
-                    hp.add_hook(hook, dir=dir)
+                    handles.append(hp.add_hook(hook, dir=dir))
+            return handles
 
     def run_with_hooks(
         self,

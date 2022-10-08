@@ -277,14 +277,20 @@ class EasyExperiment:
 
     def compute_metric(self, abl_hook):
         mean_metric = torch.zeros(self.metric.shape)
-        self.model.reset_hooks()
+        # self.model.reset_hooks() # NOTE: new way of doing this
         hk_name, hk = abl_hook
-        self.model.add_hook(hk_name, hk)
+        handle = self.model.add_hook(hk_name, hk)
 
         # only useful if the computation are stochastic. On most case only one loop
         for it in range(self.cfg.nb_metric_iteration):
             self.update_setup(hk_name)
             mean_metric += self.metric.compute_metric(self.model)
+
+        hook_point = self.model.hook_dict[hk_name]
+        assert handle in hook_point.fwd_hooks, (hook_point.fwd_hooks, handle)
+        assert handle == self.model.hook_dict[hk_name].fwd_hooks[-1]
+        self.model.hook_dict[hk_name].fwd_hooks.pop().remove()
+
         return mean_metric / self.cfg.nb_metric_iteration
 
     def update_setup(self, hook_name):
