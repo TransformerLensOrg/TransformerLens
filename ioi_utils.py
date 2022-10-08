@@ -143,6 +143,7 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         "val",
     ]  # value weighted attention or attn for attention probas
     assert type(ioi_dataset) == IOIDataset
+    assert len(heads) == 1 or not (return_fig or return_mtx)
 
     for (layer, head) in heads:
         cache = {}

@@ -1,4 +1,4 @@
- #%%
+#%%
 # % TODO: ablations last
 # % and 2.2 improvements: do things with making more specific to transformers
 # % ablations later
@@ -97,9 +97,8 @@ model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
-#%% [markdown] Add some ablation of MLP0 to try and tell what's up
 from ioi_utils import logit_diff
-
+#%% [markdown] Add some ablation of MLP0 to try and tell what's up
 model.reset_hooks()
 metric = ExperimentMetric(metric=logit_diff, dataset=abca_dataset, relative_metric=True)
 config = AblationConfig(
@@ -164,22 +163,6 @@ for this in ablate_these:
     model.add_hook(cur_tensor_name, cur_hook)
 
 # [markdown] After adding some hooks we see that yeah MLP0 ablations destroy S2 probs -> this one is at end
-
-#%%
-ys = []
-fig = go.Figure()
-for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
-    cur_ys = []
-    att = show_attention_patterns(model, [(8, 10)], dataset, return_mtx=True, mode="attn")
-    for key in ioi_dataset.word_idx.keys():
-        end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
-        # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
-        cur_ys.append(end_to_s2.mean().item())
-        print(key, end_to_s2.std())
-    fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=[0.5*cur_y for y in cur_ys], name=["IOI", "ABCA"][idx]))
-
-fig.update_layout(title_text="Attention from END to S2")
-fig.show()
 #%%
 my_toks = [2215,
  5335,
@@ -1124,9 +1107,8 @@ new_ld = logit_diff(model, ioi_dataset)
 new_probs = probs(model, ioi_dataset)
 print(f"{new_ld=}, {new_probs=}")
 #%% # new shit: attention probs on S2 is the score
-
 heads_to_patch = circuit["s2 inhibition"].copy()
-attn_circuit_template = "blocks.{patch_layer}.attn.hook_k"
+attn_circuit_template = "blocks.{patch_layer}.attn.hook_v"
 cache_names = set([attn_circuit_template.format(patch_layer=patch_layer) for patch_layer, _ in heads_to_patch])
 
 logit_diffs = torch.zeros(size=(12, 12))
@@ -1136,6 +1118,8 @@ model.reset_hooks()
 S2_LAYER = 7
 S2_HEAD = 9
 metric = partial(attention_on_token, head_idx=S2_HEAD, layer=S2_LAYER, token="S2")
+metric = partial(attention_on_token, head_idx=9, layer=9, token="IO")
+
 model.reset_hooks()
 base_metric = metric(model, ioi_dataset)
 print(f"{base_metric=}")
@@ -1154,7 +1138,7 @@ config = AblationConfig(
 abl = EasyAblation(model, config, experiment_metric) # , mean_by_groups=True, groups=ioi_dataset.groups)
 e()
 result = abl.run_experiment()
-show_pp((result-base_metric).T, xlabel="head", ylabel="layer", title="attention on S2 change when ablated")
+show_pp((result-base_metric).T, xlabel="head", ylabel="layer", title="Attention on S2 change when ablated")
 #%%
 for layer in range(12):
     for head_idx in [None] + list(range(12)):
@@ -1225,3 +1209,100 @@ att_heads_mean_diff = logit_diffs - base_metric
 show_pp(att_heads_mean_diff.T, ylabel="layer", xlabel="head", title=f"Change in logit diff: {torch.sum(att_heads_mean_diff)}")
 mlps_mean_diff = mlps - base_ld
 show_pp(mlps_mean_diff.T.unsqueeze(0), ylabel="layer", xlabel="head", title=f"Change in logit diff, MLPs: {torch.sum(mlps_mean_diff)}")
+#%%
+ys = []
+fig = go.Figure()
+
+average_attention = {}
+
+for heads_raw in circuit["s2 inhibition"]: #  + circuit["name mover"]:
+    heads = [heads_raw]
+    average_attention[heads_raw] = {}
+    for idx, dataset in enumerate([ioi_dataset, abca_dataset][1:]):
+        print(idx)
+        cur_ys = []
+        cur_stds = []
+        att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
+        for head in tqdm(heads):
+            att += show_attention_patterns(model, [head], dataset, return_mtx=True, mode="attn")
+        att /= len(heads)
+        for key in ioi_dataset.word_idx.keys():
+            end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
+            # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
+            cur_ys.append(end_to_s2.mean().item())
+            cur_stds.append(end_to_s2.std().item())
+            average_attention[heads_raw][key] = end_to_s2.mean().item()
+        fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=dict(type="data", array=cur_stds), name=str(heads_raw))) # ["IOI", "ABCA"][idx]))
+
+    fig.update_layout(title_text="Attention from END to S2")
+    fig.show()
+#%% # new experiment idea: the duplicators and induction heads shouldn't care where their attention is going, provided that
+# it goes to either S or S+1.
+
+for j in range(2, 5):
+    s_positions = ioi_dataset.word_idx["S"]
+    s2_positions = ioi_dataset.word_idx["S2"]
+
+    # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
+    def attention_pattern_modifier(z, hook):
+        cur_layer = int(hook.name.split(".")[1])
+        cur_head_idx = hook.ctx["idx"]
+
+        assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
+        assert len(list(z.shape)) == 3, z.shape  
+        # batch, seq (attending_query), attending_key
+
+        # cur = z[torch.arange(ioi_dataset.N), s2_positions, s_positions+1]
+        # print(cur)
+        # print(f"{cur.shape=}")
+        # some_atts = torch.argmax(cur, dim=1) 
+        # for i in range(20):
+            # print(i, model.tokenizer.decode(ioi_dataset.toks[i][some_atts[i]]), ":", model.tokenizer.decode(ioi_dataset.toks[i][:6]))
+        # print(some_atts.shape)
+
+        # prior_stuff = []
+        # for i in range(0, 2):
+        #     prior_stuff.append(z[torch.arange(ioi_dataset.N), s2_positions, s_positions + i].clone())
+        # for i in range(0, 2):
+        #     z[torch.arange(ioi_dataset.N), s2_positions, s_positions + i] =  prior_stuff[(i + j) % 2] # +1 is the do nothing one # ([0, 1][(i+j)%2]) is way beyond scope
+
+
+        # z[torch.arange(ioi_dataset.N), s2_positions, 0] = prior_stuff[(0 + j) % 2]
+        # z[torch.arange(ioi_dataset.N), s2_positions, s_positions] = prior_stuff[(1 + j) % 2]
+
+        for key in ioi_dataset.word_idx.keys():
+            if key == "end":
+                continue
+            # z[torch.arange(ioi_dataset.N), s2_positions, ioi_dataset.word_idx[key]] = average_attention[]
+
+        z[torch.arange(ioi_dataset.N), s2_positions, :] = 0 #  prior_stuff[(1 + j) % 2]
+        z[torch.arange(ioi_dataset.N), s2_positions, 1+s_positions] = 0.5 #  prior_stuff[(1 + j) % 2]
+
+        # z[torch.arange(ioi_dataset.N), s2_positions, s_positions] = 0 
+        # z[torch.arange(ioi_dataset.N), s2_positions, s_positions + 1] = 1
+        # z[torch.arange(ioi_dataset.N), s2_positions, 0] = 0
+
+        return z
+
+    model.reset_hooks()
+    ld = logit_diff(model, ioi_dataset)
+
+    circuit_classes = ["induction"]
+    # circuit_classes = ["duplicate token"]
+    # circuit_classes = ["duplicate token", "induction"]
+    # circuit_classes = ["previous token"]
+
+    for circuit_class in circuit_classes:
+        for layer, head_idx in circuit[circuit_class]:
+            cur_hook = get_act_hook(
+                attention_pattern_modifier,
+                alt_act=None,
+                idx=head_idx,
+                dim=1,
+            )
+            model.add_hook(f"blocks.{layer}.attn.hook_attn", cur_hook)
+
+    ld2 = logit_diff(model, ioi_dataset)
+    print(
+        f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
+    )

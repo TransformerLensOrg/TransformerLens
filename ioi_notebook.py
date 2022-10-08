@@ -1072,7 +1072,8 @@ show_attention_patterns(model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset[ID
 # What happend if we patch at S2 instead of END?
 # %%
 LAYER = 9
-positions = ["S2"]
+positions = ["S+1"]
+warning.warn("This seems important for the future cells...")
 patcher = partial(patch_positions, positions=positions)
 
 config = PatchingConfig(
@@ -1102,18 +1103,21 @@ for i, key in enumerate(["IO", "S", "S2"]):
     fig.write_image(f"svgs/patching at S2 average nm {key} at {ctime()}.svg")
     fig.show()
 #%% [markdown] ...  but does anything change when we choose the metric of probability of S Inhibition heads?
+# ARTHUR GOT CARRIED AWAY WITH EXPERIMENTS: SOME OF THESE CELLS ARE NOT IMPORTANT
 from ioi_utils import attention_on_token 
 
-LAYER = 8
-HEAD = 6
+LAYER = 5
+HEAD = 5
 
 def metric_function(model, text_prompts):
-    return attention_on_token(model, ioi_dataset[:len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S2")
+    # return attention_on_token(model, ioi_dataset[:len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S2")
+    return attention_on_token(model, ioi_dataset[:len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S+1")
+# metric_function = 
 
 config = PatchingConfig(
     source_dataset=abca_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
-    target_module="mlp",
+    target_module="attn_head",
     head_circuit="result",
     cache_act=True,
     verbose=False,
@@ -1186,6 +1190,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
 # A bunch of other head appear, in layer earlier than the S2-inhibition heads: 0.1, 0.10, 3.0 and 5.5, 5.8, 5.9, 6.9. We claim that they influence the values that S2 will read. Let's visualize their attention patterns.
 
 # %% [markdown]
+
 # #### Duplicate tokens heads
 
 # %%
