@@ -1296,6 +1296,11 @@ for j in range(2, 5):
         f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
     )
 #%%
+heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
+heads_by_layer = {9: [6, 9], 10: [0]}
+layers = [9, 10]
+hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
+
 model.reset_hooks()
 cache_baseline = {}
 model.cache_some(cache_baseline, lambda x: x in hook_names)  # we only cache the activation we're interested
@@ -1341,13 +1346,6 @@ def attention_probs(
     attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
     return attn_probs_variation_by_keys.detach().cpu()
 # %%
-heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
-heads_by_layer = {9: [6, 9], 10: [0]}
-layers = [9, 10]
-hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
-
-text_prompts = [prompt["text"] for prompt in ioi_dataset.ioi_prompts]
-
 def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
     for pos in positions:
         z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
