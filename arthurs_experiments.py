@@ -100,6 +100,7 @@ N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
 acca_dataset = ioi_dataset.gen_flipped_prompts("S")
+acba_dataset = ioi_dataset.gen_flipped_prompts("S1")
 
 from ioi_utils import logit_diff
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
@@ -1416,13 +1417,18 @@ for i, key in enumerate(["IO", "S", "S2"]):
     )
     fig.write_image(f"svgs/variation_average_nm_attn_prob_key_{key}_patching_ABC_END.svg")
     fig.show()
-#%% [markdown] okay, so is ACCA identical for induction heads??? A: yes, and for dupes too
+#%% [markdown] 
+# 
+# This was: okay, so is ACCA identical for induction heads??? A: yes, and for dupes too
+# Now is: Try the ACBA dataset and see what happens
 e()
 relevant_heads = {}
+
 # for head in circuit["duplicate token"] + circuit["induction"]:
 #     relevant_heads[head] = "S2"
 # for head in circuit["s2 inhibition"]:
 #     relevant_heads[head] = "end"
+
 for head in circuit["previous token"]:
     relevant_heads[head] = "S+1"
 circuit = deepcopy(CIRCUIT)
