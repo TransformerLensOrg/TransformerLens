@@ -479,13 +479,16 @@ class EasyAblation(EasyExperiment):
             self.mean_cache[hook_name] = self.compute_mean(self.act_cache[hook_name], hook_name)
             # we randomize the cache for random ablation. We use hacky reference properties
 
-
 class EasyPatching(EasyExperiment):
     def __init__(self, model: EasyTransformer, config: PatchingConfig, metric: ExperimentMetric):
         super().__init__(model, config, metric)
         assert "PatchingConfig" in str(type(config))
         if self.cfg.cache_act:
             self.get_all_act()
+
+    def update_setup(self, hk_name):
+        for other_hk_name, hk in self.other_hooks:
+            self.model.add_hook(other_hk_name, hk)
 
     def run_patching(self):
         return self.run_experiment()

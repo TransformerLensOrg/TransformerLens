@@ -202,7 +202,7 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
             raise NotImplementedError()
 
 def safe_del(a):
-    """Try and delete a even if it doesn't yet exist"""
+    """Try and delete a even if it doesn't yet exist"""   
     try:
         exec(f"del {a}")
     except:

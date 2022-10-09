@@ -91,13 +91,16 @@ if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 
-def e():
+def e(mess=""):
+    print_gpu_mem(mess)
     torch.cuda.empty_cache()
 # %%
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
+acca_dataset = ioi_dataset.gen_flipped_prompts("S")
+
 from ioi_utils import logit_diff
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
 model.reset_hooks()
@@ -1210,33 +1213,6 @@ att_heads_mean_diff = logit_diffs - base_metric
 show_pp(att_heads_mean_diff.T, ylabel="layer", xlabel="head", title=f"Change in logit diff: {torch.sum(att_heads_mean_diff)}")
 mlps_mean_diff = mlps - base_ld
 show_pp(mlps_mean_diff.T.unsqueeze(0), ylabel="layer", xlabel="head", title=f"Change in logit diff, MLPs: {torch.sum(mlps_mean_diff)}")
-#%%
-ys = []
-fig = go.Figure()
-
-average_attention = {}
-
-for heads_raw in circuit["s2 inhibition"]: #  + circuit["name mover"]:
-    heads = [heads_raw]
-    average_attention[heads_raw] = {}
-    for idx, dataset in enumerate([ioi_dataset, abca_dataset][1:]):
-        print(idx)
-        cur_ys = []
-        cur_stds = []
-        att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
-        for head in tqdm(heads):
-            att += show_attention_patterns(model, [head], dataset, return_mtx=True, mode="attn")
-        att /= len(heads)
-        for key in ioi_dataset.word_idx.keys():
-            end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
-            # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
-            cur_ys.append(end_to_s2.mean().item())
-            cur_stds.append(end_to_s2.std().item())
-            average_attention[heads_raw][key] = end_to_s2.mean().item()
-        fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=dict(type="data", array=cur_stds), name=str(heads_raw))) # ["IOI", "ABCA"][idx]))
-
-    fig.update_layout(title_text="Attention from END to S2")
-    fig.show()
 #%% # new experiment idea: the duplicators and induction heads shouldn't care where their attention is going, provided that
 # it goes to either S or S+1.
 
@@ -1296,6 +1272,33 @@ for j in range(2, 5):
         f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
     )
 #%%
+ys = []
+fig = go.Figure()
+
+average_attention = {}
+model.reset_hooks()
+for heads_raw in circuit["s2 inhibition"]: #  + circuit["name mover"]:
+    heads = [heads_raw]
+    average_attention[heads_raw] = {}
+    for idx, dataset in enumerate([ioi_dataset, abca_dataset][1:]):
+        print(idx)
+        cur_ys = []
+        cur_stds = []
+        att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
+        for head in tqdm(heads):
+            att += show_attention_patterns(model, [head], dataset, return_mtx=True, mode="attn")
+        att /= len(heads)
+        for key in ioi_dataset.word_idx.keys():
+            end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
+            # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
+            cur_ys.append(end_to_s2.mean().item())
+            cur_stds.append(end_to_s2.std().item())
+            average_attention[heads_raw][key] = end_to_s2.mean().item()
+        fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=dict(type="data", array=cur_stds), name=str(heads_raw))) # ["IOI", "ABCA"][idx]))
+
+    fig.update_layout(title_text="Attention from END to S2")
+    fig.show()
+#%%
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
 heads_by_layer = {9: [6, 9], 10: [0]}
 layers = [9, 10]
@@ -1345,20 +1348,50 @@ def attention_probs(
 
     attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
     return attn_probs_variation_by_keys.detach().cpu()
-# %%
-def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
+#%%
+def attention_pattern_modifier(z, hook):
+    cur_layer = int(hook.name.split(".")[1])
+    cur_head_idx = hook.ctx["idx"]
+
+    assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
+    assert len(list(z.shape)) == 3, z.shape  
+    # batch, seq (attending_query), attending_key
+
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"], :] = 0
+
+    for key in ioi_dataset.word_idx.keys():
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"], ioi_dataset.word_idx[key]] = average_attention[(cur_layer, cur_head_idx)][key]
+
+    return z
+
+F = logit_diff # or logit diff
+model.reset_hooks()
+ld = F(model, ioi_dataset)
+circuit_classes = ["s2 inhibition"]
+
+add_these_hooks = []
+
+for circuit_class in circuit_classes:
+    for layer, head_idx in circuit[circuit_class]:
+        cur_hook = get_act_hook(
+            attention_pattern_modifier,
+            alt_act=None,
+            idx=head_idx,
+            dim=1,
+        )
+        add_these_hooks.append((f"blocks.{layer}.attn.hook_attn", cur_hook))
+        model.add_hook(*add_these_hooks[-1])
+# %% [markdown] Q: is it possible to patch in ACCA sentences to make things work? A: Yes!
+def patch_positions(z, source_act, hook, positions=["END"]):  # we patch at the "to" token
     for pos in positions:
         z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
             torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
         ]
     return z
 
-
-patch_last_tokens = partial(patch_positions, positions=["end"])
-
-
+patch_last_tokens = partial(patch_positions, positions=["S2"])
 config = PatchingConfig(
-    source_dataset=abca_dataset.text_prompts,
+    source_dataset=acca_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
     target_module="attn_head",
     head_circuit="result",  # we patch "result", the result of the attention head
@@ -1367,10 +1400,10 @@ config = PatchingConfig(
     patch_fn=patch_last_tokens,
     layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
-
 metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
-
 patching = EasyPatching(model, config, metric)
+add_these_hooks = [] # actually, let's not add the fixed S2 Inhib thing
+patching.other_hooks = add_these_hooks
 result = patching.run_patching()
 
 for i, key in enumerate(["IO", "S", "S2"]):
@@ -1383,4 +1416,210 @@ for i, key in enumerate(["IO", "S", "S2"]):
     )
     fig.write_image(f"svgs/variation_average_nm_attn_prob_key_{key}_patching_ABC_END.svg")
     fig.show()
-# %%
+#%% [markdown] okay, so is ACCA identical for induction heads??? A: yes, and for dupes too
+e()
+relevant_heads = {}
+# for head in circuit["duplicate token"] + circuit["induction"]:
+#     relevant_heads[head] = "S2"
+# for head in circuit["s2 inhibition"]:
+#     relevant_heads[head] = "end"
+for head in circuit["previous token"]:
+    relevant_heads[head] = "S+1"
+circuit = deepcopy(CIRCUIT)
+relevant_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in relevant_heads.keys()])
+
+if "acca_cache" not in dir():
+    acca_cache = {}
+    model.reset_hooks()
+    model.cache_some(acca_cache, names=lambda name: name in relevant_hook_names)
+    logits = model(acca_dataset.text_prompts)
+    del logits
+    e()
+
+for mode in ["model", "circuit", "new"]:
+    model.reset_hooks()
+    e()
+    if mode != "model":
+        new_heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
+        e("MiD")
+        # for head in circuit["s2 inhibition"]:
+        #     new_heads_to_keep.pop(head)
+        model, _ = do_circuit_extraction(
+            model=model,
+            heads_to_keep=new_heads_to_keep,
+            mlps_to_remove={},
+            ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
+        )
+        e()
+
+    if mode == "new":
+        add_these_hooks = []
+        for layer, head_idx in relevant_heads:
+            e("inLOos")
+            cur_hook = get_act_hook(
+                partial(patch_positions, positions=[relevant_heads[(layer, head_idx)]]),
+                alt_act=acca_cache[f"blocks.{layer}.attn.hook_result"],
+                idx=head_idx,
+                dim=2,
+            )
+            add_these_hooks.append((f"blocks.{layer}.attn.hook_result", cur_hook))
+            model.add_hook(*add_these_hooks[-1])
+
+    att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False)
+    print(f"mode {mode}:", att_probs)
+
+    cur_logit_diff = logit_diff(model, ioi_dataset)
+    cur_io_probs = probs(model, ioi_dataset)
+    e("en")
+    print(f"{mode=} {cur_logit_diff=} {cur_io_probs=}")
+
+    safe_del("new_heads_to_keep")
+    safe_del("add_these_hooks")
+    safe_del("att_probs")
+    safe_del("_")
+    e()
+#%% [markdown] do some 
+MODEL_CFG = model.cfg
+MODEL_EPS = model.cfg.eps
+
+def get_layer_norm_div(x, eps=MODEL_EPS):
+    mean = x.mean(dim=-1, keepdim=True)
+    new_x = (x - mean).detach().clone()
+    return (new_x.var(dim=-1, keepdim=True).mean() + eps).sqrt()
+
+def layer_norm(x, cfg=MODEL_CFG):
+    return LayerNormPre(cfg)(x)
+
+def writing_direction_heatmap( # remake this for mid-sentence
+    model,
+    ioi_dataset,
+    show=["attn"],  # can add "mlp" to this
+    return_vals=False,
+    mode = "S2",
+    unembed_mode="normal",
+    title="",
+    verbose=False,
+    return_figs=False,
+):
+    """
+    Plot the dot product between how much each attention head
+    output with `IO-S`, the difference between the unembeds between
+    the (correct) IO token and the incorrect S token
+    """
+
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
+    d_model = model.cfg.d_model
+
+    model_unembed = (
+        model.unembed.W_U.detach().cpu()
+    )  # note that for GPT2 embeddings and unembeddings are tides such that W_E = Transpose(W_U)
+
+    unembed_bias = model.unembed.b_U.detach().cpu()
+
+    attn_vals = torch.zeros(size=(n_heads, n_layers))
+    mlp_vals = torch.zeros(size=(n_layers,))
+    logit_diffs = logit_diff(model, ioi_dataset, all=True).cpu()
+
+    for i in tqdm(range(ioi_dataset.N)):
+        if mode == "IO - S":
+            io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
+            s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
+            io_dir = model_unembed[io_tok]
+            s_dir = model_unembed[s_tok]
+            unembed_bias_io = unembed_bias[io_tok]
+            unembed_bias_s = unembed_bias[s_tok]
+            dire = io_dir - s_dir
+            bias = unembed_bias_io - unembed_bias_s
+            position = -2
+        if mode == "S2":
+            sp1 = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].long().item()+1]
+            s = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].long().item()]
+            s_dir = model_unembed[s]
+            sp1_dir = model_unembed[sp1]
+            unembed_bias_s = unembed_bias[s]
+            unembed_bias_sp1 = unembed_bias[sp1]
+            dire = s_dir ## sp1_dir ##- s_dir
+            bias = unembed_bias_s ## unembed_bias_sp1 ##- unembed_bias_s
+            position = ioi_dataset.word_idx["S2"][i].long().item()
+
+        cache = {}
+        model.cache_all(cache, device="cpu")  # TODO maybe speed up by only caching relevant things
+        logits = model(ioi_dataset.text_prompts[i])
+
+        res_stream_sum = torch.zeros(size=(d_model,))
+        res_stream_sum += cache["blocks.0.hook_resid_pre"][0, position, :]  # .detach().cpu()
+        # the pos and token embeddings
+
+        layer_norm_div = get_layer_norm_div(cache["blocks.11.hook_resid_post"][0, position, :])
+
+        for lay in range(n_layers):
+            cur_attn = (
+                cache[f"blocks.{lay}.attn.hook_result"][0, position, :, :]
+                # + model.blocks[lay].attn.b_O.detach()  # / n_heads
+            )
+            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, position, :][0]
+
+            # check that we're really extracting the right thing
+            res_stream_sum += torch.sum(cur_attn, dim=0)
+            res_stream_sum += model.blocks[lay].attn.b_O.detach().cpu()
+            res_stream_sum += cur_mlp
+            assert torch.allclose(
+                res_stream_sum,
+                cache[f"blocks.{lay}.hook_resid_post"][0, position, :].detach(),
+                rtol=1e-3,
+                atol=1e-3,
+            ), lay
+
+            cur_mlp -= cur_mlp.mean()
+            for i in range(n_heads):
+                cur_attn[i] -= cur_attn[i].mean()
+                # we layer norm the end result of the residual stream,
+                # (which firstly centres the residual stream)
+                # so to estimate "amount written in the IO-S direction"
+                # we centre each head's output
+            cur_attn /= layer_norm_div  # ... and then apply the layer norm division
+            cur_mlp /= layer_norm_div
+
+            attn_vals[:n_heads, lay] += torch.einsum("ha,a->h", cur_attn.cpu(), dire.cpu())
+            mlp_vals[lay] = torch.einsum("a,a->", cur_mlp.cpu(), dire.cpu())
+
+        res_stream_sum -= res_stream_sum.mean()
+        res_stream_sum = layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+
+        cur_writing = torch.einsum("a,a->", res_stream_sum, dire) + bias
+
+        assert i == 11 or torch.allclose(  # ??? and it's way off, too
+            cur_writing,
+            logit_diffs[i],
+            rtol=1e-2,
+            atol=1e-2,
+        ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+
+    attn_vals /= ioi_dataset.N
+    mlp_vals /= ioi_dataset.N
+    all_figs = []
+    if "attn" in show:
+        all_figs.append(show_pp(attn_vals, xlabel="head no", ylabel="layer no", title=title, return_fig=True))
+    if "mlp" in show:
+        all_figs.append(show_pp(mlp_vals.unsqueeze(0).T, xlabel="", ylabel="layer no", title=title, return_fig=True))
+    if return_figs and return_vals:
+        return all_figs, attn_vals, mlp_vals
+    if return_vals:
+        return attn_vals, mlp_vals
+    if return_figs:
+        return all_figs
+
+
+torch.cuda.empty_cache()
+all_figs, attn_vals, mlp_vals = writing_direction_heatmap(
+    model,
+    ioi_dataset[:30],
+    return_vals=True,
+    show=["attn", "mlp"],
+    # dir_mode="S2",
+    title="Output into IO - S token unembedding direction",
+    verbose=True,
+    return_figs=True,
+)

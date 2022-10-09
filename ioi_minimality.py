@@ -101,10 +101,11 @@ if torch.cuda.is_available():
 print_gpu_mem("Gpt2 loaded")
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+# acca_dataset = ioi_dataset.gen_flipped_prompts("S")
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
 #%% # do some initial experiments with the naive circuit
-# UH         IS THIS JUST NOT GOOD?
+# UH - IS THIS JUST NOT GOOD?
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
 circuit = circuits[1]
 
@@ -184,10 +185,10 @@ J = {}
 for circuit_class in circuit.keys():
     for head in circuit[circuit_class]:
         J[head] = [circuit_class]
-J[(5, 8)] = [(5, 8)]
-J[(5, 9)] = [(5, 9)]  
-for i, head in enumerate(circuit["induction"]):
-    J[head] += [(10, 7), (11, 10)]
+# J[(5, 8)] = [(5, 8)]
+# J[(5, 9)] = [(5, 9)]  
+# for i, head in enumerate(circuit["induction"]):
+#     J[head] += [(10, 7), (11, 10)]
 
 # rebuild J
 for head in J.keys():
