@@ -127,7 +127,8 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         "attn",
         "val",
     ]  # value weighted attention or attn for attention probas
-    assert type(ioi_dataset) == IOIDataset
+    if type(ioi_dataset) == IOIDataset:
+        prompts = ioi_dataset.text_prompts
 
     for (layer, head) in heads:
         cache = {}
@@ -137,9 +138,9 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
             good_names.append(f"blocks.{layer}.attn.hook_v")
         model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
 
-        logits = model(ioi_dataset.text_prompts)
+        logits = model(prompts)
 
-        for i, text in enumerate(ioi_dataset.text_prompts):
+        for i, text in enumerate(prompts):
             assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
             toks = model.tokenizer(text)["input_ids"]
             words = [model.tokenizer.decode([tok]) for tok in toks]
@@ -154,6 +155,7 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
                 color_continuous_midpoint=0,
                 color_continuous_scale="RdBu",
                 labels={"y": "Queries", "x": "Keys"},
+                height=500,
             )
 
             fig.update_layout(
@@ -161,12 +163,12 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
                     "side": "top",
                     "ticktext": words,
                     "tickvals": list(range(len(words))),
-                    "tickfont": dict(size=8),
+                    "tickfont": dict(size=15),
                 },
                 yaxis={
                     "ticktext": words,
                     "tickvals": list(range(len(words))),
-                    "tickfont": dict(size=8),
+                    "tickfont": dict(size=15),
                 },
             )
             if return_fig and not return_mtx:
@@ -701,3 +703,102 @@ def find_owt_stimulus(
         for seq_nb, s in enumerate(min_seq):
             print_toks_with_color(s, min_seq_vals[seq_nb], show_low=True)
             print("\n=========================\n")
+
+
+#### Composition
+
+
+def sample_activation(model, dataset: list[str], hook_names: list[str], n: int) -> dict[str, torch.Tensor]:
+    data = np.random.choice(dataset, n)
+    data = [str(elem) for elem in data]  # need to convert from numpy.str_
+    cache = {}
+    model.reset_hooks()
+    model.cache_some(cache, lambda name: name in hook_names)
+    _ = model(data)  # (batch, seq, vocab_size)
+    model.reset_hooks()
+    return cache
+
+
+def get_head_param(model, module, layer, head):
+    if module == "OV":
+        W_v = model.blocks[layer].attn.W_V[head]
+        W_o = model.blocks[layer].attn.W_O[head]
+        W_ov = torch.einsum("hd,bh->db", W_v, W_o)
+        return W_ov
+    if module == "QK":
+        W_k = model.blocks[layer].attn.W_K[head]
+        W_q = model.blocks[layer].attn.W_Q[head]
+        W_qk = torch.einsum("hd,hb->db", W_q, W_k)
+        return W_qk
+    if module == "Q":
+        W_q = model.blocks[layer].attn.W_Q[head]
+        return W_q
+    if module == "K":
+        W_k = model.blocks[layer].attn.W_K[head]
+        return W_k
+    if module == "V":
+        W_v = model.blocks[layer].attn.W_V[head]
+        return W_v
+    if module == "O":
+        W_o = model.blocks[layer].attn.W_O[head]
+        return W_o
+    raise ValueError(f"module {module} not supported")
+
+
+def get_hook_name(model, module: str, layer: int, head: int) -> str:
+    assert layer < model.cfg["n_layers"]
+    assert head < model.cfg["n_heads"]
+    if module == "OV" or module == "QK":
+        return f"blocks.{layer}.hook_resid_pre"
+    raise NotImplementedError("Module must be either OV or QK")
+
+
+def compute_composition(
+    model, dataset: list[str], n_samples: int, l1: int, h1: int, l2: int, h2: int, module_1: str, module_2: str
+):
+    W_1 = get_head_param(model, module_1, l1, h1).detach()
+    W_2 = get_head_param(model, module_2, l2, h2).detach()
+    W_12 = torch.einsum("db,bc->dc", W_2, W_1)
+    comp_scores = []
+
+    baselines = []
+    hook_name_1 = get_hook_name(module_1, l1, h1)
+    hook_name_2 = get_hook_name(module_2, l2, h2)
+    activations = sample_activation(model, dataset, [hook_name_1, hook_name_2], n_samples)
+    # TODO: what to do with seq length dimension??
+    # x_1 = activations[hook_name_1].mean(dim=1).squeeze().detach()
+    # x_2 = activations[hook_name_2].mean(dim=1).squeeze().detach()
+    x_1 = activations[hook_name_1].squeeze().detach()  # (batch, seq, d_model)
+    x_2 = activations[hook_name_2].squeeze().detach()  # (batch, seq, d_model)
+
+    # sanity check:
+    # x_1 = torch.randn(768, device=W_1.device) / (768 ** 0.5)
+    # x_2 = torch.randn(768, device=W_1.device) / (768 ** 0.5)
+    c12 = torch.norm(torch.einsum("d e, b s e -> b s d", W_12, x_1), dim=-1)
+    c1 = torch.norm(torch.einsum("d e, b s e -> b s d", W_1, x_1), dim=-1)
+    c2 = torch.norm(torch.einsum("d e, b s e -> b s d", W_2, x_2), dim=-1)
+    comp_score = c12 / (c1 * c2 * 768 ** 0.5)
+    comp_scores.append(comp_score)
+
+    # compute baseline
+    for _ in range(10):
+        W_1b = torch.randn(W_1.shape, device=W_1.device) * W_1.std()
+        W_2b = torch.randn(W_2.shape, device=W_2.device) * W_2.std()
+        W_12b = torch.einsum("db,bc->dc", W_2b, W_1b)
+        c12b = torch.norm(torch.einsum("d e, b s e -> b s d", W_12b, x_1), dim=-1)
+        c1b = torch.norm(torch.einsum("d e, b s e -> b s d", W_1b, x_1), dim=-1)
+        c2b = torch.norm(torch.einsum("d e, b s e -> b s d", W_2b, x_2), dim=-1)
+        baseline = c12b / (c1b * c2b * 768 ** 0.5)
+        baselines.append(baseline)
+    return torch.stack(comp_scores).mean().cpu().numpy() - torch.stack(baselines).mean().cpu().numpy()
+
+
+def compute_composition_OV_QK(model, dataset: list[str], n_samples: int, l1: int, h1: int, l2: int, h2: int, mode: str):
+    assert mode in ["Q", "K"]
+    W_OV = get_head_param(model, "OV", l1, h1).detach()
+    W_QK = get_head_param(model, "QK", l2, h2).detach()
+
+    if mode == "Q":
+        W_12 = torch.einsum("db,bc->dc", W_QK, W_OV)
+    elif mode == "K":
+        W_12 = torch.einsum("bc,bc->dc", W_OV, W_QK)  # OV^T * QK
