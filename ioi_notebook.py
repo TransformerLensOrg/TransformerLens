@@ -116,7 +116,6 @@ if ipython is not None:
 # Import model and dataset
 #%% # plot writing in the IO - S direction
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
-
 print_gpu_mem("About to load model")
 model = EasyTransformer(
     model_name, use_attn_result=True
@@ -157,8 +156,6 @@ def logit_diff(model, ioi_dataset, all=False):
     if all:
         return IO_logits - S_logits
     return (IO_logits - S_logits).mean().detach().cpu()
-
-
 # %% [markdown]
 # ioi_dataset `ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
 # %%
@@ -192,8 +189,6 @@ def mean_at_end(z, mean, hook):  # to ablate at particular indices, we have to d
         torch.arange(len(ioi_dataset.ioi_prompts)), ioi_dataset.word_idx["end"], :
     ]
     return z
-
-
 # %%
 metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
 config_mlp = AblationConfig(
@@ -225,7 +220,7 @@ layer_ablation = torch.cat([mlp_result, attn_result], dim=0)
 fig = px.imshow(
     layer_ablation,
     labels={"x": "Layer"},
-    title="Logit Difference Variation after Mean Ablation (on Open Web text) at all tokens",
+    title="Logit Difference Variation after Mean Ablation (on Open Web text) at END",
     color_continuous_midpoint=0,
     color_continuous_scale="RdBu",
 )
@@ -233,7 +228,6 @@ fig = px.imshow(
 fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
 fig.show()
 #%% Mean everywhere
-
 config_mlp = AblationConfig(
     abl_type="mean",
     mean_dataset=owb_seqs,
@@ -268,10 +262,7 @@ fig = px.imshow(
 
 fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
 fig.show()
-
-
 # %% random ablation
-
 metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
 config_mlp = AblationConfig(
     abl_type="random",
@@ -311,8 +302,6 @@ fig = px.imshow(
 
 fig.update_layout(yaxis=dict(tickmode="array", tickvals=[0, 1], ticktext=["mlp", "attention layer"]))
 fig.show()
-
-
 # %% ABC-mean ablation of mlps
 metric = ExperimentMetric(metric=logit_diff, dataset=ioi_dataset, relative_metric=True)
 config_mlp = AblationConfig(
@@ -837,7 +826,6 @@ print_gpu_mem()
 pprint(ioi_dataset.text_prompts[:5])
 
 # %% # here...
-
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
 heads_by_layer = {9: [6, 9], 10: [0]}
 layers = [9, 10]
@@ -888,8 +876,6 @@ def attention_probs(
 
     attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
     return attn_probs_variation_by_keys.detach().cpu()
-
-
 # %%
 circuit = CIRCUIT.copy()
 average_changes = torch.zeros(size=(12, 12, 3))
@@ -1209,22 +1195,17 @@ show_attention_patterns(model, [(0, 1), (0, 10), (3, 0)], ioi_dataset[:2])
 show_attention_patterns(model, [(5, 5), (5, 8), (5, 9), (6, 9)], ioi_dataset[:2])
 
 # %% [markdown]
-# ### More patching: patching at S+1
-
+# More patching: patching at S+1
 # %% [markdown]
 # Some of the important heads for 9.9 attention at S2 have attention pattern that looks like induction: they pay attention to the token that follows a previous occurence of the query, in this case, because the query is S2, the previous occurence is S.
 #
 # What append if we patch at the token after S? (We'll call it S+1)
 #
 # To do this we first have to create a new dataset where S1 is flipped compared to the original dataset.
-
 # %%
-acba_dataset = ioi_dataset.gen_flipped_prompts("S")  # we flip the first occurence of S # TODO Arthur check this
+acba_dataset = ioi_dataset.gen_flipped_prompts("S1")
 acba_dataset.text_prompts[0], ioi_dataset.text_prompts[0]
-
 # %%
-
-
 def patch_s_plus_1(z, source_act, hook):  # we patch at the "to" token
     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"] + 1] = source_act[
         torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"] + 1
@@ -1259,11 +1240,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
     fig.write_image(f"svgs/patching average S+1 (ACB, ABB) nm {key} at {ctime()}.svg")
     fig.show()
-
-
 # %% Check with a similar ablation
-
-
 def ablate_s_plus_1(z, mean, hook):
     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"] + 1] = mean[
         torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"] + 1
@@ -1306,8 +1283,6 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
     fig.write_image(f"svgs/ABC-ablation at S+1 average nm probs to key-{key} at {ctime()}.svg")
     fig.show()
-
-
 # %% [markdown]
 # It seems that the heads 4.11, 4.7, 4.3, 2.2 and 5.6 are important. Let's look at their patterns. The majority of them look like they're attending to the previous tokens.
 
