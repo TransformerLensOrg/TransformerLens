@@ -582,9 +582,7 @@ fig.add_shape(
 fig.show()
 
 
-# %%
-
-
+#%%
 def compensation_plot(
     model,
     ioi_dataset,

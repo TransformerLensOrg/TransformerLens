@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
 from ioi_utils import probs
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
+# from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 from ioi_utils import probs, logit_diff
 import torch
 import torch as t
@@ -101,36 +101,11 @@ if torch.cuda.is_available():
 print_gpu_mem("Gpt2 loaded")
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+# acca_dataset = ioi_dataset.gen_flipped_prompts("S")
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
 mean_dataset = abca_dataset
-
 #%% # do some initial experiments with the naive circuit
-<<<<<<< HEAD
-
-CIRCUIT = {
-    "name mover": [
-        (9, 9),  # by importance
-        (10, 0),
-        (9, 6),
-        (10, 10),
-        (10, 6),
-        (10, 2),
-        (10, 1),
-        (11, 2),
-        (11, 9),
-        (9, 7),
-        (11, 3),
-    ],
-    "negative": [(10, 7), (11, 10)],
-    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0)],
-    "previous token": [(2, 2), (2, 9), (4, 11)],
-}
-
-=======
-# UH         IS THIS JUST NOT GOOD?
->>>>>>> 43eeb1a3ec59b30098261fb8749d97b3b6911b29
+# UH - IS THIS JUST NOT GOOD?
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
 circuit = circuits[1]
 
@@ -180,7 +155,7 @@ model = get_basic_extracted_model(
     model,
     ioi_dataset,
     mean_dataset=mean_dataset,
-    circuit=circuits[2],
+    circuit=circuits[1],
 )
 torch.cuda.empty_cache()
 
@@ -210,10 +185,10 @@ J = {}
 for circuit_class in circuit.keys():
     for head in circuit[circuit_class]:
         J[head] = [circuit_class]
-J[(5, 8)] = [(5, 8)]
-J[(5, 9)] = [(5, 9)]  
-for i, head in enumerate(circuit["induction"]):
-    J[head] += [(10, 7), (11, 10)]
+# J[(5, 8)] = [(5, 8)]
+# J[(5, 9)] = [(5, 9)]  
+# for i, head in enumerate(circuit["induction"]):
+#     J[head] += [(10, 7), (11, 10)]
 
 # rebuild J
 for head in J.keys():
@@ -228,29 +203,12 @@ for head in J.keys():
             raise NotImplementedError(head, entry)
     assert head in new_j_entry, (head, new_j_entry)
     J[head] = list(set(new_j_entry))
-
 # name mover shit
 for i, head in enumerate(circuit["name mover"]):
     old_entry = J[head]
-<<<<<<< HEAD
-    J[head] = []
-    for other_head in circuit["name mover"][: i + 1]:
-        J[head].append(other_head)
-
-# for i, head in enumerate(circuit["name mover"]):
-# J[head] += [(10, 7), (11, 10)]
-
-for i, head in enumerate(circuit["induction"]):
-    J[head] += [(10, 7), (11, 10)]
-
-# J[(9, 6)] = [(9, 9), (9, 6)]
-# J[(10, 10)] = [(9, 9), (10, 10)]
-J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]  # by importance
-#%%
-=======
     J[head] = deepcopy(circuit["name mover"][: i + 1]) # turn into the previous things
+J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]
 #%% 
->>>>>>> 43eeb1a3ec59b30098261fb8749d97b3b6911b29
 results = {}
 
 if "results_cache" not in dir():
@@ -292,6 +250,8 @@ fig = go.Figure()
 initial_y_cache = {}
 final_y_cache = {}
 
+the_xs = {}
+
 for j, G in enumerate(relevant_classes + ["backup name mover"]):
     xs = []
     initial_ys = []
@@ -301,7 +261,7 @@ for j, G in enumerate(relevant_classes + ["backup name mover"]):
     widths = []
     if G == "backup name mover":
         curvys = list(circuit["name mover"])
-        for head in [(9, 6), (9, 9), (10, 0)]:
+        for head in [(9, 6), (9, 9), (10, 0)]:  
             curvys.remove(head)
     elif G == "name mover":
         curvys = [(9, 6), (9, 9), (10, 0)]
@@ -331,6 +291,7 @@ for j, G in enumerate(relevant_classes + ["backup name mover"]):
         initial_ys.append(initial_y)
         final_ys.append(final_y)
 
+    the_xs[G] = xs 
     initial_ys = torch.Tensor(initial_ys)
     final_ys = torch.Tensor(final_ys)
     initial_y_cache[G] = initial_ys
@@ -413,22 +374,25 @@ fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
 #%% # THIS IS JUST FOR LATEX
 
-assert False
-
-
 def capitalise(name):
     """
     turn each word into a capitalised word
     """
     return " ".join([word.capitalize() for word in name.split(" ")])
 
+def str_to_tuple(L):
+    """
+    turn a string into a tuple
+    """
+    return tuple([int(x) for x in L[1:-1].split(",")])
 
 idx = 0
 for j, G in enumerate(relevant_classes + ["backup name mover"]):
     initial_ys = initial_y_cache[G]
     final_ys = final_y_cache[G]
     for i in range(len(initial_ys)):  ## , v in enumerate(list(circuit[G])):
-        head = circuit[G][i] if G != "backup name mover" else circuit["name mover"][i]
+        # head = circuit[G][i] if G != "backup name mover" else circuit["name mover"][i]
+        head = str_to_tuple(the_xs[G][i])
         group = str(G)
         start = initial_ys[i]
         end = final_ys[i]
@@ -571,51 +535,3 @@ for poppers in [[(9, 9)], [(9, 9), (9, 6)], [(9, 6)]]:
     metric_calc = metric(model, ioi_dataset, std=True)
     torch.cuda.empty_cache()
     print(metric_calc)
-#%% # new experiment idea: the duplicators and induction heads shouldn't care where their attention is going, provided that
-# it goes to either S or S+1.
-
-for j in range(2, 4):
-    s_positions = ioi_dataset.word_idx["S"]
-
-    # [batch, head_index, query_pos, key_pos] # so pass dim=1 to ignore the head
-    def attention_pattern_modifier(z, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
-        cur_layer = int(hook.name.split(".")[1])
-        cur_head_idx = hook.ctx["idx"]
-
-        assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
-        assert len(list(z.shape)) == 3, z.shape  # batch, seq (attending_query), attending_key
-
-        prior_stuff = []
-
-        for i in range(-1, 2):
-            prior_stuff.append(z[:, s_positions + i, :].clone())
-            # print(prior_stuff[-1].shape, torch.sum(prior_stuff[-1]))
-
-        for i in range(-1, 2):
-            z[:, s_positions + i, :] = prior_stuff[(i + j) % 3]  # +1 is the do nothing one
-
-        return z
-
-    model.reset_hooks()
-    ld = logit_diff(model, ioi_dataset)
-    # print(f"{ld=}")
-
-    circuit_classes = ["induction"]
-    circuit_classes = ["duplicate token"]
-    circuit_classes = ["duplicate token", "induction"]
-
-    for circuit_class in circuit_classes:
-        for layer, head_idx in circuit[circuit_class]:
-            cur_hook = get_act_hook(
-                attention_pattern_modifier,
-                alt_act=None,
-                idx=head_idx,
-                dim=1,
-            )
-            model.add_hook(f"blocks.{layer}.attn.hook_attn", cur_hook)
-
-    ld2 = logit_diff(model, ioi_dataset)
-    print(
-        f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
-    )
-# %%

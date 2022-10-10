@@ -47,6 +47,21 @@ def show_tokens(tokens, model, return_list=False):
         print("|".join(text_tokens))
 
 
+def max_2d(m, k=1):
+    """Get the max of a matrix"""
+    if len(m.shape) != 2:
+        raise NotImplementedError()
+    mf = m.flatten()
+    inds = torch.topk(mf, k=k).indices
+    out = []
+    for ind in inds:
+        ind = ind.item()
+        x = ind // m.shape[1]
+        y = ind - x * m.shape[1]
+        out.append((x, y))
+    return out, mf[inds]
+
+
 def show_pp(
     m,
     xlabel="",
@@ -122,13 +137,16 @@ def show_pp(
 # Plot attention patterns weighted by value norm
 
 
-def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix="", return_fig=False, return_mtx=False):
+def show_attention_patterns(
+    model, heads, ioi_dataset, mode="val", title_suffix="", return_fig=False, return_mtx=False
+):  # Arthur edited for one of my experiments, things work well
     assert mode in [
         "attn",
         "val",
     ]  # value weighted attention or attn for attention probas
     if type(ioi_dataset) == IOIDataset:
         prompts = ioi_dataset.text_prompts
+    assert len(heads) == 1 or not (return_fig or return_mtx)
 
     for (layer, head) in heads:
         cache = {}
@@ -137,12 +155,14 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
         model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
-
-        logits = model(prompts)
+        logits = model(ioi_dataset.text_prompts)
+        attn_results = torch.zeros(size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len))
+        attn_results += -20
 
         for i, text in enumerate(prompts):
             assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
             toks = model.tokenizer(text)["input_ids"]
+            current_length = len(toks)
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
             if mode == "val":
@@ -174,9 +194,16 @@ def show_attention_patterns(model, heads, ioi_dataset, mode="val", title_suffix=
             if return_fig and not return_mtx:
                 return fig
             elif return_mtx and not return_fig:
-                return attn if mode == "attn" else cont
+                attn_results[i, :current_length, :current_length] = attn[:current_length, :current_length].clone().cpu()
             else:
                 fig.show()
+
+        if return_fig and not return_mtx:
+            return fig
+        elif return_mtx and not return_fig:
+            if mode == "attn":
+                return attn_results
+            raise NotImplementedError()
 
 
 def safe_del(a):
@@ -311,24 +338,41 @@ def handle_all_and_std(returning, all, std):
     return (returning).mean().detach().cpu()
 
 
-def logit_diff(model, ioi_dataset, all=False, std=False):
+def logit_diff(
+    model, ioi_dataset, all=False, std=False
+):  # changed by Arthur to take dataset object, :pray: no big backwards compatibility issues
     """
     Difference between the IO and the S logits at the "to" token
     """
-    text_prompts = ioi_dataset.text_prompts
-    logits = model(text_prompts).detach()
+    logits = model(ioi_dataset.toks.long()).detach()
     IO_logits = logits[
-        torch.arange(len(text_prompts)),
+        torch.arange(len(ioi_dataset)),
         ioi_dataset.word_idx["end"],
         ioi_dataset.io_tokenIDs,
     ]
     S_logits = logits[
-        torch.arange(len(text_prompts)),
+        torch.arange(len(ioi_dataset)),
         ioi_dataset.word_idx["end"],
         ioi_dataset.s_tokenIDs,
     ]
 
     return handle_all_and_std(IO_logits - S_logits, all, std)
+
+
+def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, std=False):
+    """
+    Get the attention on token `token` from the end position
+    """
+
+    hook_name = "blocks.{}.attn.hook_attn".format(layer)
+    cache = {}
+    model.cache_some(cache, lambda x: x == hook_name)
+    # shape is batch * head * from * to
+    logits = model(ioi_dataset.toks.long()).detach()
+    atts = cache[hook_name][
+        torch.arange(ioi_dataset.N), head_idx, ioi_dataset.word_idx["end"], ioi_dataset.word_idx[token]
+    ]
+    return handle_all_and_std(atts, all, std)
 
 
 def positions(x: torch.Tensor):

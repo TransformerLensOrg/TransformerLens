@@ -276,7 +276,7 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
                     rand_name = names[np.random.randint(len(names))]
                 t[len(t) - t[::-1].index(prompt["S"]) - 1] = rand_name
 
-        if flip[0] == "IO":
+        elif flip[0] == "IO":
             if flip[1] == "RAND":
                 rand_name = names[np.random.randint(len(names))]
                 while rand_name == prompt["IO"] or rand_name == prompt["S"]:
@@ -290,18 +290,19 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
                 t[t.index(prompt["IO"])] = rand_animal
                 prompt["IO"] = rand_animal
                 # print(t)
-        if flip[0] == "S":
+        elif flip[0] in ["S", "S1"]:
             if flip[1] == "ANIMAL":
                 new_s = ANIMALS[np.random.randint(len(ANIMALS))]
             if flip[1] == "RAND":
                 new_s = names[np.random.randint(len(names))]
-            t[len(t) - t[::-1].index(prompt["S"]) - 1] = new_s
+            if flip[0] == "S": # literally just change the first S if this is S1
+                t[len(t) - t[::-1].index(prompt["S"]) - 1] = new_s
+                prompt["S"] = new_s
             t[t.index(prompt["S"])] = new_s
-            prompt["S"] = new_s
-        if flip[0] == "END":
+        elif flip[0] == "END":
             if flip[1] == "S":
                 t[len(t) - t[::-1].index(prompt["IO"]) - 1] = prompt["S"]
-        if flip[0] == "PUNC":
+        elif flip[0] == "PUNC":
             n = []
 
             # separate the punctuation from the words
@@ -337,9 +338,12 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
 
             t = n
 
-        if flip[0] == "C2":
+        elif flip[0] == "C2":
             if flip[1] == "A":
                 t[len(t) - t[::-1].index(prompt["C"]) - 1] = prompt["A"]
+
+        else:
+            raise ValueError("Invalid flipper")
 
         if "IO" in prompt:
             prompt["text"] = " ".join(t)
@@ -568,7 +572,7 @@ class IOIDataset:
 
     def gen_flipped_prompts(self, flip):
         """Return a IOIDataset where the name to flip has been replaced by a random name."""
-        assert flip in ["S", "S2", "IO"]
+        assert flip in ["S", "S2", "IO", "S1"]
 
         flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, (flip, "RAND"))
         flipped_ioi_dataset = IOIDataset(

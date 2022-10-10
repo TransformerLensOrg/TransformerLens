@@ -22,7 +22,6 @@
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
@@ -131,7 +130,7 @@ print_gpu_mem("Gpt2 loaded")
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
 # %%
 # IOI Dataset initialisation
-N = 150
+N = 100
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
@@ -617,8 +616,6 @@ modules = ["attn", "mlp"]
 
 for i, fig in enumerate(all_figs):
     fig.write_image(f"svgs/writing_direction_heatmap_module_{modules[i]}.svg")
-
-
 # %% [markdown]
 # We observe heads that are writting in to push IO more than S (the blue suare), but also other hat writes in the opposite direction (red squares). The brightest blue square (9.9, 9.6, 10.0) are name mover heads. The two red (11.10 and 10.7) are the callibration heads.
 # %%
@@ -626,27 +623,16 @@ show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 # %%
 show_attention_patterns(model, [(11, 10), (10, 7)], ioi_dataset[:1])
 #%%
-show_attention_patterns(model, [(11, 2)], ioi_dataset[:1])
+att = show_attention_patterns(model, [(8, 10)], abca_dataset[:2], return_mtx=True, mode="attn")
+
+
 # %% [markdown]
 # ### Plot attention vs direction
 # %% [markdown]
 # We want to investigate what are the head we observed doing. By plotting attention patterns we see that they are paying preferential attention to IO.
 
 # %%
-def max_2d(m, k=1):
-    """Get the max of a matrix"""
-    if len(m.shape) != 2:
-        raise NotImplementedError()
-    mf = m.flatten()
-    inds = torch.topk(mf, k=k).indices
-    out = []
-    for ind in inds:
-        ind = ind.item()
-        x = ind // m.shape[1]
-        y = ind - x * m.shape[1]
-        out.append((x, y))
-    return out, mf[inds]
-
+from ioi_utils import max_2d
 
 attn_vals = writing_direction_heatmap(
     model,
@@ -934,8 +920,6 @@ for idx, (layer, head_idx) in enumerate(tqdm(circuit["name mover"])):
     )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 
 # %%
-
-
 def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
     for pos in positions:
         z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
@@ -978,8 +962,6 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
 # To have more confidence in these result, we can run a similar experiment by ABC-knock out the same heads
 # %% Cross check with
-
-
 def ablate_end(z, mean, hook):
     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]] = mean[
         torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]
@@ -1024,12 +1006,9 @@ for i, key in enumerate(["IO", "S", "S2"]):
     fig.show()
 # %%
 print_gpu_mem()
-
 # %% [markdown]
 # #### Plotting attention patterns
-
 # %%
-
 LAYER = 9
 HEAD = 9
 
@@ -1094,11 +1073,9 @@ show_attention_patterns(model, [(7, 3), (7, 9), (8, 6), (8, 10)], ioi_dataset[ID
 # %% [markdown]
 # What happend if we patch at S2 instead of END?
 # %%
-
-
-# %%
 LAYER = 9
-positions = ["S2"]
+positions = ["S+1"]
+warning.warn("This seems important for the future cells...")
 patcher = partial(patch_positions, positions=positions)
 
 config = PatchingConfig(
@@ -1113,10 +1090,8 @@ config = PatchingConfig(
 )
 
 metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
-
 patching = EasyPatching(model, config, metric)
 result = patching.run_patching()
-
 
 for i, key in enumerate(["IO", "S", "S2"]):
     fig = px.imshow(
@@ -1129,11 +1104,50 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
     fig.write_image(f"svgs/patching at S2 average nm {key} at {ctime()}.svg")
     fig.show()
+#%% [markdown] ...  but does anything change when we choose the metric of probability of S Inhibition heads?
+# ARTHUR GOT CARRIED AWAY WITH EXPERIMENTS: SOME OF THESE CELLS ARE NOT IMPORTANT
+from ioi_utils import attention_on_token
+
+LAYER = 5
+HEAD = 5
 
 
+def metric_function(model, text_prompts):
+    # return attention_on_token(model, ioi_dataset[:len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S2")
+    return attention_on_token(model, ioi_dataset[: len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S+1")
+
+
+# metric_function =
+
+config = PatchingConfig(
+    source_dataset=abca_dataset.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=patcher,
+    layers=(0, LAYER - 1),
+)
+metric = ExperimentMetric(metric_function, config.target_dataset, relative_metric=False, scalar_metric=False)
+patching = EasyPatching(model, config, metric)
+result = patching.run_patching()
+#%%
+model.reset_hooks()
+baseline = metric_function(model, ioi_dataset.text_prompts)
+print("The baseline is", baseline)
+
+fig = px.imshow(
+    result[:, :] - baseline,
+    labels={"y": "Layer", "x": "Head"},
+    title=f'Average {LAYER}.{HEAD} from token "to" to {key} after Patching ABC->ABB on {positions}',
+    color_continuous_midpoint=0,
+    color_continuous_scale="RdBu",
+)
+
+fig.write_image(f"svgs/patching at S2 average S2 at {ctime()}.svg")
+fig.show()
 # %% cross check with the same experiment with ablation
-
-
 def ablate_s2(z, mean, hook):
     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = mean[
         torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]
@@ -1181,6 +1195,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
 # A bunch of other head appear, in layer earlier than the S2-inhibition heads: 0.1, 0.10, 3.0 and 5.5, 5.8, 5.9, 6.9. We claim that they influence the values that S2 will read. Let's visualize their attention patterns.
 
 # %% [markdown]
+
 # #### Duplicate tokens heads
 
 # %%
@@ -1912,5 +1927,204 @@ for i in tqdm(range(1000)):
     prbs = probs(model, ioi_dataset)
     print(prbs.mean())
 
+
+# %% Investigation of identified heads on random tokens
+seq_len = 100
+rand_tokens = torch.randint(1000, 10000, (4, seq_len))
+rand_tokens_repeat = einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
+
+
+induction_scores_array = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
+
+
+def calc_induction_score(attn_pattern, hook):
+    # Pattern has shape [batch, index, query_pos, key_pos]
+    induction_stripe = attn_pattern.diagonal(1 - seq_len, dim1=-2, dim2=-1)
+    induction_scores = einops.reduce(induction_stripe, "batch index pos -> index", "mean")
+    # Store the scores in a common array
+    induction_scores_array[hook.layer()] = induction_scores.detach().cpu().numpy()
+
+
+def filter_attn_hooks(hook_name):
+    split_name = hook_name.split(".")
+    return split_name[-1] == "hook_attn"
+
+
+induction_logits = model.run_with_hooks(rand_tokens_repeat, fwd_hooks=[(filter_attn_hooks, calc_induction_score)])
+px.imshow(induction_scores_array, labels={"y": "Layer", "x": "Head"}, color_continuous_scale="Blues")
+
+
+# %%
+from ioi_utils import compute_next_tok_dot_prod
+import torch.nn.functional as F
+
+IDX = 0
+
+
+def zero_ablate(hook, z):
+    return torch.zeros_like(z)
+
+
+head_mask = torch.empty((12, 12), dtype=torch.bool)
+head_mask = torch.fill(head_mask, False)
+head_mask[5, 5] = True
+head_mask[6, 9] = False
+
+attn_head_mask = head_mask
+
+
+def prune_attn_heads(value, hook):
+    # Value has shape [batch, pos, index, d_head]
+    mask = head_mask[hook.layer()]
+    value[:, :, mask] = 0.0
+    return value
+
+
+def filter_value_hooks(name):
+    return name.split(".")[-1] == "hook_v"
+
+
+def compute_logit_probs(rand_tokens_repeat, model):
+    induction_logits = model(rand_tokens_repeat)
+    induction_log_probs = F.log_softmax(induction_logits, dim=-1)
+    induction_pred_log_probs = torch.gather(
+        induction_log_probs[:, :-1].cuda(), -1, rand_tokens_repeat[:, 1:, None].cuda()
+    )[..., 0]
+    return induction_pred_log_probs[:, seq_len:].mean().cpu().detach().numpy()
+
+
+compute_logit_probs(rand_tokens_repeat, model)
+
+# %%
+induct_head = [(5, 1), (7, 2), (7, 10), (6, 9)]
+all_means = []
+for k in range(len(induct_head) + 1):
+    results = []
+    for _ in range(10):
+        head_mask = torch.empty((12, 12), dtype=torch.bool)
+        head_mask = torch.fill(head_mask, False)
+        rd_set = rd.sample(induct_head, k=k)
+        for (l, h) in rd_set:
+            head_mask[l, h] = True
+
+        def prune_attn_heads(value, hook):
+            # Value has shape [batch, pos, index, d_head]
+            mask = head_mask[hook.layer()]
+            value[:, :, mask] = 0.0
+            return value
+
+        model.reset_hooks()
+        model.add_hook(filter_value_hooks, prune_attn_heads)
+        results.append(compute_logit_probs(rand_tokens_repeat, model))
+
+    results = np.array(results)
+    all_means.append(results.mean())
+
+fig = px.bar(
+    all_means, title="Loss on repeated random tokens sequences (average on 10 random set of KO heads) 5.5 excluded"
+)
+
+
+fig.update_layout(
+    xaxis_title="Number of induction head zero-KO",
+    yaxis_title="Induction loss",
+)
+fig.show()
+# %%
+model.add_hook(filter_value_hooks, prune_attn_heads)
+
+
+# model.reset_hooks()
+prod = np.zeros((model.cfg.n_layers, model.cfg.n_heads, len(rand_tokens_repeat[IDX])))
+for layer in range(12):
+    for head in range(12):
+        print(f"Layer {layer}, head {head}")
+        prod[layer, head, :] = np.concatenate(
+            [
+                np.array([0]),
+                np.array(
+                    compute_next_tok_dot_prod(
+                        model, rand_tokens_repeat[IDX : IDX + 1], layer, head, seq_tokenized=True
+                    )[IDX]
+                ),
+            ]
+        )
+
+
+# %%
+
+
+POS = 130
+K = 1
+for x in np.random.randint(0, seq_len, K):
+    print(f"Position {x}")
+    fig = px.imshow(prod[:, :, x], labels={"y": "Layer", "x": "Head"}, color_continuous_scale="Blues")
+    fig.show()
+
+for x in np.random.randint(seq_len, 2 * seq_len, K):
+    print(f"Position {x}")
+    fig = px.imshow(prod[:, :, x], labels={"y": "Layer", "x": "Head"}, color_continuous_scale="Blues")
+    fig.show()
+
+# %%
+
+
+def sort_mtx(mtx, return_idx=False, sort_by_abs=False):
+    mtx_flat = mtx.flatten()
+    if sort_by_abs:
+        all_sorted_idx = np.abs(mtx_flat).argsort()
+    else:
+        all_sorted_idx = mtx_flat.argsort()
+
+    sorted_idx = []
+    sorted_values = []
+    for i in range(len(all_sorted_idx)):
+        # print(np.unravel_index(all_sorted_idx[-i - 1], mtx.shape))
+        x, y = np.unravel_index(all_sorted_idx[-i - 1], mtx.shape)
+        sorted_idx.append((x, y))
+        sorted_values.append(mtx[x, y])
+    if return_idx:
+        return sorted_values, sorted_idx
+    else:
+        return sorted_values
+
+
+# %%
+
+important_heads = []
+# get heads with average of absolute dot product above 10
+for layer in range(12):
+    for head in range(12):
+        if np.mean(np.abs(prod[layer, head, seq_len:])) > 5:
+            important_heads.append((layer, head))
+
+#%%
+circuit_heads = []
+for n in CIRCUIT.keys():
+    circuit_heads += CIRCUIT[n]
+
+# %%
+
+vals, idx = sort_mtx(np.abs(prod[:, :, seq_len:]).mean(axis=-1), return_idx=True, sort_by_abs=True)
+
+
+colors = [((l, h) in circuit_heads) for (l, h) in idx]
+
+fig = px.bar(
+    x=[f"{x[0]}.{x[1]}" for x in idx],
+    y=vals,
+    color=colors,
+    title="Average absolute dot prod with next token on repeated sequence (after zero-KO of 6.9 and 5.5)",
+)
+
+fig.update_layout(xaxis={"categoryorder": "array", "categoryarray": [f"{x[0]}.{x[1]}" for x in idx]})
+fig.show()
+
+# %%
+heads = [(10, 10), (9, 6), (10, 6), (10, 7), (11, 10), (10, 1), (9, 9), (10, 2), (7, 2), (9, 1), (9, 0), (11, 7)]
+
+all_prods = {f"{layer}.{head}": prod[layer, head, :] for (layer, head) in important_heads}
+
+px.line(all_prods, labels={"index": "Position in sequence of random tokens", "value": "Dot product"})
 
 # %%
