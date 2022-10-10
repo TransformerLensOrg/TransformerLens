@@ -532,12 +532,12 @@ def writing_direction_heatmap(
             dire = s_dir
         else:
             raise NotImplementedError()
-
+        dire.to("cuda")
         cache = {}
-        model.cache_all(cache, device="cpu")  # TODO maybe speed up by only caching relevant things
+        model.cache_all(cache, device="cuda")  # TODO maybe speed up by only caching relevant things
         logits = model(ioi_dataset.text_prompts[i])
 
-        res_stream_sum = torch.zeros(size=(d_model,))
+        res_stream_sum = torch.zeros(size=(d_model,), device="cuda") # cuda implem to speed up things
         res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]  # .detach().cpu()
         # the pos and token embeddings
 
@@ -552,7 +552,7 @@ def writing_direction_heatmap(
 
             # check that we're really extracting the right thing
             res_stream_sum += torch.sum(cur_attn, dim=0)
-            res_stream_sum += model.blocks[lay].attn.b_O.detach().cpu()
+            res_stream_sum += model.blocks[lay].attn.b_O  # .detach().cpu()
             res_stream_sum += cur_mlp
             assert torch.allclose(
                 res_stream_sum,
@@ -576,8 +576,7 @@ def writing_direction_heatmap(
 
         res_stream_sum -= res_stream_sum.mean()
         res_stream_sum = layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
-
-        cur_writing = torch.einsum("a,a->", res_stream_sum, dire) + unembed_bias_io - unembed_bias_s
+        cur_writing = torch.einsum("a,a->", res_stream_sum, dire.to("cuda")) + unembed_bias_io - unembed_bias_s
 
         assert i == 11 or torch.allclose(  # ??? and it's way off, too
             cur_writing,
@@ -602,6 +601,7 @@ def writing_direction_heatmap(
 
 
 torch.cuda.empty_cache()
+
 all_figs, attn_vals, mlp_vals = writing_direction_heatmap(
     model,
     ioi_dataset,

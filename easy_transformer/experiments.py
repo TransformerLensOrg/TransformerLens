@@ -180,7 +180,9 @@ class AblationConfig(ExperimentConfig):
         assert not (abl_type == "random" and self.nb_metric_iteration < 0)
         assert not (abl_type != "random" and self.nb_metric_iteration != 1)
         assert not (abl_type == "random" and not (cache_means)), "You must cache mean for random ablation"
-        assert not (abl_type == "random" and self.head_circuit in ["attn", "attn scores"]), "Random ablation is not implemented for attention circuit"
+        assert not (
+            abl_type == "random" and self.head_circuit in ["attn", "attn scores"]
+        ), "Random ablation is not implemented for attention circuit"
 
         if abl_type == "random" and (batch_size is None or max_seq_len is None):
             warnings.warn(
@@ -206,7 +208,7 @@ class AblationConfig(ExperimentConfig):
         if abl_type == "mean":
             self.abl_fn = cst_fn
         if abl_type == "random" and abl_fn is None:
-            self.abl_fn = cst_fn #can specify arbitrary functions for random ablations
+            self.abl_fn = cst_fn  # can specify arbitrary functions for random ablations
 
 
 class PatchingConfig(ExperimentConfig):
@@ -244,6 +246,7 @@ class EasyExperiment:
         self.metric = metric
         self.cfg = config.adapt_to_model(model)
         self.cfg.dataset = self.metric.dataset
+        self.other_hooks = {}
 
     def run_experiment(self):
         self.metric.set_baseline(self.model)
@@ -397,7 +400,9 @@ class EasyAblation(EasyExperiment):
                     self.allowable_indices[i].append(j)
             self.allowable_lengths.append(len(self.allowable_indices[i]))
             # pad out self.allowable_indices to be the same length
-            self.allowable_indices[i] += [1e9 for _ in range(batch_size - self.allowable_lengths[i])] # 1e9 so will bug if we clip out of range
+            self.allowable_indices[i] += [
+                1e9 for _ in range(batch_size - self.allowable_lengths[i])
+            ]  # 1e9 so will bug if we clip out of range
         # self.allowable_indices = torch.tensor(self.allowable_indices).long().T
         logits = self.model(toks)
 
@@ -473,11 +478,11 @@ class EasyAblation(EasyExperiment):
 
             self.seq_no_sem.append(seq_no_sem_at_pos.copy())
 
-
     def update_setup(self, hook_name):
         if self.cfg.abl_type == "random":
             self.mean_cache[hook_name] = self.compute_mean(self.act_cache[hook_name], hook_name)
             # we randomize the cache for random ablation. We use hacky reference properties
+
 
 class EasyPatching(EasyExperiment):
     def __init__(self, model: EasyTransformer, config: PatchingConfig, metric: ExperimentMetric):
@@ -566,7 +571,9 @@ def get_random_sample(z, allowable_lengths, allowable_indices, first_pad_index):
 
     batch_size = z.shape[0]
     seq_len = z.shape[1]
-    indices = torch.Tensor(np.random.randint(low=np.zeros((batch_size, 1)), high=allowable_lengths)).long() # crazy broadcasting
+    indices = torch.Tensor(
+        np.random.randint(low=np.zeros((batch_size, 1)), high=allowable_lengths)
+    ).long()  # crazy broadcasting
 
     # I think index_select or something could do this more cleverly but ehh
     new_z = z.clone()
