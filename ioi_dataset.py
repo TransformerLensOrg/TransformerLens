@@ -295,10 +295,10 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
                 new_s = ANIMALS[np.random.randint(len(ANIMALS))]
             if flip[1] == "RAND":
                 new_s = names[np.random.randint(len(names))]
+            t[t.index(prompt["S"])] = new_s
             if flip[0] == "S": # literally just change the first S if this is S1
                 t[len(t) - t[::-1].index(prompt["S"]) - 1] = new_s
                 prompt["S"] = new_s
-            t[t.index(prompt["S"])] = new_s
         elif flip[0] == "END":
             if flip[1] == "S":
                 t[len(t) - t[::-1].index(prompt["IO"]) - 1] = prompt["S"]
