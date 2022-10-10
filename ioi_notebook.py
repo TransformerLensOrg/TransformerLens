@@ -157,6 +157,8 @@ def logit_diff(model, ioi_dataset, all=False):
     if all:
         return IO_logits - S_logits
     return (IO_logits - S_logits).mean().detach().cpu()
+
+
 # %% [markdown]
 # ioi_dataset `ioi_dataset.word_idx` contains the indices of certains special words in each prompt. Example on the prompt 0
 # %%
@@ -1104,15 +1106,18 @@ for i, key in enumerate(["IO", "S", "S2"]):
     fig.show()
 #%% [markdown] ...  but does anything change when we choose the metric of probability of S Inhibition heads?
 # ARTHUR GOT CARRIED AWAY WITH EXPERIMENTS: SOME OF THESE CELLS ARE NOT IMPORTANT
-from ioi_utils import attention_on_token 
+from ioi_utils import attention_on_token
 
 LAYER = 5
 HEAD = 5
 
+
 def metric_function(model, text_prompts):
     # return attention_on_token(model, ioi_dataset[:len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S2")
-    return attention_on_token(model, ioi_dataset[:len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S+1")
-# metric_function = 
+    return attention_on_token(model, ioi_dataset[: len(text_prompts)], layer=LAYER, head_idx=HEAD, token="S+1")
+
+
+# metric_function =
 
 config = PatchingConfig(
     source_dataset=abca_dataset.text_prompts,
@@ -1122,7 +1127,7 @@ config = PatchingConfig(
     cache_act=True,
     verbose=False,
     patch_fn=patcher,
-    layers=(0, LAYER-1),
+    layers=(0, LAYER - 1),
 )
 metric = ExperimentMetric(metric_function, config.target_dataset, relative_metric=False, scalar_metric=False)
 patching = EasyPatching(model, config, metric)

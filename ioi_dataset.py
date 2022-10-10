@@ -240,18 +240,14 @@ def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None
         prompt1 = prompt.replace("[A]", name_1)
         prompt1 = prompt1.replace("[B]", name_2)
         prompt1 = pref + prompt1
-        ioi_prompts.append(
-            {"text": prompt1, "IO": name_1, "S": name_2, "TEMPLATE_IDX": temp_id}
-        )
+        ioi_prompts.append({"text": prompt1, "IO": name_1, "S": name_2, "TEMPLATE_IDX": temp_id})
         nb_gen += 1
 
         if symmetric and nb_gen < N:
             prompt2 = prompt.replace("[A]", name_2)
             prompt2 = prompt2.replace("[B]", name_1)
             prompt2 = pref + prompt2
-            ioi_prompts.append(
-                {"text": prompt2, "IO": name_2, "S": name_1, "TEMPLATE_IDX": temp_id}
-            )
+            ioi_prompts.append({"text": prompt2, "IO": name_2, "S": name_1, "TEMPLATE_IDX": temp_id})
             nb_gen += 1
     return ioi_prompts
 
@@ -376,13 +372,7 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
         toks = tokenizer.tokenize(" ".join(t[:-1]))
         for idx_type in idx_types:
             if "2" in idx_type:
-                idx = (
-                    len(toks)
-                    - toks[::-1].index(
-                        tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]
-                    )
-                    - 1
-                )
+                idx = len(toks) - toks[::-1].index(tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]) - 1
             else:
                 idx = toks.index(tokenizer.tokenize(" " + prompt[idx_type])[0])
             name_idx_dict[idx_type].append(idx)
@@ -396,16 +386,9 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
 
 
 def get_end_idxs(prompts, tokenizer, name_tok_len=1):
-    toks = torch.Tensor(
-        tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids
-    ).type(torch.int)
+    toks = torch.Tensor(tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids).type(torch.int)
     end_idxs = torch.tensor(
-        [
-            (toks[i] == 50256).nonzero()[0][0].item()
-            if 50256 in toks[i]
-            else toks.shape[1]
-            for i in range(toks.shape[0])
-        ]
+        [(toks[i] == 50256).nonzero()[0][0].item() if 50256 in toks[i] else toks.shape[1] for i in range(toks.shape[0])]
     )
     end_idxs = end_idxs - 1 - name_tok_len  # YOURE LOOKING AT TO NOT FINAL IO TOKEN
     return end_idxs
@@ -425,16 +408,21 @@ def get_rand_idxs(end_idxs, exclude):
 def get_word_idxs(prompts, word_list, tokenizer):
     """Get the index of the words in word_list in the prompts. Exactly one of the word_list word has to be present in each prompt"""
     idxs = []
-    tokenized_words = [tokenizer.tokenize(word)[0] for word in word_list]
+    tokenized_words = [tokenizer.decode(tokenizer(word)["input_ids"][0]) for word in word_list]
     for pr_idx, prompt in enumerate(prompts):
-        toks = tokenizer.tokenize(prompt["text"])
+        toks = [
+            tokenizer.decode(t) for t in tokenizer(prompt["text"], return_tensors="pt", padding=True)["input_ids"][0]
+        ]
         idx = None
         for i, w_tok in enumerate(tokenized_words):
             if word_list[i] in prompt["text"]:
                 try:
                     idx = toks.index(w_tok)
+                    if toks.count(w_tok) > 1:
+                        idx = len(toks) - toks[::-1].index(w_tok) - 1
                 except:
-                    raise ValueError(toks, w_tok, prompt["text"])
+                    idx = toks.index(w_tok)
+                    # raise ValueError(toks, w_tok, prompt["text"])
         if idx is None:
             raise ValueError(f"Word {word_list} and {i} not found {prompt}")
         idxs.append(idx)
@@ -504,9 +492,7 @@ class IOIDataset:
             (example use case: making a ABCA dataset)
         """
 
-        assert (
-            (prompts is not None) or (not symmetric) or (N % 2 == 0)
-        ), f"{symmetric} {N}"
+        assert (prompts is not None) or (not symmetric) or (N % 2 == 0), f"{symmetric} {N}"
         assert prompt_type in ["ABBA", "BABA", "mixed"]
         assert nb_templates is None or (nb_templates % 2 == 0 or prompt_type != "mixed")
         self.prompt_type = prompt_type
@@ -519,10 +505,7 @@ class IOIDataset:
         elif prompt_type == "BABA":
             self.templates = BABA_TEMPLATES[:nb_templates].copy()
         elif prompt_type == "mixed":
-            self.templates = (
-                BABA_TEMPLATES[: nb_templates // 2].copy()
-                + ABBA_TEMPLATES[: nb_templates // 2].copy()
-            )
+            self.templates = BABA_TEMPLATES[: nb_templates // 2].copy() + ABBA_TEMPLATES[: nb_templates // 2].copy()
             random.shuffle(self.templates)
         if tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
@@ -556,28 +539,22 @@ class IOIDataset:
             if len(group) < 5:
                 small_groups.append(len(group))
         if len(small_groups) > 0:
-            warnings.warn(
-                f"Some groups have less than 5 prompts, they have lengths {small_groups}"
-            )
+            warnings.warn(f"Some groups have less than 5 prompts, they have lengths {small_groups}")
 
-        self.text_prompts = [
-            prompt["text"] for prompt in self.ioi_prompts
-        ]  # a list of strings
+        self.text_prompts = [prompt["text"] for prompt in self.ioi_prompts]  # a list of strings
 
         self.templates_by_prompt = []  # for each prompt if it's ABBA or BABA
         for i in range(N):
-            if self.text_prompts[i].index(
-                self.ioi_prompts[i]["IO"]
-            ) < self.text_prompts[i].index(self.ioi_prompts[i]["S"]):
+            if self.text_prompts[i].index(self.ioi_prompts[i]["IO"]) < self.text_prompts[i].index(
+                self.ioi_prompts[i]["S"]
+            ):
                 self.templates_by_prompt.append("ABBA")
             else:
                 self.templates_by_prompt.append("BABA")
 
         # print(self.ioi_prompts, "that's that")
         self.toks = torch.Tensor(
-            self.tokenizer(
-                [prompt["text"] for prompt in self.ioi_prompts], padding=True
-            ).input_ids
+            self.tokenizer([prompt["text"] for prompt in self.ioi_prompts], padding=True).input_ids
         ).type(torch.int)
 
         if ioi_prompts_for_word_idxs is None:
@@ -588,19 +565,10 @@ class IOIDataset:
             k: v for k, v in self.word_idx.items() if k in ALL_SEM
         }  # the semantic indices that kevin uses
         self.N = N
-        self.max_len = max(
-            [
-                len(self.tokenizer(prompt["text"]).input_ids)
-                for prompt in self.ioi_prompts
-            ]
-        )
+        self.max_len = max([len(self.tokenizer(prompt["text"]).input_ids) for prompt in self.ioi_prompts])
 
-        self.io_tokenIDs = [
-            self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts
-        ]
-        self.s_tokenIDs = [
-            self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts
-        ]
+        self.io_tokenIDs = [self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts]
+        self.s_tokenIDs = [self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts]
 
     def gen_flipped_prompts(self, flip):
         """Return a IOIDataset where the name to flip has been replaced by a random name."""
@@ -616,6 +584,17 @@ class IOIDataset:
             ioi_prompts_for_word_idxs=self.ioi_prompts,
         )
         return flipped_ioi_dataset
+
+    def copy(self):
+        copy_ioi_dataset = IOIDataset(
+            prompt_type=self.prompt_type,
+            N=self.N,
+            tokenizer=self.tokenizer,
+            prompts=self.ioi_prompts.copy(),
+            prefixes=self.prefixes.copy() if self.prefixes is not None else self.prefixes,
+            ioi_prompts_for_word_idxs=self.ioi_prompts.copy(),
+        )
+        return copy_ioi_dataset
 
     def __getitem__(self, key):
         sliced_prompts = self.ioi_prompts[key]
