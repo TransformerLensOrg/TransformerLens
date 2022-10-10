@@ -6,6 +6,8 @@
 # % not HYPOTHESISE, do the computationally intractable
 # % do completeness, minimality NOT methods first
 #%%
+from time import ctime
+import io
 from easy_transformer import EasyTransformer
 from functools import partial
 from ioi_utils import logit_diff, probs
@@ -101,6 +103,7 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
 acca_dataset = ioi_dataset.gen_flipped_prompts("S")
 acba_dataset = ioi_dataset.gen_flipped_prompts("S1")
+adea_dataset = ioi_dataset.gen_flipped_prompts("S").gen_flipped_prompts("S1")
 
 from ioi_utils import logit_diff
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
@@ -169,21 +172,23 @@ for this in ablate_these:
 
 # [markdown] After adding some hooks we see that yeah MLP0 ablations destroy S2 probs -> this one is at end
 #%%
-my_toks = [2215,
- 5335,
- 290,
- 1757,
- 1816,
- 284,
- 262,
- 3650,
- 11,
- 1757,
- 2921,
- 257,
- 4144,
- 284,
- 5335] # this is the John and Mary one
+my_toks = [
+    2215,
+    5335,
+    290,
+    1757,
+    1816,
+    284,
+    262,
+    3650,
+    11,
+    1757,
+    2921,
+    257,
+    4144,
+    284,
+    5335,
+] # this is the John and Mary one
 
 mary_tok = 5335
 john_tok = 1757
@@ -364,12 +369,9 @@ new_ld, new_ld_std = logit_diff(model, ioi_dataset.text_prompts, std=True)
 new_ld, new_ld_std
 
 #%% # look at what's affecting the V stuff
-
 from ioi_circuit_extraction import ARTHUR_CIRCUIT
 from ioi_utils import probs
-
 heads_to_keep = {}
-
 for circuit_class in CIRCUIT.keys():
     for head in CIRCUIT[circuit_class]:
         # if head[0] <= 6: continue # let's think about the effect before S2 ..
@@ -410,7 +412,6 @@ for layer in range(7):
             exclude_heads=new_early_heads,
         )
         vprobs[layer][head_idx] = probs(model, ioi_dataset)
-#%% # some IO probs experiments
 #%% # wait, do even the very first plots work for the IO probs metric??
 vals = torch.zeros(12, 12)
 from ioi_circuit_extraction import (
@@ -446,7 +447,6 @@ for layer in range(12):
         vals[layer, head] = new_probs - old_probs
 
 show_pp(vals)
-
 #%%
 vals2 = torch.zeros(12)
 for layer in range(12):
@@ -1302,8 +1302,16 @@ for heads_raw in circuit["s2 inhibition"]: #  + circuit["name mover"]:
 #%%
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
 heads_by_layer = {9: [6, 9], 10: [0]}
+warnings.warn("Testing the only 9.9")
 layers = [9, 10]
 hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
+
+# warnings.warn("Actually doing S Inhib stuff")    
+
+# heads_to_measure = circuit["s2 inhibition"]
+# layers = [7, 8]
+# heads_by_layer = {7: [3, 9], 8: [6, 10]}
+# hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
 
 model.reset_hooks()
 cache_baseline = {}
@@ -1311,7 +1319,7 @@ model.cache_some(cache_baseline, lambda x: x in hook_names)  # we only cache the
 logits = model(ioi_dataset.text_prompts).detach()
 
 def attention_probs(
-    model, text_prompts, variation=True
+    model, text_prompts, variation=True, scale=True
 ):  # we have to redefine logit differences to use the new abba dataset
     """Difference between the IO and the S logits at the "to" token"""
     cache_patched = {}
@@ -1320,7 +1328,7 @@ def attention_probs(
     # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
     # ... but do this elsewhere as otherwise we fucked
     # attn score of head HEAD at token "to" (end) to token IO
-
+    assert variation or not scale
     attn_probs_variation_by_keys = []
     for key in ["IO", "S", "S2"]:
         attn_probs_variation = []
@@ -1340,9 +1348,11 @@ def attention_probs(
                     ioi_dataset.word_idx[key],
                 ]
                 if variation:
-                    attn_probs_variation.append(
-                        ((attn_probs_patched - attn_probs_base) / attn_probs_base).mean().unsqueeze(dim=0)
-                    )
+                    res = attn_probs_patched - attn_probs_base
+                    if scale:
+                        res /= attn_probs_base
+                    res = res.mean().unsqueeze(dim=0)
+                    attn_probs_variation.append(res)
                 else:
                     attn_probs_variation.append(attn_probs_patched.mean().unsqueeze(dim=0))
         attn_probs_variation_by_keys.append(torch.cat(attn_probs_variation).mean(dim=0, keepdim=True))
@@ -1390,9 +1400,10 @@ def patch_positions(z, source_act, hook, positions=["END"]):  # we patch at the 
         ]
     return z
 
-patch_last_tokens = partial(patch_positions, positions=["S2"])
+patch_last_tokens = partial(patch_positions, positions=["end"])
+#%%  actually answered here...
 config = PatchingConfig(
-    source_dataset=acca_dataset.text_prompts,
+    source_dataset=acba_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
     target_module="attn_head",
     head_circuit="result",  # we patch "result", the result of the attention head
@@ -1401,9 +1412,9 @@ config = PatchingConfig(
     patch_fn=patch_last_tokens,
     layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
-metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
+metric = ExperimentMetric(partial(attention_probs, scale=True), config.target_dataset, relative_metric=False, scalar_metric=False)
 patching = EasyPatching(model, config, metric)
-add_these_hooks = [] # actually, let's not add the fixed S2 Inhib thing
+# add_these_hooks = [] # actually, let's not add the fixed S2 Inhib thing
 patching.other_hooks = add_these_hooks
 result = patching.run_patching()
 
@@ -1418,31 +1429,31 @@ for i, key in enumerate(["IO", "S", "S2"]):
     fig.write_image(f"svgs/variation_average_nm_attn_prob_key_{key}_patching_ABC_END.svg")
     fig.show()
 #%% [markdown] 
-# 
 # This was: okay, so is ACCA identical for induction heads??? A: yes, and for dupes too
 # Now is: Try the ACBA dataset and see what happens
 e()
 relevant_heads = {}
 
-# for head in circuit["duplicate token"] + circuit["induction"]:
-#     relevant_heads[head] = "S2"
+for head in circuit["duplicate token"] + circuit["induction"]:
+    relevant_heads[head] = "S2"
 # for head in circuit["s2 inhibition"]:
 #     relevant_heads[head] = "end"
+# for head in circuit["previous token"]:
+    # relevant_heads[head] = "S+1"
 
-for head in circuit["previous token"]:
-    relevant_heads[head] = "S+1"
 circuit = deepcopy(CIRCUIT)
 relevant_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in relevant_heads.keys()])
 
-if "acca_cache" not in dir():
-    acca_cache = {}
+if "alt_cache" not in dir():
+    alt_cache = {}
     model.reset_hooks()
-    model.cache_some(acca_cache, names=lambda name: name in relevant_hook_names)
+    model.cache_some(alt_cache, names=lambda name: name in relevant_hook_names)
     logits = model(acca_dataset.text_prompts)
     del logits
     e()
 
-for mode in ["model", "circuit", "new"]:
+print("IO S S2")
+for mode in ["new", "model", "circuit"]:
     model.reset_hooks()
     e()
     if mode != "model":
@@ -1465,7 +1476,7 @@ for mode in ["model", "circuit", "new"]:
             e("inLOos")
             cur_hook = get_act_hook(
                 partial(patch_positions, positions=[relevant_heads[(layer, head_idx)]]),
-                alt_act=acca_cache[f"blocks.{layer}.attn.hook_result"],
+                alt_act=alt_cache[f"blocks.{layer}.attn.hook_result"],
                 idx=head_idx,
                 dim=2,
             )
@@ -1485,6 +1496,50 @@ for mode in ["model", "circuit", "new"]:
     safe_del("att_probs")
     safe_del("_")
     e()
+#%%
+# some [logit difference, IO probs] for the different modes
+model_results = {"x":3.5492, "y":0.4955, "name":"Model"}
+circuit_results = {"x":3.3414, "y":0.2854, "name":"Circuit", "textposition":"top left"}
+hooked_induction_dupe_inhibition_results = {"x":2.8315, "y":0.2901, "name":"Induction, Duplication, Inhibition Heads hooked on ACC", "textposition":"bottom left"}
+hooked_induction_dupe_results = {"x":3.3488, "y":0.2779, "name":"Induction and Duplication Heads hooked on ACC", "textposition":"bottom right"}
+previous_token_results = {"x":1.2908, "y":0.1528, "name":"Previous Token Heads hooked on ACC"}
+abc_duplicate_induction_results = {"x":0.0675, "y":0.0708, "name":"Duplicate and Induction Heads hooked on ABC (S2)", "textposition":"bottom right"}
+acb_duplicate_induction_results = {"x":0.1685, "y":0.0727, "name":"Duplicate and Induction Heads hooked on ABC (S1)", "textposition":"top right"}
+
+xs = []
+ys = []
+names = []
+textpositions = []
+
+for var in dir():
+    if var.endswith("_results"):
+        xs.append(globals()[var]["x"])
+        ys.append(globals()[var]["y"])
+        names.append(globals()[var]["name"])
+        textpositions.append(globals()[var].get("textposition", "top center"))
+
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys,
+        mode="markers+text",
+        text=names,
+        textposition=textpositions,
+        # textposition=[["top left", "bottom left"][i%2] for i in range(len(xs))],
+    )
+)
+
+# set x scaling
+fig.update_xaxes(range=[0, 5])
+
+fig.update_layout(
+    title="Effects of various patching experiments on circuit behaviour",
+    xaxis_title="Logit Difference",
+    yaxis_title="IO Probability",
+)
+fig.write_image(f"svgs/new_signal_plots_at_{ctime()}.svg")
+fig.show()
 #%% [markdown] do some 
 MODEL_CFG = model.cfg
 MODEL_EPS = model.cfg.eps
