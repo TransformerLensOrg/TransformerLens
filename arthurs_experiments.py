@@ -1523,7 +1523,7 @@ for mode in ["new", "model", "circuit"]:
             add_these_hooks.append((f"blocks.{layer}.attn.hook_result", cur_hook))
             model.add_hook(*add_these_hooks[-1])
 
-    att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False)
+    att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False, scale=False)
     print(f"mode {mode}:", att_probs)
 
     cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -1582,3 +1582,68 @@ fig.write_image(f"svgs/new_signal_plots_at_{ctime()}.svg")
 fig.show()
 
 # writing direction for S1 was here... now RIP
+#%%
+#%% [markdown] 
+# Wait, do Induction Heads maybe depend on Duplicate Token Heads? Let's try that
+# 1) patch duplicate token heads 
+# 2) save the induction head outputs
+# 3) patch in induction head outputs from this dist
+
+# 1)
+e()
+duplicate_heads = {}
+induction_heads = {}
+for head in circuit["duplicate token"]:
+    duplicate_heads[head] = "S2"
+for head in circuit["induction"]:
+    induction_heads[head] = "S2"
+duplicate_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in duplicate_heads.keys()])
+induction_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in induction_heads.keys()])
+duplicate_cache = {}
+model.reset_hooks()
+model.cache_some(duplicate_cache, names=lambda name: name in duplicate_hook_names)
+logits = model(abca_dataset.text_prompts)
+del logits
+e()
+
+# 2)
+model.reset_hooks()
+for layer, head_idx in duplicate_heads.keys():
+    cur_hook = get_act_hook(
+        partial(patch_positions, positions=[duplicate_heads[(layer, head_idx)]]),
+        alt_act=duplicate_cache[f"blocks.{layer}.attn.hook_result"],
+        idx=head_idx,
+        dim=2,
+    )
+    model.add_hook(f"blocks.{layer}.attn.hook_result", cur_hook)
+induction_cache = {}
+model.cache_some(induction_cache, names=lambda name: name in induction_hook_names)
+logits = model(ioi_dataset.text_prompts)
+del logits
+e()
+
+# 3)
+model.reset_hooks()
+for layer, head_idx in induction_heads.keys():
+    cur_hook = get_act_hook(
+        partial(patch_positions, positions=[induction_heads[(layer, head_idx)]]),
+        alt_act=induction_cache[f"blocks.{layer}.attn.hook_result"],
+        idx=head_idx,
+        dim=2,
+    )
+    model.add_hook(f"blocks.{layer}.attn.hook_result", cur_hook)
+
+# model.reset_hooks()
+att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False, scale=False)
+print(f"{att_probs=}")
+
+cur_logit_diff = logit_diff(model, ioi_dataset)
+cur_io_probs = probs(model, ioi_dataset)
+e("en")
+print(f"{cur_logit_diff=} {cur_io_probs=}")
+
+safe_del("new_heads_to_keep")
+safe_del("add_these_hooks")
+safe_del("att_probs")
+safe_del("_")
+e()
