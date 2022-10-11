@@ -105,6 +105,7 @@ acca_dataset = ioi_dataset.gen_flipped_prompts("S")
 acba_dataset = ioi_dataset.gen_flipped_prompts("S1")
 adea_dataset = ioi_dataset.gen_flipped_prompts("S").gen_flipped_prompts("S1")
 all_diff_dataset = adea_dataset.gen_flipped_prompts("IO")
+bcca_dataset = ioi_dataset.gen_flipped_prompts("IO").gen_flipped_prompts("S")
 
 from ioi_utils import logit_diff
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
@@ -416,6 +417,7 @@ vals = torch.zeros(12, 12)
 from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
     get_heads_circuit,
+    get_mlps_circuit,
     CIRCUIT,
     do_circuit_extraction,
 )
@@ -1385,53 +1387,6 @@ def attention_probs(
 
     attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
     return attn_probs_variation_by_keys.detach().cpu()
-#%% Run this after having computed attention patterns for S2 on different dists. Then Induction, Duplicate Token don't affect performance *through logit diff
-def attention_pattern_modifier(z, hook):
-    cur_layer = int(hook.name.split(".")[1])
-    cur_head_idx = hook.ctx["idx"]
-
-    assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
-    assert len(list(z.shape)) == 3, z.shape  
-    # batch, seq (attending_query), attending_key
-
-    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"], :] = 0
-
-    for key in ioi_dataset.word_idx.keys():
-        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"], ioi_dataset.word_idx[key]] = average_attention[(cur_layer, cur_head_idx)][key]
-
-    return z
-
-F = logit_diff # or logit diff
-model.reset_hooks()
-ld = F(model, ioi_dataset)
-circuit_classes = ["s2 inhibition"]
-add_these_hooks = []
-
-for circuit_class in circuit_classes:
-    for layer, head_idx in circuit[circuit_class]:
-        cur_hook = get_act_hook(
-            attention_pattern_modifier,
-            alt_act=None,
-            idx=head_idx,
-            dim=1,
-        )
-        add_these_hooks.append((f"blocks.{layer}.attn.hook_attn", cur_hook))
-        model.add_hook(*add_these_hooks[-1])
-
-for layer, head_idx in circuit["induction"]: #  heads_to_patch:
-    cur_hook = get_act_hook(
-        patch_s2_token,
-        alt_act=cache_s2["blocks.{}.attn.hook_result".format(layer)],
-        idx=head_idx,
-        dim=2,
-    )
-    model.add_hook(f"blocks.{layer}.attn.hook_result", cur_hook)
-
-l = logit_diff(model, ioi_dataset)
-print(f"{l=}")
-
-model.reset_hooks()
-print(f"Logit diff = {logit_diff(model, ioi_dataset)}")
 # %% [markdown] Q: is it possible to patch in ACCA sentences to make things work? A: Yes!
 def patch_positions(z, source_act, hook, positions=["END"]):  # we patch at the "to" token
     for pos in positions:
@@ -1441,26 +1396,31 @@ def patch_positions(z, source_act, hook, positions=["END"]):  # we patch at the 
     return z
 
 patch_last_tokens = partial(patch_positions, positions=["end"])
+patch_s2 = partial(patch_positions, positions=["S2"])
 #%%  actually answered here...
 config = PatchingConfig(
-    source_dataset=acba_dataset.text_prompts,
+    source_dataset=acca_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
-    target_module="attn_head",
+    target_module="mlp",
     head_circuit="result",  # we patch "result", the result of the attention head
     cache_act=True,
     verbose=False,
-    patch_fn=patch_last_tokens,
+    patch_fn=patch_s2,
     layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
-metric = ExperimentMetric(partial(attention_probs, scale=True), config.target_dataset, relative_metric=False, scalar_metric=False)
+metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
 patching = EasyPatching(model, config, metric)
-# add_these_hooks = [] # actually, let's not add the fixed S2 Inhib thing
+add_these_hooks = [] # actually, let's not add the fixed S2 Inhib thing
 patching.other_hooks = add_these_hooks
 result = patching.run_patching()
 
+if config.target_module == "mlp":
+    assert result.shape[1] == 3
+    result[0, :] = 0
+
 for i, key in enumerate(["IO", "S", "S2"]):
     fig = px.imshow(
-        result[:, :, i],
+        result[:, :] if config.target_module == "mlp" else result[:, :, i],
         labels={"y": "Layer", "x": "Head"},
         title=f'Variation in attention probs of Head {str(heads_to_measure)} from token "to" to {key} after Patching ABC->ABB on "to"',
         color_continuous_midpoint=0,
@@ -1476,10 +1436,6 @@ relevant_heads = {}
 
 for head in circuit["duplicate token"] + circuit["induction"]:
     relevant_heads[head] = "S2"
-# for head in circuit["s2 inhibition"]:
-#     relevant_heads[head] = "end"
-# for head in circuit["previous token"]:
-    # relevant_heads[head] = "S+1"
 
 circuit = deepcopy(CIRCUIT)
 relevant_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in relevant_heads.keys()])
@@ -1488,7 +1444,7 @@ if "alt_cache" not in dir():
     alt_cache = {}
     model.reset_hooks()
     model.cache_some(alt_cache, names=lambda name: name in relevant_hook_names)
-    logits = model(acca_dataset.text_prompts)
+    logits = model(bcca_dataset.text_prompts)
     del logits
     e()
 
@@ -1499,8 +1455,6 @@ for mode in ["new", "model", "circuit"]:
     if mode != "model":
         new_heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
         e("MiD")
-        # for head in circuit["s2 inhibition"]:
-        #     new_heads_to_keep.pop(head)
         model, _ = do_circuit_extraction(
             model=model,
             heads_to_keep=new_heads_to_keep,
@@ -1536,6 +1490,9 @@ for mode in ["new", "model", "circuit"]:
     safe_del("att_probs")
     safe_del("_")
     e()
+#%% [markdown] well, how can we just get away with ACC shit?
+# do a patching experiment where we do patches at S2 and see if MLPs matter...? 
+
 #%%
 # some [logit difference, IO probs] for the different modes
 model_results = {"x":3.5492, "y":0.4955, "name":"Model"}
@@ -1647,3 +1604,145 @@ safe_del("add_these_hooks")
 safe_del("att_probs")
 safe_del("_")
 e()
+#%% # test the hypothesis that MLP5 implements "if copy signal present then write S2 real hard"
+# get logits we unembed right after Layer5 RESULTS: in 86/100 examples, yeah MLP5 increases S2 probs
+
+def zero_hook(z, hook):
+    z[:] = 0.0
+    return z
+
+ls = []
+
+for zero_mlp in [True, False]:
+    e()
+    model.reset_hooks()
+
+    for layer in range(5, 12):
+        if layer > 5:
+            cur_hook = get_act_hook(
+                zero_hook,
+                alt_act=None,
+                idx=None, 
+                dim=None,
+            )
+            model.add_hook("blocks.{}.attn.hook_result".format(layer), cur_hook)
+
+        if layer > 5 or not zero_mlp:
+            cur_hook = get_act_hook(
+                zero_hook,
+                alt_act=None,
+                idx=None,
+                dim=None,
+            )
+            model.add_hook("blocks.{}.hook_mlp_out".format(layer), cur_hook)
+
+    logits = model(ioi_dataset.text_prompts)
+    ls.append(logits[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"], :])
+#%% [markdown] let's try to remove MO MLPS from the circuit
+circuit = deepcopy(CIRCUIT)
+heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
+mlps_to_keep = get_mlps_circuit(ioi_dataset, mlps=[0, 1, 2, 3, 4, 5, 10, 11])
+e()
+model.reset_hooks()
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_keep=heads_to_keep,
+    mlps_to_remove={},
+    # mlps_to_keep=mlps_to_keep,
+    ioi_dataset=ioi_dataset,
+    mean_dataset=abca_dataset,
+)
+circuit_logit_diff = logit_diff(model, ioi_dataset)
+circuit_probs = probs(model, ioi_dataset)
+print(f"{circuit_logit_diff=} {circuit_probs=}")
+logit_diff_min = 2.8
+io_probs_min = 0.23
+#%%
+# Add stream handler of stdout to show the messages
+optuna.logging.get_logger("optuna").addHandler(logging.StreamHandler(sys.stdout))
+study_name = "example-study"  # Unique identifier of the study.
+storage_name = "sqlite:///{}.db".format(study_name)
+from time import ctime
+
+study = optuna.create_study(
+    study_name=f"Check by heads and index @ {ctime()}", storage=storage_name
+)  # ADD!
+#%%
+heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
+relevant_stuff = [(10, "end"), (11, "end")]
+for layer in range(0, 6):
+    for token in ["IO", "S2", "S", "end", "S+1"]:
+        relevant_stuff.append((layer, token))
+
+def objective(trial, manual=None):
+    """
+    BLAH
+    """
+
+    e()
+
+    if manual is None:
+        total_things = trial.suggest_int("total_things", 0, 6*5 + 2)
+        cur_stuff = []
+        for i in range(total_things):
+            cur_stuff.append(trial.suggest_categorical("idx_{}".format(i), relevant_stuff))
+    else:
+        cur_stuff = manual
+
+    mlps_to_keep = {i : [] for i in range(12)}
+    for i, pos in relevant_stuff:
+        if (i, pos) in cur_stuff and pos not in mlps_to_keep[i]:
+            mlps_to_keep[i].append(pos)
+    mlps_to_keep = get_mlps_circuit(ioi_dataset, mlps=mlps_to_keep)
+    new_model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_keep=mlps_to_keep,
+        ioi_dataset=ioi_dataset,
+        mean_dataset=abca_dataset,
+    )
+    circuit_logit_diff = logit_diff(new_model, ioi_dataset)
+    circuit_probs = probs(new_model, ioi_dataset)
+    print(f"{circuit_logit_diff=} {circuit_probs=}")
+    ans = - circuit_logit_diff
+    # if circuit_logit_diff > logit_diff_min and circuit_probs > io_probs_min:
+    #     ans += 100000 - 100 * total_things
+    return ans
+
+study.optimize(objective, n_trials=1e8)
+#%% 
+tuples = [
+    (0, 'IO'),
+    (0, 'S2'),
+    (0, 'S'),
+    (0, 'S+1'),
+    # (0, 'end'),
+
+    (1, 'IO'),
+    (1, 'S'),
+    (1, 'S2'),
+
+    (2, 'IO'),
+    (2, 'S2'),
+
+    (3, 'IO'),
+    (3, 'S'),
+    (3, 'S+1'),
+    (3, 'S2'),  
+    
+    (4, 'IO'),
+    (4, 'S'),
+    (4, 'S+1'),
+    (4, 'S2'),
+
+    (5, 'S'),
+    (5, 'S+1'),
+    (5, 'S2'),
+
+    (10, 'end'),
+
+    (11, 'end'),
+]
+
+ans = objective(None, tuples)
+print(f"{ans=}")

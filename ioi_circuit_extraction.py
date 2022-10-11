@@ -249,14 +249,18 @@ def get_heads_circuit(ioi_dataset, excluded=[], mlp0=False, circuit=CIRCUIT):
             heads_to_keep[head] = get_extracted_idx(RELEVANT_TOKENS[head], ioi_dataset)
 
     if mlp0:
-        mlps_to_keep = {}
-        mlps_to_keep[0] = get_extracted_idx(
-            ["IO", "and", "S", "S+1", "S2", "end"], ioi_dataset
-        )  # IO, AND, S, S+1, S2, and END
-        return heads_to_keep, mlps_to_keep
+        raise ValueError("Arthur moved this to get_mlps_circuit")
 
     return heads_to_keep
 
+
+def get_mlps_circuit(ioi_dataset, mlps):
+    if isinstance(mlps, list):
+        mlps = {i: ["IO", "S", "S+1", "S2", "end"] for i in mlps}
+    mlps_to_keep = {}
+    for i in mlps:
+        mlps_to_keep[i] = get_extracted_idx(mlps[i], ioi_dataset)
+    return mlps_to_keep
 
 def do_circuit_extraction(
     heads_to_remove=None,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
