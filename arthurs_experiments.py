@@ -104,7 +104,7 @@ abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))  # we flip the se
 acca_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND"))
 acba_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
 adea_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("S1", "RAND"))
-all_diff_dataset = adea_dataset.gen_flipped_prompts(("IO", "RAND"))
+all_diff_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("S1", "RAND"))
 bcca_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(("S", "RAND"))
 from ioi_utils import logit_diff
 ABCm_dataset = IOIDataset(prompt_type="ABC mixed", N=N, tokenizer=model.tokenizer)
