@@ -111,7 +111,6 @@ ABCm_dataset = IOIDataset(prompt_type="ABC mixed", N=N, tokenizer=model.tokenize
 ABC_dataset = IOIDataset(prompt_type="ABC", N=N, tokenizer=model.tokenizer)
 BAC_dataset = IOIDataset("BAC", N, model.tokenizer)
 mixed_dataset = IOIDataset("ABC mixed", N, model.tokenizer)
-
 #%% [markdown] let's try to remove MO MLPS from the circuit
 circuit = deepcopy(CIRCUIT)
 heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
@@ -1427,7 +1426,7 @@ patch_s2 = partial(patch_positions, positions=["S2"])
 config = PatchingConfig(
     source_dataset=acca_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
-    target_module="mlp",
+    target_module="attn_head",
     head_circuit="result",  # we patch "result", the result of the attention head
     cache_act=True,
     verbose=False,
@@ -1482,17 +1481,17 @@ config = PatchingConfig(
     head_circuit="result",
     cache_act=True,
     verbose=False,
-    patch_fn=patch_s2,
+    patch_fn=patch_last_tokens,
     layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
 patching = EasyPatching(model, config, metric)
 #%%
 print("IO S S2")
-for mode in ["newest", "new", "model", "circuit"]:
+for mode in ["newest", "model"]: # ["newest", "new", "model", "circuit"]:
     model.reset_hooks()
     e()
-    if mode in ["new", "circuit", "newest"]:
+    if mode in ["new", "circuit"]:
         new_heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
         e("MiD")
         model, _ = do_circuit_extraction(
@@ -1518,7 +1517,7 @@ for mode in ["newest", "new", "model", "circuit"]:
             model.add_hook(*add_these_hooks[-1])
 
     if mode == "newest":
-        for layer, head_idx in circuit["duplicate token"]:
+        for layer, head_idx in circuit["s2 inhibition"]:
             hook = patching.get_hook(layer, head_idx)
             model.add_hook(*hook)
 
@@ -1535,16 +1534,22 @@ for mode in ["newest", "new", "model", "circuit"]:
     safe_del("att_probs")
     safe_del("_")
     e()
-    break
 #%%
 # some [logit difference, IO probs] for the different modes
-model_results = {"x":3.5492, "y":0.4955, "name":"Model"}
-circuit_results = {"x":3.3414, "y":0.2854, "name":"Circuit", "textposition":"top left"}
-hooked_induction_dupe_inhibition_results = {"x":2.8315, "y":0.2901, "name":"Induction, Duplication, Inhibition Heads hooked on ACC", "textposition":"bottom left"}
-hooked_induction_dupe_results = {"x":3.3488, "y":0.2779, "name":"Induction and Duplication Heads hooked on ACC", "textposition":"bottom right"}
-previous_token_results = {"x":1.2908, "y":0.1528, "name":"Previous Token Heads hooked on ACC"}
-abc_duplicate_induction_results = {"x":0.0675, "y":0.0708, "name":"Duplicate and Induction Heads hooked on ABC (S2)", "textposition":"bottom right"}
-acb_duplicate_induction_results = {"x":0.1685, "y":0.0727, "name":"Duplicate and Induction Heads hooked on ABC (S1)", "textposition":"top right"}
+
+model_results = {"x": 3.8212, "y": 0.5281, "name":"model"} # saved from prompts2.py
+duplicate_results = {"x": 3.0485, "y": 0.4755, "name":"duplicate"}
+duplicate_and_induction_results = {"x": -0.66, "y": 0.1517, "name":"duplicate and induction"}
+induction_results = {"x": 0.459, "y": 0.2498, "name":"induction"}
+inhibition_results = {"x": -0.82, "y": 0.1367, "name":"inhibition"}
+
+# model_results = {"x":3.5492, "y":0.4955, "name":"Model"} # hopefully saved at prompts.py
+# circuit_results = {"x":3.3414, "y":0.2854, "name":"Circuit", "textposition":"top left"}
+# hooked_induction_dupe_inhibition_results = {"x":2.8315, "y":0.2901, "name":"Induction, Duplication, Inhibition Heads hooked on ACC", "textposition":"bottom left"}
+# hooked_induction_dupe_results = {"x":3.3488, "y":0.2779, "name":"Induction and Duplication Heads hooked on ACC", "textposition":"bottom right"}
+# previous_token_results = {"x":1.2908, "y":0.1528, "name":"Previous Token Heads hooked on ACC"}
+# abc_duplicate_induction_results = {"x":0.0675, "y":0.0708, "name":"Duplicate and Induction Heads hooked on ABC (S2)", "textposition":"bottom right"}
+# acb_duplicate_induction_results = {"x":0.1685, "y":0.0727, "name":"Duplicate and Induction Heads hooked on ABC (S1)", "textposition":"top right"}
 
 xs = []
 ys = []
@@ -1571,7 +1576,7 @@ fig.add_trace(
 )
 
 # set x scaling
-fig.update_xaxes(range=[0, 5])
+fig.update_xaxes(range=[-1, 5])
 
 fig.update_layout(
     title="Effects of various patching experiments on circuit behaviour",
