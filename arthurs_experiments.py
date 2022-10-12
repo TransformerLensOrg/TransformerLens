@@ -106,8 +106,33 @@ acba_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
 adea_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("S1", "RAND"))
 all_diff_dataset = adea_dataset.gen_flipped_prompts(("IO", "RAND"))
 bcca_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(("S", "RAND"))
-
 from ioi_utils import logit_diff
+ABCm_dataset = IOIDataset(prompt_type="ABC mixed", N=N, tokenizer=model.tokenizer)
+ABC_dataset = IOIDataset(prompt_type="ABC", N=N, tokenizer=model.tokenizer)
+BAC_dataset = IOIDataset("BAC", N, model.tokenizer)
+mixed_dataset = IOIDataset("ABC mixed", N, model.tokenizer)
+
+#%% [markdown] let's try to remove MO MLPS from the circuit
+circuit = deepcopy(CIRCUIT)
+heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
+mlps_to_keep = get_mlps_circuit(ioi_dataset, mlps=[0, 1, 2, 3, 4, 5, 10, 11])
+e()
+model.reset_hooks()
+
+# model, _ = do_circuit_extraction(
+#     model=model,
+#     heads_to_keep=heads_to_keep,
+#     mlps_to_remove={},
+#     # mlps_to_keep=mlps_to_keep,
+#     ioi_dataset=ioi_dataset,
+#     mean_dataset=abca_dataset,
+# )
+
+for dataset in [ioi_dataset, ABC_dataset, BAC_dataset, mixed_dataset]:
+    circuit_logit_diff = logit_diff(model, dataset)
+    circuit_probs = probs(model, dataset)
+    print(f"{circuit_logit_diff=} {circuit_probs=}")
+
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
 model.reset_hooks()
 metric = ExperimentMetric(metric=logit_diff, dataset=abca_dataset, relative_metric=True)
@@ -1304,6 +1329,7 @@ l = logit_diff(model, ioi_dataset)
 print(f"{l=}")
 model.reset_hooks()
 
+#%%
 ys = []
 fig = go.Figure()
 average_attention = {}
@@ -1456,17 +1482,17 @@ config = PatchingConfig(
     head_circuit="result",
     cache_act=True,
     verbose=False,
-    patch_fn=patch_last_tokens,
+    patch_fn=patch_s2,
     layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
 patching = EasyPatching(model, config, metric)
-
+#%%
 print("IO S S2")
 for mode in ["newest", "new", "model", "circuit"]:
     model.reset_hooks()
     e()
-    if mode in ["new", "circuit"]:
+    if mode in ["new", "circuit", "newest"]:
         new_heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
         e("MiD")
         model, _ = do_circuit_extraction(
@@ -1492,7 +1518,7 @@ for mode in ["newest", "new", "model", "circuit"]:
             model.add_hook(*add_these_hooks[-1])
 
     if mode == "newest":
-        for layer, head_idx in circuit["s2 inhibition"]:
+        for layer, head_idx in circuit["duplicate token"]:
             hook = patching.get_hook(layer, head_idx)
             model.add_hook(*hook)
 
@@ -1594,17 +1620,23 @@ heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
 mlps_to_keep = get_mlps_circuit(ioi_dataset, mlps=[0, 1, 2, 3, 4, 5, 10, 11])
 e()
 model.reset_hooks()
-model, _ = do_circuit_extraction(
-    model=model,
-    heads_to_keep=heads_to_keep,
-    mlps_to_remove={},
-    # mlps_to_keep=mlps_to_keep,
-    ioi_dataset=ioi_dataset,
-    mean_dataset=abca_dataset,
-)
-circuit_logit_diff = logit_diff(model, ioi_dataset)
-circuit_probs = probs(model, ioi_dataset)
-print(f"{circuit_logit_diff=} {circuit_probs=}")
+# model, _ = do_circuit_extraction(
+#     model=model,
+#     heads_to_keep=heads_to_keep,
+#     mlps_to_remove={},
+#     # mlps_to_keep=mlps_to_keep,
+#     ioi_dataset=ioi_dataset,
+#     mean_dataset=abca_dataset,
+# )
+
+BAC_dataset = IOIDataset("BAC", N, model.tokenizer)
+mixed_dataset = IOIDataset("ABC mixed", N, model.tokenizer)
+
+for dataset in [ioi_dataset, ABC_dataset, BAC_dataset, mixed_dataset]:
+    circuit_logit_diff = logit_diff(model, dataset)
+    circuit_probs = probs(model, dataset)
+    print(f"{circuit_logit_diff=} {circuit_probs=}")
+
 logit_diff_min = 2.8
 io_probs_min = 0.23
 #%%

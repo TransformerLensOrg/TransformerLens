@@ -112,6 +112,14 @@ NAMES = [
     "Samuel",
 ]
 
+ABC_TEMPLATES = [
+    "Then, [A], [B] and [C] went to the [PLACE]. [B] and [C] gave a [OBJECT] to [A]",
+    "Afterwards [A], [B] and [C] went to the [PLACE]. [B] and [C] gave a [OBJECT] to [A]",
+    "When [A], [B] and [C] arrived at the [PLACE], [B] and [C] gave a [OBJECT] to [A]",
+    "Friends [A], [B] and [C] went to the [PLACE]. [B] and [C] gave a [OBJECT] to [A]",
+]
+
+BAC_TEMPLATES = [template.replace("[B]", "[A]", 1).replace("[A]", "[B]", 1) for template in ABC_TEMPLATES]
 
 BABA_TEMPLATES = [
     "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
@@ -211,7 +219,7 @@ def iter_sample_fast(iterable, samplesize):
 NOUNS_DICT = NOUNS_DICT = {"[PLACE]": PLACES, "[OBJECT]": OBJECTS}
 
 
-def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None):
+def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None, abc=False):
     nb_gen = 0
     ioi_prompts = []
     while nb_gen < N:
@@ -219,9 +227,11 @@ def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None
         temp_id = templates.index(temp)
         name_1 = ""
         name_2 = ""
-        while name_1 == name_2:
+        name_3 = ""
+        while len(set([name_1, name_2, name_3])) < 3:
             name_1 = rd.choice(names)
             name_2 = rd.choice(names)
+            name_3 = rd.choice(names)
 
         nouns = {}
         for k in nouns_dict:
@@ -239,8 +249,13 @@ def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None
 
         prompt1 = prompt.replace("[A]", name_1)
         prompt1 = prompt1.replace("[B]", name_2)
+        if abc:
+            prompt1 = prompt1.replace("[C]", name_3)
         prompt1 = pref + prompt1
         ioi_prompts.append({"text": prompt1, "IO": name_1, "S": name_2, "TEMPLATE_IDX": temp_id})
+        if abc:
+            ioi_prompts[-1]["C"] = name_3
+
         nb_gen += 1
 
         if symmetric and nb_gen < N:
@@ -293,10 +308,12 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
                 prompt["IO"] = rand_animal
                 # print(t)
             elif flip[1] == "S1":
-                io = t[t.index(prompt["IO"])]
-                s1 = t[t.index(prompt["S"])]
-                t[t.index(prompt["IO"])] = s1
-                t[t.index(prompt["S"])] = io
+                io_index = t.index(prompt["IO"])
+                s1_index = t.index(prompt["S"])
+                io = t[io_index]
+                s1 = t[s1_index]
+                t[io_index] = s1
+                t[s1_index] = io
             else:
                 raise ValueError("Invalid flip[1] value")
 
@@ -502,8 +519,8 @@ class IOIDataset:
             (example use case: making a ABCA dataset)
         """
 
+        assert not (symmetric and prompt_type == "ABC")
         assert (prompts is not None) or (not symmetric) or (N % 2 == 0), f"{symmetric} {N}"
-        assert prompt_type in ["ABBA", "BABA", "mixed"]
         assert nb_templates is None or (nb_templates % 2 == 0 or prompt_type != "mixed")
         self.prompt_type = prompt_type
 
@@ -517,6 +534,16 @@ class IOIDataset:
         elif prompt_type == "mixed":
             self.templates = BABA_TEMPLATES[: nb_templates // 2].copy() + ABBA_TEMPLATES[: nb_templates // 2].copy()
             random.shuffle(self.templates)
+        elif prompt_type == "ABC":
+            self.templates = ABC_TEMPLATES[:nb_templates].copy()
+        elif prompt_type == "BAC":
+            self.templates = BAC_TEMPLATES[:nb_templates].copy()
+        elif prompt_type == "ABC mixed":
+            self.templates = ABC_TEMPLATES[: nb_templates // 2].copy() + BAC_TEMPLATES[: nb_templates // 2].copy()
+            random.shuffle(self.templates)
+        else:
+            raise ValueError(prompt_type)
+
         if tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -533,6 +560,7 @@ class IOIDataset:
                 N=N,
                 symmetric=symmetric,
                 prefixes=self.prefixes,
+                abc=(prompt_type in ["ABC", "ABC mixed", "BAC"]),
             )
         else:
             assert N == len(prompts), f"{N} and {len(prompts)}"
@@ -604,7 +632,7 @@ class IOIDataset:
             tokenizer=self.tokenizer,
             prompts=flipped_prompts,
             prefixes=self.prefixes,
-            ioi_prompts_for_word_idxs=self.ioi_prompts,
+            ioi_prompts_for_word_idxs=self.ioi_prompts if flip[1] == "RAND" else None, # uhh I think so
         )
         return flipped_ioi_dataset
 
