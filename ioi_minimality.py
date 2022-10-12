@@ -102,7 +102,7 @@ print_gpu_mem("Gpt2 loaded")
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 # acca_dataset = ioi_dataset.gen_flipped_prompts("S")
-abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 mean_dataset = abca_dataset
 #%% # do some initial experiments with the naive circuit
 # UH - IS THIS JUST NOT GOOD?
@@ -481,7 +481,7 @@ prbs = {}
 from ioi_utils import probs
 
 ioi_dataset = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 torch.cuda.empty_cache()
 
 for ioi_dataset in [ioi_dataset]:  # [ioi_dataset_baba, ioi_dataset_abba]:

@@ -143,6 +143,7 @@ def show_attention_patterns(
     assert mode in [
         "attn",
         "val",
+        "scores",
     ]  # value weighted attention or attn for attention probas
     if "IOIDataset" in str(type(ioi_dataset)):
         prompts = ioi_dataset.text_prompts
@@ -153,7 +154,7 @@ def show_attention_patterns(
     for (layer, head) in heads:
         cache = {}
 
-        good_names = [f"blocks.{layer}.attn.hook_attn"]
+        good_names = [f"blocks.{layer}.attn.hook_attn" + ("_scores" if mode == "scores" else "")]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
         if precomputed_cache is None:
@@ -175,7 +176,7 @@ def show_attention_patterns(
                 cont = torch.einsum("ab,b->ab", attn, vals)
 
             fig = px.imshow(
-                attn if mode == "attn" else cont,
+                attn if mode in ["attn", "scores"] else cont,
                 title=f"{layer}.{head} Attention" + title_suffix,
                 color_continuous_midpoint=0,
                 color_continuous_scale="RdBu",
@@ -206,9 +207,9 @@ def show_attention_patterns(
         if return_fig and not return_mtx:
             return fig
         elif return_mtx and not return_fig:
-            if mode == "attn":
+            if mode in ["attn", "scores"]:
                 return attn_results
-            raise NotImplementedError()
+            raise NotImplementedError("I think this is easy but I'm not doing it now")
 
 
 def safe_del(a):

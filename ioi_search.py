@@ -8,7 +8,6 @@ from ioi_dataset import *
 import IPython
 from tqdm import tqdm
 import pandas as pd
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
@@ -76,11 +75,11 @@ from ioi_utils import (
     safe_del,
 )
 
-
 ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
+#%%
 # Add stream handler of stdout to show the messages
 optuna.logging.get_logger("optuna").addHandler(logging.StreamHandler(sys.stdout))
 study_name = "example-study"  # Unique identifier of the study.
@@ -90,7 +89,6 @@ from time import ctime
 study = optuna.create_study(
     study_name=f"Check by heads and index @ {ctime()}", storage=storage_name
 )  # ADD!
-
 # %%
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 200
@@ -151,7 +149,7 @@ bl, std = baseline()
 print("BASELINE:", bl, std)
 
 #%%
-relevant_stuff = []  # pairs (layer, head), TOKEN
+relevant_stuff = [] 
 
 for layer in range(12):
     for head in range(12):
@@ -162,11 +160,17 @@ for layer in range(12):
 
 
 def objective(trial):
+    """
+    Make this 
+    """
+
+    # total_things = trial.suggest_int("total_things", 1, 10)
+
     cur_stuff = []
     for i in range(20):
         cur_stuff.append(trial.suggest_categorical("idx_{}".format(i), relevant_stuff))
         # relevant_stuff.remove(cur_stuff[-1])
-    print(cur_stuff[-1])
+    # print(cur_stuff[-1])
     heads = {head: [] for head, _ in cur_stuff}
     for head, val in cur_stuff:
         heads[head].append(val)
