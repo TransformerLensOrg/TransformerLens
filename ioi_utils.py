@@ -138,14 +138,16 @@ def show_pp(
 
 
 def show_attention_patterns(
-    model, heads, ioi_dataset, mode="val", title_suffix="", return_fig=False, return_mtx=False
+    model, heads, ioi_dataset, precomputed_cache=None, mode="val", title_suffix="", return_fig=False, return_mtx=False
 ):  # Arthur edited for one of my experiments, things work well
     assert mode in [
         "attn",
         "val",
     ]  # value weighted attention or attn for attention probas
-    if type(ioi_dataset) == IOIDataset:
+    if "IOIDataset" in str(type(ioi_dataset)):
         prompts = ioi_dataset.text_prompts
+    else:
+        prompts = ioi_dataset
     assert len(heads) == 1 or not (return_fig or return_mtx)
 
     for (layer, head) in heads:
@@ -154,13 +156,16 @@ def show_attention_patterns(
         good_names = [f"blocks.{layer}.attn.hook_attn"]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
-        model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
-        logits = model(ioi_dataset.text_prompts)
+        if precomputed_cache is None:
+            model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
+            logits = model(ioi_dataset.text_prompts)
+        else:
+            cache = precomputed_cache
         attn_results = torch.zeros(size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len))
         attn_results += -20
 
         for i, text in enumerate(prompts):
-            assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
+            # assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
             toks = model.tokenizer(text)["input_ids"]
             current_length = len(toks)
             words = [model.tokenizer.decode([tok]) for tok in toks]
