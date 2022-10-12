@@ -1,3 +1,4 @@
+from site import PREFIXES
 import warnings
 import torch
 import numpy as np
@@ -8,7 +9,7 @@ import random
 import re
 import matplotlib.pyplot as plt
 import random as rd
-
+import copy
 
 NAMES = [
     "Michael",
@@ -323,7 +324,7 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
             if flip[1] == "RAND":
                 new_s = names[np.random.randint(len(names))]
             t[t.index(prompt["S"])] = new_s
-            if flip[0] == "S": # literally just change the first S if this is S1
+            if flip[0] == "S":  # literally just change the first S if this is S1
                 t[len(t) - t[::-1].index(prompt["S"]) - 1] = new_s
                 prompt["S"] = new_s
         elif flip[0] == "END":
@@ -368,7 +369,14 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
         elif flip[0] == "C2":
             if flip[1] == "A":
                 t[len(t) - t[::-1].index(prompt["C"]) - 1] = prompt["A"]
-
+        elif flip[0] == "S+1":
+            if t[t.index(prompt["S"]) + 1] == "and":
+                t[t.index(prompt["S"]) + 1] = ["with one friend named", "accompanied by"][np.random.randint(2)]
+            else:
+                t[t.index(prompt["S"]) + 1] = (
+                    t[t.index(prompt["S"])] + ", after a great day, " + t[t.index(prompt["S"]) + 1]
+                )
+                del t[t.index(prompt["S"])]
         else:
             raise ValueError(f"Invalid flipper {flip[0]}")
 
@@ -482,7 +490,7 @@ def get_idx_dict(ioi_prompts, tokenizer):
         ioi_prompts, [",", "."], tokenizer
     )  # if there is "," and '.' in the prompt, only the '.' index will be kept.
     verb_idxs = get_word_idxs(ioi_prompts, VERBS, tokenizer)
-    and_idxs = get_word_idxs(ioi_prompts, [" and"], tokenizer)
+    # and_idxs = get_word_idxs(ioi_prompts, [" and"], tokenizer)
 
     return {
         "IO": IO_idxs,
@@ -496,9 +504,49 @@ def get_idx_dict(ioi_prompts, tokenizer):
         "rand": rand_idxs,  # random index at each
         "punct": punc_idxs,
         "verb": verb_idxs,
-        "and": and_idxs,
-        "starts": torch.zeros_like(and_idxs),
+        # "and": and_idxs,
+        "starts": torch.zeros_like(verb_idxs),
     }
+
+
+PREFIXES = [
+    "             Afterwards,",
+    "            Two friends met at a bar. Then,",
+    "  After a long day,",
+    "  After a long day,",
+    "    Then,",
+    "         Then,",
+]
+
+
+def flip_prefixes(ioi_prompts):
+    ioi_prompts = copy.deepcopy(ioi_prompts)
+    for prompt in ioi_prompts:
+        if prompt["text"].startswith("The "):
+            prompt["text"] = "After the lunch, the" + prompt["text"][4:]
+        else:
+            io_idx = prompt["text"].index(prompt["IO"])
+            s_idx = prompt["text"].index(prompt["S"])
+            first_idx = min(io_idx, s_idx)
+            prompt["text"] = rd.choice(PREFIXES) + " " + prompt["text"][first_idx:]
+
+    return ioi_prompts
+
+
+def flip_names(ioi_prompts):
+    ioi_prompts = copy.deepcopy(ioi_prompts)
+    for prompt in ioi_prompts:
+        punct_idx = max(
+            [i for i, x in enumerate(list(prompt["text"])) if x in [",", "."]]
+        )  # only flip name in the first clause
+        io = prompt["IO"]
+        s = prompt["S"]
+        prompt["text"] = (
+            prompt["text"][:punct_idx].replace(io, "#").replace(s, "@").replace("#", s).replace("@", io)
+        ) + prompt["text"][punct_idx:]
+        # print(prompt["text"])
+
+    return ioi_prompts
 
 
 class IOIDataset:
@@ -609,22 +657,27 @@ class IOIDataset:
         self.s_tokenIDs = [self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts]
 
     def gen_flipped_prompts(self, flip):
-        """
-        Return a IOIDataset where the name to flip has been replaced by a random name.
-        """
-        
-        assert isinstance(flip, tuple), f"{flip=} is not a tuple. Probably change to ('IO', 'RAND') or equivalent?"
+        """Return a IOIDataset where the name to flip has been replaced by a random name."""
+        assert isinstance(flip, tuple) or flip in [
+            "prefix",
+            "template",
+        ], f"{flip=} is not a tuple. Probably change to ('IO', 'RAND') or equivalent?"
 
-        if flip == ("IO", "S1"):
-            flipped_prompts = gen_flipped_prompts(
-                self.ioi_prompts, 
-                None,
-                flip,
-            )
-
+        if flip == "prefix":
+            flipped_prompts = flip_prefixes(self.ioi_prompts)
+        elif flip == "template":
+            flipped_prompts = flip_names(self.ioi_prompts)
         else:
-            assert flip[1] == "RAND" and flip[0] in ["S", "RAND", "S2", "IO", "S1"], flip
-            flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, flip)
+            if flip == ("IO", "S1"):
+                flipped_prompts = gen_flipped_prompts(
+                    self.ioi_prompts,
+                    None,
+                    flip,
+                )
+
+            else:
+                assert flip[1] == "RAND" and flip[0] in ["S", "RAND", "S2", "IO", "S1"], flip
+                flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, flip)
 
         flipped_ioi_dataset = IOIDataset(
             prompt_type=self.prompt_type,
@@ -632,7 +685,7 @@ class IOIDataset:
             tokenizer=self.tokenizer,
             prompts=flipped_prompts,
             prefixes=self.prefixes,
-            ioi_prompts_for_word_idxs=self.ioi_prompts if flip[1] == "RAND" else None, # uhh I think so
+            ioi_prompts_for_word_idxs=flipped_prompts,
         )
         return flipped_ioi_dataset
 
