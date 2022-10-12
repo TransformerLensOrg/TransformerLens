@@ -275,6 +275,8 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
                 while rand_name == prompt["IO"] or rand_name == prompt["S"]:
                     rand_name = names[np.random.randint(len(names))]
                 t[len(t) - t[::-1].index(prompt["S"]) - 1] = rand_name
+            else:
+                raise ValueError("Invalid flip[1] value")
 
         elif flip[0] == "IO":
             if flip[1] == "RAND":
@@ -290,6 +292,14 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
                 t[t.index(prompt["IO"])] = rand_animal
                 prompt["IO"] = rand_animal
                 # print(t)
+            elif flip[1] == "S1":
+                io = t[t.index(prompt["IO"])]
+                s1 = t[t.index(prompt["S"])]
+                t[t.index(prompt["IO"])] = s1
+                t[t.index(prompt["S"])] = io
+            else:
+                raise ValueError("Invalid flip[1] value")
+
         elif flip[0] in ["S", "S1"]:
             if flip[1] == "ANIMAL":
                 new_s = ANIMALS[np.random.randint(len(ANIMALS))]
@@ -343,7 +353,7 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
                 t[len(t) - t[::-1].index(prompt["C"]) - 1] = prompt["A"]
 
         else:
-            raise ValueError("Invalid flipper")
+            raise ValueError(f"Invalid flipper {flip[0]}")
 
         if "IO" in prompt:
             prompt["text"] = " ".join(t)
@@ -571,10 +581,23 @@ class IOIDataset:
         self.s_tokenIDs = [self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts]
 
     def gen_flipped_prompts(self, flip):
-        """Return a IOIDataset where the name to flip has been replaced by a random name."""
-        assert flip in ["S", "S2", "IO", "S1"]
+        """
+        Return a IOIDataset where the name to flip has been replaced by a random name.
+        """
+        
+        assert isinstance(flip, tuple), f"{flip=} is not a tuple. Probably change to ('IO', 'RAND') or equivalent?"
 
-        flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, (flip, "RAND"))
+        if flip == ("IO", "S1"):
+            flipped_prompts = gen_flipped_prompts(
+                self.ioi_prompts, 
+                None,
+                flip,
+            )
+
+        else:
+            assert flip[1] == "RAND" and flip[0] in ["S", "RAND", "S2", "IO", "S1"], flip
+            flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, flip)
+
         flipped_ioi_dataset = IOIDataset(
             prompt_type=self.prompt_type,
             N=self.N,

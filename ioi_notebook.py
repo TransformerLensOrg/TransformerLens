@@ -133,11 +133,11 @@ N = 100
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
+abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))  # we flip the second b for a random c
 pprint(abca_dataset.text_prompts[:5])
 
-abca_dataset_abba = ioi_dataset_abba.gen_flipped_prompts("S2")
-abca_dataset_baba = ioi_dataset_baba.gen_flipped_prompts("S2")
+abca_dataset_abba = ioi_dataset_abba.gen_flipped_prompts(("S2", "RAND"))
+abca_dataset_baba = ioi_dataset_baba.gen_flipped_prompts(("S2", "RAND"))
 
 
 def logit_diff(model, ioi_dataset, all=False):
@@ -165,7 +165,7 @@ def logit_diff(model, ioi_dataset, all=False):
 # %% [markdown]
 # The `ioi_dataset` can also generate a copy of itself where some names have been flipped by a random name that is unrelated to the context with `gen_flipped_prompts`. This will be useful for patching experiments.
 # %%
-flipped = ioi_dataset.gen_flipped_prompts("S2")
+flipped = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 pprint(flipped.ioi_prompts[:5])
 # %% [markdown]
 # IOIDataset contains many other useful features, see the definition of the class in the cell `Dataset class` for more info!
@@ -1203,7 +1203,7 @@ show_attention_patterns(model, [(5, 5), (5, 8), (5, 9), (6, 9)], ioi_dataset[:2]
 #
 # To do this we first have to create a new dataset where S1 is flipped compared to the original dataset.
 # %%
-acba_dataset = ioi_dataset.gen_flipped_prompts("S1")
+acba_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
 acba_dataset.text_prompts[0], ioi_dataset.text_prompts[0]
 # %%
 def patch_s_plus_1(z, source_act, hook):  # we patch at the "to" token
@@ -1434,7 +1434,7 @@ for ablate_negative in [
     for template_idx in tqdm(range(num_templates)):
         prompts = template_prompts[template_idx]
         ioi_dataset = IOIDataset(prompt_type=template_type, N=N, symmetric=False, prompts=prompts)
-        abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+        abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
         assert torch.all(ioi_dataset.toks != 50256)  # no padding anywhere
         assert len(ioi_dataset.sem_tok_idx.keys()) != 0, "no semantic tokens found"
         for key in ioi_dataset.sem_tok_idx.keys():
@@ -1762,7 +1762,7 @@ N = 100
 target_ioi_dataset = IOIDataset(
     prompt_type="mixed", N=N, symmetric=True, prefixes=None
 )  # annoyingly you could swap "target" and "source" as names, and I think the original dataset would be a "source" in some ways (a bit confusing!)
-source_ioi_dataset = target_ioi_dataset.gen_flipped_prompts("IO")
+source_ioi_dataset = target_ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
 
 # %%
 print(

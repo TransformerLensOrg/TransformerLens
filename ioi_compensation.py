@@ -129,7 +129,7 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 200
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-mean_dataset = ioi_dataset.gen_flipped_prompts("S2")
+mean_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 # %%
 
 CIRCUIT = {

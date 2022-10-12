@@ -100,12 +100,12 @@ def e(mess=""):
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts("S2")  # we flip the second b for a random c
-acca_dataset = ioi_dataset.gen_flipped_prompts("S")
-acba_dataset = ioi_dataset.gen_flipped_prompts("S1")
-adea_dataset = ioi_dataset.gen_flipped_prompts("S").gen_flipped_prompts("S1")
-all_diff_dataset = adea_dataset.gen_flipped_prompts("IO")
-bcca_dataset = ioi_dataset.gen_flipped_prompts("IO").gen_flipped_prompts("S")
+abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))  # we flip the second b for a random c
+acca_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND"))
+acba_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
+adea_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("S1", "RAND"))
+all_diff_dataset = adea_dataset.gen_flipped_prompts(("IO", "RAND"))
+bcca_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(("S", "RAND"))
 
 from ioi_utils import logit_diff
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
@@ -1448,11 +1448,25 @@ if "alt_cache" not in dir():
     del logits
     e()
 
+oii_dataset = ioi_dataset.gen_flipped_prompts(("IO", "S1"))
+config = PatchingConfig(
+    source_dataset=oii_dataset.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=patch_last_tokens,
+    layers=(0, max(layers) - 1),
+)  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
+metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
+patching = EasyPatching(model, config, metric)
+
 print("IO S S2")
-for mode in ["new", "model", "circuit"]:
+for mode in ["newest", "new", "model", "circuit"]:
     model.reset_hooks()
     e()
-    if mode != "model":
+    if mode in ["new", "circuit"]:
         new_heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
         e("MiD")
         model, _ = do_circuit_extraction(
@@ -1477,6 +1491,11 @@ for mode in ["new", "model", "circuit"]:
             add_these_hooks.append((f"blocks.{layer}.attn.hook_result", cur_hook))
             model.add_hook(*add_these_hooks[-1])
 
+    if mode == "newest":
+        for layer, head_idx in circuit["s2 inhibition"]:
+            hook = patching.get_hook(layer, head_idx)
+            model.add_hook(*hook)
+
     att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False, scale=False)
     print(f"mode {mode}:", att_probs)
 
@@ -1490,9 +1509,7 @@ for mode in ["new", "model", "circuit"]:
     safe_del("att_probs")
     safe_del("_")
     e()
-#%% [markdown] well, how can we just get away with ACC shit?
-# do a patching experiment where we do patches at S2 and see if MLPs matter...? 
-
+    break
 #%%
 # some [logit difference, IO probs] for the different modes
 model_results = {"x":3.5492, "y":0.4955, "name":"Model"}
@@ -1537,73 +1554,6 @@ fig.update_layout(
 )
 fig.write_image(f"svgs/new_signal_plots_at_{ctime()}.svg")
 fig.show()
-
-# writing direction for S1 was here... now RIP
-#%%
-#%% [markdown] 
-# Wait, do Induction Heads maybe depend on Duplicate Token Heads? Let's try that
-# 1) patch duplicate token heads 
-# 2) save the induction head outputs
-# 3) patch in induction head outputs from this dist
-
-# 1)
-e()
-duplicate_heads = {}
-induction_heads = {}
-for head in circuit["duplicate token"]:
-    duplicate_heads[head] = "S2"
-for head in circuit["induction"]:
-    induction_heads[head] = "S2"
-duplicate_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in duplicate_heads.keys()])
-induction_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in induction_heads.keys()])
-duplicate_cache = {}
-model.reset_hooks()
-model.cache_some(duplicate_cache, names=lambda name: name in duplicate_hook_names)
-logits = model(abca_dataset.text_prompts)
-del logits
-e()
-
-# 2)
-model.reset_hooks()
-for layer, head_idx in duplicate_heads.keys():
-    cur_hook = get_act_hook(
-        partial(patch_positions, positions=[duplicate_heads[(layer, head_idx)]]),
-        alt_act=duplicate_cache[f"blocks.{layer}.attn.hook_result"],
-        idx=head_idx,
-        dim=2,
-    )
-    model.add_hook(f"blocks.{layer}.attn.hook_result", cur_hook)
-induction_cache = {}
-model.cache_some(induction_cache, names=lambda name: name in induction_hook_names)
-logits = model(ioi_dataset.text_prompts)
-del logits
-e()
-
-# 3)
-model.reset_hooks()
-for layer, head_idx in induction_heads.keys():
-    cur_hook = get_act_hook(
-        partial(patch_positions, positions=[induction_heads[(layer, head_idx)]]),
-        alt_act=induction_cache[f"blocks.{layer}.attn.hook_result"],
-        idx=head_idx,
-        dim=2,
-    )
-    model.add_hook(f"blocks.{layer}.attn.hook_result", cur_hook)
-
-# model.reset_hooks()
-att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False, scale=False)
-print(f"{att_probs=}")
-
-cur_logit_diff = logit_diff(model, ioi_dataset)
-cur_io_probs = probs(model, ioi_dataset)
-e("en")
-print(f"{cur_logit_diff=} {cur_io_probs=}")
-
-safe_del("new_heads_to_keep")
-safe_del("add_these_hooks")
-safe_del("att_probs")
-safe_del("_")
-e()
 #%% # test the hypothesis that MLP5 implements "if copy signal present then write S2 real hard"
 # get logits we unembed right after Layer5 RESULTS: in 86/100 examples, yeah MLP5 increases S2 probs
 
@@ -1668,6 +1618,7 @@ study = optuna.create_study(
     study_name=f"Check by heads and index @ {ctime()}", storage=storage_name
 )  # ADD!
 #%%
+e()
 heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
 relevant_stuff = [(10, "end"), (11, "end")]
 for layer in range(0, 6):
@@ -1709,14 +1660,14 @@ def objective(trial, manual=None):
     #     ans += 100000 - 100 * total_things
     return ans
 
-study.optimize(objective, n_trials=1e8)
+# study.optimize(objective, n_trials=1e8)
 #%% 
 tuples = [
     (0, 'IO'),
     (0, 'S2'),
     (0, 'S'),
     (0, 'S+1'),
-    # (0, 'end'),
+    (0, 'end'),
 
     (1, 'IO'),
     (1, 'S'),
@@ -1740,7 +1691,6 @@ tuples = [
     (5, 'S2'),
 
     (10, 'end'),
-
     (11, 'end'),
 ]
 

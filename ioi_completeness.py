@@ -122,7 +122,7 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
@@ -435,7 +435,7 @@ if __name__ == "__main__":
     # IOI Dataset initialisation
     N = 150
     ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-    abca_dataset = ioi_dataset.gen_flipped_prompts("S2")
+    abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
     print("CIRCUIT STUDIED : ", CIRCUIT)
 
 mean_dataset = abca_dataset
@@ -968,7 +968,7 @@ if circuit_to_study == "natural_circuit":
             ALL_NODES.append((h, tok))
 
 small_ioi_dataset = IOIDataset(N=40, tokenizer=model.tokenizer, nb_templates=4, prompt_type="mixed")
-small_abc_dataset = small_ioi_dataset.gen_flipped_prompts("S2")
+small_abc_dataset = small_ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 torch.cuda.empty_cache()
 
 if True:
