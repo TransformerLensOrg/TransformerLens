@@ -14,7 +14,6 @@ from time import ctime
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
