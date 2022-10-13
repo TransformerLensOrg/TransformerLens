@@ -660,13 +660,10 @@ class IOIDataset:
         """Return a IOIDataset where the name to flip has been replaced by a random name."""
         assert isinstance(flip, tuple) or flip in [
             "prefix",
-            "template",
         ], f"{flip=} is not a tuple. Probably change to ('IO', 'RAND') or equivalent?"
 
         if flip == "prefix":
             flipped_prompts = flip_prefixes(self.ioi_prompts)
-        elif flip == "template":
-            flipped_prompts = flip_names(self.ioi_prompts)
         else:
             if flip in [("IO", "S1"), ("S", "IO")]:
                 flipped_prompts = gen_flipped_prompts(
@@ -685,7 +682,7 @@ class IOIDataset:
             tokenizer=self.tokenizer,
             prompts=flipped_prompts,
             prefixes=self.prefixes,
-            ioi_prompts_for_word_idxs=flipped_prompts,
+            ioi_prompts_for_word_idxs=flipped_prompts if flip[0] == "RAND" else None,
         )
         return flipped_ioi_dataset
 
