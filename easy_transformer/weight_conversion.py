@@ -28,6 +28,7 @@ VALID_PRETRAINED_MODEL_NAMES = set(
         "stanford-gpt2-medium-C",
         "stanford-gpt2-medium-D",
         "stanford-gpt2-medium-E",
+        "bert-base-uncased",
     ]
 )
 
@@ -235,6 +236,96 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict["unembed.W_U"] = opt.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
+
+def convert_bert_weights(bert, cfg):
+    state_dict = {}
+    state_dict["bert_embed.token_embed.W_E"] = bert.bert.embeddings.word_embeddings.weight
+    state_dict["bert_embed.pos_embed.W_pos"] = bert.bert.embeddings.position_embeddings.weight
+    state_dict["bert_embed.token_type_embed.W_token_type"] = bert.bert.embeddings.token_type_embeddings.weight
+    state_dict["bert_embed.ln.w"] = bert.bert.embeddings.LayerNorm.weight
+    state_dict["bert_embed.ln.b"] = bert.bert.embeddings.LayerNorm.bias
+    for l in range(cfg.n_layers):
+        
+        W_Q = bert.bert.encoder.layer[l].attention.self.query.weight
+        W_K = bert.bert.encoder.layer[l].attention.self.key.weight
+        W_V = bert.bert.encoder.layer[l].attention.self.value.weight
+        W_Q = einops.rearrange(
+            W_Q,
+            "(index d_head) d_model->index d_model d_head",
+            index=cfg.n_heads,
+        )
+        W_K = einops.rearrange(
+            W_K,
+            "(index d_head) d_model->index d_model d_head",
+            index=cfg.n_heads,
+        )
+        W_V = einops.rearrange(
+            W_V,
+            "(index d_head) d_model->index d_model d_head",
+            index=cfg.n_heads,
+        )
+
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        q_bias = einops.rearrange(
+            bert.bert.encoder.layer[l].attention.self.query.bias,
+            "(head_index d_head)->head_index d_head",
+            head_index=cfg.n_heads,
+            d_head=cfg.d_head,
+        )
+        k_bias = einops.rearrange(
+            bert.bert.encoder.layer[l].attention.self.key.bias,
+            "(head_index d_head)->head_index d_head",
+            head_index=cfg.n_heads,
+            d_head=cfg.d_head,
+        )
+        v_bias = einops.rearrange(
+            bert.bert.encoder.layer[l].attention.self.value.bias,
+            "(head_index d_head)->head_index d_head",
+            head_index=cfg.n_heads,
+            d_head=cfg.d_head,
+        )
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = q_bias
+        state_dict[f"blocks.{l}.attn.b_K"] = k_bias
+        state_dict[f"blocks.{l}.attn.b_V"] = v_bias
+
+        W_O = bert.bert.encoder.layer[l].attention.output.dense.weight
+        W_O = einops.rearrange(
+            W_O,
+            "d_model (index d_head)->index d_head d_model",
+            index=cfg.n_heads,
+        )
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = bert.bert.encoder.layer[
+            l
+        ].attention.output.dense.bias
+        
+        state_dict[f"blocks.{l}.ln1.w"] = bert.bert.encoder.layer[l].attention.output.LayerNorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = bert.bert.encoder.layer[l].attention.output.LayerNorm.bias
+
+        
+        state_dict[f"blocks.{l}.mlp.W_in"] = bert.bert.encoder.layer[l].intermediate.dense.weight.T
+        state_dict[f"blocks.{l}.mlp.W_out"] = bert.bert.encoder.layer[l].output.dense.weight.T
+        
+        state_dict[f"blocks.{l}.mlp.b_in"] = bert.bert.encoder.layer[l].intermediate.dense.bias
+        state_dict[f"blocks.{l}.mlp.b_out"] = bert.bert.encoder.layer[l].output.dense.bias
+        
+        state_dict[f"blocks.{l}.ln2.w"] = bert.bert.encoder.layer[l].output.LayerNorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = bert.bert.encoder.layer[l].output.LayerNorm.bias
+
+    state_dict["bert_final.W"] = bert.cls.predictions.transform.dense.weight.T
+    state_dict["bert_final.b"] = bert.cls.predictions.transform.dense.bias
+    state_dict["ln_final.w"] = bert.cls.predictions.transform.LayerNorm.weight
+    state_dict["ln_final.b"] = bert.cls.predictions.transform.LayerNorm.bias
+
+    state_dict["unembed.b_U"] = bert.cls.predictions.bias
+    state_dict["unembed.W_U"] = bert.bert.embeddings.word_embeddings.weight.T
+
+    return state_dict
+
 
 def convert_bloom_weights(bloom, cfg):
     raise NotImplementedError

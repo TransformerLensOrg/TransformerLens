@@ -75,6 +75,8 @@ class EasyTransformerConfig:
             inputs to the keys and the queries (ie key = W_K(res_stream + pos_embed), but values and 
             MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
             supported. Defaults to 'standard'.
+        use_token_types (bool): Whether to use token types - used in BERT style models, where we input a mask of 0s and 1s for the two sentences. Defaults to False.
+        bert_family (bool): Whether to use the BERT family of models, which use a different internal structure to the GPT-2 family. In particular, they use post LayerNorm, have an initial layernorm before the blocks, have token type embeddings, take as input a pair of sentences, and have a final linear layer before the unembed Defaults to False.
     """
 
     n_layers: int
@@ -105,6 +107,8 @@ class EasyTransformerConfig:
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
     positional_embedding_type: str = 'standard'
+    use_token_types: bool = False
+    bert_family: bool = False
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"

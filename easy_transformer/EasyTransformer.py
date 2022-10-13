@@ -15,6 +15,7 @@ from transformers import (
     AutoConfig,
     AutoTokenizer,
     PreTrainedTokenizer,
+    BertForMaskedLM,
 )
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
@@ -28,6 +29,7 @@ from easy_transformer.caching import (
 from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
 from easy_transformer.utils import lm_cross_entropy_loss, sample_logits
+from transformers.utils.dummy_tokenizers_objects import PreTrainedTokenizerFast
 
 
 """
@@ -83,8 +85,8 @@ class EasyTransformer(HookedRootModule):
             self.tokenizer = tokenizer
         if self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+            tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+            self.set_tokenizer(tokenizer)
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
@@ -96,18 +98,29 @@ class EasyTransformer(HookedRootModule):
             ), "Must provide a tokenizer if d_vocab is not provided"
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
 
-        self.embed = Embed(self.cfg)
-        self.hook_embed = HookPoint()  # [batch, pos, d_model]
+        if not self.cfg.bert_family:
+            self.embed = Embed(self.cfg)
+            self.hook_embed = HookPoint()  # [batch, pos, d_model]
 
-        self.pos_embed = PosEmbed(self.cfg)
-        self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
+            self.pos_embed = PosEmbed(self.cfg)
+            self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
+            
+            self.blocks = nn.ModuleList(
+                [
+                    TransformerBlock(self.cfg, block_index)
+                    for block_index in range(self.cfg.n_layers)
+                ]
+            )
         
-        self.blocks = nn.ModuleList(
-            [
-                TransformerBlock(self.cfg, block_index)
-                for block_index in range(self.cfg.n_layers)
-            ]
-        )
+        else:
+            self.bert_embed = BERTEmbed(self.cfg)
+            self.blocks = nn.ModuleList(
+                [
+                    BERTBlock(self.cfg, block_index)
+                    for block_index in range(self.cfg.n_layers)
+                ]
+            )
+            self.bert_final = BERTFinal(cfg)
         
         if self.cfg.normalization_type == "LN":
             self.ln_final = LayerNorm(self.cfg)
@@ -116,7 +129,7 @@ class EasyTransformer(HookedRootModule):
             self.ln_final = LayerNormPre(self.cfg)
         elif self.cfg.normalization_type is None:
             # If it's None, don't create either layer
-            pass
+            self.ln_final = nn.Identity()
         else:
             logging.warning(
                 f"Invalid normalization_type passed in {self.cfg.normalization_type}"
@@ -138,9 +151,14 @@ class EasyTransformer(HookedRootModule):
         input: Union[str, torch.Tensor], 
         return_type: Optional[str] = "logits", 
         prepend_bos: bool = True, 
-        past_kv_cache: Optional[EasyTransformerKeyValueCache] = None
+        past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
+        token_types: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         ) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
+
+        token_types is only used for BERT-style models, and is a tensor of the same shape as input, with each element being the token type of the corresponding token in input. If None, token types are assumed to be all 0s.
+        attention_mask is only used for BERT-style models and is a Boolean tensor of the same shape as input, with each element being True if the corresponding token in input is NOT a padding token, and False otherwise. If None, all tokens are assumed to be non-padding tokens (ie the mask is all True). Often formatted as a tensor of ints (False=0, True=1) rather than bools, but it's equivalent
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
         """
@@ -149,6 +167,7 @@ class EasyTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
+            assert not self.cfg.bert_family, "BERT-family models cannot be passed strings"
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
@@ -170,34 +189,61 @@ class EasyTransformer(HookedRootModule):
             # If we want to generate from the empty string, we'd pass in an empty cache, so we need to handle that case
             assert cache_ctx_length == 0 or ctx_length == 1, "Pass in one token at a time after loading cache"
             pos_offset = cache_ctx_length
-        embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
-        pos_embed = self.hook_pos_embed(
-            self.pos_embed(tokens, pos_offset)
-        )  # [batch, pos, d_model]
-        if self.cfg.positional_embedding_type != "shortformer":
-            residual = embed + pos_embed  # [batch, pos, d_model]
+        
+        if self.cfg.bert_family:
+            residual = self.bert_embed(tokens, token_types)
             shortformer_pos_embed = None
+
+            for i, block in enumerate(self.blocks):
+            # Note that each block includes skip connections, so we don't need
+            # residual + block(residual)
+            residual = block(
+                residual, 
+                past_kv_cache_entry = past_kv_cache[i] if past_kv_cache is not None else None, # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
+                shortformer_pos_embed = shortformer_pos_embed,
+                attention_mask = attention_mask,
+            )  # [batch, pos, d_model]
+        
+        if self.cfg.bert_family:
+            # BERT has a final linear layer that's different from the rest of the blocks
+            residual = self.bert_final(residual)
         else:
-            # If we're using shortformer style attention, we don't add the positional embedding to the residual stream. See EasyTransformerConfig for details
-            residual = embed
-            shortformer_pos_embed = pos_embed
+            embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
+            pos_embed = self.hook_pos_embed(
+                self.pos_embed(tokens, pos_offset)
+            )  # [batch, pos, d_model]
+            if self.cfg.positional_embedding_type != "shortformer":
+                residual = embed + pos_embed  # [batch, pos, d_model]
+                shortformer_pos_embed = None
+            else:
+                # If we're using shortformer style attention, we don't add the positional embedding to the residual stream. See EasyTransformerConfig for details
+                residual = embed
+                shortformer_pos_embed = pos_embed
+
         for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
             residual = block(
                 residual, 
                 past_kv_cache_entry = past_kv_cache[i] if past_kv_cache is not None else None, # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
-                shortformer_pos_embed = shortformer_pos_embed
+                shortformer_pos_embed = shortformer_pos_embed,
+                attention_mask = attention_mask,
             )  # [batch, pos, d_model]
+        
+        if self.cfg.bert_family:
+            # BERT has a final linear layer that's different from the rest of the blocks
+            residual = self.bert_final(residual)
+
         if return_type is None:
             return None
         else:
-            if self.cfg.normalization_type is not None:
-                residual = self.ln_final(residual)  # [batch, pos, d_vocab]
+            
+            residual = self.ln_final(residual)  # [batch, pos, d_vocab]
             logits = self.unembed(residual)  # [batch, pos, d_vocab]
             if return_type == "logits":
                 return logits
             else:
+                assert not self.cfg.bert_family, "BERT-family models do not have a supported loss function"
                 loss = lm_cross_entropy_loss(logits, tokens)
                 if return_type == "loss":
                     return loss
@@ -212,9 +258,9 @@ class EasyTransformer(HookedRootModule):
         Sets the tokenizer to use for this model.
         tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer
         """
-        assert isinstance(tokenizer, PreTrainedTokenizer)
         self.tokenizer = tokenizer
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def to_tokens(self, input, prepend_bos=True):
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
@@ -305,6 +351,8 @@ class EasyTransformer(HookedRootModule):
                     hf_model = AutoModelForCausalLM.from_pretrained(
                         hf_model_name, revision=f"checkpoint-{checkpoint}"
                     )
+            elif "bert" in model_name:
+                hf_model = BertForMaskedLM.from_pretrained(hf_model_name)
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     hf_model_name
@@ -318,12 +366,21 @@ class EasyTransformer(HookedRootModule):
         cfg.checkpoint = checkpoint
         cfg.model_family = model_family
         cfg.model_name = model_name
+        if cfg.model_family == "bert":
+            if fold_ln:
+                logging.warning(
+                    "LayerNorm folding is not supported for post LayerNorm models like BERT. Setting fold_ln=False"
+                )
+                fold_ln = False
+            if center_writing_weights:
+                logging.warning(
+                    "Centering writing weights is not supported for post LayerNorm models like BERT. Setting center_writing_weights=False"
+                )
+                center_writing_weights = False
 
         cfg.normalization_type = "LNPre" if fold_ln else "LN"
         cfg.tokenizer_name = hf_model_name
         cfg.init_weights = False
-        tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer_name)
-        tokenizer.pad_token = tokenizer.eos_token
 
         model = cls(cfg, **kwargs)
 
@@ -337,9 +394,14 @@ class EasyTransformer(HookedRootModule):
             state_dict = weight_conversion.convert_neo_weights(hf_model, model.cfg)
         elif model_family == "opt":
             state_dict = weight_conversion.convert_opt_weights(hf_model, model.cfg)
+        elif model_family == "bert":
+            state_dict = weight_conversion.convert_bert_weights(hf_model, model.cfg)
+            
+
         else:
             raise ValueError(f"Loading weights from this model family is not currently supported: {model_family}, generated from model name {model_name}. Feel free to open an issue on GitHub to request this feature.")
         
+
         model.load_and_process_state_dict(state_dict, 
                         fold_ln=fold_ln, 
                         center_writing_weights=center_writing_weights, 
@@ -362,6 +424,8 @@ class EasyTransformer(HookedRootModule):
         elif model_name in ['EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B',]:
             # Important to exclude GPT-J and GPT-NeoX, they have different config.
             return "neo"
+        elif "bert" in model_name:
+            return "bert"
         else:
             raise ValueError(f"Invalid model name: {model_name}")
 
@@ -430,6 +494,26 @@ class EasyTransformer(HookedRootModule):
                 "use_local_attn": False,
                 "scale_attn_by_inverse_layer_idx": False,
             }
+        elif model_family == "bert":
+            cfg_dict = {
+                "d_model": hf_config.hidden_size,
+                "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+                "n_heads": hf_config.num_attention_heads,
+                "d_mlp": hf_config.intermediate_size,
+                "n_layers": hf_config.num_hidden_layers,
+                "n_ctx": hf_config.max_position_embeddings,
+                "d_vocab": hf_config.vocab_size,
+                "act_fn": hf_config.hidden_act,
+                "eps": hf_config.layer_norm_eps,
+                "use_attn_scale": True,
+                "use_local_attn": False,
+                "scale_attn_by_inverse_layer_idx": False,
+                "bert_family": True,
+                "use_token_types": True,
+                "normalization_type": "LN", # BERT does not support folding layer norm
+                "attention_dir": "bidirectional",
+            }
+
         else:
             raise NotImplementedError
         cfg = EasyTransformerConfig.from_dict(cfg_dict)
@@ -484,8 +568,12 @@ class EasyTransformer(HookedRootModule):
             state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
+            if self.cfg.bert_family:
+                raise ValueError("Folding layer norm is not possible for post-LayerNorm models like BERT")
             state_dict = self.fold_layer_norm(state_dict)
         if center_writing_weights:
+            if self.cfg.bert_family:
+                raise ValueError("Centering writing weights is not possible for post-LayerNorm models like BERT")
             state_dict = self.center_writing_weights(state_dict)
         if center_unembed:
             state_dict = self.center_unembed(state_dict)
@@ -687,67 +775,6 @@ class EasyTransformer(HookedRootModule):
             return self.tokenizer.decode(tokens[0])
         else:
             return tokens
-
-    # def greedy_search(
-    #     self,
-    #     tokens: torch.Tensor,
-    #     max_new_tokens: int,
-    #     stop_at_eos: bool = True,
-    #     pad_token_id: Optional[int] = None,
-    #     eos_token_id: Optional[int] = None,
-    #     past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
-    #     return_type: Optional[str] = None,
-    # ):
-    #     """
-    #     Greedily sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
-    #     Args:
-    #         tokens (torch.Tensor): A batch of tokens ([batch, pos])
-    #         max_new_tokens (int): Maximum number of tokens to generate
-    #         stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
-    #         pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
-    #         eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
-    #         past_kv_cache (EasyTransformerKeyValueCache, *optional*): Cache to use for past keys and values for the model. If None, no cache is used
-    #         return_type (str, *optional*): The type of the output to return - either a string (str), a list of strings (list), or a tensor of tokens (tensor). If None, defaults to tensor.
-    #     Returns:
-    #         outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
-    #     """
-    #     B, S = tokens.shape
-    #     outputs = tokens
-    #     unfinished_sequences = tokens.new(tokens.shape[0]).fill_(1)
-
-    #     if stop_at_eos and pad_token_id is None:
-    #         assert (
-    #             self.tokenizer is not None and self.tokenizer.pad_token_id is not None
-    #         ), "Must pass a pad_token_id if stop_at_eos is True and tokenizer is None or has no pad_token_id"
-    #         pad_token_id = self.tokenizer.pad_token_id
-    #     if stop_at_eos and eos_token_id is None:
-    #         assert (
-    #             self.tokenizer is not None and self.tokenizer.eos_token_id is not None
-    #         ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-    #         eos_token_id = self.tokenizer.eos_token_id
-
-    #     for _ in tqdm.tqdm(range(max_new_tokens)):
-    #         logits = self(tokens, return_type="logits", past_kv_cache=past_kv_cache)
-    #         next_tokens = torch.argmax(logits[:, -1, :], dim=-1)
-    #         if stop_at_eos:
-    #             next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
-    #                 1 - unfinished_sequences
-    #             )
-    #             unfinished_sequences.mul_((next_tokens != eos_token_id).long())
-    #         outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
-    #         if past_kv_cache is not None:
-    #             tokens = next_tokens.unsqueeze(-1)
-    #         else:
-    #             tokens = outputs
-
-    #     if return_type is not None and return_type == "str":
-    #         assert self.tokenizer is not None
-    #         outputs = self.tokenizer.batch_decode(outputs)[0]
-    #     elif return_type is not None and return_type == "list":
-    #         assert self.tokenizer is not None
-    #         outputs = self.tokenizer.batch_decode(outputs)
-
-    #     return outputs
 
     def sample(
         self,

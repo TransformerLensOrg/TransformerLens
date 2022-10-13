@@ -224,12 +224,13 @@ class Attention(nn.Module):
     def forward(self, 
             resid_pre: torch.Tensor, 
             shortformer_pos_embed: Optional[torch.Tensor] = None,
-            past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None
+            past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
+            attention_mask: Optional[torch.Tensor] = None,
         ):
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See EasyTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
-
+        attention_mask is an optional mask of shape [batch, pos] that is True for positions that should be masked out. Only used for BERT, irrelevant for causal models that are padded on the end only. Defaults to None
         """
         if self.cfg.positional_embedding_type != "shortformer":
             # Normal attention
@@ -273,6 +274,12 @@ class Attention(nn.Module):
                 attn_scores, 
                 kv_cache_pos_offset
             ) # [batch, head_index, query_pos, key_pos]
+        elif attention_mask is not None:
+            # If we're using a mask, apply it here
+            attn_scores = self.apply_attention_mask(
+                attn_scores, 
+                attention_mask
+            )
         attn_matrix = self.hook_attn(
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]
@@ -324,6 +331,12 @@ class Attention(nn.Module):
             attn_scores,
             self.IGNORE,
         )
+    
+    def apply_attention_mask(self, attn_scores, attention_mask):
+        # A method to apply a Boolean attention mask to the attention scores
+        # Only used for BERT
+        repeated_attention_mask = einops.repeat(attention_mask, "batch key_pos -> batch head_index query_pos key_pos", head_index=self.cfg.num_heads, query_pos=attn_scores.size(-2))
+        attn_scores = torch.where(repeated_attention_mask, self.IGNORE, attn_scores)
     
     def shortformer_calculate_qk(self, x, shortformer_pos_embed):
         # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
@@ -433,6 +446,7 @@ class TransformerBlock(nn.Module):
             resid_pre: torch.Tensor, 
             shortformer_pos_embed: Optional[torch.Tensor] = None,
             past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
+            attention_mask: Optional[torch.Tensor] = None,
         ):
         """A single Transformer block.
 
@@ -440,6 +454,7 @@ class TransformerBlock(nn.Module):
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
             cache (EasyTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See EasyTransformerConfig for details. Defaults to None.
+            attention_mask. Only needed for BERT, included here for a consistent API
 
         Returns:
             _type_: _description_
@@ -450,7 +465,8 @@ class TransformerBlock(nn.Module):
             self.attn(
                 normalized_resid_pre, 
                 shortformer_pos_embed = shortformer_pos_embed,
-                past_kv_cache_entry = past_kv_cache_entry)
+                past_kv_cache_entry = past_kv_cache_entry,
+                attention_mask = attention_mask)
         )  # [batch, pos, d_model]
         if not self.cfg.attn_only:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
@@ -462,3 +478,113 @@ class TransformerBlock(nn.Module):
         else:
             resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
         return resid_post
+
+# BERT Specific Components
+class TokenTypeEmbed(nn.Module):
+    """ 
+    Token type embedding - used for models whose inputs are a pair of sentences, like BERT, to distinguish between the two
+    """
+    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+        super().__init__()
+        # Hard coded to be two, it never changes.
+        num_token_types = 2
+        self.W_token_type = nn.Parameter(torch.empty(num_token_types, cfg.d_model))
+    
+    def forward(self, token_types):
+        # token_types is [batch, pos], and each element is either 0 or 1
+        return self.W_token_type[token_types]
+
+class BERTEmbed(nn.Module):
+    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+        super().__init__()
+        self.cfg = cfg
+        self.token_embed = Embed(self.cfg)
+        self.pos_embed = PosEmbed(self.cfg)
+        self.token_type_embed = TokenTypeEmbed(self.cfg)
+
+        self.ln = LayerNorm(self.cfg)
+    
+
+        self.hook_embed = HookPoint() # [batch, d_vocab, d_model]
+        self.hook_pos_embed = HookPoint() # [batch, pos, d_model]
+        self.hook_token_type_embed = HookPoint() # [batch, 2, d_model]
+    
+    def forward(self, tokens, token_types=None):
+        # tokens is [batch, pos]
+        # token_types is [batch, pos]
+        if token_types is None:
+            # If no token types are given, default to assuming all tokens are from the same sentence.
+            token_types = torch.zeros_like(tokens)
+        embed = self.hook_embed(self.token_embed(tokens))
+        pos_embed = self.hook_pos_embed(self.pos_embed(tokens))
+        token_type_embed = self.hook_token_type_embed(self.token_type_embed(token_types))
+        residual = embed + pos_embed + token_type_embed
+        return self.ln(residual)
+
+class BERTBlock(nn.Module):
+    def __init__(self, cfg: Union[Dict, EasyTransformerConfig], block_index):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = EasyTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+
+        # No need for LayerNormPre or Attn-Only, since BERT doesn't use those
+        self.attn = Attention(cfg, "global", block_index)
+        self.ln1 = LayerNorm(cfg)
+        self.mlp = MLP(cfg)
+        self.ln2 = LayerNorm(cfg)
+        
+
+        self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
+
+    def forward(
+            self, 
+            resid_pre: torch.Tensor,
+            shortformer_pos_embed = None,
+            past_kv_cache_entry = None,
+            attention_mask = None,
+        ):
+        """A single Transformer for BERT block. The main difference with GPT is that it's POST LayerNorm, which means that we apply layernorm to (resid_pre + attn_out) instead of (resid_pre)
+
+        Args:
+            resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
+            attention_mask (torch.Tensor[bool]): A mask of which positions to not attend to. Defaults to None, which means attend to all positions. This is needed just for BERT because it is bidirectional, so we cannot just ignore positions at the end. The mask only applies to keys, because queries just let information go IN to the [PAD] tokens, where it can do nothing.
+        """
+        assert shortformer_pos_embed is None, "BERT doesn't use shortformer positional embeddings"
+        assert past_kv_cache_entry is None, "BERT isn't a generative model and does not support caching"
+
+        resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
+        attn_out = self.hook_attn_out(
+            self.attn(
+                resid_pre,
+                attention_mask = attention_mask
+            )
+        )  # [batch, pos, d_model]
+        
+        resid_mid = self.hook_resid_mid(self.ln1(resid_pre + attn_out))  # [batch, pos, d_model]
+        
+        mlp_out = self.hook_mlp_out(
+            self.mlp(resid_mid)
+        )  # [batch, pos, d_model]
+        resid_post = self.hook_resid_post(self.ln2(resid_mid + mlp_out))  # [batch, pos, d_model]
+        
+        return resid_post
+
+class BERTFinal(nn.Module):
+    """ 
+    The final layer of BERT, which is a linear head before the unembed
+    """
+    def __init__(self, cfg:Union[Dict, EasyTransformerConfig]):
+        super().__init__()
+        self.cfg = cfg
+        self.W = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_model)) # Note that we right multiply
+        self.b = nn.Parameter(torch.zeros(self.cfg.d_model))
+        self.hook_final = HookPoint()  # [batch, pos, d_model]
+    
+    def forward(self, residual):
+        final = self.hook_final(residual @ self.W + self.b)
+        return (final)
