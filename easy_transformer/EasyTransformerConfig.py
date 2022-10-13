@@ -63,7 +63,7 @@ class EasyTransformerConfig:
             layers. Defaults to False
         seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and 
             NumPy) and to initialize weights. If set to None, does nothing.
-        initializer_range (float): The standard deviation of the truncated normal used to initialise the weights.
+        initializer_range (float): The standard deviation of the normal used to initialise the weights, initialized to 0.8 / sqrt(d_model) .
         init_weights (bool): Whether to initialize the weights. Defaults to True. If False, does not initialize weights.
         scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention weights by 1/(layer_id
             +1), used by Mistral (Stanford) models for numerical stability when training in FP16.
@@ -101,7 +101,7 @@ class EasyTransformerConfig:
     attention_dir: str = 'causal'
     attn_only: bool = False
     seed: int = 42
-    initializer_range: float = 0.02
+    initializer_range: float = -1.
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
     positional_embedding_type: str = 'standard'
@@ -120,7 +120,9 @@ class EasyTransformerConfig:
         if not self.attn_only:
             assert self.d_mlp is not None, "d_mlp must be specified for non-attn-only models"
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
-        
+        if self.initializer_range < 0:
+            # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
+            self.initializer_range = 0.8 / np.sqrt(self.d_model)
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
