@@ -286,6 +286,9 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
         if flip[0] == "S2":
             if flip[1] == "IO":
                 t[len(t) - t[::-1].index(prompt["S"]) - 1] = prompt["IO"]
+                temp = prompt["IO"]
+                prompt["IO"] = prompt["S"]
+                prompt["S"] = temp
             elif flip[1] == "RAND":
                 rand_name = names[np.random.randint(len(names))]
                 while rand_name == prompt["IO"] or rand_name == prompt["S"]:
@@ -671,9 +674,15 @@ class IOIDataset:
                     None,
                     flip,
                 )
+            elif flip == ("S2", "IO"):
+                flipped_prompts = gen_flipped_prompts(
+                    self.ioi_prompts,
+                    None,
+                    flip,
+                )
 
             else:
-                assert flip[1] == "RAND" and flip[0] in ["S", "RAND", "S2", "IO", "S1"], flip
+                assert flip[1] == "RAND" and flip[0] in ["S", "RAND", "S2", "IO", "S1", "S+1"], flip
                 flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, flip)
 
         flipped_ioi_dataset = IOIDataset(
