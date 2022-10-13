@@ -862,7 +862,6 @@ for layer, head_idx in heads_to_patch:
 l = logit_diff(model, ioi_dataset)
 print(f"{l=}")
 model.reset_hooks()
-
 #%%
 ys = []
 fig = go.Figure()
@@ -1000,7 +999,7 @@ for head in circuit["duplicate token"] + circuit["induction"]:
 circuit = deepcopy(CIRCUIT)
 relevant_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in relevant_heads.keys()])
 
-if "alt_cache" not in dir():
+if "alt_cache" not in dir() and False:
     alt_cache = {}
     model.reset_hooks()
     model.cache_some(alt_cache, names=lambda name: name in relevant_hook_names)
@@ -1009,6 +1008,7 @@ if "alt_cache" not in dir():
     e()
 
 oii_dataset = ioi_dataset.gen_flipped_prompts(("IO", "S1"))
+
 config = PatchingConfig(
     source_dataset=oii_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,

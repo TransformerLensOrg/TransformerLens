@@ -668,7 +668,7 @@ class IOIDataset:
         elif flip == "template":
             flipped_prompts = flip_names(self.ioi_prompts)
         else:
-            if flip == ("IO", "S1"):
+            if flip in [("IO", "S1"), ("S", "IO")]:
                 flipped_prompts = gen_flipped_prompts(
                     self.ioi_prompts,
                     None,
