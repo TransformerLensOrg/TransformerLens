@@ -98,9 +98,6 @@ def e(mess=""):
     print_gpu_mem(mess)
     torch.cuda.empty_cache()
 #%%
-dearly = IOIDataset(prompt_type=BABA_EARLY_IOS, N=100)
-dlate = IOIDataset.construct_from_ioi_prompts_metadata(templates=BABA_LATE_IOS, ioi_prompts_data=dearly.ioi_prompts, N=100)
-#%%
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
@@ -1008,16 +1005,19 @@ if "alt_cache" not in dir() and False:
     model.cache_some(alt_cache, names=lambda name: name in relevant_hook_names)
     logits = model(bcca_dataset.text_prompts)
     del logits
-    e()
+    elayers =()
 
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 oii_dataset = ioi_dataset.gen_flipped_prompts(("IO", "S1"))
 arthur_alex_clash = ioi_dataset.gen_flipped_prompts(("S2", "IO")).gen_flipped_prompts(("IO", "S1"))
 total_reversal_dataset = ioi_dataset.gen_flipped_prompts(("S2", "IO"))
 
+early_dataset = IOIDataset(prompt_type=BABA_EARLY_IOS, N=100)
+late_dataset = IOIDataset.construct_from_ioi_prompts_metadata(templates=BABA_LATE_IOS, ioi_prompts_data=dearly.ioi_prompts, N=100)
+
 config = PatchingConfig(
-    source_dataset=total_reversal_dataset.text_prompts,
-    target_dataset=ioi_dataset.text_prompts,
+    source_dataset=late_dataset.text_prompts,
+    target_dataset=early_dataset.text_prompts,
     target_module="attn_head",
     head_circuit="result",
     cache_act=True,
@@ -1251,6 +1251,102 @@ tuples = [
 
 ans = objective(None, tuples)
 print(f"{ans=}")
-#%%
+#%% [markdown] Patch and freeze !!!
+# do a run where we mean ablate IO position and S position
+# do a run where we patch at S2 and patch the name movers' K with these things
 
-for i in t
+# Activation at hook blocks.1.attn.hook_q has shape:
+# torch.Size([4, 50, 12, 64])
+
+safe_del("logits")
+safe_del("embed_cache")
+safe_del("k_cache")
+safe_del("_")
+e()
+
+use_circuit = False
+mode = "IO"
+warnings.warn(f"{use_circuit=}")
+
+def patch_all(z, source_act, hook):
+    z[:] = source_act.clone()
+    return z
+
+def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+    for pos in positions:
+        if all_same:
+            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act
+        else:
+            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+                torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+            ]
+    return z
+
+heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
+
+# embeddings mean
+model.reset_hooks()
+if use_circuit:
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=abca_dataset,
+    )
+embed_cache = {}
+model.cache_some(embed_cache, lambda name: name == "hook_embed") 
+logits = model(ioi_dataset.text_prompts)
+# hook_embed has shape 4x50x768
+io_embed_mean = embed_cache["hook_embed"][torch.arange(ioi_dataset.N), ioi_dataset.word_idx["IO"]].mean(dim=0, keepdim=True)
+s_embed_mean = embed_cache["hook_embed"][torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"]].mean(dim=0, keepdim=True)
+
+# middle thing
+model.reset_hooks()
+if use_circuit:
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=abca_dataset,
+    )
+safe_del("_")
+e()
+k_cache = {}
+ks_names = [f"blocks.{layer}.attn.hook_k" for layer, _ in circuit["name mover"]]
+model.cache_some(k_cache, lambda name: name in ks_names)
+cur_hook = get_act_hook(
+    partial(patch_positions, positions=[mode], all_same=True),
+    alt_act=s_embed_mean if mode == "S" else io_embed_mean,
+    idx=None, 
+    dim=None,
+)
+model.add_hook("hook_embed", cur_hook)
+logits = model(ioi_dataset.text_prompts)
+
+# Activation at hook blocks.0.attn.hook_k has shape:
+# torch.Size([4, 50, 12, 64])
+model.reset_hooks()
+if use_circuit:
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=abca_dataset,
+    )
+safe_del("_")
+e()
+for layer, head_idx in circuit["name mover"]:
+    cur_hook = get_act_hook(
+        partial(patch_positions, positions=["S" if mode == "S" else "IO"]),
+        alt_act=k_cache[f"blocks.{layer}.attn.hook_k"],
+        idx=head_idx,
+        dim=2,
+    )
+    model.add_hook(f"blocks.{layer}.attn.hook_k", cur_hook)
+
+# model.reset_hooks()
+io_probs = probs(model, ioi_dataset)
+print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}") 

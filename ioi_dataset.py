@@ -528,9 +528,12 @@ def get_idx_dict(ioi_prompts, tokenizer, has_start_padding=False):
     rand_idxs = get_rand_idxs(end_idxs, exclude=[IO_idxs, S_idxs, S2_idxs])
     punc_idxs = None
     warnings.warn("Punctuation not implemented")
-    # punc_idxs = get_word_idxs(
-    #     ioi_prompts, [",", "."], tokenizer
-    # )  # if there is "," and '.' in the prompt, only the '.' index will be kept.
+    try:
+        punc_idxs = get_word_idxs(
+            ioi_prompts, [",", "."], tokenizer
+        )  # if there is "," and '.' in the prompt, only the '.' index will be kept.
+    except:
+        warnings.warn("Punctuation not implemented")
     verb_idxs = get_word_idxs(ioi_prompts, VERBS, tokenizer)
     # and_idxs = get_word_idxs(ioi_prompts, [" and"], tokenizer)
 
