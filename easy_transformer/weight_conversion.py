@@ -4,7 +4,8 @@ import torch
 
 VALID_PRETRAINED_MODEL_NAMES = set(
     [
-        "gpt2",
+        "gpt2", # Alias for GPT-2 Small
+        "gpt2-small",
         "gpt2-medium",
         "gpt2-large",
         "gpt2-xl",
@@ -31,6 +32,7 @@ VALID_PRETRAINED_MODEL_NAMES = set(
     ]
 )
 
+# Maps things to their official HuggingFace name
 PRETRAINED_MODEL_NAMES_DICT = {
     "stanford-gpt2-small-A": "stanford-crfm/alias-gpt2-small-x21",
     "stanford-gpt2-small-B": "stanford-crfm/battlestar-gpt2-small-x49",
@@ -42,6 +44,7 @@ PRETRAINED_MODEL_NAMES_DICT = {
     "stanford-gpt2-medium-C": "stanford-crfm/celebrimbor-gpt2-medium-x81",
     "stanford-gpt2-medium-D": "stanford-crfm/durin-gpt2-medium-x343",
     "stanford-gpt2-medium-E": "stanford-crfm/eowyn-gpt2-medium-x777",
+    "gpt2-small": "gpt2",
 }
 # The steps for which there are checkpoints in the stanford crfm models - provided as reference
 STANFORD_CRFM_CHECKPOINTS = (
