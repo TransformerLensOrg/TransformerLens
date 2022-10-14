@@ -242,7 +242,7 @@ class EasyTransformer(HookedRootModule):
         if isinstance(input, list):
             return list(map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input))
         elif isinstance(input, str):
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos).squeeze()
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
         elif isinstance(input, torch.Tensor):
             tokens = input
             tokens = tokens.squeeze() # Get rid of a trivial batch dimension
