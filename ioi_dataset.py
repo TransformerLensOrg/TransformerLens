@@ -147,7 +147,7 @@ BABA_LATE_IOS = [
     "Then, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
     "Then, [B] and [A] were working at the [PLACE]. [B] decided to give a [OBJECT] to [A]",
     "Then, [B] and [A] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]",
-    "Then, [B] and [A] had a long argument, and afterwards [B] said to [A]",
+    "Then, [B] and [A] had a long argument and after that [B] said to [A]",
     "After the lunch, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
     "Afterwards, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
     "Then, [B] and [A] had a long argument. Afterwards [B] said to [A]",
@@ -158,15 +158,21 @@ BABA_EARLY_IOS = [
     "Then [B] and [A] had a lot of fun at the [PLACE], and [B] gave a [OBJECT] to [A]",
     "Then [B] and [A] were working at the [PLACE], and [B] decided to give a [OBJECT] to [A]",
     "Then [B] and [A] were thinking about going to the [PLACE], and [B] wanted to give a [OBJECT] to [A]",
-    "Then [B] and [A] had a long argument, and then afterwards [B] said to [A]",
+    "Then [B] and [A] had a long argument, and after that [B] said to [A]",
     "After the lunch [B] and [A] went to the [PLACE], and [B] gave a [OBJECT] to [A]",
     "Afterwards [B] and [A] went to the [PLACE], and [B] gave a [OBJECT] to [A]",
     "Then [B] and [A] had a long argument, and afterwards [B] said to [A]",
 ]
 
-# warnings.warn("Adding end of text prefixes!")
-# for i in range(len(BABA_TEMPLATES)):
-#     BABA_TEMPLATES[i] = "<|endoftext|>" + BABA_TEMPLATES[i]
+TEMPLATES_VARIED_MIDDLE = [
+    "",
+]
+
+warnings.warn("Adding end of text prefixes!")
+
+for TEMPLATES in [BABA_TEMPLATES, BABA_EARLY_IOS, BABA_LATE_IOS]:
+    for i in range(len(TEMPLATES)):
+        TEMPLATES[i] = "<|endoftext|>" + TEMPLATES[i]
 
 ABBA_TEMPLATES = BABA_TEMPLATES[:]
 ABBA_LATE_IOS = BABA_LATE_IOS[:]

@@ -78,6 +78,8 @@ from ioi_dataset import (
     NAMES,
     gen_prompt_uniform,
     BABA_TEMPLATES,
+    BABA_EARLY_IOS,
+    BABA_LATE_IOS,
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
@@ -128,7 +130,9 @@ model.reset_hooks()
 #     mean_dataset=abca_dataset,
 # )
 
-for dataset in [ioi_dataset, ABC_dataset, BAC_dataset, mixed_dataset]:
+prefixed_dataset = IOIDataset(N=100, prompt_type="mixed")
+
+for dataset in [prefixed_dataset, ioi_dataset, ABC_dataset, BAC_dataset, mixed_dataset]:
     circuit_logit_diff = logit_diff(model, dataset)
     circuit_probs = probs(model, dataset)
     print(f"{circuit_logit_diff=} {circuit_probs=}")
@@ -1265,7 +1269,7 @@ safe_del("_")
 e()
 
 use_circuit = False
-mode = "IO"
+modes = ["IO"]
 warnings.warn(f"{use_circuit=}")
 
 def patch_all(z, source_act, hook):
@@ -1316,13 +1320,14 @@ e()
 k_cache = {}
 ks_names = [f"blocks.{layer}.attn.hook_k" for layer, _ in circuit["name mover"]]
 model.cache_some(k_cache, lambda name: name in ks_names)
-cur_hook = get_act_hook(
-    partial(patch_positions, positions=[mode], all_same=True),
-    alt_act=s_embed_mean if mode == "S" else io_embed_mean,
-    idx=None, 
-    dim=None,
-)
-model.add_hook("hook_embed", cur_hook)
+for mode in modes:
+    cur_hook = get_act_hook(
+        partial(patch_positions, positions=[mode], all_same=True),
+        alt_act=s_embed_mean if mode == "S" else io_embed_mean,
+        idx=None, 
+        dim=None,
+    )
+    model.add_hook("hook_embed", cur_hook)
 logits = model(ioi_dataset.text_prompts)
 
 # Activation at hook blocks.0.attn.hook_k has shape:
@@ -1339,14 +1344,37 @@ if use_circuit:
 safe_del("_")
 e()
 for layer, head_idx in circuit["name mover"]:
-    cur_hook = get_act_hook(
-        partial(patch_positions, positions=["S" if mode == "S" else "IO"]),
-        alt_act=k_cache[f"blocks.{layer}.attn.hook_k"],
-        idx=head_idx,
-        dim=2,
-    )
-    model.add_hook(f"blocks.{layer}.attn.hook_k", cur_hook)
+    for mode in modes:
+        cur_hook = get_act_hook(
+            partial(patch_positions, positions=["S" if mode == "S" else "IO"]),
+            alt_act=k_cache[f"blocks.{layer}.attn.hook_k"],
+            idx=head_idx,
+            dim=2,
+        )
+        model.add_hook(f"blocks.{layer}.attn.hook_k", cur_hook)
 
 # model.reset_hooks()
 io_probs = probs(model, ioi_dataset)
+att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False, scale=False)
+print(f"IO S S2, {att_probs=}")
 print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}") 
+#%%
+ds = []
+all_templates = list(set(BABA_EARLY_IOS + BABA_LATE_IOS + BABA_TEMPLATES))
+
+for i, template in enumerate(all_templates):
+    print(f"{i=} {template=}")
+    d = IOIDataset(N=1, prompt_type=[template])
+    ds.append(d)
+#%%
+templates_by_dis = [[] for _ in range(20)]
+for i in range(len(ds)):
+    dis = (ds[i].word_idx["S2"].item() - ds[i].word_idx["S"].item())
+    templates_by_dis[dis].append(all_templates[i])
+#%%
+for i in range(8, 13): 
+    d = IOIDataset(prompt_type=templates_by_dis[i], N=100)
+    io_probs = probs(model, d)
+    # att_probs = attention_probs(model, d.text_prompts, variation=False, scale=False)
+    # print(f"{i=} IO S S2, {att_probs=}")
+    print(f" {logit_diff(model, d)}, {io_probs=}")
