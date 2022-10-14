@@ -168,11 +168,11 @@ TEMPLATES_VARIED_MIDDLE = [
     "",
 ]
 
-warnings.warn("Adding end of text prefixes!")
-
-for TEMPLATES in [BABA_TEMPLATES, BABA_EARLY_IOS, BABA_LATE_IOS]:
-    for i in range(len(TEMPLATES)):
-        TEMPLATES[i] = "<|endoftext|>" + TEMPLATES[i]
+# no end of texts, GPT-2 small wasn't trained this way (ask Arthur)
+# warnings.warn("Adding end of text prefixes!")
+# for TEMPLATES in [BABA_TEMPLATES, BABA_EARLY_IOS, BABA_LATE_IOS]:
+#     for i in range(len(TEMPLATES)):
+#         TEMPLATES[i] = "<|endoftext|>" + TEMPLATES[i]
 
 ABBA_TEMPLATES = BABA_TEMPLATES[:]
 ABBA_LATE_IOS = BABA_LATE_IOS[:]

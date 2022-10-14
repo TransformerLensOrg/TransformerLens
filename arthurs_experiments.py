@@ -8,6 +8,7 @@
 #%%
 from time import ctime
 import io
+from random import randint as ri
 from easy_transformer import EasyTransformer
 from functools import partial
 from ioi_utils import logit_diff, probs
@@ -84,10 +85,11 @@ from ioi_dataset import (
 )
 from ioi_utils import (
     attention_on_token,
+    # patch_positions,
     clear_gpu_mem,
     show_tokens,
     show_pp,
-    show_attention_patterns,
+    # show_attention_patterns,
     safe_del,
 )
 
@@ -114,6 +116,55 @@ ABCm_dataset = IOIDataset(prompt_type="ABC mixed", N=N, tokenizer=model.tokenize
 ABC_dataset = IOIDataset(prompt_type="ABC", N=N, tokenizer=model.tokenizer)
 BAC_dataset = IOIDataset("BAC", N, model.tokenizer)
 mixed_dataset = IOIDataset("ABC mixed", N, model.tokenizer)
+
+def patch_positions(z, source_act, hook, positions=["end"]):
+    for pos in positions:
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+        ]
+    return z
+
+def attention_probs(
+    model, text_prompts, variation=True, scale=True
+):  # we have to redefine logit differences to use the new abba dataset
+    """Difference between the IO and the S logits at the "to" token"""
+    cache_patched = {}
+    model.cache_some(cache_patched, lambda x: x in hook_names)  # we only cache the activation we're interested
+    logits = model(text_prompts).detach()
+    # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
+    # ... but do this elsewhere as otherwise we bad
+    # attn score of head HEAD at token "to" (end) to token IO
+    assert variation or not scale
+    attn_probs_variation_by_keys = []
+    for key in ["IO", "S", "S2"]:
+        attn_probs_variation = []
+        for i, hook_name in enumerate(hook_names):
+            layer = layers[i]
+            for head in heads_by_layer[layer]:
+                attn_probs_patched = cache_patched[hook_name][
+                    torch.arange(len(text_prompts)),
+                    head,
+                    ioi_dataset.word_idx["end"],
+                    ioi_dataset.word_idx[key],
+                ]
+                attn_probs_base = cache_baseline[hook_name][
+                    torch.arange(len(text_prompts)),
+                    head,
+                    ioi_dataset.word_idx["end"],
+                    ioi_dataset.word_idx[key],
+                ]
+                if variation:
+                    res = attn_probs_patched - attn_probs_base
+                    if scale:
+                        res /= attn_probs_base
+                    res = res.mean().unsqueeze(dim=0)
+                    attn_probs_variation.append(res)
+                else:
+                    attn_probs_variation.append(attn_probs_patched.mean().unsqueeze(dim=0))
+        attn_probs_variation_by_keys.append(torch.cat(attn_probs_variation).mean(dim=0, keepdim=True))
+
+    attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
+    return attn_probs_variation_by_keys.detach().cpu()
 #%% [markdown] let's try to remove MO MLPS from the circuit
 circuit = deepcopy(CIRCUIT)
 heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
@@ -846,12 +897,6 @@ cache_s2 = {}
 model.cache_some(cache_s2, lambda x: x in hook_names)
 logits = model(adea_dataset.text_prompts).detach()
 
-def patch_positions(z, source_act, hook, positions=["end"]):
-    for pos in positions:
-        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
-            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
-        ]
-    return z
 patch_last_tokens = partial(patch_positions, positions=["end"])
 patch_s2_token = partial(patch_positions, positions=["S2"])
 
@@ -908,48 +953,6 @@ model.reset_hooks()
 cache_baseline = {}
 model.cache_some(cache_baseline, lambda x: x in hook_names)  # we only cache the activation we're interested
 logits = model(ioi_dataset.text_prompts).detach()
-
-def attention_probs(
-    model, text_prompts, variation=True, scale=True
-):  # we have to redefine logit differences to use the new abba dataset
-    """Difference between the IO and the S logits at the "to" token"""
-    cache_patched = {}
-    model.cache_some(cache_patched, lambda x: x in hook_names)  # we only cache the activation we're interested
-    logits = model(text_prompts).detach()
-    # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
-    # ... but do this elsewhere as otherwise we bad
-    # attn score of head HEAD at token "to" (end) to token IO
-    assert variation or not scale
-    attn_probs_variation_by_keys = []
-    for key in ["IO", "S", "S2"]:
-        attn_probs_variation = []
-        for i, hook_name in enumerate(hook_names):
-            layer = layers[i]
-            for head in heads_by_layer[layer]:
-                attn_probs_patched = cache_patched[hook_name][
-                    torch.arange(len(text_prompts)),
-                    head,
-                    ioi_dataset.word_idx["end"],
-                    ioi_dataset.word_idx[key],
-                ]
-                attn_probs_base = cache_baseline[hook_name][
-                    torch.arange(len(text_prompts)),
-                    head,
-                    ioi_dataset.word_idx["end"],
-                    ioi_dataset.word_idx[key],
-                ]
-                if variation:
-                    res = attn_probs_patched - attn_probs_base
-                    if scale:
-                        res /= attn_probs_base
-                    res = res.mean().unsqueeze(dim=0)
-                    attn_probs_variation.append(res)
-                else:
-                    attn_probs_variation.append(attn_probs_patched.mean().unsqueeze(dim=0))
-        attn_probs_variation_by_keys.append(torch.cat(attn_probs_variation).mean(dim=0, keepdim=True))
-
-    attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
-    return attn_probs_variation_by_keys.detach().cpu()
 # %% [markdown] Q: is it possible to patch in ACCA sentences to make things work? A: Yes!
 def patch_positions(z, source_act, hook, positions=["END"]):  # we patch at the "to" token
     for pos in positions:
@@ -1360,21 +1363,71 @@ print(f"IO S S2, {att_probs=}")
 print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}") 
 #%%
 ds = []
-all_templates = list(set(BABA_EARLY_IOS + BABA_LATE_IOS + BABA_TEMPLATES))
+all_templates = list(set(BABA_EARLY_IOS + BABA_LATE_IOS + BABA_TEMPLATES)) 
+# THIS IS BABA ONLY!
 
 for i, template in enumerate(all_templates):
     print(f"{i=} {template=}")
     d = IOIDataset(N=1, prompt_type=[template])
     ds.append(d)
 #%%
-templates_by_dis = [[] for _ in range(20)]
+# templates_by_dis = [[] for _ in range(20)]
+templates_by_sidx = [[] for _ in range(20)]
+
 for i in range(len(ds)):
-    dis = (ds[i].word_idx["S2"].item() - ds[i].word_idx["S"].item())
-    templates_by_dis[dis].append(all_templates[i])
+    # dis = (ds[i].word_idx["S2"].item() - ds[i].word_idx["S"].item())
+    sidx = ds[i].word_idx["S"].item()
+    templates_by_sidx[sidx].append(all_templates[i])
 #%%
-for i in range(8, 13): 
-    d = IOIDataset(prompt_type=templates_by_dis[i], N=100)
-    io_probs = probs(model, d)
-    # att_probs = attention_probs(model, d.text_prompts, variation=False, scale=False)
-    # print(f"{i=} IO S S2, {att_probs=}")
-    print(f" {logit_diff(model, d)}, {io_probs=}")
+for i in range(2, 5):
+    model.reset_hooks()
+    templates = templates_by_sidx[i]
+    d = IOIDataset(prompt_type=templates, N=100)
+    cur_logit_diff = logit_diff(model, d)
+    cur_io_probs = probs(model, d)
+    print(f"{i=} {len(templates_by_sidx[i])=} {cur_logit_diff}, {cur_io_probs=}")
+    metadata = deepcopy(d.ioi_prompts)
+    for i in range(len(metadata)):
+        metadata[i]["TEMPLATE_IDX"] = ri(0, len(templates) - 1)
+        metadata[i].pop("text")
+    d2 = IOIDataset.construct_from_ioi_prompts_metadata(templates=templates, ioi_prompts_data=metadata, N=d.N)
+    # break
+
+    layers = [7, 8]
+    config = PatchingConfig(
+        source_dataset=d2.text_prompts,
+        target_dataset=d.text_prompts,
+        target_module="attn_head",
+        head_circuit="result",
+        cache_act=True,
+        verbose=False,
+        patch_fn=partial(patch_positions, positions=["S2"]),
+        layers=(0, max(layers) - 1),
+    )
+    metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
+    patching = EasyPatching(model, config, metric)
+    model.reset_hooks()
+
+    def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+        for pos in positions:
+            if all_same:
+                z[torch.arange(d2.N), d.word_idx[pos]] = source_act
+            else:
+                z[torch.arange(d.N), d.word_idx[pos]] = source_act[
+                    torch.arange(d.N), d.word_idx[pos]
+                ]
+        return z
+
+    for idx, head_set in enumerate([[], ["duplicate token"], ["induction"], ["s2 inhibition"], ["induction", "duplicate token"], ["s2 inhibition"] + ["induction"] + ["duplicate token"]]):
+        model.reset_hooks()
+        heads = []
+        for circuit_class in head_set:
+            heads += circuit[circuit_class]
+        for layer, head_idx in heads:
+            hook = patching.get_hook(layer, head_idx, manual_patch_fn=partial(patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]))
+            model.add_hook(*hook)
+
+        cur_logit_diff = logit_diff(model, d)
+        cur_io_probs = probs(model, d)
+        print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
+# %%
