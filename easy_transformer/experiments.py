@@ -495,7 +495,7 @@ class EasyPatching(EasyExperiment):
     def run_patching(self):
         return self.run_experiment()
 
-    def get_hook(self, layer, head=None, target_module=None):
+    def get_hook(self, layer, head=None, target_module=None, manual_patch_fn=None):
         # If the target is a layer, head is None.
         hook_name, dim = self.get_target(layer, head, target_module=target_module)
         if self.cfg.cache_act:
@@ -503,7 +503,12 @@ class EasyPatching(EasyExperiment):
         else:
             act = self.get_act(hook_name)
 
-        hook = get_act_hook(self.cfg.patch_fn, act, head, dim=dim)
+        if manual_patch_fn is None:
+            patch_fn = self.cfg.patch_fn
+        else:
+            patch_fn = manual_patch_fn
+
+        hook = get_act_hook(patch_fn, act, head, dim=dim)
         return (hook_name, hook)
 
     def get_all_act(self):

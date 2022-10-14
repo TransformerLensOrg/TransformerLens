@@ -11,6 +11,7 @@ import io
 from easy_transformer import EasyTransformer
 from functools import partial
 from ioi_utils import logit_diff, probs
+from ioi_dataset import BABA_EARLY_IOS, BABA_LATE_IOS, ABBA_EARLY_IOS, ABBA_LATE_IOS
 import logging
 import sys
 from ioi_circuit_extraction import *
@@ -96,6 +97,9 @@ if ipython is not None:
 def e(mess=""):
     print_gpu_mem(mess)
     torch.cuda.empty_cache()
+#%%
+dearly = IOIDataset(prompt_type=BABA_EARLY_IOS, N=100)
+dlate = IOIDataset.construct_from_ioi_prompts_metadata(templates=BABA_LATE_IOS, ioi_prompts_data=dearly.ioi_prompts, N=100)
 #%%
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
@@ -890,7 +894,6 @@ for heads_raw in circuit["s2 inhibition"]: # heads_to_patch: # [(9, 9), (9, 6), 
 #%%
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
 heads_by_layer = {9: [6, 9], 10: [0]}
-warnings.warn("Testing the only 9.9")
 layers = [9, 10]
 hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
 
@@ -1007,68 +1010,48 @@ if "alt_cache" not in dir() and False:
     del logits
     e()
 
+ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 oii_dataset = ioi_dataset.gen_flipped_prompts(("IO", "S1"))
+arthur_alex_clash = ioi_dataset.gen_flipped_prompts(("S2", "IO")).gen_flipped_prompts(("IO", "S1"))
+total_reversal_dataset = ioi_dataset.gen_flipped_prompts(("S2", "IO"))
 
 config = PatchingConfig(
-    source_dataset=oii_dataset.text_prompts,
+    source_dataset=total_reversal_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
     target_module="attn_head",
     head_circuit="result",
     cache_act=True,
     verbose=False,
-    patch_fn=patch_last_tokens,
+    patch_fn=patch_s2,
     layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
 patching = EasyPatching(model, config, metric)
 #%%
-print("IO S S2")
-for mode in ["newest", "model"]: # ["newest", "new", "model", "circuit"]:
+model.reset_hooks()
+# new_heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
+# model, _ = do_circuit_extraction(
+#     model=model,
+#     heads_to_keep=new_heads_to_keep,
+#     mlps_to_remove={},
+#     ioi_dataset=ioi_dataset,
+#     mean_dataset=abca_dataset,
+# )
+
+for idx, head_set in enumerate([[], ["duplicate token"], ["induction"], ["s2 inhibition"], ["induction", "duplicate token"], ["s2 inhibition"] + ["induction"] + ["duplicate token"]]):
     model.reset_hooks()
-    e()
-    if mode in ["new", "circuit"]:
-        new_heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
-        e("MiD")
-        model, _ = do_circuit_extraction(
-            model=model,
-            heads_to_keep=new_heads_to_keep,
-            mlps_to_remove={},
-            ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
-        )
-        e()
-
-    if mode == "new":
-        add_these_hooks = []
-        for layer, head_idx in relevant_heads:
-            e("inLOos")
-            cur_hook = get_act_hook(
-                partial(patch_positions, positions=[relevant_heads[(layer, head_idx)]]),
-                alt_act=alt_cache[f"blocks.{layer}.attn.hook_result"],
-                idx=head_idx,
-                dim=2,
-            )
-            add_these_hooks.append((f"blocks.{layer}.attn.hook_result", cur_hook))
-            model.add_hook(*add_these_hooks[-1])
-
-    if mode == "newest":
-        for layer, head_idx in circuit["s2 inhibition"]:
-            hook = patching.get_hook(layer, head_idx)
-            model.add_hook(*hook)
+    heads = []
+    for circuit_class in head_set:
+        heads += circuit[circuit_class]
+    for layer, head_idx in heads:
+        hook = patching.get_hook(layer, head_idx, manual_patch_fn=partial(patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]))
+        model.add_hook(*hook)
 
     att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False, scale=False)
-    print(f"mode {mode}:", att_probs)
-
+    print(f"{head_set=}, IO S S2, {att_probs=}") # print("IO S S2")
     cur_logit_diff = logit_diff(model, ioi_dataset)
     cur_io_probs = probs(model, ioi_dataset)
-    e("en")
-    print(f"{mode=} {cur_logit_diff=} {cur_io_probs=}")
-
-    safe_del("new_heads_to_keep")
-    safe_del("add_these_hooks")
-    safe_del("att_probs")
-    safe_del("_")
-    e()
+    print(f"{idx=} {cur_logit_diff=} {cur_io_probs=}")
 #%%
 # some [logit difference, IO probs] for the different modes
 
@@ -1268,3 +1251,6 @@ tuples = [
 
 ans = objective(None, tuples)
 print(f"{ans=}")
+#%%
+
+for i in t
