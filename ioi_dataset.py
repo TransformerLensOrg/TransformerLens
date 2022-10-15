@@ -466,21 +466,42 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
     return [torch.tensor(name_idx_dict[idx_type]) for idx_type in idx_types]
 
 
-def get_end_idxs(prompts, tokenizer, name_tok_len=1, has_start_padding_and_start_is_end=False):
-    toks = torch.Tensor(tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids).type(torch.int)
+def get_end_idxs(prompts, tokenizer, name_tok_len=1, has_start_padding_and_start_is_end=False, toks=None):
+    # toks = torch.Tensor(tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids).type(torch.int)
     relevant_idx = int(has_start_padding_and_start_is_end) 
     # if the sentence begins with an end token
     # AND the model pads at the end with the same end token,
     # then we need make special arrangements 
 
     pad_token_id = tokenizer.pad_token_id
-    end_idxs = torch.tensor(
-        [(toks[i] == pad_token_id).nonzero()[relevant_idx][0].item() if pad_token_id in toks[i][1:] else toks.shape[1] for i in range(toks.shape[0])]
-    )
+    print(pad_token_id)
+
+    end_idxs_raw = []
+    for i in range(toks.shape[0]):
+        if pad_token_id not in toks[i][1:]:
+            end_idxs_raw.append(toks.shape[1])
+            continue
+        nonzers = (toks[i] == pad_token_id).nonzero()
+        try:
+            nonzers = nonzers[relevant_idx]
+        except:
+            print(toks[i])
+            print(nonzers)
+            print(relevant_idx)
+            raise ValueError("Something went wrong")
+        nonzers = nonzers[0]
+        nonzers = nonzers.item()
+        end_idxs_raw.append(nonzers)
+
+    # print(pad_token_id)
+    # end_idxs = torch.tensor(
+    #     [(toks[i] == pad_token_id).nonzero()[relevant_idx][0].item() if pad_token_id in toks[i][1:] else toks.shape[1] for i in range(toks.shape[0])]
+    # )
+    end_idxs = torch.tensor(end_idxs_raw)
     end_idxs = end_idxs - 1 - name_tok_len # YOU'RE LOOKING AT TO NOT FINAL IO TOKEN
 
     for i in range(toks.shape[0]):
-        assert toks[i][end_idxs[i]+1] != 0 and (toks.shape[1] == end_idxs[i]+2 or toks[i][end_idxs[i]+2] == 0)
+        assert toks[i][end_idxs[i]+1] != 0 and (toks.shape[1] == end_idxs[i]+2 or toks[i][end_idxs[i]+2] == 0), (toks[i], end_idxs[i], toks[i].shape)
     print("Passed end clipped ttest")
 
     return end_idxs
@@ -533,14 +554,14 @@ ALL_SEM = [
 ]  # , "verb", "starts", "S-1", "punct"] # Kevin's antic averages
 
 
-def get_idx_dict(ioi_prompts, tokenizer, has_start_padding_and_start_is_end=False):
+def get_idx_dict(ioi_prompts, tokenizer, has_start_padding_and_start_is_end=False, toks=None):
     (
         IO_idxs,
         S_idxs,
         S2_idxs,
     ) = get_name_idxs(ioi_prompts, tokenizer, idx_types=["IO", "S", "S2"])
 
-    end_idxs = get_end_idxs(ioi_prompts, tokenizer, name_tok_len=1, has_start_padding_and_start_is_end=has_start_padding_and_start_is_end)
+    end_idxs = get_end_idxs(ioi_prompts, tokenizer, name_tok_len=1, has_start_padding_and_start_is_end=has_start_padding_and_start_is_end, toks=toks)
     rand_idxs = get_rand_idxs(end_idxs, exclude=[IO_idxs, S_idxs, S2_idxs])
     punc_idxs = None
     warnings.warn("Punctuation not implemented")
@@ -621,6 +642,8 @@ class IOIDataset:
         prefixes=None,
         nb_templates=None,
         ioi_prompts_for_word_idxs=None,
+        prepend_bos=None,
+        has_start_padding_and_start_is_end=None,
     ):
         """
         ioi_prompts_for_word_idxs:
@@ -702,13 +725,14 @@ class IOIDataset:
                 self.templates_by_prompt.append("BABA")
 
         # print(self.ioi_prompts, "that's that")
+        texts = [(self.tokenizer.bos_token if prepend_bos else "") + prompt["text"] for prompt in self.ioi_prompts]
         self.toks = torch.Tensor(
-            self.tokenizer([prompt["text"] for prompt in self.ioi_prompts], padding=True).input_ids
+            self.tokenizer(texts, padding=True).input_ids
         ).type(torch.int)
 
         if ioi_prompts_for_word_idxs is None:
             ioi_prompts_for_word_idxs = self.ioi_prompts
-        self.word_idx = get_idx_dict(ioi_prompts_for_word_idxs, self.tokenizer, self.toks[0][0] == 50256)
+        self.word_idx = get_idx_dict(ioi_prompts_for_word_idxs, self.tokenizer, has_start_padding_and_start_is_end=has_start_padding_and_start_is_end, toks=self.toks)
 
         self.sem_tok_idx = {
             k: v for k, v in self.word_idx.items() if k in ALL_SEM

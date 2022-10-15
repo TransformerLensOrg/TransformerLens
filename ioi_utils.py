@@ -362,7 +362,7 @@ def logit_diff(
     ]
     S_logits = logits[
         torch.arange(len(ioi_dataset)),
-        ioi_dataset.word_idx["end"]+1,
+        ioi_dataset.word_idx["end"],
         ioi_dataset.s_tokenIDs,
     ]
 
@@ -416,11 +416,11 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
     """
 
     # text_prompts = ioi_dataset.text_prompts
-    logits = model(ioi_dataset.text_prompts) # ioi_dataset.toks.long()).detach()
+    logits = model(ioi_dataset.toks.long()).detach()
     # logits = model(ioi_dataset.toks.long()).detach().cpu()  # batch * sequence length * vocab_size
     warnings.warn("+1ing")
     print(logits.shape)
-    end_logits = logits[torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"]+1, :]  # batch * vocab_size
+    end_logits = logits[torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
 
     end_probs = torch.softmax(end_logits, dim=1)
 

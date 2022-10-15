@@ -130,7 +130,7 @@ if False:
         model_name, use_attn_result=True
     )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
 if True:
-    model = EasyTransformer.from_pretrained("solu-12l-old").cuda()
+    model = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 
 device = "cuda"
 if torch.cuda.is_available():
@@ -138,13 +138,13 @@ if torch.cuda.is_available():
 print_gpu_mem("Gpt2 loaded")
 #%%
 N=100
-ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
 #%%
 totd = 0
 cp = 0
-for dataset in [ioi_dataset]:
-    for i in range(dataset.N):
-        d = ioi_dataset[i:i+1]
+for d in [ioi_dataset]:
+    # for i in range(dataset.N):
+        # d = ioi_dataset[i:i+1]
         circuit_logit_diff = logit_diff(model, d)
         totd += circuit_logit_diff
         circuit_probs = probs(model, d)
