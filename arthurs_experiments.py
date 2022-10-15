@@ -7,9 +7,9 @@
 # % do completeness, minimality NOT methods first
 #%%
 import os
+import time
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import torch
-if os.environ["USER"] == "exx": # so Arthur can safely use octobox
-    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 
 from time import ctime
@@ -1369,7 +1369,7 @@ print(f"IO S S2, {att_probs=}")
 print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}") 
 #%%
 ds = []
-all_templates = list(set(BABA_EARLY_IOS + BABA_LATE_IOS + BABA_TEMPLATES)) 
+all_templates = list(set(BABA_EARLY_IOS + BABA_LATE_IOS + BABA_TEMPLATES))
 # THIS IS BABA ONLY!
 
 for i, template in enumerate(all_templates):
@@ -1377,13 +1377,12 @@ for i, template in enumerate(all_templates):
     d = IOIDataset(N=1, prompt_type=[template])
     ds.append(d)
 #%%
-# templates_by_dis = [[] for _ in range(20)]
+templates_by_dis = [[] for _ in range(20)]
 templates_by_sidx = [[] for _ in range(20)]
 
 for i in range(len(ds)):
-    # dis = (ds[i].word_idx["S2"].item() - ds[i].word_idx["S"].item())
-    sidx = ds[i].word_idx["S"].item()
-    templates_by_sidx[sidx].append(all_templates[i])
+    dis = (ds[i].word_idx["S2"].item() - ds[i].word_idx["S"].item())
+    templates_by_dis[dis].append(all_templates[i])
 #%%
 for i in range(2, 5):
     model.reset_hooks()
@@ -1436,4 +1435,4 @@ for i in range(2, 5):
         cur_logit_diff = logit_diff(model, d)
         cur_io_probs = probs(model, d)
         print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
-# %%
+#%% [markdown] Does distance
