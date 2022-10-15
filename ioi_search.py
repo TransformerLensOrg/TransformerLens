@@ -1,4 +1,9 @@
 #%%
+import os
+import torch
+if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+assert torch.cuda.device_count() == 1
 from easy_transformer import EasyTransformer
 import logging
 import sys

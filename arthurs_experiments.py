@@ -6,6 +6,12 @@
 # % not HYPOTHESISE, do the computationally intractable
 # % do completeness, minimality NOT methods first
 #%%
+import os
+import torch
+if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+assert torch.cuda.device_count() == 1
+
 from time import ctime
 import io
 from random import randint as ri
@@ -16,7 +22,7 @@ from ioi_dataset import BABA_EARLY_IOS, BABA_LATE_IOS, ABBA_EARLY_IOS, ABBA_LATE
 import logging
 import sys
 from ioi_circuit_extraction import *
-import optuna
+# import optuna
 from ioi_dataset import *
 from ioi_utils import max_2d
 import IPython

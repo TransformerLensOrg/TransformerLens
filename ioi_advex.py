@@ -1,8 +1,13 @@
 # %%
+import os
+import torch
+if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+assert torch.cuda.device_count() == 1
+
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
 from tqdm import tqdm
 import pandas as pd
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
