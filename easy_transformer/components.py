@@ -145,6 +145,65 @@ class LayerNorm(nn.Module):
         x = self.hook_normalized(x / scale)  # [batch, pos, length]
         return x * self.w + self.b
 
+class RMSNormPre(nn.Module):
+    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+        """RMSNormPre - LayerNormPre without the centering and bias (RMS = Root Mean Square)"""
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = EasyTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.eps = self.cfg.eps
+
+        # Adds a hook point for the normalisation scale factor
+        self.hook_scale = HookPoint()  # [batch, pos]
+        self.hook_normalized = HookPoint()  # [batch, pos, length]
+
+    def forward(self, x):
+        scale = self.hook_scale(
+            (
+                x.pow(2).mean(-1, keepdim=True)
+                + self.eps
+            ).sqrt()
+        )  # [batch, pos, 1]
+        return self.hook_normalized(x / scale)  # [batch, pos, length]
+
+
+class RMSNorm(nn.Module):
+    def __init__(
+        self, cfg: Union[Dict, EasyTransformerConfig], length: Optional[int] = None
+    ):
+
+        """
+        RMSNorm - LayerNorm without the centering and bias (RMS = Root Mean Square)
+
+        length (Optional[int]): If the dimension of the RMSNorm. If not provided, assumed to be d_model
+        """
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = EasyTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.eps = self.cfg.eps
+        if length is None:
+            self.length = self.cfg.d_model
+        else:
+            self.length = length
+
+        self.w = nn.Parameter(torch.ones(self.length))
+
+        # Adds a hook point for the normalisation scale factor
+        self.hook_scale = HookPoint()  # [batch, pos, 1]
+        self.hook_normalized = HookPoint()  # [batch, pos, length]
+
+    def forward(self, x):
+        scale = self.hook_scale(
+            (
+                x.pow(2).mean(-1, keepdim=True)
+                + self.eps
+            ).sqrt()
+        )  # [batch, pos, 1]
+        x = self.hook_normalized(x / scale)  # [batch, pos, length]
+        return x * self.w
+
 
 # Attention
 class Attention(nn.Module):
@@ -369,7 +428,11 @@ class MLP(nn.Module):
         elif self.cfg.act_fn == "solu_ln":
             self.act_fn = solu
             self.hook_post_ln = HookPoint()  # [batch, pos, d_mlp]
-            self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
+            if self.cfg.normalization_type=="LN":
+                self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
+            else:
+                self.ln = LayerNormPre(self.cfg)
+
         else:
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 

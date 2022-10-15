@@ -8,6 +8,30 @@ import einops
 from transformers import AutoTokenizer
 import random
 from typing import Optional
+import transformers
+from huggingface_hub import hf_hub_download
+
+CACHE_DIR = transformers.TRANSFORMERS_CACHE
+import json
+
+def download_file_from_hf(repo_name, file_name, subfolder=".", cache_dir=CACHE_DIR, force_is_torch=False):
+    """ 
+    Helper function to download files from the HuggingFace Hub, from subfolder/file_name in repo_name, saving locally to cache_dir and returning the loaded file (if a json or Torch object) and the file path otherwise.
+
+    If it's a Torch file without the ".pth" extension, set force_is_torch=True to load it as a Torch object.
+    """
+    file_path = hf_hub_download(repo_id=repo_name,
+                                                filename=file_name, 
+                                                subfolder=subfolder, 
+                                                cache_dir=cache_dir)
+    print(f"Saved at file_path: {file_path}")
+    if file_path.endswith(".pth") or force_is_torch:
+        return torch.load(file_path)
+    elif file_path.endswith(".json"):
+        return json.load(open(file_path, "r"))
+    else:
+        print("File type not supported:", file_path.split('.')[-1])
+        return file_path
 
 def get_sample_from_dataset(sequences, nb_sample=2, print_len=10):
     rd_idx = np.random.randint(0, len(sequences), 3)
