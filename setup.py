@@ -8,12 +8,15 @@ setup(
     description="An implementation of transformers tailored for mechanistic interpretability.",
     long_description=open("README.md").read(),
     install_requires=[
-        'einops',
-        'numpy',
-        'torch',
-        'datasets',
-        'transformers',
-        'tqdm',
-        'pandas'
-    ]
+        "einops",
+        "numpy",
+        "torch",
+        "datasets",
+        "transformers",
+        "tqdm",
+        "pandas",
+        "datasets",
+        "wandb",
+        "fancy_einsum",
+    ],
 )

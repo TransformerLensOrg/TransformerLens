@@ -53,21 +53,16 @@ class HookPoint(nn.Module):
         # which are the same for a HookPoint)
 
         if dir == "fwd":
-
             def full_hook(module, module_input, module_output):
                 return hook(module_output, hook=self)
-
             handle = self.register_forward_hook(full_hook)
             self.fwd_hooks.append(handle)
-            return handle # WARNING: added by Arthur to do patching better
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
-
             handle = self.register_full_backward_hook(full_hook)
             self.bwd_hooks.append(handle)
-            return handle # WARNING: added by Arthur to do patching better
         else:
             raise ValueError(f"Invalid direction {dir}")
 
@@ -104,7 +99,6 @@ class HookedRootModule(nn.Module):
     def __init__(self, *args):
         super().__init__()
         self.is_caching = False
-
     def setup(self):
         # Setup function - this needs to be run in __init__ AFTER defining all
         # layers
@@ -135,29 +129,19 @@ class HookedRootModule(nn.Module):
         self.remove_all_hook_fns(direction)
         self.is_caching = False
 
-    def cache_all(self, cache, incl_bwd=False, device="cuda", remove_batch_dim=False):
+    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
         # Caches all activations wrapped in a HookPoint
-        # Remove batch dim is a utility for single batch inputs that removes the batch
+        # Remove batch dim is a utility for single batch inputs that removes the batch 
         # dimension from the cached activations - use ONLY for batches of size 1
-        self.cache_some(
-            cache,
-            lambda x: True,
-            incl_bwd=incl_bwd,
-            device=device,
-            remove_batch_dim=remove_batch_dim,
-        )
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.cache_some(cache, lambda x: True, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
 
-    def cache_some(
-        self,
-        cache,
-        names: Callable[[str], bool],
-        incl_bwd=False,
-        device="cuda",
-        remove_batch_dim=False,
-    ):
+    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device=None, remove_batch_dim=False):
         """Cache a list of hook provided by names, Boolean function on names"""
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.is_caching = True
-
         def save_hook(tensor, hook):
             if remove_batch_dim:
                 cache[hook.name] = tensor.detach().to(device)[0]
@@ -169,7 +153,6 @@ class HookedRootModule(nn.Module):
                 cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
             else:
                 cache[hook.name + "_grad"] = tensor[0].detach().to(device)
-
         for name, hp in self.hook_dict.items():
             if names(name):
                 hp.add_hook(save_hook, "fwd")
@@ -178,24 +161,15 @@ class HookedRootModule(nn.Module):
 
     def add_hook(self, name, hook, dir="fwd"):
         if type(name) == str:
-            handle = self.mod_dict[name].add_hook(hook, dir=dir)
-            return handle
+            self.mod_dict[name].add_hook(hook, dir=dir)
         else:
             # Otherwise, name is a Boolean function on names
-            handles = []
             for hook_name, hp in self.hook_dict.items():
                 if name(hook_name):
-                    handles.append(hp.add_hook(hook, dir=dir))
-            return handles
+                    hp.add_hook(hook, dir=dir)
 
     def run_with_hooks(
-        self,
-        *args,
-        fwd_hooks=[],
-        bwd_hooks=[],
-        reset_hooks_start=True,
-        reset_hooks_end=True,
-        clear_contexts=False,
+        self, *args, fwd_hooks=[], bwd_hooks=[], reset_hooks_start=True, reset_hooks_end=True, clear_contexts=False, **kwargs
     ):
         """
         fwd_hooks: A list of (name, hook), where name is either the name of
@@ -223,17 +197,15 @@ class HookedRootModule(nn.Module):
                         hp.add_hook(hook, dir="fwd")
         for name, hook in bwd_hooks:
             if type(name) == str:
-                self.mod_dict[name].add_hook(hook, dir="fwd")
+                self.mod_dict[name].add_hook(hook, dir="bwd")
             else:
                 # Otherwise, name is a Boolean function on names
                 for hook_name, hp in self.hook_dict:
                     if name(hook_name):
                         hp.add_hook(hook, dir="bwd")
-        out = self.forward(*args)
+        out = self.forward(*args, **kwargs)
         if reset_hooks_end:
             if len(bwd_hooks) > 0:
-                logging.warning(
-                    "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
-                )
+                logging.warning("WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur")
             self.reset_hooks(clear_contexts)
         return out

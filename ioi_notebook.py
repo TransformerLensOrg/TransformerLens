@@ -24,7 +24,7 @@ import torch
 if os.environ["USER"] == "exx": # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
-from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
+from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
 import pandas as pd
 import torch
@@ -111,6 +111,7 @@ from ioi_circuit_extraction import (
     CIRCUIT,
     ARTHUR_CIRCUIT,
 )
+from ioi_utils import logit_diff, probs
 
 ipython = get_ipython()
 if ipython is not None:
@@ -122,13 +123,26 @@ if ipython is not None:
 #%% # plot writing in the IO - S direction
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 print_gpu_mem("About to load model")
-model = EasyTransformer(
-    model_name, use_attn_result=True
-)  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+
+if False:
+    model = EasyTransformer(
+        model_name, use_attn_result=True
+    )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+if True:
+    model = EasyTransformer.from_pretrained("solu-10l-old").cuda()
+
 device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
 print_gpu_mem("Gpt2 loaded")
+#%%
+ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+
+for dataset in [ioi_dataset]:
+    circuit_logit_diff = logit_diff(model, dataset)
+    circuit_probs = probs(model, dataset)
+    print(f"{circuit_logit_diff=} {circuit_probs=}")
+
 # %% [markdown]
 # Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
@@ -143,7 +157,6 @@ pprint(abca_dataset.text_prompts[:5])
 
 abca_dataset_abba = ioi_dataset_abba.gen_flipped_prompts(("S2", "RAND"))
 abca_dataset_baba = ioi_dataset_baba.gen_flipped_prompts(("S2", "RAND"))
-
 
 def logit_diff(model, ioi_dataset, all=False):
     """Difference between the IO and the S logits (at the "to" token)"""
