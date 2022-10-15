@@ -1383,56 +1383,93 @@ templates_by_sidx = [[] for _ in range(20)]
 for i in range(len(ds)):
     dis = (ds[i].word_idx["S2"].item() - ds[i].word_idx["S"].item())
     templates_by_dis[dis].append(all_templates[i])
-#%%
-for i in range(2, 5):
+#%% 
+distances = []
+
+all_head_sets = [[], ["duplicate token"], ["induction"], ["s2 inhibition"], ["induction", "duplicate token"], ["s2 inhibition"] + ["induction"] + ["duplicate token"]]
+
+results = {}
+
+for i in range(20):
     model.reset_hooks()
-    templates = templates_by_sidx[i]
-    d = IOIDataset(prompt_type=templates, N=100)
+    templates = templates_by_dis[i]
+    if len(templates) == 0: continue
+    distances.append(i)
+
+    dataset = IOIDataset(prompt_type=templates, N=100)
+    dcc_dataset = dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("IO", "RAND"))
+    cdc_dataset = dcc_dataset.gen_flipped_prompts(("IO", "S1"))
+
     cur_logit_diff = logit_diff(model, d)
     cur_io_probs = probs(model, d)
-    print(f"{i=} {len(templates_by_sidx[i])=} {cur_logit_diff}, {cur_io_probs=}")
-    metadata = deepcopy(d.ioi_prompts)
-    for i in range(len(metadata)):
-        metadata[i]["TEMPLATE_IDX"] = ri(0, len(templates) - 1)
-        metadata[i].pop("text")
-    d2 = IOIDataset.construct_from_ioi_prompts_metadata(templates=templates, ioi_prompts_data=metadata, N=d.N)
-    # break
+    print(f"{i=} {len(templates)=} {cur_logit_diff=}, {cur_io_probs=}")
 
-    layers = [7, 8]
-    config = PatchingConfig(
-        source_dataset=d2.text_prompts,
-        target_dataset=d.text_prompts,
-        target_module="attn_head",
-        head_circuit="result",
-        cache_act=True,
-        verbose=False,
-        patch_fn=partial(patch_positions, positions=["S2"]),
-        layers=(0, max(layers) - 1),
-    )
-    metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
-    patching = EasyPatching(model, config, metric)
-    model.reset_hooks()
-
-    def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
-        for pos in positions:
-            if all_same:
-                z[torch.arange(d2.N), d.word_idx[pos]] = source_act
-            else:
-                z[torch.arange(d.N), d.word_idx[pos]] = source_act[
-                    torch.arange(d.N), d.word_idx[pos]
-                ]
-        return z
-
-    for idx, head_set in enumerate([[], ["duplicate token"], ["induction"], ["s2 inhibition"], ["induction", "duplicate token"], ["s2 inhibition"] + ["induction"] + ["duplicate token"]]):
+    for j, source_dataset in enumerate([dcc_dataset, cdc_dataset]):
+        print(j)
+        layers = [7, 8]
+        config = PatchingConfig(
+            source_dataset=source_dataset.text_prompts,
+            target_dataset=dataset.text_prompts,
+            target_module="attn_head",
+            head_circuit="result",
+            cache_act=True,
+            verbose=False,
+            patch_fn=partial(patch_positions, positions=["S2"]),
+            layers=(0, max(layers) - 1),
+        )
+        metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
+        patching = EasyPatching(model, config, metric)
         model.reset_hooks()
-        heads = []
-        for circuit_class in head_set:
-            heads += circuit[circuit_class]
-        for layer, head_idx in heads:
-            hook = patching.get_hook(layer, head_idx, manual_patch_fn=partial(patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]))
-            model.add_hook(*hook)
 
-        cur_logit_diff = logit_diff(model, d)
-        cur_io_probs = probs(model, d)
-        print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
-#%% [markdown] Does distance
+        def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+            for pos in positions:
+                if all_same:
+                    z[torch.arange(dataset.N), dataset.word_idx[pos]] = source_act
+                else:
+                    z[torch.arange(dataset.N), dataset.word_idx[pos]] = source_act[
+                        torch.arange(dataset.N), dataset.word_idx[pos]
+                    ]
+            return z
+
+        for idx, head_set in enumerate(all_head_sets):
+            model.reset_hooks()
+            heads = []
+            for circuit_class in head_set:
+                heads += circuit[circuit_class]
+            for layer, head_idx in heads:
+                hook = patching.get_hook(layer, head_idx, manual_patch_fn=partial(patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]))
+                model.add_hook(*hook)
+
+            cur_logit_diff = logit_diff(model, dataset)
+            cur_io_probs = probs(model, d)
+            print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
+            results[(i, j, idx)] = cur_logit_diff, cur_io_probs
+#%%
+initials = []
+DCCs = []
+CDCs = []
+
+all_head_sets_idx = 4
+title = str(all_head_sets_idx)
+
+for i in range(len(distances)):
+    idx = distances[i]
+    initials.append(results[(idx, 0, 0)][0])
+    DCCs.append(results[(idx, 0, 4)][0])
+    CDCs.append(results[(idx, 1, 4)][0])
+#%% [markdown] Does distance affect the dropoffs ???
+x1s = torch.tensor([1, 2, 3])
+x2s = x1s - 0.5
+x3s = - x1s
+
+# plot a bar chart of the results
+fig = go.Figure()
+fig.add_trace(go.Bar(x=distances, y=initials, name="initials"))
+fig.add_trace(go.Bar(x=distances, y=DCCs, name="DCCs"))
+fig.add_trace(go.Bar(x=distances, y=CDCs, name="CDCs"))
+fig.update_layout(barmode="group")
+
+# update x axis
+fig.update_xaxes(title_text="Distance between S and S2")
+
+fig.show()
