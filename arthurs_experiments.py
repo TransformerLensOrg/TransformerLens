@@ -1445,31 +1445,32 @@ for i in range(20):
             print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
             results[(i, j, idx)] = cur_logit_diff, cur_io_probs
 #%%
-initials = []
-DCCs = []
-CDCs = []
+for all_head_sets_idx, head_set in enumerate(all_head_sets):
+    initials = []
+    DCCs = []
+    CDCs = []
 
-all_head_sets_idx = 4
-title = str(all_head_sets_idx)
+    title = str(head_set)
 
-for i in range(len(distances)):
-    idx = distances[i]
-    initials.append(results[(idx, 0, 0)][0])
-    DCCs.append(results[(idx, 0, 4)][0])
-    CDCs.append(results[(idx, 1, 4)][0])
-#%% [markdown] Does distance affect the dropoffs ???
-x1s = torch.tensor([1, 2, 3])
-x2s = x1s - 0.5
-x3s = - x1s
+    for i in range(len(distances)):
+        idx = distances[i]
+        initials.append(results[(idx, 0, 0)][0])
+        DCCs.append(results[(idx, 0, all_head_sets_idx)][0])
+        CDCs.append(results[(idx, 1, all_head_sets_idx)][0])
+    x1s = torch.tensor([1, 2, 3])
+    x2s = x1s - 0.5
+    x3s = - x1s
 
-# plot a bar chart of the results
-fig = go.Figure()
-fig.add_trace(go.Bar(x=distances, y=initials, name="initials"))
-fig.add_trace(go.Bar(x=distances, y=DCCs, name="DCCs"))
-fig.add_trace(go.Bar(x=distances, y=CDCs, name="CDCs"))
-fig.update_layout(barmode="group")
+    # plot a bar chart of the results
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=distances, y=initials, name="initials"))
+    fig.add_trace(go.Bar(x=distances, y=DCCs, name="DCCs"))
+    fig.add_trace(go.Bar(x=distances, y=CDCs, name="CDCs"))
+    fig.update_layout(barmode="group")
 
-# update x axis
-fig.update_xaxes(title_text="Distance between S and S2")
+    # update x axis
+    fig.update_xaxes(title_text="Distance between S and S2")
+    # update title
+    fig.update_layout(title_text=f"IOI Logit Diff by Distance, {title}")
 
-fig.show()
+    fig.show()
