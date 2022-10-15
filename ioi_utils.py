@@ -1,3 +1,4 @@
+import warnings
 import plotly.graph_objects as go
 import numpy as np
 from numpy import sin, cos, pi
@@ -350,7 +351,10 @@ def logit_diff(
     """
     Difference between the IO and the S logits at the "to" token
     """
-    logits = model(ioi_dataset.toks.long()).detach()
+    warnings.warn("")
+    logits = model(ioi_dataset.text_prompts) # ioi_dataset.toks.long()).detach()
+    assert logits.shape[0]==ioi_dataset.toks.shape[0]
+    print(logits.shape, "same?")
     IO_logits = logits[
         torch.arange(len(ioi_dataset)),
         ioi_dataset.word_idx["end"],
@@ -358,9 +362,11 @@ def logit_diff(
     ]
     S_logits = logits[
         torch.arange(len(ioi_dataset)),
-        ioi_dataset.word_idx["end"],
+        ioi_dataset.word_idx["end"]+1,
         ioi_dataset.s_tokenIDs,
     ]
+
+    print(IO_logits, S_logits)
 
     return handle_all_and_std(IO_logits - S_logits, all, std)
 
@@ -395,7 +401,8 @@ def posses(model, ioi_dataset, all=False, std=False):
     """
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
-    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
+    warnings.warn("+1ing")
+    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"]+1, :]  # batch * vocab_size
 
     positions = torch.argsort(end_logits, dim=1)
     io_positions = positions[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs]
@@ -408,9 +415,13 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
     IO probs
     """
 
-    text_prompts = ioi_dataset.text_prompts
-    logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
-    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
+    # text_prompts = ioi_dataset.text_prompts
+    logits = model(ioi_dataset.text_prompts) # ioi_dataset.toks.long()).detach()
+    # logits = model(ioi_dataset.toks.long()).detach().cpu()  # batch * sequence length * vocab_size
+    warnings.warn("+1ing")
+    print(logits.shape)
+    end_logits = logits[torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"]+1, :]  # batch * vocab_size
+
     end_probs = torch.softmax(end_logits, dim=1)
 
     if type == "io":
@@ -419,9 +430,19 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
         token_ids = ioi_dataset.s_tokenIDs
     else:
         raise ValueError("type must be io or s")
-    io_probs = end_probs[torch.arange(ioi_dataset.N), token_ids]
 
+    assert len(end_probs.shape) == 2
+    io_probs = end_probs[torch.arange(ioi_dataset.N), token_ids]
+    print(io_probs)
     return handle_all_and_std(io_probs, all, std)
+
+
+def get_top_tokens_and_probs(model, text_prompt):
+    logits, tokens = model(text_prompt, prepend_bos=False, return_type="logits_and_tokens")
+    logits = logits.squeeze(0)
+    end_probs = torch.softmax(logits, dim=1)
+    # topk = torch.topk(end_probs[])
+    return end_probs, tokens
 
 
 def all_subsets(L: List) -> List[List]:

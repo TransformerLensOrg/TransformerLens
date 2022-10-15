@@ -112,6 +112,7 @@ from ioi_circuit_extraction import (
     ARTHUR_CIRCUIT,
 )
 from ioi_utils import logit_diff, probs
+from ioi_utils import get_top_tokens_and_probs as g
 
 ipython = get_ipython()
 if ipython is not None:
@@ -129,20 +130,31 @@ if False:
         model_name, use_attn_result=True
     )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
 if True:
-    model = EasyTransformer.from_pretrained("solu-10l-old").cuda()
+    model = EasyTransformer.from_pretrained("solu-12l-old").cuda()
 
 device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
 print_gpu_mem("Gpt2 loaded")
 #%%
+N=100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-
+#%%
+totd = 0
+cp = 0
 for dataset in [ioi_dataset]:
-    circuit_logit_diff = logit_diff(model, dataset)
-    circuit_probs = probs(model, dataset)
-    print(f"{circuit_logit_diff=} {circuit_probs=}")
+    for i in range(dataset.N):
+        d = ioi_dataset[i:i+1]
+        circuit_logit_diff = logit_diff(model, d)
+        totd += circuit_logit_diff
+        circuit_probs = probs(model, d)
+        probs2 = probs(model, d, type="s")
+        cp += circuit_probs
+        print(f"{circuit_logit_diff=} {probs2=} {circuit_probs=}")
 
+#%%
+text = ioi_dataset.text_prompts[0]
+probs, tokens = g(model, text)
 # %% [markdown]
 # Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
