@@ -927,7 +927,7 @@ def compute_cobble_broken_diff(
         ioi_dataset=ioi_dataset,
         mean_dataset=mean_dataset,
     )
-    ldiff_broken = logit_diff(model, ioi_dataset, all=False)  # Metric(C\nodes)
+    ldiff_broken = logit_diff(model, ioi_dataset, all=False)  # Metric(M\nodes)
 
     model.reset_hooks()
 
@@ -946,20 +946,91 @@ def compute_cobble_broken_diff(
 
 
 #%%
+# import wandb
+# wandb.init()
+from pathlib import Path
 
-ret = compute_cobble_broken_diff(
-    model,
-    ioi_dataset,
-    mean_dataset,
-    nodes=[
-        (10, 7),
-        (5, 5),
-        (2, 2),
-        (4, 11),
-    ],  # [(4, 0), (1, 5), (6, 8), (10, 6), (10, 10), (8, 10), (9, 2), (5, 3), (2, 10)],
-    return_both=True,
+# Path('path/to/file.txt').touch()
+
+important_heads = [
+    (9, 9),
+    (9, 6),
+    (10, 0),
+    (7, 9),
+    (8, 6),
+    (8, 10),
+    (5, 5),
+    (5, 9),
+    (6, 9),
+    (3, 0),
+    (0, 10),
+    (2, 2),
+    (4, 11),
+    (10, 7),
+    (11, 10),
+    (11, 2),
+]
+
+for subset_size in range(0, len(important_heads) + 1):
+
+    path = Path(f"all_greedy/{subset_size}.json")
+
+    # make an empty json file
+    if not path.exists():
+        with open(path, "w") as f:
+            json.dump([], f)
+
+    for subset in itertools.combinations(important_heads, subset_size):
+        broken, cobble = compute_cobble_broken_diff(
+            model,
+            ioi_dataset,
+            mean_dataset,
+            nodes=[(head, RELEVANT_TOKENS[head][0]) for head in subset],
+            return_both=True,
+        )
+        d = {
+            "subset": subset,
+            "broken": broken.item(),
+            "cobble": cobble.item(),
+        }
+        # write d to the end of the json file
+        with open(path, "r+") as f:
+            data = json.load(f)
+            data.append(d)
+            f.seek(0)
+            json.dump(data, f, indent=4)
+#%%
+
+figure = go.Figure()
+
+
+with open(path, "r+") as f:
+    data = json.load(f)
+    xs = []
+    ys = []
+    names = []
+    for d in data:
+        xs.append(d["broken"])
+        ys.append(d["cobble"])
+        names.append(str(d["subset"]))
+    figure.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="markers",
+            marker=dict(size=10, color="rgb(0, 0, 0)"),
+            text=names,
+        )
+    )
+
+figure.update_layout(
+    title="Cobble vs Broken",
+    xaxis_title="Broken",
+    yaxis_title="Cobble",
+    font=dict(family="Courier New, monospace", size=18, color="#7f7f7f"),
 )
-print(ret)
+
+figure.show()
 #%%
 greedy_heuristic = "random_search"
 circuit_to_study = "naive_circuit"

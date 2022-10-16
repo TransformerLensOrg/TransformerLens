@@ -122,7 +122,9 @@ def get_circuit_replacement_hook(
                 # TODO can this i loop be vectorized?
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(dataset_length):  # we use the idx from contex to get the head
+            for i in range(
+                dataset_length
+            ):  # we use the idx from contex to get the head
                 z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
                     i,
                     heads2[(layer, hook.ctx["idx"])][i],
@@ -134,7 +136,9 @@ def get_circuit_replacement_hook(
     return circuit_replmt_hook, heads, mlps
 
 
-def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
+def join_lists(
+    l1, l2
+):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
     assert len(l1) == len(l2)
     assert type(l1[0]) == list and type(l2[0]) == int
     l = []
@@ -146,7 +150,15 @@ def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the in
 def get_extracted_idx(idx_list: list[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
+        try:
+            int_idx_to_add = [
+                int(x) for x in list(ioi_dataset.word_idx[idx_name])
+            ]  # torch to python objects
+        except:
+            print(ioi_dataset.word_idx, idx_name)
+            raise ValueError(
+                f"Index {idx_name} not found in the dataset. Please check the spelling and make sure the index is in the dataset."
+            )
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
@@ -236,7 +248,9 @@ ALEX_NAIVE = {
 
 def get_heads_circuit(ioi_dataset, excluded=[], mlp0=False, circuit=CIRCUIT):
     for excluded_thing in excluded:
-        assert isinstance(excluded_thing, tuple) or excluded_thing in circuit.keys(), excluded_thing
+        assert (
+            isinstance(excluded_thing, tuple) or excluded_thing in circuit.keys()
+        ), excluded_thing
 
     heads_to_keep = {}
 
@@ -261,6 +275,7 @@ def get_mlps_circuit(ioi_dataset, mlps):
     for i in mlps:
         mlps_to_keep[i] = get_extracted_idx(mlps[i], ioi_dataset)
     return mlps_to_keep
+
 
 def do_circuit_extraction(
     heads_to_remove=None,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length

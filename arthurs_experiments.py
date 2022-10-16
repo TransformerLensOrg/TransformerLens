@@ -2006,3 +2006,61 @@ for all_head_sets_idx, head_set in enumerate(all_head_sets):
     fig.update_layout(title_text=f"IOI Logit Diff by Distance, {title}")
 
     fig.show()
+#%% [markdown] Hmm, so do the induction head outputs care about what's written into S+1 by previous token heads, or not?
+
+# ablate all of the Previous Token Heads
+# save the activations for the V matrix of the induction heads when we remove the previous token heads
+# (AAAAAA) this could retain performance
+# I guess the comparison is with not ablating the Previous Token Heads
+# YEE, borked for now
+
+layers = [7, 8]
+diff_s1 = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
+
+config = PatchingConfig(
+    source_dataset=diff_s1.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=partial(patch_positions, positions=["S2"]),
+    layers=(0, max(layers) - 1),
+)
+metric = ExperimentMetric(
+    partial(attention_probs, scale=False),
+    config.target_dataset,
+    relative_metric=False,
+    scalar_metric=False,
+)
+patching = EasyPatching(model, config, metric)
+model.reset_hooks()
+
+
+def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+    for pos in positions:
+        if all_same:
+            z[torch.arange(dataset.N), dataset.word_idx[pos]] = source_act
+        else:
+            z[torch.arange(dataset.N), dataset.word_idx[pos]] = source_act[
+                torch.arange(dataset.N), dataset.word_idx[pos]
+            ]
+    return z
+
+
+for idx, head_set in enumerate(all_head_sets):
+    model.reset_hooks()
+    heads = []
+    for circuit_class in head_set:
+        heads += circuit[circuit_class]
+    for layer, head_idx in heads:
+        hook = patching.get_hook(
+            layer,
+            head_idx,
+            manual_patch_fn=partial(
+                patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]
+            ),
+        )
+        model.add_hook(*hook)
+
+# run the model with these patches, see logit diff - un
