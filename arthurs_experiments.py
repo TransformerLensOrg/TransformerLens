@@ -6,6 +6,7 @@
 # % not HYPOTHESISE, do the computationally intractable
 # % do completeness, minimality NOT methods first
 #%%
+import abc
 import os
 import time
 
@@ -120,6 +121,8 @@ abca_dataset = ioi_dataset.gen_flipped_prompts(
     ("S2", "RAND")
 )  # we flip the second b for a random c
 acca_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND"))
+dcc_dataset = acca_dataset.gen_flipped_prompts(("IO", "RAND"))
+cbb_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
 acba_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
 adea_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(
     ("S1", "RAND")
@@ -2081,4 +2084,122 @@ cur_logit_diff = logit_diff(model, ioi_dataset)
 cur_io_probs = probs(model, ioi_dataset)
 print(f"{cur_logit_diff}, {cur_io_probs=}")
 
-# %%
+#%% [markdown] -> S2 Inhibition: Q versus K composition
+
+# save the Inhibition K scores, when we ablate all the Induction and Duplicate token heads
+names = [
+    "ioi_dataset",
+    "abca_dataset",
+    "dcc_dataset",
+    "acca_dataset",
+    "acba_dataset",
+    "all_diff_dataset",    
+    "totally_diff_dataset",
+]
+
+results = [[] for _ in names]
+
+for i, hook_templates in enumerate(
+    [
+        ["blocks.{}.attn.hook_k"],
+        ["blocks.{}.attn.hook_v"],
+        ["blocks.{}.attn.hook_v", "blocks.{}.attn.hook_k"],
+    ]
+):
+    for dataset_name in names:
+        model.reset_hooks()
+        dataset = eval(dataset_name)
+        config = PatchingConfig(
+            source_dataset=dataset.text_prompts,
+            target_dataset=ioi_dataset.text_prompts,
+            target_module="attn_head",
+            head_circuit="result",
+            cache_act=True,
+            verbose=False,
+            patch_fn=partial(patch_positions, positions=["S2"]),
+            layers=(0, max(layers) - 1),
+        )
+        metric = ExperimentMetric(
+            partial(attention_probs, scale=False),
+            config.target_dataset,
+            relative_metric=False,
+            scalar_metric=False,
+        )
+        patching = EasyPatching(model, config, metric)
+        model.reset_hooks()
+
+        def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+            for pos in positions:
+                if all_same:
+                    z[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ] = source_act
+                else:
+                    z[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ] = source_act[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ]
+            return z
+
+        model.reset_hooks()
+        for layer, head_idx in circuit["induction"] + circuit["duplicate token"]:
+            hook = patching.get_hook(
+                layer,
+                head_idx,
+                manual_patch_fn=partial(
+                    patch_positions,
+                    positions=["S2"],
+                ),
+            )
+            model.add_hook(*hook)
+        hook_names = list(
+            set(
+                hook_template.format(layer)
+                for layer, _ in circuit["s2 inhibition"]
+                for hook_template in hook_templates
+            )
+        )
+        raw_cache = {}
+        model.cache_some(raw_cache, lambda name: name in hook_names)
+        cur_logit_diff = logit_diff(model, dataset)
+        print(f"{cur_logit_diff=}")
+        cache = deepcopy(raw_cache)
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        print(f"Actually on IOI: {cur_logit_diff=}")
+
+        model.reset_hooks()
+        for layer, head_idx in circuit["s2 inhibition"]:
+            for hook_template in hook_templates:
+                cur_tensor_name = hook_template.format(layer)
+                cur_hook = get_act_hook(
+                    partial(patch_positions, positions=["S2"]),
+                    alt_act=cache[cur_tensor_name],
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                )
+                model.add_hook(cur_tensor_name, cur_hook)
+
+        # model.reset_hooks()
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        cur_io_probs = probs(model, ioi_dataset)
+        print(f"{cur_logit_diff}, {cur_io_probs=}")
+        results[i].append(cur_logit_diff)
+
+fig = go.Figure()
+for i in range(3):
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=results[i],
+            name=["K", "V", "V+K"][i],
+        )
+    )
+
+fig.update_layout(
+    title="S2 Inhibition: Q versus K composition",
+    xaxis_title="Dataset",
+    yaxis_title="Logit Difference",
+)
+
+fig.show()
