@@ -65,6 +65,7 @@ import plotly.express as px
 import plotly.io as pio
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+import warnings
 import plotly
 from sklearn.linear_model import LinearRegression
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -130,7 +131,8 @@ if False:
         model_name, use_attn_result=True
     )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
 if True:
-    model = EasyTransformer.from_pretrained("solu-10l-old").cuda()
+    model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+    model.set_use_attn_result(True)
 
 device = "cuda"
 if torch.cuda.is_available():
@@ -537,8 +539,10 @@ def writing_direction_heatmap(
     logit_diffs = logit_diff(model, ioi_dataset, all=True).cpu()
 
     for i in tqdm(range(ioi_dataset.N)):
-        io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
-        s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
+        toks = ioi_dataset[i:i+1].toks.long()
+        # print(toks.shape)
+        io_tok = toks[0][ioi_dataset.word_idx["IO"][i].item()]
+        s_tok = toks[0][ioi_dataset.word_idx["S"][i].item()]
         io_dir = model_unembed[:, io_tok]
         try:
             s_dir = model_unembed[:, s_tok]
@@ -560,15 +564,18 @@ def writing_direction_heatmap(
         dire.to("cuda")
         cache = {}
         model.cache_all(cache, device="cuda")  # TODO maybe speed up by only caching relevant things
-        logits = model(ioi_dataset.toks[i].long().unsqueeze(0)) # text_prompts[i])
-        # print(f"{cache.keys()=}")
+        toks = ioi_dataset[i:i+1].toks.long()
+        print(toks)
+        logits = model(toks) # text_prompts[i])
+        #  print(f"{cache.keys()=}")
 
 
         res_stream_sum = torch.zeros(size=(d_model,), device="cuda") # cuda implem to speed up things
         res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]  # .detach().cpu()
         # the pos and token embeddings
 
-        layer_norm_div = get_layer_norm_div(cache["blocks.9.hook_resid_post"][0, -2, :])
+        warnings.warn("Set this to the last layer of model!!!")
+        layer_norm_div = get_layer_norm_div(cache[f"blocks.{model.cfg.n_layers - 1}.hook_resid_post"][0, -2, :])
 
         for lay in range(n_layers):
             cur_attn = (
@@ -605,12 +612,12 @@ def writing_direction_heatmap(
         res_stream_sum = layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
         cur_writing = torch.einsum("a,a->", res_stream_sum, dire.to("cuda")) + unembed_bias_io - unembed_bias_s
 
-        # assert i == 11 or torch.allclose(  # ??? and it's way off, too
-        #     cur_writing,
-        #     logit_diffs[i],
-        #     rtol=1e-2,
-        #     atol=1e-2,
-        # ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+        assert i == 11 or torch.allclose(  # ??? and it's way off, too
+            cur_writing,
+            logit_diffs[i],
+            rtol=1e-3,
+            atol=1e-3,
+        ), f"{i=} {cur_writing=} {logit_diffs[i]}"
 
     attn_vals /= ioi_dataset.N
     mlp_vals /= ioi_dataset.N
@@ -631,7 +638,7 @@ torch.cuda.empty_cache()
 
 all_figs, attn_vals, mlp_vals = writing_direction_heatmap(
     model,
-    ioi_dataset,
+    ioi_dataset[:10],
     return_vals=True,
     show=["attn", "mlp"],
     dir_mode="IO - S",

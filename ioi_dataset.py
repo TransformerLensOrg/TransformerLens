@@ -501,7 +501,7 @@ def get_end_idxs(prompts, tokenizer, name_tok_len=1, has_start_padding_and_start
     end_idxs = end_idxs - 1 - name_tok_len # YOU'RE LOOKING AT TO NOT FINAL IO TOKEN
 
     for i in range(toks.shape[0]):
-        assert toks[i][end_idxs[i]+1] != 0 and (toks.shape[1] == end_idxs[i]+2 or toks[i][end_idxs[i]+2] == 0), (toks[i], end_idxs[i], toks[i].shape)
+        assert toks[i][end_idxs[i]+1] != 0 and (toks.shape[1] == end_idxs[i]+2 or toks[i][end_idxs[i]+2] == pad_token_id), (toks[i], end_idxs[i], toks[i].shape)
     print("Passed end clipped ttest")
 
     return end_idxs
@@ -733,6 +733,7 @@ class IOIDataset:
         if ioi_prompts_for_word_idxs is None:
             ioi_prompts_for_word_idxs = self.ioi_prompts
         self.word_idx = get_idx_dict(ioi_prompts_for_word_idxs, self.tokenizer, has_start_padding_and_start_is_end=has_start_padding_and_start_is_end, toks=self.toks)
+        self.has_start_padding_and_start_is_end = has_start_padding_and_start_is_end
 
         self.sem_tok_idx = {
             k: v for k, v in self.word_idx.items() if k in ALL_SEM
@@ -828,6 +829,7 @@ class IOIDataset:
             tokenizer=self.tokenizer,
             prompts=sliced_prompts,
             prefixes=self.prefixes,
+            has_start_padding_and_start_is_end=self.has_start_padding_and_start_is_end,
         )
         return sliced_dataset
 
