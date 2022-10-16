@@ -171,6 +171,9 @@ def show_attention_patterns(
             current_length = len(toks)
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
+
+            
+
             if mode == "val":
                 vals = cache[good_names[1]].detach().cpu()[i, :, head, :].norm(dim=-1)
                 cont = torch.einsum("ab,b->ab", attn, vals)

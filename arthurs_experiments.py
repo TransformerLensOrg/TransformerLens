@@ -932,8 +932,15 @@ for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
         cur_stds = []
         att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
         for head in tqdm(heads):
-            att += show_attention_patterns(model, [head], dataset, return_mtx=True, mode="attn") 
+            att += show_attention_patterns(model, [head], dataset, return_mtx=True, mode="scores") 
         att /= len(heads)
+
+        vals = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], :]
+        evals = torch.exp(vals)
+        val_sum = torch.sum(evals, dim=1)
+        assert val_sum.shape == (dataset.N,), val_sum.shape
+        print(f"{heads=} {val_sum.mean()=}")
+
         for key in ioi_dataset.word_idx.keys():
             end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
             # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
@@ -942,8 +949,9 @@ for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
             average_attention[heads_raw][key] = end_to_s2.mean().item()
         fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=dict(type="data", array=cur_stds), name=str(heads_raw))) # ["IOI", "ABCA"][idx]))
 
-        fig.update_layout(title_text="Attention from END to S2")
+        fig.update_layout(title_text="Attention scores;' from END to S2")
     fig.show()
+#%%
 
 #%%
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
