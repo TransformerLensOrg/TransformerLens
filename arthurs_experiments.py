@@ -17,7 +17,7 @@ import io
 from random import randint as ri
 from easy_transformer import EasyTransformer
 from functools import partial
-from ioi_utils import logit_diff, probs
+from ioi_utils import logit_diff, probs, show_attention_patterns
 from ioi_dataset import BABA_EARLY_IOS, BABA_LATE_IOS, ABBA_EARLY_IOS, ABBA_LATE_IOS
 import logging
 import sys
@@ -920,13 +920,14 @@ print(f"{l=}")
 model.reset_hooks()
 #%%
 ys = []
-fig = go.Figure()
 average_attention = {}
-for heads_raw in circuit["s2 inhibition"]: # heads_to_patch: # [(9, 9), (9, 6), (10, 0)]:
-    heads = [heads_raw]
-    average_attention[heads_raw] = {}
-    for idx, dataset in enumerate([ioi_dataset, abca_dataset][:1]):
-        print(idx)
+
+for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
+    fig = go.Figure()
+    print(idx, ["ioi", "abca"][idx])
+    for heads_raw in circuit["name mover"][:3]: # heads_to_patch: # [(9, 9), (9, 6), (10, 0)]:
+        heads = [heads_raw]
+        average_attention[heads_raw] = {}
         cur_ys = []
         cur_stds = []
         att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
@@ -941,8 +942,9 @@ for heads_raw in circuit["s2 inhibition"]: # heads_to_patch: # [(9, 9), (9, 6), 
             average_attention[heads_raw][key] = end_to_s2.mean().item()
         fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=dict(type="data", array=cur_stds), name=str(heads_raw))) # ["IOI", "ABCA"][idx]))
 
-    fig.update_layout(title_text="Attention from END to S2")
+        fig.update_layout(title_text="Attention from END to S2")
     fig.show()
+
 #%%
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
 heads_by_layer = {9: [6, 9], 10: [0]}
