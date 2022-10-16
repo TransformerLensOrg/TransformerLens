@@ -1909,9 +1909,9 @@ all_head_sets = all_subsets(
 )
 results = {}
 diff_s1_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
+totally_diff_dataset = IOIDataset(N=ioi_dataset.N, prompt_type=ioi_dataset.prompt_type)
 
-for j, source_dataset in enumerate([diff_s1_dataset]):
-    print(j)
+for source_dataset in [totally_diff_dataset]:
     layers = [7, 8]
     config = PatchingConfig(
         source_dataset=source_dataset.text_prompts,
@@ -1942,7 +1942,7 @@ for j, source_dataset in enumerate([diff_s1_dataset]):
                 ]
         return z
 
-    for idx, head_set in enumerate(all_head_sets):
+    for head_set in tqdm(all_head_sets):
         model.reset_hooks()
         heads = []
         for circuit_class in head_set:
@@ -1960,7 +1960,7 @@ for j, source_dataset in enumerate([diff_s1_dataset]):
         cur_logit_diff = logit_diff(model, ioi_dataset)
         cur_io_probs = probs(model, ioi_dataset)
         print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
-        results[(i, j, idx)] = cur_logit_diff, cur_io_probs
+        # results[(i, j, idx)] = cur_logit_diff, cur_io_probs
 #%%
 for all_head_sets_idx, head_set in enumerate(all_head_sets):
     initials = []
@@ -1999,17 +1999,18 @@ for all_head_sets_idx, head_set in enumerate(all_head_sets):
 # I guess the comparison is with not ablating the Previous Token Heads
 # YEE, borked for now
 
-layers = [7, 8]
-diff_s1 = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
+# save the activations of induction V matrix, when previous tokens are ablated
+# ablated = from RANDOM other thing or just 0??? NO ZERO ABLATION IS VERY BAD!!!
 
+layers = [7, 8]
 config = PatchingConfig(
-    source_dataset=diff_s1.text_prompts,
+    source_dataset=totally_diff_dataset.text_prompts,
     target_dataset=ioi_dataset.text_prompts,
     target_module="attn_head",
     head_circuit="result",
     cache_act=True,
     verbose=False,
-    patch_fn=partial(patch_positions, positions=["S2"]),
+    patch_fn=partial(patch_positions, positions=["S+1"]),
     layers=(0, max(layers) - 1),
 )
 metric = ExperimentMetric(
@@ -2033,21 +2034,51 @@ def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
     return z
 
 
-for idx, head_set in enumerate(all_head_sets):
-    model.reset_hooks()
-    heads = []
-    for circuit_class in head_set:
-        heads += circuit[circuit_class]
-    for layer, head_idx in heads:
-        hook = patching.get_hook(
-            layer,
-            head_idx,
-            manual_patch_fn=partial(
-                patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]
-            ),
-        )
-        model.add_hook(*hook)
+def turn_to_zero(z, source_act, hook):
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S+1"]] = 0
+    return z
 
-# run the model with these patches, see logit diff - un
+
+model.reset_hooks()
+for layer, head_idx in circuit["previous token"]:
+    hook = patching.get_hook(
+        layer,
+        head_idx,
+        # manual_patch_fn=turn_to_zero,
+        manual_patch_fn=partial(
+            patch_positions,
+            positions=["S+1"],  # RELEVANT_TOKENS[(layer, head_idx)]
+        ),
+    )
+    model.add_hook(*hook)
+
+# Activation at hook blocks.3.attn.hook_v has shape:
+# torch.Size([4, 50, 12, 64])
+cache = {}
+hook_template = "blocks.{}.attn.hook_k"
+hook_names = list(set(hook_template.format(layer) for layer, _ in circuit["induction"]))
+model.cache_some(cache, lambda name: name in hook_names)
+cur_logit_diff = logit_diff(model, ioi_dataset)
+print(f"{cur_logit_diff=}")
+
+# def patch_new_v(z, source_act, hook):
+#     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S+1"]] = source_act[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S+1"]]
+#     return z
+
+model.reset_hooks()
+for layer, head_idx in circuit["induction"]:
+    cur_tensor_name = hook_template.format(layer)
+    cur_hook = get_act_hook(
+        partial(patch_positions, positions=["S"]),
+        alt_act=cache[cur_tensor_name],
+        idx=head_idx,
+        dim=2 if head_idx is not None else None,
+    )
+    model.add_hook(cur_tensor_name, cur_hook)
+
+# model.reset_hooks()
+cur_logit_diff = logit_diff(model, ioi_dataset)
+cur_io_probs = probs(model, ioi_dataset)
+print(f"{cur_logit_diff}, {cur_io_probs=}")
 
 # %%
