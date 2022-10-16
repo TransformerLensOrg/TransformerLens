@@ -13,19 +13,18 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import torch
 
 assert torch.cuda.device_count() == 1
-
+from ioi_utils import all_subsets
+from ioi_circuit_extraction import CIRCUIT, RELEVANT_TOKENS
+from copy import deepcopy
 from time import ctime
 import io
 from random import randint as ri
 from easy_transformer import EasyTransformer
 from functools import partial
-from ioi_utils import logit_diff, probs, show_attention_patterns
+from ioi_utils import all_subsets, logit_diff, probs, show_attention_patterns
 from ioi_dataset import BABA_EARLY_IOS, BABA_LATE_IOS, ABBA_EARLY_IOS, ABBA_LATE_IOS
 import logging
 import sys
-from ioi_circuit_extraction import *
-
-# import optuna
 from ioi_dataset import *
 from ioi_utils import max_2d
 import IPython
@@ -140,6 +139,8 @@ ABC_dataset = IOIDataset(prompt_type="ABC", N=N, tokenizer=model.tokenizer)
 BAC_dataset = IOIDataset("BAC", N, model.tokenizer)
 mixed_dataset = IOIDataset("ABC mixed", N, model.tokenizer)
 
+circuit = deepcopy(CIRCUIT)
+
 
 def patch_positions(z, source_act, hook, positions=["end"]):
     for pos in positions:
@@ -216,9 +217,15 @@ model.reset_hooks()
 
 prefixed_dataset = IOIDataset(N=100, prompt_type="mixed")
 
-for dataset in [prefixed_dataset, ioi_dataset, ABC_dataset, BAC_dataset, mixed_dataset]:
-    circuit_logit_diff = logit_diff(model, dataset)
-    circuit_probs = probs(model, dataset)
+for a_dataset in [
+    prefixed_dataset,
+    ioi_dataset,
+    ABC_dataset,
+    BAC_dataset,
+    mixed_dataset,
+]:
+    circuit_logit_diff = logit_diff(model, a_dataset)
+    circuit_probs = probs(model, a_dataset)
     print(f"{circuit_logit_diff=} {circuit_probs=}")
 
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
@@ -1897,85 +1904,63 @@ for i in range(len(ds)):
 #%%
 distances = []
 
-all_head_sets = [
-    [],
-    ["duplicate token"],
-    ["induction"],
-    ["s2 inhibition"],
-    ["induction", "duplicate token"],
-    ["s2 inhibition"] + ["induction"] + ["duplicate token"],
-]
-
+all_head_sets = all_subsets(
+    ["s2 inhibition", "induction", "duplicate token", "previous token"]
+)
 results = {}
+diff_s1_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
 
-for i in range(20):
-    model.reset_hooks()
-    templates = templates_by_dis[i]
-    if len(templates) == 0:
-        continue
-    distances.append(i)
-
-    dataset = IOIDataset(prompt_type=templates, N=100)
-    dcc_dataset = dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(
-        ("IO", "RAND")
+for j, source_dataset in enumerate([diff_s1_dataset]):
+    print(j)
+    layers = [7, 8]
+    config = PatchingConfig(
+        source_dataset=source_dataset.text_prompts,
+        target_dataset=ioi_dataset.text_prompts,
+        target_module="attn_head",
+        head_circuit="result",
+        cache_act=True,
+        verbose=False,
+        patch_fn=partial(patch_positions, positions=["S+1"]),
+        layers=(0, max(layers) - 1),
     )
-    cdc_dataset = dcc_dataset.gen_flipped_prompts(("IO", "S1"))
+    metric = ExperimentMetric(
+        partial(attention_probs, scale=False),
+        config.target_dataset,
+        relative_metric=False,
+        scalar_metric=False,
+    )
+    patching = EasyPatching(model, config, metric)
+    model.reset_hooks()
 
-    cur_logit_diff = logit_diff(model, d)
-    cur_io_probs = probs(model, d)
-    print(f"{i=} {len(templates)=} {cur_logit_diff=}, {cur_io_probs=}")
+    def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+        for pos in positions:
+            if all_same:
+                z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act
+            else:
+                z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+                    torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                ]
+        return z
 
-    for j, source_dataset in enumerate([dcc_dataset, cdc_dataset]):
-        print(j)
-        layers = [7, 8]
-        config = PatchingConfig(
-            source_dataset=source_dataset.text_prompts,
-            target_dataset=dataset.text_prompts,
-            target_module="attn_head",
-            head_circuit="result",
-            cache_act=True,
-            verbose=False,
-            patch_fn=partial(patch_positions, positions=["S2"]),
-            layers=(0, max(layers) - 1),
-        )
-        metric = ExperimentMetric(
-            partial(attention_probs, scale=False),
-            config.target_dataset,
-            relative_metric=False,
-            scalar_metric=False,
-        )
-        patching = EasyPatching(model, config, metric)
+    for idx, head_set in enumerate(all_head_sets):
         model.reset_hooks()
+        heads = []
+        for circuit_class in head_set:
+            heads += circuit[circuit_class]
+        for layer, head_idx in heads:
+            hook = patching.get_hook(
+                layer,
+                head_idx,
+                manual_patch_fn=partial(
+                    patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]
+                ),
+            )
+            model.add_hook(*hook)
 
-        def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
-            for pos in positions:
-                if all_same:
-                    z[torch.arange(dataset.N), dataset.word_idx[pos]] = source_act
-                else:
-                    z[torch.arange(dataset.N), dataset.word_idx[pos]] = source_act[
-                        torch.arange(dataset.N), dataset.word_idx[pos]
-                    ]
-            return z
-
-        for idx, head_set in enumerate(all_head_sets):
-            model.reset_hooks()
-            heads = []
-            for circuit_class in head_set:
-                heads += circuit[circuit_class]
-            for layer, head_idx in heads:
-                hook = patching.get_hook(
-                    layer,
-                    head_idx,
-                    manual_patch_fn=partial(
-                        patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]
-                    ),
-                )
-                model.add_hook(*hook)
-
-            cur_logit_diff = logit_diff(model, dataset)
-            cur_io_probs = probs(model, d)
-            print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
-            results[(i, j, idx)] = cur_logit_diff, cur_io_probs
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        cur_io_probs = probs(model, ioi_dataset)
+        print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
+        results[(i, j, idx)] = cur_logit_diff, cur_io_probs
 #%%
 for all_head_sets_idx, head_set in enumerate(all_head_sets):
     initials = []
@@ -2040,10 +2025,10 @@ model.reset_hooks()
 def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
     for pos in positions:
         if all_same:
-            z[torch.arange(dataset.N), dataset.word_idx[pos]] = source_act
+            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act
         else:
-            z[torch.arange(dataset.N), dataset.word_idx[pos]] = source_act[
-                torch.arange(dataset.N), dataset.word_idx[pos]
+            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+                torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
             ]
     return z
 
@@ -2064,3 +2049,5 @@ for idx, head_set in enumerate(all_head_sets):
         model.add_hook(*hook)
 
 # run the model with these patches, see logit diff - un
+
+# %%
