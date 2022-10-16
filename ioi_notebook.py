@@ -141,6 +141,7 @@ print_gpu_mem("Gpt2 loaded")
 #%%
 N=100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
+warnings.warn("Edit the last two here")
 #%%
 totd = 0
 cp = 0

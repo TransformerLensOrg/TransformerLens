@@ -463,7 +463,7 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"]):
     if double_s2:
         warnings.warn("S2 index has been computed as the same for S and S2")
 
-    return [torch.tensor(name_idx_dict[idx_type]) for idx_type in idx_types]
+    return [1+torch.tensor(name_idx_dict[idx_type]) for idx_type in idx_types]
 
 
 def get_end_idxs(prompts, tokenizer, name_tok_len=1, has_start_padding_and_start_is_end=False, toks=None):
@@ -488,6 +488,7 @@ def get_end_idxs(prompts, tokenizer, name_tok_len=1, has_start_padding_and_start
             print(toks[i])
             print(nonzers)
             print(relevant_idx)
+            print(i)
             raise ValueError("Something went wrong")
         nonzers = nonzers[0]
         nonzers = nonzers.item()
@@ -520,6 +521,8 @@ def get_rand_idxs(end_idxs, exclude):
 def get_word_idxs(prompts, word_list, tokenizer):
     """Get the index of the words in word_list in the prompts. Exactly one of the word_list word has to be present in each prompt"""
     idxs = []
+    warnings.warn("BUGGED for start token stuff")
+    print(word_list)
     tokenized_words = [tokenizer.decode(tokenizer(word)["input_ids"][0]) for word in word_list]
     for pr_idx, prompt in enumerate(prompts):
         toks = [
@@ -655,6 +658,7 @@ class IOIDataset:
         assert (prompts is not None) or (not symmetric) or (N % 2 == 0), f"{symmetric} {N}"
         assert nb_templates is None or (nb_templates % 2 == 0 or prompt_type != "mixed")
         self.prompt_type = prompt_type
+        self.prepend_bos = prepend_bos
 
         if nb_templates is None:
             nb_templates = len(BABA_TEMPLATES)
@@ -830,6 +834,7 @@ class IOIDataset:
             prompts=sliced_prompts,
             prefixes=self.prefixes,
             has_start_padding_and_start_is_end=self.has_start_padding_and_start_is_end,
+            prepend_bos = self.prepend_bos,
         )
         return sliced_dataset
 
