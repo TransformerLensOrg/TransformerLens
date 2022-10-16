@@ -650,6 +650,254 @@ if show_scatter:
     fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
     fig.write_image(f"svgs/circuit_completeness_at_{ctime()}.svg")
     fig.show()
+#%%
+MODEL_CFG = model.cfg
+MODEL_EPS = model.cfg.eps
+
+def layer_norm(x, cfg=MODEL_CFG):
+    return LayerNormPre(cfg)(x)
+
+def get_layer_norm_div(x, eps=MODEL_EPS):
+    mean = x.mean(dim=-1, keepdim=True)
+    new_x = (x - mean).detach().clone()
+    return (new_x.var(dim=-1, keepdim=True).mean() + eps).sqrt()
+#%%
+def qk_logit_lens(
+    model,
+    ioi_dataset,
+    heads,
+    show=["attn"],  # can add "mlp" to this
+    return_vals=False,
+    dir_mode="IO - S1",
+    title="",
+    return_figs=False,
+):
+    """
+    Jacob's QK logit lens 
+    ... this requires annoying think-about-contribution-through-layer-norm
+    """
+
+    if len(heads) != 1:
+        raise NotImplementedError("only works for one head")
+    nm_layer, nm_idx = heads[0]
+
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
+    d_model = model.cfg.d_model
+
+    attn_vals = torch.zeros(size=(n_heads, n_layers))
+    mlp_vals = torch.zeros(size=(n_layers,))
+
+    wq = model.blocks[nm_layer].attn.W_Q[nm_idx]
+    wk = model.blocks[nm_layer].attn.W_K[nm_idx]
+    assert wq.shape == wk.shape
+    assert wq.shape == (64, 768)
+
+    for i in tqdm(range(ioi_dataset.N)):        
+        cache = {}
+        k_hook_name = f"blocks.{nm_layer}.attn.hook_k"
+        pre_name = f"blocks.{nm_layer}.hook_resid_pre"
+        ln_hook_name = f"blocks.{nm_layer}.ln1.hook_scale"
+        model.cache_all(cache, lambda name:name in [pre_name, k_hook_name, ln_hook_name], device="cuda")
+        logits = model(ioi_dataset.text_prompts[i])
+        iok = cache[k_hook_name][0, ioi_dataset.word_idx["IO"][i].item(), nm_idx, :]
+        s1k = cache[k_hook_name][0, ioi_dataset.word_idx["S"][i].item(), nm_idx, :]
+        assert len(iok.shape) == 1
+
+        neels_ln_scale = cache[ln_hook_name][:, -2, :]
+        our_maunal_ln_scale = get_layer_norm_div(cache[pre_name][:, -2, :])
+        assert torch.allclose(neels_ln_scale, our_maunal_ln_scale, atol=1e-3, rtol=1e-3)
+        
+        for lay in range(n_layers):
+            cur_attn = (
+                cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
+                # + model.blocks[lay].attn.b_O.detach()  # / n_heads
+            )
+            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :][0]
+
+            # TODO check we have res_stream_sum working
+            res_stream_sum += torch.sum(cur_attn, dim=0)
+            res_stream_sum += model.blocks[lay].attn.b_O  # .detach().cpu()
+            res_stream_sum += cur_mlp
+            assert torch.allclose(
+                res_stream_sum,
+                cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach(),
+                rtol=1e-3,
+                atol=1e-3,
+            ), lay
+
+            cur_mlp -= cur_mlp.mean()
+            for i in range(n_heads):
+                cur_attn[i] -= cur_attn[i].mean()
+                # we layer norm the end result of the residual stream,
+                # (which firstly centres the residual stream)
+                # so to estimate "amount written in the IO-S direction"
+                # we centre each head's output
+            cur_attn /= neels_ln_scale
+            cur_mlp /= neels_ln_scale
+
+            after_q = 
+
+            attn_vals[:n_heads, lay] += torch.einsum("ha,a->h", cur_attn.cpu(), dire.cpu())
+            mlp_vals[lay] = torch.einsum("a,a->", cur_mlp.cpu(), dire.cpu())
+
+        res_stream_sum -= res_stream_sum.mean()
+        res_stream_sum = layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+        cur_writing = torch.einsum("a,a->", res_stream_sum, dire.to("cuda")) + unembed_bias_io - unembed_bias_s
+
+        assert i == 11 or torch.allclose(  # ??? and it's way off, too
+            cur_writing,
+            logit_diffs[i],
+            rtol=1e-2,
+            atol=1e-2,
+        ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+
+    attn_vals /= ioi_dataset.N
+    mlp_vals /= ioi_dataset.N
+    all_figs = []
+    if "attn" in show:
+        all_figs.append(show_pp(attn_vals, xlabel="head no", ylabel="layer no", title=title, return_fig=True))
+    if "mlp" in show:
+        all_figs.append(show_pp(mlp_vals.unsqueeze(0).T, xlabel="", ylabel="layer no", title=title, return_fig=True))
+    if return_figs and return_vals:
+        return all_figs, attn_vals, mlp_vals
+    if return_vals:
+        return attn_vals, mlp_vals
+    if return_figs:
+        return all_figs
+
+qk_logit_lens(model, ioi_dataset, heads=[(9, 9)], return_vals=True)
+#%%
+def writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    show=["attn"],  # can add "mlp" to this
+    return_vals=False,
+    dir_mode="IO - S",
+    unembed_mode="normal",
+    title="",
+    verbose=False,
+    return_figs=False,
+):
+    """
+    Plot the dot product between how much each attention head
+    output with `IO-S`, the difference between the unembeds between
+    the (correct) IO token and the incorrect S token
+    """
+
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
+    d_model = model.cfg.d_model
+
+    model_unembed = (
+        model.unembed.W_U.detach().cpu()
+    )  # note that for GPT2 embeddings and unembeddings are tides such that W_E = Transpose(W_U)
+
+    unembed_bias = model.unembed.b_U.detach().cpu()
+
+    attn_vals = torch.zeros(size=(n_heads, n_layers))
+    mlp_vals = torch.zeros(size=(n_layers,))
+    logit_diffs = logit_diff(model, ioi_dataset, all=True).cpu()
+
+    for i in tqdm(range(ioi_dataset.N)):
+        io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
+        s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
+        io_dir = model_unembed[io_tok]
+        s_dir = model_unembed[s_tok]
+        unembed_bias_io = unembed_bias[io_tok]
+        unembed_bias_s = unembed_bias[s_tok]
+        if dir_mode == "IO - S":
+            dire = io_dir - s_dir
+        elif dir_mode == "IO":
+            dire = io_dir
+        elif dir_mode == "S":
+            dire = s_dir
+        else:
+            raise NotImplementedError()
+        dire.to("cuda")
+        cache = {}
+        model.cache_all(cache, device="cuda")  # TODO maybe speed up by only caching relevant things
+        logits = model(ioi_dataset.text_prompts[i])
+
+        res_stream_sum = torch.zeros(size=(d_model,), device="cuda") # cuda implem to speed up things
+        res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]  # .detach().cpu()
+        # the pos and token embeddings
+
+        layer_norm_div = get_layer_norm_div(cache["blocks.11.hook_resid_post"][0, -2, :])
+
+        for lay in range(n_layers):
+            cur_attn = (
+                cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
+                # + model.blocks[lay].attn.b_O.detach()  # / n_heads
+            )
+            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :][0]
+
+            # check that we're really extracting the right thing
+            res_stream_sum += torch.sum(cur_attn, dim=0)
+            res_stream_sum += model.blocks[lay].attn.b_O  # .detach().cpu()
+            res_stream_sum += cur_mlp
+            assert torch.allclose(
+                res_stream_sum,
+                cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach(),
+                rtol=1e-3,
+                atol=1e-3,
+            ), lay
+
+            cur_mlp -= cur_mlp.mean()
+            for i in range(n_heads):
+                cur_attn[i] -= cur_attn[i].mean()
+                # we layer norm the end result of the residual stream,
+                # (which firstly centres the residual stream)
+                # so to estimate "amount written in the IO-S direction"
+                # we centre each head's output
+            cur_attn /= layer_norm_div  # ... and then apply the layer norm division
+            cur_mlp /= layer_norm_div
+
+            attn_vals[:n_heads, lay] += torch.einsum("ha,a->h", cur_attn.cpu(), dire.cpu())
+            mlp_vals[lay] = torch.einsum("a,a->", cur_mlp.cpu(), dire.cpu())
+
+        res_stream_sum -= res_stream_sum.mean()
+        res_stream_sum = layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+        cur_writing = torch.einsum("a,a->", res_stream_sum, dire.to("cuda")) + unembed_bias_io - unembed_bias_s
+
+        assert i == 11 or torch.allclose(  # ??? and it's way off, too
+            cur_writing,
+            logit_diffs[i],
+            rtol=1e-2,
+            atol=1e-2,
+        ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+
+    attn_vals /= ioi_dataset.N
+    mlp_vals /= ioi_dataset.N
+    all_figs = []
+    if "attn" in show:
+        all_figs.append(show_pp(attn_vals, xlabel="head no", ylabel="layer no", title=title, return_fig=True))
+    if "mlp" in show:
+        all_figs.append(show_pp(mlp_vals.unsqueeze(0).T, xlabel="", ylabel="layer no", title=title, return_fig=True))
+    if return_figs and return_vals:
+        return all_figs, attn_vals, mlp_vals
+    if return_vals:
+        return attn_vals, mlp_vals
+    if return_figs:
+        return all_figs
+
+
+torch.cuda.empty_cache()
+
+all_figs, attn_vals, mlp_vals = writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    return_vals=True,
+    show=["attn", "mlp"],
+    dir_mode="IO - S",
+    title="Output into IO - S token unembedding direction",
+    verbose=True,
+    return_figs=True,
+)
+modules = ["attn", "mlp"]
+
+for i, fig in enumerate(all_figs):
+    fig.write_image(f"svgs/writing_direction_heatmap_module_{modules[i]}.svg")
 #%% # Q: can we just replace S2 Inhibition Heads with 1.0 attention to S2?
 # A: pretty much yes
 
@@ -949,9 +1197,12 @@ for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
             average_attention[heads_raw][key] = end_to_s2.mean().item()
         fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=dict(type="data", array=cur_stds), name=str(heads_raw))) # ["IOI", "ABCA"][idx]))
 
-        fig.update_layout(title_text="Attention scores;' from END to S2")
+        fig.update_layout(title_text="Attention scores; from END to S2")
     fig.show()
-#%%
+#%% [markdown] implement Jacob's QK logit lens
+
+# save K_{IO} and K_{S}
+# look at what writes in the 
 
 #%%
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
