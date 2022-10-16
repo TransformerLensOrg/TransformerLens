@@ -5,3 +5,4 @@ __pycache__
 *.svg 
 *.csv
 *.zip
+*.json
