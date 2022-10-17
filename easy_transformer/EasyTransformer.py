@@ -374,12 +374,12 @@ class EasyTransformer(HookedRootModule):
         api = HfApi()
         repo_names = {1:'SoLU_1L_v9_old', 2:'SoLU_2L_v10_old', 4:'SoLU_4L_v11_old', 6:'SoLU_6L_v13_old', 8:'SoLU_8L_v21_old', 10:'SoLU_10L_v22_old'}
         repo_name = f"NeelNanda/{repo_names[layer_number]}"
-        if layer_number==2:
-            file_name = "SoLU_v10_2L_old"
-        else:
-            files = api.list_repo_files(repo_name)
-            model_files = [f for f in files if "final" in f]
-            file_name = model_files[0]
+        # if layer_number==2:
+        #     file_name = "SoLU_v10_2L_old"
+        # else:
+        files = api.list_repo_files(repo_name)
+        model_files = [f for f in files if "final" in f]
+        file_name = model_files[0]
         
         # Early models have left facing W_pos
         reverse_pos = layer_number <= 8
