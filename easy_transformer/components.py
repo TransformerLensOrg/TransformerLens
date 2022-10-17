@@ -40,12 +40,14 @@ class Embed(nn.Module):
 
 class Unembed(nn.Module):
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+        
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_U = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_vocab))
-        self.b_U = nn.Parameter(torch.zeros(self.cfg.d_vocab))
+        # Note that there's a separate variable for d_vocab_out and d_vocab (the input vocab size). For language tasks these are always the same, but for algorithmic tasks we may want them to be different.
+        self.W_U = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_vocab_out))
+        self.b_U = nn.Parameter(torch.zeros(self.cfg.d_vocab_out))
 
     def forward(self, residual):
         return (
