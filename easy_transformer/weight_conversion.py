@@ -5,7 +5,8 @@ import re
 
 VALID_PRETRAINED_MODEL_NAMES = set(
     [
-        "gpt2",
+        "gpt2", # Alias for GPT-2 Small
+        "gpt2-small",
         "gpt2-medium",
         "gpt2-large",
         "gpt2-xl",
@@ -29,9 +30,15 @@ VALID_PRETRAINED_MODEL_NAMES = set(
         "stanford-gpt2-medium-C",
         "stanford-gpt2-medium-D",
         "stanford-gpt2-medium-E",
+        "solu-1l-old",
+        "solu-2l-old",
+        "solu-6l-old",
+        "solu-8l-old",
+        "solu-10l-old",
     ]
 )
 
+# Maps things to their official HuggingFace name
 PRETRAINED_MODEL_NAMES_DICT = {
     "stanford-gpt2-small-A": "stanford-crfm/alias-gpt2-small-x21",
     "stanford-gpt2-small-B": "stanford-crfm/battlestar-gpt2-small-x49",

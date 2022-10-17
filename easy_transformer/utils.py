@@ -7,8 +7,31 @@ import datasets
 import einops
 from transformers import AutoTokenizer
 import random
+from typing import Optional
+import transformers
 from huggingface_hub import hf_hub_download
+
+CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
+
+def download_file_from_hf(repo_name, file_name, subfolder=".", cache_dir=CACHE_DIR, force_is_torch=False):
+    """ 
+    Helper function to download files from the HuggingFace Hub, from subfolder/file_name in repo_name, saving locally to cache_dir and returning the loaded file (if a json or Torch object) and the file path otherwise.
+
+    If it's a Torch file without the ".pth" extension, set force_is_torch=True to load it as a Torch object.
+    """
+    file_path = hf_hub_download(repo_id=repo_name,
+                                                filename=file_name, 
+                                                subfolder=subfolder, 
+                                                cache_dir=cache_dir)
+    print(f"Saved at file_path: {file_path}")
+    if file_path.endswith(".pth") or force_is_torch:
+        return torch.load(file_path)
+    elif file_path.endswith(".json"):
+        return json.load(open(file_path, "r"))
+    else:
+        print("File type not supported:", file_path.split('.')[-1])
+        return file_path
 
 def get_sample_from_dataset(sequences, nb_sample=2, print_len=10):
     rd_idx = np.random.randint(0, len(sequences), 3)
@@ -181,16 +204,59 @@ def set_seed_everywhere(seed):
     random.seed(seed)
     np.random.seed(seed)
 
-def download_file_from_hf(repo_name, file_name, subfolder=".", cache_dir=None):
-    file_path = hf_hub_download(repo_id=f"NeelNanda/{repo_name}",
-                                    filename=file_name,
-                                    subfolder=subfolder,
-                                    cache_dir=cache_dir)
-    print(f"Saved at file_path: {file_path}")
-    if file_path.endswith(".pth"):
-        return torch.load(file_path)
-    elif file_path.endswith(".json"):
-        return json.load(open(file_path, "r"))
+
+def sample_logits(
+    final_logits: torch.Tensor, 
+    top_k: Optional[int] = None, 
+    top_p: Optional[int] = None, 
+    temperature: float = 1.0, 
+    freq_penalty: float = 0.0,
+    tokens: Optional[torch.Tensor] = None):
+    """ 
+    Sample from the logits, in order to generate text
+
+    final_logits has shape [batch, vocab_size]
+    We divide the logits by temperature before softmaxing and sampling - high temperature = more uniform, low = more argmaxy. Temp = 0.0 is greedy sampling
+    We apply top_k and top_p filtering to the logits, to encourage diversity. top_k = 10 means we only sample from the 10 most likely tokens. top_p = 0.9 means we only sample from the top 90% of tokens, and then renormalise the distribution. top_k and top_p are mutually exclusive. By default we apply neither and just sample from the full distribution.
+
+    Frequency penalty is a penalty on the probability of a token, proportional to the number of times it has been generated so far. This encourages the model to generate new tokens, rather than repeating itself. It is a hyperparameter, and should be tuned. It is applied to the logits before sampling. If this is non-zero it is required to input the input_tokens
+
+    #! TODO: Finish testing all the edge cases here. Useful testing code:
+    logits = torch.randn(4)
+    print(logits)
+    np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)]), return_counts=True)
+    """
+    if temperature == 0.0:
+        # Greedy sampling
+        return final_logits.argmax(dim=-1)
     else:
-        print("File type not supported:", file_path.split('.')[-1])
-        return file_path
+        # Sample from the distribution
+
+        final_logits = final_logits / temperature
+        if freq_penalty > 0:
+            assert tokens is not None, "Must provide input_tokens if applying a frequency penalty"
+            for batch_index in range(final_logits.shape[0]):
+                # torch.bincount returns a tensor of length d_vocab, with the number of occurences of each token in the tokens.
+                final_logits[batch_index] = final_logits[batch_index] - freq_penalty * torch.bincount(
+                    tokens[batch_index], minlength=final_logits.shape[-1]
+                )
+        if top_k is not None:
+            assert top_k > 0, "top_k has to be greater than 0"
+            top_logits, top_idx = final_logits.topk(top_k, dim=-1)
+            indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
+            final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+        elif top_p is not None:
+            assert 1.0 >= top_p > 0.0, "top_p has to be in [0, 1)"
+            sorted_logits, sorted_indices = torch.sort(final_logits, descending=True)
+            cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
+            # We round up - we want prob >= top_p not <top_p
+            sorted_indices_to_remove = cumulative_probs > top_p
+            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
+                ..., :-1
+            ].clone()
+            sorted_indices_to_remove[..., 0] = 0
+            indices_to_remove = sorted_indices_to_remove.scatter(
+                -1, sorted_indices, sorted_indices_to_remove
+            )
+            final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+        return torch.distributions.categorical.Categorical(logits=final_logits).sample()

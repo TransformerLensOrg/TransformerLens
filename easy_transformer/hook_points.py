@@ -169,7 +169,7 @@ class HookedRootModule(nn.Module):
                     hp.add_hook(hook, dir=dir)
 
     def run_with_hooks(
-        self, *args, fwd_hooks=[], bwd_hooks=[], reset_hooks_start=True, reset_hooks_end=True, clear_contexts=False
+        self, *args, fwd_hooks=[], bwd_hooks=[], reset_hooks_start=True, reset_hooks_end=True, clear_contexts=False, **kwargs
     ):
         """
         fwd_hooks: A list of (name, hook), where name is either the name of
@@ -203,7 +203,7 @@ class HookedRootModule(nn.Module):
                 for hook_name, hp in self.hook_dict:
                     if name(hook_name):
                         hp.add_hook(hook, dir="bwd")
-        out = self.forward(*args)
+        out = self.forward(*args, **kwargs)
         if reset_hooks_end:
             if len(bwd_hooks) > 0:
                 logging.warning("WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur")
