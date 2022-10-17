@@ -7,6 +7,8 @@ import datasets
 import einops
 from transformers import AutoTokenizer
 import random
+from huggingface_hub import hf_hub_download
+import json
 
 def get_sample_from_dataset(sequences, nb_sample=2, print_len=10):
     rd_idx = np.random.randint(0, len(sequences), 3)
@@ -152,7 +154,7 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
     def tokenize_function(examples):
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
-        full_text = tokenizer.bos_token.join(text)
+        full_text = tokenizer.eos_token.join(text)
         # Divide into 20 chunks of ~ equal length
         num_chunks = 20
         chunk_length = (len(full_text)-1)//num_chunks + 1
@@ -170,7 +172,7 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
             prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
             tokens = np.concatenate([prefix, tokens], axis=1)
         return {'tokens':tokens}
-    tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=4 if not streaming else None, remove_columns=[column_name])
+    tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=10 if not streaming else None, remove_columns=[column_name])
     tokenized_dataset.set_format(type='torch', columns=['tokens'])
     return tokenized_dataset
 
@@ -178,3 +180,17 @@ def set_seed_everywhere(seed):
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
+
+def download_file_from_hf(repo_name, file_name, subfolder=".", cache_dir=None):
+    file_path = hf_hub_download(repo_id=f"NeelNanda/{repo_name}",
+                                    filename=file_name,
+                                    subfolder=subfolder,
+                                    cache_dir=cache_dir)
+    print(f"Saved at file_path: {file_path}")
+    if file_path.endswith(".pth"):
+        return torch.load(file_path)
+    elif file_path.endswith(".json"):
+        return json.load(open(file_path, "r"))
+    else:
+        print("File type not supported:", file_path.split('.')[-1])
+        return file_path

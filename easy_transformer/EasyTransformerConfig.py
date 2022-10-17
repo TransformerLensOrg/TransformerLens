@@ -75,6 +75,7 @@ class EasyTransformerConfig:
     eps: float = 1e-5
     use_attn_result: bool = False
     use_attn_scale: bool = True
+    attn_scale_full: bool = False
     use_local_attn: bool = False
     model_family: Optional[str] = None
     checkpoint: Optional[int] = None

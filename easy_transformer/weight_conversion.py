@@ -1,6 +1,7 @@
 from easy_transformer import EasyTransformerConfig
 import einops
 import torch
+import re
 
 VALID_PRETRAINED_MODEL_NAMES = set(
     [
@@ -42,6 +43,7 @@ PRETRAINED_MODEL_NAMES_DICT = {
     "stanford-gpt2-medium-C": "stanford-crfm/celebrimbor-gpt2-medium-x81",
     "stanford-gpt2-medium-D": "stanford-crfm/durin-gpt2-medium-x343",
     "stanford-gpt2-medium-E": "stanford-crfm/eowyn-gpt2-medium-x777",
+    "gpt2-small": "gpt2",
 }
 # The steps for which there are checkpoints in the stanford crfm models - provided as reference
 STANFORD_CRFM_CHECKPOINTS = (
@@ -244,3 +246,14 @@ def convert_neox_weights(neox, cfg):
 
 def convert_gptj_weights(gptj, cfg):
     raise NotImplementedError
+
+def convert_solu_8L_weights(state_dict, cfg=None):
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        key = re.sub(r"\.norm", r".ln", key)
+        key = re.sub(r"^norm", r"ln_final", key)
+        if key.endswith("W_pos"):
+            # Thanks to a dumb bug when training, the weights of the position matrix are transposed - turns out when d_model=n_ctx these bugs are hard to spot!
+            value = value.T
+        new_state_dict[key] = value
+    return new_state_dict

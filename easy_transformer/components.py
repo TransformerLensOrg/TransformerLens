@@ -213,6 +213,9 @@ class Attention(nn.Module):
                 -> batch head_index query_pos key_pos", 
                    q, k) / self.attn_scale
         )  # [batch, head_index, query_pos, key_pos]
+        if self.cfg.attn_scale_full:
+            # Divide again, to get to a full factor of d_head
+            attn_scores /= np.sqrt(self.cfg.d_head)
         if self.cfg.attention_dir == 'causal':
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.causal_mask(attn_scores) # [batch, head_index, query_pos, key_pos]

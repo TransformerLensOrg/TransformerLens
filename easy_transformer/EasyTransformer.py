@@ -417,6 +417,7 @@ class EasyTransformer(HookedRootModule):
         if move_dict_to_device:
             state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
         state_dict = self.fill_missing_keys(state_dict)
+        
         if fold_ln:
             state_dict = self.fold_layer_norm(state_dict)
         if center_writing_weights:
