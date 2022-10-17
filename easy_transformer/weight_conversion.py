@@ -31,6 +31,7 @@ VALID_PRETRAINED_MODEL_NAMES = set(
         "stanford-gpt2-medium-E",
         "solu-1l-old",
         "solu-2l-old",
+        "solu-4l-old",
         "solu-6l-old",
         "solu-8l-old",
         "solu-10l-old",
