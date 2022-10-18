@@ -111,6 +111,8 @@ if ipython is not None:
 def e(mess=""):
     print_gpu_mem(mess)
     torch.cuda.empty_cache()
+
+
 #%%
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
