@@ -34,6 +34,7 @@ from ioi_circuit_extraction import (
     get_heads_circuit,
 )
 from copy import deepcopy
+from ioi_utils import patch_and_freeze
 from time import ctime
 import io
 from random import randint as ri
@@ -137,6 +138,7 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts(
     ("S2", "RAND")
 )  # we flip the second b for a random c
+abca_dataset.word_idx = ioi_dataset.word_idx
 acca_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND"))
 dcc_dataset = acca_dataset.gen_flipped_prompts(("IO", "RAND"))
 cbb_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
@@ -171,128 +173,7 @@ def patch_positions(z, source_act, hook, positions=["end"]):
     return z
 
 
-def attention_probs(
-    model,
-    text_prompts,
-    variation=True,
-    scale=True,
-    # hook_names=[],
-    # att_from=[],
-):  # we have to redefine logit differences to use the new abba dataset
-    """Difference between the IO and the S logits at the "to" token"""
-    cache_patched = {}
-    model.cache_some(
-        cache_patched, lambda x: x in hook_names
-    )  # we only cache the activation we're interested
-    logits = model(text_prompts).detach()
-    # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
-    # ... but do this elsewhere as otherwise we bad
-    # attn score of head HEAD at token "to" (end) to token IO
-    assert variation or not scale
-    attn_probs_variation_by_keys = []
-    for key in ["IO", "S", "S2"]:
-        attn_probs_variation = []
-        for i, hook_name in enumerate(hook_names):
-            layer = layers[i]
-            for head in heads_by_layer[layer]:
-                attn_probs_patched = cache_patched[hook_name][
-                    torch.arange(len(text_prompts)),
-                    head,
-                    ioi_dataset.word_idx["end"],
-                    ioi_dataset.word_idx[key],
-                ]
-                attn_probs_base = cache_baseline[hook_name][
-                    torch.arange(len(text_prompts)),
-                    head,
-                    ioi_dataset.word_idx["end"],
-                    ioi_dataset.word_idx[key],
-                ]
-                if variation:
-                    res = attn_probs_patched - attn_probs_base
-                    if scale:
-                        res /= attn_probs_base
-                    res = res.mean().unsqueeze(dim=0)
-                    attn_probs_variation.append(res)
-                else:
-                    attn_probs_variation.append(
-                        attn_probs_patched.mean().unsqueeze(dim=0)
-                    )
-        attn_probs_variation_by_keys.append(
-            torch.cat(attn_probs_variation).mean(dim=0, keepdim=True)
-        )
-
-    attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
-    return attn_probs_variation_by_keys.detach().cpu()
-
-
-#%% [markdown] example patch and freeze experiment for checking
-
-
-def patch_and_freeze(
-    model,
-    source_dataset,
-    target_dataset,
-    source_hooks,  # list of [(hook_name, head_idx)] where head_idx is None is the hook is not on a head
-    target_hooks,
-    source_positions=["end"],
-    target_positions=["end"],
-) -> EasyTransformer:
-    """
-    Specific to IOI.
-
-    i) save all the activations on `source_dataset` of `source_hook_names`
-    ii) run on `target_dataset` but with activations from i) patched in. Save the activations of `source_hook_names`
-    iii) add hooks to the model to patch in these saved activations
-    """
-
-    # i)
-    model.reset_hooks()
-    i_cache = {}
-    source_hook_names = [x[0] for x in source_hooks]
-    model.cache_some(i_cache, lambda x: x in source_hook_names)
-    source_logits = model(source_dataset.text_prompts).detach()
-
-    # ii)
-    model.reset_hooks()
-    for hook_name, head_idx in source_hooks:
-        if head_idx is not None:
-            assert i_cache[hook_name].shape[2] == model.cfg.n_heads, (
-                i_cache[hook_name].shape,
-                model.cfg.num_heads,
-                "something went wrong, you missed the correct head dimension",
-            )
-        cur_hook = get_act_hook(
-            partial(patch_positions, positions=source_positions),
-            alt_act=i_cache[hook_name],
-            idx=head_idx,
-            dim=2 if head_idx is not None else None,
-        )
-        model.add_hook(hook_name, cur_hook)
-    ii_cache = {}
-    target_hook_names = [x[0] for x in target_hooks]
-    model.cache_some(ii_cache, lambda x: x in target_hook_names)
-    target_logits = model(target_dataset.text_prompts).detach()
-
-    # iii)
-    model.reset_hooks()
-    for hook_name, head_idx in target_hooks:
-        if head_idx is not None:
-            assert ii_cache[hook_name].shape[2] == model.cfg.n_heads, (
-                ii_cache[hook_name].shape,
-                model.cfg.num_heads,
-                "something went wrong, you missed the correct head dimension",
-            )
-        cur_hook = get_act_hook(
-            partial(patch_positions, positions=target_positions),
-            alt_act=ii_cache[hook_name],
-            idx=head_idx,
-            dim=2 if head_idx is not None else None,
-        )
-        model.add_hook(hook_name, cur_hook)
-    return model
-
-
-### %% [markdown] reproduce the Oct 16th KV bar chart
+#%% [markdown] reproduce the Oct 16th KV bar chart
 
 dataset_names = [
     "ioi_dataset",
@@ -329,6 +210,7 @@ for relevant_hooks_idx, relevant_hooks in enumerate(
             model,
             ioi_dataset,
             dataset,
+            ioi_dataset,
             source_hooks=source_hooks,
             target_hooks=target_hooks,
             source_positions=["end"],
@@ -346,13 +228,9 @@ for i in range(3):
             name=["K", "V", "V+K"][i],
         )
     )
-
 fig.update_layout(
     title="S2 Inhibition: Q versus K composition",
     xaxis_title="Dataset",
     yaxis_title="Logit Difference",
 )
-
-# %%
-
 fig.show()
