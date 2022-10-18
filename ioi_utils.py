@@ -75,6 +75,7 @@ def show_pp(
     highlight_points=None,
     highlight_name="",
     return_fig=False,
+    show_fig=True,
     **kwargs,
 ):
     """
@@ -132,7 +133,8 @@ def show_pp(
     )
     if highlight_points is not None:
         fig.update_yaxes(range=[m.shape[1] - 0.5, -0.5], autorange=False)
-    fig.show()
+    if show_fig:
+        fig.show()
     if return_fig:
         return fig
 
@@ -492,7 +494,7 @@ def patch_and_freeze(
         """Note which datasets used for indexing"""
         for pos in positions:
             z[
-                torch.arange(source_dataset.N), source_dataset.word_idx[pos]
+                torch.arange(target_dataset.N), target_dataset.word_idx[pos]
             ] = source_act[torch.arange(source_dataset.N), source_dataset.word_idx[pos]]
         return z
 
@@ -517,10 +519,10 @@ def patch_and_freeze(
     target_logits = model(target_dataset.text_prompts).detach()
 
     # iii)
-    def patch_positions(z, source_act, hook, positions=["end"]):
+    def patch_positions(z, alt_act, hook, positions=["end"]):
         """Note which datasets used for indexing"""
         for pos in positions:
-            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = alt_act[
                 torch.arange(ioi_dataset.N), target_dataset.word_idx[pos]
             ]
         return z

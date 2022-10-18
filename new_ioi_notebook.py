@@ -176,11 +176,11 @@ def patch_positions(z, source_act, hook, positions=["end"]):
 #%% [markdown] first patch-and-freeze experiments
 
 dataset_names = [
-    "ioi_dataset",
-    "abca_dataset",
-    "dcc_dataset",
-    "acca_dataset",
-    "acba_dataset",
+    # "ioi_dataset",
+    # "abca_dataset",
+    # "dcc_dataset",
+    # "acca_dataset",
+    # "acba_dataset",
     "all_diff_dataset",
     "totally_diff_dataset",
 ]
@@ -192,41 +192,53 @@ results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-for source_layer in tqdm(range(12)):
-    for source_head_idx in range(12):
-        for dataset_idx, dataset_name in enumerate(dataset_names):
-            dataset = eval(dataset_name)
+for pos in ["IO", "S", "S2"]:
+    for source_layer in tqdm(range(12)):
+        for source_head_idx in range(12):
+            for dataset_idx, dataset_name in enumerate(dataset_names):
+                dataset = eval(dataset_name)
 
-            # sort out source hooks
-            relevant_hooks = [
-                (f"blocks.{source_layer}.attn.hook_result", source_head_idx)
-            ]
-            source_hooks = []
-            assert len(relevant_hooks) == 1, ("Only one hook at a time", relevant_hooks)
-            source_hooks = deepcopy(relevant_hooks)
+                # sort out source hooks
+                relevant_hooks = [
+                    (f"blocks.{source_layer}.attn.hook_result", source_head_idx)
+                ]
+                source_hooks = []
+                assert len(relevant_hooks) == 1, (
+                    "Only one hook at a time",
+                    relevant_hooks,
+                )
+                source_hooks = deepcopy(relevant_hooks)
 
-            # sort out target hooks
-            target_hooks = []
-            for layer, head_idx in [(9, 9)]:
-                target_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+                # sort out target hooks
+                target_hooks = []
+                for layer, head_idx in [(9, 9)]:
+                    target_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
 
-            # do patch and freeze experiments
-            model = patch_and_freeze(
-                model,
-                source_dataset=dataset,
-                target_dataset=ioi_dataset,
-                ioi_dataset=ioi_dataset,
-                source_hooks=source_hooks,
-                target_hooks=target_hooks,
-                source_positions=["end"],
-                target_positions=["end"],
-            )
-            cur_logit_diff = logit_diff(model, ioi_dataset)
-            results[dataset_idx][source_layer][source_head_idx] = (
-                cur_logit_diff - default_logit_diff
-            )
+                # do patch and freeze experiments
+                model = patch_and_freeze(
+                    model,
+                    source_dataset=dataset,
+                    target_dataset=ioi_dataset,
+                    ioi_dataset=ioi_dataset,
+                    source_hooks=source_hooks,
+                    target_hooks=target_hooks,
+                    source_positions=[pos],
+                    target_positions=[pos],
+                )
+                cur_logit_diff = logit_diff(model, ioi_dataset)
+                results[dataset_idx][source_layer][source_head_idx] = (
+                    cur_logit_diff - default_logit_diff
+                )
 
-            if source_layer == 11 and source_head_idx == 11:
-                show_pp(results[dataset_idx].T, title=dataset_name)
+                if source_layer == 11 and source_head_idx == 11:
+                    fig = show_pp(
+                        results[dataset_idx].T,
+                        title=dataset_name,
+                        return_fig=True,
+                        show_fig=False,
+                    )
+                    fig.write_image(f"svgs/patch_and_freeze_at_{ctime()}.svg")
+                    print("And now show 't")
+                    fig = fig.show()
 
 #%% [markdown] second patch-and-freeze experiments
