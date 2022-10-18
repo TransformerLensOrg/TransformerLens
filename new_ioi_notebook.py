@@ -225,171 +225,186 @@ def attention_probs(
     return attn_probs_variation_by_keys.detach().cpu()
 
 
-#%% [markdown] general setup for freeze_and_patch
-# %% [markdown] Alex's experiment on DCC patching LITERALLY EVERYTHING at position S2
-layers = list(range(12))
-
-config = PatchingConfig(
-    source_dataset=dcc_dataset.text_prompts,
-    target_dataset=ioi_dataset.text_prompts,
-    target_module="attn_head",
-    head_circuit="result",
-    cache_act=True,
-    verbose=False,
-    patch_fn=partial(patch_positions, positions=["S2"]),
-    layers=(0, max(layers) - 1),
-)
-metric = ExperimentMetric(
-    partial(attention_probs, scale=False),
-    config.target_dataset,
-    relative_metric=False,
-    scalar_metric=False,
-)
-patching = EasyPatching(model, config, metric)
-model.reset_hooks()
+#%% [markdown] example patch and freeze experiment for checking
 
 
-def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
-    for pos in positions:
-        if all_same:
-            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act
-        else:
-            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
-                torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
-            ]
-    return z
+def patch_and_freeze(
+    model,
+    source_dataset,
+    target_dataset,
+    source_hooks,  # list of [(hook_name, head_idx)] where head_idx is None is the hook is not on a head
+    target_hooks,
+    source_positions=["end"],
+    target_positions=["end"],
+) -> EasyTransformer:
+    """
+    Specific to IOI.
 
+    i) save all the activations on `source_dataset` of `source_hook_names`
+    ii) run on `target_dataset` but with activations from i) patched in. Save the activations of `source_hook_names`
+    iii) add hooks to the model to patch in these saved activations
+    """
 
-model.reset_hooks()
-for layer in range(12):
-    for head_idx in [None] + list(range(12)):
-
-        # for layer, head_idx in circuit["induction"] + circuit["duplicate token"]:
-        hook = patching.get_hook(
-            layer,
-            head_idx,
-            manual_patch_fn=partial(
-                patch_positions,
-                positions=["S2"],
-            ),
-        )
-        model.add_hook(*hook)
-
-# model.reset_hooks()
-cur_logit_diff = logit_diff(model, ioi_dataset)
-cur_io_probs = probs(model, ioi_dataset)
-print(f"{cur_logit_diff}, {cur_io_probs=}")
-#%% [markdown] wait, so it's the case that positional clues from S2 from S Inhibition heads are quite weak. Are they useful for this on ABC, too?
-# see the change from ABB to ACC (patching S2 Inhibition bois)
-heads = circuit["s2 inhibition"] + [(10, 0)]
-
-config = PatchingConfig(
-    source_dataset=all_diff_dataset.text_prompts,
-    target_dataset=acba_dataset.text_prompts,
-    target_module="attn_head",
-    head_circuit="result",
-    cache_act=True,
-    verbose=False,
-    patch_fn=partial(patch_positions, positions=["end"]),
-    layers=(0, max([layer for layer, _ in heads]) - 1),
-)
-metric = ExperimentMetric(
-    attention_probs,
-    acba_dataset,
-    relative_metric=True,
-    scalar_metric=False,
-)
-patching = EasyPatching(model, config, metric)
-res = patching.run_experiment()
-show_pp(res.T, title="Change in logit diff (patching XYZ->ACB)")
-#%%
-all_combs = list(itertools.product([False, True], [False, True]))
-
-for use_circuit, extra_hooks in all_combs:
+    # i)
     model.reset_hooks()
+    i_cache = {}
+    model.cache_some(i_cache, lambda x: x in source_hooks)
+    source_logits = model(source_dataset).detach()
 
-    heads_to_keep = get_heads_circuit(
-        ioi_dataset,
-        circuit=circuit,
-    )
-
-    if use_circuit:
-        model, abl = do_circuit_extraction(
-            model=model,
-            heads_to_keep=heads_to_keep,
-            mlps_to_remove={},
-            ioi_dataset=ioi_dataset,
+    # ii)
+    model.reset_hooks()
+    for hook_name, head_idx in source_hooks:
+        if head_idx is not None:
+            assert i_cache[hook_name].shape[2] == model.cfg.num_heads, (
+                i_cache[hook_name].shape,
+                model.cfg.num_heads,
+                "something went wrong, you missed the correct head dimension",
+            )
+        cur_hook = get_act_hook(
+            partial(patch_positions, positions=source_positions),
+            alt_act=i_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
         )
+        model.add_hook(hook_name, cur_hook)
+    ii_cache = {}
+    model.cache_some(ii_cache, lambda x: x in target_hooks)
+    target_logits = model(target_dataset).detach()
 
-    if extra_hooks:
-        # for layer in range(9):
-        #     for head_idx in [None] + list(range(12)):
-        for layer, head_idx in circuit["s2 inhibition"]:
+    # iii)
+    model.reset_hooks()
+    for hook_name, head_idx in target_hooks:
+        if head_idx is not None:
+            assert i_cache[hook_name].shape[2] == model.cfg.num_heads, (
+                i_cache[hook_name].shape,
+                model.cfg.num_heads,
+                "something went wrong, you missed the correct head dimension",
+            )
+        cur_hook = get_act_hook(
+            partial(patch_positions, positions=target_positions),
+            alt_act=ii_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+        )
+        model.add_hook(hook_name, cur_hook)
+    return model
+
+
+#%% [markdown] reproduce the Oct 16th KV bar chart
+
+#%%
+names = [
+    "ioi_dataset",
+    "abca_dataset",
+    "dcc_dataset",
+    "acca_dataset",
+    "acba_dataset",
+    "all_diff_dataset",
+    "totally_diff_dataset",
+]
+results = [[] for _ in names]
+
+for i, hook_templates in enumerate(
+    [
+        ["blocks.{}.attn.hook_k"],
+        ["blocks.{}.attn.hook_v"],
+        ["blocks.{}.attn.hook_v", "blocks.{}.attn.hook_k"],
+    ]
+):
+    for dataset_name in names:
+        model.reset_hooks()
+        dataset = eval(dataset_name)
+        config = PatchingConfig(
+            source_dataset=dataset.text_prompts,
+            target_dataset=ioi_dataset.text_prompts,
+            target_module="attn_head",
+            head_circuit="result",
+            cache_act=True,
+            verbose=False,
+            patch_fn=partial(patch_positions, positions=["S2"]),
+            layers=(0, max([10]) - 1),
+        )
+        metric = ExperimentMetric(
+            partial(attention_probs, scale=False),
+            config.target_dataset,
+            relative_metric=False,
+            scalar_metric=False,
+        )
+        patching = EasyPatching(model, config, metric)
+        model.reset_hooks()
+
+        def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+            for pos in positions:
+                if all_same:
+                    z[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ] = source_act
+                else:
+                    z[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ] = source_act[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ]
+            return z
+
+        model.reset_hooks()
+        for layer, head_idx in circuit["induction"] + circuit["duplicate token"]:
             hook = patching.get_hook(
                 layer,
                 head_idx,
                 manual_patch_fn=partial(
                     patch_positions,
-                    positions=["end"],
+                    positions=["S2"],  # if hook_template[-1] != "q" else "end"],
                 ),
             )
             model.add_hook(*hook)
-
-    print(f"{use_circuit=} {extra_hooks=} {logit_diff(model, acba_dataset)=}")
-#%% [markdown] look at the attention scores of NMs to S2. Is this affected much by S2's output? What about if all the duplicate token heads and induction heads are patched?
-
-# def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, std=False, scores=False):
-
-for pos in ["S2", "S", "IO"]:
-    config = PatchingConfig(
-        source_dataset=acba_dataset.text_prompts,
-        target_dataset=ioi_dataset.text_prompts,
-        target_module="attn_head",
-        head_circuit="result",
-        cache_act=True,
-        verbose=False,
-        patch_fn=partial(patch_positions, positions=["end"]),
-        layers=(0, 8),
-    )
-
-    att_func = partial(attention_on_token, layer=9, head_idx=9, token=pos, scores=True)
-
-    metric = ExperimentMetric(
-        att_func,
-        ioi_dataset,
-        relative_metric=False,
-        scalar_metric=False,
-    )
-    patching = EasyPatching(model, config, metric)
-
-    # #%%
-    # res = patching.run_experiment()
-    # show_pp(res.T, title="Change in attention score to S2")
-
-    print(f"{pos=}")
-
-    model.reset_hooks()
-    model, _ = do_circuit_extraction(
-        model=model,
-        heads_to_keep=get_heads_circuit(ioi_dataset, circuit=circuit),
-        mlps_to_remove={},
-        ioi_dataset=ioi_dataset,
-        mean_dataset=all_diff_dataset,
-    )
-    print(f"{att_func(model, ioi_dataset)=}")
-    for layer, head_idx in circuit["s2 inhibition"]:
-        for thing in [None]:
-            # for layer in range(9):
-            #     for head_idx in [None] + list(range(12)):
-            hook = patching.get_hook(
-                layer,
-                head=head_idx,
-                target_module="mlp" if head_idx is None else "attn_head",
-                manual_patch_fn=partial(
-                    patch_positions,
-                    positions=["end"],
-                ),
+        hook_names = list(
+            set(
+                hook_template.format(layer)
+                for layer, _ in circuit["s2 inhibition"]
+                for hook_template in hook_templates
             )
-            model.add_hook(*hook)
+        )
+        raw_cache = {}
+        model.cache_some(raw_cache, lambda name: name in hook_names)
+        cur_logit_diff = logit_diff(model, dataset)
+        print(f"{cur_logit_diff=}")
+        cache = deepcopy(raw_cache)
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        print(f"Actually on IOI: {cur_logit_diff=}")
 
-    print(f"{att_func(model, ioi_dataset)=}")
+        model.reset_hooks()
+        for layer, head_idx in circuit["s2 inhibition"]:
+            for hook_template in hook_templates:
+                cur_tensor_name = hook_template.format(layer)
+                cur_hook = get_act_hook(
+                    partial(patch_positions, positions=["S2"]),
+                    alt_act=cache[cur_tensor_name],
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                )
+                model.add_hook(cur_tensor_name, cur_hook)
+
+        # model.reset_hooks()
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        cur_io_probs = probs(model, ioi_dataset)
+        print(f"{cur_logit_diff}, {cur_io_probs=}")
+        results[i].append(cur_logit_diff)
+
+fig = go.Figure()
+for i in range(3):
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=results[i],
+            name=["K", "V", "V+K"][i],
+        )
+    )
+
+fig.update_layout(
+    title="S2 Inhibition: Q versus K composition",
+    xaxis_title="Dataset",
+    yaxis_title="Logit Difference",
+)
+
+fig.show()
