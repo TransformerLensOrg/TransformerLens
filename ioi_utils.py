@@ -371,12 +371,13 @@ def logit_diff(
     return handle_all_and_std(IO_logits - S_logits, all, std)
 
 
-def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, std=False):
+def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, std=False, scores=False):
     """
     Get the attention on token `token` from the end position
     """
 
-    hook_name = "blocks.{}.attn.hook_attn".format(layer)
+    hook_name_raw = "blocks.{}.attn.hook_attn" + ("_scores" if scores else "")
+    hook_name = hook_name_raw.format(layer)
     cache = {}
     model.cache_some(cache, lambda x: x == hook_name)
     # shape is batch * head * from * to

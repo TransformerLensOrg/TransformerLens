@@ -172,7 +172,12 @@ def patch_positions(z, source_act, hook, positions=["end"]):
 
 
 def attention_probs(
-    model, text_prompts, variation=True, scale=True
+    model,
+    text_prompts,
+    variation=True,
+    scale=True,
+    # hook_names=[],
+    # att_from=[],
 ):  # we have to redefine logit differences to use the new abba dataset
     """Difference between the IO and the S logits at the "to" token"""
     cache_patched = {}
@@ -331,3 +336,60 @@ for use_circuit, extra_hooks in all_combs:
             model.add_hook(*hook)
 
     print(f"{use_circuit=} {extra_hooks=} {logit_diff(model, acba_dataset)=}")
+#%% [markdown] look at the attention scores of NMs to S2. Is this affected much by S2's output? What about if all the duplicate token heads and induction heads are patched?
+
+# def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, std=False, scores=False):
+
+for pos in ["S2", "S", "IO"]:
+    config = PatchingConfig(
+        source_dataset=acba_dataset.text_prompts,
+        target_dataset=ioi_dataset.text_prompts,
+        target_module="attn_head",
+        head_circuit="result",
+        cache_act=True,
+        verbose=False,
+        patch_fn=partial(patch_positions, positions=["end"]),
+        layers=(0, 8),
+    )
+
+    att_func = partial(attention_on_token, layer=9, head_idx=9, token=pos, scores=True)
+
+    metric = ExperimentMetric(
+        att_func,
+        ioi_dataset,
+        relative_metric=False,
+        scalar_metric=False,
+    )
+    patching = EasyPatching(model, config, metric)
+
+    # #%%
+    # res = patching.run_experiment()
+    # show_pp(res.T, title="Change in attention score to S2")
+
+    print(f"{pos=}")
+
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=get_heads_circuit(ioi_dataset, circuit=circuit),
+        mlps_to_remove={},
+        ioi_dataset=ioi_dataset,
+        mean_dataset=all_diff_dataset,
+    )
+    print(f"{att_func(model, ioi_dataset)=}")
+    for layer, head_idx in circuit["s2 inhibition"]:
+        for thing in [None]:
+            # for layer in range(9):
+            #     for head_idx in [None] + list(range(12)):
+            hook = patching.get_hook(
+                layer,
+                head=head_idx,
+                target_module="mlp" if head_idx is None else "attn_head",
+                manual_patch_fn=partial(
+                    patch_positions,
+                    positions=["end"],
+                ),
+            )
+            model.add_hook(*hook)
+
+    print(f"{att_func(model, ioi_dataset)=}")
