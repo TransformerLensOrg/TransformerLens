@@ -275,13 +275,12 @@ cur_logit_diff = logit_diff(model, ioi_dataset)
 cur_io_probs = probs(model, ioi_dataset)
 print(f"{cur_logit_diff}, {cur_io_probs=}")
 #%% [markdown] wait, so it's the case that positional clues from S2 from S Inhibition heads are quite weak. Are they useful for this on ABC, too?
-
 # see the change from ABB to ACC (patching S2 Inhibition bois)
-heads = circuit["name mover"]  # ["s2 inhibition"]
+heads = circuit["s2 inhibition"] + [(10, 0)]
 
 config = PatchingConfig(
-    source_dataset=acca_dataset.text_prompts,
-    target_dataset=ioi_dataset.text_prompts,
+    source_dataset=all_diff_dataset.text_prompts,
+    target_dataset=acba_dataset.text_prompts,
     target_module="attn_head",
     head_circuit="result",
     cache_act=True,
@@ -290,18 +289,16 @@ config = PatchingConfig(
     layers=(0, max([layer for layer, _ in heads]) - 1),
 )
 metric = ExperimentMetric(
-    logit_diff,
-    ioi_dataset,
+    attention_probs,
+    acba_dataset,
     relative_metric=True,
     scalar_metric=False,
 )
 patching = EasyPatching(model, config, metric)
 res = patching.run_experiment()
-show_pp(res.T, title="Change in logit diff (patching heads at end)")
-
+show_pp(res.T, title="Change in logit diff (patching XYZ->ACB)")
 #%%
-
-all_combs = list(itertools.product([True, False], repeat=2))
+all_combs = list(itertools.product([False, True], [False, True]))
 
 for use_circuit, extra_hooks in all_combs:
     model.reset_hooks()
@@ -320,6 +317,8 @@ for use_circuit, extra_hooks in all_combs:
         )
 
     if extra_hooks:
+        # for layer in range(9):
+        #     for head_idx in [None] + list(range(12)):
         for layer, head_idx in circuit["s2 inhibition"]:
             hook = patching.get_hook(
                 layer,
@@ -331,6 +330,4 @@ for use_circuit, extra_hooks in all_combs:
             )
             model.add_hook(*hook)
 
-    print(f"{use_circuit=} {extra_hooks=} {logit_diff(model, ioi_dataset)=}")
-
-# see the change from ABC to ABD [and differing C logit diff, I guess]
+    print(f"{use_circuit=} {extra_hooks=} {logit_diff(model, acba_dataset)=}")
