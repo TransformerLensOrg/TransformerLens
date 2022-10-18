@@ -353,6 +353,9 @@ def logit_diff(
     """
     Difference between the IO and the S logits at the "to" token
     """
+    
+    # assert isinstance(ioi_dataset, IOIDataset), type(ioi_dataset)
+    
     logits = model(ioi_dataset.toks.long()).detach()
     IO_logits = logits[
         torch.arange(len(ioi_dataset)),

@@ -111,8 +111,6 @@ if ipython is not None:
 def e(mess=""):
     print_gpu_mem(mess)
     torch.cuda.empty_cache()
-
-
 #%%
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
@@ -127,6 +125,7 @@ acba_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
 adea_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(
     ("S1", "RAND")
 )
+totally_diff_dataset = IOIDataset(N=ioi_dataset.N, prompt_type=ioi_dataset.prompt_type)
 all_diff_dataset = (
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
@@ -1911,8 +1910,6 @@ all_head_sets = all_subsets(
     ["s2 inhibition", "induction", "duplicate token", "previous token"]
 )
 results = {}
-diff_s1_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
-totally_diff_dataset = IOIDataset(N=ioi_dataset.N, prompt_type=ioi_dataset.prompt_type)
 
 for source_dataset in [totally_diff_dataset]:
     layers = [7, 8]
@@ -2083,9 +2080,7 @@ for layer, head_idx in circuit["induction"]:
 cur_logit_diff = logit_diff(model, ioi_dataset)
 cur_io_probs = probs(model, ioi_dataset)
 print(f"{cur_logit_diff}, {cur_io_probs=}")
-
 #%% [markdown] -> S2 Inhibition: Q versus K composition
-
 # save the Inhibition K scores, when we ablate all the Induction and Duplicate token heads
 names = [
     "ioi_dataset",
@@ -2093,10 +2088,9 @@ names = [
     "dcc_dataset",
     "acca_dataset",
     "acba_dataset",
-    "all_diff_dataset",    
+    "all_diff_dataset",
     "totally_diff_dataset",
 ]
-
 results = [[] for _ in names]
 
 for i, hook_templates in enumerate(
@@ -2116,7 +2110,9 @@ for i, hook_templates in enumerate(
             head_circuit="result",
             cache_act=True,
             verbose=False,
-            patch_fn=partial(patch_positions, positions=["S2"]),
+            patch_fn=partial(
+                patch_positions, positions=["S2" if hook_template[-1] != "q" else "end"]
+            ),
             layers=(0, max(layers) - 1),
         )
         metric = ExperimentMetric(
@@ -2149,7 +2145,7 @@ for i, hook_templates in enumerate(
                 head_idx,
                 manual_patch_fn=partial(
                     patch_positions,
-                    positions=["S2"],
+                    positions=["S2" if hook_template[-1] != "q" else "end"],
                 ),
             )
             model.add_hook(*hook)

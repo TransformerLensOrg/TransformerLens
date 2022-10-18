@@ -905,7 +905,7 @@ def compute_cobble_broken_diff(
     mean_dataset,
     nodes,
     return_both=False,
-    all_node=None,
+    all_node=None,  # TODO add this
 ):  # red teaming the circuit by trying
     """ "Compute |Metric(C\ nodes) - Metric(M\ nodes)|"""
     if all_node is None:
@@ -946,11 +946,7 @@ def compute_cobble_broken_diff(
 
 
 #%%
-# import wandb
-# wandb.init()
 from pathlib import Path
-
-# Path('path/to/file.txt').touch()
 
 important_heads = [
     (9, 9),
@@ -972,7 +968,7 @@ important_heads = [
 ]
 
 for subset_size in range(0, len(important_heads) + 1):
-
+    print(f"{subset_size=}")
     path = Path(f"all_greedy/{subset_size}.json")
 
     # make an empty json file
@@ -981,12 +977,22 @@ for subset_size in range(0, len(important_heads) + 1):
             json.dump([], f)
 
     for subset in itertools.combinations(important_heads, subset_size):
+        circuit_copy = deepcopy(CIRCUIT)
+        posses = []
+        for circuit_class in circuit_copy:
+            for head in circuit_copy[circuit_class]:
+                if head in subset:
+                    circuit_copy[circuit_class].remove(head)
+                else:
+                    posses.append((head, RELEVANT_TOKENS[head][0]))
+
         broken, cobble = compute_cobble_broken_diff(
             model,
             ioi_dataset,
             mean_dataset,
             nodes=[(head, RELEVANT_TOKENS[head][0]) for head in subset],
             return_both=True,
+            # all_node=posses,
         )
         d = {
             "subset": subset,
