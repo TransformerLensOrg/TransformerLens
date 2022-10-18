@@ -489,6 +489,7 @@ def patch_and_freeze(
 
     # ii)
     def patch_positions(z, source_act, hook, positions=["end"]):
+        """Note which datasets used for indexing"""
         for pos in positions:
             z[
                 torch.arange(source_dataset.N), source_dataset.word_idx[pos]
@@ -517,6 +518,7 @@ def patch_and_freeze(
 
     # iii)
     def patch_positions(z, source_act, hook, positions=["end"]):
+        """Note which datasets used for indexing"""
         for pos in positions:
             z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
                 torch.arange(ioi_dataset.N), target_dataset.word_idx[pos]

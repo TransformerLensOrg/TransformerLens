@@ -173,7 +173,7 @@ def patch_positions(z, source_act, hook, positions=["end"]):
     return z
 
 
-#%% [markdown] reproduce the Oct 16th KV bar chart
+#%% [markdown] first patch-and-freeze experiments
 
 dataset_names = [
     "ioi_dataset",
@@ -185,52 +185,48 @@ dataset_names = [
     "totally_diff_dataset",
 ]
 
-results = [[] for _ in range(len(dataset_names))]
+results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
 
-for relevant_hooks_idx, relevant_hooks in enumerate(
-    [
-        ["blocks.{}.attn.hook_k"],
-        ["blocks.{}.attn.hook_v"],
-        ["blocks.{}.attn.hook_v", "blocks.{}.attn.hook_k"],
-    ],
-):
-    for dataset_name in dataset_names:
-        dataset = eval(dataset_name)
+# patch all heads into the name mover input (hopefully find S2 Inhibition)
 
-        source_hooks = []
-        for layer, head_idx in circuit["induction"] + circuit["duplicate token"]:
-            source_hooks.append(("blocks.{}.attn.hook_result".format(layer), head_idx))
+model.reset_hooks()
+default_logit_diff = logit_diff(model, ioi_dataset)
 
-        target_hooks = []
-        for relevant_hook in relevant_hooks:
-            for layer, head_idx in circuit["s2 inhibition"]:
-                target_hooks.append((relevant_hook.format(layer), head_idx))
+for source_layer in tqdm(range(12)):
+    for source_head_idx in range(12):
+        for dataset_idx, dataset_name in enumerate(dataset_names):
+            dataset = eval(dataset_name)
 
-        model = patch_and_freeze(
-            model,
-            ioi_dataset,
-            dataset,
-            ioi_dataset,
-            source_hooks=source_hooks,
-            target_hooks=target_hooks,
-            source_positions=["end"],
-            target_positions=["S2"],
-        )
-        cur_logit_diff = logit_diff(model, ioi_dataset)
-        results[relevant_hooks_idx].append(cur_logit_diff)
+            # sort out source hooks
+            relevant_hooks = [
+                (f"blocks.{source_layer}.attn.hook_result", source_head_idx)
+            ]
+            source_hooks = []
+            assert len(relevant_hooks) == 1, ("Only one hook at a time", relevant_hooks)
+            source_hooks = deepcopy(relevant_hooks)
 
-fig = go.Figure()
-for i in range(3):
-    fig.add_trace(
-        go.Bar(
-            x=dataset_names,
-            y=results[i],
-            name=["K", "V", "V+K"][i],
-        )
-    )
-fig.update_layout(
-    title="S2 Inhibition: Q versus K composition",
-    xaxis_title="Dataset",
-    yaxis_title="Logit Difference",
-)
-fig.show()
+            # sort out target hooks
+            target_hooks = []
+            for layer, head_idx in [(9, 9)]:
+                target_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+
+            # do patch and freeze experiments
+            model = patch_and_freeze(
+                model,
+                source_dataset=dataset,
+                target_dataset=ioi_dataset,
+                ioi_dataset=ioi_dataset,
+                source_hooks=source_hooks,
+                target_hooks=target_hooks,
+                source_positions=["end"],
+                target_positions=["end"],
+            )
+            cur_logit_diff = logit_diff(model, ioi_dataset)
+            results[dataset_idx][source_layer][source_head_idx] = (
+                cur_logit_diff - default_logit_diff
+            )
+
+            if source_layer == 11 and source_head_idx == 11:
+                show_pp(results[dataset_idx].T, title=dataset_name)
+
+#%% [markdown] second patch-and-freeze experiments
