@@ -176,7 +176,11 @@ def patch_positions(z, source_act, hook, positions=["end"]):
 #%% [markdown] legit patch-and-freeze stuff
 
 
-def indirect_patch_and_freeze(
+def patch_all(z, source_act, hook):
+    return source_act
+
+
+def direct_patch_and_freeze(
     model,
     source_dataset,
     target_dataset,
@@ -194,28 +198,61 @@ def indirect_patch_and_freeze(
     iii) run on target dist where the relevant activations are patched in
     """
 
-    max_layer = max(
-        [layer for layer, _ in receiver_heads]
-    )  # we need to patch all the things before this
     sender_head_names = [x[0] for x in sender_heads]
     receiver_head_names = [x[0] for x in receiver_heads]
 
     sender_cache = {}
     model.reset_hooks()
     model.cache_some(sender_cache, lambda x: x in sender_head_names)
-    source_logits = model(source_dataset)
+    source_logits = model(source_dataset.text_prompts)
 
     target_cache = {}
     model.reset_hooks()
     model.cache_all(target_cache)
-    target_logits = model(target_dataset)
+    target_logits = model(target_dataset.text_prompts)
 
     # for all the Q, K, V things that AREN'T in the receiver_heads, patch these to the source
     model.reset_hooks()
     for layer in range(max_layer):
         for head_idx in range(12):
-            for hook_template in 
+            for hook_template in [
+                "blocks.{}.attn.hook_q",
+                "blocks.{}.attn.hook_k",
+                "blocks.{}.attn.hook_v",
+            ]:
+                hook_name = hook_template.format(layer)
+                hook = get_act_hook(
+                    patch_all,
+                    alt_act=target_cache[hook_name],
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                    name=hook_name,
+                )
+                model.add_hook(hook_name, hook)
 
+    return model
+
+
+#%% [markdown] sanity check of this...
+
+cur_logit_diff = logit_diff(model, ioi_dataset)
+print(f"{cur_logit_diff=}")
+
+model = direct_patch_and_freeze(
+    model=model,
+    source_dataset=ioi_dataset,
+    target_dataset=ioi_dataset,
+    ioi_dataset=ioi_dataset,
+    sender_heads=[],
+    receiver_heads=[],
+    max_layer=12,  # at this point, we just let the model run
+    sender_positions=["end"],
+    receiver_positions=["end"],  # could be Q or K or V...
+    verbose=False,
+)
+
+new_logit_diff = logit_diff(model, ioi_dataset)
+print(f"{new_logit_diff=}")
 
 #%% [markdown] first patch-and-freeze experiments
 # TODO why are there effects that come AFTER the patching?? it's before 36 mins in voko I think
@@ -315,18 +352,3 @@ for pos in ["end"]:
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
                     fig.show()
-#%%
-model.reset_hooks()
-
-def print_hook(z, hook):
-    print(hook)
-    return z
-
-def shape_hook(z, hook):
-    print(hook, z.shape)
-    return z
-
-model.add_hook("blocks.4.attn.hook_result", print_hook)
-model.add_hook("blocks.4.attn.hook_result", shape_hook)
-
-logits = model(ioi_dataset)
