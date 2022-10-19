@@ -306,10 +306,12 @@ for pos in ["end"]:
 
                 model.reset_hooks()
 
-                receiver_hooks = [
-                    (f"blocks.{layer}.attn.hook_q", head_idx)
-                    for layer, head_idx in circuit["name mover"]
-                ]
+                # receiver_hooks = [
+                #     (f"blocks.{layer}.attn.hook_q", head_idx)
+                #     for layer, head_idx in circuit["name mover"]
+                # ]
+
+                receiver_hooks = [(f"blocks.11.hook_resid_post", None)]
 
                 model = direct_patch_and_freeze(
                     model=model,
