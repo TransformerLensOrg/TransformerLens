@@ -174,6 +174,7 @@ def patch_positions(z, source_act, hook, positions=["end"]):
 
 
 #%% [markdown] first patch-and-freeze experiments
+# TODO why are there effects that come AFTER the patching??
 
 dataset_names = [
     # "ioi_dataset",
@@ -193,17 +194,22 @@ mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-# for pos in ["IO", "S", "S2"]:
-for pos in ["end"]:
+for pos in ["IO", "S", "S2"]:
+    # for pos in ["end"]:
+    results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
+    mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
     for source_layer in tqdm(range(12)):
         for source_head_idx in [None] + list(range(12)):
             for dataset_idx, dataset_name in enumerate(dataset_names):
                 dataset = eval(dataset_name)
 
                 # sort out source hooks
-                relevant_hooks = [
-                    (f"blocks.{source_layer}.attn.hook_result", source_head_idx)
-                ]
+                if source_head_idx is None:
+                    relevant_hooks = [(f"blocks.{source_layer}.hook_mlp_out", None)]
+                else:
+                    relevant_hooks = [
+                        (f"blocks.{source_layer}.attn.hook_result", source_head_idx)
+                    ]
                 source_hooks = []
                 assert len(relevant_hooks) == 1, (
                     "Only one hook at a time",
@@ -213,8 +219,8 @@ for pos in ["end"]:
 
                 # sort out target hooks
                 target_hooks = []
-                for layer, head_idx in [(9, 9), (10, 0), (9, 6)]:
-                    target_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+                for layer, head_idx in [(9, 9)]:  # , (10, 0), (9, 6)]:
+                    target_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
 
                 # do patch and freeze experiments
                 model = patch_and_freeze(
@@ -240,13 +246,13 @@ for pos in ["end"]:
 
                 if source_layer == 11 and source_head_idx == 11:
                     # show attention head results
+                    fname = f"svgs/patch_and_freeze_{dataset_name}_{pos}_{ctime()}_{ri(2134, 123759)}"
                     fig = show_pp(
                         results[dataset_idx].T,
-                        title=f"{dataset_name=} {pos=} patching Ks",
+                        title=f"{fname=} {dataset_name=} {pos=} patching Ks",
                         return_fig=True,
                         show_fig=False,
                     )
-                    fname = f"patch_and_freeze_{dataset_name}_{pos}_{ctime()}_{ri(2134, 123759)}"
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
                     fig.show()
@@ -258,7 +264,7 @@ for pos in ["end"]:
                         return_fig=True,
                         show_fig=False,
                     )
-                    fname = f"patch_and_freeze_{dataset_name}_{pos}_mlp_{ctime()}_{ri(2134, 123759)}"
+                    fname = f"svgs/patch_and_freeze_{dataset_name}_{pos}_mlp_{ctime()}_{ri(2134, 123759)}"
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
                     fig.show()
