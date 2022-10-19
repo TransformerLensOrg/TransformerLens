@@ -464,7 +464,7 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
     return handle_all_and_std(io_probs, all, std)
 
 
-def indirect_patch_and_freeze(
+def patch_and_freeze(
     model,
     source_dataset,
     target_dataset,
@@ -475,7 +475,7 @@ def indirect_patch_and_freeze(
     target_positions=["end"],
     verbose=False,
 ) -> EasyTransformer:
-    pass # see new_ioi_notebook
+    pass  # see new_ioi_notebook
 
 
 def indirect_patch_and_freeze(

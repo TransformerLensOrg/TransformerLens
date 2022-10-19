@@ -166,121 +166,16 @@ circuit = deepcopy(CIRCUIT)
 
 #%%
 def patch_positions(z, source_act, hook, positions=["end"]):
-    print("Patch positions", hook.ctx)
-    old_z = z.clone()
-
     for pos in positions:
         z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
             torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
         ]
-    print(torch.allclose(z, old_z))
-
     return z
 
 
 def patch_all(z, source_act, hook):
-    # print("Patch all", hook.ctx)
     return source_act
 
-
-#%% [markdown] sanity check of this...
-
-cur_logit_diff = logit_diff(model, ioi_dataset)
-print(f"{cur_logit_diff=}")
-
-receiver_hooks = [
-    (f"blocks.{layer}.attn.hook_result", head_idx)
-    for layer, head_idx in circuit["name mover"]
-]
-
-
-def direct_patch_and_freeze(
-    model,
-    source_dataset,
-    target_dataset,
-    ioi_dataset,
-    sender_heads,
-    receiver_hooks,
-    max_layer,  # at this point, we just let the model run
-    positions=["end"],  # could be Q or K or V...
-    verbose=False,
-) -> EasyTransformer:
-    """
-    i) run on source dist, save activations
-    ii) run on target dist, save activations
-    iii) run on target dist where the relevant activations are patched in
-    """
-
-    sender_hooks = [
-        (f"blocks.{layer}.attn.hook_result", head_idx)
-        for layer, head_idx in sender_heads
-    ]
-    sender_hook_names = [x[0] for x in sender_hooks]
-    receiver_hook_names = [x[0] for x in receiver_hooks]
-
-    sender_cache = {}
-    model.reset_hooks()
-    model.cache_all(sender_cache, lambda x: x in sender_hook_names)
-    # print(f"{sender_hook_names=}")
-    source_logits = model(source_dataset.text_prompts)
-
-    target_cache = {}
-    model.reset_hooks()
-    model.cache_all(target_cache)
-    target_logits = model(target_dataset.text_prompts)
-
-    # for all the Q, K, V things
-    model.reset_hooks()
-    for layer in range(max_layer):
-        for head_idx in range(12):
-            for hook_template in [
-                "blocks.{}.attn.hook_q",
-                "blocks.{}.attn.hook_k",
-                "blocks.{}.attn.hook_v",
-            ]:
-                hook_name = hook_template.format(layer)
-                hook = get_act_hook(
-                    patch_all,
-                    alt_act=target_cache[hook_name],
-                    idx=head_idx,
-                    dim=2 if head_idx is not None else None,
-                    name=hook_name,
-                )
-                model.add_hook(hook_name, hook)
-
-    # we can override the hooks above for the sender heads, though
-    for hook_name, idx in sender_hooks:
-        hook = get_act_hook(
-            partial(patch_positions, positions=positions),
-            alt_act=sender_cache[hook_name],
-            idx=head_idx,
-            dim=2 if head_idx is not None else None,
-            name=hook_name,
-        )
-        model.add_hook(hook_name, hook)
-
-    # measure the receiver heads' values
-    receiver_cache = {}
-    model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
-    receiver_logits = model(target_dataset.text_prompts)
-
-    # patch these values in
-    model.reset_hooks()
-    for hook_name, head_idx in receiver_hooks:
-        hook = get_act_hook(
-            partial(patch_positions, positions=positions),
-            alt_act=receiver_cache[hook_name],
-            idx=head_idx,
-            dim=2 if head_idx is not None else None,
-            name=hook_name,
-        )
-        model.add_hook(hook_name, hook)
-
-    return model
-
-
-new_logit_diff = logit_diff(model, ioi_dataset)
-print(f"{new_logit_diff=}")
 
 #%% [markdown] first patch-and-freeze experiments
 # TODO why are there effects that come AFTER the patching?? it's before 36 mins in voko I think
@@ -308,8 +203,8 @@ default_logit_diff = logit_diff(model, ioi_dataset)
 for pos in ["end"]:
     results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
     mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
-    for source_layer in [8]:  # tqdm(range(12)):
-        for source_head_idx in [10]:  # [None] + list(range(12)):
+    for source_layer in tqdm(range(12)):
+        for source_head_idx in list(range(12)):
             for dataset_idx, dataset_name in enumerate(dataset_names):
                 dataset = eval(dataset_name)
 
@@ -370,7 +265,6 @@ for pos in ["end"]:
                             hook_name = hook_template.format(layer)
 
                             if hook_name in receiver_hook_names:
-                                print("Skipped!")
                                 continue
 
                             hook = get_act_hook(
@@ -384,7 +278,6 @@ for pos in ["end"]:
 
                 # we can override the hooks above for the sender heads, though
                 for hook_name, head_idx in sender_hooks:
-                    print("He")
                     assert not torch.allclose(
                         sender_cache[hook_name], target_cache[hook_name]
                     )
@@ -415,7 +308,6 @@ for pos in ["end"]:
                     model.add_hook(hook_name, hook)
                 # END OF FUNCTION CTRL C+V
 
-                print("And now it beign")
                 cur_logit_diff = logit_diff(model, ioi_dataset)
 
                 if source_head_idx is None:
@@ -426,7 +318,6 @@ for pos in ["end"]:
                     results[dataset_idx][source_layer][source_head_idx] = (
                         cur_logit_diff - default_logit_diff
                     )
-                print(f"{cur_logit_diff - default_logit_diff}")
 
                 if source_layer == 11 and source_head_idx == 11:
                     # show attention head results
