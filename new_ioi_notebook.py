@@ -174,7 +174,7 @@ def patch_positions(z, source_act, hook, positions=["end"]):
 
 
 #%% [markdown] first patch-and-freeze experiments
-# TODO why are there effects that come AFTER the patching??
+# TODO why are there effects that come AFTER the patching?? it's before 36 mins in voko I think
 
 dataset_names = [
     # "ioi_dataset",
@@ -183,7 +183,7 @@ dataset_names = [
     # "acca_dataset",
     # "acba_dataset",
     "all_diff_dataset",
-    "totally_diff_dataset",
+    # "totally_diff_dataset",
 ]
 
 results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
@@ -268,5 +268,4 @@ for pos in ["IO", "S", "S2"]:
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
                     fig.show()
-
 # %% [markdown] second patch-and-freeze experiments

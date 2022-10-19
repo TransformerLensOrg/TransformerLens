@@ -473,6 +473,7 @@ def patch_and_freeze(
     target_hooks,
     source_positions=["end"],
     target_positions=["end"],
+    verbose=False,
 ) -> EasyTransformer:
     """
     Specific to IOI.
@@ -492,7 +493,14 @@ def patch_and_freeze(
     # ii)
     def patch_positions(z, source_act, hook, positions=["end"]):
         """Note which datasets used for indexing"""
-        assert z.shape == source_act.shape and len(z.shape) == 3, (z.shape, source_act.shape)
+        if verbose:
+            print(f"Hook 1: {hook.ctx['name']=} {hook.ctx['idx']=}")
+
+        assert z.shape == source_act.shape and len(z.shape) == 3, (
+            z.shape,
+            source_act.shape,
+        )
+
         for pos in positions:
             z[
                 torch.arange(target_dataset.N), target_dataset.word_idx[pos]
@@ -512,6 +520,7 @@ def patch_and_freeze(
             alt_act=i_cache[hook_name],
             idx=head_idx,
             dim=2 if head_idx is not None else None,
+            name=hook_name,
         )
         model.add_hook(hook_name, cur_hook)
     ii_cache = {}
@@ -522,6 +531,8 @@ def patch_and_freeze(
     # iii)
     def patch_positions(z, alt_act, hook, positions=["end"]):
         """Note which datasets used for indexing"""
+        if verbose:
+            print(f"Hook 2: {hook.ctx['name']=} {hook.ctx['idx']=}")
         assert z.shape == alt_act.shape and len(z.shape) == 3, (z.shape, alt_act.shape)
         for pos in positions:
             z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = alt_act[
@@ -529,6 +540,7 @@ def patch_and_freeze(
             ]
         return z
 
+    model.reset_hooks()
     for hook_name, head_idx in target_hooks:
         if head_idx is not None:
             assert ii_cache[hook_name].shape[2] == model.cfg.n_heads, (
@@ -541,6 +553,7 @@ def patch_and_freeze(
             alt_act=ii_cache[hook_name],
             idx=head_idx,
             dim=2 if head_idx is not None else None,
+            name=hook_name,
         )
         model.add_hook(hook_name, cur_hook)
     return model
