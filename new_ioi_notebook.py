@@ -173,6 +173,50 @@ def patch_positions(z, source_act, hook, positions=["end"]):
     return z
 
 
+#%% [markdown] legit patch-and-freeze stuff
+
+
+def indirect_patch_and_freeze(
+    model,
+    source_dataset,
+    target_dataset,
+    ioi_dataset,
+    sender_heads,
+    receiver_heads,
+    max_layer,  # at this point, we just let the model run
+    sender_positions=["end"],
+    receiver_positions=["end"],  # could be Q or K or V...
+    verbose=False,
+) -> EasyTransformer:
+    """
+    i) run on source dist, save activations
+    ii) run on target dist, save activations
+    iii) run on target dist where the relevant activations are patched in
+    """
+
+    max_layer = max(
+        [layer for layer, _ in receiver_heads]
+    )  # we need to patch all the things before this
+    sender_head_names = [x[0] for x in sender_heads]
+    receiver_head_names = [x[0] for x in receiver_heads]
+
+    sender_cache = {}
+    model.reset_hooks()
+    model.cache_some(sender_cache, lambda x: x in sender_head_names)
+    source_logits = model(source_dataset)
+
+    target_cache = {}
+    model.reset_hooks()
+    model.cache_all(target_cache)
+    target_logits = model(target_dataset)
+
+    # for all the Q, K, V things that AREN'T in the receiver_heads, patch these to the source
+    model.reset_hooks()
+    for layer in range(max_layer):
+        for head_idx in range(12):
+            for hook_template in 
+
+
 #%% [markdown] first patch-and-freeze experiments
 # TODO why are there effects that come AFTER the patching?? it's before 36 mins in voko I think
 
@@ -271,3 +315,18 @@ for pos in ["end"]:
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
                     fig.show()
+#%%
+model.reset_hooks()
+
+def print_hook(z, hook):
+    print(hook)
+    return z
+
+def shape_hook(z, hook):
+    print(hook, z.shape)
+    return z
+
+model.add_hook("blocks.4.attn.hook_result", print_hook)
+model.add_hook("blocks.4.attn.hook_result", shape_hook)
+
+logits = model(ioi_dataset)

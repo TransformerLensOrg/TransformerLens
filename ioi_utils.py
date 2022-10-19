@@ -464,7 +464,21 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
     return handle_all_and_std(io_probs, all, std)
 
 
-def patch_and_freeze(
+def indirect_patch_and_freeze(
+    model,
+    source_dataset,
+    target_dataset,
+    ioi_dataset,
+    source_hooks,  # list of [(hook_name, head_idx)] where head_idx is None is the hook is not on a head
+    target_hooks,
+    source_positions=["end"],
+    target_positions=["end"],
+    verbose=False,
+) -> EasyTransformer:
+    pass # see new_ioi_notebook
+
+
+def indirect_patch_and_freeze(
     model,
     source_dataset,
     target_dataset,
@@ -476,7 +490,7 @@ def patch_and_freeze(
     verbose=False,
 ) -> EasyTransformer:
     """
-    Specific to IOI.
+    Probably ignore, Arthur's indirect version
 
     i) save all the activations on `source_dataset` of `source_hook_names`
     ii) run on `target_dataset` but with activations from i) patched in. Save the activations of `source_hook_names`
