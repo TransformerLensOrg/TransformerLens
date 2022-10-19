@@ -194,8 +194,8 @@ mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-for pos in ["IO", "S", "S2"]:
-    # for pos in ["end"]:
+# for pos in ["IO", "S", "S2"]:
+for pos in ["end"]:
     results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
     mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
     for source_layer in tqdm(range(12)):
@@ -268,4 +268,3 @@ for pos in ["IO", "S", "S2"]:
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
                     fig.show()
-# %% [markdown] second patch-and-freeze experiments
