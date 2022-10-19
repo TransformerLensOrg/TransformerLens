@@ -218,9 +218,11 @@ for pos in ["end"]:
                 source_hooks = deepcopy(relevant_hooks)
 
                 # sort out target hooks
-                target_hooks = []
-                for layer, head_idx in [(9, 9)]:  # , (10, 0), (9, 6)]:
-                    target_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+                # target_hooks = []
+                # for layer, head_idx in [(9, 9)]:  # , (10, 0), (9, 6)]:
+                # target_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+
+                target_hooks = deepcopy(source_hooks)
 
                 # do patch and freeze experiments
                 model = patch_and_freeze(
@@ -243,13 +245,14 @@ for pos in ["end"]:
                     results[dataset_idx][source_layer][source_head_idx] = (
                         cur_logit_diff - default_logit_diff
                     )
+                print(f"{cur_logit_diff - default_logit_diff:.3f}")
 
                 if source_layer == 11 and source_head_idx == 11:
                     # show attention head results
                     fname = f"svgs/patch_and_freeze_{dataset_name}_{pos}_{ctime()}_{ri(2134, 123759)}"
                     fig = show_pp(
                         results[dataset_idx].T,
-                        title=f"{fname=} {dataset_name=} {pos=} patching Ks",
+                        title=f"{fname=} {dataset_name=} {pos=} patching NMs",
                         return_fig=True,
                         show_fig=False,
                     )
@@ -260,7 +263,7 @@ for pos in ["end"]:
                     # show mlp results
                     fig = show_pp(
                         mlp_results[dataset_idx].T,
-                        title=f"{dataset_name=} {pos=} patching Ks",
+                        title=f"{dataset_name=} {pos=} patching NMs",
                         return_fig=True,
                         show_fig=False,
                     )
