@@ -186,15 +186,17 @@ dataset_names = [
 ]
 
 results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
+mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
 
 # patch all heads into the name mover input (hopefully find S2 Inhibition)
 
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-for pos in ["IO", "S", "S2"]:
+# for pos in ["IO", "S", "S2"]:
+for pos in ["end"]:
     for source_layer in tqdm(range(12)):
-        for source_head_idx in range(12):
+        for source_head_idx in [None] + list(range(12)):
             for dataset_idx, dataset_name in enumerate(dataset_names):
                 dataset = eval(dataset_name)
 
@@ -211,8 +213,8 @@ for pos in ["IO", "S", "S2"]:
 
                 # sort out target hooks
                 target_hooks = []
-                for layer, head_idx in [(9, 9)]:
-                    target_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+                for layer, head_idx in [(9, 9), (10, 0), (9, 6)]:
+                    target_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
 
                 # do patch and freeze experiments
                 model = patch_and_freeze(
@@ -226,19 +228,39 @@ for pos in ["IO", "S", "S2"]:
                     target_positions=[pos],
                 )
                 cur_logit_diff = logit_diff(model, ioi_dataset)
-                results[dataset_idx][source_layer][source_head_idx] = (
-                    cur_logit_diff - default_logit_diff
-                )
+
+                if source_head_idx is None:
+                    mlp_results[dataset_idx][source_layer] = (
+                        cur_logit_diff - default_logit_diff
+                    )
+                else:
+                    results[dataset_idx][source_layer][source_head_idx] = (
+                        cur_logit_diff - default_logit_diff
+                    )
 
                 if source_layer == 11 and source_head_idx == 11:
+                    # show attention head results
                     fig = show_pp(
                         results[dataset_idx].T,
-                        title=dataset_name,
+                        title=f"{dataset_name=} {pos=} patching Ks",
                         return_fig=True,
                         show_fig=False,
                     )
-                    fig.write_image(f"svgs/patch_and_freeze_at_{ctime()}.svg")
-                    print("And now show 't")
-                    fig = fig.show()
+                    fname = f"patch_and_freeze_{dataset_name}_{pos}_{ctime()}_{ri(2134, 123759)}"
+                    fig.write_image(fname + ".png")
+                    fig.write_image(fname + ".svg")
+                    fig.show()
 
-#%% [markdown] second patch-and-freeze experiments
+                    # show mlp results
+                    fig = show_pp(
+                        mlp_results[dataset_idx].T,
+                        title=f"{dataset_name=} {pos=} patching Ks",
+                        return_fig=True,
+                        show_fig=False,
+                    )
+                    fname = f"patch_and_freeze_{dataset_name}_{pos}_mlp_{ctime()}_{ri(2134, 123759)}"
+                    fig.write_image(fname + ".png")
+                    fig.write_image(fname + ".svg")
+                    fig.show()
+
+# %% [markdown] second patch-and-freeze experiments

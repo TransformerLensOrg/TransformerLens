@@ -527,7 +527,6 @@ def patch_and_freeze(
             ]
         return z
 
-    model.reset_hooks()
     for hook_name, head_idx in target_hooks:
         if head_idx is not None:
             assert ii_cache[hook_name].shape[2] == model.cfg.n_heads, (
