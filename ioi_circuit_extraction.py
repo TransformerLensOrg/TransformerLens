@@ -209,11 +209,11 @@ CIRCUIT = {
         (0, 1),
         (0, 10),
         (3, 0),
-        (7, 1),
+        # (7, 1),
     ],  # unclear exactly what (7,1) does
     "previous token": [  # sheesh
         (2, 2),
-        (2, 9),
+        # (2, 9),
         (4, 11),
         # (4, 3),
         # (4, 7),

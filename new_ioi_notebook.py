@@ -20,8 +20,10 @@
 # ## Imports
 import abc
 from csv import excel
+from imp import init_builtin
 import os
 import time
+from turtle import width
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import torch
@@ -442,7 +444,7 @@ print(new_logit_diff - default_logit_diff)
 from ioi_circuit_extraction import RELEVANT_TOKENS, CIRCUIT
 
 circuit = deepcopy(CIRCUIT)
-circuit["duplicate token"].remove((7, 1))
+# circuit["duplicate token"].remove((7, 1))
 print(f"{circuit=}")
 model.reset_hooks()
 
@@ -551,51 +553,113 @@ def what_class(layer, head, circuit):
 
 # plot the most important heads by
 
-k = 15
-top_heads = max_2d(
-    torch.abs(initial_results), k=k
-)[  # backup results or initial results
-    0
-]  # initial results is the patch with no KOs; direct effect on logits
+for results in [backup_results]:  # backup results or initial results
+    k = 15
+    top_heads = max_2d(torch.abs(results), k=k)[
+        0
+    ]  # initial results is the patch with no KOs; direct effect on logits
 
-exclude_heads = []
-exclude_heads = [
-    (layer_idx, head)
-    for layer_idx in range(12)
-    for head in range(12)
-    if what_class(layer_idx, head, circuit=circuit)
-    not in ["name mover", "negative", "s2 inhibition"]
-]
+    exclude_heads = []
+    exclude_heads = [
+        (layer_idx, head)
+        for layer_idx in range(12)
+        for head in range(12)
+        if what_class(layer_idx, head, circuit=circuit)
+        not in ["name mover", "negative", "s2 inhibition"]
+    ]
 
-fig = go.Figure()
-heights = [
-    -initial_results[layer][head]
-    for layer, head in top_heads
-    if (layer, head) not in exclude_heads
-]
-colors = [
-    cc[what_class(layer, head_idx, circuit=circuit)]
-    for layer, head_idx in top_heads
-    if (layer, head_idx) not in exclude_heads
-]
+    heights = [
+        results[layer][head]
+        for layer, head in top_heads
+        if (layer, head) not in exclude_heads
+    ]
+    colors = [
+        cc[what_class(layer, head_idx, circuit=circuit)]
+        for layer, head_idx in top_heads
+        if (layer, head_idx) not in exclude_heads
+    ]
 
-# plot a bar chart
-fig.add_trace(
-    go.Bar(
-        x=[str(x) for x in top_heads if x not in exclude_heads],
-        y=heights,
-        orientation="v",
-        marker_color=colors,
+    fig = go.Figure()
+    heads = [str(x) for x in top_heads if x not in exclude_heads]
+    fig.add_trace(
+        go.Bar(
+            x=heads,
+            y=heights,
+            orientation="v",
+            marker_color=colors,
+            showlegend=False,
+            width=0.5,
+        )
     )
-)
 
-# stack them
+    used_col = []
+    for i, head in enumerate(heads):  # pretty hacky, adds relevant legend things
+
+        if colors[i] in used_col:
+            continue
+        used_col.append(colors[i])
+
+        fig.add_trace(
+            go.Scatter(
+                x=["(11, 10)"],
+                y=[0],
+                mode="lines",
+                line=dict(color=colors[i], width=10),
+                showlegend=True,
+                name=what_class(*eval(head), circuit=circuit),
+            )
+        )
+
+    # no legend
+    fig.update_layout(showlegend=False)
+    fig.update_layout(
+        title_text=f"Heads with largest absolute effect on logit difference after patching",
+    )
+    if not torch.allclose(results, initial_results):
+        fig.update_layout(
+            title_text=f"Heads with largest absolute effect on logit difference after patching, and KO of [(9, 9), (10, 0), (9, 6)]",
+        )
+        fig.update_layout(showlegend=True)
+        # fig.update_layout(title_text="Initial results")
+        backup_names = []
+        backup_values = []
+
+        for head in circuit["name mover"]:
+            if head in [(9, 9), (9, 6), (10, 0)]:
+                continue
+            backup_names.append(str(head))
+            backup_values.append(initial_results[head[0]][head[1]])
+
+        fig.add_trace(
+            go.Bar(
+                x=backup_names,
+                y=backup_values,
+                orientation="v",
+                marker_color="rgb(27, 300, 119)",
+                name="name mover (before name mover KO)",
+                width=0.5,
+            )
+        )
+
+    # add legend
+    fig.update_layout(
+        # title_text="Heads with largest effect on logits",
+        xaxis_title="(Layer, Head)",
+        yaxis_title="Change in logit difference",
+        legend_title="Head type",
+        # font=dict(family="Courier New, monospace", size=18, color="#7f7f7f"),
+    )
+
+    # relative barmode
+    fig.update_layout(barmode="overlay")
 
 # set y axis range to [-1, 1]
 fig.update_yaxes(range=[-3, 3])
 fname = f"backup_nm_plot_{ctime()}"
 
+# add a legend
+
 # update title
-fig.update_layout(title=fname)
+# fig.update_layout(title=fname)
 fig.write_image(f"svgs/{fname}.svg")
 fig.show()
