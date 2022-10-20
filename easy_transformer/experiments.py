@@ -398,7 +398,9 @@ class EasyAblation(EasyExperiment):
             else:
                 mean = self.get_mean(hook_name)
 
-        abl_hook = get_act_hook(self.cfg.abl_fn, mean, head, dim=dim)
+        abl_hook = get_act_hook(
+            self.cfg.abl_fn, mean, head, dim=dim
+        )  # , message="abl")
         return (hook_name, abl_hook)
 
     def get_all_mean(self):
@@ -570,7 +572,7 @@ class EasyPatching(EasyExperiment):
         return cache[hook_name]
 
 
-def get_act_hook(fn, alt_act=None, idx=None, dim=None, name=None):
+def get_act_hook(fn, alt_act=None, idx=None, dim=None, name=None, message=None):
     """Return an hook that modify the activation on the fly. alt_act (Alternative activations) is a tensor of the same shape of the z.
     E.g. It can be the mean activation or the activations on other dataset."""
     if alt_act is not None:
@@ -579,6 +581,9 @@ def get_act_hook(fn, alt_act=None, idx=None, dim=None, name=None):
             hook.ctx["idx"] = idx
             hook.ctx["dim"] = dim
             hook.ctx["name"] = name
+
+            if message is not None:
+                print(message)
 
             if (
                 dim is None
@@ -598,6 +603,9 @@ def get_act_hook(fn, alt_act=None, idx=None, dim=None, name=None):
             hook.ctx["idx"] = idx
             hook.ctx["dim"] = dim
             hook.ctx["name"] = name
+
+            if message is not None:
+                print(message)
 
             if dim is None:
                 return fn(z, hook)

@@ -333,6 +333,7 @@ def do_circuit_extraction(
 
     if mean_dataset is None:
         mean_dataset = ioi_dataset
+
     config = AblationConfig(
         abl_type="custom",
         abl_fn=ablation,

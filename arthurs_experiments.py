@@ -2201,3 +2201,4 @@ fig.update_layout(
 )
 
 fig.show()
+#%% [markdown] some profiling things

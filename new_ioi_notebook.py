@@ -231,7 +231,9 @@ def direct_patch_and_freeze(
         model.add_hook(*hook)
     model.cache_some(sender_cache, lambda x: x in sender_hook_names)
     # print(f"{sender_hook_names=}")
-    source_logits = model(source_dataset.text_prompts)
+    source_logits = model(
+        source_dataset.text_prompts
+    )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
 
     target_cache = {}
     model.reset_hooks()
@@ -262,11 +264,8 @@ def direct_patch_and_freeze(
                     name=hook_name,
                 )
                 model.add_hook(hook_name, hook)
-    for (
-        hook
-    ) in (
-        extra_hooks
-    ):  # ughhh, think that this is what we want, this should override the QKV above
+    for hook in extra_hooks:
+        # ughhh, think that this is what we want, this should override the QKV above
         model.add_hook(*hook)
 
     # we can override the hooks above for the sender heads, though
@@ -291,7 +290,11 @@ def direct_patch_and_freeze(
 
     # patch these values in
     model.reset_hooks()
-    model = model_fn(model)
+    for hook in extra_hooks:
+        model.add_hook(
+            *hook
+        )  # ehh probably doesn't actually matter cos end thing hooked
+
     hooks = []
     for hook_name, head_idx in receiver_hooks:
         hook = get_act_hook(
@@ -324,33 +327,34 @@ dataset_names = [
     # "totally_diff_dataset",
 ]
 
-results = torch.zeros(size=(12, 12))
-mlp_results = torch.zeros(size=(12, 1))
-
 # patch all heads into the name mover input (hopefully find S2 Inhibition)
 
-model.reset_hooks()
-default_logit_diff = logit_diff(model, ioi_dataset)
-
-exclude_heads = [(layer, head_idx)]
-
+exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
+for head in [(9, 9), (9, 6), (10, 0)]:
+    exclude_heads.remove(head)
 extra_hooks = do_circuit_extraction(
     model=model,
-    heads_to_keep=get_heads_circuit(
-        ioi_dataset=ioi_dataset,
-        circuit={"name mover": [(9, 9), (9, 6), (10, 0)]},
-    ),
+    heads_to_keep={},  # get_heads_circuit(
+    #     ioi_dataset=ioi_dataset,
+    #     circuit={"name mover": [(9, 9), (9, 6), (10, 0)]},
+    # ),
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
     mean_dataset=all_diff_dataset,
     exclude_heads=exclude_heads,
+    return_hooks=True,
 )
+
+model.reset_hooks()
+for hook in extra_hooks:
+    model.add_hook(*hook)
+default_logit_diff = logit_diff(model, ioi_dataset)
 
 # for pos in ["S+1", "S", "IO", "S2", "end"]:
 for pos in ["end"]:
     print(pos)
-    results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
-    mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
+    results = torch.zeros(size=(12, 12))
+    mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
         for source_head_idx in list(range(12)):
             model.reset_hooks()
@@ -413,6 +417,26 @@ for pos in ["end"]:
                 # fig.write_image(fname + ".png")
                 # fig.write_image(fname + ".svg")
                 # fig.show()
+#%%
+
+extra_hooks = do_circuit_extraction(
+    model=model,
+    heads_to_keep={},
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=all_diff_dataset,
+    exclude_heads=exclude_heads,
+    return_hooks=True,
+)
+
+model.reset_hooks()
+default_logit_diff = logit_diff(model, ioi_dataset)
+model.reset_hooks()
+for hook in extra_hooks:
+    model.add_hook(*hook)
+new_logit_diff = logit_diff(model, ioi_dataset)
+print(new_logit_diff - default_logit_diff)
+
 #%% [markdown] hack some LD and IO probs stuff
 
 from ioi_circuit_extraction import RELEVANT_TOKENS, CIRCUIT
