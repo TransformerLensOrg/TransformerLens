@@ -97,6 +97,7 @@ class EasyTransformer(HookedRootModule):
                 self.tokenizer is not None
             ), "Must provide a tokenizer if d_vocab is not provided"
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+            self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
@@ -293,6 +294,8 @@ class EasyTransformer(HookedRootModule):
 
         if model_name.endswith("-old"):
             return cls.from_pretrained_solu_old(model_name, fold_ln, center_writing_weights, center_unembed, **model_kwargs)
+        elif model_name == "attn-only-2l-induction-demo":
+            return cls.from_pretrained_attn_only_old(center_unembed, **model_kwargs)
 
         # hf_model_name is the model's name on HuggingFace
         if model_name in cls.PRETRAINED_MODEL_NAMES_DICT:
@@ -370,15 +373,15 @@ class EasyTransformer(HookedRootModule):
         """ 
         A helper function to load in SoLU models trained with my original code
 
-        Model name format: solu-{layer_number}l-old
+        Model name format: solu-{n_layers}l-old
+
+        These models were all trained on 15B tokens of the Pile
         """
         layer_number = int(re.match("solu-(\d*)l-old", model_name, re.IGNORECASE).group(1))
         api = HfApi()
         repo_names = {1:'SoLU_1L_v9_old', 2:'SoLU_2L_v10_old', 4:'SoLU_4L_v11_old', 6:'SoLU_6L_v13_old', 8:'SoLU_8L_v21_old', 10:'SoLU_10L_v22_old'}
         repo_name = f"NeelNanda/{repo_names[layer_number]}"
-        # if layer_number==2:
-        #     file_name = "SoLU_v10_2L_old"
-        # else:
+        
         files = api.list_repo_files(repo_name)
         model_files = [f for f in files if "final" in f]
         file_name = model_files[0]
@@ -386,16 +389,19 @@ class EasyTransformer(HookedRootModule):
         # Early models have left facing W_pos
         reverse_pos = layer_number <= 8
 
-        # Models prior to 8L have left facing everything (8L has JUST left facing W_pos - sorry!)
+        # Models prior to 8L have left facing everything (8L has JUST left facing W_pos - sorry! Stupid bug)
         reverse_weights = layer_number <= 6
 
+        # Download weights from HuggingFace. AutoModel is not supported for these models.
         state_dict = download_file_from_hf(repo_name, file_name, force_is_torch=True)
+        # String munging to get the weights correctly named
         new_state_dict = {}
         for k, v in state_dict.items():
             k = k.replace("norm", "ln")
             if k.startswith("ln."):
                 k = k.replace("ln.", "ln_final.")
             new_state_dict[k] = v
+        # Dumb bug where early models were trained with RMS Norm not LayerNorm pre the final layer
         if "ln_final.b" not in new_state_dict:
             final_rms = True
         else:
@@ -418,14 +424,45 @@ class EasyTransformer(HookedRootModule):
             'act_fn': 'solu_ln',
             'final_rms': final_rms,
             'tokenizer_name': 'EleutherAI/gpt-neox-20b',
-            'normalization_type': 'LNPre'
+            'normalization_type': 'LNPre' if fold_ln else "LN"
         }
 
         model = cls(config, **model_kwargs)
         model.load_and_process_state_dict(state_dict, fold_ln, center_writing_weights, center_unembed)
         return model
+    
+    @classmethod
+    def from_pretrained_attn_only_old(cls, center_unembed = True, **model_kwargs):
+        """ 
+        A helper function to load in a 2L512W attn-only model trained on 6B tokens of the Pile - used in an induction heads tutorial.
 
+        The model has no LN, and was trained with a shortformer variant - positional embeddings are only added in to the residual stream when input to the queries and keys and NOT when input to values (ie is never actually in the residual stream and cannot be moved between positions)
 
+        Model name is attn-only-2l-induction-demo
+        """
+
+        # Download model weights from HuggingFace
+        repo_name = f"NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr"
+        file_name = "model_final.pth"
+        state_dict = download_file_from_hf(repo_name, file_name, force_is_torch=True)
+
+        # This model was trained with EasyTransformer, so weights already have the right format!
+        config = {
+            'model_name': 'attn-only-2l-induction-demo',
+            'n_layers': 2,
+            'd_vocab': state_dict['embed.W_E'].size(0),
+            'd_model': 512,
+            'd_head': 64,
+            'n_ctx': 1024,
+            'tokenizer_name': 'EleutherAI/gpt-neox-20b',
+            'normalization_type': None,
+            'positional_embedding_type':'shortformer',
+            'attn_only': True,
+        }
+
+        model = cls(config, **model_kwargs)
+        model.load_and_process_state_dict(state_dict, fold_ln=False, center_writing_weights=False, center_unembed=center_unembed)
+        return model
 
 
     @classmethod

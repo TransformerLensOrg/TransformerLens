@@ -35,6 +35,7 @@ VALID_PRETRAINED_MODEL_NAMES = set(
         "solu-6l-old",
         "solu-8l-old",
         "solu-10l-old",
+        "attn-only-2l-induction-demo",
     ]
 )
 
