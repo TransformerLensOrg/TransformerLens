@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import random
 import numpy as np
-
+import logging
 
 @dataclass
 class EasyTransformerConfig:
@@ -17,11 +17,10 @@ class EasyTransformerConfig:
     Args:
         d_model (int): The dimensionality of the embeddings.
         d_head (int): The dimensionality of each attention head.
-        n_heads (int): The number of attention heads.
         n_layers (int): The number of attention layers.
         n_ctx (int): The maximum sequence length.
-        d_mlp (int, *optional*): The dimensionality of the feedforward mlp network. Must 
-            be set unless using an attn-only model.
+        n_heads (int, *optional*): The number of attention heads. If not specified, will be set to d_model // d_head.
+        d_mlp (int, *optional*): The dimensionality of the feedforward mlp network. Defaults to 4 * d_model, and in an attn-only model is None.
         d_vocab (int): The size of the vocabulary. If not set, will be automatically set 
             from the tokenizer's vocab size.
         act_fn (str, *optional"): The activation function to use. Always lowercase. 
@@ -75,6 +74,7 @@ class EasyTransformerConfig:
             inputs to the keys and the queries (ie key = W_K(res_stream + pos_embed), but values and 
             MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
             supported. Defaults to 'standard'.
+        final_rms (bool): Whether to replace the final normalization (just before the unembed) with RMSNorm (ie no centering or bias, just scaling + weights). Only included because of a dumb bug in my original SoLU code. Defaults to False.
         d_vocab_out (int, *optional*): The size of the output vocabulary. If not set, will be equal to d_vocab. Mainly useful for algorithmic tasks where the input and output vocabularies may be different.
     """
 
@@ -82,8 +82,8 @@ class EasyTransformerConfig:
     d_model: int
     n_ctx: int
     d_head: int
-    n_heads: int
     model_name: str = "custom"
+    n_heads: Optional[int] = None
     d_mlp: Optional[int] = None
     act_fn: Optional[str] = None
     d_vocab: Optional[int] = None
@@ -106,10 +106,17 @@ class EasyTransformerConfig:
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
     positional_embedding_type: str = 'standard'
+    final_rms: bool = False
     d_vocab_out: Optional[int] = None
 
     def __post_init__(self):
-        assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
+        if self.n_heads is None:
+            self.n_heads = self.d_model // self.d_head
+        
+
+        if not self.d_model == (self.n_heads * self.d_head):
+            logging.warning(f"d_model={self.d_model} is not divisible by n_heads={self.n_heads} * d_head={self.d_head}")
+
         if self.seed is not None:
             set_seed_everywhere(self.seed)
         if self.use_local_attn:
@@ -120,7 +127,9 @@ class EasyTransformerConfig:
                 self.attn_types is not None
             ), "attn_types must be specified for local attention"
         if not self.attn_only:
-            assert self.d_mlp is not None, "d_mlp must be specified for non-attn-only models"
+            if self.d_mlp is None:
+                # For some reason everyone hard codes in this hyper-parameter!
+                self.d_mlp = self.d_model * 4
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
         if self.initializer_range < 0:
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)

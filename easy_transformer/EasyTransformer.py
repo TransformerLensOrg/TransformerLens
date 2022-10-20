@@ -1,5 +1,5 @@
-from mimetypes import init
 from typing import Callable, Union, List, Tuple, Dict, Optional
+from mimetypes import init
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +7,8 @@ import numpy as np
 import einops
 import logging
 import tqdm.auto as tqdm
-
+import re
+from huggingface_hub import HfApi
 from functools import *
 
 from transformers import (
@@ -27,7 +28,8 @@ from easy_transformer.caching import (
 
 from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
-from easy_transformer.utils import lm_cross_entropy_loss, sample_logits
+from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf
+
 
 
 """
@@ -110,10 +112,16 @@ class EasyTransformer(HookedRootModule):
         )
         
         if self.cfg.normalization_type == "LN":
-            self.ln_final = LayerNorm(self.cfg)
+            if self.cfg.final_rms:
+                self.ln_final = RMSNorm(self.cfg)
+            else:
+                self.ln_final = LayerNorm(self.cfg)
         elif self.cfg.normalization_type == "LNPre":
             # We've folded in LayerNorm weights, so just need the center + scale parts
-            self.ln_final = LayerNormPre(self.cfg)
+            if self.cfg.final_rms:
+                self.ln_final = RMSNormPre(self.cfg)
+            else:
+                self.ln_final = LayerNormPre(self.cfg)
         elif self.cfg.normalization_type is None:
             # If it's None, don't create either layer
             pass
@@ -263,7 +271,7 @@ class EasyTransformer(HookedRootModule):
                         checkpoint = None,
                         hf_model = None,
                         device = None,
-                        **kwargs):
+                        **model_kwargs):
         """Class method to load a pretrained model from HuggingFace and to automatically convert and load those weights into EasyTransformer format.
         
         See fold_layer_norm for more details on the folding and centering.
@@ -282,6 +290,9 @@ class EasyTransformer(HookedRootModule):
         assert (
             (model_name in cls.VALID_PRETRAINED_MODEL_NAMES) or (model_name in cls.PRETRAINED_MODEL_NAMES_DICT)
         ), f"Invalid model name: {model_name}. Valid model names are: {cls.VALID_PRETRAINED_MODEL_NAMES}"
+
+        if model_name.endswith("-old"):
+            return cls.from_pretrained_solu_old(model_name, fold_ln, center_writing_weights, center_unembed, **model_kwargs)
 
         # hf_model_name is the model's name on HuggingFace
         if model_name in cls.PRETRAINED_MODEL_NAMES_DICT:
@@ -327,7 +338,7 @@ class EasyTransformer(HookedRootModule):
         tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer_name)
         tokenizer.pad_token = tokenizer.eos_token
 
-        model = cls(cfg, **kwargs)
+        model = cls(cfg, **model_kwargs)
 
         # Load model weights, and fold in layer norm weights
         if model_family == "gpt2":
@@ -348,6 +359,74 @@ class EasyTransformer(HookedRootModule):
                         center_unembed=center_unembed,
                         move_dict_to_device=True)
         return model
+    
+    @classmethod
+    def from_pretrained_solu_old(cls, 
+                                model_name: str, 
+                                fold_ln = True, 
+                                center_writing_weights = True, 
+                                center_unembed = True,
+                                **model_kwargs):
+        """ 
+        A helper function to load in SoLU models trained with my original code
+
+        Model name format: solu-{layer_number}l-old
+        """
+        layer_number = int(re.match("solu-(\d*)l-old", model_name, re.IGNORECASE).group(1))
+        api = HfApi()
+        repo_names = {1:'SoLU_1L_v9_old', 2:'SoLU_2L_v10_old', 4:'SoLU_4L_v11_old', 6:'SoLU_6L_v13_old', 8:'SoLU_8L_v21_old', 10:'SoLU_10L_v22_old'}
+        repo_name = f"NeelNanda/{repo_names[layer_number]}"
+        # if layer_number==2:
+        #     file_name = "SoLU_v10_2L_old"
+        # else:
+        files = api.list_repo_files(repo_name)
+        model_files = [f for f in files if "final" in f]
+        file_name = model_files[0]
+        
+        # Early models have left facing W_pos
+        reverse_pos = layer_number <= 8
+
+        # Models prior to 8L have left facing everything (8L has JUST left facing W_pos - sorry!)
+        reverse_weights = layer_number <= 6
+
+        state_dict = download_file_from_hf(repo_name, file_name, force_is_torch=True)
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            k = k.replace("norm", "ln")
+            if k.startswith("ln."):
+                k = k.replace("ln.", "ln_final.")
+            new_state_dict[k] = v
+        if "ln_final.b" not in new_state_dict:
+            final_rms = True
+        else:
+            final_rms = False
+        
+        if reverse_pos:
+            new_state_dict["pos_embed.W_pos"] = new_state_dict["pos_embed.W_pos"].T
+        if reverse_weights:
+            for k, v in new_state_dict.items():
+                if "W_" in k and "W_pos" not in k:
+                    new_state_dict[k] = v.transpose(-2, -1)
+        state_dict = new_state_dict
+
+        config = {
+            'n_layers': layer_number,
+            'd_vocab': new_state_dict['embed.W_E'].size(0),
+            'd_model': new_state_dict['embed.W_E'].size(1),
+            'd_head': 64,
+            'n_ctx': 1024,
+            'act_fn': 'solu_ln',
+            'final_rms': final_rms,
+            'tokenizer_name': 'EleutherAI/gpt-neox-20b',
+            'normalization_type': 'LNPre'
+        }
+
+        model = cls(config, **model_kwargs)
+        model.load_and_process_state_dict(state_dict, fold_ln, center_writing_weights, center_unembed)
+        return model
+
+
+
 
     @classmethod
     def get_model_family(cls, model_name):
@@ -543,11 +622,19 @@ class EasyTransformer(HookedRootModule):
             state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[f"blocks.{l}.mlp.b_in"] + (state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.b"][:, None]).sum(-2)
             state_dict[f"blocks.{l}.mlp.W_in"] = state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"][:, None]
             del state_dict[f"blocks.{l}.ln1.w"], state_dict[f"blocks.{l}.ln1.b"], state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
+
+            if self.cfg.act_fn.startswith("solu"):
+                # Fold ln3 into activation
+                state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[f"blocks.{l}.mlp.b_out"] + (state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]).sum(-2)
+                state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
+                del state_dict[f"blocks.{l}.mlp.ln.w"], state_dict[f"blocks.{l}.mlp.ln.b"]
         # Fold ln_final into Unembed
-        # We assume there is no existing bias in the unembed layer
-        state_dict[f"unembed.b_U"] = state_dict[f"unembed.b_U"] + (state_dict[f"unembed.W_U"] * state_dict[f"ln_final.b"][:, None]).sum(dim=-2)
+        if not self.cfg.final_rms:
+            # Dumb bug from my old SoLU training code, some models have RMSNorm instead of LayerNorm pre unembed.
+            state_dict[f"unembed.b_U"] = state_dict[f"unembed.b_U"] + (state_dict[f"unembed.W_U"] * state_dict[f"ln_final.b"][:, None]).sum(dim=-2)
+            del state_dict[f"ln_final.b"]
         state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
-        del state_dict[f"ln_final.w"], state_dict[f"ln_final.b"]
+        del state_dict[f"ln_final.w"]
         return state_dict
     
     
@@ -694,121 +781,3 @@ class EasyTransformer(HookedRootModule):
 
         else:
             return tokens
-
-    # def greedy_search(
-    #     self,
-    #     tokens: torch.Tensor,
-    #     max_new_tokens: int,
-    #     stop_at_eos: bool = True,
-    #     pad_token_id: Optional[int] = None,
-    #     eos_token_id: Optional[int] = None,
-    #     past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
-    #     return_type: Optional[str] = None,
-    # ):
-    #     """
-    #     Greedily sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
-    #     Args:
-    #         tokens (torch.Tensor): A batch of tokens ([batch, pos])
-    #         max_new_tokens (int): Maximum number of tokens to generate
-    #         stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
-    #         pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
-    #         eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
-    #         past_kv_cache (EasyTransformerKeyValueCache, *optional*): Cache to use for past keys and values for the model. If None, no cache is used
-    #         return_type (str, *optional*): The type of the output to return - either a string (str), a list of strings (list), or a tensor of tokens (tensor). If None, defaults to tensor.
-    #     Returns:
-    #         outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
-    #     """
-    #     B, S = tokens.shape
-    #     outputs = tokens
-    #     unfinished_sequences = tokens.new(tokens.shape[0]).fill_(1)
-
-    #     if stop_at_eos and pad_token_id is None:
-    #         assert (
-    #             self.tokenizer is not None and self.tokenizer.pad_token_id is not None
-    #         ), "Must pass a pad_token_id if stop_at_eos is True and tokenizer is None or has no pad_token_id"
-    #         pad_token_id = self.tokenizer.pad_token_id
-    #     if stop_at_eos and eos_token_id is None:
-    #         assert (
-    #             self.tokenizer is not None and self.tokenizer.eos_token_id is not None
-    #         ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-    #         eos_token_id = self.tokenizer.eos_token_id
-
-    #     for _ in tqdm.tqdm(range(max_new_tokens)):
-    #         logits = self(tokens, return_type="logits", past_kv_cache=past_kv_cache)
-    #         next_tokens = torch.argmax(logits[:, -1, :], dim=-1)
-    #         if stop_at_eos:
-    #             next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
-    #                 1 - unfinished_sequences
-    #             )
-    #             unfinished_sequences.mul_((next_tokens != eos_token_id).long())
-    #         outputs = torch.cat([outputs, next_tokens.unsqueeze(-1)], dim=-1)
-    #         if past_kv_cache is not None:
-    #             tokens = next_tokens.unsqueeze(-1)
-    #         else:
-    #             tokens = outputs
-
-    #     if return_type is not None and return_type == "str":
-    #         assert self.tokenizer is not None
-    #         outputs = self.tokenizer.batch_decode(outputs)[0]
-    #     elif return_type is not None and return_type == "list":
-    #         assert self.tokenizer is not None
-    #         outputs = self.tokenizer.batch_decode(outputs)
-
-    #     return outputs
-
-    def sample(
-        self,
-        tokens: torch.Tensor,
-        max_new_tokens: int,
-        stop_at_eos: bool = True,
-        eos_token_id: Optional[int] = None,
-        temperature: float = 1.0,
-        top_k: Optional[int] = None,
-        top_p: float = 1.0,
-        freq_penalty: float = 0.0,
-        cache: Optional[EasyTransformerKeyValueCache] = None,
-        return_type: Optional[str] = None,
-    ):
-        """
-        Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
-
-        If temperature == 0.0, greedy search is used instead.
-
-        Args:
-            tokens (torch.Tensor): A batch of tokens ([batch, pos])
-            max_new_tokens (int): Maximum number of tokens to generate
-            stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
-            pad_token_id (int, *optional*): The token ID to use for padding. If None, use the tokenizer's pad_token_id - required if using stop_at_eos
-            eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
-            top_k (int): Number of tokens to sample from. If None, sample from all tokens
-            top_p (float): Probability mass to sample from. If 1.0, sample from all tokens
-            temperature (float): Temperature for sampling. Higher values will make the model more random
-            freq_penalty (float): Frequency penalty for sampling. Higher values will make the model more random
-            cache (EasyTransformerKeyValueCache, *optional*): Cache to use for the model. If None, no cache is used
-            return_type (str, *optional*): If "str", return a string. If "list", return a list of strings. If None, return a tensor
-        Returns:
-            outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
-        """
-        B, S = tokens.shape
-        outputs = tokens
-
-        if stop_at_eos and pad_token_id is None:
-            assert (
-                self.tokenizer is not None and self.tokenizer.pad_token_id is not None
-            ), "Must pass a pad_token_id if stop_at_eos is True and tokenizer is None or has no pad_token_id"
-            pad_token_id = self.tokenizer.pad_token_id
-        if stop_at_eos and eos_token_id is None:
-            assert (
-                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
-            ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-            eos_token_id = self.tokenizer.eos_token_id
-
-
-        if return_type is not None and return_type == "str":
-            assert self.tokenizer is not None
-            outputs = self.tokenizer.batch_decode(outputs)[0]
-        elif return_type is not None and return_type == "list":
-            assert self.tokenizer is not None
-            outputs = self.tokenizer.batch_decode(outputs)
-
-        return outputs
