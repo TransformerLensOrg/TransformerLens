@@ -162,6 +162,20 @@ ABC_dataset = IOIDataset(prompt_type="ABC", N=N, tokenizer=model.tokenizer)
 BAC_dataset = IOIDataset("BAC", N, model.tokenizer)
 mixed_dataset = IOIDataset("ABC mixed", N, model.tokenizer)
 
+baba_dataset = IOIDataset(N=100, prompt_type="BABA")
+abba_dataset = IOIDataset(N=100, prompt_type="ABBA")
+
+baba_all_diff = (
+    baba_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=baba_dataset.word_idx)
+)
+abba_all_diff = (
+    abba_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=abba_dataset.word_idx)
+)
+
 circuit = deepcopy(CIRCUIT)
 
 #%%
@@ -190,6 +204,7 @@ def direct_patch_and_freeze(
     max_layer,
     positions=["end"],
     verbose=False,
+    return_hooks=False,
 ):
     """
     Patch in the effect of `sender_heads` on `receiver_hooks` only
@@ -261,6 +276,7 @@ def direct_patch_and_freeze(
 
     # patch these values in
     model.reset_hooks()
+    hooks = []
     for hook_name, head_idx in receiver_hooks:
         hook = get_act_hook(
             partial(patch_positions, positions=positions),
@@ -269,8 +285,14 @@ def direct_patch_and_freeze(
             dim=2 if head_idx is not None else None,
             name=hook_name,
         )
-        model.add_hook(hook_name, hook)
-    return model
+        hooks.append((hook_name, hook))
+
+    if return_hooks:
+        return hooks
+    else:
+        for hook_name, hook in hooks:
+            model.add_hook(hook_name, hook)
+        return model
 
 
 #%% [markdown] first patch-and-freeze experiments
@@ -294,7 +316,8 @@ mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-for pos in ["S+1", "IO", "S2", "end", "S"]:
+# for pos in ["S+1", "S", "IO", "S2", "end"]:
+for pos in ["end"]:
     print(pos)
     results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
     mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
@@ -306,10 +329,11 @@ for pos in ["S+1", "IO", "S2", "end", "S"]:
 
                 receiver_hooks = []
 
-                for layer, head_idx in circuit["s2 inhibition"]:
+                for layer, head_idx in circuit["name mover"]:
                     # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
-                    receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+                    # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
                     # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+                    receiver_hooks.append(("blocks.11.hook_resid_post", None))
 
                 model = direct_patch_and_freeze(
                     model=model,
@@ -321,6 +345,7 @@ for pos in ["S+1", "IO", "S2", "end", "S"]:
                     max_layer=12,
                     positions=[pos],
                     verbose=False,
+                    # return_hooks=True,
                 )
 
                 cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -344,7 +369,9 @@ for pos in ["S+1", "IO", "S2", "end", "S"]:
                         show_fig=False,
                     )
 
-                    fig.write_image(f"svgs/patch_and_freezes/TO_SINHIB_V_{pos}.png")
+                    fig.write_image(
+                        f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
+                    )
 
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
@@ -369,25 +396,30 @@ circuit = deepcopy(CIRCUIT)
 print(f"{circuit=}")
 model.reset_hooks()
 
-# RELEVANT_TOKENS[]
-
-for dataset in [ioi_dataset, abba_dataset, baba_dataset]:
+for dataset_name, mean_dataset in [
+    ("ioi_dataset", all_diff_dataset),
+    ("abba_dataset", abba_all_diff),
+    ("baba_dataset", baba_all_diff),
+]:
+    print(dataset_name)
+    dataset = eval(dataset_name)
     for make_circuit in [False, True]:
         model.reset_hooks()
 
         if make_circuit:
-            heads_circuit = get_heads_circuit(ioi_dataset, circuit=circuit)
+            heads_circuit = get_heads_circuit(ioi_dataset=dataset, circuit=circuit)
             model, _ = do_circuit_extraction(
                 model=model,
                 heads_to_keep=heads_circuit,
                 mlps_to_remove={},
-                ioi_dataset=ioi_dataset,
-                mean_dataset=all_diff_dataset,
+                ioi_dataset=dataset,
+                mean_dataset=mean_dataset,
             )
 
-        cur_logit_diff = logit_diff(model, ioi_dataset)
-        cur_io_probs = probs(model, ioi_dataset)
+        cur_logit_diff = logit_diff(model, dataset)
+        cur_io_probs = probs(model, dataset)
         print(f"{make_circuit=} {cur_logit_diff=} {cur_io_probs=}")
+    print()
 
 #%% [markdown] brief dive into 7.1, ignore (this cell vizualizes the average attention)
 ys = []

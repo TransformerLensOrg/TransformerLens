@@ -204,9 +204,24 @@ CIRCUIT = {
     ],
     "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],  # , (7, 1)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0), (7, 1)], # unclear exactly what (7,1) does
-    "previous token": [(2, 2), (2, 9), (4, 11)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
+    "duplicate token": [
+        (0, 1),
+        (0, 10),
+        (3, 0),
+        (7, 1),
+    ],  # unclear exactly what (7,1) does
+    "previous token": [  # sheesh
+        (2, 2),
+        (2, 9),
+        (4, 11),
+        (4, 3),
+        (4, 7),
+        (5, 6),
+        (3, 3),
+        (3, 7),
+        (3, 6),
+    ],
 }
 
 ARTHUR_CIRCUIT = deepcopy(CIRCUIT)
@@ -225,6 +240,8 @@ for head in CIRCUIT["duplicate token"]:
 
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1"]
+
+# RELEVANT_TOKENS[(0, 1)] = ["S2", "S+1"]
 
 warnings.warn("Arthur has messed with the circuit.")
 
