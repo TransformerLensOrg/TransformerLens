@@ -206,7 +206,7 @@ def direct_patch_and_freeze(
     positions=["end"],
     verbose=False,
     return_hooks=False,
-    model_fn=lambda model: model,  # in order to do circuit extraction
+    extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
 ):
     """
     Patch in the effect of `sender_heads` on `receiver_hooks` only
@@ -227,14 +227,16 @@ def direct_patch_and_freeze(
 
     sender_cache = {}
     model.reset_hooks()
-    model = model_fn(model)
+    for hook in extra_hooks:
+        model.add_hook(*hook)
     model.cache_some(sender_cache, lambda x: x in sender_hook_names)
     # print(f"{sender_hook_names=}")
     source_logits = model(source_dataset.text_prompts)
 
     target_cache = {}
     model.reset_hooks()
-    model = model_fn(model)
+    for hook in extra_hooks:
+        model.add_hook(*hook)
     model.cache_all(target_cache)
     target_logits = model(target_dataset.text_prompts)
 
@@ -260,7 +262,12 @@ def direct_patch_and_freeze(
                     name=hook_name,
                 )
                 model.add_hook(hook_name, hook)
-    model = model_fn(model)  # ughhh, this is actually what we want for the model
+    for (
+        hook
+    ) in (
+        extra_hooks
+    ):  # ughhh, think that this is what we want, this should override the QKV above
+        model.add_hook(*hook)
 
     # we can override the hooks above for the sender heads, though
     for hook_name, head_idx in sender_hooks:
@@ -317,13 +324,27 @@ dataset_names = [
     # "totally_diff_dataset",
 ]
 
-results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
-mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
+results = torch.zeros(size=(12, 12))
+mlp_results = torch.zeros(size=(12, 1))
 
 # patch all heads into the name mover input (hopefully find S2 Inhibition)
 
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
+
+exclude_heads = [(layer, head_idx)]
+
+extra_hooks = do_circuit_extraction(
+    model=model,
+    heads_to_keep=get_heads_circuit(
+        ioi_dataset=ioi_dataset,
+        circuit={"name mover": [(9, 9), (9, 6), (10, 0)]},
+    ),
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=all_diff_dataset,
+    exclude_heads=exclude_heads,
+)
 
 # for pos in ["S+1", "S", "IO", "S2", "end"]:
 for pos in ["end"]:
@@ -332,92 +353,66 @@ for pos in ["end"]:
     mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
     for source_layer in tqdm(range(12)):
         for source_head_idx in list(range(12)):
-            for dataset_idx, dataset_name in enumerate(dataset_names):
-                dataset = eval(dataset_name)
-                model.reset_hooks()
+            model.reset_hooks()
+            receiver_hooks = []
+            # for layer, head_idx in circuit["name mover"]:
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+            receiver_hooks.append(("blocks.11.hook_resid_post", None))
 
-                receiver_hooks = []
+            model = direct_patch_and_freeze(
+                model=model,
+                source_dataset=all_diff_dataset,
+                target_dataset=ioi_dataset,
+                ioi_dataset=ioi_dataset,
+                sender_heads=[(source_layer, source_head_idx)],
+                receiver_hooks=receiver_hooks,
+                max_layer=12,
+                positions=[pos],
+                verbose=False,
+                return_hooks=False,
+                extra_hooks=extra_hooks,
+            )
 
-                # for layer, head_idx in circuit["name mover"]:
-                # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
-                # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
-                # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
-                receiver_hooks.append(("blocks.11.hook_resid_post", None))
+            cur_logit_diff = logit_diff(model, ioi_dataset)
 
-                exclude_heads = [
-                    (layer, head_idx) for layer in range(12) for head_idx in range(12)
-                ]
-                for head in [(9, 9), (9, 6), (10, 0)]:
-                    exclude_heads.remove(head)
-
-                # hooks # add the hooks functionality... to speed things up
-
-                model_fn = lambda model: do_circuit_extraction(
-                    model=model,
-                    heads_to_keep=get_heads_circuit(
-                        ioi_dataset=ioi_dataset,
-                        circuit={"name mover": [(9, 9), (9, 6), (10, 0)]},
-                    ),
-                    mlps_to_remove={},
-                    ioi_dataset=ioi_dataset,
-                    mean_dataset=dataset,
-                    exclude_heads=exclude_heads,
-                )[0]
-
-                model = direct_patch_and_freeze(
-                    model=model,
-                    source_dataset=all_diff_dataset,
-                    target_dataset=ioi_dataset,
-                    ioi_dataset=ioi_dataset,
-                    sender_heads=[(source_layer, source_head_idx)],
-                    receiver_hooks=receiver_hooks,
-                    max_layer=12,
-                    positions=[pos],
-                    verbose=False,
-                    return_hooks=False,
-                    model_fn=model_fn,
+            if source_head_idx is None:
+                mlp_results[source_layer] = cur_logit_diff - default_logit_diff
+            else:
+                results[source_layer][source_head_idx] = (
+                    cur_logit_diff - default_logit_diff
                 )
 
-                cur_logit_diff = logit_diff(model, ioi_dataset)
+            if source_layer == 11 and source_head_idx == 11:
+                # show attention head results
+                fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    results.T,
+                    title=f"{fname=} {pos=} patching NMs",
+                    return_fig=True,
+                    show_fig=False,
+                )
 
-                if source_head_idx is None:
-                    mlp_results[dataset_idx][source_layer] = (
-                        cur_logit_diff - default_logit_diff
-                    )
-                else:
-                    results[dataset_idx][source_layer][source_head_idx] = (
-                        cur_logit_diff - default_logit_diff
-                    )
+                fig.write_image(
+                    f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
+                )
 
-                if source_layer == 11 and source_head_idx == 11:
-                    # show attention head results
-                    fname = f"svgs/patch_and_freeze_{dataset_name}_{pos}_{ctime()}_{ri(2134, 123759)}"
-                    fig = show_pp(
-                        results[dataset_idx].T,
-                        title=f"{fname=} {dataset_name=} {pos=} patching NMs",
-                        return_fig=True,
-                        show_fig=False,
-                    )
+                fig.write_image(fname + ".png")
+                fig.write_image(fname + ".svg")
+                fig.show()
 
-                    fig.write_image(
-                        f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
-                    )
-
-                    fig.write_image(fname + ".png")
-                    fig.write_image(fname + ".svg")
-                    fig.show()
-
-                    # show mlp results
-                    fig = show_pp(
-                        mlp_results[dataset_idx].T,
-                        title=f"{dataset_name=} {pos=} patching NMs",
-                        return_fig=True,
-                        show_fig=False,
-                    )
-                    fname = f"svgs/patch_and_freeze_{dataset_name}_{pos}_mlp_{ctime()}_{ri(2134, 123759)}"
-                    fig.write_image(fname + ".png")
-                    fig.write_image(fname + ".svg")
-                    fig.show()
+                # # # show mlp results # mlps are fucked
+                # # fig = show_pp(
+                # #     mlp_results[dataset_idx].T,
+                # #     title=f"{dataset_name=} {pos=} patching NMs",
+                # #     return_fig=True,
+                # #     show_fig=False,
+                # # )
+                # fname = f"svgs/patch_and_freeze_{dataset_name}_{pos}_mlp_{ctime()}_{ri(2134, 123759)}"
+                # fig.write_image(fname + ".png")
+                # fig.write_image(fname + ".svg")
+                # fig.show()
 #%% [markdown] hack some LD and IO probs stuff
 
 from ioi_circuit_extraction import RELEVANT_TOKENS, CIRCUIT
