@@ -19,6 +19,7 @@
 
 # ## Imports
 import abc
+from csv import excel
 import os
 import time
 
@@ -205,6 +206,7 @@ def direct_patch_and_freeze(
     positions=["end"],
     verbose=False,
     return_hooks=False,
+    model_fn=lambda model: model,  # in order to do circuit extraction
 ):
     """
     Patch in the effect of `sender_heads` on `receiver_hooks` only
@@ -225,12 +227,14 @@ def direct_patch_and_freeze(
 
     sender_cache = {}
     model.reset_hooks()
+    model = model_fn(model)
     model.cache_some(sender_cache, lambda x: x in sender_hook_names)
     # print(f"{sender_hook_names=}")
     source_logits = model(source_dataset.text_prompts)
 
     target_cache = {}
     model.reset_hooks()
+    model = model_fn(model)
     model.cache_all(target_cache)
     target_logits = model(target_dataset.text_prompts)
 
@@ -256,10 +260,14 @@ def direct_patch_and_freeze(
                     name=hook_name,
                 )
                 model.add_hook(hook_name, hook)
+    model = model_fn(model)  # ughhh, this is actually what we want for the model
 
     # we can override the hooks above for the sender heads, though
     for hook_name, head_idx in sender_hooks:
-        assert not torch.allclose(sender_cache[hook_name], target_cache[hook_name])
+        assert not torch.allclose(sender_cache[hook_name], target_cache[hook_name]), (
+            hook_name,
+            head_idx,
+        )
         hook = get_act_hook(
             partial(patch_positions, positions=positions),
             alt_act=sender_cache[hook_name],
@@ -276,6 +284,7 @@ def direct_patch_and_freeze(
 
     # patch these values in
     model.reset_hooks()
+    model = model_fn(model)
     hooks = []
     for hook_name, head_idx in receiver_hooks:
         hook = get_act_hook(
@@ -329,11 +338,31 @@ for pos in ["end"]:
 
                 receiver_hooks = []
 
-                for layer, head_idx in circuit["name mover"]:
-                    # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
-                    # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
-                    # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
-                    receiver_hooks.append(("blocks.11.hook_resid_post", None))
+                # for layer, head_idx in circuit["name mover"]:
+                # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+                # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+                # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+                receiver_hooks.append(("blocks.11.hook_resid_post", None))
+
+                exclude_heads = [
+                    (layer, head_idx) for layer in range(12) for head_idx in range(12)
+                ]
+                for head in [(9, 9), (9, 6), (10, 0)]:
+                    exclude_heads.remove(head)
+
+                # hooks # add the hooks functionality... to speed things up
+
+                model_fn = lambda model: do_circuit_extraction(
+                    model=model,
+                    heads_to_keep=get_heads_circuit(
+                        ioi_dataset=ioi_dataset,
+                        circuit={"name mover": [(9, 9), (9, 6), (10, 0)]},
+                    ),
+                    mlps_to_remove={},
+                    ioi_dataset=ioi_dataset,
+                    mean_dataset=dataset,
+                    exclude_heads=exclude_heads,
+                )[0]
 
                 model = direct_patch_and_freeze(
                     model=model,
@@ -345,7 +374,8 @@ for pos in ["end"]:
                     max_layer=12,
                     positions=[pos],
                     verbose=False,
-                    # return_hooks=True,
+                    return_hooks=False,
+                    model_fn=model_fn,
                 )
 
                 cur_logit_diff = logit_diff(model, ioi_dataset)
