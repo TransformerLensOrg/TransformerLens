@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from easy_transformer import EasyTransformer
 import plotly.graph_objects as go
@@ -25,6 +26,7 @@ CLASS_COLORS = {
     "previous token": ALL_COLORS[6],
     "none": ALL_COLORS[7],
     "backup name mover": "rgb(27,100,119)",
+    "light backup name mover": "rgb(146,183,210)",
 }
 
 
@@ -228,8 +230,10 @@ def show_attention_patterns(
         if return_fig and not return_mtx:
             return fig
         elif return_mtx and not return_fig:
-            if mode in ["attn", "scores"]:
-                return attn_results
+            # if mode in ["attn", "scores"]:
+            warnings.warn("Unsafe")
+            return attn_results
+
             raise NotImplementedError("I think this is easy but I'm not doing it now")
 
 

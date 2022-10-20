@@ -442,6 +442,7 @@ print(new_logit_diff - default_logit_diff)
 from ioi_circuit_extraction import RELEVANT_TOKENS, CIRCUIT
 
 circuit = deepcopy(CIRCUIT)
+circuit["duplicate token"].remove((7, 1))
 print(f"{circuit=}")
 model.reset_hooks()
 
@@ -488,7 +489,7 @@ for dataset_name in [
     print(dataset_name)
     dataset = eval(dataset_name)
 
-    for heads_raw in [(7, 1)]:  # circuit["duplicate token"]:  # ["induction"]:
+    for heads_raw in [(6, 9)]:  # circuit["duplicate token"]:  # ["induction"]:
         heads = [heads_raw]
         average_attention[heads_raw] = {}
         cur_ys = []
@@ -500,7 +501,7 @@ for dataset_name in [
                 [head],
                 dataset,
                 return_mtx=True,
-                mode="attn",  # , mode="scores"
+                mode="val",  # , mode="scores"
             )
         att /= len(heads)
 
@@ -531,3 +532,70 @@ for dataset_name in [
 
         fig.update_layout(title_text="Attention probs; from S2 to blah")
     fig.show()
+#%% [markdown] plotting (your downfalls!)
+
+from ioi_utils import CLASS_COLORS
+
+cc = deepcopy(CLASS_COLORS)
+no_112 = deepcopy(CIRCUIT)
+no_112["name mover"].remove((11, 2))
+
+
+def what_class(layer, head, circuit):
+    for circuit_class in circuit:
+        if (layer, head) in circuit[circuit_class]:
+            return circuit_class
+    return "duplicate token"
+    raise ValueError((layer, head), circuit)
+
+
+# plot the most important heads by
+
+k = 15
+top_heads = max_2d(
+    torch.abs(initial_results), k=k
+)[  # backup results or initial results
+    0
+]  # initial results is the patch with no KOs; direct effect on logits
+
+exclude_heads = []
+exclude_heads = [
+    (layer_idx, head)
+    for layer_idx in range(12)
+    for head in range(12)
+    if what_class(layer_idx, head, circuit=circuit)
+    not in ["name mover", "negative", "s2 inhibition"]
+]
+
+fig = go.Figure()
+heights = [
+    -initial_results[layer][head]
+    for layer, head in top_heads
+    if (layer, head) not in exclude_heads
+]
+colors = [
+    cc[what_class(layer, head_idx, circuit=circuit)]
+    for layer, head_idx in top_heads
+    if (layer, head_idx) not in exclude_heads
+]
+
+# plot a bar chart
+fig.add_trace(
+    go.Bar(
+        x=[str(x) for x in top_heads if x not in exclude_heads],
+        y=heights,
+        orientation="v",
+        marker_color=colors,
+    )
+)
+
+# stack them
+
+# set y axis range to [-1, 1]
+fig.update_yaxes(range=[-3, 3])
+fname = f"backup_nm_plot_{ctime()}"
+
+# update title
+fig.update_layout(title=fname)
+fig.write_image(f"svgs/{fname}.svg")
+fig.show()
