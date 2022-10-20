@@ -2,7 +2,6 @@
 import logging
 from typing import Callable, Union, Optional, Sequence
 import torch
-from torch._C import _quantize_ondevice_ptq_dynamic
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
