@@ -294,34 +294,32 @@ mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-# for pos in ["IO", "S", "S2"]:
-
-for pos in ["end"]:
+for pos in ["S+1", "IO", "S2", "end", "S"]:
+    print(pos)
     results = [torch.zeros(size=(12, 12)) for _ in range(len(dataset_names))]
     mlp_results = [torch.zeros(size=(12, 1)) for _ in range(len(dataset_names))]
     for source_layer in tqdm(range(12)):
         for source_head_idx in list(range(12)):
             for dataset_idx, dataset_name in enumerate(dataset_names):
                 dataset = eval(dataset_name)
-
                 model.reset_hooks()
 
-                # receiver_hooks = [
-                #     (f"blocks.{layer}.attn.hook_q", head_idx)
-                #     for layer, head_idx in circuit["name mover"]
-                # ]
+                receiver_hooks = []
 
-                receiver_hooks = [(f"blocks.11.hook_resid_post", None)]
+                for layer, head_idx in circuit["s2 inhibition"]:
+                    # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+                    receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+                    # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
 
                 model = direct_patch_and_freeze(
                     model=model,
                     source_dataset=all_diff_dataset,
-                    target_dataset=ioi_dataset,  # if diff totally fall apart
+                    target_dataset=ioi_dataset,
                     ioi_dataset=ioi_dataset,
                     sender_heads=[(source_layer, source_head_idx)],
                     receiver_hooks=receiver_hooks,
-                    max_layer=12,  # at this point, we just let the model run
-                    positions=["end"],
+                    max_layer=12,
+                    positions=[pos],
                     verbose=False,
                 )
 
@@ -345,6 +343,9 @@ for pos in ["end"]:
                         return_fig=True,
                         show_fig=False,
                     )
+
+                    fig.write_image(f"svgs/patch_and_freezes/TO_SINHIB_V_{pos}.png")
+
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
                     fig.show()
@@ -360,3 +361,31 @@ for pos in ["end"]:
                     fig.write_image(fname + ".png")
                     fig.write_image(fname + ".svg")
                     fig.show()
+#%% [markdown] hack some LD and IO probs stuff
+
+from ioi_circuit_extraction import RELEVANT_TOKENS, CIRCUIT
+
+circuit = deepcopy(CIRCUIT)
+print(f"{circuit=}")
+model.reset_hooks()
+
+# RELEVANT_TOKENS[]
+
+for make_circuit in [False, True]:
+    model.reset_hooks()
+
+    if make_circuit:
+        heads_circuit = get_heads_circuit(ioi_dataset, circuit=circuit)
+        model, _ = do_circuit_extraction(
+            model=model,
+            heads_to_keep=heads_circuit,
+            mlps_to_remove={},
+            ioi_dataset=ioi_dataset,
+            mean_dataset=abca_dataset,
+        )
+
+    cur_logit_diff = logit_diff(model, ioi_dataset)
+    cur_io_probs = probs(model, ioi_dataset)
+    print(f"{make_circuit=} {cur_logit_diff=} {cur_io_probs=}")
+
+#%% [markdown] look at some attention patterns, too

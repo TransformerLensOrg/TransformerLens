@@ -220,7 +220,7 @@ for head in CIRCUIT["induction"]:
     RELEVANT_TOKENS[head] = ["S2"]
 
 for head in CIRCUIT["duplicate token"]:
-    RELEVANT_TOKENS[head] = ["S2"]
+    RELEVANT_TOKENS[head] = ["S2", "IO"]
 
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1"]
