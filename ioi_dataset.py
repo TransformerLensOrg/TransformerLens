@@ -651,6 +651,7 @@ class IOIDataset:
         prefixes=None,
         nb_templates=None,
         ioi_prompts_for_word_idxs=None,
+        manual_word_idx=None,
     ):
         """
         ioi_prompts_for_word_idxs:
@@ -755,6 +756,8 @@ class IOIDataset:
         self.word_idx = get_idx_dict(
             ioi_prompts_for_word_idxs, self.tokenizer, self.toks[0][0] == 50256
         )
+        if manual_word_idx is not None:
+            self.word_idx = manual_word_idx
 
         self.sem_tok_idx = {
             k: v for k, v in self.word_idx.items() if k in ALL_SEM
@@ -808,7 +811,7 @@ class IOIDataset:
             # prompts[-1]["[OBJECT]"] = metadata["[OBJECT]"]
         return IOIDataset(prompt_type=templates, prompts=prompts, **kwargs)
 
-    def gen_flipped_prompts(self, flip):
+    def gen_flipped_prompts(self, flip, manual_word_idx=None):
         """
         Return a IOIDataset where the name to flip has been replaced by a random name.
         """
@@ -844,6 +847,11 @@ class IOIDataset:
                 ], flip
                 flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, flip)
 
+        if manual_word_idx is None:
+            warnings.warn(
+                "Reconstructing a dataset, without recomputing word_idx, this could go wrong. TODO default this to passing the old datasets word_idx?"
+            )
+
         flipped_ioi_dataset = IOIDataset(
             prompt_type=self.prompt_type,
             N=self.N,
@@ -851,6 +859,7 @@ class IOIDataset:
             prompts=flipped_prompts,
             prefixes=self.prefixes,
             ioi_prompts_for_word_idxs=flipped_prompts if flip[0] == "RAND" else None,
+            manual_word_idx=manual_word_idx,
         )
         return flipped_ioi_dataset
 
