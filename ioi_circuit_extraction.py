@@ -1,3 +1,4 @@
+import warnings
 from copy import deepcopy
 from easy_transformer.experiments import (
     ExperimentMetric,
@@ -203,8 +204,8 @@ CIRCUIT = {
     ],
     "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0)],
+    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],  # , (7, 1)],
+    "duplicate token": [(0, 1), (0, 10), (3, 0), (7, 1)], # unclear exactly what (7,1) does
     "previous token": [(2, 2), (2, 9), (4, 11)],
 }
 
@@ -220,10 +221,12 @@ for head in CIRCUIT["induction"]:
     RELEVANT_TOKENS[head] = ["S2"]
 
 for head in CIRCUIT["duplicate token"]:
-    RELEVANT_TOKENS[head] = ["S2", "IO"]
+    RELEVANT_TOKENS[head] = ["S2"]
 
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1"]
+
+warnings.warn("Arthur has messed with the circuit.")
 
 # ALEX_NAIVE_CIRCUIT = {
 #     "name mover": [

@@ -150,7 +150,7 @@ totally_diff_dataset = IOIDataset(N=ioi_dataset.N, prompt_type=ioi_dataset.promp
 all_diff_dataset = (
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
 )
 bcca_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(
     ("S", "RAND")
@@ -371,21 +371,82 @@ model.reset_hooks()
 
 # RELEVANT_TOKENS[]
 
-for make_circuit in [False, True]:
-    model.reset_hooks()
+for dataset in [ioi_dataset, abba_dataset, baba_dataset]:
+    for make_circuit in [False, True]:
+        model.reset_hooks()
 
-    if make_circuit:
-        heads_circuit = get_heads_circuit(ioi_dataset, circuit=circuit)
-        model, _ = do_circuit_extraction(
-            model=model,
-            heads_to_keep=heads_circuit,
-            mlps_to_remove={},
-            ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
-        )
+        if make_circuit:
+            heads_circuit = get_heads_circuit(ioi_dataset, circuit=circuit)
+            model, _ = do_circuit_extraction(
+                model=model,
+                heads_to_keep=heads_circuit,
+                mlps_to_remove={},
+                ioi_dataset=ioi_dataset,
+                mean_dataset=all_diff_dataset,
+            )
 
-    cur_logit_diff = logit_diff(model, ioi_dataset)
-    cur_io_probs = probs(model, ioi_dataset)
-    print(f"{make_circuit=} {cur_logit_diff=} {cur_io_probs=}")
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        cur_io_probs = probs(model, ioi_dataset)
+        print(f"{make_circuit=} {cur_logit_diff=} {cur_io_probs=}")
 
-#%% [markdown] look at some attention patterns, too
+#%% [markdown] brief dive into 7.1, ignore (this cell vizualizes the average attention)
+ys = []
+average_attention = {}
+
+baba_dataset = IOIDataset(N=100, prompt_type="BABA")
+abba_dataset = IOIDataset(N=100, prompt_type="ABBA")
+
+for dataset_name in [
+    "abba_dataset",
+    "baba_dataset",
+    "ioi_dataset",
+    "all_diff_dataset",
+    "totally_diff_dataset",
+]:
+    fig = go.Figure()
+    print(dataset_name)
+    dataset = eval(dataset_name)
+
+    for heads_raw in [(7, 1)]:  # circuit["duplicate token"]:  # ["induction"]:
+        heads = [heads_raw]
+        average_attention[heads_raw] = {}
+        cur_ys = []
+        cur_stds = []
+        att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
+        for head in tqdm(heads):
+            att += show_attention_patterns(
+                model,
+                [head],
+                dataset,
+                return_mtx=True,
+                mode="attn",  # , mode="scores"
+            )
+        att /= len(heads)
+
+        vals = att[torch.arange(dataset.N), dataset.word_idx["S2"][: dataset.N], :]
+        evals = torch.exp(vals)
+        val_sum = torch.sum(evals, dim=1)
+        assert val_sum.shape == (dataset.N,), val_sum.shape
+        print(f"{heads=} {val_sum.mean()=}")
+
+        for key in dataset.word_idx.keys():
+            end_to_s2 = att[
+                torch.arange(dataset.N),
+                dataset.word_idx["S2"][: dataset.N],
+                dataset.word_idx[key][: dataset.N],
+            ]
+            # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
+            cur_ys.append(end_to_s2.mean().item())
+            cur_stds.append(end_to_s2.std().item())
+            average_attention[heads_raw][key] = end_to_s2.mean().item()
+        fig.add_trace(
+            go.Bar(
+                x=list(dataset.word_idx.keys()),
+                y=cur_ys,
+                error_y=dict(type="data", array=cur_stds),
+                name=str(heads_raw),
+            )
+        )  # ["IOI", "ABCA"][idx]))
+
+        fig.update_layout(title_text="Attention probs; from S2 to blah")
+    fig.show()
