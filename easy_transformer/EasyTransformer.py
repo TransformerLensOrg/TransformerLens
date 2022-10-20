@@ -97,6 +97,7 @@ class EasyTransformer(HookedRootModule):
                 self.tokenizer is not None
             ), "Must provide a tokenizer if d_vocab is not provided"
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+            self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
