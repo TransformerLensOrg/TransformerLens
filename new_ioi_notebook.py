@@ -588,7 +588,8 @@ for results in [backup_results]:  # backup results or initial results
             orientation="v",
             marker_color=colors,
             showlegend=False,
-            width=0.5,
+            # width=0.5,
+            # offset=0,
         )
     )
 
@@ -615,6 +616,13 @@ for results in [backup_results]:  # backup results or initial results
     fig.update_layout(
         title_text=f"Heads with largest absolute effect on logit difference after patching",
     )
+    fig.update_layout(barmode="group")
+    fig.update_layout(bargap=0.0, bargroupgap=0.0)
+
+    fig.update_layout(
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+
     if not torch.allclose(results, initial_results):
         fig.update_layout(
             title_text=f"Heads with largest absolute effect on logit difference after patching, and KO of [(9, 9), (10, 0), (9, 6)]",
@@ -637,7 +645,7 @@ for results in [backup_results]:  # backup results or initial results
                 orientation="v",
                 marker_color="rgb(27, 300, 119)",
                 name="name mover (before name mover KO)",
-                width=0.5,
+                # width=0.5,
             )
         )
 
