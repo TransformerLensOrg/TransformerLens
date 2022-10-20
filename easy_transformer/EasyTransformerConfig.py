@@ -75,6 +75,7 @@ class EasyTransformerConfig:
             MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
             supported. Defaults to 'standard'.
         final_rms (bool): Whether to replace the final normalization (just before the unembed) with RMSNorm (ie no centering or bias, just scaling + weights). Only included because of a dumb bug in my original SoLU code. Defaults to False.
+        d_vocab_out (int, *optional*): The size of the output vocabulary. If not set, will be equal to d_vocab. Mainly useful for algorithmic tasks where the input and output vocabularies may be different.
     """
 
     n_layers: int
@@ -106,6 +107,7 @@ class EasyTransformerConfig:
     scale_attn_by_inverse_layer_idx: bool = False
     positional_embedding_type: str = 'standard'
     final_rms: bool = False
+    d_vocab_out: Optional[int] = None
 
     def __post_init__(self):
         if self.n_heads is None:
@@ -132,6 +134,9 @@ class EasyTransformerConfig:
         if self.initializer_range < 0:
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)
+        
+        if self.d_vocab_out is None:
+            self.d_vocab_out = self.d_vocab
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
