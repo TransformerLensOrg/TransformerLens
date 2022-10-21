@@ -7,9 +7,10 @@ import datasets
 import einops
 from transformers import AutoTokenizer
 import random
-from typing import Optional
+from typing import Optional, Union, Tuple, List
 import transformers
 from huggingface_hub import hf_hub_download
+import re
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
@@ -260,3 +261,136 @@ def sample_logits(
             )
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
         return torch.distributions.categorical.Categorical(logits=final_logits).sample()
+
+# %%
+# Type alias
+SliceInput =  Optional[Union[int, Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor]]
+class Slice:
+    """
+    We use a custom slice syntax because Python/Torch's don't let us reduce the number of dimensions:
+    
+    Note that slicing with input_slice=None means do nothing, NOT add an extra dimension (use unsqueeze for that)
+
+    There are several modes:
+    int - just index with that integer (decreases number of dimensions)
+    slice - Input is a tuple converted to a slice ((k,) means :k, (k, m) means m:k, (k, m, n) means m:k:n)
+    array - Input is a list or tensor or numpy array, converted to a numpy array, and we take the stack of values at those indices
+    identity - Input is None, leave it unchanged.
+
+    Examples for dim=0:
+    if input_slice=0, tensor -> tensor[0]
+    elif input_slice = (1, 5), tensor -> tensor[1:5]
+    elif input_slice = (1, 5, 2), tensor -> tensor[1:5:2] (ie indexing with [1, 3])
+    elif input_slice = [1, 4, 5], tensor -> tensor[[1, 4, 5]] (ie changing the first axis to have length 3, and taking the indices 1, 4, 5 out).
+    elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.
+    """
+    def __init__(
+        self, 
+        input_slice: SliceInput=None,
+        ):
+        if type(input_slice)==tuple:
+            input_slice = slice(*input_slice)
+            self.slice = input_slice
+            self.mode="slice"
+        elif type(input_slice)==int:
+            self.slice = input_slice
+            self.mode="int"
+        elif type(input_slice)==slice:
+            self.slice = input_slice
+            self.mode="slice"
+        elif type(input_slice)==list or type(input_slice)==torch.Tensor or type(input_slice)==np.ndarray:
+            self.slice = to_numpy(input_slice)
+            self.mode="array"
+        elif input_slice is None:
+            self.slice = slice(None)
+            self.mode="identity"
+        else:
+            raise ValueError(f"Invalid input_slice {input_slice}")
+    
+    def apply(self, tensor, dim=0):
+        """
+        Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor. 
+        """ 
+        ndim = tensor.ndim
+        slices = [slice(None)] * ndim
+        slices[dim] = self.slice
+        return tensor[tuple(slices)]
+        
+    def indices(self, max_ctx=None):
+        """ 
+        Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
+        """
+        if self.mode == "int":
+            return np.array([self.slice])
+        else:
+            return np.arange(max_ctx)[self.slice]
+    
+    def __repr__(self):
+        return f"Slice: {self.slice} Mode: {self.mode} "
+
+
+# def apply_slice_to_dim(
+#     tensor: torch.Tensor,
+#     input_slice: Union[Slice, SliceInput],
+#     dim: int=0,
+#     ):
+#     """Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor. 
+
+#     Note that slicing with input_slice=None means do nothing, NOT add an extra dimension (use unsqueeze for that)
+    
+#     We use a custom slice syntax because Python/Torch's don't let us reduce the number of dimensions:
+
+#     Examples for dim=0:
+#     if input_slice=0, tensor -> tensor[0]
+#     elif input_slice = (1, 5), tensor -> tensor[1:5]
+#     elif input_slice = (1, 5, 2), tensor -> tensor[1:5:2] (ie indexing with [1, 3])
+#     elif input_slice = [1, 4, 5], tensor -> tensor[[1, 4, 5]] (ie changing the first axis to have length 3, and taking the indices 1, 4, 5 out).
+#     elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.
+#     """
+#     ndim = tensor.ndim
+#     slices = [slice(None)] * ndim
+#     if isinstance(input_slice, tuple):
+#         input_slice = slice(*input_slice)
+#     elif input_slice is None:
+#         input_slice = slice(None)
+#     slices[dim] = input_slice
+#     return tensor[tuple(slices)]
+# %%
+
+def act_name(
+    name: str,
+    layer: Optional[int]=None,
+    layer_type: Optional[str]=None,
+    ):
+    """ 
+    Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback loop hacking stuff together, more so than writing good, readable code. But it is deterministic!
+
+    eg:
+    act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
+    act_name('pre', 2)=='blocks.2.mlp.hook_pre'
+    act_name('embed')=='hook_embed'
+    act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
+    act_name('k6')=='blocks.6.attn.hook_k'
+    act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
+    act_name('pre5')=='blocks.5.mlp.hook_pre'
+    """
+    match = re.match(r"([a-z]+)(\d+)([a-z]?.*)", name)
+    if match is not None:
+        name, layer, layer_type = match.groups(0)
+
+    layer_type_dict = {'a':'attn', 'm':'mlp', 'b':'', 'block':'', 'blocks':'', 'attention':'attn'}
+    act_name = ""
+    if layer is not None:
+        act_name += f"blocks.{layer}."
+    if name in ['k', 'v', 'q', 'result', 'attn', 'attn_scores']:
+        layer_type='attn'
+    elif name in ['pre', 'post', 'mid']:
+        layer_type='mlp'
+    elif layer_type in layer_type_dict:
+        layer_type = layer_type_dict[layer_type]
+    
+    if layer_type:
+        act_name += f"{layer_type}."
+    act_name += f"hook_{name}"
+    return act_name
+# %%

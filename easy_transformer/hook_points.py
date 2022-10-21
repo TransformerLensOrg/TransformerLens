@@ -32,6 +32,8 @@ import copy
 # import comet_ml
 import itertools
 
+from easy_transformer.activation_cache import ActivationCache
+
 # %%
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
@@ -282,7 +284,7 @@ class HookedRootModule(nn.Module):
             model_out.backward()
         
         if return_cache_object:
-            cache = cache_dict
+            cache = ActivationCache(cache_dict, self)
         else:
             cache = cache_dict
         
