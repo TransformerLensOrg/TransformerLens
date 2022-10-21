@@ -2,6 +2,8 @@
 import os
 import torch
 
+from ioi_circuit_extraction import ALEX_NAIVE
+
 if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
@@ -179,6 +181,7 @@ if circuit_to_study == "naive_circuit":
     for head in CIRCUIT["previous token"]:
         RELEVANT_TOKENS[head] = ["S+1"]
     ALL_NODES = []  # a node is a tuple (head, token)
+
     for h in RELEVANT_TOKENS:
         for tok in RELEVANT_TOKENS[h]:
             ALL_NODES.append((h, tok))
@@ -370,7 +373,9 @@ def greed_search_max_brok_cob_diff(
     if neg_head_in_G:
         init_set = list(set(init_set) + set([((10, 7), "end"), ((11, 10), "end")]))
 
-    all_node_baseline = get_cob_brok_from_nodes(init_set)  # |metric(C) - metric(M)|
+    all_node_baseline = get_cob_brok_from_nodes(
+        nodes=init_set
+    )  # |metric(C) - metric(M)|
 
     C_minus_G_init = ALL_NODES.copy()
     for n in init_set:
@@ -411,7 +416,9 @@ def greed_search_max_brok_cob_diff(
                     print_gpu_mem(f"iter {iter}")
         all_sets.append({"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()})
         if save_to_file:
-            with open(f"greed_search_max_brok_cob_diff_{step}.json", "w") as f:
+            with open(
+                f"jsons/greed_search_max_brok_cob_diff_{step}_{ctime()}.json", "w"
+            ) as f:
                 json.dump(all_sets, f)
     return all_sets
 
@@ -481,8 +488,11 @@ for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
 # %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
 circuit = deepcopy(CIRCUIT)
 
-# %%
-circuit = CIRCUIT.copy()
+# %% [markdown]
+
+
+circuit = deepcopy(ALEX_NAIVE)
+print("Working with", circuit)
 cur_metric = logit_diff  # partial(probs, type="io")  #
 
 
@@ -597,7 +607,9 @@ if run_original:
 with open(f"sets/perf_{circuit_to_study}_by_classes.json", "w") as f:
     json.dump(circuit_perf, f)
 
-#%% [markdown] Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
+#%% [markdown] UH SKIP THIS IF YA WANT TO HAVE GOOD PLOT? Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
+
+
 def get_df_from_csv(fname):
     df = pd.read_csv(fname)
     return df
@@ -709,10 +721,9 @@ minx = -2
 maxx = 6
 eps = 1.0
 
-# make the region
+# make the dotted line
 xs = np.linspace(minx - 1, maxx + 1, 100)
 ys = xs
-
 
 fig.add_trace(
     go.Scatter(
@@ -724,7 +735,6 @@ fig.add_trace(
     )
 )
 
-
 rd_set_added = False
 for i, perf in enumerate(perf_by_sets):
     fig.add_trace(
@@ -732,9 +742,9 @@ for i, perf in enumerate(perf_by_sets):
             x=[perf["mean_cur_metric_broken"]],
             y=[perf["mean_cur_metric_cobble"]],
             mode="markers",
-            # name=perf[
-            #     "name"
-            # ],  # should make there not be loads of Set markers, just one greedy marker
+            name=perf[
+                "removed_group"  # change to "name" or something for the greedy sets
+            ],
             marker=dict(symbol=perf["symbol"], size=10, color=perf["color"]),
             showlegend=(
                 (" 1" in perf["removed_group"][-2:])
@@ -910,7 +920,7 @@ def compute_cobble_broken_diff(
     return_both=False,
     all_node=None,  # TODO add this
 ):  # red teaming the circuit by trying
-    """ "Compute |Metric(C\ nodes) - Metric(M\ nodes)|"""
+    """Compute |Metric(C\ nodes) - Metric(M\ nodes)|"""
     if all_node is None:
         nodes_to_keep = ALL_NODES.copy()
     else:
@@ -933,7 +943,6 @@ def compute_cobble_broken_diff(
     ldiff_broken = logit_diff(model, ioi_dataset, all=False)  # Metric(M\nodes)
 
     model.reset_hooks()
-
     model, _ = do_circuit_extraction(
         model=model,
         heads_to_remove=get_heads_from_nodes(nodes, ioi_dataset),  # M\nodes
@@ -942,6 +951,10 @@ def compute_cobble_broken_diff(
         mean_dataset=mean_dataset,
     )
     ldiff_cobble = logit_diff(model, ioi_dataset, all=False)  # Metric(C\nodes)
+
+    print(f"ldiff_broken: {ldiff_broken}")
+    print(f"ldiff_cobble: {ldiff_cobble}")
+
     if return_both:
         return ldiff_broken, ldiff_cobble
     else:
@@ -1040,41 +1053,22 @@ figure.update_layout(
 )
 
 figure.show()
-#%%
+#%% [markdown] This is the legit cell on the greedy search
+
 greedy_heuristic = "max_brok_cob_diff"
 circuit_to_study = "natural_circuit"
-
 
 assert circuit_to_study in ["auto_search", "natural_circuit", "naive_circuit"]
 
 if circuit_to_study == "naive_circuit":
-    CIRCUIT = {
-        "name mover": [(9, 6), (9, 9), (10, 0)],
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "induction": [(5, 5), (5, 9)],
-        "duplicate token": [(3, 0), (0, 10)],
-        "previous token": [(2, 2), (4, 11)],
-        "negative": [],
-    }
-    ALL_NODES = []
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
+    circuit = deepcopy(ALEX_NAIVE)
 
-    for head in CIRCUIT["induction"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["previous token"]:
-        RELEVANT_TOKENS[head] = ["S+1"]
     ALL_NODES = []  # a node is a tuple (head, token)
     for h in RELEVANT_TOKENS:
         for tok in RELEVANT_TOKENS[h]:
             ALL_NODES.append((h, tok))
-if circuit_to_study == "natural_circuit":
 
+if circuit_to_study == "natural_circuit":
     circuit = deepcopy(CIRCUIT)
 
     ALL_NODES = []  # a node is a tuple (head, token)
@@ -1103,11 +1097,15 @@ if True:
     NODES_PER_STEP = 10
     NB_SETS = 5
     NB_ITER = 10
-    save_to_file = False
+    save_to_file = True
 
     if greedy_heuristic == "max_brok":
+        model.reset_hooks()
         nodes_logit_diff_small_data = partial(
-            circuit_from_nodes_logit_diff, model, small_ioi_dataset, small_cde_dataset
+            circuit_from_nodes_logit_diff,
+            model,
+            ioi_dataset=small_ioi_dataset,
+            mean_dataset=small_cde_dataset,
         )
         all_sets_max_brok = greed_search_max_broken(
             nodes_logit_diff_small_data,
@@ -1115,7 +1113,7 @@ if True:
             NB_SETS=NB_SETS,
             NB_ITER=NB_ITER,
         )
-        title_suffix = "min metric(C\G) "
+        title_suffix = "min metric(C\G)"
         all_sets = all_sets_max_brok.copy()
 
     if greedy_heuristic == "max_brok_cob_diff":
@@ -1130,7 +1128,7 @@ if True:
             NB_ITER=NB_ITER,
             save_to_file=save_to_file,
         )
-        title_suffix = "max |metric(C\G) - metric(M\G)| "
+        title_suffix = "max |metric(C\G) - metric(M\G)|"
 
         ## Choose wich set to plot
         all_sets = all_set_max_brok_cob_diff.copy()

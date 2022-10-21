@@ -241,10 +241,6 @@ for head in CIRCUIT["duplicate token"]:
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1"]
 
-# RELEVANT_TOKENS[(0, 1)] = ["S2", "S+1"]
-
-warnings.warn("Arthur has messed with the circuit.")
-
 # ALEX_NAIVE_CIRCUIT = {
 #     "name mover": [
 #         (10, 6),
