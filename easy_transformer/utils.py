@@ -535,7 +535,7 @@ class FactoredMatrix:
 
 def composition_scores(left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True):
     """
-    See `composition_scores` for documentation
+    See `EasyTransformer.all_composition_scores` for documentation
     """
     if broadcast_dims:
         r_leading = right.ndim-2
