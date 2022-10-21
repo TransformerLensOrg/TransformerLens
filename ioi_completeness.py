@@ -501,7 +501,10 @@ cur_metric = logit_diff  # partial(probs, type="io")  #
 
 
 run_original = True
+print("Are we running the original experiment?", run_original)
+
 if run_original:
+
     circuit_perf = []
     perf_by_sets = []
     for G in tqdm(list(circuit.keys()) + ["none"]):
@@ -628,9 +631,9 @@ perf_by_sets = []
 circuit_to_import = "natural"
 
 fnames = [
-    f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_rd_Search.json",
+    # f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_rd_Search.json",
     # f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_max_brok_cob_diff.json",
-    # f"sets/perf_{circuit_to_import}_circuit_by_classes.json",
+    f"sets/perf_{circuit_to_import}_circuit_by_classes.json",
 ]
 
 sets_type = ["random_search", "greedy", "class"]
@@ -815,11 +818,11 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     small_ioi_dataset = IOIDataset(
         prompt_type="mixed", N=small_N, tokenizer=model.tokenizer, nb_templates=2
     )
-    small_cde_dataset = cde_dataset[:small_N] # (
-    #     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
-    #     .gen_flipped_prompts(("S", "RAND"))
-    #     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
-    # )[]
+    small_cde_dataset = (
+        small_ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+        .gen_flipped_prompts(("S", "RAND"))
+        .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+    )
 
     circuit_to_study = "natural_circuit"
 
@@ -959,7 +962,7 @@ def compute_cobble_broken_diff(
         return np.abs(ldiff_broken - ldiff_cobble)
 
 
-#%%
+#%% [markdown] this is some massive brute force search
 from pathlib import Path
 
 important_heads = [
@@ -1127,7 +1130,11 @@ small_ioi_dataset = IOIDataset(
 )
 # small_abc_dataset = small_ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 # torch.cuda.empty_cache()
-small_cde_dataset = 
+dumby_ioi_dataset = IOIDataset(
+    N=40, tokenizer=model.tokenizer, nb_templates=4, prompt_type="mixed"
+)
+small_cde_dataset = dumby_ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("S1", "RAND"), manual_word_idx=dumby_ioi_dataset.word_idx)
+
 
 if True:
     assert greedy_heuristic in ["max_brok", "max_brok_cob_diff", "random_search"]
@@ -1139,7 +1146,7 @@ if True:
 
     if greedy_heuristic == "max_brok":
         nodes_logit_diff_small_data = partial(
-            circuit_from_nodes_logit_diff, model, small_ioi_dataset, small_abc_dataset
+            circuit_from_nodes_logit_diff, model, small_ioi_dataset, small_cde_dataset
         )
         all_sets_max_brok = greed_search_max_broken(
             nodes_logit_diff_small_data,
@@ -1153,7 +1160,7 @@ if True:
     if greedy_heuristic == "max_brok_cob_diff":
         # find G tht maximizes |metric(C\G) - metric(M\G)|
         nodes_cob_brok_diff_small_data = partial(
-            compute_cobble_broken_diff, model, small_ioi_dataset, small_abc_dataset
+            compute_cobble_broken_diff, model, small_ioi_dataset, small_cde_dataset
         )
         all_set_max_brok_cob_diff = greed_search_max_brok_cob_diff(
             nodes_cob_brok_diff_small_data,
