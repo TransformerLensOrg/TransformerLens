@@ -1,7 +1,8 @@
 # %%
 import os
 import torch
-if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+
+if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
@@ -145,7 +146,9 @@ def test_prompt(prompt, answer, prepend_space_to_answer=False, print_details=Tru
         correct_rank = torch.arange(len(indices))[indices == answer_token].item()
         final_print.append((answer_str_tokens[answer_index], correct_rank))
         if print_details:
-            rprint(f"[b]Performance on correct token |{answer_str_tokens[answer_index]}|: [/b]")
+            rprint(
+                f"[b]Performance on correct token |{answer_str_tokens[answer_index]}|: [/b]"
+            )
             rprint(
                 f"[b]Rank: {correct_rank}[/b] Logit: {token_logits[answer_token].item():.6} Prob: {probs[answer_token].item():.2%}"
             )
@@ -269,7 +272,9 @@ print(f"Example adv sentence: {adv_dataset.text_prompts[0]}")
 print(
     f"Mean logit diff: {ld.mean():.3f} | Adv: {ld_adv.mean():.3f} | Mean relative var.: {ld_diff.mean():.3f} | Init perf {(ld > 0).cpu().numpy().astype(int).mean():.3f} | Success rate: {torch.logical_and(ld_adv < 0, ld > 0).cpu().numpy().astype(int).mean():.3f}"
 )
-print(f"Mean prob IO: {prob.mean():.3f} | Adv IO: {prob_adv.mean():.3f} | Mean relative var.: {prob_diff.mean():.3f}")
+print(
+    f"Mean prob IO: {prob.mean():.3f} | Adv IO: {prob_adv.mean():.3f} | Mean relative var.: {prob_diff.mean():.3f}"
+)
 print(
     f"Mean prob S: {prob_s.mean():.3f} | Adv S: {prob_adv_s.mean():.3f} | Mean relative var.: {(prob_diff_s).mean():.3f}"
 )

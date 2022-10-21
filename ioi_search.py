@@ -1,7 +1,8 @@
 #%%
 import os
 import torch
-if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+
+if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 from easy_transformer import EasyTransformer
@@ -154,7 +155,7 @@ bl, std = baseline()
 print("BASELINE:", bl, std)
 
 #%%
-relevant_stuff = [] 
+relevant_stuff = []
 
 for layer in range(12):
     for head in range(12):
@@ -166,7 +167,7 @@ for layer in range(12):
 
 def objective(trial):
     """
-    Make this 
+    Make this
     """
 
     # total_things = trial.suggest_int("total_things", 1, 10)

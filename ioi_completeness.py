@@ -2,7 +2,7 @@
 import os
 import torch
 
-if os.environ["USER"] == "exx":  # so Arthur can safely use octobox
+if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 import json
@@ -456,7 +456,13 @@ if __name__ == "__main__":
     abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
     print("CIRCUIT STUDIED : ", CIRCUIT)
 
-mean_dataset = abca_dataset
+all_diff_dataset = (
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+)
+
+mean_dataset = all_diff_dataset
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")

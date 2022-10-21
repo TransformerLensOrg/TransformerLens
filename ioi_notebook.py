@@ -21,7 +21,7 @@
 # ## Imports
 import os
 import torch
-if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre

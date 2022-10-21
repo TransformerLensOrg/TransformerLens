@@ -1,7 +1,8 @@
 #%%
 import os
 import torch
-if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+
+if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 import warnings
@@ -11,6 +12,7 @@ from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
 from ioi_utils import probs
+
 # from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 from ioi_utils import probs, logit_diff
 import torch
@@ -135,7 +137,9 @@ model, _ = do_circuit_extraction(
 circuit_baseline_metric = metric(model, ioi_dataset)
 print(f"{model_baseline_metric=} {circuit_baseline_metric=}")
 #%%
-def get_basic_extracted_model(model, ioi_dataset, mean_dataset=None, circuit=circuits[1]):
+def get_basic_extracted_model(
+    model, ioi_dataset, mean_dataset=None, circuit=circuits[1]
+):
     if mean_dataset is None:
         mean_dataset = ioi_dataset
     heads_to_keep = get_heads_circuit(
@@ -164,7 +168,9 @@ model = get_basic_extracted_model(
 )
 torch.cuda.empty_cache()
 
-circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(model, ioi_dataset, std=True)
+circuit_baseline_diff, circuit_baseline_diff_std = logit_diff(
+    model, ioi_dataset, std=True
+)
 torch.cuda.empty_cache()
 circuit_baseline_prob, circuit_baseline_prob_std = probs(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
@@ -191,7 +197,7 @@ for circuit_class in circuit.keys():
     for head in circuit[circuit_class]:
         J[head] = [circuit_class]
 # J[(5, 8)] = [(5, 8)]
-# J[(5, 9)] = [(5, 9)]  
+# J[(5, 9)] = [(5, 9)]
 # for i, head in enumerate(circuit["induction"]):
 #     J[head] += [(10, 7), (11, 10)]
 
@@ -211,9 +217,9 @@ for head in J.keys():
 # name mover shit
 for i, head in enumerate(circuit["name mover"]):
     old_entry = J[head]
-    J[head] = deepcopy(circuit["name mover"][: i + 1]) # turn into the previous things
+    J[head] = deepcopy(circuit["name mover"][: i + 1])  # turn into the previous things
 J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]
-#%% 
+#%%
 results = {}
 
 if "results_cache" not in dir():
@@ -224,12 +230,14 @@ for circuit_class in circuit.keys():
         results[head] = [None, None]
         base = frozenset(J[head])
         summit_list = deepcopy(J[head])
-        summit_list.remove(head) # and this will error if you don't have a head in J!!!
+        summit_list.remove(head)  # and this will error if you don't have a head in J!!!
         summit = frozenset(summit_list)
 
         for idx, ablated_stuff in enumerate([base, summit]):
             if ablated_stuff not in results_cache:  # see the if False line
-                new_heads_to_keep = get_heads_circuit(ioi_dataset, excluded=ablated_stuff, circuit=circuit)
+                new_heads_to_keep = get_heads_circuit(
+                    ioi_dataset, excluded=ablated_stuff, circuit=circuit
+                )
                 model.reset_hooks()
                 model, _ = do_circuit_extraction(
                     model=model,
@@ -244,7 +252,9 @@ for circuit_class in circuit.keys():
                 print("Do sad thing")
             results[head][idx] = results_cache[ablated_stuff]
 
-        print(f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}")
+        print(
+            f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}"
+        )
 #%%
 ac = ALL_COLORS
 cc = CLASS_COLORS.copy()
@@ -266,7 +276,7 @@ for j, G in enumerate(relevant_classes + ["backup name mover"]):
     widths = []
     if G == "backup name mover":
         curvys = list(circuit["name mover"])
-        for head in [(9, 6), (9, 9), (10, 0)]:  
+        for head in [(9, 6), (9, 9), (10, 0)]:
             curvys.remove(head)
     elif G == "name mover":
         curvys = [(9, 6), (9, 9), (10, 0)]
@@ -296,7 +306,7 @@ for j, G in enumerate(relevant_classes + ["backup name mover"]):
         initial_ys.append(initial_y)
         final_ys.append(final_y)
 
-    the_xs[G] = xs 
+    the_xs[G] = xs
     initial_ys = torch.Tensor(initial_ys)
     final_ys = torch.Tensor(final_ys)
     initial_y_cache[G] = initial_ys
@@ -317,7 +327,9 @@ for j, G in enumerate(relevant_classes + ["backup name mover"]):
             y=y,
             base=base,
             marker_color=colors,
-            width=[1.0 for _ in range(len(xs))],  ## if G != "dis" else [0.2 for _ in range(len(xs))],
+            width=[
+                1.0 for _ in range(len(xs))
+            ],  ## if G != "dis" else [0.2 for _ in range(len(xs))],
             name=G,
         )
     )
@@ -343,7 +355,10 @@ all_vs = []
 fig.add_trace(
     go.Scatter(
         x=all_vs,
-        y=[(baseline_prob if metric == probs else baseline_ldiff) for _ in range(len(all_vs))],
+        y=[
+            (baseline_prob if metric == probs else baseline_ldiff)
+            for _ in range(len(all_vs))
+        ],
         name="Baseline model performance",
         line=dict(color="black"),
         fill="toself",
@@ -379,17 +394,20 @@ fig.write_image(f"svgs/circuit_minimality_at_{ctime()}.svg")
 fig.show()
 #%% # THIS IS JUST FOR LATEX
 
+
 def capitalise(name):
     """
     turn each word into a capitalised word
     """
     return " ".join([word.capitalize() for word in name.split(" ")])
 
+
 def str_to_tuple(L):
     """
     turn a string into a tuple
     """
     return tuple([int(x) for x in L[1:-1].split(",")])
+
 
 idx = 0
 for j, G in enumerate(relevant_classes + ["backup name mover"]):
