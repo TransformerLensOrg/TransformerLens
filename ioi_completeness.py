@@ -752,6 +752,16 @@ circuit_hooks = do_circuit_extraction(
     hooks_dict=True,
 )
 
+model_rem_hooks = do_circuit_extraction(
+    model=model,
+    heads_to_remove=heads_to_keep,
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=mean_dataset,
+    return_hooks=True,
+    hooks_dict=True,
+)
+
 circuit_hooks_keys = list(circuit_hooks.keys())
 
 for layer, head_idx in circuit_hooks_keys:
@@ -764,7 +774,7 @@ assert len(circuit_hooks) == 26
 def cobble_eval(model, nodes):
     model.reset_hooks()
     for head in nodes:
-        model.add_hook(*complement_hooks[head])
+        model.add_hook(*model_rem_hooks[head])
     cur_logit_diff = logit_diff(model, ioi_dataset)
     model.reset_hooks()
     return cur_logit_diff
@@ -772,10 +782,11 @@ def cobble_eval(model, nodes):
 
 def circuit_eval(model, nodes):
     model.reset_hooks()
-    for head in nodes:
-        model.add_hook(*circuit_hooks[head])
+    for head in all_circuit_nodes:
+        if head not in nodes:
+            model.add_hook(*circuit_hooks[head])
     for head in complement_hooks:
-        if head not in all_circuit_nodes:
+        if head not in all_circuit_nodes or head in nodes:
             model.add_hook(*complement_hooks[head])
     cur_logit_diff = logit_diff(model, ioi_dataset)
     model.reset_hooks()
@@ -789,6 +800,8 @@ print(f"{c=}, {m=} {torch.abs(c-m)=}")
 for circuit_class in circuit.keys():
     c = circuit_eval(model, circuit[circuit_class])
     m = cobble_eval(model, circuit[circuit_class])
+
+    print(f"{circuit_class=} {c=}, {m=} {torch.abs(c-m)=}")
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}

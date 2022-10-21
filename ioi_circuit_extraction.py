@@ -378,7 +378,7 @@ def do_circuit_extraction(
             return list(hooks.values())
 
     else:
-        for hook in hooks:
+        for hook in hooks.values():
             model.add_hook(*hook)
         return model, abl
 
