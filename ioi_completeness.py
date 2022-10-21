@@ -917,6 +917,9 @@ for doover in range(int(1e9)):
                     to_test = random.sample(C_minus_G, min(no_samples, len(C_minus_G)))
                     # sample without replacement
 
+                    cevals = []
+                    mevals = []
+
                     results = []
                     for (
                         node
@@ -924,7 +927,10 @@ for doover in range(int(1e9)):
                         to_test
                     ):  # check which heads in to_test causes the biggest drop
                         G_plus_node = deepcopy(G) + [node]
-                        results.append(difference_eval(model, G_plus_node))
+
+                        cevals.append(circuit_eval(model, G_plus_node).item())
+                        mevals.append(cobble_eval(model, G_plus_node).item())
+                        results.append(torch.abs(cevals[-1] - mevals[-1]).item())
 
                     best_node_idx = np.argmax(results)
                     max_diff = results[best_node_idx]
@@ -940,6 +946,8 @@ for doover in range(int(1e9)):
                             {
                                 "circuit_nodes": deepcopy(C_minus_G),
                                 "removed_nodes": deepcopy(G),
+                                "ceval": cevals[best_node_idx],
+                                "meval": mevals[best_node_idx],
                             }
                         )
                         if verbose:
