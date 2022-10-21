@@ -9,7 +9,7 @@ import logging
 import tqdm.auto as tqdm
 import re
 from huggingface_hub import HfApi
-from functools import *
+from functools import partial, lru_cache
 
 from transformers import (
     AutoModelForCausalLM,
@@ -262,6 +262,43 @@ class EasyTransformer(HookedRootModule):
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
         str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
         return str_tokens
+    
+    def to_single_token(self, string):
+        """Maps a string that makes up a single token to the id for that token. Raises an error for strings that are not a single token! If uncertain use to_tokens
+        """
+
+        # We use the to_tokens method, do not append a BOS token
+        token = self.to_tokens(string, prepend_bos=False).squeeze()
+        # If token shape is non-empty, raise error
+        assert not token.shape, f"Input string: {string} is not a single token!"
+        return token
+    
+    def single_token_to_residual(
+        self, 
+        token: Union[str, int, torch.Tensor]
+        ):
+        """Maps a token to the unembedding vector for that token, ie the vector in the residual stream that we do with to the get the logit for that token. 
+
+        WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map.
+
+        Args:
+            token (Union[str, int, torch.Tensor]): The single token. Can be a single element tensor, an integer, or string. If string, will be mapped to a single token using to_single_token, and an error raised if it's multiply tokens.
+        
+        Returns:
+            residual_direction torch.Tensor: The unembedding vector for the token, a [d_model] tensor.
+        """
+        if isinstance(token, str):
+            token = self.to_single_token(token).item()
+        elif isinstance(token, int):
+            pass
+        elif isinstance(token, torch.Tensor):
+            token = token.item()
+        else:
+            raise ValueError(f"Invalid token type: {type(token)}")
+        
+        residual_direction = self.W_U[:, token]
+        return residual_direction
+        
 
     @classmethod
     def from_pretrained(cls, 
@@ -818,3 +855,82 @@ class EasyTransformer(HookedRootModule):
 
         else:
             return tokens
+    
+    # Give access to all weights as properties. Layer weights are stacked into one massive tensor and a cache is used to avoid repeated computation. If GPU memory is a bottleneck, don't use these properties!
+    @property
+    def W_U(self):
+        return self.unembed.W_U
+    
+    @property
+    def W_E(self):
+        return self.embed.W_E
+    
+    @property
+    def W_pos(self):
+        return self.pos_embed.W_pos
+
+    @property
+    def W_E_pos(self):
+        """ 
+        Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
+        """
+        return torch.cat([self.W_E, self.W_pos], dim=1)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def W_K(self):
+        """Stacks the key weights across all layers"""
+        return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def W_Q(self):
+        """Stacks the query weights across all layers"""
+        return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def W_V(self):
+        """Stacks the value weights across all layers"""
+        return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def W_O(self):
+        """Stacks the attn output weights across all layers"""
+        return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def W_in(self):
+        """Stacks the MLP input weights across all layers"""
+        return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def W_out(self):
+        """Stacks the MLP output weights across all layers"""
+        return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
+       
+    # Various utility functions
+    def accumulated_bias(
+        self, 
+        layer: int, 
+        mlp_input: bool=False):
+        """Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the input of layer L.
+
+        Args:
+            layer (int): Layer number, in [0, n_layers]. layer==0 means no layers, layer==n_layers means all layers.
+            mlp_input (bool): If True, we take the bias up to the input of the MLP of layer L (ie we include the bias from the attention output of the current layer, otherwise just biases from previous layers)
+        Returns:
+            bias (torch.Tensor): [d_model], accumulated bias
+        """
+        accumulated_bias = torch.zeros(self.cfg.d_model, device=self.cfg.device)
+
+        for i in range(layer):
+            accumulated_bias += self.blocks[i].attn.b_O
+            accumulated_bias += self.blocks[i].mlp.b_out
+        if mlp_input:
+            assert layer<self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
+            accumulated_bias += self.blocks[layer].attn.b_O
+        return accumulated_bias

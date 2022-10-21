@@ -2,7 +2,6 @@
 import logging
 from typing import Callable, Union, Optional, Sequence
 import torch
-from torch._C import _quantize_ondevice_ptq_dynamic
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -32,6 +31,8 @@ import copy
 
 # import comet_ml
 import itertools
+
+from easy_transformer.activation_cache import ActivationCache
 
 # %%
 # Define type aliases
@@ -283,7 +284,7 @@ class HookedRootModule(nn.Module):
             model_out.backward()
         
         if return_cache_object:
-            cache = cache_dict
+            cache = ActivationCache(cache_dict, self)
         else:
             cache = cache_dict
         

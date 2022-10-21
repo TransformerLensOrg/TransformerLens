@@ -429,7 +429,8 @@ class MLP(nn.Module):
             self.act_fn = gelu_new
         elif self.cfg.act_fn == "solu_ln":
             self.act_fn = solu
-            self.hook_post_ln = HookPoint()  # [batch, pos, d_mlp]
+            # Hook taken between activation and layer norm
+            self.hook_mid = HookPoint()  # [batch, pos, d_mlp]
             if self.cfg.normalization_type=="LN":
                 self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
             else:
@@ -443,9 +444,11 @@ class MLP(nn.Module):
         pre_act = self.hook_pre(
             einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in) + self.b_in
         )  # [batch, pos, d_mlp]
-        post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
-        if self.cfg.act_fn.endswith("_ln"):
-            post_act = self.hook_post_ln(self.ln(post_act))
+        if not self.cfg.act_fn.endswith("_ln"):
+            post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+        else:
+            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+            post_act = self.hook_post(self.ln(mid_act))
         mlp_out = (
             einsum("batch pos d_mlp, d_mlp d_model -> batch pos d_model", post_act, self.W_out) + self.b_out
         )  # [batch, pos, d_model]
