@@ -909,7 +909,7 @@ def new_greedy_search(
 
         run_results = {
             "result": old_diff,
-            "best set": all_sets[-1]["removed_`nodes"],
+            "best set": all_sets[-1]["removed_nodes"],
         }
 
         if save_to_file:
