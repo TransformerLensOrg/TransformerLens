@@ -309,6 +309,7 @@ def do_circuit_extraction(
     metric=None,
     exclude_heads=[],
     return_hooks=False,
+    hooks_dict=False,
 ):
     """
     ..._to_remove means the indices ablated away. Otherwise the indices not ablated away.
@@ -354,18 +355,27 @@ def do_circuit_extraction(
     )
     model.reset_hooks()
 
-    hooks = []
-    for layer, head in heads.keys():
+    hooks = {}
+
+    heads_keys = list(heads.keys())
+    # sort in lexicographic order
+    heads_keys.sort(key=lambda x: (x[0], x[1]))
+
+    for layer, head in heads_keys:
         if (layer, head) in exclude_heads:
             continue
-        hooks.append(abl.get_hook(layer, head))
+        assert (layer, head) not in hooks, ((layer, head), "already in hooks")
+        hooks[(layer, head)] = abl.get_hook(layer, head)
         # model.add_hook(*abl.get_hook(layer, head))
     for layer in mlps.keys():
         hooks.append(abl.get_hook(layer, head=None, target_module="mlp"))
         # model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
     if return_hooks:
-        return hooks
+        if hooks_dict:
+            return hooks
+        else:
+            return list(hooks.values())
 
     else:
         for hook in hooks:

@@ -151,6 +151,8 @@ from ioi_circuit_extraction import (
     ALL_NODES,
 )
 
+all_nodes = deepcopy(ALL_NODES)
+
 
 def logit_diff(model, ioi_dataset, logits=None, all=False, std=False):
     """
@@ -720,10 +722,73 @@ fig.write_image(fpath)
 fig.show()
 
 #%% [markdown] try to reproduce the removal of circuit classes experiments
+# we begin by gathering all the hooks we need
+
+# NOTE THESE HOOOKS ARE TOTALLY IOI DATASET DEPENDENT
+
+complement_hooks = do_circuit_extraction(  # these are the default edit-all things
+    model=model,
+    heads_to_keep={},
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=mean_dataset,
+    return_hooks=True,
+    hooks_dict=True,
+)
+
+assert len(complement_hooks) == 144
+all_circuit_nodes = [head[0] for head in all_nodes]
+
+heads_to_keep = get_heads_from_nodes(all_nodes, ioi_dataset)
+assert len(heads_to_keep) == len(all_nodes) == 26, (len(heads_to_keep), len(all_nodes))
+
+circuit_hooks = do_circuit_extraction(
+    model=model,
+    heads_to_keep=heads_to_keep,
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=mean_dataset,
+    return_hooks=True,
+    hooks_dict=True,
+)
+
+circuit_hooks_keys = list(circuit_hooks.keys())
+
+for layer, head_idx in circuit_hooks_keys:
+    if (layer, head_idx) not in heads_to_keep.keys():
+        circuit_hooks.pop((layer, head_idx))
+assert len(circuit_hooks) == 26
+#%% [markdown] now
 
 
-#%%
-# (10, 7), (5, 5), (2, 2), (4, 11)
+def cobble_eval(model, nodes):
+    model.reset_hooks()
+    for head in nodes:
+        model.add_hook(*complement_hooks[head])
+    cur_logit_diff = logit_diff(model, ioi_dataset)
+    model.reset_hooks()
+    return cur_logit_diff
+
+
+def circuit_eval(model, nodes):
+    model.reset_hooks()
+    for head in nodes:
+        model.add_hook(*circuit_hooks[head])
+    for head in complement_hooks:
+        if head not in all_circuit_nodes:
+            model.add_hook(*complement_hooks[head])
+    cur_logit_diff = logit_diff(model, ioi_dataset)
+    model.reset_hooks()
+    return cur_logit_diff
+
+
+c = circuit_eval(model, [])
+m = cobble_eval(model, [])
+print(f"{c=}, {m=} {torch.abs(c-m)=}")
+
+for circuit_class in circuit.keys():
+    c = circuit_eval(model, circuit[circuit_class])
+    m = cobble_eval(model, circuit[circuit_class])
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
