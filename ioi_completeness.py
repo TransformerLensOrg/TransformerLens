@@ -127,7 +127,7 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
+# abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
@@ -374,7 +374,7 @@ def greed_search_max_brok_cob_diff(
     verbose=True,
     save_to_file=False,
 ):
-    """Geed search to find G that maximize the difference between broken and cobbled circuit |metric(C\G) - metric(M\G)| . Return a list of node sets."""
+    """Greedy search to find G that maximize the difference between broken and cobbled circuit |metric(C\G) - metric(M\G)| . Return a list of node sets."""
     all_sets = []
 
     neg_head_in_G = False
@@ -456,13 +456,13 @@ if __name__ == "__main__":
     abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
     print("CIRCUIT STUDIED : ", CIRCUIT)
 
-all_diff_dataset = (
+cde_dataset = (
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
 )
 
-mean_dataset = all_diff_dataset
+mean_dataset = cde_dataset
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
@@ -811,9 +811,15 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     heads_to_keep = get_heads_from_nodes(nodes, ioi_dataset)
     # print(heads_to_keep)
     model.reset_hooks()
+    small_N = 40
     small_ioi_dataset = IOIDataset(
-        prompt_type="mixed", N=40, tokenizer=model.tokenizer, nb_templates=2
+        prompt_type="mixed", N=small_N, tokenizer=model.tokenizer, nb_templates=2
     )
+    small_cde_dataset = cde_dataset[:small_N] # (
+    #     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    #     .gen_flipped_prompts(("S", "RAND"))
+    #     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+    # )[]
 
     circuit_to_study = "natural_circuit"
 
@@ -1046,7 +1052,7 @@ figure.update_layout(
 
 figure.show()
 #%%
-greedy_heuristic = "random_search"
+greedy_heuristic = "max_brok_cob_diff"
 circuit_to_study = "naive_circuit"
 
 
@@ -1119,8 +1125,9 @@ if circuit_to_study == "natural_circuit":
 small_ioi_dataset = IOIDataset(
     N=40, tokenizer=model.tokenizer, nb_templates=4, prompt_type="mixed"
 )
-small_abc_dataset = small_ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
-torch.cuda.empty_cache()
+# small_abc_dataset = small_ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
+# torch.cuda.empty_cache()
+small_cde_dataset = 
 
 if True:
     assert greedy_heuristic in ["max_brok", "max_brok_cob_diff", "random_search"]
