@@ -947,6 +947,8 @@ class EasyTransformer(HookedRootModule):
         """Returns the Composition scores for all pairs of heads, as a L1, H1, L2, H2 tensor (which is upper triangular on the first and third axes)
         
         mode is one of ["Q", "K", "V"]
+
+        See https://transformer-circuits.pub/2021/framework/index.html#:~:text=The%20above%20diagram%20shows%20Q%2D%2C%20K%2D%2C%20and%20V%2DComposition for three metrics used
         """
         left = self.OV
         if mode=="Q":
