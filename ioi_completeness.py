@@ -835,6 +835,7 @@ for entry in perf_by_sets:  # check backwards compatibility
 
 
 def add_key_to_json_dict(fname, key, value):
+    """Thanks copilot"""
     with open(fname, "r") as f:
         d = json.load(f)
     d[key] = value
@@ -908,7 +909,7 @@ def new_greedy_search(
                     print_gpu_mem(f"iter {iter}")
 
         run_results = {
-            "result": old_diff,
+            "result": old_diff.item(),
             "best set": all_sets[-1]["removed_nodes"],
         }
 
