@@ -219,7 +219,15 @@ for head in J.keys():
 for i, head in enumerate(circuit["name mover"]):
     old_entry = J[head]
     J[head] = deepcopy(circuit["name mover"][: i + 1])  # turn into the previous things
-J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]
+
+for head in [(9, 0), (11, 9)]:
+    J[head] = deepcopy(J[(11, 2)]) + [head] + circuit["negative"]
+
+# J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)] # dropped, now
+
+J[(5, 8)] = [(11, 10), (10, 7), (5, 8)]
+J[(5, 9)] = [(11, 10), (10, 7), (5, 9)]
+
 #%%
 results = {}
 
