@@ -534,6 +534,9 @@ class FactoredMatrix:
         return FactoredMatrix(self.A.unsqueeze(k), self.B.unsqueeze(k))
 
 def composition_scores(left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True):
+    """
+    See `composition_scores` for documentation
+    """
     if broadcast_dims:
         r_leading = right.ndim-2
         l_leading = left.ndim-2
