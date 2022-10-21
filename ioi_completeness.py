@@ -478,6 +478,7 @@ if __name__ != "__main__":
 #%% [markdown] Do some faithfulness
 model.reset_hooks()
 logit_diff_M = logit_diff(model, ioi_dataset)
+print(f"logit_diff_M: {logit_diff_M}")
 
 for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded=[], circuit=circuit)
@@ -742,9 +743,9 @@ for i, perf in enumerate(perf_by_sets):
             x=[perf["mean_cur_metric_broken"]],
             y=[perf["mean_cur_metric_cobble"]],
             mode="markers",
-            name=perf[
-                "name"
-            ],  # should make there not be loads of Set markers, just one greedy marker
+            # name=perf[
+            #     "name"
+            # ],  # should make there not be loads of Set markers, just one greedy marker
             marker=dict(symbol=perf["symbol"], size=10, color=perf["color"]),
             showlegend=(
                 (" 1" in perf["removed_group"][-2:])
@@ -775,7 +776,8 @@ fig.update_yaxes(
 )
 import os
 
-fpath = f"circuit_completeness_{circuit_to_import}_CIRCUIT_at_{ctime()}.svg"
+circuit_to_export = "natural"
+fpath = f"circuit_completeness_{circuit_to_export}_CIRCUIT_at_{ctime()}.svg"
 if os.path.exists(
     "/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer/svgs"
 ):
