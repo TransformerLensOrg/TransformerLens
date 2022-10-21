@@ -976,13 +976,17 @@ for doover in range(int(1e9)):
         )
 #%% [markdown] do random search too
 
-circuit = deepcopy(CIRCUIT)
+mode = "complete"
+if mode == "naive":
+    circuit = deepcopy(ALEX_NAIVE)
+else:
+    circuit = deepcopy(CIRCUIT)
 all_nodes = get_all_nodes(circuit)
 
 xs = []
 ys = []
 
-for _ in range(100):
+for _ in range(10):
     indicator = torch.randint(0, 2, (len(all_nodes),))
     nodes = [node[0] for node, ind in zip(all_nodes, indicator) if ind == 1]
     c = circuit_eval(model, nodes)
@@ -990,7 +994,10 @@ for _ in range(100):
     print(f"{c=}, {m=} {torch.abs(c-m)=}")
 
     xs.append(c)
-    xs.append(m)
+    ys.append(m)
+
+torch.save(xs, f"pts/{mode}_random_xs.pt")
+torch.save(ys, f"pts/{mode}_random_ys.pt")
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
@@ -1224,7 +1231,7 @@ for subset_size in range(0, len(important_heads) + 1):
             data.append(d)
             f.seek(0)
             json.dump(data, f, indent=4)
-#%% [markdown] in parallel work on plotting...
+#%% [markdown] hopefully ignoarable plottig proceessin
 
 # style of file
 """
@@ -1333,6 +1340,20 @@ fig.add_trace(
         mode="markers",
         name="Greedy",
         marker=dict(symbol="square", size=10, color="blue"),
+    )
+)
+
+# add the random
+random_xs = torch.load(f"pts/{mode}_random_xs.pt")
+random_ys = torch.load(f"pts/{mode}_random_ys.pt")
+
+fig.add_trace(
+    go.Scatter(
+        x=random_xs,
+        y=random_ys,
+        mode="markers",
+        name="Random",
+        marker=dict(symbol="triangle-left", size=10, color="green"),
     )
 )
 
