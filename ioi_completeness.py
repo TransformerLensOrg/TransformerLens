@@ -439,7 +439,7 @@ for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
     logit_diff_circuit = logit_diff(model, ioi_dataset)
     print(f"{logit_diff_circuit=}")
 # %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
-circuit = deepcopy(CIRCUIT)
+circuit = deepcopy(ALEX_NAIVE)
 print("Working with", circuit)
 cur_metric = logit_diff
 
@@ -1218,46 +1218,53 @@ assert os.getcwd().endswith("Easy-Transformer"), os.getcwd
 fnames = os.listdir("jsons")
 fnames = [fname for fname in fnames if "greedy_search_results" in fname]
 
-xs = []
-ys = []
+xs = [[], []]
+ys = [[], []]
 names = []
 
-for fname in fnames:
-    with open(f"jsons/{fname}", "r") as f:
-        data = json.load(f)
-    for idx in range(100):
-        key = f"run {idx}"
-        if key in data:
-            if "results_0" in fname:  # our circuit, not naive
-                xs.append(data[key]["ceval"])
-                ys.append(data[key]["meval"])
-                names.append(
-                    str(data[key]["best set"]) + " " + str(data[key]["result"])
-                )
+for circuit_idx in range(0, 2):  # 0 is our circuit, 1 is naive
+    for fname in fnames:
+        with open(f"jsons/{fname}", "r") as f:
+            data = json.load(f)
+        for idx in range(100):
+            key = f"run {idx}"
+            if key in data:
+                if (
+                    f"results_{circuit_idx}" in fname and "ceval" in data[key]
+                ):  # our circuit, not naive
+                    xs[circuit_idx].append(data[key]["ceval"])
+                    ys[circuit_idx].append(data[key]["meval"])
+                    names.append(
+                        str(data[key]["best set"]) + " " + str(data[key]["result"])
+                    )
 
-            else:
-                pass
+                else:
+                    pass
 
-# plot figure
-fig = go.Figure()
-fig.add_trace(
-    go.Scatter(
-        x=xs,
-        y=ys,
-        mode="markers",
-        marker=dict(size=10, color="blue", opacity=0.5),
-        text=names,
+if False:
+    # plot figure
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="markers",
+            marker=dict(size=10, color="blue", opacity=0.5),
+            text=names,
+        )
     )
-)
-fig.update_layout(
-    title="Greedy Search Results",
-    xaxis_title="Circuit Evaluation",
-    yaxis_title="Mean Evaluation",
-    font=dict(family="Courier New, monospace", size=18, color="#7f7f7f"),
-)
-fig.show()
+    fig.update_layout(
+        title="Greedy Search Results",
+        xaxis_title="Circuit Evaluation",
+        yaxis_title="Mean Evaluation",
+        font=dict(family="Courier New, monospace", size=18, color="#7f7f7f"),
+    )
+    fig.show()
 
-#%%  fix later
+#%%
+
+mode = "naive"  # or naive
+
 fig = go.Figure()
 ## add the grey region
 # make the dotted line
@@ -1277,6 +1284,8 @@ fig.add_trace(
     )
 )
 
+perf_by_sets = torch.load(f"pts/{mode}_perf_by_sets.pt")
+
 rd_set_added = False
 for i, perf in enumerate(perf_by_sets):
     fig.add_trace(
@@ -1287,7 +1296,7 @@ for i, perf in enumerate(perf_by_sets):
             name=perf[
                 "removed_group"  # change to "name" or something for the greedy sets
             ],
-            marker=dict(symbol=perf["symbol"], size=10, color=perf["color"]),
+            marker=dict(symbol="circle", size=10, color=perf["color"]),
             showlegend=(
                 (" 1" in perf["removed_group"][-2:])
                 or ("Set" not in perf["removed_group"])
@@ -1296,9 +1305,21 @@ for i, perf in enumerate(perf_by_sets):
     )
     continue
 
+# add the greedy
+greedy_xs = torch.load(f"pts/{mode}_xs.pt")
+greedy_ys = torch.load(f"pts/{mode}_ys.pt")
 
-# fig.update_layout(showlegend=False) #
+fig.add_trace(
+    go.Scatter(
+        x=greedy_xs,
+        y=greedy_ys,
+        mode="markers",
+        name="Greedy",
+        marker=dict(symbol="square", size=10, color="blue"),
+    )
+)
 
+# fig.update_layout(showlegend=False)
 fig.update_xaxes(title_text="F(C \ K)")
 fig.update_yaxes(title_text="F(M \ K)")
 fig.update_xaxes(showgrid=True, gridcolor="black", gridwidth=1)
