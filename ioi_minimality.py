@@ -109,9 +109,15 @@ if torch.cuda.is_available():
 print_gpu_mem("Gpt2 loaded")
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-# acca_dataset = ioi_dataset.gen_flipped_prompts("S")
-abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
-mean_dataset = abca_dataset
+
+
+cde_dataset = (
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+)
+
+mean_dataset = cde_dataset
 #%% # do some initial experiments with the naive circuit
 # UH - IS THIS JUST NOT GOOD?
 circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
@@ -221,7 +227,7 @@ for i, head in enumerate(circuit["name mover"]):
     J[head] = deepcopy(circuit["name mover"][: i + 1])  # turn into the previous things
 
 for head in [(9, 0), (11, 9)]:
-    J[head] = deepcopy(J[(11, 2)]) + [head] + circuit["negative"]
+    J[head] = circuit["name mover"][:3] + [head]  # + circuit["negative"]
 
 # J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)] # dropped, now
 
