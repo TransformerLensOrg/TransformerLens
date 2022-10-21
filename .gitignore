@@ -1,5 +1,4 @@
 __pycache__
-*.pt
 *.db 
 *.pdf
 *.svg 

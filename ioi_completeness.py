@@ -976,7 +976,7 @@ for doover in range(int(1e9)):
         )
 #%% [markdown] do random search too
 
-mode = "complete"
+mode = "naive"
 if mode == "naive":
     circuit = deepcopy(ALEX_NAIVE)
 else:
@@ -986,7 +986,7 @@ all_nodes = get_all_nodes(circuit)
 xs = []
 ys = []
 
-for _ in range(10):
+for _ in range(100):
     indicator = torch.randint(0, 2, (len(all_nodes),))
     nodes = [node[0] for node, ind in zip(all_nodes, indicator) if ind == 1]
     c = circuit_eval(model, nodes)
@@ -1287,7 +1287,8 @@ if False:
 
 #%%
 
-mode = "naive"  # or naive
+# mode = "complete"
+mode = "naive"
 
 fig = go.Figure()
 ## add the grey region
@@ -1330,8 +1331,8 @@ for i, perf in enumerate(perf_by_sets):
     continue
 
 # add the greedy
-greedy_xs = torch.load(f"pts/{mode}_xs.pt")
-greedy_ys = torch.load(f"pts/{mode}_ys.pt")
+greedy_xs = torch.load(f"pts/{mode}_xs.pt")[:30]
+greedy_ys = torch.load(f"pts/{mode}_ys.pt")[:30]
 
 fig.add_trace(
     go.Scatter(
@@ -1339,13 +1340,13 @@ fig.add_trace(
         y=greedy_ys,
         mode="markers",
         name="Greedy",
-        marker=dict(symbol="square", size=10, color="blue"),
+        marker=dict(symbol="square", size=6, color="blue"),
     )
 )
 
 # add the random
-random_xs = torch.load(f"pts/{mode}_random_xs.pt")
-random_ys = torch.load(f"pts/{mode}_random_ys.pt")
+random_xs = torch.load(f"pts/{mode}_random_xs.pt")  # [:10]
+random_ys = torch.load(f"pts/{mode}_random_ys.pt")  # [:10]
 
 fig.add_trace(
     go.Scatter(
@@ -1365,8 +1366,8 @@ fig.update_yaxes(showgrid=True, gridcolor="black", gridwidth=1)
 fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
 
 # USE THESE LINES TO SCALE SVGS PROPERLY
-fig.update_xaxes(range=[minx, maxx])
-fig.update_yaxes(range=[minx, maxx])
+fig.update_xaxes(range=[-1, 6])
+fig.update_yaxes(range=[-1, 6])
 fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
 fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
 
@@ -1374,7 +1375,6 @@ fig.update_yaxes(
     scaleanchor="x",
     scaleratio=1,
 )
-import os
 
 circuit_to_export = "natural"
 fpath = f"circuit_completeness_{circuit_to_export}_CIRCUIT_at_{ctime()}.svg"
