@@ -28,7 +28,7 @@ from easy_transformer.caching import (
 
 from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
-from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf
+from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores
 
 
 
@@ -911,6 +911,14 @@ class EasyTransformer(HookedRootModule):
     def W_out(self):
         """Stacks the MLP output weights across all layers"""
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
+    
+    @property
+    def QK(self):
+        return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
+    
+    @property
+    def OV(self):
+        return FactoredMatrix(self.W_V, self.W_O)
        
     # Various utility functions
     def accumulated_bias(
@@ -934,3 +942,28 @@ class EasyTransformer(HookedRootModule):
             assert layer<self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             accumulated_bias += self.blocks[layer].attn.b_O
         return accumulated_bias
+    
+    def all_composition_scores(self, mode):
+        """Returns the Composition scores for all pairs of heads, as a L1, H1, L2, H2 tensor (which is upper triangular on the first and third axes)
+        
+        mode is one of ["Q", "K", "V"]
+        """
+        left = self.OV
+        if mode=="Q":
+            right = self.QK
+        elif mode=="K":
+            right = self.QK.T
+        elif mode=="V":
+            right = self.OV
+        else:
+            raise ValueError(f"mode must be one of ['Q', 'K', 'V'] not {mode}")
+
+        scores = composition_scores(left, right, broadcast_dims=True)
+        # Mask scores to be zero for all pairs with the right head in the same layer or earlier layer than the left head.
+        mask = torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None] < torch.arange(self.cfg.n_layers, device=self.cfg.device)[None, None, :, None]
+        scores = torch.where(mask, scores, torch.zeros_like(scores))
+        return scores
+    
+    def all_head_labels(self):
+        return [f"L{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)]
+

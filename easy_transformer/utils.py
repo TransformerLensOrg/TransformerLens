@@ -11,6 +11,7 @@ from typing import Optional, Union, Tuple, List
 import transformers
 from huggingface_hub import hf_hub_download
 import re
+from functools import lru_cache
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
@@ -46,6 +47,7 @@ def print_gpu_mem(step_name=""):
 
 def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
+    return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
     if len(tensor.shape) == 0:
         return tensor
     elif len(tensor.shape) == 1:
@@ -393,4 +395,163 @@ def act_name(
         act_name += f"{layer_type}."
     act_name += f"hook_{name}"
     return act_name
+# %%
+def transpose(tensor):
+    """ 
+    Utility to swap the last two dimensions of a tensor, regardless of the number of leading dimensions
+    """
+    return tensor.transpose(-1, -2)
+
+class FactoredMatrix:
+    """ 
+    Class to represent low rank factored matrices, where the matrix is represented as a product of two matrices. Has utilities for efficient calculation of eigenvalues, norm and SVD. 
+    """
+    def __init__(self, A, B):
+        self.A = A
+        self.B = B
+        assert self.A.size(-1)==self.B.size(-2), f"Factored matrix must match on inner dimension, shapes were a: {self.A.shape}, b:{self.B.shape}"
+        self.ldim = self.A.size(-2)
+        self.rdim = self.B.size(-1)
+        self.mdim = self.B.size(-2)
+        self.has_leading_dims = (self.A.ndim>2) or (self.B.ndim>2)
+        self.shape = torch.broadcast_shapes(self.A.shape[:-2], self.B.shape[:-2]) + (self.ldim, self.rdim)
+        
+
+    def __matmul__(self, other):
+        if isinstance(other, torch.Tensor):
+            if other.ndim < 2:
+                # It's a vector, so we collapse the factorisation and just return a vector
+                # Squeezing/Unsqueezing is to preserve broadcasting working nicely
+                return (self.A @ (self.B @ other.unsqueeze(-1))).squeeze(-1)
+            else:
+                assert other.size(-2)==self.rdim, f"Right matrix must match on inner dimension, shapes were self: {self.shape}, other:{other.shape}"
+                if self.rdim > self.mdim:
+                    return FactoredMatrix(self.A, self.B @ other)
+                else:
+                    return FactoredMatrix(self.AB, other)
+        elif isinstance(other, FactoredMatrix):
+            return (self @ other.A) @ other.B
+    
+    def __rmatmul__(self, other):
+        if isinstance(other, torch.Tensor):
+            assert other.size(-1)==self.ldim, f"Left matrix must match on inner dimension, shapes were self: {self.shape}, other:{other.shape}"
+            if other.ndim < 2:
+                # It's a vector, so we collapse the factorisation and just return a vector
+                return ((other.unsqueeze(-2) @ self.A) @ self.B).squeeze(-1)
+            elif self.ldim > self.mdim:
+                return FactoredMatrix(other @ self.A, self.B)
+            else:
+                return FactoredMatrix(other, self.AB)
+        elif isinstance(other, FactoredMatrix):
+            return other.A @ (other.B @ self)
+    
+    @property
+    def AB(self):
+        """ The product matrix - expensive to compute, and can consume a lot of GPU memory"""
+        return self.A @ self.B
+    
+    @property
+    def BA(self):
+        """ The reverse product. Only makes sense when ldim==rdim"""
+        assert self.rdim==self.ldim, f"Can only take ba if ldim==rdim, shapes were self: {self.shape}"
+        return self.B @ self.A
+    
+    @property
+    def T(self):
+        return FactoredMatrix(self.B.transpose(-2, -1), self.A.transpose(-2, -1))
+    
+    @lru_cache(maxsize=None)
+    def svd(self):
+        """ 
+        Efficient algorithm for finding Singular Value Decomposition, a tuple (U, S, Vh) for matrix M st S is a vector and U, Vh are orthogonal matrices, and U @ S.diag() @ Vh == M
+        """
+        Ua, Sa, Vha = torch.svd(self.A)
+        Ub, Sb, Vhb = torch.svd(self.B)
+        middle = Sa[..., :, None] * transpose(Vha) @ Ub * Sb[..., None, :]
+        Um, Sm, Vhm = torch.svd(middle)
+        U = Ua @ Um
+        Vh = Vhb @ Vhm
+        S = Sm
+        return U, S, Vh 
+    
+    @property
+    def U(self):
+        return self.svd()[0]
+    
+    @property
+    def S(self):
+        return self.svd()[1]
+    
+    @property
+    def Vh(self):
+        return self.svd()[2]
+    
+    @property
+    def eigenvalues(self):
+        """ Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k. """
+        return torch.linalg.eig(self.Ba).eigenvalues
+    
+    def __getitem__(self, idx):
+        """Indexing - assumed to only apply to the leading dimensions."""
+        
+        return FactoredMatrix(self.A[idx], self.B[idx])
+    
+    def norm(self):
+        """ 
+        Frobenius norm is sqrt(sum of squared singular values)
+        """
+        return self.S.pow(2).sum(-1).sqrt()
+    
+    def __repr__(self):
+        return f"FactoredMatrix: Shape({self.shape}), Hidden Dim({self.mdim}), Norm({self.norm()})"
+    
+    def make_even(self):
+        """ 
+        Returns the factored form of (U @ S.sqrt().diag(), S.sqrt().diag() @ Vh) where U, S, Vh are the SVD of the matrix. This is an equivalent factorisation, but more even - each half has half the singular values, and orthogonal rows/cols
+        """
+        return FactoredMatrix(self.U * self.S.sqrt()[..., None, :], self.S.sqrt()[..., :, None] * transpose(self.Vh))
+    
+    def get_corner(self, k=3):
+        return get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
+    
+    @property
+    def ndim(self):
+        return len(self.shape)
+    
+    def collapse_l(self):
+        """ 
+        Collapses the left side of the factorization by removing the orthogonal factor (given by self.U). Returns a (..., mdim, rdim) tensor
+        """
+        return self.S[..., :, None]*transpose(self.Vh)
+    
+    def collapse_r(self):
+        """ 
+        Analogous to collapse_l, returns a (..., ldim, mdim) tensor
+        """
+        return self.U * self.S[..., None, :]
+    
+    def unsqueeze(self, k):
+        return FactoredMatrix(self.A.unsqueeze(k), self.B.unsqueeze(k))
+
+def composition_scores(left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True):
+    if broadcast_dims:
+        r_leading = right.ndim-2
+        l_leading = left.ndim-2
+        for i in range(l_leading):
+            right = right.unsqueeze(i)
+        for i in range(r_leading):
+            left = left.unsqueeze(i+l_leading)
+    assert left.rdim==right.ldim, f"Composition scores require left.rdim==right.ldim, shapes were left: {left.shape}, right:{right.shape}"
+
+    right = right.collapse_r()
+    left = left.collapse_l()
+    r_norms = right.norm(dim=[-2, -1])
+    l_norms = left.norm(dim=[-2, -1])
+    comp_norms = (left @ right).norm(dim=[-2, -1])
+    return comp_norms/r_norms/l_norms
+        
+    
+    
+
+
 # %%
