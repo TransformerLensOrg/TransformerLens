@@ -974,6 +974,23 @@ for doover in range(int(1e9)):
             save_to_file=True,
             verbose=True,
         )
+#%% [markdown] do random search too
+
+circuit = deepcopy(CIRCUIT)
+all_nodes = get_all_nodes(circuit)
+
+xs = []
+ys = []
+
+for _ in range(100):
+    indicator = torch.randint(0, 2, (len(all_nodes),))
+    nodes = [node[0] for node, ind in zip(all_nodes, indicator) if ind == 1]
+    c = circuit_eval(model, nodes)
+    m = cobble_eval(model, nodes)
+    print(f"{c=}, {m=} {torch.abs(c-m)=}")
+
+    xs.append(c)
+    xs.append(m)
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
