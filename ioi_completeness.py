@@ -70,7 +70,6 @@ from pprint import pprint
 import gc
 from datasets import load_dataset
 import matplotlib.pyplot as plt
-import random as rd
 
 
 from ioi_dataset import (
@@ -245,7 +244,7 @@ def greed_search_max_broken(get_circuit_logit_diff):
         baseline = all_node_baseline
 
         for iter in range(NB_ITER):
-            to_test = rd.sample(current_nodes, NODES_PER_STEP)
+            to_test = random.sample(current_nodes, NODES_PER_STEP)
 
             results = []
             for node in to_test:  # check wich heads in to_test causes the biggest drop
@@ -298,6 +297,14 @@ def test_minimality(model, ioi_dataset, v, J, absolute=True):
         return LD_C_m_J - LD_C_m_J_plus_v
 
 
+def add_key_to_json_dict(fname, key, value):
+    with open(fname, "r") as f:
+        d = json.load(f)
+    d[key] = value
+    with open(fname, "w") as f:
+        json.dump(d, f)
+
+
 def greed_search_max_brok_cob_diff(
     get_cob_brok_from_nodes,
     init_set=[],
@@ -331,7 +338,7 @@ def greed_search_max_brok_cob_diff(
 
         for iter in range(NB_ITER):
 
-            to_test = rd.sample(C_minus_G, min(NODES_PER_STEP, len(C_minus_G)))
+            to_test = random.sample(C_minus_G, min(NODES_PER_STEP, len(C_minus_G)))
 
             results = []
             for node in to_test:  # check wich heads in to_test causes the biggest drop
@@ -536,7 +543,7 @@ if run_original:
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
 
 
-with open(f"sets/perf_{circuit_to_study}_by_classes.json", "w") as f:
+with open(f"sets/perf_by_classes_{ctime()}.json", "w") as f:
     json.dump(circuit_perf, f)
 
 #%% [markdown] UH SKIP THIS IF YA WANT TO HAVE GOOD PLOT? Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
@@ -768,7 +775,7 @@ for layer, head_idx in circuit_hooks_keys:
     if (layer, head_idx) not in heads_to_keep.keys():
         circuit_hooks.pop((layer, head_idx))
 assert len(circuit_hooks) == 26
-#%% [markdown] now
+#%% [markdown] now do the circuit classes experiments
 
 
 def cobble_eval(model, nodes):
@@ -793,15 +800,129 @@ def circuit_eval(model, nodes):
     return cur_logit_diff
 
 
+def difference_eval(model, nodes):
+    c = circuit_eval(model, nodes)
+    m = cobble_eval(model, nodes)
+    return torch.abs(c - m)
+
+
+#%%
 c = circuit_eval(model, [])
 m = cobble_eval(model, [])
 print(f"{c=}, {m=} {torch.abs(c-m)=}")
 
-for circuit_class in circuit.keys():
-    c = circuit_eval(model, circuit[circuit_class])
-    m = cobble_eval(model, circuit[circuit_class])
+for entry in perf_by_sets:  # check backwards compatibility
+    circuit_class = entry["removed_group"]  # includes "none"
+    assert circuit_class in list(circuit.keys()) + ["none"], circuit_class
+    nodes = circuit[circuit_class] if circuit_class in circuit.keys() else []
+
+    c = circuit_eval(model, nodes)
+    m = cobble_eval(model, nodes)
+
+    assert torch.allclose(entry["mean_cur_metric_cobble"], m), (
+        entry["mean_cur_metric_cobble"],
+        m,
+        circuit_class,
+    )
+    assert torch.allclose(entry["mean_cur_metric_broken"], c), (
+        entry["mean_cur_metric_broken"],
+        c,
+        circuit_class,
+    )
 
     print(f"{circuit_class=} {c=}, {m=} {torch.abs(c-m)=}")
+#%% [markdown] now do the greedy set experiments
+
+
+def add_key_to_json_dict(fname, key, value):
+    with open(fname, "r") as f:
+        d = json.load(f)
+    d[key] = value
+    with open(fname, "w") as f:
+        json.dump(d, f)
+
+
+def new_greedy_search(
+    no_runs,
+    no_iters,
+    no_samples,
+    save_to_file=True,
+    verbose=True,
+):
+    """
+    Greedy search to find G that maximizes the difference between broken and cobbled circuit: |metric(C\G) - metric(M\G)|
+    """
+    all_sets = []  # not mantained
+    C_minus_G_init = deepcopy(all_nodes)
+    C_minus_G_init = [head[0] for head in C_minus_G_init]
+
+    c = circuit_eval(model, [])
+    m = cobble_eval(model, [])
+    baseline = torch.abs(c - m)
+
+    metadata = {
+        "no_runs": no_runs,
+        "no_iters": no_iters,
+        "no_samples": no_samples,
+    }
+    fname = f"jsons/greedy_search_results_{ctime()}.json"
+
+    # write to JSON file
+    if save_to_file:
+        with open(
+            fname,
+            "w",
+        ) as outfile:
+            json.dump(metadata, outfile)
+
+    for run in tqdm(range(no_runs)):
+        C_minus_G = deepcopy(C_minus_G_init)
+        G = []
+        old_diff = baseline.clone()
+
+        for iter in range(no_iters):
+            print("iter", iter)
+            to_test = random.sample(C_minus_G, min(no_samples, len(C_minus_G)))
+            # sample without replacement
+
+            results = []
+            for node in to_test:  # check which heads in to_test causes the biggest drop
+                G_plus_node = deepcopy(G) + [node]
+                results.append(difference_eval(model, G_plus_node))
+
+            best_node_idx = np.argmax(results)
+            max_diff = results[best_node_idx]
+            if max_diff > old_diff:
+                best_node = to_test[best_node_idx]
+                C_minus_G.remove(best_node)  # we remove the best node from the circuit
+                G.append(best_node)
+                old_diff = max_diff
+
+                all_sets.append(
+                    {"circuit_nodes": deepcopy(C_minus_G), "removed_nodes": deepcopy(G)}
+                )
+                if verbose:
+                    print(
+                        f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{baseline}"
+                    )
+                    print_gpu_mem(f"iter {iter}")
+
+        run_results = {
+            "result": old_diff,
+            "best set": all_sets[-1]["removed_`nodes"],
+        }
+
+        if save_to_file:
+            add_key_to_json_dict(fname, f"run {run}", run_results)
+
+
+new_greedy_search(
+    no_runs=1,
+    no_iters=5,
+    no_samples=5,
+    save_to_file=True,
+    verbose=True,
+)
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
