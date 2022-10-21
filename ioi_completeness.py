@@ -747,6 +747,7 @@ for doover in range(int(1e9)):
     for raw_circuit_idx, raw_circuit in enumerate([CIRCUIT, ALEX_NAIVE]):
 
         if doover == 0 and raw_circuit_idx == 0:
+            print("Starting with the NAIVE!")
             continue
 
         circuit = deepcopy(raw_circuit)
@@ -930,7 +931,7 @@ for doover in range(int(1e9)):
 
                         cevals.append(circuit_eval(model, G_plus_node).item())
                         mevals.append(cobble_eval(model, G_plus_node).item())
-                        results.append(torch.abs(cevals[-1] - mevals[-1]).item())
+                        results.append(abs(cevals[-1] - mevals[-1]))
 
                     best_node_idx = np.argmax(results)
                     max_diff = results[best_node_idx]
@@ -957,7 +958,7 @@ for doover in range(int(1e9)):
                             print_gpu_mem(f"iter {iter}")
 
                 run_results = {
-                    "result": old_diff.item(),
+                    "result": old_diff,
                     "best set": all_sets[-1]["removed_nodes"],
                 }
 
