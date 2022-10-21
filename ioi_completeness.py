@@ -148,69 +148,8 @@ from ioi_circuit_extraction import (
     get_heads_circuit,
     do_circuit_extraction,
     list_diff,
+    ALL_NODES,
 )
-
-alex_greedy_things = True
-old_circuit = True
-
-circuit_to_study = "natural_circuit"
-assert circuit_to_study in ["auto_search", "natural_circuit", "naive_circuit"]
-
-if circuit_to_study == "naive_circuit":
-    CIRCUIT = {
-        "name mover": [(9, 6), (9, 9), (10, 0)],
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "induction": [(5, 5), (5, 9)],
-        "duplicate token": [(3, 0), (0, 10)],
-        "previous token": [(2, 2), (4, 11)],
-        "negative": [],
-    }
-    ALL_NODES = []
-    RELEVANT_TOKENS = {}
-    warnings.warn("Override yikes")
-
-    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
-
-    for head in CIRCUIT["induction"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["previous token"]:
-        RELEVANT_TOKENS[head] = ["S+1"]
-    ALL_NODES = []  # a node is a tuple (head, token)
-
-    for h in RELEVANT_TOKENS:
-        for tok in RELEVANT_TOKENS[h]:
-            ALL_NODES.append((h, tok))
-if circuit_to_study == "natural_circuit":
-    # CIRCUIT = {
-    #     "name mover": [
-    #         (9, 9),  # by importance
-    #         (10, 0),
-    #         (9, 6),
-    #         (10, 10),
-    #         (10, 2),
-    #         (11, 2),
-    #         (10, 6),
-    #         (10, 1),
-    #         (11, 6),
-    #         (9, 0),
-    #         (9, 7),
-    #     ],
-    #     "negative": [(10, 7), (11, 10)],
-    #     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    #     "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    #     "duplicate token": [(0, 1), (0, 10), (3, 0)],
-    #     "previous token": [(2, 2), (2, 9), (4, 11)],
-    # }
-    circuit = deepcopy(CIRCUIT)
-
-    for h in RELEVANT_TOKENS:
-        for tok in RELEVANT_TOKENS[h]:
-            ALL_NODES.append((h, tok))
 
 
 def logit_diff(model, ioi_dataset, logits=None, all=False, std=False):
@@ -424,8 +363,6 @@ def greed_search_max_brok_cob_diff(
 
 
 #%% [markdown]
-# TODO Explain the way we're doing Jacob's circuit extraction experiment here
-#%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
 #%% # plot writing in the IO - S direction
@@ -487,20 +424,13 @@ for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
     print(f"{logit_diff_circuit=}")
 # %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
 circuit = deepcopy(CIRCUIT)
-
-# %% [markdown]
-
-
-circuit = deepcopy(ALEX_NAIVE)
 print("Working with", circuit)
-cur_metric = logit_diff  # partial(probs, type="io")  #
-
+cur_metric = logit_diff
 
 run_original = True
 print("Are we running the original experiment?", run_original)
 
 if run_original:
-
     circuit_perf = []
     perf_by_sets = []
     for G in tqdm(list(circuit.keys()) + ["none"]):
@@ -609,119 +539,123 @@ with open(f"sets/perf_{circuit_to_study}_by_classes.json", "w") as f:
 
 #%% [markdown] UH SKIP THIS IF YA WANT TO HAVE GOOD PLOT? Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
 
+if False:
 
-def get_df_from_csv(fname):
-    df = pd.read_csv(fname)
-    return df
+    def get_df_from_csv(fname):
+        df = pd.read_csv(fname)
+        return df
 
+    def get_list_of_dicts_from_df(df):
+        return [dict(x) for x in df.to_dict("records")]
 
-def get_list_of_dicts_from_df(df):
-    return [dict(x) for x in df.to_dict("records")]
+    def read_json_from_file(fname):
+        with open(fname) as f:
+            return json.load(f)
 
+    perf_by_sets = []
 
-def read_json_from_file(fname):
-    with open(fname) as f:
-        return json.load(f)
+    circuit_to_import = "natural"
 
+    fnames = [
+        # f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_rd_Search.json",
+        # f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_max_brok_cob_diff.json",
+        f"sets/perf_{circuit_to_import}_circuit_by_classes.json",
+    ]
 
-perf_by_sets = []
+    sets_type = ["random_search", "greedy", "class"]
+    for k, fname in enumerate(fnames):
+        if fname[-4:] == ".csv":
+            dat = get_list_of_dicts_from_df(get_df_from_csv(fname))
+            avg_things = {"Empty set": {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0}}
+            for i in range(1, 62):
+                avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
+            for x in dat:
+                avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x[
+                    "ldiff_broken"
+                ]
+                avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x[
+                    "ldiff_cobble"
+                ]
+            for x in avg_things.keys():
+                avg_things[x]["mean_ldiff_broken"] /= 150
+                avg_things[x]["mean_ldiff_cobble"] /= 150
+            avg_things.pop("Empty set")
 
-circuit_to_import = "natural"
+        elif fname[-5:] == ".json":
+            dat = read_json_from_file(fname)
+            avg_things = {}
+            for x in dat:
+                if not x["removed_set_id"] in avg_things:
+                    avg_things[x["removed_set_id"]] = {
+                        "mean_ldiff_broken": 0,
+                        "mean_ldiff_cobble": 0,
+                        "mean_dist": 0,
+                    }
 
-fnames = [
-    # f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_rd_Search.json",
-    # f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_max_brok_cob_diff.json",
-    f"sets/perf_{circuit_to_import}_circuit_by_classes.json",
-]
-
-sets_type = ["random_search", "greedy", "class"]
-for k, fname in enumerate(fnames):
-    if fname[-4:] == ".csv":
-        dat = get_list_of_dicts_from_df(get_df_from_csv(fname))
-        avg_things = {"Empty set": {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0}}
-        for i in range(1, 62):
-            avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
-        for x in dat:
-            avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
-            avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
-        for x in avg_things.keys():
-            avg_things[x]["mean_ldiff_broken"] /= 150
-            avg_things[x]["mean_ldiff_cobble"] /= 150
-        avg_things.pop("Empty set")
-
-    elif fname[-5:] == ".json":
-        dat = read_json_from_file(fname)
-        avg_things = {}
-        for x in dat:
-            if not x["removed_set_id"] in avg_things:
-                avg_things[x["removed_set_id"]] = {
-                    "mean_ldiff_broken": 0,
-                    "mean_ldiff_cobble": 0,
-                    "mean_dist": 0,
-                }
-
-            avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
-            avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
-        for x in avg_things.keys():
-            avg_things[x]["mean_ldiff_broken"] /= 150
-            avg_things[x]["mean_ldiff_cobble"] /= 150
-            avg_things[x]["mean_dist"] = np.abs(
-                avg_things[x]["mean_ldiff_broken"] - avg_things[x]["mean_ldiff_cobble"]
-            )
-    else:
-        raise ValueError("Unknown file type")
-
-    all_dists = [avg_things[x]["mean_dist"] for x in avg_things.keys()]
-    print(f"Max dist {circuit_to_import} - {sets_type[k]}: {max(all_dists)}")
-
-    nb_set = 0
-    for x, y in avg_things.items():
-        new_y = deepcopy(y)
-        new_y["removed_group"] = x
-        new_y["symbol"] = "arrow-bar-left"
-        if x == "Empty set":
-            new_y["color"] = "red"
-            new_y["name"] = "Empty set"
+                avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x[
+                    "ldiff_broken"
+                ]
+                avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x[
+                    "ldiff_cobble"
+                ]
+            for x in avg_things.keys():
+                avg_things[x]["mean_ldiff_broken"] /= 150
+                avg_things[x]["mean_ldiff_cobble"] /= 150
+                avg_things[x]["mean_dist"] = np.abs(
+                    avg_things[x]["mean_ldiff_broken"]
+                    - avg_things[x]["mean_ldiff_cobble"]
+                )
         else:
-            if sets_type[k] == "random_search":
-                new_y["color"] = "green"
-                new_y["name"] = "Random set"
-            elif sets_type[k] == "greedy":
-                new_y["color"] = "blue"
-                new_y["name"] = "Greedy search set"
-                new_y["symbol"] = "square"
-            elif sets_type[k] == "class":
-                new_y["color"] = CLASS_COLORS[x]
-                new_y["name"] = x
-                new_y["symbol"] = "circle"
-        new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
-        new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
+            raise ValueError("Unknown file type")
 
-        if (
-            (nb_set - 1 not in [0, 5, 3, 6, 23])
-            and sets_type[k] == "greedy"
-            and circuit_to_import == "natural"
-        ):
-            nb_set += 1
-            continue
+        all_dists = [avg_things[x]["mean_dist"] for x in avg_things.keys()]
+        print(f"Max dist {circuit_to_import} - {sets_type[k]}: {max(all_dists)}")
 
-        if x == "Empty set":
+        nb_set = 0
+        for x, y in avg_things.items():
+            new_y = deepcopy(y)
+            new_y["removed_group"] = x
+            new_y["symbol"] = "arrow-bar-left"
+            if x == "Empty set":
+                new_y["color"] = "red"
+                new_y["name"] = "Empty set"
+            else:
+                if sets_type[k] == "random_search":
+                    new_y["color"] = "green"
+                    new_y["name"] = "Random set"
+                elif sets_type[k] == "greedy":
+                    new_y["color"] = "blue"
+                    new_y["name"] = "Greedy search set"
+                    new_y["symbol"] = "square"
+                elif sets_type[k] == "class":
+                    new_y["color"] = CLASS_COLORS[x]
+                    new_y["name"] = x
+                    new_y["symbol"] = "circle"
+            new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
+            new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
+
+            if (
+                (nb_set - 1 not in [0, 5, 3, 6, 23])
+                and sets_type[k] == "greedy"
+                and circuit_to_import == "natural"
+            ):
+                nb_set += 1
+                continue
+
+            if x == "Empty set":
+                nb_set += 1
+                continue
+            perf_by_sets.append(new_y)
             nb_set += 1
-            continue
-        perf_by_sets.append(new_y)
-        nb_set += 1
 #%% [markdown] make the figure
 
 fig = go.Figure()
-
 ## add the grey region
 
-# parameters (how wide, high and epsilon value)
+# make the dotted line
 minx = -2
 maxx = 6
 eps = 1.0
-
-# make the dotted line
 xs = np.linspace(minx - 1, maxx + 1, 100)
 ys = xs
 
@@ -784,11 +718,12 @@ if os.path.exists(
 
 fig.write_image(fpath)
 fig.show()
+
+#%% [markdown] try to reproduce the removal of circuit classes experiments
+
+
 #%%
-
-
 # (10, 7), (5, 5), (2, 2), (4, 11)
-
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
@@ -807,6 +742,7 @@ def get_heads_from_nodes(nodes, ioi_dataset):
 
 def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     """Take a list of nodes, return the logit diff of the circuit described by the nodes"""
+    assert False  # I don't want to be redefining ALL_NODES
     heads_to_keep = get_heads_from_nodes(nodes, ioi_dataset)
     # print(heads_to_keep)
     model.reset_hooks()

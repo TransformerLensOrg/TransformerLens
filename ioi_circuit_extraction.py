@@ -241,6 +241,11 @@ for head in CIRCUIT["duplicate token"]:
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1"]
 
+ALL_NODES = []
+for h in RELEVANT_TOKENS:
+    for tok in RELEVANT_TOKENS[h]:
+        ALL_NODES.append((h, tok))
+
 # ALEX_NAIVE_CIRCUIT = {
 #     "name mover": [
 #         (10, 6),
