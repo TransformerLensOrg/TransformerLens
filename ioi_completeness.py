@@ -165,6 +165,8 @@ if circuit_to_study == "naive_circuit":
     }
     ALL_NODES = []
     RELEVANT_TOKENS = {}
+    warnings.warn("Override yikes")
+
     for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
         RELEVANT_TOKENS[head] = ["end"]
 
@@ -202,19 +204,7 @@ if circuit_to_study == "natural_circuit":
     #     "previous token": [(2, 2), (2, 9), (4, 11)],
     # }
     circuit = deepcopy(CIRCUIT)
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
 
-    for head in CIRCUIT["induction"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["previous token"]:
-        RELEVANT_TOKENS[head] = ["S+1"]
-    ALL_NODES = []  # a node is a tuple (head, token)
     for h in RELEVANT_TOKENS:
         for tok in RELEVANT_TOKENS[h]:
             ALL_NODES.append((h, tok))
@@ -298,7 +288,6 @@ def circuit_from_heads_logit_diff(
 
 
 def greed_search_max_broken(get_circuit_logit_diff):
-    """Geed search to find G that minimizes metric(C\G). Return a list of node sets."""
     NODES_PER_STEP = 10
     NB_SETS = 5
     NB_ITER = 10
@@ -412,12 +401,9 @@ def greed_search_max_brok_cob_diff(
                 G.append(best_node)
                 old_diff = max_diff
 
-                if (
-                    iter > NB_ITER // 2 - 1
-                ):  # we begin to save the sets after half of the iterations
-                    all_sets.append(
-                        {"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()}
-                    )
+                all_sets.append(
+                    {"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()}
+                )
                 if verbose:
                     print(
                         f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{all_node_baseline}"
@@ -1056,7 +1042,7 @@ figure.update_layout(
 figure.show()
 #%%
 greedy_heuristic = "max_brok_cob_diff"
-circuit_to_study = "naive_circuit"
+circuit_to_study = "natural_circuit"
 
 
 assert circuit_to_study in ["auto_search", "natural_circuit", "naive_circuit"]
@@ -1088,38 +1074,9 @@ if circuit_to_study == "naive_circuit":
         for tok in RELEVANT_TOKENS[h]:
             ALL_NODES.append((h, tok))
 if circuit_to_study == "natural_circuit":
-    CIRCUIT = {
-        "name mover": [
-            (9, 9),  # by importance
-            (10, 0),
-            (9, 6),
-            (10, 10),
-            (10, 2),
-            (11, 2),
-            (10, 6),
-            (10, 1),
-            (11, 6),
-            (9, 0),
-            (9, 7),
-        ],
-        "negative": [(10, 7), (11, 10)],
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-        "duplicate token": [(0, 1), (0, 10), (3, 0)],
-        "previous token": [(2, 2), (2, 9), (4, 11)],
-    }
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
 
-    for head in CIRCUIT["induction"]:
-        RELEVANT_TOKENS[head] = ["S2"]
+    circuit = deepcopy(CIRCUIT)
 
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["previous token"]:
-        RELEVANT_TOKENS[head] = ["S+1"]
     ALL_NODES = []  # a node is a tuple (head, token)
     for h in RELEVANT_TOKENS:
         for tok in RELEVANT_TOKENS[h]:
@@ -1133,7 +1090,11 @@ small_ioi_dataset = IOIDataset(
 dumby_ioi_dataset = IOIDataset(
     N=40, tokenizer=model.tokenizer, nb_templates=4, prompt_type="mixed"
 )
-small_cde_dataset = dumby_ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("S1", "RAND"), manual_word_idx=dumby_ioi_dataset.word_idx)
+small_cde_dataset = (
+    dumby_ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=dumby_ioi_dataset.word_idx)
+)
 
 
 if True:
