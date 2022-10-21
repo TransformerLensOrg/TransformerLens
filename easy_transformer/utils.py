@@ -489,7 +489,7 @@ class FactoredMatrix:
     @property
     def eigenvalues(self):
         """ Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k. """
-        return torch.linalg.eig(self.Ba).eigenvalues
+        return torch.linalg.eig(self.BA).eigenvalues
     
     def __getitem__(self, idx):
         """Indexing - assumed to only apply to the leading dimensions."""
