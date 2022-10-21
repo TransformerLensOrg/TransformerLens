@@ -960,6 +960,8 @@ for doover in range(int(1e9)):
                 run_results = {
                     "result": old_diff,
                     "best set": all_sets[-1]["removed_nodes"],
+                    "ceval": all_sets[-1]["ceval"],
+                    "meval": all_sets[-1]["meval"],
                 }
 
                 if save_to_file:
@@ -1205,38 +1207,126 @@ for subset_size in range(0, len(important_heads) + 1):
             data.append(d)
             f.seek(0)
             json.dump(data, f, indent=4)
-#%%
+#%% [markdown] in parallel work on plotting...
 
-figure = go.Figure()
+# style of file
+"""
+{"no_runs": 10, "no_iters": 10, "no_samples": 5, "run 0": {"result": 2.9001526832580566, "best set": [[0, 10], [2, 2], [8, 10], [4, 11]], "ceval": -1.0231037139892578, "meval": 1.8770489692687988}}
+"""
 
+assert os.getcwd().endswith("Easy-Transformer"), os.getcwd
+fnames = os.listdir("jsons")
+fnames = [fname for fname in fnames if "greedy_search_results" in fname]
 
-with open(path, "r+") as f:
-    data = json.load(f)
-    xs = []
-    ys = []
-    names = []
-    for d in data:
-        xs.append(d["broken"])
-        ys.append(d["cobble"])
-        names.append(str(d["subset"]))
-    figure.add_trace(
-        go.Scatter(
-            x=xs,
-            y=ys,
-            mode="markers",
-            marker=dict(size=10, color="rgb(0, 0, 0)"),
-            text=names,
-        )
+xs = []
+ys = []
+names = []
+
+for fname in fnames:
+    with open(f"jsons/{fname}", "r") as f:
+        data = json.load(f)
+    for idx in range(100):
+        key = f"run {idx}"
+        if key in data:
+            if "results_0" in fname:  # our circuit, not naive
+                xs.append(data[key]["ceval"])
+                ys.append(data[key]["meval"])
+                names.append(
+                    str(data[key]["best set"]) + " " + str(data[key]["result"])
+                )
+
+            else:
+                pass
+
+# plot figure
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys,
+        mode="markers",
+        marker=dict(size=10, color="blue", opacity=0.5),
+        text=names,
     )
-
-figure.update_layout(
-    title="Cobble vs Broken",
-    xaxis_title="Broken",
-    yaxis_title="Cobble",
+)
+fig.update_layout(
+    title="Greedy Search Results",
+    xaxis_title="Circuit Evaluation",
+    yaxis_title="Mean Evaluation",
     font=dict(family="Courier New, monospace", size=18, color="#7f7f7f"),
 )
+fig.show()
 
-figure.show()
+#%%  fix later
+fig = go.Figure()
+## add the grey region
+# make the dotted line
+minx = -2
+maxx = 6
+eps = 1.0
+xs = np.linspace(minx - 1, maxx + 1, 100)
+ys = xs
+
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys,
+        mode="lines",
+        name=f"x=y",
+        line=dict(color="grey", width=2, dash="dash"),
+    )
+)
+
+rd_set_added = False
+for i, perf in enumerate(perf_by_sets):
+    fig.add_trace(
+        go.Scatter(
+            x=[perf["mean_cur_metric_broken"]],
+            y=[perf["mean_cur_metric_cobble"]],
+            mode="markers",
+            name=perf[
+                "removed_group"  # change to "name" or something for the greedy sets
+            ],
+            marker=dict(symbol=perf["symbol"], size=10, color=perf["color"]),
+            showlegend=(
+                (" 1" in perf["removed_group"][-2:])
+                or ("Set" not in perf["removed_group"])
+            ),
+        )
+    )
+    continue
+
+
+# fig.update_layout(showlegend=False) #
+
+fig.update_xaxes(title_text="F(C \ K)")
+fig.update_yaxes(title_text="F(M \ K)")
+fig.update_xaxes(showgrid=True, gridcolor="black", gridwidth=1)
+fig.update_yaxes(showgrid=True, gridcolor="black", gridwidth=1)
+fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+
+# USE THESE LINES TO SCALE SVGS PROPERLY
+fig.update_xaxes(range=[minx, maxx])
+fig.update_yaxes(range=[minx, maxx])
+fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+
+fig.update_yaxes(
+    scaleanchor="x",
+    scaleratio=1,
+)
+import os
+
+circuit_to_export = "natural"
+fpath = f"circuit_completeness_{circuit_to_export}_CIRCUIT_at_{ctime()}.svg"
+if os.path.exists(
+    "/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer/svgs"
+):
+    fpath = "svgs/" + fpath
+
+fig.write_image(fpath)
+fig.show()
+
 #%% [markdown] This is the legit cell on the greedy search
 
 greedy_heuristic = "max_brok_cob_diff"

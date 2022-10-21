@@ -5,6 +5,7 @@ import torch
 if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
+
 import warnings
 from time import ctime
 from copy import deepcopy
