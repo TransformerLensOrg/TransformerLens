@@ -1,6 +1,6 @@
 # Import stuff
 import logging
-from typing import Callable
+from typing import Callable, Union, Optional, Sequence
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,6 +32,13 @@ import copy
 # import comet_ml
 import itertools
 
+from easy_transformer.activation_cache import ActivationCache
+
+# %%
+# Define type aliases
+NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
+
+# %%
 # A helper class to get access to intermediate activations (inspired by Garcon)
 # It's a dummy module that is the identity function by default
 # I can wrap any intermediate activation in a HookPoint and get a convenient
@@ -92,10 +99,16 @@ class HookPoint(nn.Module):
         split_name = self.name.split(".")
         return int(split_name[1])
 
-
+# %%
 class HookedRootModule(nn.Module):
-    # A class building on nn.Module to interface nicely with HookPoints
-    # Allows you to name each hook, remove hooks, cache every activation/gradient, etc
+    """
+    A class building on nn.Module to interface nicely with HookPoints
+    Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks, and run_with_cache to run the model on some input and return a cache of all activations
+
+    WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the start and end by default, and I recommend using reset_hooks liberally in your code. 
+
+    The main time this goes wrong is when you want to use backward hooks (to cache or intervene on gradients). In this case, you need to keep the hooks around as global state until you've run loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
+    """
     def __init__(self, *args):
         super().__init__()
         self.is_caching = False
@@ -129,36 +142,6 @@ class HookedRootModule(nn.Module):
         self.remove_all_hook_fns(direction)
         self.is_caching = False
 
-    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
-        # Caches all activations wrapped in a HookPoint
-        # Remove batch dim is a utility for single batch inputs that removes the batch 
-        # dimension from the cached activations - use ONLY for batches of size 1
-        if device is None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.cache_some(cache, lambda x: True, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
-
-    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device=None, remove_batch_dim=False):
-        """Cache a list of hook provided by names, Boolean function on names"""
-        if device is None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.is_caching = True
-        def save_hook(tensor, hook):
-            if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
-            else:
-                cache[hook.name] = tensor.detach().to(device)
-
-        def save_hook_back(tensor, hook):
-            if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
-            else:
-                cache[hook.name + "_grad"] = tensor[0].detach().to(device)
-        for name, hp in self.hook_dict.items():
-            if names(name):
-                hp.add_hook(save_hook, "fwd")
-                if incl_bwd:
-                    hp.add_hook(save_hook_back, "bwd")
-
     def add_hook(self, name, hook, dir="fwd"):
         if type(name) == str:
             self.mod_dict[name].add_hook(hook, dir=dir)
@@ -169,7 +152,7 @@ class HookedRootModule(nn.Module):
                     hp.add_hook(hook, dir=dir)
 
     def run_with_hooks(
-        self, *args, fwd_hooks=[], bwd_hooks=[], reset_hooks_start=True, reset_hooks_end=True, clear_contexts=False, **kwargs
+        self, *model_args, fwd_hooks=[], bwd_hooks=[], reset_hooks_start=True, reset_hooks_end=True, clear_contexts=False, **model_kwargs
     ):
         """
         fwd_hooks: A list of (name, hook), where name is either the name of
@@ -203,9 +186,119 @@ class HookedRootModule(nn.Module):
                 for hook_name, hp in self.hook_dict:
                     if name(hook_name):
                         hp.add_hook(hook, dir="bwd")
-        out = self.forward(*args, **kwargs)
+        out = self.forward(*model_args, **model_kwargs)
         if reset_hooks_end:
             if len(bwd_hooks) > 0:
                 logging.warning("WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur")
             self.reset_hooks(clear_contexts)
         return out
+
+    def add_caching_hooks(
+        self, 
+        names_filter: NamesFilter=None, 
+        incl_bwd: bool=False, 
+        device=None,
+        remove_batch_dim: bool=False,
+        cache: Optional[dict]=None
+        ) -> dict:
+        """Adds hooks to the model to cache activations. Note: It does NOT actually run the model to get activations, that must be done separately.
+
+        Args:
+            names_filter (NamesFilter, optional): Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.
+            incl_bwd (bool, optional): Whether to also do backwards hooks. Defaults to False.
+            device (_type_, optional): The device to store on. Defaults to CUDA if available else CPU.
+            remove_batch_dim (bool, optional): Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.
+            cache (Optional[dict], optional): The cache to store activations in, a new dict is created by default. Defaults to None.
+        
+        Returns:
+            cache (dict): The cache where activations will be stored.
+        """
+        if remove_batch_dim:
+            logging.warning("Remove batch dim in caching hooks is deprecated. Use the Cache object or run_with_cache flags instead")
+
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        if cache is None:
+            cache = {}
+        
+        if names_filter is None:
+            names_filter = lambda name: True
+        elif type(names_filter)==str:
+            names_filter = lambda name: name==names_filter
+        elif type(names_filter)==list:
+            names_filter = lambda name: name in names_filter
+        
+        self.is_caching = True
+
+        def save_hook(tensor, hook):
+            if remove_batch_dim:
+                cache[hook.name] = tensor.detach().to(device)[0]
+            else:
+                cache[hook.name] = tensor.detach().to(device)
+
+        def save_hook_back(tensor, hook):
+            if remove_batch_dim:
+                cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
+            else:
+                cache[hook.name + "_grad"] = tensor[0].detach().to(device)
+        
+        for name, hp in self.hook_dict.items():
+            if names_filter(name):
+                hp.add_hook(save_hook, "fwd")
+                if incl_bwd:
+                    hp.add_hook(save_hook_back, "bwd")
+        return cache
+    
+    def run_with_cache(
+        self,
+        *model_args, 
+        names_filter: NamesFilter=None,
+        device=None,
+        remove_batch_dim=False,
+        incl_bwd=False,
+        reset_hooks_end=True,
+        reset_hooks_start=True,
+        clear_contexts=False,
+        return_cache_object=True,
+        **model_kwargs):
+        """
+        Runs the model and returns model output and a Cache object
+
+        model_args and model_kwargs - all positional arguments and keyword arguments not otherwise captured are input to the model
+        names_filter (None or str or [str] or fn:str->bool): a filter for which activations to cache. Defaults to None, which means cache everything.
+        device (str or torch.Device): The device to cache activations on, defaults to model device. Note that this must be set if the model does not have a model.cfg.device attribute. WARNING: Setting a different device than the one used by the model leads to significant performance degradation.
+        remove_batch_dim (bool): If True, will remove the batch dimension when caching. Only makes sense with batch_size=1 inputs.
+        incl_bwd (bool): If True, will call backward on the model output and also cache gradients. It is assumed that the model outputs a scalar, ie. return_type="loss", for predict the next token loss. Custom loss functions are not supported
+        reset_hooks_start (bool): If True, all prior hooks are removed at the start
+        reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
+        including those added in this run)
+        clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
+        return_cache_obj (bool): If True, returns an ActivationCache object, with many EasyTransformer specific methods. Otherwise returns a dictionary.
+        """
+        if reset_hooks_start:
+            self.reset_hooks(clear_contexts)
+        cache_dict = self.add_caching_hooks(names_filter, incl_bwd, device, remove_batch_dim)
+        model_out = self(*model_args, **model_kwargs)
+
+        if incl_bwd:
+            model_out.backward()
+        
+        if return_cache_object:
+            cache = ActivationCache(cache_dict, self)
+        else:
+            cache = cache_dict
+        
+        if reset_hooks_end:
+            self.reset_hooks(clear_contexts)
+        return model_out, cache
+
+
+    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
+        logging.warning("cache_all is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache")
+        self.add_caching_hooks(names_filter=lambda name: True, cache=cache, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
+
+    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device=None, remove_batch_dim=False):
+        """Cache a list of hook provided by names, Boolean function on names"""
+        logging.warning("cache_some is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache")
+        self.add_caching_hooks(names_filter=names, cache=cache, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
+# %%
