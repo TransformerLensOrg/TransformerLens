@@ -404,8 +404,24 @@ for pos in ["end"]:
                 fig.write_image(fname + ".png")
                 fig.write_image(fname + ".svg")
                 fig.show()
-#%%
+#%% [markdown] mess around with MLP plots
 
+fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
+
+fig = show_pp(
+    mlp_results,
+    title="Direct effect of MLPs on Logit Difference (change in logit difference)",
+    return_fig=True,
+    show_fig=False,
+)
+
+# hide y labels
+fig.update_yaxes(showticklabels=False)
+
+fig.write_image(fname + ".png")
+fig.write_image(fname + ".svg")
+fig.show()
+#%%
 extra_hooks = do_circuit_extraction(
     model=model,
     heads_to_keep={},
