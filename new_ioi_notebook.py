@@ -219,7 +219,7 @@ def direct_patch_and_freeze(
 
     for layer, head_idx in sender_heads:
         if head_idx is None:
-            raise NotImplementedError()
+            sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
 
         else:
             sender_hooks.append((f"blocks.{layer}.attn.hook_result", head_idx))
@@ -334,22 +334,8 @@ dataset_names = [
 exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
 for head in [(9, 9), (9, 6), (10, 0)]:
     exclude_heads.remove(head)
-extra_hooks = do_circuit_extraction(
-    model=model,
-    heads_to_keep={},  # get_heads_circuit(
-    #     ioi_dataset=ioi_dataset,
-    #     circuit={"name mover": [(9, 9), (9, 6), (10, 0)]},
-    # ),
-    mlps_to_remove={},
-    ioi_dataset=ioi_dataset,
-    mean_dataset=all_diff_dataset,
-    exclude_heads=exclude_heads,
-    return_hooks=True,
-)
 
 model.reset_hooks()
-for hook in extra_hooks:
-    model.add_hook(*hook)
 default_logit_diff = logit_diff(model, ioi_dataset)
 
 # for pos in ["S+1", "S", "IO", "S2", "end"]:
@@ -358,7 +344,7 @@ for pos in ["end"]:
     results = torch.zeros(size=(12, 12))
     mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
-        for source_head_idx in list(range(12)):
+        for source_head_idx in [None] + list(range(12)):
             model.reset_hooks()
             receiver_hooks = []
             # for layer, head_idx in circuit["name mover"]:
@@ -378,7 +364,6 @@ for pos in ["end"]:
                 positions=[pos],
                 verbose=False,
                 return_hooks=False,
-                extra_hooks=extra_hooks,
             )
 
             cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -408,17 +393,17 @@ for pos in ["end"]:
                 fig.write_image(fname + ".svg")
                 fig.show()
 
-                # # # show mlp results # mlps are fucked
-                # # fig = show_pp(
-                # #     mlp_results[dataset_idx].T,
-                # #     title=f"{dataset_name=} {pos=} patching NMs",
-                # #     return_fig=True,
-                # #     show_fig=False,
-                # # )
-                # fname = f"svgs/patch_and_freeze_{dataset_name}_{pos}_mlp_{ctime()}_{ri(2134, 123759)}"
-                # fig.write_image(fname + ".png")
-                # fig.write_image(fname + ".svg")
-                # fig.show()
+                # # show mlp results # mlps are (hopefully not anymore???) fucked
+                fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    mlp_results.T,
+                    title="Direct effect of MLPs on Logit Difference",
+                    return_fig=True,
+                    show_fig=False,
+                )
+                fig.write_image(fname + ".png")
+                fig.write_image(fname + ".svg")
+                fig.show()
 #%%
 
 extra_hooks = do_circuit_extraction(
