@@ -37,7 +37,6 @@ from ioi_circuit_extraction import (
     get_heads_circuit,
 )
 from copy import deepcopy
-from ioi_utils import patch_and_freeze
 from time import ctime
 import io
 from random import randint as ri
@@ -213,6 +212,8 @@ def direct_patch_and_freeze(
     """
     Patch in the effect of `sender_heads` on `receiver_hooks` only
     (though MLPs are "ignored", so are slight confounders)
+
+    If max_layer < 12, then let some part of the model do computations (not frozen)
     """
 
     sender_hooks = []
@@ -406,7 +407,7 @@ for pos in ["end"]:
                 fig.show()
 
 
-#%% [markdown] mlp indirect effect
+#%% [markdown] MLP indirect effect
 
 mlp_hooks = do_circuit_extraction(
     model=model,
@@ -420,13 +421,39 @@ mlp_hooks = do_circuit_extraction(
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-mlp_results
+mlp_results = torch.zeros(size=(12, 1))
 
-for hook in mlp_hooks:
+for layer, hook in enumerate(tqdm(mlp_hooks)):
+    model.reset_hooks()
     model.add_hook(*hook)
+    new_logit_diff = logit_diff(model, ioi_dataset)
+    change = new_logit_diff - default_logit_diff
+    mlp_results[layer] = change
 
-new_logit_diff = logit_diff(model, ioi_dataset)
-print(new_logit_diff - default_logit_diff)
+# # show mlp results # mlps are (hopefully not anymore???) fucked
+
+# mlp_results[0] = 0
+fname = f"svgs/mlp_indirect_{ctime()}_{ri(2134, 123759)}"
+fig = show_pp(
+    mlp_results,
+    title="Indirect effect of MLPs on Logit Difference (after KO)",
+    return_fig=True,
+    show_fig=False,
+)
+
+# remove y labels
+fig.update_layout(
+    yaxis=dict(
+        tickmode="array",
+        tickvals=[0],
+        ticktext=[""],
+    )
+)
+
+
+fig.write_image(fname + ".png")
+fig.write_image(fname + ".svg")
+fig.show()
 
 #%% [markdown] hack some LD and IO probs stuff
 
