@@ -35,6 +35,18 @@ def make_owt_data_loader(tokenizer, batch_size=8):
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return data_loader
 
+def make_pile_data_loader(tokenizer, batch_size=8):
+    """ 
+    Evaluate on OpenWebText an open source replication of the GPT-2 training corpus (Reddit links with >3 karma)
+
+    I think the Mistral models were trained on this dataset, so they get very good performance.
+    """
+    pile_data = load_dataset("NeelNanda/pile-10k", split="train")
+    print(len(pile_data))
+    dataset = utils.tokenize_and_concatenate(pile_data, tokenizer)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    return data_loader
+
 def make_code_data_loader(tokenizer, batch_size=8):
     """ 
     Evaluate on the CodeParrot dataset, a dump of Python code. All models seem to get significantly lower loss here (even non-code trained models like GPT-2), presumably code is much easier to predict than natural language?
@@ -45,8 +57,8 @@ def make_code_data_loader(tokenizer, batch_size=8):
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return data_loader
 
-DATASET_NAMES = ['wiki', 'owt', 'code']
-DATASET_LOADERS = [make_wiki_data_loader, make_owt_data_loader, make_code_data_loader]
+DATASET_NAMES = ['wiki', 'owt', 'pile', 'code']
+DATASET_LOADERS = [make_wiki_data_loader, make_owt_data_loader, make_pile_data_loader, make_code_data_loader]
 
 # %%
 @torch.inference_mode()

@@ -177,7 +177,7 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
     def tokenize_function(examples):
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
-        full_text = tokenizer.bos_token.join(text)
+        full_text = tokenizer.eos_token.join(text)
         # Divide into 20 chunks of ~ equal length
         num_chunks = 20
         chunk_length = (len(full_text)-1)//num_chunks + 1
