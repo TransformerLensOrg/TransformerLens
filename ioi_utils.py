@@ -376,7 +376,11 @@ def handle_all_and_std(returning, all, std):
 
 
 def logit_diff(
-    model, ioi_dataset, all=False, std=False
+    model,
+    ioi_dataset,
+    all=False,
+    std=False,
+    both=True,
 ):  # changed by Arthur to take dataset object, :pray: no big backwards compatibility issues
     """
     Difference between the IO and the S logits at the "to" token
@@ -385,6 +389,14 @@ def logit_diff(
     # assert isinstance(ioi_dataset, IOIDataset), type(ioi_dataset)
 
     logits = model(ioi_dataset.toks.long()).detach()
+
+    # uhhhh, I guess logit sum is constatn, but the constant is -516763 which seems weird (not 0?)
+    # end_logits = logits[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"], :]
+    # assert len(end_logits.shape) == 2, end_logits.shape
+    # assert torch.allclose(end_logits[0], end_logits[0] * 0.0)
+    # for i in range(10):
+    #     print(torch.sum(end_logits[i]))
+
     IO_logits = logits[
         torch.arange(len(ioi_dataset)),
         ioi_dataset.word_idx["end"],
@@ -396,7 +408,13 @@ def logit_diff(
         ioi_dataset.s_tokenIDs,
     ]
 
-    return handle_all_and_std(IO_logits - S_logits, all, std)
+    if both:
+        return handle_all_and_std(IO_logits, all, std), handle_all_and_std(
+            S_logits, all, std
+        )
+
+    else:
+        return handle_all_and_std(IO_logits - S_logits, all, std)
 
 
 def attention_on_token(

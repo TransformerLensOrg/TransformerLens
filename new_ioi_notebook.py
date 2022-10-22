@@ -135,7 +135,7 @@ def e(mess=""):
 
 #%% [markdown] The model, and loads and loads of datasets
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
-N = 100
+N = 500
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts(
     ("S2", "RAND")
@@ -459,6 +459,7 @@ fig.show()
 
 from ioi_circuit_extraction import RELEVANT_TOKENS, CIRCUIT
 
+
 circuit = deepcopy(CIRCUIT)
 # circuit["duplicate token"].remove((7, 1))
 print(f"{circuit=}")
@@ -687,3 +688,125 @@ fname = f"backup_nm_plot_{ctime()}"
 # fig.update_layout(title=fname)
 fig.write_image(f"svgs/{fname}.svg")
 fig.show()
+#%% [markdown] do the scatter plot, but now with direct effect on logit diff
+
+receiver_hooks = [("blocks.11.hook_resid_post", None)]
+layer = 9
+head_idx = 9
+
+hooks = direct_patch_and_freeze(
+    model=model,
+    source_dataset=all_diff_dataset,
+    target_dataset=ioi_dataset,
+    ioi_dataset=ioi_dataset,
+    sender_heads=[(layer, head_idx)],
+    receiver_hooks=receiver_hooks,
+    max_layer=12,
+    positions=["end"],
+    verbose=False,
+    return_hooks=True,
+)
+
+attention_hook_name = f"blocks.{layer}.attn.hook_attn"
+# (batch, head, from, to)
+
+ys = []
+
+all_io_attentions = []
+all_s_attentions = []
+all_io_logits = []
+all_s_logits = []
+
+for add_hooks in [False, True]:
+    model.reset_hooks()
+    if add_hooks:
+        for hook in hooks:
+            model.add_hook(*hook)
+
+    cache = {}
+    model.cache_some(cache, lambda name: name == attention_hook_name)
+
+    io_logits, s_logits = logit_diff(model, ioi_dataset, all=True)
+    io_logits = io_logits.detach().cpu()
+    s_logits = s_logits.detach().cpu()
+
+    all_io_logits.append(io_logits)
+    all_s_logits.append(s_logits)
+
+    for token, all_attentions in zip(
+        ["IO", "S"], [all_io_attentions, all_s_attentions]
+    ):
+        attention = (
+            cache[attention_hook_name][
+                torch.arange(ioi_dataset.N),
+                head_idx,
+                ioi_dataset.word_idx["end"],
+                ioi_dataset.word_idx[token],
+            ]
+            .detach()
+            .cpu()
+        )
+        all_attentions.append(attention.clone())
+
+# df.append([prob, dot, tok_type, prompt["text"]])
+
+# # most of the pandas stuff is intuitive, no need to deeply understand
+# viz_df = pd.DataFrame(
+#     df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
+# )
+# fig = px.scatter(
+#     viz_df,
+#     x=f"Attn Prob on Name",
+#     y=f"Dot w Name Embed",
+#     color="Name Type",
+#     hover_data=["text"],
+#     color_discrete_sequence=["rgb(114,255,100)", "rgb(201,165,247)"],
+#     title=f"How Strong {layer_no}.{head_no} Writes in the Name Embed Direction Relative to Attn Prob",
+# )
+
+df = pd.concat(
+    [
+        pd.DataFrame(
+            {
+                "attention": all_s_attentions[0],
+                "change": all_s_logits[1] - all_s_logits[0],
+                "token": "S",
+                "text": ioi_dataset.text_prompts,
+                # "change": (all_io_logits[0] - all_s_logits[0])
+                # - (all_io_logits[1] - all_s_logits[1]),
+            }
+        ),
+        pd.DataFrame(
+            {
+                "attention": all_io_attentions[0],
+                "change": all_io_logits[1] - all_io_logits[0],
+                "token": "IO",
+                "text": ioi_dataset.text_prompts,
+            }
+        ),
+    ]
+)
+
+
+fig = px.scatter(
+    df,
+    x=f"attention",
+    y=f"change",
+    color="token",
+    hover_data=["text"],
+    color_discrete_sequence=["rgb(114,255,100)", "rgb(201,165,247)"],
+    title=f"How {layer}.{head_idx} affects logit difference (change after patch-and-freeze)",
+)
+
+# update y axis label
+fig.update_yaxes(title_text="Change in logit difference")
+fig.update_xaxes(title_text="Attention on token")
+
+fig.write_image(f"svgs/attention_scatter_{ctime()}.svg")
+fig.write_image(f"svgs/attention_scatter_{ctime()}.png")
+
+fig.show()
+
+#%%
+d2 = {"col1": [12341, 1242], "col2": [12343, 1234], "col3": 2}
+df2 = pd.DataFrame(data=d2)
