@@ -368,7 +368,7 @@ def do_circuit_extraction(
         hooks[(layer, head)] = abl.get_hook(layer, head)
         # model.add_hook(*abl.get_hook(layer, head))
     for layer in mlps.keys():
-        hooks.append(abl.get_hook(layer, head=None, target_module="mlp"))
+        hooks[(layer, None)] = abl.get_hook(layer, head=None, target_module="mlp")
         # model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
     if return_hooks:

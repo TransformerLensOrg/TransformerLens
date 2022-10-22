@@ -404,39 +404,27 @@ for pos in ["end"]:
                 fig.write_image(fname + ".png")
                 fig.write_image(fname + ".svg")
                 fig.show()
-#%% [markdown] mess around with MLP plots
 
-fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
 
-fig = show_pp(
-    mlp_results,
-    title="Direct effect of MLPs on Logit Difference (change in logit difference)",
-    return_fig=True,
-    show_fig=False,
-)
+#%% [markdown] mlp indirect effect
 
-# hide y labels
-fig.update_yaxes(showticklabels=False)
-
-fig.write_image(fname + ".png")
-fig.write_image(fname + ".svg")
-fig.show()
-#%%
-extra_hooks = do_circuit_extraction(
+mlp_hooks = do_circuit_extraction(
     model=model,
-    heads_to_keep={},
-    mlps_to_remove={},
+    heads_to_remove={},
+    mlps_to_keep={},
     ioi_dataset=ioi_dataset,
     mean_dataset=all_diff_dataset,
-    exclude_heads=exclude_heads,
     return_hooks=True,
 )
 
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
-model.reset_hooks()
-for hook in extra_hooks:
+
+mlp_results
+
+for hook in mlp_hooks:
     model.add_hook(*hook)
+
 new_logit_diff = logit_diff(model, ioi_dataset)
 print(new_logit_diff - default_logit_diff)
 
