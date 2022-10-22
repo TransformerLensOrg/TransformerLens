@@ -544,7 +544,6 @@ class EasyTransformer(HookedRootModule):
         elif "opt" in model_name:
             return "opt"
         elif model_name == "EleutherAI/gpt-neox-20b" or "pythia" in model_name:
-            logging.warning("I've had trouble loading + working with NeoX given the size, so this code has not been properly debugged - use at your own risk")
             return "neox"
         elif model_name == "EleutherAI/gpt-j-6B":
             return "gptj"
