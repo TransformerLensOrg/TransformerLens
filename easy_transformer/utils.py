@@ -48,23 +48,6 @@ def print_gpu_mem(step_name=""):
 def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
     return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
-    if len(tensor.shape) == 0:
-        return tensor
-    elif len(tensor.shape) == 1:
-        return tensor[:n]
-    elif len(tensor.shape) == 2:
-        return tensor[:n, :n]
-    elif len(tensor.shape) == 3:
-        return tensor[:n, :n, :n]
-    elif len(tensor.shape) == 4:
-        return tensor[:n, :n, :n, :n]
-    elif len(tensor.shape) == 5:
-        return tensor[:n, :n, :n, :n, :n]
-    elif len(tensor.shape) == 6:
-        return tensor[:n, :n, :n, :n, :n, :n]
-    else:
-        # I never need tensors of rank > 6
-        raise ValueError(f"Tensor of shape {tensor.shape} is too big")
 
 
 def to_numpy(tensor, flat=False):
@@ -124,6 +107,8 @@ def gelu_new(input):
         )
     )
 
+def gelu_fast(input):
+    return 0.5 * input * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
 
 def solu(input):
     """
@@ -552,9 +537,5 @@ def composition_scores(left: FactoredMatrix, right: FactoredMatrix, broadcast_di
     l_norms = left.norm(dim=[-2, -1])
     comp_norms = (left @ right).norm(dim=[-2, -1])
     return comp_norms/r_norms/l_norms
-        
-    
-    
-
 
 # %%

@@ -102,8 +102,9 @@ class EasyTransformer(HookedRootModule):
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
 
-        self.pos_embed = PosEmbed(self.cfg)
-        self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
+        if self.cfg.positional_embedding_type != "rotary":
+            self.pos_embed = PosEmbed(self.cfg)
+            self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
         
         self.blocks = nn.ModuleList(
             [
@@ -163,6 +164,8 @@ class EasyTransformer(HookedRootModule):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
+        if tokens.device.type != self.cfg.device:
+            tokens = tokens.to(self.cfg.device)
         assert isinstance(tokens, torch.Tensor)
         # If we're doing caching, then we reuse keys and values from previous runs, as that's the only 
         # way that past activations will affect the final logits. The cache contains those so we don't 
@@ -182,16 +185,28 @@ class EasyTransformer(HookedRootModule):
             assert cache_ctx_length == 0 or ctx_length == 1, "Pass in one token at a time after loading cache"
             pos_offset = cache_ctx_length
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
-        pos_embed = self.hook_pos_embed(
-            self.pos_embed(tokens, pos_offset)
-        )  # [batch, pos, d_model]
-        if self.cfg.positional_embedding_type != "shortformer":
+        if self.cfg.positional_embedding_type == "standard":
+            pos_embed = self.hook_pos_embed(
+                self.pos_embed(tokens, pos_offset)
+            )  # [batch, pos, d_model]
             residual = embed + pos_embed  # [batch, pos, d_model]
             shortformer_pos_embed = None
-        else:
+        elif self.cfg.positional_embedding_type == "shortformer":
             # If we're using shortformer style attention, we don't add the positional embedding to the residual stream. See EasyTransformerConfig for details
+            pos_embed = self.hook_pos_embed(
+                self.pos_embed(tokens, pos_offset)
+            )  # [batch, pos, d_model]
             residual = embed
             shortformer_pos_embed = pos_embed
+        elif self.cfg.positional_embedding_type == "rotary":
+            # Rotary doesn't use positional embeddings, instead they're applied when dot producting keys and queries. See EasyTransformerConfig for details
+            residual = embed
+            shortformer_pos_embed = None
+        else:
+            raise ValueError(
+                f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"
+            )
+
         for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
@@ -234,7 +249,7 @@ class EasyTransformer(HookedRootModule):
                 input = self.tokenizer.bos_token + input
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
-        return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"].to(self.cfg.device)
+        return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
     
     def to_str_tokens(
         self, 
@@ -298,7 +313,20 @@ class EasyTransformer(HookedRootModule):
         
         residual_direction = self.W_U[:, token]
         return residual_direction
-        
+    
+    def to(self, device):
+        """ 
+        Wrapper around to that also changes self.cfg.device if it's a torch.device or string. If torch.dtype, just passes through
+        """
+        if isinstance(device, torch.device):
+            self.cfg.device = device.type
+        elif isinstance(device, str):
+            self.cfg.device = device
+            print("Moving model to device: ", self.cfg.device)
+        elif isinstance(device, torch.dtype):
+            self.cfg.dtype = device
+            print("Changing model dtype to", self.cfg.dtype)
+        nn.Module.to(self, device)
 
     @classmethod
     def from_pretrained(cls, 
@@ -388,6 +416,10 @@ class EasyTransformer(HookedRootModule):
             state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
         elif model_family == "neo":
             state_dict = weight_conversion.convert_neo_weights(hf_model, model.cfg)
+        elif model_family == "gptj":
+            state_dict = weight_conversion.convert_gptj_weights(hf_model, model.cfg)
+        elif model_family == "neox":
+            state_dict = weight_conversion.convert_neox_weights(hf_model, model.cfg)
         elif model_family == "opt":
             state_dict = weight_conversion.convert_opt_weights(hf_model, model.cfg)
         else:
@@ -398,6 +430,7 @@ class EasyTransformer(HookedRootModule):
                         center_writing_weights=center_writing_weights, 
                         center_unembed=center_unembed,
                         move_dict_to_device=True)
+        print(f"Finished loading pretrained model {model_name} into EasyTransformer!")
         return model
     
     @classmethod
@@ -510,7 +543,8 @@ class EasyTransformer(HookedRootModule):
             return "gpt2"
         elif "opt" in model_name:
             return "opt"
-        elif model_name == "EleutherAI/gpt-neox-20b":
+        elif model_name == "EleutherAI/gpt-neox-20b" or "pythia" in model_name:
+            logging.warning("I've had trouble loading + working with NeoX given the size, so this code has not been properly debugged - use at your own risk")
             return "neox"
         elif model_name == "EleutherAI/gpt-j-6B":
             return "gptj"
@@ -585,6 +619,43 @@ class EasyTransformer(HookedRootModule):
                 "use_local_attn": False,
                 "scale_attn_by_inverse_layer_idx": False,
             }
+        elif model_family == "gptj":
+            cfg_dict = {
+                "d_model": hf_config.n_embd,
+                "d_head": hf_config.n_embd // hf_config.n_head,
+                "n_heads": hf_config.n_head,
+                "d_mlp": 4 * hf_config.n_embd,
+                "n_layers": hf_config.n_layer,
+                "n_ctx": hf_config.n_positions,
+                "eps": 1e-5,
+                "d_vocab": hf_config.vocab_size,
+                "act_fn": hf_config.activation_function,
+                "use_attn_scale": True,
+                "use_local_attn": False,
+                "scale_attn_by_inverse_layer_idx": False,
+                "parallel_attn_mlp": True,
+                "positional_embedding_type": "rotary",
+                "rotary_dim": hf_config.rotary_dim,
+            }
+        elif model_family == "neox":
+            cfg_dict = {
+                "d_model": hf_config.hidden_size,
+                "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+                "n_heads": hf_config.num_attention_heads,
+                "d_mlp": hf_config.intermediate_size,
+                "n_layers": hf_config.num_hidden_layers,
+                "n_ctx": hf_config.max_position_embeddings,
+                "eps": hf_config.layer_norm_eps,
+                "d_vocab": hf_config.vocab_size,
+                "act_fn": hf_config.hidden_act,
+                "use_attn_scale": True,
+                "use_local_attn": False,
+                "scale_attn_by_inverse_layer_idx": False,
+                "parallel_attn_mlp": True,
+                "positional_embedding_type": "rotary",
+            }
+            rotary_pct = hf_config.rotary_pct
+            cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
         else:
             raise NotImplementedError
         cfg = EasyTransformerConfig.from_dict(cfg_dict)
@@ -690,12 +761,14 @@ class EasyTransformer(HookedRootModule):
             state_dict[f"blocks.{l}.attn.W_Q"] = state_dict[f"blocks.{l}.attn.W_Q"] * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             state_dict[f"blocks.{l}.attn.W_K"] = state_dict[f"blocks.{l}.attn.W_K"] * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             state_dict[f"blocks.{l}.attn.W_V"] = state_dict[f"blocks.{l}.attn.W_V"] * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            del state_dict[f"blocks.{l}.ln1.w"], state_dict[f"blocks.{l}.ln1.b"], 
             
             
             # Fold ln2 into MLP
-            state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[f"blocks.{l}.mlp.b_in"] + (state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.b"][:, None]).sum(-2)
-            state_dict[f"blocks.{l}.mlp.W_in"] = state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"][:, None]
-            del state_dict[f"blocks.{l}.ln1.w"], state_dict[f"blocks.{l}.ln1.b"], state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
+            if not self.cfg.attn_only:
+                state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[f"blocks.{l}.mlp.b_in"] + (state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.b"][:, None]).sum(-2)
+                state_dict[f"blocks.{l}.mlp.W_in"] = state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"][:, None]
+                del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
 
             if self.cfg.act_fn.startswith("solu"):
                 # Fold ln3 into activation
@@ -716,7 +789,8 @@ class EasyTransformer(HookedRootModule):
         """Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and W_out. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. See fold_layer_norm for more details.
         """
         state_dict['embed.W_E'] = state_dict['embed.W_E'] - state_dict['embed.W_E'].mean(-1, keepdim=True)
-        state_dict['pos_embed.W_pos'] = state_dict['pos_embed.W_pos'] - state_dict['pos_embed.W_pos'].mean(-1, keepdim=True)
+        if self.cfg.positional_embedding_type != "rotary":
+            state_dict['pos_embed.W_pos'] = state_dict['pos_embed.W_pos'] - state_dict['pos_embed.W_pos'].mean(-1, keepdim=True)
         for l in range(self.cfg.n_layers):
             state_dict[f'blocks.{l}.attn.W_O'] = state_dict[f'blocks.{l}.attn.W_O'] - state_dict[f'blocks.{l}.attn.W_O'].mean(-1, keepdim=True) # W_O is [head_index, d_model, d_head]
             state_dict[f'blocks.{l}.attn.b_O'] = state_dict[f'blocks.{l}.attn.b_O'] - state_dict[f'blocks.{l}.attn.b_O'].mean() # b_O is [d_model]

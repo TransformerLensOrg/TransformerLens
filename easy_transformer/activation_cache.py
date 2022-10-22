@@ -35,7 +35,8 @@ class ActivationCache:
         self.ctx_size = self.cache_dict["hook_embed"].size(1)
         
         # Broadcast pos_embed up to batch size, so it has the same shape as all other residual vectors
-        self.cache_dict["hook_pos_embed"] = einops.repeat(self.cache_dict['hook_pos_embed'], 'pos d_model -> batch pos d_model', batch=self.batch_size)
+        if "hook_pos_embed" in self.cache_dict:
+            self.cache_dict["hook_pos_embed"] = einops.repeat(self.cache_dict['hook_pos_embed'], 'pos d_model -> batch pos d_model', batch=self.batch_size)
     
     def remove_batch_dim(self):
         if self.has_batch_dim:
@@ -51,13 +52,19 @@ class ActivationCache:
 
     def __getitem__(self, key):
         """ 
-        This allows us to treat the activation cache as a dictionary, and do cache["key"] to it. We add bonus functionality to take in shorthand names or tuples - see utils.act_name for the full syntax and examples
+        This allows us to treat the activation cache as a dictionary, and do cache["key"] to it. We add bonus functionality to take in shorthand names or tuples - see utils.act_name for the full syntax and examples.
+
+        Dimension order is (act_name, layer_index, layer_type), where layer_type is either "attn" or "mlp" or "ln1" or "ln2" or "ln_final", act_name is the name of the hook (without the hook_ prefix).
         """
         if key in self.cache_dict:
             return self.cache_dict[key]
         elif type(key)==str:
             return self.cache_dict[utils.act_name(key)]
         else:
+            if len(key)>1 and key[1] is not None:
+                if key[1] < 0:
+                    # Supports negative indexing on the layer dimension
+                    key = (key[0], self.model.cfg.n_layers+key[1], *key[2:])
             return self.cache_dict[utils.act_name(*key)]
     
     def to(self, device, move_model=False):
@@ -85,6 +92,13 @@ class ActivationCache:
         """
         logging.warning(f"Changed the global state, set autodiff to {mode}")
         torch.set_grad_enabled(mode)
+    
+    def keys(self):
+        return self.cache_dict.keys()
+    def values(self):
+        return self.cache_dict.values()
+    def items(self):
+        return self.cache_dict.items()
     
     def accumulated_resid(
         self, 
@@ -154,8 +168,11 @@ class ActivationCache:
         incl_attn = mode != "mlp"
         incl_mlp = mode != "attn"
         if incl_embeds:
-            components = [self['embed'], self['pos_embed']]
-            labels = ['embed', 'pos_embed']
+            components = [self['embed']]
+            labels = ['embed']
+            if "hook_pos_embed" in self.cache_dict:
+                components.append(self['hook_pos_embed'])
+                labels.append('pos_embed')
         else:
             components = []
             labels = []
