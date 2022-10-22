@@ -227,14 +227,15 @@ for i, head in enumerate(circuit["name mover"]):
     J[head] = deepcopy(circuit["name mover"][: i + 1])  # turn into the previous things
 
 for head in [(9, 0), (11, 9)]:
-    J[head] = circuit["name mover"][:3] + [head]  # + circuit["negative"]
+    J[head] = (
+        circuit["name mover"] + circuit["negative"]
+    )  # [:2] + [()]# + circuit["negative"]  # + [(10, 10), (11, 3)]  # + circuit["negative"]
 
-# J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)] # dropped, now
+# J[(11, 3)] = [(9, 9), (10, 0), (9, 6), (10, 10), (11, 3)]  # dropped, now
 
 J[(5, 8)] = [(11, 10), (10, 7), (5, 8)]
 J[(5, 9)] = [(11, 10), (10, 7), (5, 9)]
 
-#%%
 results = {}
 
 if "results_cache" not in dir():
@@ -270,7 +271,7 @@ for circuit_class in circuit.keys():
         print(
             f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}"
         )
-#%%
+
 ac = ALL_COLORS
 cc = CLASS_COLORS.copy()
 
@@ -439,7 +440,7 @@ for j, G in enumerate(relevant_classes + ["backup name mover"]):
             name = "S Inhibition"
         K = J[head]
         if G == "backup name mover":
-            K = "All previous NMs and distributed NMs"
+            K = "All previous NMs and backup NMs"
         print(f"{head} & {name} & {K} & {start:.2f} & {end:.2f} \\\\")
         print("\\hline")
         idx += 1
@@ -519,7 +520,6 @@ prbs = {}
 from ioi_utils import probs
 
 ioi_dataset = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 torch.cuda.empty_cache()
 
 for ioi_dataset in [ioi_dataset]:  # [ioi_dataset_baba, ioi_dataset_abba]:
@@ -540,7 +540,7 @@ for ioi_dataset in [ioi_dataset]:  # [ioi_dataset_baba, ioi_dataset_abba]:
             mlps_to_remove={},
             heads_to_keep=heads_to_keep,
             ioi_dataset=ioi_dataset,
-            mean_dataset=abca_dataset,
+            mean_dataset=mean_dataset,
         )
         torch.cuda.empty_cache()
 
