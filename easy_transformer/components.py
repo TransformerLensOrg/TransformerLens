@@ -13,6 +13,7 @@ from easy_transformer.hook_points import HookPoint
 from easy_transformer.utils import (
     gelu_new,
     solu,
+    gelu_fast
 )
 from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
@@ -96,6 +97,7 @@ class LayerNormPre(nn.Module):
 
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos]
+        # Hook Normalized captures LN output - here it's a vector with std 1 and mean 0
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(self, x):
@@ -134,6 +136,7 @@ class LayerNorm(nn.Module):
 
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos, 1]
+        # Hook_normalized is on the LN output
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(self, x):
@@ -144,8 +147,8 @@ class LayerNorm(nn.Module):
                 + self.eps
             ).sqrt()
         )  # [batch, pos, 1]
-        x = self.hook_normalized(x / scale)  # [batch, pos, length]
-        return x * self.w + self.b
+        x = (x / scale)  # [batch, pos, length]
+        return self.hook_normalized(x * self.w + self.b)
 
 class RMSNormPre(nn.Module):
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
@@ -280,6 +283,13 @@ class Attention(nn.Module):
         if self.cfg.positional_embedding_type == "shortformer":
             # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
             self.hook_attn_input = HookPoint() # [batch, pos, d_model]
+        elif self.cfg.positional_embedding_type == "rotary":
+            # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See EasyTransformerConfig for details
+            self.hook_rot_k = HookPoint()
+            self.hook_rot_q = HookPoint()
+            sin, cos = self.calculate_sin_cos_rotary(self.cfg.rotary_dim, self.cfg.n_ctx)
+            self.register_buffer("rotary_sin", sin)
+            self.register_buffer("rotary_cos", cos)
         
 
     def forward(self, 
@@ -292,7 +302,7 @@ class Attention(nn.Module):
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
 
         """
-        if self.cfg.positional_embedding_type != "shortformer":
+        if self.cfg.positional_embedding_type in ["standard", "rotary"]:
             # Normal attention
             q = self.hook_q(
                 einsum("batch pos d_model, head_index d_model d_head \
@@ -304,7 +314,7 @@ class Attention(nn.Module):
                     -> batch pos head_index d_head", 
                             resid_pre, self.W_K) + self.b_K
             )  # [batch, pos, head_index, d_head]
-        else:
+        elif self.cfg.positional_embedding_type == "shortformer":
             # Weird shortformer attention see EasyTransformerConfig for details
             q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
         v = self.hook_v(
@@ -321,6 +331,9 @@ class Attention(nn.Module):
         else:
             # Not using a cache
             kv_cache_pos_offset = 0
+        
+        if self.cfg.positional_embedding_type == "rotary":
+            q, k = self.rotary_rotate_qk(q, k, kv_cache_pos_offset)
 
         attn_scores = (
             einsum("batch query_pos head_index d_head, \
@@ -402,7 +415,44 @@ class Attention(nn.Module):
                         attn_input, self.W_K) + self.b_K
         )  # [batch, pos, head_index, d_head]
         return (q, k)
+    
+    def rotary_rotate_qk(self, q, k, past_kv_pos_offset):
+        # We first apply standard q and k calculation
+        
+        q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
+        k = self.hook_rot_k(self.apply_rotary(k))
+        return q, k
+    
+    def calculate_sin_cos_rotary(self, rotary_dim, n_ctx, base=10000):
+        """
+        Calculate the sine and cosine waves to use in a rotary embedding. See https://blog.eleuther.ai/rotary-embeddings/ for details
+        """
+        pos = torch.arange(n_ctx, dtype=torch.float32)
+        dim = torch.arange(rotary_dim//2, dtype=torch.float32)
+        # A set of frequencies evenly spaced in log space
+        freq = base ** (dim / (rotary_dim / 2))
+        freq = einops.repeat(freq, "d -> (d 2)")
+        # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
+        angles = pos[:, None] / freq[None, :]
+        return torch.sin(angles), torch.cos(angles)
 
+    def rotate_every_two(self, x):
+        """ 
+        Rotary helper function, splits x into blocks of size 2 along the final axis and maps [x0, x1] to [-x1, x0]
+        """
+        rot_x = x.clone()
+        rot_x[..., 0::2] = -x[..., 1::2]
+        rot_x[..., 1::2] = x[..., 0::2]
+        return rot_x
+    
+    def apply_rotary(self, x, past_kv_pos_offset=0):
+        # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
+        x_pos = x.size(1)
+        x_rot = x[..., :self.cfg.rotary_dim]
+        x_pass = x[..., self.cfg.rotary_dim:]
+        x_flip = self.rotate_every_two(x_rot)
+        x_rotated = x_rot * self.rotary_cos[past_kv_pos_offset:past_kv_pos_offset+x_pos, None, :] + x_flip * self.rotary_sin[past_kv_pos_offset:past_kv_pos_offset+x_pos, None, :]
+        return torch.cat([x_rotated, x_pass], dim=-1)
 
 # MLP Layers
 class MLP(nn.Module):
@@ -427,6 +477,8 @@ class MLP(nn.Module):
             self.act_fn = F.silu
         elif self.cfg.act_fn == "gelu_new":
             self.act_fn = gelu_new
+        elif self.cfg.act_fn == "gelu_fast":
+            self.act_fn = gelu_fast
         elif self.cfg.act_fn == "solu_ln":
             self.act_fn = solu
             # Hook taken between activation and layer norm
@@ -492,7 +544,7 @@ class TransformerBlock(nn.Module):
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
-        if not self.cfg.attn_only:
+        if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
 
@@ -520,13 +572,21 @@ class TransformerBlock(nn.Module):
                 shortformer_pos_embed = shortformer_pos_embed,
                 past_kv_cache_entry = past_kv_cache_entry)
         )  # [batch, pos, d_model]
-        if not self.cfg.attn_only:
+        if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             normalized_resid_mid = self.ln2(resid_mid)
             mlp_out = self.hook_mlp_out(
                 self.mlp(normalized_resid_mid)
             )  # [batch, pos, d_model]
             resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
+        elif self.cfg.parallel_attn_mlp:
+            # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
+            # In GPT-J, LN1 and LN2 are tied, in GPT-NeoX they aren't.
+            normalized_resid_pre_2 = self.ln2(resid_pre)
+            mlp_out = self.hook_mlp_out(
+                self.mlp(normalized_resid_pre_2)
+            )  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(resid_pre + attn_out + mlp_out)  # [batch, pos, d_model]
         else:
             resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
         return resid_post

@@ -36,6 +36,20 @@ VALID_PRETRAINED_MODEL_NAMES = set(
         "solu-8l-old",
         "solu-10l-old",
         "attn-only-2l-induction-demo",
+        "EleutherAI/gpt-j-6B",
+        "EleutherAI/gpt-neox-20b",
+        "EleutherAI/pythia-19m",
+        "EleutherAI/pythia-125m",
+        "EleutherAI/pythia-350m",
+        "EleutherAI/pythia-800m",
+        "EleutherAI/pythia-1.3b",
+        "EleutherAI/pythia-6.7b",
+        "EleutherAI/pythia-13b",
+        "EleutherAI/pythia-125m-deduped",
+        "EleutherAI/pythia-800m-deduped",
+        "EleutherAI/pythia-1.3b-deduped",
+        "EleutherAI/pythia-6.7b-deduped",
+        "EleutherAI/pythia-13b-deduped",
     ]
 )
 
@@ -79,7 +93,6 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
         W_K = einops.rearrange(W_K, "m (i h)->i m h", i=cfg.n_heads)
         W_V = einops.rearrange(W_V, "m (i h)->i m h", i=cfg.n_heads)
 
-        # Fold in layer norm weights
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.W_K"] = W_K
         state_dict[f"blocks.{l}.attn.W_V"] = W_V
@@ -92,7 +105,6 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
             index=cfg.n_heads,
             head=cfg.d_head,
         )
-        # Fold in layer norm biases
         state_dict[f"blocks.{l}.attn.b_Q"] = qkv_bias[0]
         state_dict[f"blocks.{l}.attn.b_K"] = qkv_bias[1]
         state_dict[f"blocks.{l}.attn.b_V"] = qkv_bias[2]
@@ -162,6 +174,102 @@ def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     state_dict["ln_final.b"] = neo.transformer.ln_f.bias
     
     state_dict["unembed.W_U"] = neo.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
+    return state_dict
+
+def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = gptj.transformer.wte.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = gptj.transformer.h[l].ln_1.weight
+        state_dict[f"blocks.{l}.ln1.b"] = gptj.transformer.h[l].ln_1.bias
+        
+        W_Q = gptj.transformer.h[l].attn.q_proj.weight
+        W_K = gptj.transformer.h[l].attn.k_proj.weight
+        W_V = gptj.transformer.h[l].attn.v_proj.weight
+        W_Q = einops.rearrange(W_Q, "(i h) m->i m h", i=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(i h) m->i m h", i=cfg.n_heads)
+        W_V = einops.rearrange(W_V, "(i h) m->i m h", i=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head)
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(cfg.n_heads, cfg.d_head)
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(cfg.n_heads, cfg.d_head)
+
+        W_O = gptj.transformer.h[l].attn.out_proj.weight
+        W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model)
+        
+        # Layer Norm 1 and 2 are tied.
+        state_dict[f"blocks.{l}.ln2.w"] = state_dict[f"blocks.{l}.ln1.w"]
+        state_dict[f"blocks.{l}.ln2.b"] = state_dict[f"blocks.{l}.ln1.b"]
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = gptj.transformer.h[l].mlp.fc_in.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = gptj.transformer.h[l].mlp.fc_in.bias
+        
+        state_dict[f"blocks.{l}.mlp.W_out"] = gptj.transformer.h[l].mlp.fc_out.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = gptj.transformer.h[l].mlp.fc_out.bias
+    state_dict["ln_final.w"] = gptj.transformer.ln_f.weight
+    state_dict["ln_final.b"] = gptj.transformer.ln_f.bias
+    
+    state_dict["unembed.W_U"] = gptj.lm_head.weight.T
+    # Contains a bias, for some reason?
+    state_dict["unembed.b_U"] = gptj.lm_head.bias
+    return state_dict
+
+def convert_neox_weights(neox, cfg: EasyTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = neox.gpt_neox.embed_in.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = neox.gpt_neox.layers[l].input_layernorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = neox.gpt_neox.layers[l].input_layernorm.bias
+
+        # For some inexplicable reason, NeoX both uses the concatenated QKV matmul of GPT-2 (afaict this has a neglible performance impact) AND has the flattened axis in the DIFFERENT order of (head_index qkv d_head) - this took me an hour to debug...
+        W = neox.gpt_neox.layers[l].attention.query_key_value.weight
+        W = einops.rearrange(W, "(i qkv h) m->qkv i m h", i=cfg.n_heads, qkv=3)
+
+        # Fold in layer norm weights
+        state_dict[f"blocks.{l}.attn.W_Q"] = W[0]
+        state_dict[f"blocks.{l}.attn.W_K"] = W[1]
+        state_dict[f"blocks.{l}.attn.W_V"] = W[2]
+
+        qkv_bias = neox.gpt_neox.layers[l].attention.query_key_value.bias
+        qkv_bias = einops.rearrange(
+            qkv_bias,
+            "(index qkv head)->qkv index head",
+            qkv=3,
+            index=cfg.n_heads,
+            head=cfg.d_head,
+        )
+        # Fold in layer norm biases
+        state_dict[f"blocks.{l}.attn.b_Q"] = qkv_bias[0]
+        state_dict[f"blocks.{l}.attn.b_K"] = qkv_bias[1]
+        state_dict[f"blocks.{l}.attn.b_V"] = qkv_bias[2]
+        
+        W_O = neox.gpt_neox.layers[l].attention.dense.weight
+        W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = neox.gpt_neox.layers[l].attention.dense.bias
+        
+        state_dict[f"blocks.{l}.ln2.w"] = neox.gpt_neox.layers[l].post_attention_layernorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = neox.gpt_neox.layers[l].post_attention_layernorm.bias
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = neox.gpt_neox.layers[l].mlp.dense_h_to_4h.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = neox.gpt_neox.layers[l].mlp.dense_h_to_4h.bias
+        
+        state_dict[f"blocks.{l}.mlp.W_out"] = neox.gpt_neox.layers[l].mlp.dense_4h_to_h.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = neox.gpt_neox.layers[l].mlp.dense_4h_to_h.bias
+    state_dict["ln_final.w"] = neox.gpt_neox.final_layer_norm.weight
+    state_dict["ln_final.b"] = neox.gpt_neox.final_layer_norm.bias
+    
+    state_dict["unembed.W_U"] = neox.embed_out.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
 
@@ -245,12 +353,3 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict["unembed.W_U"] = opt.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
-
-def convert_bloom_weights(bloom, cfg):
-    raise NotImplementedError
-
-def convert_neox_weights(neox, cfg):
-    raise NotImplementedError
-
-def convert_gptj_weights(gptj, cfg):
-    raise NotImplementedError

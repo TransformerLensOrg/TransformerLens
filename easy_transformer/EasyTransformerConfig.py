@@ -7,6 +7,7 @@ import random
 import numpy as np
 import logging
 
+SUPPORTED_ACTIVATIONS = ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln', 'gelu_fast']
 @dataclass
 class EasyTransformerConfig:
     """
@@ -24,7 +25,7 @@ class EasyTransformerConfig:
         d_vocab (int): The size of the vocabulary. If not set, will be automatically set 
             from the tokenizer's vocab size.
         act_fn (str, *optional"): The activation function to use. Always lowercase. 
-            Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln']. Must be set unless using an attn-only model.
+            Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln', 'gelu_fast']. Must be set unless using an attn-only model.
         eps (float): The epsilon value to use for layer normalization. Defaults to 1e-5
         use_attn_result (bool): whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
@@ -69,13 +70,16 @@ class EasyTransformerConfig:
             Defaults to False.
         positional_embedding_type (str): The positional embedding used. Options are 'standard' (ie
             GPT-2 style, absolute, randomly initialized learned positional embeddings, directly added
-            to the residual stream) and 'shortformer' (GPT-2 style absolute & 
+            to the residual stream), 'rotary' (described here: https://blog.eleuther.ai/rotary-embeddings/ ) and 'shortformer' (GPT-2 style absolute & 
             learned, but rather than being added to the residual stream they're only added to the 
             inputs to the keys and the queries (ie key = W_K(res_stream + pos_embed), but values and 
-            MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
+            MLPs don't get any positional info)). Sinusoidal are not currently 
             supported. Defaults to 'standard'.
         final_rms (bool): Whether to replace the final normalization (just before the unembed) with RMSNorm (ie no centering or bias, just scaling + weights). Only included because of a dumb bug in my original SoLU code. Defaults to False.
         d_vocab_out (int, *optional*): The size of the output vocabulary. If not set, will be equal to d_vocab. Mainly useful for algorithmic tasks where the input and output vocabularies may be different.
+        parallel_attn_mlp (bool): Whether to parallelize the attention and MLP layers - a weird cursed thing done by GPT-J. Means that mlp_out=MLP(ln1(resid_pre)) and resid_post=resid_pre+attn_out+mlp_out. Defaults to False.
+        rotary_dim (int): The dimensionality of the rotary embeddings, may be < d_head in which case only the first rotary_dim dimensions of each head are rotated. Defaults to 64, only used is positional_embedding_type=="rotary".
+        dtype (torch.dtype): The float encoding to use for the model. Defaults to torch.float32.
     """
 
     n_layers: int
@@ -108,6 +112,9 @@ class EasyTransformerConfig:
     positional_embedding_type: str = 'standard'
     final_rms: bool = False
     d_vocab_out: Optional[int] = None
+    parallel_attn_mlp: bool = False
+    rotary_dim: int = 64
+    dtype: torch.dtype = torch.float32
 
     def __post_init__(self):
         if self.n_heads is None:
@@ -131,6 +138,7 @@ class EasyTransformerConfig:
                 # For some reason everyone hard codes in this hyper-parameter!
                 self.d_mlp = self.d_model * 4
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
+            assert self.act_fn in SUPPORTED_ACTIVATIONS, f"act_fn={self.act_fn} must be one of {SUPPORTED_ACTIVATIONS}"
         if self.initializer_range < 0:
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)
