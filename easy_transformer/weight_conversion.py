@@ -231,12 +231,9 @@ def convert_neox_weights(neox, cfg: EasyTransformerConfig):
         state_dict[f"blocks.{l}.ln1.w"] = neox.gpt_neox.layers[l].input_layernorm.weight
         state_dict[f"blocks.{l}.ln1.b"] = neox.gpt_neox.layers[l].input_layernorm.bias
 
+        # For some inexplicable reason, NeoX both uses the concatenated QKV matmul of GPT-2 (afaict this has a neglible performance impact) AND has the flattened axis in the DIFFERENT order of (head_index qkv d_head) - this took me an hour to debug...
         W = neox.gpt_neox.layers[l].attention.query_key_value.weight
         W = einops.rearrange(W, "(i qkv h) m->qkv i m h", i=cfg.n_heads, qkv=3)
-        # W_Q
-        # W_Q = einops.rearrange(W_Q, "(i h) m->i m h", i=cfg.n_heads)
-        # W_K = einops.rearrange(W_K, "(i h) m->i m h", i=cfg.n_heads)
-        # W_V = einops.rearrange(W_V, "(i h) m->i m h", i=cfg.n_heads)
 
         # Fold in layer norm weights
         state_dict[f"blocks.{l}.attn.W_Q"] = W[0]
