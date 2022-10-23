@@ -380,7 +380,7 @@ def logit_diff(
     ioi_dataset,
     all=False,
     std=False,
-    both=True,
+    both=False,
 ):  # changed by Arthur to take dataset object, :pray: no big backwards compatibility issues
     """
     Difference between the IO and the S logits at the "to" token

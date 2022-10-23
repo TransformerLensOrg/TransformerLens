@@ -726,7 +726,7 @@ for add_hooks in [False, True]:
     cache = {}
     model.cache_some(cache, lambda name: name == attention_hook_name)
 
-    io_logits, s_logits = logit_diff(model, ioi_dataset, all=True)
+    io_logits, s_logits = logit_diff(model, ioi_dataset, all=True, both=True)
     io_logits = io_logits.detach().cpu()
     s_logits = s_logits.detach().cpu()
 
