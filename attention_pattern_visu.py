@@ -2,7 +2,8 @@
 # ## Imports
 import os
 import torch
-if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+
+if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
@@ -131,11 +132,18 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
 webtext = load_dataset("stas/openwebtext-10k")
 MAX_CONTEXT = 1024
-owb_seqs = ["".join(show_tokens(webtext["train"]["text"][i], model, return_list=True)[:MAX_CONTEXT]) for i in range(20)]
+owb_seqs = [
+    "".join(
+        show_tokens(webtext["train"]["text"][i], model, return_list=True)[:MAX_CONTEXT]
+    )
+    for i in range(20)
+]
 
 
 # %%
-show_attention_patterns(model, [(5, 5), (6, 9), (5, 8), (5, 9)], ioi_dataset[:5], mode="val")
+show_attention_patterns(
+    model, [(5, 5), (6, 9), (5, 8), (5, 9)], ioi_dataset[:5], mode="val"
+)
 # %%
 
 
@@ -150,7 +158,9 @@ def show_attention(model, seq, mode="val", heads=[], return_val_only=False):
         good_names = [f"blocks.{layer}.attn.hook_attn"]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
-        model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
+        model.cache_some(
+            cache=cache, names=lambda x: x in good_names
+        )  # shape: batch head_no seq_len seq_len
 
         logits = model([seq])
 
@@ -162,14 +172,18 @@ def show_attention(model, seq, mode="val", heads=[], return_val_only=False):
             attn = torch.einsum("ab,b->ab", attn, vals)
         all_attn.append(attn.unsqueeze(0))
     all_attn = torch.concat(all_attn)
-    all_attn = einops.rearrange(all_attn, "num_heads dest_pos src_pos -> dest_pos src_pos num_heads")
+    all_attn = einops.rearrange(
+        all_attn, "num_heads dest_pos src_pos -> dest_pos src_pos num_heads"
+    )
 
     if return_val_only:
         return all_attn
 
     toks = show_tokens(seq, model, return_list=True)
 
-    html_object = pysvelte.AttentionMulti(tokens=toks, attention=all_attn, head_labels=[str(h) for h in heads])
+    html_object = pysvelte.AttentionMulti(
+        tokens=toks, attention=all_attn, head_labels=[str(h) for h in heads]
+    )
     html_object.show()
 
 
@@ -195,7 +209,10 @@ for i in range(20):
 heads = [(l, h) for l in range(12) for h in range(12)]
 NB_SEQ = 10
 attn_score = [
-    show_attention(model, owb_seqs[i][:2000], mode="attn", heads=heads, return_val_only=True) for i in range(NB_SEQ)
+    show_attention(
+        model, owb_seqs[i][:2000], mode="attn", heads=heads, return_val_only=True
+    )
+    for i in range(NB_SEQ)
 ]
 # %%
 all_prev = []

@@ -1,7 +1,10 @@
 #%%
 import os
 import torch
-if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+
+from ioi_circuit_extraction import ALEX_NAIVE
+
+if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 import json
@@ -67,7 +70,6 @@ from pprint import pprint
 import gc
 from datasets import load_dataset
 import matplotlib.pyplot as plt
-import random as rd
 
 
 from ioi_dataset import (
@@ -126,7 +128,7 @@ print_gpu_mem("Gpt2 loaded")
 # IOI Dataset initialisation
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
+# abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
@@ -145,79 +147,16 @@ from ioi_circuit_extraction import (
     get_heads_circuit,
     do_circuit_extraction,
     list_diff,
+    ALL_NODES,
 )
 
-alex_greedy_things = True
-old_circuit = True
 
-circuit_to_study = "naive_circuit"
-
-
-assert circuit_to_study in ["auto_search", "natural_circuit", "naive_circuit"]
-
-if circuit_to_study == "naive_circuit":
-    CIRCUIT = {
-        "name mover": [(9, 6), (9, 9), (10, 0)],
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "induction": [(5, 5), (5, 9)],
-        "duplicate token": [(3, 0), (0, 10)],
-        "previous token": [(2, 2), (4, 11)],
-        "negative": [],
-    }
-    ALL_NODES = []
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
-
-    for head in CIRCUIT["induction"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["previous token"]:
-        RELEVANT_TOKENS[head] = ["S+1"]
-    ALL_NODES = []  # a node is a tuple (head, token)
-    for h in RELEVANT_TOKENS:
-        for tok in RELEVANT_TOKENS[h]:
-            ALL_NODES.append((h, tok))
-if circuit_to_study == "natural_circuit":
-    CIRCUIT = {
-        "name mover": [
-            (9, 9),  # by importance
-            (10, 0),
-            (9, 6),
-            (10, 10),
-            (10, 2),
-            (11, 2),
-            (10, 6),
-            (10, 1),
-            (11, 6),
-            (9, 0),
-            (9, 7),
-        ],
-        "negative": [(10, 7), (11, 10)],
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-        "duplicate token": [(0, 1), (0, 10), (3, 0)],
-        "previous token": [(2, 2), (2, 9), (4, 11)],
-    }
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
-
-    for head in CIRCUIT["induction"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["previous token"]:
-        RELEVANT_TOKENS[head] = ["S+1"]
-    ALL_NODES = []  # a node is a tuple (head, token)
-    for h in RELEVANT_TOKENS:
-        for tok in RELEVANT_TOKENS[h]:
-            ALL_NODES.append((h, tok))
+def get_all_nodes(circuit):
+    nodes = []
+    for circuit_class in circuit:
+        for head in circuit[circuit_class]:
+            nodes.append((head, RELEVANT_TOKENS[head][0]))
+    return nodes
 
 
 def logit_diff(model, ioi_dataset, logits=None, all=False, std=False):
@@ -282,7 +221,9 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     return logit_diff(model, ioi_dataset, all=False)
 
 
-def circuit_from_heads_logit_diff(model, ioi_dataset, mean_dataset, heads_to_rmv=None, heads_to_kp=None, all=False):
+def circuit_from_heads_logit_diff(
+    model, ioi_dataset, mean_dataset, heads_to_rmv=None, heads_to_kp=None, all=False
+):
     model.reset_hooks()
     model, _ = do_circuit_extraction(
         model=model,
@@ -296,7 +237,6 @@ def circuit_from_heads_logit_diff(model, ioi_dataset, mean_dataset, heads_to_rmv
 
 
 def greed_search_max_broken(get_circuit_logit_diff):
-    """Geed search to find G that minimizes metric(C\G). Return a list of node sets."""
     NODES_PER_STEP = 10
     NB_SETS = 5
     NB_ITER = 10
@@ -310,7 +250,7 @@ def greed_search_max_broken(get_circuit_logit_diff):
         baseline = all_node_baseline
 
         for iter in range(NB_ITER):
-            to_test = rd.sample(current_nodes, NODES_PER_STEP)
+            to_test = random.sample(current_nodes, NODES_PER_STEP)
 
             results = []
             for node in to_test:  # check wich heads in to_test causes the biggest drop
@@ -325,7 +265,9 @@ def greed_search_max_broken(get_circuit_logit_diff):
             current_nodes.remove(best_node)  # we remove the best node from the circuit
             nodes_removed.append(best_node)
 
-            if iter > NB_ITER // 2 - 1:  # we begin to save the sets after half of the iterations
+            if (
+                iter > NB_ITER // 2 - 1
+            ):  # we begin to save the sets after half of the iterations
                 all_sets.append(
                     {
                         "circuit_nodes": current_nodes.copy(),
@@ -333,7 +275,9 @@ def greed_search_max_broken(get_circuit_logit_diff):
                     }
                 )
 
-            print(f"iter: {iter} - best node:{best_node} - drop:{min(diff_to_baseline)} - baseline:{baseline}")
+            print(
+                f"iter: {iter} - best node:{best_node} - drop:{min(diff_to_baseline)} - baseline:{baseline}"
+            )
             print_gpu_mem(f"iter {iter}")
             baseline = results[best_node_idx]  # new baseline for the next iteration
     return all_sets
@@ -343,16 +287,28 @@ def test_minimality(model, ioi_dataset, v, J, absolute=True):
     """Compute |Metric( (C\J) U {v}) - Metric(C\J)| where J is a list of nodes, v is a node"""
     C_minus_J = list(set(ALL_NODES.copy()) - set(J.copy()))
 
-    LD_C_m_J = circuit_from_nodes_logit_diff(model, ioi_dataset, C_minus_J)  # metric(C\J)
+    LD_C_m_J = circuit_from_nodes_logit_diff(
+        model, ioi_dataset, C_minus_J
+    )  # metric(C\J)
     C_minus_J_plus_v = set(C_minus_J.copy())
     C_minus_J_plus_v.add(v)
     C_minus_J_plus_v = list(C_minus_J_plus_v)
 
-    LD_C_m_J_plus_v = circuit_from_nodes_logit_diff(model, ioi_dataset, C_minus_J_plus_v)  # metric( (C\J) U {v})
+    LD_C_m_J_plus_v = circuit_from_nodes_logit_diff(
+        model, ioi_dataset, C_minus_J_plus_v
+    )  # metric( (C\J) U {v})
     if absolute:
         return np.abs(LD_C_m_J - LD_C_m_J_plus_v)
     else:
         return LD_C_m_J - LD_C_m_J_plus_v
+
+
+def add_key_to_json_dict(fname, key, value):
+    with open(fname, "r") as f:
+        d = json.load(f)
+    d[key] = value
+    with open(fname, "w") as f:
+        json.dump(d, f)
 
 
 def greed_search_max_brok_cob_diff(
@@ -364,14 +320,16 @@ def greed_search_max_brok_cob_diff(
     verbose=True,
     save_to_file=False,
 ):
-    """Geed search to find G that maximize the difference between broken and cobbled circuit |metric(C\G) - metric(M\G)| . Return a list of node sets."""
+    """Greedy search to find G that maximize the difference between broken and cobbled circuit |metric(C\G) - metric(M\G)| . Return a list of node sets."""
     all_sets = []
 
     neg_head_in_G = False
     if neg_head_in_G:
         init_set = list(set(init_set) + set([((10, 7), "end"), ((11, 10), "end")]))
 
-    all_node_baseline = get_cob_brok_from_nodes(init_set)  # |metric(C) - metric(M)|
+    all_node_baseline = get_cob_brok_from_nodes(
+        nodes=init_set
+    )  # |metric(C) - metric(M)|
 
     C_minus_G_init = ALL_NODES.copy()
     for n in init_set:
@@ -386,7 +344,7 @@ def greed_search_max_brok_cob_diff(
 
         for iter in range(NB_ITER):
 
-            to_test = rd.sample(C_minus_G, min(NODES_PER_STEP, len(C_minus_G)))
+            to_test = random.sample(C_minus_G, min(NODES_PER_STEP, len(C_minus_G)))
 
             results = []
             for node in to_test:  # check wich heads in to_test causes the biggest drop
@@ -402,8 +360,9 @@ def greed_search_max_brok_cob_diff(
                 G.append(best_node)
                 old_diff = max_diff
 
-                if iter > NB_ITER // 2 - 1:  # we begin to save the sets after half of the iterations
-                    all_sets.append({"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()})
+                all_sets.append(
+                    {"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()}
+                )
                 if verbose:
                     print(
                         f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{all_node_baseline}"
@@ -411,13 +370,13 @@ def greed_search_max_brok_cob_diff(
                     print_gpu_mem(f"iter {iter}")
         all_sets.append({"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()})
         if save_to_file:
-            with open(f"greed_search_max_brok_cob_diff_{step}.json", "w") as f:
+            with open(
+                f"jsons/greed_search_max_brok_cob_diff_{step}_{ctime()}.json", "w"
+            ) as f:
                 json.dump(all_sets, f)
     return all_sets
 
 
-#%% [markdown]
-# TODO Explain the way we're doing Jacob's circuit extraction experiment here
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -442,7 +401,13 @@ if __name__ == "__main__":
     abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
     print("CIRCUIT STUDIED : ", CIRCUIT)
 
-mean_dataset = abca_dataset
+cde_dataset = (
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+)
+
+mean_dataset = cde_dataset
 
 # %%
 # webtext = load_dataset("stas/openwebtext-10k")
@@ -458,8 +423,10 @@ if __name__ != "__main__":
 #%% [markdown] Do some faithfulness
 model.reset_hooks()
 logit_diff_M = logit_diff(model, ioi_dataset)
+print(f"logit_diff_M: {logit_diff_M}")
 
 for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
+    all_nodes = get_all_nodes(circuit)
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded=[], circuit=circuit)
     model, _ = do_circuit_extraction(
         model=model,
@@ -472,14 +439,13 @@ for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
     logit_diff_circuit = logit_diff(model, ioi_dataset)
     print(f"{logit_diff_circuit=}")
 # %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
-circuit = deepcopy(CIRCUIT)
-
-# %%
-circuit = CIRCUIT.copy()
-cur_metric = logit_diff  # partial(probs, type="io")  #
-
+circuit = deepcopy(ALEX_NAIVE)
+print("Working with", circuit)
+cur_metric = logit_diff
 
 run_original = True
+print("Are we running the original experiment?", run_original)
+
 if run_original:
     circuit_perf = []
     perf_by_sets = []
@@ -504,7 +470,9 @@ if run_original:
             mean_dataset=mean_dataset,
         )
         torch.cuda.empty_cache()
-        cur_metric_broken_circuit, std_broken_circuit = cur_metric(model, ioi_dataset, std=True, all=True)
+        cur_metric_broken_circuit, std_broken_circuit = cur_metric(
+            model, ioi_dataset, std=True, all=True
+        )
         torch.cuda.empty_cache()
         # metric(C\G)
         # adding back the whole model
@@ -527,7 +495,9 @@ if run_original:
         )
 
         torch.cuda.empty_cache()
-        cur_metric_cobble, std_cobble_circuit = cur_metric(model, ioi_dataset, std=True, all=True)
+        cur_metric_cobble, std_cobble_circuit = cur_metric(
+            model, ioi_dataset, std=True, all=True
+        )
         print(cur_metric_cobble.mean(), cur_metric_broken_circuit.mean())
         torch.cuda.empty_cache()
 
@@ -571,7 +541,8 @@ if run_original:
         )
 
         perf_by_sets[-1]["mean_abs_diff"] = abs(
-            perf_by_sets[-1]["mean_cur_metric_broken"] - perf_by_sets[-1]["mean_cur_metric_cobble"]
+            perf_by_sets[-1]["mean_cur_metric_broken"]
+            - perf_by_sets[-1]["mean_cur_metric_cobble"]
         ).mean()
 
     df_circuit_perf = pd.DataFrame(circuit_perf)
@@ -579,119 +550,130 @@ if run_original:
     df_perf_by_sets = pd.DataFrame(perf_by_sets)
 
 
-with open(f"sets/perf_{circuit_to_study}_by_classes.json", "w") as f:
+with open(f"sets/perf_by_classes_{ctime()}.json", "w") as f:
     json.dump(circuit_perf, f)
 
-#%% [markdown] Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
+#%% [markdown] UH SKIP THIS IF YA WANT TO HAVE GOOD PLOT? Load in a .csv file or .json file; this preprocesses things in the rough format of Alex's files, see the last "if" for what happens to the additions to perf_by_sets
 
+if False:
 
-def get_df_from_csv(fname):
-    df = pd.read_csv(fname)
-    return df
+    def get_df_from_csv(fname):
+        df = pd.read_csv(fname)
+        return df
 
+    def get_list_of_dicts_from_df(df):
+        return [dict(x) for x in df.to_dict("records")]
 
-def get_list_of_dicts_from_df(df):
-    return [dict(x) for x in df.to_dict("records")]
+    def read_json_from_file(fname):
+        with open(fname) as f:
+            return json.load(f)
 
+    perf_by_sets = []
 
-def read_json_from_file(fname):
-    with open(fname) as f:
-        return json.load(f)
+    circuit_to_import = "natural"
 
+    fnames = [
+        # f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_rd_Search.json",
+        # f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_max_brok_cob_diff.json",
+        f"sets/perf_{circuit_to_import}_circuit_by_classes.json",
+    ]
 
-perf_by_sets = []
+    sets_type = ["random_search", "greedy", "class"]
+    for k, fname in enumerate(fnames):
+        if fname[-4:] == ".csv":
+            dat = get_list_of_dicts_from_df(get_df_from_csv(fname))
+            avg_things = {"Empty set": {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0}}
+            for i in range(1, 62):
+                avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
+            for x in dat:
+                avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x[
+                    "ldiff_broken"
+                ]
+                avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x[
+                    "ldiff_cobble"
+                ]
+            for x in avg_things.keys():
+                avg_things[x]["mean_ldiff_broken"] /= 150
+                avg_things[x]["mean_ldiff_cobble"] /= 150
+            avg_things.pop("Empty set")
 
-circuit_to_import = "natural"
+        elif fname[-5:] == ".json":
+            dat = read_json_from_file(fname)
+            avg_things = {}
+            for x in dat:
+                if not x["removed_set_id"] in avg_things:
+                    avg_things[x["removed_set_id"]] = {
+                        "mean_ldiff_broken": 0,
+                        "mean_ldiff_cobble": 0,
+                        "mean_dist": 0,
+                    }
 
-fnames = [
-    f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_random_search.json",
-    f"sets/greedy_circuit_perf_{circuit_to_import}_circuit_max_brok_cob_diff.json",
-    f"sets/perf_{circuit_to_import}_circuit_by_classes.json",
-]
-
-sets_type = ["random_search", "greedy", "class"]
-for k, fname in enumerate(fnames):
-    if fname[-4:] == ".csv":
-        dat = get_list_of_dicts_from_df(get_df_from_csv(fname))
-        avg_things = {"Empty set": {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0}}
-        for i in range(1, 62):
-            avg_things[f"Set {i}"] = deepcopy(avg_things["Empty set"])
-        for x in dat:
-            avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
-            avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
-        for x in avg_things.keys():
-            avg_things[x]["mean_ldiff_broken"] /= 150
-            avg_things[x]["mean_ldiff_cobble"] /= 150
-        avg_things.pop("Empty set")
-
-    elif fname[-5:] == ".json":
-        dat = read_json_from_file(fname)
-        avg_things = {}
-        for x in dat:
-            if not x["removed_set_id"] in avg_things:
-                avg_things[x["removed_set_id"]] = {"mean_ldiff_broken": 0, "mean_ldiff_cobble": 0, "mean_dist": 0}
-
-            avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x["ldiff_broken"]
-            avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x["ldiff_cobble"]
-        for x in avg_things.keys():
-            avg_things[x]["mean_ldiff_broken"] /= 150
-            avg_things[x]["mean_ldiff_cobble"] /= 150
-            avg_things[x]["mean_dist"] = np.abs(avg_things[x]["mean_ldiff_broken"] - avg_things[x]["mean_ldiff_cobble"])
-    else:
-        raise ValueError("Unknown file type")
-
-    all_dists = [avg_things[x]["mean_dist"] for x in avg_things.keys()]
-    print(f"Max dist {circuit_to_import} - {sets_type[k]}: {max(all_dists)}")
-
-    nb_set = 0
-    for x, y in avg_things.items():
-        new_y = deepcopy(y)
-        new_y["removed_group"] = x
-        new_y["symbol"] = "arrow-bar-left"
-        if x == "Empty set":
-            new_y["color"] = "red"
-            new_y["name"] = "Empty set"
+                avg_things[x["removed_set_id"]]["mean_ldiff_broken"] += x[
+                    "ldiff_broken"
+                ]
+                avg_things[x["removed_set_id"]]["mean_ldiff_cobble"] += x[
+                    "ldiff_cobble"
+                ]
+            for x in avg_things.keys():
+                avg_things[x]["mean_ldiff_broken"] /= 150
+                avg_things[x]["mean_ldiff_cobble"] /= 150
+                avg_things[x]["mean_dist"] = np.abs(
+                    avg_things[x]["mean_ldiff_broken"]
+                    - avg_things[x]["mean_ldiff_cobble"]
+                )
         else:
-            if sets_type[k] == "random_search":
-                new_y["color"] = "green"
-                new_y["name"] = "Random set"
-            elif sets_type[k] == "greedy":
-                new_y["color"] = "blue"
-                new_y["name"] = "Greedy search set"
-                new_y["symbol"] = "square"
-            elif sets_type[k] == "class":
-                new_y["color"] = CLASS_COLORS[x]
-                new_y["name"] = x
-                new_y["symbol"] = "circle"
-        new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
-        new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
+            raise ValueError("Unknown file type")
 
-        if (nb_set - 1 not in [0, 5, 3, 6, 23]) and sets_type[k] == "greedy" and circuit_to_import == "natural":
+        all_dists = [avg_things[x]["mean_dist"] for x in avg_things.keys()]
+        print(f"Max dist {circuit_to_import} - {sets_type[k]}: {max(all_dists)}")
+
+        nb_set = 0
+        for x, y in avg_things.items():
+            new_y = deepcopy(y)
+            new_y["removed_group"] = x
+            new_y["symbol"] = "arrow-bar-left"
+            if x == "Empty set":
+                new_y["color"] = "red"
+                new_y["name"] = "Empty set"
+            else:
+                if sets_type[k] == "random_search":
+                    new_y["color"] = "green"
+                    new_y["name"] = "Random set"
+                elif sets_type[k] == "greedy":
+                    new_y["color"] = "blue"
+                    new_y["name"] = "Greedy search set"
+                    new_y["symbol"] = "square"
+                elif sets_type[k] == "class":
+                    new_y["color"] = CLASS_COLORS[x]
+                    new_y["name"] = x
+                    new_y["symbol"] = "circle"
+            new_y["mean_cur_metric_broken"] = new_y.pop("mean_ldiff_broken")
+            new_y["mean_cur_metric_cobble"] = new_y.pop("mean_ldiff_cobble")
+
+            if (
+                (nb_set - 1 not in [0, 5, 3, 6, 23])
+                and sets_type[k] == "greedy"
+                and circuit_to_import == "natural"
+            ):
+                nb_set += 1
+                continue
+
+            if x == "Empty set":
+                nb_set += 1
+                continue
+            perf_by_sets.append(new_y)
             nb_set += 1
-            continue
-
-        if x == "Empty set":
-            nb_set += 1
-            continue
-        perf_by_sets.append(new_y)
-        nb_set += 1
-
-
 #%% [markdown] make the figure
 
 fig = go.Figure()
-
 ## add the grey region
 
-# parameters (how wide, high and epsilon value)
+# make the dotted line
 minx = -2
 maxx = 6
 eps = 1.0
-
-# make the region
 xs = np.linspace(minx - 1, maxx + 1, 100)
 ys = xs
-
 
 fig.add_trace(
     go.Scatter(
@@ -703,7 +685,6 @@ fig.add_trace(
     )
 )
 
-
 rd_set_added = False
 for i, perf in enumerate(perf_by_sets):
     fig.add_trace(
@@ -711,9 +692,14 @@ for i, perf in enumerate(perf_by_sets):
             x=[perf["mean_cur_metric_broken"]],
             y=[perf["mean_cur_metric_cobble"]],
             mode="markers",
-            name=perf["name"],  # should make there not be loads of Set markers, just one greedy marker
+            name=perf[
+                "removed_group"  # change to "name" or something for the greedy sets
+            ],
             marker=dict(symbol=perf["symbol"], size=10, color=perf["color"]),
-            showlegend=((" 1" in perf["removed_group"][-2:]) or ("Set" not in perf["removed_group"])),
+            showlegend=(
+                (" 1" in perf["removed_group"][-2:])
+                or ("Set" not in perf["removed_group"])
+            ),
         )
     )
     continue
@@ -739,12 +725,279 @@ fig.update_yaxes(
 )
 import os
 
-fpath = f"circuit_completeness_{circuit_to_import}_CIRCUIT_at_{ctime()}.svg"
-if os.path.exists("/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer/svgs"):
+circuit_to_export = "natural"
+fpath = f"circuit_completeness_{circuit_to_export}_CIRCUIT_at_{ctime()}.svg"
+if os.path.exists(
+    "/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer/svgs"
+):
     fpath = "svgs/" + fpath
 
 fig.write_image(fpath)
 fig.show()
+
+#%% [markdown] try to reproduce the removal of circuit classes experiments
+# we begin by gathering all the hooks we need
+
+# NOTE THESE HOOOKS ARE TOTALLY IOI DATASET DEPENDENT
+# AND CIRCUIT DEPENDENT
+
+do_asserts = False
+
+for doover in range(int(1e9)):
+    for raw_circuit_idx, raw_circuit in enumerate([CIRCUIT, ALEX_NAIVE]):
+
+        if doover == 0 and raw_circuit_idx == 0:
+            print("Starting with the NAIVE!")
+            continue
+
+        circuit = deepcopy(raw_circuit)
+        all_nodes = get_all_nodes(circuit)
+        all_circuit_nodes = [head[0] for head in all_nodes]
+        circuit_size = len(all_circuit_nodes)
+
+        complement_hooks = (
+            do_circuit_extraction(  # these are the default edit-all things
+                model=model,
+                heads_to_keep={},
+                mlps_to_remove={},
+                ioi_dataset=ioi_dataset,
+                mean_dataset=mean_dataset,
+                return_hooks=True,
+                hooks_dict=True,
+            )
+        )
+
+        assert len(complement_hooks) == 144
+
+        heads_to_keep = get_heads_from_nodes(all_nodes, ioi_dataset)
+        assert len(heads_to_keep) == circuit_size, (
+            len(heads_to_keep),
+            circuit_size,
+        )
+
+        circuit_hooks = do_circuit_extraction(
+            model=model,
+            heads_to_keep=heads_to_keep,
+            mlps_to_remove={},
+            ioi_dataset=ioi_dataset,
+            mean_dataset=mean_dataset,
+            return_hooks=True,
+            hooks_dict=True,
+        )
+
+        model_rem_hooks = do_circuit_extraction(
+            model=model,
+            heads_to_remove=heads_to_keep,
+            mlps_to_remove={},
+            ioi_dataset=ioi_dataset,
+            mean_dataset=mean_dataset,
+            return_hooks=True,
+            hooks_dict=True,
+        )
+
+        circuit_hooks_keys = list(circuit_hooks.keys())
+
+        for layer, head_idx in circuit_hooks_keys:
+            if (layer, head_idx) not in heads_to_keep.keys():
+                circuit_hooks.pop((layer, head_idx))
+        assert len(circuit_hooks) == circuit_size, (len(circuit_hooks), circuit_size)
+
+        # [markdown] needed functions ...
+
+        def cobble_eval(model, nodes):
+            """Eval M\nodes"""
+            model.reset_hooks()
+            for head in nodes:
+                model.add_hook(*model_rem_hooks[head])
+            cur_logit_diff = logit_diff(model, ioi_dataset)
+            model.reset_hooks()
+            return cur_logit_diff
+
+        def circuit_eval(model, nodes):
+            """Eval C\nodes"""
+            model.reset_hooks()
+            for head in all_circuit_nodes:
+                if head not in nodes:
+                    model.add_hook(*circuit_hooks[head])
+            for head in complement_hooks:
+                if head not in all_circuit_nodes or head in nodes:
+                    model.add_hook(*complement_hooks[head])
+            cur_logit_diff = logit_diff(model, ioi_dataset)
+            model.reset_hooks()
+            return cur_logit_diff
+
+        def difference_eval(model, nodes):
+            """Eval completeness metric | F(C\nodes) - F(M\nodes) |"""
+            c = circuit_eval(model, nodes)
+            m = cobble_eval(model, nodes)
+            return torch.abs(c - m)
+
+        # actual experiments
+
+        if do_asserts:
+            c = circuit_eval(model, [])
+            m = cobble_eval(model, [])
+            print(f"{c=}, {m=} {torch.abs(c-m)=}")
+
+            for entry in perf_by_sets:  # check backwards compatibility
+                circuit_class = entry["removed_group"]  # includes "none"
+                assert circuit_class in list(circuit.keys()) + ["none"], circuit_class
+                nodes = (
+                    circuit[circuit_class] if circuit_class in circuit.keys() else []
+                )
+
+                c = circuit_eval(model, nodes)
+                m = cobble_eval(model, nodes)
+
+                assert torch.allclose(entry["mean_cur_metric_cobble"], m), (
+                    entry["mean_cur_metric_cobble"],
+                    m,
+                    circuit_class,
+                )
+                assert torch.allclose(entry["mean_cur_metric_broken"], c), (
+                    entry["mean_cur_metric_broken"],
+                    c,
+                    circuit_class,
+                )
+
+                print(f"{circuit_class=} {c=}, {m=} {torch.abs(c-m)=}")
+
+        # [markdown] now do the greedy set experiments
+
+        def add_key_to_json_dict(fname, key, value):
+            """Thanks copilot"""
+            with open(fname, "r") as f:
+                d = json.load(f)
+            d[key] = value
+            with open(fname, "w") as f:
+                json.dump(d, f)
+
+        def new_greedy_search(
+            no_runs,
+            no_iters,
+            no_samples,
+            save_to_file=True,
+            verbose=True,
+        ):
+            """
+            Greedy search to find G that maximizes the difference between broken and cobbled circuit: |metric(C\G) - metric(M\G)|
+            """
+            all_sets = [{"circuit_nodes": [], "removed_nodes": []}]  # not mantained
+            C_minus_G_init = deepcopy(all_nodes)
+            C_minus_G_init = [head[0] for head in C_minus_G_init]
+
+            c = circuit_eval(model, [])
+            m = cobble_eval(model, [])
+            baseline = torch.abs(c - m)
+
+            metadata = {
+                "no_runs": no_runs,
+                "no_iters": no_iters,
+                "no_samples": no_samples,
+            }
+            fname = (
+                f"jsons/greedy_search_results_{raw_circuit_idx}_{doover}_{ctime()}.json"
+            )
+            print(fname)
+
+            # write to JSON file
+            if save_to_file:
+                with open(
+                    fname,
+                    "w",
+                ) as outfile:
+                    json.dump(metadata, outfile)
+
+            for run in tqdm(range(no_runs)):
+                C_minus_G = deepcopy(C_minus_G_init)
+                G = []
+                old_diff = baseline.clone()
+
+                for iter in range(no_iters):
+                    print("iter", iter)
+                    to_test = random.sample(C_minus_G, min(no_samples, len(C_minus_G)))
+                    # sample without replacement
+
+                    cevals = []
+                    mevals = []
+
+                    results = []
+                    for (
+                        node
+                    ) in (
+                        to_test
+                    ):  # check which heads in to_test causes the biggest drop
+                        G_plus_node = deepcopy(G) + [node]
+
+                        cevals.append(circuit_eval(model, G_plus_node).item())
+                        mevals.append(cobble_eval(model, G_plus_node).item())
+                        results.append(abs(cevals[-1] - mevals[-1]))
+
+                    best_node_idx = np.argmax(results)
+                    max_diff = results[best_node_idx]
+                    if max_diff > old_diff:
+                        best_node = to_test[best_node_idx]
+                        C_minus_G.remove(
+                            best_node
+                        )  # we remove the best node from the circuit
+                        G.append(best_node)
+                        old_diff = max_diff
+
+                        all_sets.append(
+                            {
+                                "circuit_nodes": deepcopy(C_minus_G),
+                                "removed_nodes": deepcopy(G),
+                                "ceval": cevals[best_node_idx],
+                                "meval": mevals[best_node_idx],
+                            }
+                        )
+                        if verbose:
+                            print(
+                                f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{baseline}"
+                            )
+                            print_gpu_mem(f"iter {iter}")
+
+                run_results = {
+                    "result": old_diff,
+                    "best set": all_sets[-1]["removed_nodes"],
+                    "ceval": all_sets[-1]["ceval"],
+                    "meval": all_sets[-1]["meval"],
+                }
+
+                if save_to_file:
+                    add_key_to_json_dict(fname, f"run {run}", run_results)
+
+        new_greedy_search(
+            no_runs=10,
+            no_iters=10,
+            no_samples=10 if circuit_size == 26 else 5,
+            save_to_file=True,
+            verbose=True,
+        )
+#%% [markdown] do random search too
+
+mode = "naive"
+if mode == "naive":
+    circuit = deepcopy(ALEX_NAIVE)
+else:
+    circuit = deepcopy(CIRCUIT)
+all_nodes = get_all_nodes(circuit)
+
+xs = []
+ys = []
+
+for _ in range(100):
+    indicator = torch.randint(0, 2, (len(all_nodes),))
+    nodes = [node[0] for node, ind in zip(all_nodes, indicator) if ind == 1]
+    c = circuit_eval(model, nodes)
+    m = cobble_eval(model, nodes)
+    print(f"{c=}, {m=} {torch.abs(c-m)=}")
+
+    xs.append(c)
+    ys.append(m)
+
+torch.save(xs, f"pts/{mode}_random_xs.pt")
+torch.save(ys, f"pts/{mode}_random_ys.pt")
 # %% gready circuit breaking
 def get_heads_from_nodes(nodes, ioi_dataset):
     heads_to_keep_tok = {}
@@ -763,10 +1016,19 @@ def get_heads_from_nodes(nodes, ioi_dataset):
 
 def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
     """Take a list of nodes, return the logit diff of the circuit described by the nodes"""
+    assert False  # I don't want to be redefining ALL_NODES
     heads_to_keep = get_heads_from_nodes(nodes, ioi_dataset)
     # print(heads_to_keep)
     model.reset_hooks()
-    small_ioi_dataset = IOIDataset(prompt_type="mixed", N=40, tokenizer=model.tokenizer, nb_templates=2)
+    small_N = 40
+    small_ioi_dataset = IOIDataset(
+        prompt_type="mixed", N=small_N, tokenizer=model.tokenizer, nb_templates=2
+    )
+    small_cde_dataset = (
+        small_ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+        .gen_flipped_prompts(("S", "RAND"))
+        .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+    )
 
     circuit_to_study = "natural_circuit"
 
@@ -810,7 +1072,9 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
         }
         ALL_NODES = []
         RELEVANT_TOKENS = {}
-        for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
+        for head in (
+            CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]
+        ):
             RELEVANT_TOKENS[head] = ["end"]
 
         for head in CIRCUIT["induction"]:
@@ -827,7 +1091,9 @@ def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
                 ALL_NODES.append((h, tok))
 
 
-def circuit_from_heads_logit_diff(model, ioi_dataset, mean_dataset, heads_to_rmv=None, heads_to_kp=None, all=False):
+def circuit_from_heads_logit_diff(
+    model, ioi_dataset, mean_dataset, heads_to_rmv=None, heads_to_kp=None, all=False
+):
     model.reset_hooks()
     model, _ = do_circuit_extraction(
         model=model,
@@ -862,16 +1128,20 @@ def compute_cobble_broken_diff(
     mean_dataset,
     nodes,
     return_both=False,
-    all_node=None,
+    all_node=None,  # TODO add this
 ):  # red teaming the circuit by trying
-    """ "Compute |Metric(C\ nodes) - Metric(M\ nodes)|"""
+    """Compute |Metric(C\ nodes) - Metric(M\ nodes)|"""
     if all_node is None:
         nodes_to_keep = ALL_NODES.copy()
     else:
         nodes_to_keep = all_node.copy()
 
     for n in nodes:
-        nodes_to_keep.remove(n)  # C\nodes
+        try:
+            nodes_to_keep.remove(n)  # C\nodes
+        except:
+            print(n)
+            raise ValueError("Node not in all nodes")
     model.reset_hooks()
     model, _ = do_circuit_extraction(
         model=model,
@@ -880,10 +1150,9 @@ def compute_cobble_broken_diff(
         ioi_dataset=ioi_dataset,
         mean_dataset=mean_dataset,
     )
-    ldiff_broken = logit_diff(model, ioi_dataset, all=False)  # Metric(C\nodes)
+    ldiff_broken = logit_diff(model, ioi_dataset, all=False)  # Metric(M\nodes)
 
     model.reset_hooks()
-
     model, _ = do_circuit_extraction(
         model=model,
         heads_to_remove=get_heads_from_nodes(nodes, ioi_dataset),  # M\nodes
@@ -892,88 +1161,254 @@ def compute_cobble_broken_diff(
         mean_dataset=mean_dataset,
     )
     ldiff_cobble = logit_diff(model, ioi_dataset, all=False)  # Metric(C\nodes)
+
+    print(f"ldiff_broken: {ldiff_broken}")
+    print(f"ldiff_cobble: {ldiff_cobble}")
+
     if return_both:
         return ldiff_broken, ldiff_cobble
     else:
         return np.abs(ldiff_broken - ldiff_cobble)
 
 
+#%% [markdown] this is some massive brute force search
+from pathlib import Path
+
+important_heads = [
+    (9, 9),
+    (9, 6),
+    (10, 0),
+    (7, 9),
+    (8, 6),
+    (8, 10),
+    (5, 5),
+    (5, 9),
+    (6, 9),
+    (3, 0),
+    (0, 10),
+    (2, 2),
+    (4, 11),
+    (10, 7),
+    (11, 10),
+    (11, 2),
+]
+
+for subset_size in range(0, len(important_heads) + 1):
+    print(f"{subset_size=}")
+    path = Path(f"all_greedy/{subset_size}.json")
+
+    # make an empty json file
+    if not path.exists():
+        with open(path, "w") as f:
+            json.dump([], f)
+
+    for subset in itertools.combinations(important_heads, subset_size):
+        circuit_copy = deepcopy(CIRCUIT)
+        posses = []
+        for circuit_class in circuit_copy:
+            for head in circuit_copy[circuit_class]:
+                if head in subset:
+                    circuit_copy[circuit_class].remove(head)
+                else:
+                    posses.append((head, RELEVANT_TOKENS[head][0]))
+
+        broken, cobble = compute_cobble_broken_diff(
+            model,
+            ioi_dataset,
+            mean_dataset,
+            nodes=[(head, RELEVANT_TOKENS[head][0]) for head in subset],
+            return_both=True,
+            # all_node=posses,
+        )
+        d = {
+            "subset": subset,
+            "broken": broken.item(),
+            "cobble": cobble.item(),
+        }
+        # write d to the end of the json file
+        with open(path, "r+") as f:
+            data = json.load(f)
+            data.append(d)
+            f.seek(0)
+            json.dump(data, f, indent=4)
+#%% [markdown] hopefully ignoarable plottig proceessin
+
+# style of file
+"""
+{"no_runs": 10, "no_iters": 10, "no_samples": 5, "run 0": {"result": 2.9001526832580566, "best set": [[0, 10], [2, 2], [8, 10], [4, 11]], "ceval": -1.0231037139892578, "meval": 1.8770489692687988}}
+"""
+
+assert os.getcwd().endswith("Easy-Transformer"), os.getcwd
+fnames = os.listdir("jsons")
+fnames = [fname for fname in fnames if "greedy_search_results" in fname]
+
+xs = [[], []]
+ys = [[], []]
+names = []
+
+for circuit_idx in range(0, 2):  # 0 is our circuit, 1 is naive
+    for fname in fnames:
+        with open(f"jsons/{fname}", "r") as f:
+            data = json.load(f)
+        for idx in range(100):
+            key = f"run {idx}"
+            if key in data:
+                if (
+                    f"results_{circuit_idx}" in fname and "ceval" in data[key]
+                ):  # our circuit, not naive
+                    xs[circuit_idx].append(data[key]["ceval"])
+                    ys[circuit_idx].append(data[key]["meval"])
+                    names.append(
+                        str(data[key]["best set"]) + " " + str(data[key]["result"])
+                    )
+
+                else:
+                    pass
+
+if False:
+    # plot figure
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="markers",
+            marker=dict(size=10, color="blue", opacity=0.5),
+            text=names,
+        )
+    )
+    fig.update_layout(
+        title="Greedy Search Results",
+        xaxis_title="Circuit Evaluation",
+        yaxis_title="Mean Evaluation",
+        font=dict(family="Courier New, monospace", size=18, color="#7f7f7f"),
+    )
+    fig.show()
+
 #%%
 
+# mode = "complete"
+mode = "naive"
 
-greedy_heuristic = "random_search"
-circuit_to_study = "naive_circuit"
+fig = go.Figure()
+## add the grey region
+# make the dotted line
+minx = -2
+maxx = 6
+eps = 1.0
+xs = np.linspace(minx - 1, maxx + 1, 100)
+ys = xs
 
+fig.add_trace(
+    go.Scatter(
+        x=xs,
+        y=ys,
+        mode="lines",
+        name=f"x=y",
+        line=dict(color="grey", width=2, dash="dash"),
+    )
+)
+
+perf_by_sets = torch.load(f"pts/{mode}_perf_by_sets.pt")
+
+rd_set_added = False
+for i, perf in enumerate(perf_by_sets):
+    fig.add_trace(
+        go.Scatter(
+            x=[perf["mean_cur_metric_broken"]],
+            y=[perf["mean_cur_metric_cobble"]],
+            mode="markers",
+            name=perf[
+                "removed_group"  # change to "name" or something for the greedy sets
+            ],
+            marker=dict(symbol="circle", size=10, color=perf["color"]),
+            showlegend=(
+                (" 1" in perf["removed_group"][-2:])
+                or ("Set" not in perf["removed_group"])
+            ),
+        )
+    )
+    continue
+
+# add the greedy
+greedy_xs = torch.load(f"pts/{mode}_xs.pt")[:30]
+greedy_ys = torch.load(f"pts/{mode}_ys.pt")[:30]
+
+fig.add_trace(
+    go.Scatter(
+        x=greedy_xs,
+        y=greedy_ys,
+        mode="markers",
+        name="Greedy",
+        marker=dict(symbol="square", size=6, color="blue"),
+    )
+)
+
+# add the random
+random_xs = torch.load(f"pts/{mode}_random_xs.pt")  # [:10]
+random_ys = torch.load(f"pts/{mode}_random_ys.pt")  # [:10]
+
+fig.add_trace(
+    go.Scatter(
+        x=random_xs,
+        y=random_ys,
+        mode="markers",
+        name="Random",
+        marker=dict(symbol="triangle-left", size=10, color="green"),
+    )
+)
+
+# fig.update_layout(showlegend=False)
+fig.update_xaxes(title_text="F(C \ K)")
+fig.update_yaxes(title_text="F(M \ K)")
+fig.update_xaxes(showgrid=True, gridcolor="black", gridwidth=1)
+fig.update_yaxes(showgrid=True, gridcolor="black", gridwidth=1)
+fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+
+# USE THESE LINES TO SCALE SVGS PROPERLY
+fig.update_xaxes(range=[-1, 6])
+fig.update_yaxes(range=[-1, 6])
+fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+
+fig.update_yaxes(
+    scaleanchor="x",
+    scaleratio=1,
+)
+
+circuit_to_export = "natural"
+fpath = f"circuit_completeness_{circuit_to_export}_CIRCUIT_at_{ctime()}.svg"
+if os.path.exists(
+    "/home/ubuntu/my_env/lib/python3.9/site-packages/easy_transformer/svgs"
+):
+    fpath = "svgs/" + fpath
+
+fig.write_image(fpath)
+fig.show()
+
+#%% [markdown] This is the legit cell on the greedy search
+
+greedy_heuristic = "max_brok_cob_diff"
+circuit_to_study = "natural_circuit"
 
 assert circuit_to_study in ["auto_search", "natural_circuit", "naive_circuit"]
 
-if circuit_to_study == "naive_circuit":
-    CIRCUIT = {
-        "name mover": [(9, 6), (9, 9), (10, 0)],
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "induction": [(5, 5), (5, 9)],
-        "duplicate token": [(3, 0), (0, 10)],
-        "previous token": [(2, 2), (4, 11)],
-        "negative": [],
-    }
-    ALL_NODES = []
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
+# removed all_nodes from here...
 
-    for head in CIRCUIT["induction"]:
-        RELEVANT_TOKENS[head] = ["S2"]
+small_ioi_dataset = IOIDataset(
+    N=40, tokenizer=model.tokenizer, nb_templates=4, prompt_type="mixed"
+)
+# small_abc_dataset = small_ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
+# torch.cuda.empty_cache()
+dumby_ioi_dataset = IOIDataset(
+    N=40, tokenizer=model.tokenizer, nb_templates=4, prompt_type="mixed"
+)
+small_cde_dataset = (
+    dumby_ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=dumby_ioi_dataset.word_idx)
+)
 
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["previous token"]:
-        RELEVANT_TOKENS[head] = ["S+1"]
-    ALL_NODES = []  # a node is a tuple (head, token)
-    for h in RELEVANT_TOKENS:
-        for tok in RELEVANT_TOKENS[h]:
-            ALL_NODES.append((h, tok))
-if circuit_to_study == "natural_circuit":
-    CIRCUIT = {
-        "name mover": [
-            (9, 9),  # by importance
-            (10, 0),
-            (9, 6),
-            (10, 10),
-            (10, 2),
-            (11, 2),
-            (10, 6),
-            (10, 1),
-            (11, 6),
-            (9, 0),
-            (9, 7),
-        ],
-        "negative": [(10, 7), (11, 10)],
-        "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-        "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-        "duplicate token": [(0, 1), (0, 10), (3, 0)],
-        "previous token": [(2, 2), (2, 9), (4, 11)],
-    }
-    RELEVANT_TOKENS = {}
-    for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
-        RELEVANT_TOKENS[head] = ["end"]
-
-    for head in CIRCUIT["induction"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["duplicate token"]:
-        RELEVANT_TOKENS[head] = ["S2"]
-
-    for head in CIRCUIT["previous token"]:
-        RELEVANT_TOKENS[head] = ["S+1"]
-    ALL_NODES = []  # a node is a tuple (head, token)
-    for h in RELEVANT_TOKENS:
-        for tok in RELEVANT_TOKENS[h]:
-            ALL_NODES.append((h, tok))
-
-small_ioi_dataset = IOIDataset(N=40, tokenizer=model.tokenizer, nb_templates=4, prompt_type="mixed")
-small_abc_dataset = small_ioi_dataset.gen_flipped_prompts(("S2", "RAND"))
-torch.cuda.empty_cache()
 
 if True:
     assert greedy_heuristic in ["max_brok", "max_brok_cob_diff", "random_search"]
@@ -981,11 +1416,15 @@ if True:
     NODES_PER_STEP = 10
     NB_SETS = 5
     NB_ITER = 10
-    save_to_file = False
+    save_to_file = True
 
     if greedy_heuristic == "max_brok":
+        model.reset_hooks()
         nodes_logit_diff_small_data = partial(
-            circuit_from_nodes_logit_diff, model, small_ioi_dataset, small_abc_dataset
+            circuit_from_nodes_logit_diff,
+            model,
+            ioi_dataset=small_ioi_dataset,
+            mean_dataset=small_cde_dataset,
         )
         all_sets_max_brok = greed_search_max_broken(
             nodes_logit_diff_small_data,
@@ -993,13 +1432,13 @@ if True:
             NB_SETS=NB_SETS,
             NB_ITER=NB_ITER,
         )
-        title_suffix = "min metric(C\G) "
+        title_suffix = "min metric(C\G)"
         all_sets = all_sets_max_brok.copy()
 
     if greedy_heuristic == "max_brok_cob_diff":
         # find G tht maximizes |metric(C\G) - metric(M\G)|
         nodes_cob_brok_diff_small_data = partial(
-            compute_cobble_broken_diff, model, small_ioi_dataset, small_abc_dataset
+            compute_cobble_broken_diff, model, small_ioi_dataset, small_cde_dataset
         )
         all_set_max_brok_cob_diff = greed_search_max_brok_cob_diff(
             nodes_cob_brok_diff_small_data,
@@ -1008,7 +1447,7 @@ if True:
             NB_ITER=NB_ITER,
             save_to_file=save_to_file,
         )
-        title_suffix = "max |metric(C\G) - metric(M\G)| "
+        title_suffix = "max |metric(C\G) - metric(M\G)|"
 
         ## Choose wich set to plot
         all_sets = all_set_max_brok_cob_diff.copy()
@@ -1024,7 +1463,9 @@ if True:
                 if indic_funct[i] == 1:
                     rd_set.append(ALL_NODES[i])
                     compl_set.remove(ALL_NODES[i])
-            all_sets.append(({"circuit_nodes": compl_set.copy(), "removed_nodes": rd_set.copy()}))
+            all_sets.append(
+                ({"circuit_nodes": compl_set.copy(), "removed_nodes": rd_set.copy()})
+            )
 
     print(f"{len(all_sets)} sets found")
 
@@ -1037,26 +1478,22 @@ if True:
 
     for set_id, nodes_set in enumerate(all_sets):
 
-        logit_diff_broken = (
-            circuit_from_heads_logit_diff(  # note set contains circuit_nodes (C\G) and removed_nodes (G)
-                model,
-                ioi_dataset,
-                mean_dataset=abca_dataset,
-                heads_to_kp=get_heads_from_nodes(nodes_set["circuit_nodes"], ioi_dataset),
-                all=True,
-            )
+        logit_diff_broken = circuit_from_heads_logit_diff(  # note set contains circuit_nodes (C\G) and removed_nodes (G)
+            model,
+            ioi_dataset,
+            mean_dataset=abca_dataset,
+            heads_to_kp=get_heads_from_nodes(nodes_set["circuit_nodes"], ioi_dataset),
+            all=True,
         )
 
         print_gpu_mem(f"first extraction {set_id}")
 
-        logit_diff_cobble = (
-            circuit_from_heads_logit_diff(  # note set contains circuit_nodes (C\G) and removed_nodes (G)
-                model,
-                ioi_dataset,
-                mean_dataset=abca_dataset,
-                heads_to_rmv=get_heads_from_nodes(nodes_set["removed_nodes"], ioi_dataset),
-                all=True,
-            )
+        logit_diff_cobble = circuit_from_heads_logit_diff(  # note set contains circuit_nodes (C\G) and removed_nodes (G)
+            model,
+            ioi_dataset,
+            mean_dataset=abca_dataset,
+            heads_to_rmv=get_heads_from_nodes(nodes_set["removed_nodes"], ioi_dataset),
+            all=True,
         )
 
         print_gpu_mem(f"set_id {set_id}")
@@ -1225,19 +1662,27 @@ none_set = df_circuit_perf_greedy[: ioi_dataset.N]
 all_mean_dist = []
 
 for i in range(1, len(df_circuit_perf_greedy) // ioi_dataset.N):
-    set_points_brok = df_circuit_perf_greedy[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_broken
-    set_points_cobble = df_circuit_perf_greedy[i * ioi_dataset.N : (i + 1) * ioi_dataset.N].ldiff_cobble
+    set_points_brok = df_circuit_perf_greedy[
+        i * ioi_dataset.N : (i + 1) * ioi_dataset.N
+    ].ldiff_broken
+    set_points_cobble = df_circuit_perf_greedy[
+        i * ioi_dataset.N : (i + 1) * ioi_dataset.N
+    ].ldiff_cobble
     mean_dist = (set_points_cobble - set_points_brok).abs().mean()
     all_mean_dist.append(mean_dist)
 
 all_mean_dist = np.array(all_mean_dist)
 
-print(f"Mean distance between broken and cobble circuits: {all_mean_dist.mean():.2f} +- {all_mean_dist.std():.2f}")
+print(
+    f"Mean distance between broken and cobble circuits: {all_mean_dist.mean():.2f} +- {all_mean_dist.std():.2f}"
+)
 print(f"Max distance between broken and cobble circuits: {all_mean_dist.max():.4f}")
 print(np.argsort(all_mean_dist)[:10])
 
 
-with open(f"sets/greedy_circuit_perf_{circuit_to_study}_{greedy_heuristic}.json", "w") as f:
+with open(
+    f"sets/greedy_circuit_perf_{circuit_to_study}_{greedy_heuristic}.json", "w"
+) as f:
     json.dump(circuit_perf_greedy, f)
 with open(f"sets/greedy_sets_{circuit_to_study}_{greedy_heuristic}.json", "w") as f:
     json.dump(all_sets, f)
@@ -1302,14 +1747,19 @@ critical_set = [
 ]
 
 compute_cobble_broken_diff(
-    model, ioi_dataset, abca_dataset, critical_set, return_both=True, all_node=get_relevant_node(NAIVE_CIRCUIT)
+    model,
+    ioi_dataset,
+    abca_dataset,
+    critical_set,
+    return_both=True,
+    all_node=get_relevant_node(NAIVE_CIRCUIT),
 )
-
-# %%
 # %% greedy minimality experiments
 
 model.reset_hooks()
-small_ioi_dataset = IOIDataset(prompt_type="mixed", N=30, tokenizer=model.tokenizer, nb_templates=2)
+small_ioi_dataset = IOIDataset(
+    prompt_type="mixed", N=30, tokenizer=model.tokenizer, nb_templates=2
+)
 
 best_J = {}  # list of candidate sets for each node
 best_scores = {}  # list of scores for each node
@@ -1323,7 +1773,9 @@ for v in tqdm(ALL_NODES):
         NB_ITER=10,
         verbose=False,
     )
-    if len(best_J[v]) == 0:  # if the greedy search did not find any set, we use the set with the node itself
+    if (
+        len(best_J[v]) == 0
+    ):  # if the greedy search did not find any set, we use the set with the node itself
         all_but_v = ALL_NODES.copy()
         all_but_v.remove(v)
         best_J[v] = [{"circuit_nodes": all_but_v, "removed_nodes": [v]}]
@@ -1332,7 +1784,10 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=200, tokenizer=model.tokenizer)
 
 for v in tqdm(ALL_NODES):  # validate the best sets
     minimality_scores = [
-        test_minimality(model, ioi_dataset, v, node_set["removed_nodes"], absolute=False) for node_set in best_J[v]
+        test_minimality(
+            model, ioi_dataset, v, node_set["removed_nodes"], absolute=False
+        )
+        for node_set in best_J[v]
     ]
     best_J[v] = best_J[v][np.argmax(minimality_scores)]
     best_scores[v] = np.max(minimality_scores)

@@ -157,6 +157,7 @@ class EasyTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
+<<<<<<< HEAD
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
@@ -178,6 +179,17 @@ class EasyTransformer(HookedRootModule):
             # If we want to generate from the empty string, we'd pass in an empty cache, so we need to handle that case
             assert cache_ctx_length == 0 or ctx_length == 1, "Pass in one token at a time after loading cache"
             pos_offset = cache_ctx_length
+=======
+            tokens = self.to_tokens(input)
+        elif type(input) == torch.Tensor or type(input) == np.ndarray:
+            assert len(input.shape) == 2, (input.shape, "Input must be a 2D tensor")
+            tokens = input
+        else:
+            raise ValueError(
+                f"Invalid input type: {type(input)}. Must be a string, list, or tensor"
+            )
+
+>>>>>>> alex-global-patching
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         pos_embed = self.hook_pos_embed(
             self.pos_embed(tokens, pos_offset)

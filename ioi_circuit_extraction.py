@@ -1,3 +1,4 @@
+import warnings
 from copy import deepcopy
 from easy_transformer.experiments import (
     ExperimentMetric,
@@ -122,7 +123,9 @@ def get_circuit_replacement_hook(
                 # TODO can this i loop be vectorized?
 
         if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
-            for i in range(dataset_length):  # we use the idx from contex to get the head
+            for i in range(
+                dataset_length
+            ):  # we use the idx from contex to get the head
                 z[i, heads[(layer, hook.ctx["idx"])][i], :] = act[
                     i,
                     heads2[(layer, hook.ctx["idx"])][i],
@@ -134,7 +137,9 @@ def get_circuit_replacement_hook(
     return circuit_replmt_hook, heads, mlps
 
 
-def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
+def join_lists(
+    l1, l2
+):  # l1 is a list of list. l2 a list of int. We add the int from l2 to the lists of l1.
     assert len(l1) == len(l2)
     assert type(l1[0]) == list and type(l2[0]) == int
     l = []
@@ -146,7 +151,15 @@ def join_lists(l1, l2):  # l1 is a list of list. l2 a list of int. We add the in
 def get_extracted_idx(idx_list: list[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
-        int_idx_to_add = [int(x) for x in list(ioi_dataset.word_idx[idx_name])]  # torch to python objects
+        try:
+            int_idx_to_add = [
+                int(x) for x in list(ioi_dataset.word_idx[idx_name])
+            ]  # torch to python objects
+        except:
+            print(ioi_dataset.word_idx, idx_name)
+            raise ValueError(
+                f"Index {idx_name} not found in the dataset. Please check the spelling and make sure the index is in the dataset."
+            )
         int_idx = join_lists(int_idx, int_idx_to_add)
     return int_idx
 
@@ -184,16 +197,31 @@ CIRCUIT = {
         (10, 2),
         (10, 1),
         (11, 2),
-        (11, 9),
         (9, 7),
         (9, 0),
-        (11, 3),
+        (11, 9),
+        # (11, 3), # very weak
     ],
     "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0)],
-    "previous token": [(2, 2), (2, 9), (4, 11)],
+    "duplicate token": [
+        (0, 1),
+        (0, 10),
+        (3, 0),
+        # (7, 1),
+    ],  # unclear exactly what (7,1) does
+    "previous token": [  # sheesh
+        (2, 2),
+        # (2, 9),
+        (4, 11),
+        # (4, 3),
+        # (4, 7),
+        # (5, 6),
+        # (3, 3),
+        # (3, 7),
+        # (3, 6),
+    ],
 }
 
 ARTHUR_CIRCUIT = deepcopy(CIRCUIT)
@@ -212,6 +240,11 @@ for head in CIRCUIT["duplicate token"]:
 
 for head in CIRCUIT["previous token"]:
     RELEVANT_TOKENS[head] = ["S+1"]
+
+ALL_NODES = []
+for h in RELEVANT_TOKENS:
+    for tok in RELEVANT_TOKENS[h]:
+        ALL_NODES.append((h, tok))
 
 # ALEX_NAIVE_CIRCUIT = {
 #     "name mover": [
@@ -236,7 +269,9 @@ ALEX_NAIVE = {
 
 def get_heads_circuit(ioi_dataset, excluded=[], mlp0=False, circuit=CIRCUIT):
     for excluded_thing in excluded:
-        assert isinstance(excluded_thing, tuple) or excluded_thing in circuit.keys(), excluded_thing
+        assert (
+            isinstance(excluded_thing, tuple) or excluded_thing in circuit.keys()
+        ), excluded_thing
 
     heads_to_keep = {}
 
@@ -262,6 +297,7 @@ def get_mlps_circuit(ioi_dataset, mlps):
         mlps_to_keep[i] = get_extracted_idx(mlps[i], ioi_dataset)
     return mlps_to_keep
 
+
 def do_circuit_extraction(
     heads_to_remove=None,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
     mlps_to_remove=None,  # {2: List[List[int]]: dimensions dataset_size * datapoint_length
@@ -272,6 +308,8 @@ def do_circuit_extraction(
     model=None,
     metric=None,
     exclude_heads=[],
+    return_hooks=False,
+    hooks_dict=False,
 ):
     """
     ..._to_remove means the indices ablated away. Otherwise the indices not ablated away.
@@ -297,6 +335,7 @@ def do_circuit_extraction(
 
     if mean_dataset is None:
         mean_dataset = ioi_dataset
+
     config = AblationConfig(
         abl_type="custom",
         abl_fn=ablation,
@@ -316,14 +355,32 @@ def do_circuit_extraction(
     )
     model.reset_hooks()
 
-    for layer, head in heads.keys():
+    hooks = {}
+
+    heads_keys = list(heads.keys())
+    # sort in lexicographic order
+    heads_keys.sort(key=lambda x: (x[0], x[1]))
+
+    for layer, head in heads_keys:
         if (layer, head) in exclude_heads:
             continue
-        model.add_hook(*abl.get_hook(layer, head))
+        assert (layer, head) not in hooks, ((layer, head), "already in hooks")
+        hooks[(layer, head)] = abl.get_hook(layer, head)
+        # model.add_hook(*abl.get_hook(layer, head))
     for layer in mlps.keys():
-        model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
+        hooks[(layer, None)] = abl.get_hook(layer, head=None, target_module="mlp")
+        # model.add_hook(*abl.get_hook(layer, head=None, target_module="mlp"))
 
-    return model, abl
+    if return_hooks:
+        if hooks_dict:
+            return hooks
+        else:
+            return list(hooks.values())
+
+    else:
+        for hook in hooks.values():
+            model.add_hook(*hook)
+        return model, abl
 
 
 if __name__ == "__main__":

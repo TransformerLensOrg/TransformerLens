@@ -1,4 +1,9 @@
 import warnings
+<<<<<<< HEAD
+=======
+from functools import partial
+from easy_transformer import EasyTransformer
+>>>>>>> alex-global-patching
 import plotly.graph_objects as go
 import numpy as np
 from numpy import sin, cos, pi
@@ -9,6 +14,7 @@ import torch
 import plotly.express as px
 import gc
 import einops
+from easy_transformer.experiments import get_act_hook
 
 from ioi_dataset import IOIDataset
 from ioi_circuit_extraction import do_circuit_extraction
@@ -23,6 +29,7 @@ CLASS_COLORS = {
     "previous token": ALL_COLORS[6],
     "none": ALL_COLORS[7],
     "backup name mover": "rgb(27,100,119)",
+    "light backup name mover": "rgb(146,183,210)",
 }
 
 
@@ -73,6 +80,7 @@ def show_pp(
     highlight_points=None,
     highlight_name="",
     return_fig=False,
+    show_fig=True,
     **kwargs,
 ):
     """
@@ -130,7 +138,8 @@ def show_pp(
     )
     if highlight_points is not None:
         fig.update_yaxes(range=[m.shape[1] - 0.5, -0.5], autorange=False)
-    fig.show()
+    if show_fig:
+        fig.show()
     if return_fig:
         return fig
 
@@ -139,7 +148,14 @@ def show_pp(
 
 
 def show_attention_patterns(
-    model, heads, ioi_dataset, precomputed_cache=None, mode="val", title_suffix="", return_fig=False, return_mtx=False
+    model,
+    heads,
+    ioi_dataset,
+    precomputed_cache=None,
+    mode="val",
+    title_suffix="",
+    return_fig=False,
+    return_mtx=False,
 ):  # Arthur edited for one of my experiments, things work well
     assert mode in [
         "attn",
@@ -155,15 +171,21 @@ def show_attention_patterns(
     for (layer, head) in heads:
         cache = {}
 
-        good_names = [f"blocks.{layer}.attn.hook_attn" + ("_scores" if mode == "scores" else "")]
+        good_names = [
+            f"blocks.{layer}.attn.hook_attn" + ("_scores" if mode == "scores" else "")
+        ]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
         if precomputed_cache is None:
-            model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
+            model.cache_some(
+                cache=cache, names=lambda x: x in good_names
+            )  # shape: batch head_no seq_len seq_len
             logits = model(ioi_dataset.text_prompts)
         else:
             cache = precomputed_cache
-        attn_results = torch.zeros(size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len))
+        attn_results = torch.zeros(
+            size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len)
+        )
         attn_results += -20
 
         for i, text in enumerate(prompts):
@@ -172,6 +194,7 @@ def show_attention_patterns(
             current_length = len(toks)
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
+
             if mode == "val":
                 vals = cache[good_names[1]].detach().cpu()[i, :, head, :].norm(dim=-1)
                 cont = torch.einsum("ab,b->ab", attn, vals)
@@ -201,15 +224,19 @@ def show_attention_patterns(
             if return_fig and not return_mtx:
                 return fig
             elif return_mtx and not return_fig:
-                attn_results[i, :current_length, :current_length] = attn[:current_length, :current_length].clone().cpu()
+                attn_results[i, :current_length, :current_length] = (
+                    attn[:current_length, :current_length].clone().cpu()
+                )
             else:
                 fig.show()
 
         if return_fig and not return_mtx:
             return fig
         elif return_mtx and not return_fig:
-            if mode in ["attn", "scores"]:
-                return attn_results
+            # if mode in ["attn", "scores"]:
+            warnings.warn("Unsafe")
+            return attn_results
+
             raise NotImplementedError("I think this is easy but I'm not doing it now")
 
 
@@ -291,14 +318,18 @@ def scatter_attention_and_contribution(
         ]:
             prob = sum(
                 [
-                    cache[f"blocks.{layer_no}.attn.hook_attn"][i, head_no, ioi_dataset.word_idx["end"][i], pos]
+                    cache[f"blocks.{layer_no}.attn.hook_attn"][
+                        i, head_no, ioi_dataset.word_idx["end"][i], pos
+                    ]
                     .detach()
                     .cpu()
                     for pos in posses
                 ]
             )
             resid = (
-                cache[f"blocks.{layer_no}.attn.hook_result"][i, ioi_dataset.word_idx["end"][i], head_no, :]
+                cache[f"blocks.{layer_no}.attn.hook_result"][
+                    i, ioi_dataset.word_idx["end"][i], head_no, :
+                ]
                 .detach()
                 .cpu()
             )
@@ -306,7 +337,9 @@ def scatter_attention_and_contribution(
             df.append([prob, dot, tok_type, prompt["text"]])
 
     # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"])
+    viz_df = pd.DataFrame(
+        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
+    )
     fig = px.scatter(
         viz_df,
         x=f"Attn Prob on Name",
@@ -346,15 +379,27 @@ def handle_all_and_std(returning, all, std):
 
 
 def logit_diff(
-    model, ioi_dataset, all=False, std=False
+    model,
+    ioi_dataset,
+    all=False,
+    std=False,
+    both=False,
 ):  # changed by Arthur to take dataset object, :pray: no big backwards compatibility issues
     """
     Difference between the IO and the S logits at the "to" token
     """
-    warnings.warn("")
-    logits = model(ioi_dataset.text_prompts) # ioi_dataset.toks.long()).detach()
-    assert logits.shape[0]==ioi_dataset.toks.shape[0]
-    print(logits.shape, "same?")
+
+    # assert isinstance(ioi_dataset, IOIDataset), type(ioi_dataset)
+
+    logits = model(ioi_dataset.toks.long()).detach()
+
+    # uhhhh, I guess logit sum is constatn, but the constant is -516763 which seems weird (not 0?)
+    # end_logits = logits[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"], :]
+    # assert len(end_logits.shape) == 2, end_logits.shape
+    # assert torch.allclose(end_logits[0], end_logits[0] * 0.0)
+    # for i in range(10):
+    #     print(torch.sum(end_logits[i]))
+
     IO_logits = logits[
         torch.arange(len(ioi_dataset)),
         ioi_dataset.word_idx["end"],
@@ -366,23 +411,33 @@ def logit_diff(
         ioi_dataset.s_tokenIDs,
     ]
 
-    print(IO_logits, S_logits)
+    if both:
+        return handle_all_and_std(IO_logits, all, std), handle_all_and_std(
+            S_logits, all, std
+        )
 
-    return handle_all_and_std(IO_logits - S_logits, all, std)
+    else:
+        return handle_all_and_std(IO_logits - S_logits, all, std)
 
 
-def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, std=False):
+def attention_on_token(
+    model, ioi_dataset, layer, head_idx, token, all=False, std=False, scores=False
+):
     """
     Get the attention on token `token` from the end position
     """
 
-    hook_name = "blocks.{}.attn.hook_attn".format(layer)
+    hook_name_raw = "blocks.{}.attn.hook_attn" + ("_scores" if scores else "")
+    hook_name = hook_name_raw.format(layer)
     cache = {}
     model.cache_some(cache, lambda x: x == hook_name)
     # shape is batch * head * from * to
     logits = model(ioi_dataset.toks.long()).detach()
     atts = cache[hook_name][
-        torch.arange(ioi_dataset.N), head_idx, ioi_dataset.word_idx["end"], ioi_dataset.word_idx[token]
+        torch.arange(ioi_dataset.N),
+        head_idx,
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.word_idx[token],
     ]
     return handle_all_and_std(atts, all, std)
 
@@ -418,7 +473,7 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
     # text_prompts = ioi_dataset.text_prompts
     logits = model(ioi_dataset.toks.long()).detach()
     # logits = model(ioi_dataset.toks.long()).detach().cpu()  # batch * sequence length * vocab_size
-    warnings.warn("+1ing")
+    warnings.warn("Not +1ing")
     print(logits.shape)
     end_logits = logits[torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
 
@@ -605,7 +660,9 @@ def compute_next_tok_dot_prod(
     """Compute dot product of model's next token logits with the logits of the next token in the sentences. Support batch_size > 1"""
     assert len(sentences) % batch_size == 0
     cache = {}
-    model.cache_some(cache, lambda x: x in [f"blocks.{l}.attn.hook_result"], device="cuda")
+    model.cache_some(
+        cache, lambda x: x in [f"blocks.{l}.attn.hook_result"], device="cuda"
+    )
     if seq_tokenized:
         toks = sentences
     else:
@@ -618,7 +675,9 @@ def compute_next_tok_dot_prod(
     for i in tqdm(range(len(sentences) // batch_size)):
         # get_time("pre forward")
         model.run_with_hooks(
-            sentences[i * batch_size : (i + 1) * batch_size], reset_hooks_start=False, reset_hooks_end=False
+            sentences[i * batch_size : (i + 1) * batch_size],
+            reset_hooks_start=False,
+            reset_hooks_end=False,
         )
         # get_time("post forward")
         # print_gpu_mem("post run")
@@ -635,7 +694,12 @@ def compute_next_tok_dot_prod(
             next_tok_dir = model_unembed[next_tok]  # nb_seq, seq_len-1, dim
             # print(attn_result.shape, next_tok_dir.shape, len(toks[idx]) - 1)
             # print(next_tok_dir.shape, attn_result.shape)
-            prod.append(torch.einsum("hd,hd->h", attn_result, next_tok_dir).detach().cpu().numpy())
+            prod.append(
+                torch.einsum("hd,hd->h", attn_result, next_tok_dir)
+                .detach()
+                .cpu()
+                .numpy()
+            )
         # get_time("post prod")
     # print_gpu_mem("post run")
     return prod
@@ -670,7 +734,11 @@ def print_toks_with_color(toks, color, show_low=False, show_high=False, show_all
 
         if show_value:
             if len(str(np.round(color[i], 2)).split(".")) > 1:
-                val = str(np.round(color[i], 2)).split(".")[0] + "." + str(np.round(color[i], 2)).split(".")[1][:2]
+                val = (
+                    str(np.round(color[i], 2)).split(".")[0]
+                    + "."
+                    + str(np.round(color[i], 2)).split(".")[1][:2]
+                )
             else:
                 val = str(np.round(color[i], 2))
             print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}({val})\033[0;0m", end="")
@@ -706,15 +774,23 @@ def export_tok_col_to_file(folder, head, layer, tok_col, toks, chunck_name):
     filename = f"{folder}/layer_{layer}_head_{head}/layer_{layer}_head_{head}_{chunck_name}.html"
     all_html = ""
     for i in range(len(tok_col)):
-        all_html += f"<br><br><br>==============Sequence {i}=============<br><br><br>" + tok_color_scale_to_html(
-            toks[i], tok_col[i]
+        all_html += (
+            f"<br><br><br>==============Sequence {i}=============<br><br><br>"
+            + tok_color_scale_to_html(toks[i], tok_col[i])
         )
     with open(filename, "w") as f:
         f.write(all_html)
 
 
 def find_owt_stimulus(
-    model, owt_sentences, l, h, k=5, batch_size=1, export_to_html=False, folder="OWT_stimulus_by_head"
+    model,
+    owt_sentences,
+    l,
+    h,
+    k=5,
+    batch_size=1,
+    export_to_html=False,
+    folder="OWT_stimulus_by_head",
 ):
     prod = compute_next_tok_dot_prod(model, owt_sentences, l, h, batch_size=batch_size)
 
@@ -728,9 +804,15 @@ def find_owt_stimulus(
     # print(max_seq_idx)
     random_idx = np.random.choice(len(owt_sentences), k)
 
-    max_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in max_seq_idx]
-    min_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in min_seq_idx]
-    random_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in random_idx]
+    max_seq = [
+        show_tokens(owt_sentences[i], model, return_list=True) for i in max_seq_idx
+    ]
+    min_seq = [
+        show_tokens(owt_sentences[i], model, return_list=True) for i in min_seq_idx
+    ]
+    random_seq = [
+        show_tokens(owt_sentences[i], model, return_list=True) for i in random_idx
+    ]
     max_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in max_seq_idx]
     min_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in min_seq_idx]
     random_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in random_idx]
@@ -779,7 +861,9 @@ def find_owt_stimulus(
 #### Composition
 
 
-def sample_activation(model, dataset: list[str], hook_names: list[str], n: int) -> dict[str, torch.Tensor]:
+def sample_activation(
+    model, dataset: list[str], hook_names: list[str], n: int
+) -> dict[str, torch.Tensor]:
     data = np.random.choice(dataset, n)
     data = [str(elem) for elem in data]  # need to convert from numpy.str_
     cache = {}
@@ -825,7 +909,15 @@ def get_hook_name(model, module: str, layer: int, head: int) -> str:
 
 
 def compute_composition(
-    model, dataset: list[str], n_samples: int, l1: int, h1: int, l2: int, h2: int, module_1: str, module_2: str
+    model,
+    dataset: list[str],
+    n_samples: int,
+    l1: int,
+    h1: int,
+    l2: int,
+    h2: int,
+    module_1: str,
+    module_2: str,
 ):
     W_1 = get_head_param(model, module_1, l1, h1).detach()
     W_2 = get_head_param(model, module_2, l2, h2).detach()
@@ -835,7 +927,9 @@ def compute_composition(
     baselines = []
     hook_name_1 = get_hook_name(module_1, l1, h1)
     hook_name_2 = get_hook_name(module_2, l2, h2)
-    activations = sample_activation(model, dataset, [hook_name_1, hook_name_2], n_samples)
+    activations = sample_activation(
+        model, dataset, [hook_name_1, hook_name_2], n_samples
+    )
     # TODO: what to do with seq length dimension??
     # x_1 = activations[hook_name_1].mean(dim=1).squeeze().detach()
     # x_2 = activations[hook_name_2].mean(dim=1).squeeze().detach()
@@ -848,7 +942,7 @@ def compute_composition(
     c12 = torch.norm(torch.einsum("d e, b s e -> b s d", W_12, x_1), dim=-1)
     c1 = torch.norm(torch.einsum("d e, b s e -> b s d", W_1, x_1), dim=-1)
     c2 = torch.norm(torch.einsum("d e, b s e -> b s d", W_2, x_2), dim=-1)
-    comp_score = c12 / (c1 * c2 * 768 ** 0.5)
+    comp_score = c12 / (c1 * c2 * 768**0.5)
     comp_scores.append(comp_score)
 
     # compute baseline
@@ -859,12 +953,24 @@ def compute_composition(
         c12b = torch.norm(torch.einsum("d e, b s e -> b s d", W_12b, x_1), dim=-1)
         c1b = torch.norm(torch.einsum("d e, b s e -> b s d", W_1b, x_1), dim=-1)
         c2b = torch.norm(torch.einsum("d e, b s e -> b s d", W_2b, x_2), dim=-1)
-        baseline = c12b / (c1b * c2b * 768 ** 0.5)
+        baseline = c12b / (c1b * c2b * 768**0.5)
         baselines.append(baseline)
-    return torch.stack(comp_scores).mean().cpu().numpy() - torch.stack(baselines).mean().cpu().numpy()
+    return (
+        torch.stack(comp_scores).mean().cpu().numpy()
+        - torch.stack(baselines).mean().cpu().numpy()
+    )
 
 
-def compute_composition_OV_QK(model, dataset: list[str], n_samples: int, l1: int, h1: int, l2: int, h2: int, mode: str):
+def compute_composition_OV_QK(
+    model,
+    dataset: list[str],
+    n_samples: int,
+    l1: int,
+    h1: int,
+    l2: int,
+    h2: int,
+    mode: str,
+):
     assert mode in ["Q", "K"]
     W_OV = get_head_param(model, "OV", l1, h1).detach()
     W_QK = get_head_param(model, "QK", l2, h2).detach()

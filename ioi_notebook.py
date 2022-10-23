@@ -21,7 +21,7 @@
 # ## Imports
 import os
 import torch
-if os.environ["USER"] == "exx": # so Arthur can safely use octobox
+if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import LayerNormPre
@@ -509,7 +509,6 @@ def layer_norm(x, cfg=MODEL_CFG):
 
 def pytorch_layer_norm(x, eps=MODEL_EPS):
     return torch.nn.LayerNorm(normalized_shape=x.shape[-1], eps=eps)(x)
-
 
 m = torch.randn(2, 3, 4)
 assert torch.allclose(layer_norm(m), pytorch_layer_norm(m))

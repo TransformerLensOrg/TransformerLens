@@ -6,23 +6,26 @@
 # % not HYPOTHESISE, do the computationally intractable
 # % do completeness, minimality NOT methods first
 #%%
+import abc
 import os
 import time
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import torch
-assert torch.cuda.device_count() == 1
 
+assert torch.cuda.device_count() == 1
+from ioi_utils import all_subsets
+from ioi_circuit_extraction import CIRCUIT, RELEVANT_TOKENS
+from copy import deepcopy
 from time import ctime
 import io
 from random import randint as ri
 from easy_transformer import EasyTransformer
 from functools import partial
-from ioi_utils import logit_diff, probs
+from ioi_utils import all_subsets, logit_diff, probs, show_attention_patterns
 from ioi_dataset import BABA_EARLY_IOS, BABA_LATE_IOS, ABBA_EARLY_IOS, ABBA_LATE_IOS
 import logging
 import sys
-from ioi_circuit_extraction import *
-# import optuna
 from ioi_dataset import *
 from ioi_utils import max_2d
 import IPython
@@ -104,24 +107,44 @@ if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 
+
 def e(mess=""):
     print_gpu_mem(mess)
     torch.cuda.empty_cache()
+
+
 #%%
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))  # we flip the second b for a random c
+abca_dataset = ioi_dataset.gen_flipped_prompts(
+    ("S2", "RAND")
+)  # we flip the second b for a random c
 acca_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND"))
+dcc_dataset = acca_dataset.gen_flipped_prompts(("IO", "RAND"))
+cbb_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
 acba_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))
-adea_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("S1", "RAND"))
-all_diff_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(("S1", "RAND"))
-bcca_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(("S", "RAND"))
+adea_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND")).gen_flipped_prompts(
+    ("S1", "RAND")
+)
+totally_diff_dataset = IOIDataset(N=ioi_dataset.N, prompt_type=ioi_dataset.prompt_type)
+all_diff_dataset = (
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"))
+)
+bcca_dataset = ioi_dataset.gen_flipped_prompts(("IO", "RAND")).gen_flipped_prompts(
+    ("S", "RAND")
+)
 from ioi_utils import logit_diff
+
 ABCm_dataset = IOIDataset(prompt_type="ABC mixed", N=N, tokenizer=model.tokenizer)
 ABC_dataset = IOIDataset(prompt_type="ABC", N=N, tokenizer=model.tokenizer)
 BAC_dataset = IOIDataset("BAC", N, model.tokenizer)
 mixed_dataset = IOIDataset("ABC mixed", N, model.tokenizer)
+
+circuit = deepcopy(CIRCUIT)
+
 
 def patch_positions(z, source_act, hook, positions=["end"]):
     for pos in positions:
@@ -130,12 +153,15 @@ def patch_positions(z, source_act, hook, positions=["end"]):
         ]
     return z
 
+
 def attention_probs(
     model, text_prompts, variation=True, scale=True
 ):  # we have to redefine logit differences to use the new abba dataset
     """Difference between the IO and the S logits at the "to" token"""
     cache_patched = {}
-    model.cache_some(cache_patched, lambda x: x in hook_names)  # we only cache the activation we're interested
+    model.cache_some(
+        cache_patched, lambda x: x in hook_names
+    )  # we only cache the activation we're interested
     logits = model(text_prompts).detach()
     # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
     # ... but do this elsewhere as otherwise we bad
@@ -166,11 +192,17 @@ def attention_probs(
                     res = res.mean().unsqueeze(dim=0)
                     attn_probs_variation.append(res)
                 else:
-                    attn_probs_variation.append(attn_probs_patched.mean().unsqueeze(dim=0))
-        attn_probs_variation_by_keys.append(torch.cat(attn_probs_variation).mean(dim=0, keepdim=True))
+                    attn_probs_variation.append(
+                        attn_probs_patched.mean().unsqueeze(dim=0)
+                    )
+        attn_probs_variation_by_keys.append(
+            torch.cat(attn_probs_variation).mean(dim=0, keepdim=True)
+        )
 
     attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
     return attn_probs_variation_by_keys.detach().cpu()
+
+
 #%% [markdown] let's try to remove MO MLPS from the circuit
 circuit = deepcopy(CIRCUIT)
 heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
@@ -189,9 +221,15 @@ model.reset_hooks()
 
 prefixed_dataset = IOIDataset(N=100, prompt_type="mixed")
 
-for dataset in [prefixed_dataset, ioi_dataset, ABC_dataset, BAC_dataset, mixed_dataset]:
-    circuit_logit_diff = logit_diff(model, dataset)
-    circuit_probs = probs(model, dataset)
+for a_dataset in [
+    prefixed_dataset,
+    ioi_dataset,
+    ABC_dataset,
+    BAC_dataset,
+    mixed_dataset,
+]:
+    circuit_logit_diff = logit_diff(model, a_dataset)
+    circuit_probs = probs(model, a_dataset)
     print(f"{circuit_logit_diff=} {circuit_probs=}")
 
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
@@ -207,21 +245,25 @@ config = AblationConfig(
     nb_metric_iteration=1,
     max_seq_len=ioi_dataset.max_len,
 )
-abl = EasyAblation(model, config, metric) # , mean_by_groups=True, groups=ioi_dataset.groups)
+abl = EasyAblation(
+    model, config, metric
+)  # , mean_by_groups=True, groups=ioi_dataset.groups)
 e()
 
-ablate_these = [1, 2, 3] # single numbers for MLPs, tuples for heads
-# ablate_these = max_2d(-result, 10)[0] 
-ablate_these += [(5, 9),
- (5, 8),
- (0, 10),
- (4, 6),
- (3, 10),   
- (4, 0),
- (3, 8),
- (3, 7),
- (5, 2),
- (6, 5)]
+ablate_these = [1, 2, 3]  # single numbers for MLPs, tuples for heads
+# ablate_these = max_2d(-result, 10)[0]
+ablate_these += [
+    (5, 9),
+    (5, 8),
+    (0, 10),
+    (4, 6),
+    (3, 10),
+    (4, 0),
+    (3, 8),
+    (3, 7),
+    (5, 2),
+    (6, 5),
+]
 ablate_these = []
 # run some below cell to see the max impactful heads
 
@@ -236,7 +278,7 @@ for this in ablate_these:
     else:
         raise ValueError(this)
 
-    def ablation_hook(z, act, hook):  
+    def ablation_hook(z, act, hook):
         # batch, seq, head dim, because get_act_hook hides scary things from us
         # TODO probably change this to random ablation when that arrives
         cur_layer = int(hook.name.split(".")[1])
@@ -247,13 +289,15 @@ for this in ablate_these:
         assert len(list(z.shape)) == 3, z.shape
         assert list(z.shape) == list(act.shape), (z.shape, act.shape)
 
-        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = act[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]]  # hope that we don't see changing values of mean_cached_values...
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]] = act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S2"]
+        ]  # hope that we don't see changing values of mean_cached_values...
         return z
 
     cur_hook = get_act_hook(
         ablation_hook,
         alt_act=abl.mean_cache[cur_tensor_name],
-        idx=head_idx, 
+        idx=head_idx,
         dim=2 if head_idx is not None else None,
     )
     model.add_hook(cur_tensor_name, cur_hook)
@@ -276,45 +320,51 @@ my_toks = [
     4144,
     284,
     5335,
-] # this is the John and Mary one
+]  # this is the John and Mary one
 
 mary_tok = 5335
 john_tok = 1757
 
 model.reset_hooks()
 logits = model(torch.Tensor([my_toks]).long()).detach().cpu()
-assert mary_tok in torch.topk(logits[0, -2], 1).indices, (torch.topk(logits[0, -2], 5), logits[0, -2, john_tok])
+assert mary_tok in torch.topk(logits[0, -2], 1).indices, (
+    torch.topk(logits[0, -2], 5),
+    logits[0, -2, john_tok],
+)
 # mary_res = logits[0, -2, mary_tok]
 # john_res = logits[0, -2, john_tok]
+
 
 def replace(my_list, a, b):
     return [b if x == a else x for x in my_list]
 
+
 from random import randint as ri
 from copy import deepcopy
-cnt=0
-bet=0
+
+cnt = 0
+bet = 0
 bet_sub = 0
 bet_sub_2 = 0
 for it in tqdm(range(1000)):
     cur_list = deepcopy(my_toks)
-    new_mary_tok = my_list[ri(0, -1+len(my_list))] # ri(0, 50_000)
-    new_john_tok = my_list[ri(0, -1+len(my_list))] # ri(0, 50_000)
+    new_mary_tok = my_list[ri(0, -1 + len(my_list))]  # ri(0, 50_000)
+    new_john_tok = my_list[ri(0, -1 + len(my_list))]  # ri(0, 50_000)
     cur_list = replace(cur_list, mary_tok, new_mary_tok)
     cur_list = replace(cur_list, john_tok, new_john_tok)
     logits = model(torch.Tensor([cur_list]).long()).detach().cpu()[0, -2]
     top_100 = torch.topk(logits, 100).indices
-        
+
     if logits[new_mary_tok] > logits[new_john_tok]:
-        bet+=1    
+        bet += 1
 
     if new_mary_tok in top_100 or new_john_tok in top_100:
-        cnt+=1
+        cnt += 1
 
         if logits[new_mary_tok] > logits[new_john_tok]:
-            bet_sub+=1    
+            bet_sub += 1
         else:
-            bet_sub_2+=1
+            bet_sub_2 += 1
 #%%
 NEW_CIRCUIT = {
     # old name mover
@@ -457,6 +507,7 @@ new_ld, new_ld_std
 #%% # look at what's affecting the V stuff
 from ioi_circuit_extraction import ARTHUR_CIRCUIT
 from ioi_utils import probs
+
 heads_to_keep = {}
 for circuit_class in CIRCUIT.keys():
     for head in CIRCUIT[circuit_class]:
@@ -487,7 +538,7 @@ for layer in range(7):
                     continue
                 heads_to_keep[head] = get_extracted_idx(
                     RELEVANT_TOKENS[head], ioi_dataset
-                    )
+                )
         new_early_heads = early_heads.copy()
         new_early_heads.remove((layer, head_idx))
         model, abl = do_circuit_extraction(
@@ -650,11 +701,346 @@ if show_scatter:
     fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
     fig.write_image(f"svgs/circuit_completeness_at_{ctime()}.svg")
     fig.show()
+#%%
+MODEL_CFG = model.cfg
+MODEL_EPS = model.cfg.eps
+
+
+def layer_norm(x, cfg=MODEL_CFG):
+    return LayerNormPre(cfg)(x)
+
+
+def get_layer_norm_div(x, eps=MODEL_EPS):
+    mean = x.mean(dim=-1, keepdim=True)
+    new_x = (x - mean).detach().clone()
+    return (new_x.var(dim=-1, keepdim=True).mean() + eps).sqrt()
+
+
+#%%
+# def qk_logit_lens(
+#     model,
+#     ioi_dataset,
+#     heads,
+#     show=["attn"],  # can add "mlp" to this
+#     return_vals=False,
+#     dir_mode="IO - S1",
+#     title="",
+#     return_figs=False,
+# ):
+
+heads = [(9, 9)]
+return_vals = True
+dir_mode = "IO - S1"
+show = ["attn", "mlp"]
+title = "asdof"
+
+if True:
+    """
+    Jacob's QK logit lens
+    ... this requires annoying think-about-contribution-through-layer-norm
+    """
+
+    if len(heads) != 1:
+        raise NotImplementedError("only works for one head")
+    nm_layer, nm_idx = heads[0]
+
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
+    d_model = model.cfg.d_model
+
+    attn_vals = torch.zeros(size=(n_heads, n_layers))
+    mlp_vals = torch.zeros(size=(n_layers,))
+
+    wq = model.blocks[nm_layer].attn.W_Q[nm_idx]
+    bias_q = model.blocks[nm_layer].attn.b_Q
+    wk = model.blocks[nm_layer].attn.W_K[nm_idx]
+    bias_k = model.blocks[nm_layer].attn.b_K
+    assert wq.shape == wk.shape
+    assert wq.shape == (64, 768)
+
+    for i in tqdm(range(ioi_dataset.N)):
+        cache = {}
+        k_hook_name = f"blocks.{nm_layer}.attn.hook_k"
+        pre_name = f"blocks.{nm_layer}.hook_resid_pre"
+        ln_hook_name = f"blocks.{nm_layer}.ln1.hook_scale"
+        model.cache_all(
+            cache,
+            lambda name: name in [pre_name, k_hook_name, ln_hook_name],
+            device="cuda",
+        )
+        logits = model(ioi_dataset.text_prompts[i])
+        iok = cache[k_hook_name][0, ioi_dataset.word_idx["IO"][i].item(), nm_idx, :]
+        s1k = cache[k_hook_name][
+            0, ioi_dataset.word_idx["S"][i].item(), nm_idx, :
+        ]  # these already have the bias_K added
+        if dir_mode == "IO - S1":
+            k = iok - s1k
+        else:
+            raise NotImplementedError(dir_mode)
+        assert len(k.shape) == 1
+
+        neels_ln_scale = cache[ln_hook_name][:, -2, :]
+        our_maunal_ln_scale = get_layer_norm_div(cache[pre_name][:, -2, :])
+        assert torch.allclose(neels_ln_scale, our_maunal_ln_scale, atol=1e-3, rtol=1e-3)
+
+        res_stream_sum = torch.zeros(size=(d_model,), device="cuda")
+        res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]
+        # at the Q position
+
+        for lay in range(0, 9):
+            cur_attn = cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
+            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :][0]
+
+            # TODO check we have res_stream_sum working
+            res_stream_sum += torch.sum(cur_attn, dim=0)
+            res_stream_sum += model.blocks[lay].attn.b_O  # .detach().cpu()
+            res_stream_sum += cur_mlp
+            assert torch.allclose(
+                res_stream_sum,
+                cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach(),
+                rtol=1e-3,
+                atol=1e-3,
+            ), lay
+
+            cur_mlp -= cur_mlp.mean()
+            for j in range(n_heads):
+                cur_attn[j] -= cur_attn[j].mean()
+                # we layer norm the end result of the residual stream,
+                # (which firstly centres the residual stream)
+                # so to estimate "amount written in the IO-S direction"
+                # we centre each head's output
+            cur_attn /= neels_ln_scale.item()
+            cur_mlp /= neels_ln_scale.item()
+
+            # print(cur_attn.shape) # (12, 768)
+            att_q = torch.einsum("ab,cb->ac", cur_attn, wq)  # + bias_q
+            # this is now 12 * 64
+            mlp_q = torch.einsum("b,cb->c", cur_mlp, wq)  # + bias_q
+            # this is now 64
+
+            attn_vals[:n_heads, lay] += torch.einsum("ha,a->h", att_q.cpu(), k.cpu())
+            mlp_vals[lay] = torch.einsum("a,a->", mlp_q.cpu(), k.cpu())
+
+        res_stream_sum -= res_stream_sum.mean()
+        res_stream_sum = (
+            layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+        )
+        cur_writing = torch.einsum("a,ca->c", res_stream_sum, wq) + bias_q[nm_idx]
+        calculated_k = torch.einsum("a,a->", cur_writing.cpu(), k.cpu())
+        calculated_k /= model.blocks[nm_layer].attn.attn_scale
+
+        cached_score = (
+            cache[f"blocks.{nm_layer}.attn.hook_attn_scores"][
+                0, nm_idx, -2, ioi_dataset.word_idx["IO"][i].item()
+            ]
+            - cache[f"blocks.{nm_layer}.attn.hook_attn_scores"][
+                0, nm_idx, -2, ioi_dataset.word_idx["S"][i].item()
+            ]
+        )
+        assert torch.allclose(
+            calculated_k,
+            cached_score,
+            rtol=1e-2,
+            atol=1e-2,
+        ), f"{i=} {calculated_k.shape=} {get_corner(cached_score, n=4)=} {get_corner(calculated_k, n=4)=}"
+
+    attn_vals /= ioi_dataset.N
+    mlp_vals /= ioi_dataset.N
+
+    all_figs = []
+    if "attn" in show:
+        all_figs.append(
+            show_pp(
+                attn_vals.detach().cpu().numpy(),
+                xlabel="head no",
+                ylabel="layer no",
+                title=title,
+                return_fig=True,
+            )
+        )
+    if "mlp" in show:
+        all_figs.append(
+            show_pp(
+                mlp_vals.detach().numpy().unsqueeze(0).T.detach(),
+                xlabel="",
+                ylabel="layer no",
+                title=title,
+                return_fig=True,
+            )
+        )
+    # if return_figs and return_vals:
+    #     return all_figs, attn_vals, mlp_vals
+    # if return_vals:
+    #     return attn_vals, mlp_vals
+    # if return_figs:
+    #     return all_figs
+#%%
+def writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    show=["attn"],  # can add "mlp" to this
+    return_vals=False,
+    dir_mode="IO - S",
+    unembed_mode="normal",
+    title="",
+    verbose=False,
+    return_figs=False,
+):
+    """
+    Plot the dot product between how much each attention head
+    output with `IO-S`, the difference between the unembeds between
+    the (correct) IO token and the incorrect S token
+    """
+
+    n_heads = model.cfg.n_heads
+    n_layers = model.cfg.n_layers
+    d_model = model.cfg.d_model
+
+    model_unembed = (
+        model.unembed.W_U.detach().cpu()
+    )  # note that for GPT2 embeddings and unembeddings are tides such that W_E = Transpose(W_U)
+
+    unembed_bias = model.unembed.b_U.detach().cpu()
+
+    attn_vals = torch.zeros(size=(n_heads, n_layers))
+    mlp_vals = torch.zeros(size=(n_layers,))
+    logit_diffs = logit_diff(model, ioi_dataset, all=True).cpu()
+
+    for i in tqdm(range(ioi_dataset.N)):
+        io_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["IO"][i].item()]
+        s_tok = ioi_dataset.toks[i][ioi_dataset.word_idx["S"][i].item()]
+        io_dir = model_unembed[io_tok]
+        s_dir = model_unembed[s_tok]
+        unembed_bias_io = unembed_bias[io_tok]
+        unembed_bias_s = unembed_bias[s_tok]
+        if dir_mode == "IO - S":
+            dire = io_dir - s_dir
+        elif dir_mode == "IO":
+            dire = io_dir
+        elif dir_mode == "S":
+            dire = s_dir
+        else:
+            raise NotImplementedError()
+        dire.to("cuda")
+        cache = {}
+        model.cache_all(
+            cache, device="cuda"
+        )  # TODO maybe speed up by only caching relevant things
+        logits = model(ioi_dataset.text_prompts[i])
+
+        res_stream_sum = torch.zeros(
+            size=(d_model,), device="cuda"
+        )  # cuda implem to speed up things
+        res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]  # .detach().cpu()
+        # the pos and token embeddings
+
+        layer_norm_div = get_layer_norm_div(
+            cache["blocks.11.hook_resid_post"][0, -2, :]
+        )
+
+        for lay in range(n_layers):
+            cur_attn = (
+                cache[f"blocks.{lay}.attn.hook_result"][0, -2, :, :]
+                # + model.blocks[lay].attn.b_O.detach()  # / n_heads
+            )
+            cur_mlp = cache[f"blocks.{lay}.hook_mlp_out"][:, -2, :][0]
+
+            # check that we're really extracting the right thing
+            res_stream_sum += torch.sum(cur_attn, dim=0)
+            res_stream_sum += model.blocks[lay].attn.b_O  # .detach().cpu()
+            res_stream_sum += cur_mlp
+            assert torch.allclose(
+                res_stream_sum,
+                cache[f"blocks.{lay}.hook_resid_post"][0, -2, :].detach(),
+                rtol=1e-3,
+                atol=1e-3,
+            ), lay
+
+            cur_mlp -= cur_mlp.mean()
+            for i in range(n_heads):
+                cur_attn[i] -= cur_attn[i].mean()
+                # we layer norm the end result of the residual stream,
+                # (which firstly centres the residual stream)
+                # so to estimate "amount written in the IO-S direction"
+                # we centre each head's output
+            cur_attn /= layer_norm_div  # ... and then apply the layer norm division
+            cur_mlp /= layer_norm_div
+
+            attn_vals[:n_heads, lay] += torch.einsum(
+                "ha,a->h", cur_attn.cpu(), dire.cpu()
+            )
+            mlp_vals[lay] = torch.einsum("a,a->", cur_mlp.cpu(), dire.cpu())
+
+        res_stream_sum -= res_stream_sum.mean()
+        res_stream_sum = (
+            layer_norm(res_stream_sum.unsqueeze(0).unsqueeze(0)).squeeze(0).squeeze(0)
+        )
+        cur_writing = (
+            torch.einsum("a,a->", res_stream_sum, dire.to("cuda"))
+            + unembed_bias_io
+            - unembed_bias_s
+        )
+
+        assert i == 11 or torch.allclose(  # ??? and it's way off, too
+            cur_writing,
+            logit_diffs[i],
+            rtol=1e-2,
+            atol=1e-2,
+        ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+
+    attn_vals /= ioi_dataset.N
+    mlp_vals /= ioi_dataset.N
+    all_figs = []
+    if "attn" in show:
+        all_figs.append(
+            show_pp(
+                attn_vals,
+                xlabel="head no",
+                ylabel="layer no",
+                title=title,
+                return_fig=True,
+            )
+        )
+    if "mlp" in show:
+        all_figs.append(
+            show_pp(
+                mlp_vals.unsqueeze(0).T,
+                xlabel="",
+                ylabel="layer no",
+                title=title,
+                return_fig=True,
+            )
+        )
+    if return_figs and return_vals:
+        return all_figs, attn_vals, mlp_vals
+    if return_vals:
+        return attn_vals, mlp_vals
+    if return_figs:
+        return all_figs
+
+
+torch.cuda.empty_cache()
+
+all_figs, attn_vals, mlp_vals = writing_direction_heatmap(
+    model,
+    ioi_dataset,
+    return_vals=True,
+    show=["attn", "mlp"],
+    dir_mode="IO - S",
+    title="Output into IO - S token unembedding direction",
+    verbose=True,
+    return_figs=True,
+)
+modules = ["attn", "mlp"]
+
+for i, fig in enumerate(all_figs):
+    fig.write_image(f"svgs/writing_direction_heatmap_module_{modules[i]}.svg")
 #%% # Q: can we just replace S2 Inhibition Heads with 1.0 attention to S2?
 # A: pretty much yes
 
 from ioi_circuit_extraction import CIRCUIT
 from ioi_utils import probs, logit_diff
+
 circuit = CIRCUIT.copy()
 
 heads_to_keep = get_heads_circuit(
@@ -666,7 +1052,7 @@ heads = circuit["s2 inhibition"].copy()
 
 for change in [False, True]:
     model.reset_hooks()
-    
+
     model, abl = do_circuit_extraction(
         model=model,
         heads_to_keep=heads_to_keep,
@@ -677,13 +1063,28 @@ for change in [False, True]:
     if change:
         for layer, head in heads:
             hook_name = f"blocks.{layer}.attn.hook_attn"
-            def s2_ablation_hook(z, act, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
+
+            def s2_ablation_hook(
+                z, act, hook
+            ):  # batch, seq, head dim, because get_act_hook hides scary things from us
                 assert z.shape == act.shape, (z.shape, act.shape)
                 z = act
                 return z
 
-            act = torch.zeros(size=(ioi_dataset.N, model.cfg.n_heads, ioi_dataset.max_len, ioi_dataset.max_len))
-            act[torch.arange(ioi_dataset.N), :, ioi_dataset.word_idx["end"][:ioi_dataset.N], ioi_dataset.word_idx["S2"][:ioi_dataset.N]] = 0.5
+            act = torch.zeros(
+                size=(
+                    ioi_dataset.N,
+                    model.cfg.n_heads,
+                    ioi_dataset.max_len,
+                    ioi_dataset.max_len,
+                )
+            )
+            act[
+                torch.arange(ioi_dataset.N),
+                :,
+                ioi_dataset.word_idx["end"][: ioi_dataset.N],
+                ioi_dataset.word_idx["S2"][: ioi_dataset.N],
+            ] = 0.5
             cur_hook = get_act_hook(
                 s2_ablation_hook,
                 alt_act=act,
@@ -693,7 +1094,7 @@ for change in [False, True]:
             model.add_hook(hook_name, cur_hook)
 
     io_probs = probs(model, ioi_dataset)
-    print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}") 
+    print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}")
 #%% evidence for the S2 story
 # ablating V for everywhere except S2 barely affects LD. But ablating all V has LD go to almost 0
 
@@ -709,9 +1110,13 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
     # break
     cur_tensor_name = f"blocks.{layer}.attn.hook_q"
     s2_token_idxs = get_extracted_idx(["S2"], ioi_dataset)
-    mean_cached_values = abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
+    mean_cached_values = (
+        abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
+    )
 
-    def s2_v_ablation_hook(z, act, hook):  # batch, seq, head dim, because get_act_hook hides scary things from us
+    def s2_v_ablation_hook(
+        z, act, hook
+    ):  # batch, seq, head dim, because get_act_hook hides scary things from us
         cur_layer = int(hook.name.split(".")[1])
         cur_head_idx = hook.ctx["idx"]
 
@@ -719,7 +1124,9 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
         assert len(list(z.shape)) == 3, z.shape
         assert list(z.shape) == list(act.shape), (z.shape, act.shape)
 
-        z = mean_cached_values.cuda()  # hope that we don't see chaning values of mean_cached_values...
+        z = (
+            mean_cached_values.cuda()
+        )  # hope that we don't see chaning values of mean_cached_values...
         return z
 
     cur_hook = get_act_hook(
@@ -736,7 +1143,12 @@ print(f"{new_ld=}, {new_probs=}")
 #%% # new shit: attention probs on S2 is the score
 heads_to_patch = circuit["s2 inhibition"].copy()
 attn_circuit_template = "blocks.{patch_layer}.attn.hook_v"
-cache_names = set([attn_circuit_template.format(patch_layer=patch_layer) for patch_layer, _ in heads_to_patch])
+cache_names = set(
+    [
+        attn_circuit_template.format(patch_layer=patch_layer)
+        for patch_layer, _ in heads_to_patch
+    ]
+)
 
 logit_diffs = torch.zeros(size=(12, 12))
 mlps = torch.zeros(size=(12,))
@@ -751,7 +1163,9 @@ model.reset_hooks()
 base_metric = metric(model, ioi_dataset)
 print(f"{base_metric=}")
 
-experiment_metric = ExperimentMetric(metric=metric, dataset=ioi_dataset, relative_metric=False)
+experiment_metric = ExperimentMetric(
+    metric=metric, dataset=ioi_dataset, relative_metric=False
+)
 config = AblationConfig(
     abl_type="random",
     mean_dataset=abca_dataset.text_prompts,
@@ -762,10 +1176,17 @@ config = AblationConfig(
     nb_metric_iteration=1,
     max_seq_len=ioi_dataset.max_len,
 )
-abl = EasyAblation(model, config, experiment_metric) # , mean_by_groups=True, groups=ioi_dataset.groups)
+abl = EasyAblation(
+    model, config, experiment_metric
+)  # , mean_by_groups=True, groups=ioi_dataset.groups)
 e()
 result = abl.run_experiment()
-show_pp((result-base_metric).T, xlabel="head", ylabel="layer", title="Attention on S2 change when ablated")
+show_pp(
+    (result - base_metric).T,
+    xlabel="head",
+    ylabel="layer",
+    title="Attention on S2 change when ablated",
+)
 #%%
 for layer in range(12):
     for head_idx in [None] + list(range(12)):
@@ -777,9 +1198,11 @@ for layer in range(12):
 
         else:
             cur_tensor_name = f"blocks.{layer}.attn.hook_result"
-            mean_cached_values = abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
+            mean_cached_values = (
+                abl.mean_cache[cur_tensor_name][:, :, head_idx, :].cpu().detach()
+            )
 
-        def ablation_hook(z, act, hook): 
+        def ablation_hook(z, act, hook):
             # batch, seq, head dim, because get_act_hook hides scary things from us
             cur_layer = int(hook.name.split(".")[1])
             cur_head_idx = hook.ctx["idx"]
@@ -788,14 +1211,16 @@ for layer in range(12):
             assert len(list(z.shape)) == 3, z.shape
             assert list(z.shape) == list(act.shape), (z.shape, act.shape)
 
-            z = mean_cached_values.cuda()  # hope that we don't see changing values of mean_cached_values...
+            z = (
+                mean_cached_values.cuda()
+            )  # hope that we don't see changing values of mean_cached_values...
             return z
 
         cur_hook = get_act_hook(
             ablation_hook,
             alt_act=abl.mean_cache[cur_tensor_name],
-            idx=head_idx, # nice deals with 
-            dim=2 if head_idx is not None else None, # None for MLPs
+            idx=head_idx,  # nice deals with
+            dim=2 if head_idx is not None else None,  # None for MLPs
         )
         model.reset_hooks()
         model.add_hook(cur_tensor_name, cur_hook)
@@ -808,6 +1233,7 @@ for layer in range(12):
 
         model.reset_hooks()
         for patch_layer, patch_head in heads_to_patch:
+
             def patch_in_q(z, act, hook):
                 # assert hook.name == f"blocks.{patch_head}.attn.hook_q", hook.name # OOH ERR, is commenting this out ok???
                 assert len(list(z.shape)) == 3, z.shape
@@ -818,10 +1244,12 @@ for layer in range(12):
             s2_hook = get_act_hook(
                 patch_in_q,
                 alt_act=cache[attn_circuit_template.format(patch_layer=patch_layer)],
-                idx=patch_head, 
+                idx=patch_head,
                 dim=2,
             )
-            model.add_hook(attn_circuit_template.format(patch_layer=patch_layer), s2_hook)
+            model.add_hook(
+                attn_circuit_template.format(patch_layer=patch_layer), s2_hook
+            )
 
         ld = metric(model, ioi_dataset)
 
@@ -833,9 +1261,19 @@ for layer in range(12):
         print(f"{layer=}, {head_idx=}, {ld=}")
 
 att_heads_mean_diff = logit_diffs - base_metric
-show_pp(att_heads_mean_diff.T, ylabel="layer", xlabel="head", title=f"Change in logit diff: {torch.sum(att_heads_mean_diff)}")
+show_pp(
+    att_heads_mean_diff.T,
+    ylabel="layer",
+    xlabel="head",
+    title=f"Change in logit diff: {torch.sum(att_heads_mean_diff)}",
+)
 mlps_mean_diff = mlps - base_ld
-show_pp(mlps_mean_diff.T.unsqueeze(0), ylabel="layer", xlabel="head", title=f"Change in logit diff, MLPs: {torch.sum(mlps_mean_diff)}")
+show_pp(
+    mlps_mean_diff.T.unsqueeze(0),
+    ylabel="layer",
+    xlabel="head",
+    title=f"Change in logit diff, MLPs: {torch.sum(mlps_mean_diff)}",
+)
 #%% # new experiment idea: the duplicators and induction heads shouldn't care where their attention is going, provided that
 # it goes to either S or S+1.
 
@@ -846,15 +1284,15 @@ for j in range(2, 5):
         cur_head_idx = hook.ctx["idx"]
 
         assert hook.name == f"blocks.{cur_layer}.attn.hook_attn", hook.name
-        assert len(list(z.shape)) == 3, z.shape  
+        assert len(list(z.shape)) == 3, z.shape
         # batch, seq (attending_query), attending_key
 
         # cur = z[torch.arange(ioi_dataset.N), s2_positions, s_positions+1]
         # print(cur)
         # print(f"{cur.shape=}")
-        # some_atts = torch.argmax(cur, dim=1) 
+        # some_atts = torch.argmax(cur, dim=1)
         # for i in range(20):
-            # print(i, model.tokenizer.decode(ioi_dataset.toks[i][some_atts[i]]), ":", model.tokenizer.decode(ioi_dataset.toks[i][:6]))
+        # print(i, model.tokenizer.decode(ioi_dataset.toks[i][some_atts[i]]), ":", model.tokenizer.decode(ioi_dataset.toks[i][:6]))
         # print(some_atts.shape)
 
         # prior_stuff = []
@@ -863,18 +1301,19 @@ for j in range(2, 5):
         # for i in range(0, 2):
         #     z[torch.arange(ioi_dataset.N), s2_positions, s_positions + i] =  prior_stuff[(i + j) % 2] # +1 is the do nothing one # ([0, 1][(i+j)%2]) is way beyond scope
 
-
         # z[torch.arange(ioi_dataset.N), s2_positions, 0] = prior_stuff[(0 + j) % 2]
         # z[torch.arange(ioi_dataset.N), s2_positions, s_positions] = prior_stuff[(1 + j) % 2]
 
         z[torch.arange(ioi_dataset.N), s2_positions, :] = 0
 
         for key in ioi_dataset.word_idx.keys():
-            z[torch.arange(ioi_dataset.N), s2_positions, ioi_dataset.word_idx[key]] = average_attention[(cur_layer, cur_head_idx)][key]
+            z[
+                torch.arange(ioi_dataset.N), s2_positions, ioi_dataset.word_idx[key]
+            ] = average_attention[(cur_layer, cur_head_idx)][key]
 
         return z
 
-    F = logit_diff # or logit diff
+    F = logit_diff  # or logit diff
     model.reset_hooks()
     ld = F(model, ioi_dataset)
 
@@ -895,7 +1334,9 @@ for j in range(2, 5):
         f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
     )
 #%%
-heads_to_patch = circuit["duplicate token"] + circuit["induction"] # circuit["s2 inhibition"]
+heads_to_patch = (
+    circuit["duplicate token"] + circuit["induction"]
+)  # circuit["s2 inhibition"]
 layers = list(set([layer for layer, head_idx in heads_to_patch]))
 hook_names = [f"blocks.{l}.attn.hook_result" for l in layers]
 model.reset_hooks()
@@ -920,36 +1361,64 @@ print(f"{l=}")
 model.reset_hooks()
 #%%
 ys = []
-fig = go.Figure()
 average_attention = {}
-for heads_raw in circuit["s2 inhibition"]: # heads_to_patch: # [(9, 9), (9, 6), (10, 0)]:
-    heads = [heads_raw]
-    average_attention[heads_raw] = {}
-    for idx, dataset in enumerate([ioi_dataset, abca_dataset][:1]):
-        print(idx)
+
+for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
+    fig = go.Figure()
+    print(idx, ["ioi", "abca"][idx])
+    for heads_raw in circuit["name mover"][
+        :3
+    ]:  # heads_to_patch: # [(9, 9), (9, 6), (10, 0)]:
+        heads = [heads_raw]
+        average_attention[heads_raw] = {}
         cur_ys = []
         cur_stds = []
         att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
         for head in tqdm(heads):
-            att += show_attention_patterns(model, [head], dataset, return_mtx=True, mode="attn") 
+            att += show_attention_patterns(
+                model, [head], dataset, return_mtx=True, mode="scores"
+            )
         att /= len(heads)
+
+        vals = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][: dataset.N], :]
+        evals = torch.exp(vals)
+        val_sum = torch.sum(evals, dim=1)
+        assert val_sum.shape == (dataset.N,), val_sum.shape
+        print(f"{heads=} {val_sum.mean()=}")
+
         for key in ioi_dataset.word_idx.keys():
-            end_to_s2 = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][:dataset.N], ioi_dataset.word_idx[key][:dataset.N]]
+            end_to_s2 = att[
+                torch.arange(dataset.N),
+                ioi_dataset.word_idx["end"][: dataset.N],
+                ioi_dataset.word_idx[key][: dataset.N],
+            ]
             # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
             cur_ys.append(end_to_s2.mean().item())
             cur_stds.append(end_to_s2.std().item())
             average_attention[heads_raw][key] = end_to_s2.mean().item()
-        fig.add_trace(go.Bar(x=list(ioi_dataset.word_idx.keys()), y=cur_ys, error_y=dict(type="data", array=cur_stds), name=str(heads_raw))) # ["IOI", "ABCA"][idx]))
+        fig.add_trace(
+            go.Bar(
+                x=list(ioi_dataset.word_idx.keys()),
+                y=cur_ys,
+                error_y=dict(type="data", array=cur_stds),
+                name=str(heads_raw),
+            )
+        )  # ["IOI", "ABCA"][idx]))
 
-    fig.update_layout(title_text="Attention from END to S2")
+        fig.update_layout(title_text="Attention scores; from END to S2")
     fig.show()
+#%% [markdown] implement Jacob's QK logit lens
+
+# save K_{IO} and K_{S}
+# look at what writes in the
+
 #%%
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
 heads_by_layer = {9: [6, 9], 10: [0]}
 layers = [9, 10]
 hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
 
-# warnings.warn("Actually doing S Inhib stuff")    
+# warnings.warn("Actually doing S Inhib stuff")
 # heads_to_measure = circuit["s2 inhibition"]
 # layers = [7, 8]
 # heads_by_layer = {7: [3, 9], 8: [6, 10]}
@@ -957,15 +1426,20 @@ hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
 
 model.reset_hooks()
 cache_baseline = {}
-model.cache_some(cache_baseline, lambda x: x in hook_names)  # we only cache the activation we're interested
+model.cache_some(
+    cache_baseline, lambda x: x in hook_names
+)  # we only cache the activation we're interested
 logits = model(ioi_dataset.text_prompts).detach()
 # %% [markdown] Q: is it possible to patch in ACCA sentences to make things work? A: Yes!
-def patch_positions(z, source_act, hook, positions=["END"]):  # we patch at the "to" token
+def patch_positions(
+    z, source_act, hook, positions=["END"]
+):  # we patch at the "to" token
     for pos in positions:
         z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
             torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
         ]
     return z
+
 
 patch_last_tokens = partial(patch_positions, positions=["end"])
 patch_s2 = partial(patch_positions, positions=["S2"])
@@ -980,9 +1454,14 @@ config = PatchingConfig(
     patch_fn=patch_s2,
     layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
-metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
+metric = ExperimentMetric(
+    partial(attention_probs, scale=False),
+    config.target_dataset,
+    relative_metric=False,
+    scalar_metric=False,
+)
 patching = EasyPatching(model, config, metric)
-add_these_hooks = [] # actually, let's not add the fixed S2 Inhib thing
+add_these_hooks = []  # actually, let's not add the fixed S2 Inhib thing
 patching.other_hooks = add_these_hooks
 result = patching.run_patching()
 
@@ -998,9 +1477,11 @@ for i, key in enumerate(["IO", "S", "S2"]):
         color_continuous_midpoint=0,
         color_continuous_scale="RdBu",
     )
-    fig.write_image(f"svgs/variation_average_nm_attn_prob_key_{key}_patching_ABC_END.svg")
+    fig.write_image(
+        f"svgs/variation_average_nm_attn_prob_key_{key}_patching_ABC_END.svg"
+    )
     fig.show()
-#%% [markdown] 
+#%% [markdown]
 # This was: okay, so is ACCA identical for induction heads??? A: yes, and for dupes too
 # Now is: Try the ACBA dataset and see what happens
 e()
@@ -1010,7 +1491,9 @@ for head in circuit["duplicate token"] + circuit["induction"]:
     relevant_heads[head] = "S2"
 
 circuit = deepcopy(CIRCUIT)
-relevant_hook_names = set([f"blocks.{layer}.attn.hook_result" for layer, _ in relevant_heads.keys()])
+relevant_hook_names = set(
+    [f"blocks.{layer}.attn.hook_result" for layer, _ in relevant_heads.keys()]
+)
 
 if "alt_cache" not in dir() and False:
     alt_cache = {}
@@ -1018,15 +1501,19 @@ if "alt_cache" not in dir() and False:
     model.cache_some(alt_cache, names=lambda name: name in relevant_hook_names)
     logits = model(bcca_dataset.text_prompts)
     del logits
-    elayers =()
+    elayers = ()
 
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 oii_dataset = ioi_dataset.gen_flipped_prompts(("IO", "S1"))
-arthur_alex_clash = ioi_dataset.gen_flipped_prompts(("S2", "IO")).gen_flipped_prompts(("IO", "S1"))
+arthur_alex_clash = ioi_dataset.gen_flipped_prompts(("S2", "IO")).gen_flipped_prompts(
+    ("IO", "S1")
+)
 total_reversal_dataset = ioi_dataset.gen_flipped_prompts(("S2", "IO"))
 
 early_dataset = IOIDataset(prompt_type=BABA_EARLY_IOS, N=100)
-late_dataset = IOIDataset.construct_from_ioi_prompts_metadata(templates=BABA_LATE_IOS, ioi_prompts_data=dearly.ioi_prompts, N=100)
+late_dataset = IOIDataset.construct_from_ioi_prompts_metadata(
+    templates=BABA_LATE_IOS, ioi_prompts_data=dearly.ioi_prompts, N=100
+)
 
 config = PatchingConfig(
     source_dataset=late_dataset.text_prompts,
@@ -1038,7 +1525,12 @@ config = PatchingConfig(
     patch_fn=patch_s2,
     layers=(0, max(layers) - 1),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
-metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
+metric = ExperimentMetric(
+    partial(attention_probs, scale=False),
+    config.target_dataset,
+    relative_metric=False,
+    scalar_metric=False,
+)
 patching = EasyPatching(model, config, metric)
 #%%
 model.reset_hooks()
@@ -1051,28 +1543,49 @@ model.reset_hooks()
 #     mean_dataset=abca_dataset,
 # )
 
-for idx, head_set in enumerate([[], ["duplicate token"], ["induction"], ["s2 inhibition"], ["induction", "duplicate token"], ["s2 inhibition"] + ["induction"] + ["duplicate token"]]):
+for idx, head_set in enumerate(
+    [
+        [],
+        ["duplicate token"],
+        ["induction"],
+        ["s2 inhibition"],
+        ["induction", "duplicate token"],
+        ["s2 inhibition"] + ["induction"] + ["duplicate token"],
+    ]
+):
     model.reset_hooks()
     heads = []
     for circuit_class in head_set:
         heads += circuit[circuit_class]
     for layer, head_idx in heads:
-        hook = patching.get_hook(layer, head_idx, manual_patch_fn=partial(patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]))
+        hook = patching.get_hook(
+            layer,
+            head_idx,
+            manual_patch_fn=partial(
+                patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]
+            ),
+        )
         model.add_hook(*hook)
 
-    att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False, scale=False)
-    print(f"{head_set=}, IO S S2, {att_probs=}") # print("IO S S2")
+    att_probs = attention_probs(
+        model, ioi_dataset.text_prompts, variation=False, scale=False
+    )
+    print(f"{head_set=}, IO S S2, {att_probs=}")  # print("IO S S2")
     cur_logit_diff = logit_diff(model, ioi_dataset)
     cur_io_probs = probs(model, ioi_dataset)
     print(f"{idx=} {cur_logit_diff=} {cur_io_probs=}")
 #%%
 # some [logit difference, IO probs] for the different modes
 
-model_results = {"x": 3.8212, "y": 0.5281, "name":"model"} # saved from prompts2.py
-duplicate_results = {"x": 3.0485, "y": 0.4755, "name":"duplicate"}
-duplicate_and_induction_results = {"x": -0.66, "y": 0.1517, "name":"duplicate and induction"}
-induction_results = {"x": 0.459, "y": 0.2498, "name":"induction"}
-inhibition_results = {"x": -0.82, "y": 0.1367, "name":"inhibition"}
+model_results = {"x": 3.8212, "y": 0.5281, "name": "model"}  # saved from prompts2.py
+duplicate_results = {"x": 3.0485, "y": 0.4755, "name": "duplicate"}
+duplicate_and_induction_results = {
+    "x": -0.66,
+    "y": 0.1517,
+    "name": "duplicate and induction",
+}
+induction_results = {"x": 0.459, "y": 0.2498, "name": "induction"}
+inhibition_results = {"x": -0.82, "y": 0.1367, "name": "inhibition"}
 
 # model_results = {"x":3.5492, "y":0.4955, "name":"Model"} # hopefully saved at prompts.py
 # circuit_results = {"x":3.3414, "y":0.2854, "name":"Circuit", "textposition":"top left"}
@@ -1119,9 +1632,11 @@ fig.show()
 #%% # test the hypothesis that MLP5 implements "if copy signal present then write S2 real hard"
 # get logits we unembed right after Layer5 RESULTS: in 86/100 examples, yeah MLP5 increases S2 probs
 
+
 def zero_hook(z, hook):
     z[:] = 0.0
     return z
+
 
 ls = []
 
@@ -1134,7 +1649,7 @@ for zero_mlp in [True, False]:
             cur_hook = get_act_hook(
                 zero_hook,
                 alt_act=None,
-                idx=None, 
+                idx=None,
                 dim=None,
             )
             model.add_hook("blocks.{}.attn.hook_result".format(layer), cur_hook)
@@ -1193,6 +1708,7 @@ for layer in range(0, 6):
     for token in ["IO", "S2", "S", "end", "S+1"]:
         relevant_stuff.append((layer, token))
 
+
 def objective(trial, manual=None):
     """
     BLAH
@@ -1201,14 +1717,16 @@ def objective(trial, manual=None):
     e()
 
     if manual is None:
-        total_things = trial.suggest_int("total_things", 0, 6*5 + 2)
+        total_things = trial.suggest_int("total_things", 0, 6 * 5 + 2)
         cur_stuff = []
         for i in range(total_things):
-            cur_stuff.append(trial.suggest_categorical("idx_{}".format(i), relevant_stuff))
+            cur_stuff.append(
+                trial.suggest_categorical("idx_{}".format(i), relevant_stuff)
+            )
     else:
         cur_stuff = manual
 
-    mlps_to_keep = {i : [] for i in range(12)}
+    mlps_to_keep = {i: [] for i in range(12)}
     for i, pos in relevant_stuff:
         if (i, pos) in cur_stuff and pos not in mlps_to_keep[i]:
             mlps_to_keep[i].append(pos)
@@ -1223,43 +1741,38 @@ def objective(trial, manual=None):
     circuit_logit_diff = logit_diff(new_model, ioi_dataset)
     circuit_probs = probs(new_model, ioi_dataset)
     print(f"{circuit_logit_diff=} {circuit_probs=}")
-    ans = - circuit_logit_diff
+    ans = -circuit_logit_diff
     # if circuit_logit_diff > logit_diff_min and circuit_probs > io_probs_min:
     #     ans += 100000 - 100 * total_things
     return ans
 
+
 # study.optimize(objective, n_trials=1e8)
-#%% 
+#%%
 tuples = [
-    (0, 'IO'),
-    (0, 'S2'),
-    (0, 'S'),
-    (0, 'S+1'),
-    (0, 'end'),
-
-    (1, 'IO'),
-    (1, 'S'),
-    (1, 'S2'),
-
-    (2, 'IO'),
-    (2, 'S2'),
-
-    (3, 'IO'),
-    (3, 'S'),
-    (3, 'S+1'),
-    (3, 'S2'),  
-    
-    (4, 'IO'),
-    (4, 'S'),
-    (4, 'S+1'),
-    (4, 'S2'),
-
-    (5, 'S'),
-    (5, 'S+1'),
-    (5, 'S2'),
-
-    (10, 'end'),
-    (11, 'end'),
+    (0, "IO"),
+    (0, "S2"),
+    (0, "S"),
+    (0, "S+1"),
+    (0, "end"),
+    (1, "IO"),
+    (1, "S"),
+    (1, "S2"),
+    (2, "IO"),
+    (2, "S2"),
+    (3, "IO"),
+    (3, "S"),
+    (3, "S+1"),
+    (3, "S2"),
+    (4, "IO"),
+    (4, "S"),
+    (4, "S+1"),
+    (4, "S2"),
+    (5, "S"),
+    (5, "S+1"),
+    (5, "S2"),
+    (10, "end"),
+    (11, "end"),
 ]
 
 ans = objective(None, tuples)
@@ -1281,9 +1794,11 @@ use_circuit = False
 modes = ["IO"]
 warnings.warn(f"{use_circuit=}")
 
+
 def patch_all(z, source_act, hook):
     z[:] = source_act.clone()
     return z
+
 
 def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
     for pos in positions:
@@ -1294,6 +1809,7 @@ def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
                 torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
             ]
     return z
+
 
 heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
 
@@ -1308,11 +1824,15 @@ if use_circuit:
         mean_dataset=abca_dataset,
     )
 embed_cache = {}
-model.cache_some(embed_cache, lambda name: name == "hook_embed") 
+model.cache_some(embed_cache, lambda name: name == "hook_embed")
 logits = model(ioi_dataset.text_prompts)
 # hook_embed has shape 4x50x768
-io_embed_mean = embed_cache["hook_embed"][torch.arange(ioi_dataset.N), ioi_dataset.word_idx["IO"]].mean(dim=0, keepdim=True)
-s_embed_mean = embed_cache["hook_embed"][torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"]].mean(dim=0, keepdim=True)
+io_embed_mean = embed_cache["hook_embed"][
+    torch.arange(ioi_dataset.N), ioi_dataset.word_idx["IO"]
+].mean(dim=0, keepdim=True)
+s_embed_mean = embed_cache["hook_embed"][
+    torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S"]
+].mean(dim=0, keepdim=True)
 
 # middle thing
 model.reset_hooks()
@@ -1333,7 +1853,7 @@ for mode in modes:
     cur_hook = get_act_hook(
         partial(patch_positions, positions=[mode], all_same=True),
         alt_act=s_embed_mean if mode == "S" else io_embed_mean,
-        idx=None, 
+        idx=None,
         dim=None,
     )
     model.add_hook("hook_embed", cur_hook)
@@ -1364,9 +1884,11 @@ for layer, head_idx in circuit["name mover"]:
 
 # model.reset_hooks()
 io_probs = probs(model, ioi_dataset)
-att_probs = attention_probs(model, ioi_dataset.text_prompts, variation=False, scale=False)
+att_probs = attention_probs(
+    model, ioi_dataset.text_prompts, variation=False, scale=False
+)
 print(f"IO S S2, {att_probs=}")
-print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}") 
+print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}")
 #%%
 ds = []
 all_templates = list(set(BABA_EARLY_IOS + BABA_LATE_IOS + BABA_TEMPLATES))
@@ -1381,58 +1903,301 @@ templates_by_dis = [[] for _ in range(20)]
 templates_by_sidx = [[] for _ in range(20)]
 
 for i in range(len(ds)):
-    dis = (ds[i].word_idx["S2"].item() - ds[i].word_idx["S"].item())
+    dis = ds[i].word_idx["S2"].item() - ds[i].word_idx["S"].item()
     templates_by_dis[dis].append(all_templates[i])
 #%%
-for i in range(2, 5):
-    model.reset_hooks()
-    templates = templates_by_sidx[i]
-    d = IOIDataset(prompt_type=templates, N=100)
-    cur_logit_diff = logit_diff(model, d)
-    cur_io_probs = probs(model, d)
-    print(f"{i=} {len(templates_by_sidx[i])=} {cur_logit_diff}, {cur_io_probs=}")
-    metadata = deepcopy(d.ioi_prompts)
-    for i in range(len(metadata)):
-        metadata[i]["TEMPLATE_IDX"] = ri(0, len(templates) - 1)
-        metadata[i].pop("text")
-    d2 = IOIDataset.construct_from_ioi_prompts_metadata(templates=templates, ioi_prompts_data=metadata, N=d.N)
-    # break
+distances = []
 
+all_head_sets = all_subsets(
+    ["s2 inhibition", "induction", "duplicate token", "previous token"]
+)
+results = {}
+
+for source_dataset in [totally_diff_dataset]:
     layers = [7, 8]
     config = PatchingConfig(
-        source_dataset=d2.text_prompts,
-        target_dataset=d.text_prompts,
+        source_dataset=source_dataset.text_prompts,
+        target_dataset=ioi_dataset.text_prompts,
         target_module="attn_head",
         head_circuit="result",
         cache_act=True,
         verbose=False,
-        patch_fn=partial(patch_positions, positions=["S2"]),
+        patch_fn=partial(patch_positions, positions=["S+1"]),
         layers=(0, max(layers) - 1),
     )
-    metric = ExperimentMetric(partial(attention_probs, scale=False), config.target_dataset, relative_metric=False, scalar_metric=False)
+    metric = ExperimentMetric(
+        partial(attention_probs, scale=False),
+        config.target_dataset,
+        relative_metric=False,
+        scalar_metric=False,
+    )
     patching = EasyPatching(model, config, metric)
     model.reset_hooks()
 
     def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
         for pos in positions:
             if all_same:
-                z[torch.arange(d2.N), d.word_idx[pos]] = source_act
+                z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act
             else:
-                z[torch.arange(d.N), d.word_idx[pos]] = source_act[
-                    torch.arange(d.N), d.word_idx[pos]
+                z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+                    torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
                 ]
         return z
 
-    for idx, head_set in enumerate([[], ["duplicate token"], ["induction"], ["s2 inhibition"], ["induction", "duplicate token"], ["s2 inhibition"] + ["induction"] + ["duplicate token"]]):
+    for head_set in tqdm(all_head_sets):
         model.reset_hooks()
         heads = []
         for circuit_class in head_set:
             heads += circuit[circuit_class]
         for layer, head_idx in heads:
-            hook = patching.get_hook(layer, head_idx, manual_patch_fn=partial(patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]))
+            hook = patching.get_hook(
+                layer,
+                head_idx,
+                manual_patch_fn=partial(
+                    patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]
+                ),
+            )
             model.add_hook(*hook)
 
-        cur_logit_diff = logit_diff(model, d)
-        cur_io_probs = probs(model, d)
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        cur_io_probs = probs(model, ioi_dataset)
         print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
-#%% [markdown] Does distance
+        # results[(i, j, idx)] = cur_logit_diff, cur_io_probs
+#%%
+for all_head_sets_idx, head_set in enumerate(all_head_sets):
+    initials = []
+    DCCs = []
+    CDCs = []
+
+    title = str(head_set)
+
+    for i in range(len(distances)):
+        idx = distances[i]
+        initials.append(results[(idx, 0, 0)][0])
+        DCCs.append(results[(idx, 0, all_head_sets_idx)][0])
+        CDCs.append(results[(idx, 1, all_head_sets_idx)][0])
+    x1s = torch.tensor([1, 2, 3])
+    x2s = x1s - 0.5
+    x3s = -x1s
+
+    # plot a bar chart of the results
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=distances, y=initials, name="initials"))
+    fig.add_trace(go.Bar(x=distances, y=DCCs, name="DCCs"))
+    fig.add_trace(go.Bar(x=distances, y=CDCs, name="CDCs"))
+    fig.update_layout(barmode="group")
+
+    # update x axis
+    fig.update_xaxes(title_text="Distance between S and S2")
+    # update title
+    fig.update_layout(title_text=f"IOI Logit Diff by Distance, {title}")
+
+    fig.show()
+#%% [markdown] Hmm, so do the induction head outputs care about what's written into S+1 by previous token heads, or not?
+
+# ablate all of the Previous Token Heads
+# save the activations for the V matrix of the induction heads when we remove the previous token heads
+# (AAAAAA) this could retain performance
+# I guess the comparison is with not ablating the Previous Token Heads
+# YEE, borked for now
+
+# save the activations of induction V matrix, when previous tokens are ablated
+# ablated = from RANDOM other thing or just 0??? NO ZERO ABLATION IS VERY BAD!!!
+
+layers = [7, 8]
+config = PatchingConfig(
+    source_dataset=totally_diff_dataset.text_prompts,
+    target_dataset=ioi_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=partial(patch_positions, positions=["S+1"]),
+    layers=(0, max(layers) - 1),
+)
+metric = ExperimentMetric(
+    partial(attention_probs, scale=False),
+    config.target_dataset,
+    relative_metric=False,
+    scalar_metric=False,
+)
+patching = EasyPatching(model, config, metric)
+model.reset_hooks()
+
+
+def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+    for pos in positions:
+        if all_same:
+            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act
+        else:
+            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+                torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+            ]
+    return z
+
+
+def turn_to_zero(z, source_act, hook):
+    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S+1"]] = 0
+    return z
+
+
+model.reset_hooks()
+for layer, head_idx in circuit["previous token"]:
+    hook = patching.get_hook(
+        layer,
+        head_idx,
+        # manual_patch_fn=turn_to_zero,
+        manual_patch_fn=partial(
+            patch_positions,
+            positions=["S+1"],  # RELEVANT_TOKENS[(layer, head_idx)]
+        ),
+    )
+    model.add_hook(*hook)
+
+# Activation at hook blocks.3.attn.hook_v has shape:
+# torch.Size([4, 50, 12, 64])
+cache = {}
+hook_template = "blocks.{}.attn.hook_k"
+hook_names = list(set(hook_template.format(layer) for layer, _ in circuit["induction"]))
+model.cache_some(cache, lambda name: name in hook_names)
+cur_logit_diff = logit_diff(model, ioi_dataset)
+print(f"{cur_logit_diff=}")
+
+# def patch_new_v(z, source_act, hook):
+#     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S+1"]] = source_act[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S+1"]]
+#     return z
+
+model.reset_hooks()
+for layer, head_idx in circuit["induction"]:
+    cur_tensor_name = hook_template.format(layer)
+    cur_hook = get_act_hook(
+        partial(patch_positions, positions=["S"]),
+        alt_act=cache[cur_tensor_name],
+        idx=head_idx,
+        dim=2 if head_idx is not None else None,
+    )
+    model.add_hook(cur_tensor_name, cur_hook)
+
+# model.reset_hooks()
+cur_logit_diff = logit_diff(model, ioi_dataset)
+cur_io_probs = probs(model, ioi_dataset)
+print(f"{cur_logit_diff}, {cur_io_probs=}")
+#%% [markdown] -> S2 Inhibition: Q versus K composition
+# save the Inhibition K scores, when we ablate all the Induction and Duplicate token heads
+names = [
+    "ioi_dataset",
+    "abca_dataset",
+    "dcc_dataset",
+    "acca_dataset",
+    "acba_dataset",
+    "all_diff_dataset",
+    "totally_diff_dataset",
+]
+results = [[] for _ in names]
+
+for i, hook_templates in enumerate(
+    [
+        ["blocks.{}.attn.hook_k"],
+        ["blocks.{}.attn.hook_v"],
+        ["blocks.{}.attn.hook_v", "blocks.{}.attn.hook_k"],
+    ]
+):
+    for dataset_name in names:
+        model.reset_hooks()
+        dataset = eval(dataset_name)
+        config = PatchingConfig(
+            source_dataset=dataset.text_prompts,
+            target_dataset=ioi_dataset.text_prompts,
+            target_module="attn_head",
+            head_circuit="result",
+            cache_act=True,
+            verbose=False,
+            patch_fn=partial(
+                patch_positions, positions=["S2" if hook_template[-1] != "q" else "end"]
+            ),
+            layers=(0, max(layers) - 1),
+        )
+        metric = ExperimentMetric(
+            partial(attention_probs, scale=False),
+            config.target_dataset,
+            relative_metric=False,
+            scalar_metric=False,
+        )
+        patching = EasyPatching(model, config, metric)
+        model.reset_hooks()
+
+        def patch_positions(z, source_act, hook, positions=["end"], all_same=False):
+            for pos in positions:
+                if all_same:
+                    z[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ] = source_act
+                else:
+                    z[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ] = source_act[
+                        torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+                    ]
+            return z
+
+        model.reset_hooks()
+        for layer, head_idx in circuit["induction"] + circuit["duplicate token"]:
+            hook = patching.get_hook(
+                layer,
+                head_idx,
+                manual_patch_fn=partial(
+                    patch_positions,
+                    positions=["S2" if hook_template[-1] != "q" else "end"],
+                ),
+            )
+            model.add_hook(*hook)
+        hook_names = list(
+            set(
+                hook_template.format(layer)
+                for layer, _ in circuit["s2 inhibition"]
+                for hook_template in hook_templates
+            )
+        )
+        raw_cache = {}
+        model.cache_some(raw_cache, lambda name: name in hook_names)
+        cur_logit_diff = logit_diff(model, dataset)
+        print(f"{cur_logit_diff=}")
+        cache = deepcopy(raw_cache)
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        print(f"Actually on IOI: {cur_logit_diff=}")
+
+        model.reset_hooks()
+        for layer, head_idx in circuit["s2 inhibition"]:
+            for hook_template in hook_templates:
+                cur_tensor_name = hook_template.format(layer)
+                cur_hook = get_act_hook(
+                    partial(patch_positions, positions=["S2"]),
+                    alt_act=cache[cur_tensor_name],
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                )
+                model.add_hook(cur_tensor_name, cur_hook)
+
+        # model.reset_hooks()
+        cur_logit_diff = logit_diff(model, ioi_dataset)
+        cur_io_probs = probs(model, ioi_dataset)
+        print(f"{cur_logit_diff}, {cur_io_probs=}")
+        results[i].append(cur_logit_diff)
+
+fig = go.Figure()
+for i in range(3):
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=results[i],
+            name=["K", "V", "V+K"][i],
+        )
+    )
+
+fig.update_layout(
+    title="S2 Inhibition: Q versus K composition",
+    xaxis_title="Dataset",
+    yaxis_title="Logit Difference",
+)
+
+fig.show()
