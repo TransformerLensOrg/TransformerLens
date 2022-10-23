@@ -347,7 +347,7 @@ dataset_names = [
 exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
 for head in [(9, 9), (9, 6), (10, 0)]:
     exclude_heads.remove(head)
-extra_hooks = do_circuit_extraction(
+the_extra_hooks = do_circuit_extraction(
     model=model,
     heads_to_keep={},
     mlps_to_remove={},
@@ -357,12 +357,21 @@ extra_hooks = do_circuit_extraction(
     return_hooks=True,
 )
 model.reset_hooks()
-for extra_hook in extra_hooks:
-    model.add_hook(*extra_hook)
-default_logit_diff = logit_diff(model, ioi_dataset)
 
-for pos in ["end"]:
-    print(pos)
+all_results = []
+
+for use_extra_hooks in [False, True]:
+
+    if use_extra_hooks:
+        extra_hooks = the_extra_hooks
+    else:
+        extra_hooks = []
+
+    model.reset_hooks()
+    for extra_hook in extra_hooks:
+        model.add_hook(*extra_hook)
+    default_logit_diff = logit_diff(model, ioi_dataset)
+
     results = torch.zeros(size=(12, 12))
     mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
@@ -383,7 +392,7 @@ for pos in ["end"]:
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
                 max_layer=12,
-                positions=[pos],
+                positions=["end"],
                 verbose=False,
                 return_hooks=False,
                 freeze_mlps=True,
@@ -398,18 +407,18 @@ for pos in ["end"]:
                     cur_logit_diff - default_logit_diff
                 )
 
-            if source_layer == 11 and source_head_idx == 11:
+            if source_layer == model.cfg.n_layers - 1 and source_head_idx == model.cfg.n_heads - 1:
                 # show attention head results
-                fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
+                fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T,
-                    title=f"{fname=} {pos=} patching NMs",
+                    title=f"{fname=} patching NMs",
                     return_fig=True,
                     show_fig=False,
                 )
 
                 fig.write_image(
-                    f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
+                    f"svgs/patch_and_freezes/to_duplicate_token_K_{use_extra_hooks}.png"
                 )
 
                 fig.write_image(fname + ".png")
@@ -427,7 +436,7 @@ for pos in ["end"]:
                 fig.write_image(fname + ".png")
                 fig.write_image(fname + ".svg")
                 fig.show()
-
+                all_results.append(results)
 #%% [markdown] plotting (your downfalls!)
 cc = deepcopy(CLASS_COLORS)
 circuit = deepcopy(CIRCUIT)
@@ -443,7 +452,7 @@ def what_class(layer, head, circuit):
 
 k = 15
 top_heads = max_2d(
-    torch.abs(initial_results), k=k
+    torch.abs(all_results[0]), k=k
 )[  # backup results or initial results
     0
 ]  # initial results is the patch with no KOs; direct effect on logits
@@ -459,9 +468,9 @@ exclude_heads = [
 
 fig = go.Figure()
 
-for name, results in zip(["Left: WT", "Right: KO"], [initial_results, backup_results]):
+for name, result in zip(["Left: WT", "Right: KO of [9, 9], [10, 10], [9, 6]"], all_results):
     heights = [
-        results[layer][head]
+        result[layer][head]
         for layer, head in top_heads
         if (layer, head) not in exclude_heads
     ]
@@ -483,10 +492,9 @@ for name, results in zip(["Left: WT", "Right: KO"], [initial_results, backup_res
     )
 
 # stack them
-
 # set y axis range to [-1, 1]
 fig.update_yaxes(range=[-3, 3])
-fname = f"backup_nm_plot_{ctime()}"
+fname = f"Direct_effect_on_logit_difference_change_Plot_{ctime()}"
 
 # update title
 fig.update_layout(title=fname)
