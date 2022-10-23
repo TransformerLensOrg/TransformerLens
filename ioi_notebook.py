@@ -156,8 +156,9 @@ all_diff_dataset_2 = (
     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
 )
 
-# all_diff_dataset, all_diff_dataset_2 = all_diff_dataset_2, all_diff_dataset
-# ioi_dataset, ioi_dataset_2 = ioi_dataset_2, ioi_dataset
+#%%
+all_diff_dataset, all_diff_dataset_2 = all_diff_dataset_2, all_diff_dataset
+ioi_dataset, ioi_dataset_2 = ioi_dataset_2, ioi_dataset
 
 #%% [markdown] test to see if the word_idx is legit
 for new_N in range(1, 3):
@@ -170,6 +171,7 @@ print("Seem fine?")
 #%%
 totd = 0
 cp = 0
+model.reset_hooks()
 for d in [ioi_dataset]:
     # for i in range(dataset.N):
         # d = ioi_dataset[i:i+1]
@@ -233,7 +235,7 @@ def direct_patch_and_freeze(
     model.cache_some(sender_cache, lambda x: x in sender_hook_names)
     # print(f"{sender_hook_names=}")
     source_logits = model(
-        source_dataset.text_prompts
+        source_dataset.toks.long()
     )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
 
     target_cache = {}
@@ -241,7 +243,7 @@ def direct_patch_and_freeze(
     for hook in extra_hooks:
         model.add_hook(*hook)
     model.cache_all(target_cache)
-    target_logits = model(target_dataset.text_prompts)
+    target_logits = model(target_dataset.toks.long())
 
     # for all the Q, K, V things
     model.reset_hooks()
@@ -299,7 +301,7 @@ def direct_patch_and_freeze(
     # measure the receiver heads' values
     receiver_cache = {}
     model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
-    receiver_logits = model(target_dataset.text_prompts)
+    receiver_logits = model(target_dataset.toks.long())
 
     # patch these values in
     model.reset_hooks()
