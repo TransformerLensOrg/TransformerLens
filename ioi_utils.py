@@ -1,9 +1,6 @@
 import warnings
-<<<<<<< HEAD
-=======
 from functools import partial
 from easy_transformer import EasyTransformer
->>>>>>> alex-global-patching
 import plotly.graph_objects as go
 import numpy as np
 from numpy import sin, cos, pi
