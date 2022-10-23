@@ -138,7 +138,7 @@ model, _ = do_circuit_extraction(
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
     mean_dataset=mean_dataset,
-    exclude_heads=naive_heads,
+    excluded=naive_heads,
 )
 
 circuit_baseline_metric = metric(model, ioi_dataset)

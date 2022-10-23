@@ -126,16 +126,13 @@ if ipython is not None:
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
 #%% # plot writing in the IO - S direction
-model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
-print_gpu_mem("About to load model")
-
 if False:
     model = EasyTransformer(
         model_name, use_attn_result=True
     )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
 if True:
-    model = EasyTransformer.from_pretrained("gpt2").cuda()
-    # model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+    # model = EasyTransformer.from_pretrained("gpt2").cuda()
+    model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
     model.set_use_attn_result(True)
 
 device = "cuda"
@@ -157,7 +154,6 @@ all_diff_dataset_2 = (
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
 )
-
 #%%
 all_diff_dataset, all_diff_dataset_2 = all_diff_dataset_2, all_diff_dataset
 ioi_dataset, ioi_dataset_2 = ioi_dataset_2, ioi_dataset
@@ -345,7 +341,7 @@ dataset_names = [
 
 # knockout some heads !!!
 exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
-for head in [(9, 9), (9, 6), (10, 0)]:
+for head in [(9, 4), (11, 4), (11, 2)]:
     exclude_heads.remove(head)
 the_extra_hooks = do_circuit_extraction(
     model=model,
@@ -353,12 +349,13 @@ the_extra_hooks = do_circuit_extraction(
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
     mean_dataset=all_diff_dataset,
-    exclude_heads=exclude_heads,
+    excluded=exclude_heads,
     return_hooks=True,
 )
 model.reset_hooks()
 
 all_results = []
+all_mlp_results = []
 
 for use_extra_hooks in [False, True]:
 
@@ -436,7 +433,8 @@ for use_extra_hooks in [False, True]:
                 fig.write_image(fname + ".png")
                 fig.write_image(fname + ".svg")
                 fig.show()
-                all_results.append(results)
+                all_results.append(results.clone())
+                all_mlp_results.append(mlp_results.clone())
 #%% [markdown] plotting (your downfalls!)
 cc = deepcopy(CLASS_COLORS)
 circuit = deepcopy(CIRCUIT)
@@ -472,7 +470,7 @@ for name, result in zip(["Left: WT", "Right: KO of [9, 9], [10, 10], [9, 6]"], a
     heights = [
         result[layer][head]
         for layer, head in top_heads
-        if (layer, head) not in exclude_heads
+        # if (layer, head) not in exclude_heads
     ]
     colors = [
         cc[what_class(layer, head_idx, circuit=circuit)]
@@ -483,7 +481,7 @@ for name, result in zip(["Left: WT", "Right: KO of [9, 9], [10, 10], [9, 6]"], a
     # plot a bar chart
     fig.add_trace(
         go.Bar(
-            x=[str(x) for x in top_heads if x not in exclude_heads],
+            x=[str(x) for x in top_heads], # if x not in exclude_heads],
             y=heights,
             orientation="v",
             marker_color=colors,

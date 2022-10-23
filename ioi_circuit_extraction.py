@@ -307,7 +307,7 @@ def do_circuit_extraction(
     mean_dataset=None,
     model=None,
     metric=None,
-    exclude_heads=[],
+    excluded=[], # tuple of (layer, head) or (layer, None for MLPs)
     return_hooks=False,
     hooks_dict=False,
 ):
@@ -362,7 +362,7 @@ def do_circuit_extraction(
     heads_keys.sort(key=lambda x: (x[0], x[1]))
 
     for layer, head in heads_keys:
-        if (layer, head) in exclude_heads:
+        if (layer, head) in excluded:
             continue
         assert (layer, head) not in hooks, ((layer, head), "already in hooks")
         hooks[(layer, head)] = abl.get_hook(layer, head)
