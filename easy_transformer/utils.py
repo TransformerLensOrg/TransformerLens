@@ -136,7 +136,8 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
                              streaming: bool=False, 
                              max_length: int=1024, 
                              column_name: str='text', 
-                             add_bos_token: bool=True):
+                             add_bos_token: bool=True,
+                             num_proc: int=10):
     """Helper function to tokenizer and concatenate a dataset of text. This converts the text to tokens, concatenates them (separated by EOS tokens) and then reshapes them into a 2D array of shape (____, sequence_length), dropping the last batch. Tokenizers are much faster if parallelised, so we chop the string into 20, feed it into the tokenizer, in parallel with padding, then remove padding at the end. 
     
     This tokenization is useful for training language models, as it allows us to efficiently train on a large corpus of text of varying lengths (without, eg, a lot of truncation or padding). Further, for models with absolute positional encodings, this avoids privileging early tokens (eg, news articles often begin with CNN, and models may learn to use early positional encodings to predict these)
@@ -151,6 +152,8 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
 
     Returns:
         datasets.arrow_dataset.Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
+    
+    Note: There is a bug when inputting very small datasets (eg, <1 batch per process) where it just outputs nothing. I'm not super sure why
     """
     dataset = keep_single_column(dataset, column_name)
     if tokenizer.pad_token is None:
@@ -165,7 +168,7 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
     def tokenize_function(examples):
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
-        full_text = tokenizer.bos_token.join(text)
+        full_text = tokenizer.eos_token.join(text)
         # Divide into 20 chunks of ~ equal length
         num_chunks = 20
         chunk_length = (len(full_text)-1)//num_chunks + 1
@@ -183,9 +186,17 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
             prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
             tokens = np.concatenate([prefix, tokens], axis=1)
         return {'tokens':tokens}
-    tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=4 if not streaming else None, remove_columns=[column_name])
+    tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=(num_proc if not streaming else None), remove_columns=[column_name])
     tokenized_dataset.set_format(type='torch', columns=['tokens'])
     return tokenized_dataset
+""" 
+Test ^
+
+data = datasets.Dataset.from_dict({"text":[str(i) for i in range(1000)]})
+tokenizer = AutoTokenizer.from_pretrained("NeelNanda/gpt-neox-tokenizer-digits")
+print(data)
+tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
+"""
 
 def set_seed_everywhere(seed):
     torch.manual_seed(seed)
