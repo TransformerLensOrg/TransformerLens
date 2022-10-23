@@ -142,6 +142,14 @@ print_gpu_mem("Gpt2 loaded")
 N=100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
 warnings.warn("Edit the last two here")
+#%% [markdown] test to see if the word_idx is legit
+for new_N in range(1, 3):
+    d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
+    print(f"new_N={new_N}")
+    for i in range(new_N):
+        for key in d.word_idx.keys():
+            print(f"key={key} {int(d.word_idx[key][i])} {d.tokenizer.decode(d.toks[i][d.word_idx[key][i]])}")
+print("Seems fine")
 #%%
 totd = 0
 cp = 0
@@ -164,9 +172,9 @@ for d in [ioi_dataset]:
 # %%
 # IOI Dataset initialisation
 N = 100
-ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
-ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
-ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
+ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
+ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
 abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))  # we flip the second b for a random c
 pprint(abca_dataset.text_prompts[:5])
 

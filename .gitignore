@@ -11,3 +11,4 @@ core.py
 *.yml
 nbs
 _modidx.py
+*.zip

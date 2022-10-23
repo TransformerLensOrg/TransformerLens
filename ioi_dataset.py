@@ -474,7 +474,6 @@ def get_end_idxs(prompts, tokenizer, name_tok_len=1, has_start_padding_and_start
     # then we need make special arrangements 
 
     pad_token_id = tokenizer.pad_token_id
-    print(pad_token_id)
 
     end_idxs_raw = []
     for i in range(toks.shape[0]):
@@ -503,7 +502,7 @@ def get_end_idxs(prompts, tokenizer, name_tok_len=1, has_start_padding_and_start
 
     for i in range(toks.shape[0]):
         assert toks[i][end_idxs[i]+1] != 0 and (toks.shape[1] == end_idxs[i]+2 or toks[i][end_idxs[i]+2] == pad_token_id), (toks[i], end_idxs[i], toks[i].shape)
-    print("Passed end clipped ttest")
+    print("Passed end clipped test")
 
     return end_idxs
 
@@ -521,8 +520,6 @@ def get_rand_idxs(end_idxs, exclude):
 def get_word_idxs(prompts, word_list, tokenizer):
     """Get the index of the words in word_list in the prompts. Exactly one of the word_list word has to be present in each prompt"""
     idxs = []
-    warnings.warn("BUGGED for start token stuff")
-    print(word_list)
     tokenized_words = [tokenizer.decode(tokenizer(word)["input_ids"][0]) for word in word_list]
     for pr_idx, prompt in enumerate(prompts):
         toks = [
@@ -541,7 +538,8 @@ def get_word_idxs(prompts, word_list, tokenizer):
         if idx is None:
             raise ValueError(f"Word {word_list} and {i} not found {prompt}")
         idxs.append(idx)
-    return torch.tensor(idxs)
+    warnings.warn("Try to implement with less special casing (e.g +1...)")
+    return 1 + torch.tensor(idxs)
 
 
 import torch
@@ -811,6 +809,8 @@ class IOIDataset:
             prompts=flipped_prompts,
             prefixes=self.prefixes,
             ioi_prompts_for_word_idxs=flipped_prompts if flip[0] == "RAND" else None,
+            prepend_bos=self.prepend_bos,
+            has_start_padding_and_start_is_end=self.has_start_padding_and_start_is_end,
         )
         return flipped_ioi_dataset
 
