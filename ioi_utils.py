@@ -462,7 +462,7 @@ def posses(model, ioi_dataset, all=False, std=False):
     return handle_all_and_std(io_positions, all, std)
 
 
-def probs(model, ioi_dataset, all=False, std=False, type="io"):
+def probs(model, ioi_dataset, all=False, std=False, type="io", verbose=False):
     """
     IO probs
     """
@@ -471,7 +471,6 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
     logits = model(ioi_dataset.toks.long()).detach()
     # logits = model(ioi_dataset.toks.long()).detach().cpu()  # batch * sequence length * vocab_size
     warnings.warn("Not +1ing")
-    print(logits.shape)
     end_logits = logits[torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
 
     end_probs = torch.softmax(end_logits, dim=1)
@@ -485,7 +484,7 @@ def probs(model, ioi_dataset, all=False, std=False, type="io"):
 
     assert len(end_probs.shape) == 2
     io_probs = end_probs[torch.arange(ioi_dataset.N), token_ids]
-    print(io_probs)
+    if verbose: print(io_probs)
     return handle_all_and_std(io_probs, all, std)
 
 
