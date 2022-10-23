@@ -162,7 +162,6 @@ for d in [ioi_dataset]:
         probs2 = probs(model, d, type="s")
         cp += circuit_probs
         print(f"{circuit_logit_diff=} {probs2=} {circuit_probs=}")
-
 #%%
 # text = ioi_dataset.text_prompts[0]
 # probs, tokens = g(model, text)
