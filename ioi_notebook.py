@@ -341,13 +341,23 @@ dataset_names = [
     # "totally_diff_dataset",
 ]
 
-# patch all heads into the name mover input (hopefully find S2 Inhibition)
-
+# knockout some heads !!!
 exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
 for head in [(9, 9), (9, 6), (10, 0)]:
     exclude_heads.remove(head)
-
+extra_hooks = do_circuit_extraction(
+    model=model,
+    heads_to_keep={},
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=all_diff_dataset,
+    exclude_heads=exclude_heads,
+    return_hooks=True,
+)
 model.reset_hooks()
+
+for extra_hook in extra_hooks:
+    model.add_hook(*extra_hook)
 default_logit_diff = logit_diff(model, ioi_dataset)
 
 for pos in ["end"]:
@@ -376,6 +386,7 @@ for pos in ["end"]:
                 verbose=False,
                 return_hooks=False,
                 freeze_mlps=True,
+                extra_hooks=extra_hooks,
             )
 
             cur_logit_diff = logit_diff(model, ioi_dataset)
