@@ -80,7 +80,7 @@ from datasets import load_dataset
 from IPython import get_ipython
 import matplotlib.pyplot as plt
 import random as rd
-
+from copy import deepcopy
 from ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
@@ -91,6 +91,8 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    max_2d, 
+    CLASS_COLORS,
     all_subsets,
     clear_gpu_mem,
     show_tokens,
@@ -355,7 +357,6 @@ extra_hooks = do_circuit_extraction(
     return_hooks=True,
 )
 model.reset_hooks()
-
 for extra_hook in extra_hooks:
     model.add_hook(*extra_hook)
 default_logit_diff = logit_diff(model, ioi_dataset)
@@ -388,7 +389,6 @@ for pos in ["end"]:
                 freeze_mlps=True,
                 extra_hooks=extra_hooks,
             )
-
             cur_logit_diff = logit_diff(model, ioi_dataset)
 
             if source_head_idx is None:
@@ -427,6 +427,72 @@ for pos in ["end"]:
                 fig.write_image(fname + ".png")
                 fig.write_image(fname + ".svg")
                 fig.show()
+
+#%% [markdown] plotting (your downfalls!)
+cc = deepcopy(CLASS_COLORS)
+circuit = deepcopy(CIRCUIT)
+
+def what_class(layer, head, circuit):
+    for circuit_class in circuit:
+        if (layer, head) in circuit[circuit_class]:
+            return circuit_class
+    return "duplicate token"
+    raise ValueError((layer, head), circuit)
+
+# plot the most important heads by
+
+k = 15
+top_heads = max_2d(
+    torch.abs(initial_results), k=k
+)[  # backup results or initial results
+    0
+]  # initial results is the patch with no KOs; direct effect on logits
+
+exclude_heads = []
+exclude_heads = [
+    (layer_idx, head)
+    for layer_idx in range(12)
+    for head in range(12)
+    if what_class(layer_idx, head, circuit=circuit)
+    not in ["name mover", "negative", "s2 inhibition"]
+]
+
+fig = go.Figure()
+
+for name, results in zip(["Left: WT", "Right: KO"], [initial_results, backup_results]):
+    heights = [
+        results[layer][head]
+        for layer, head in top_heads
+        if (layer, head) not in exclude_heads
+    ]
+    colors = [
+        cc[what_class(layer, head_idx, circuit=circuit)]
+        for layer, head_idx in top_heads
+        if (layer, head_idx) not in exclude_heads
+    ]
+
+    # plot a bar chart
+    fig.add_trace(
+        go.Bar(
+            x=[str(x) for x in top_heads if x not in exclude_heads],
+            y=heights,
+            orientation="v",
+            marker_color=colors,
+            name=name,
+        )
+    )
+
+# stack them
+
+# set y axis range to [-1, 1]
+fig.update_yaxes(range=[-3, 3])
+fname = f"backup_nm_plot_{ctime()}"
+
+# update title
+fig.update_layout(title=fname)
+fig.write_image(f"svgs/{fname}.svg")
+fig.show()
+
 #%% [markdown back to old ioi_experiments stuff]
 # text = ioi_dataset.text_prompts[0]
 # probs, tokens = g(model, text)
