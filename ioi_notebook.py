@@ -148,6 +148,17 @@ all_diff_dataset = (
     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
 )
 warnings.warn("Edit the last two here")
+#%% [markdown] wait what about without start garbage?
+ioi_dataset_2 = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer, prepend_bos=False, has_start_padding_and_start_is_end=False, prompts=ioi_dataset.ioi_prompts)
+all_diff_dataset_2 = (
+    ioi_dataset_2.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+)
+
+# all_diff_dataset, all_diff_dataset_2 = all_diff_dataset_2, all_diff_dataset
+# ioi_dataset, ioi_dataset_2 = ioi_dataset_2, ioi_dataset
+
 #%% [markdown] test to see if the word_idx is legit
 for new_N in range(1, 3):
     d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
@@ -315,7 +326,6 @@ def direct_patch_and_freeze(
             model.add_hook(hook_name, hook)
         return model
 
-
 #%% [markdown] first patch-and-freeze experiments
 # TODO why are there effects that come AFTER the patching?? it's before 36 mins in voko I think
 
@@ -338,7 +348,6 @@ for head in [(9, 9), (9, 6), (10, 0)]:
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-# for pos in ["S+1", "S", "IO", "S2", "end"]:
 for pos in ["end"]:
     print(pos)
     results = torch.zeros(size=(12, 12))
