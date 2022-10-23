@@ -467,9 +467,7 @@ def probs(model, ioi_dataset, all=False, std=False, type="io", verbose=False):
     IO probs
     """
 
-    # text_prompts = ioi_dataset.text_prompts
-    logits = model(ioi_dataset.toks.long()).detach()
-    # logits = model(ioi_dataset.toks.long()).detach().cpu()  # batch * sequence length * vocab_size
+    logits = model(ioi_dataset.toks.long()).detach()  # batch * sequence length * vocab_size
     warnings.warn("Not +1ing")
     end_logits = logits[torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
 

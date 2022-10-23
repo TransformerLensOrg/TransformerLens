@@ -132,7 +132,8 @@ if False:
     )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
 if True:
     # model = EasyTransformer.from_pretrained("gpt2").cuda()
-    model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+    # model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+    model = EasyTransformer.from_pretrained("gpt2-medium").cuda()
     model.set_use_attn_result(True)
 
 device = "cuda"
@@ -148,6 +149,7 @@ all_diff_dataset = (
 )
 warnings.warn("Edit the last two here")
 #%% [markdown] wait what about without start garbage?
+
 ioi_dataset_2 = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer, prepend_bos=False, has_start_padding_and_start_is_end=False, prompts=ioi_dataset.ioi_prompts)
 all_diff_dataset_2 = (
     ioi_dataset_2.gen_flipped_prompts(("IO", "RAND"))
@@ -160,7 +162,8 @@ ioi_dataset, ioi_dataset_2 = ioi_dataset_2, ioi_dataset
 
 #%% [markdown] test to see if the word_idx is legit
 for new_N in range(1, 3):
-    d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
+    # d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
+    d = ioi_dataset
     print(f"new_N={new_N}")
     for i in range(new_N):
         for key in d.word_idx.keys():
@@ -211,7 +214,7 @@ def direct_patch_and_freeze(
     Patch in the effect of `sender_heads` on `receiver_hooks` only
     (though MLPs are "ignored", so are slight confounders)
 
-    If max_layer < 12, then let some part of the model do computations (not frozen)
+    If max_layer < model.cfg.n_layers, then let some part of the model do computations (not frozen)
     """
 
     sender_hooks = []
@@ -246,7 +249,7 @@ def direct_patch_and_freeze(
     # for all the Q, K, V things
     model.reset_hooks()
     for layer in range(max_layer):
-        for head_idx in range(12):
+        for head_idx in range(model.cfg.n_heads):
             for hook_template in [
                 "blocks.{}.attn.hook_q",
                 "blocks.{}.attn.hook_k",
@@ -340,8 +343,14 @@ dataset_names = [
 ]
 
 # knockout some heads !!!
-exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
-for head in [(9, 4), (11, 4), (11, 2)]:
+exclude_heads = [(layer, head_idx) for layer in range(model.cfg.n_layers) for head_idx in range(model.cfg.n_heads)]
+for head in {"gpt2": [(9, 9), (9, 6), (10, 0)], "elutherAI": [(9, 4), (11, 4), (11, 2)], "gpt2-medium": [(19, 1),
+  (12, 3),
+  (13, 4),
+  (13, 13),
+  (15, 8),
+  (16, 0),
+  (15, 14)]}[model.cfg.model_name]:
     exclude_heads.remove(head)
 the_extra_hooks = do_circuit_extraction(
     model=model,
@@ -357,7 +366,7 @@ model.reset_hooks()
 all_results = []
 all_mlp_results = []
 
-for use_extra_hooks in [False, True]:
+for use_extra_hooks in [True, False]:
 
     if use_extra_hooks:
         extra_hooks = the_extra_hooks
@@ -369,17 +378,17 @@ for use_extra_hooks in [False, True]:
         model.add_hook(*extra_hook)
     default_logit_diff = logit_diff(model, ioi_dataset)
 
-    results = torch.zeros(size=(12, 12))
-    mlp_results = torch.zeros(size=(12, 1))
-    for source_layer in tqdm(range(12)):
-        for source_head_idx in [None] + list(range(12)):
+    results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
+    mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
+    for source_layer in tqdm(range(model.cfg.n_layers)):
+        for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
             receiver_hooks = []
             # for layer, head_idx in circuit["name mover"]:
             # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
             # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
             # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
-            receiver_hooks.append(("blocks.11.hook_resid_post", None))
+            receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
 
             model = direct_patch_and_freeze(
                 model=model,
@@ -388,7 +397,7 @@ for use_extra_hooks in [False, True]:
                 ioi_dataset=ioi_dataset,
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
-                max_layer=12,
+                max_layer=model.cfg.n_heads,
                 positions=["end"],
                 verbose=False,
                 return_hooks=False,
@@ -458,15 +467,15 @@ top_heads = max_2d(
 exclude_heads = []
 exclude_heads = [
     (layer_idx, head)
-    for layer_idx in range(12)
-    for head in range(12)
+    for layer_idx in range(model.cfg.n_layers)
+    for head in range(model.cfg.n_heads)
     if what_class(layer_idx, head, circuit=circuit)
     not in ["name mover", "negative", "s2 inhibition"]
 ]
 
 fig = go.Figure()
 
-for name, result in zip(["Left: WT", "Right: KO of [9, 9], [10, 10], [9, 6]"], all_results):
+for name, result in zip(["Left: WT", "Right: KO of most important NMs"], all_results):
     heights = [
         result[layer][head]
         for layer, head in top_heads
