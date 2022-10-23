@@ -769,7 +769,7 @@ df = pd.concat(
         pd.DataFrame(
             {
                 "attention": all_s_attentions[0],
-                "change": all_s_logits[1] - all_s_logits[0],
+                "change": -(all_s_logits[1] - all_s_logits[0]),
                 "token": "S",
                 "text": ioi_dataset.text_prompts,
                 # "change": (all_io_logits[0] - all_s_logits[0])
@@ -779,7 +779,7 @@ df = pd.concat(
         pd.DataFrame(
             {
                 "attention": all_io_attentions[0],
-                "change": all_io_logits[1] - all_io_logits[0],
+                "change": -(all_io_logits[1] - all_io_logits[0]),
                 "token": "IO",
                 "text": ioi_dataset.text_prompts,
             }
@@ -795,18 +795,23 @@ fig = px.scatter(
     color="token",
     hover_data=["text"],
     color_discrete_sequence=["rgb(114,255,100)", "rgb(201,165,247)"],
-    title=f"How {layer}.{head_idx} affects logit difference (change after patch-and-freeze)",
+    title=f"How {layer}.{head_idx} affects logits (change after patch-and-freeze)",
 )
 
 # update y axis label
-fig.update_yaxes(title_text="Change in logit difference")
+y_label = "Change in logits"
+fig.update_yaxes(title_text=y_label)
 fig.update_xaxes(title_text="Attention on token")
 
-fig.write_image(f"svgs/attention_scatter_{ctime()}.svg")
-fig.write_image(f"svgs/attention_scatter_{ctime()}.png")
-
+fig.write_image(f"svgs/attention_scatter_{y_label}_{ctime()}.svg")
+fig.write_image(f"svgs/attention_scatter_{y_label}_{ctime()}.png")
 fig.show()
 
 #%%
-d2 = {"col1": [12341, 1242], "col2": [12343, 1234], "col3": 2}
-df2 = pd.DataFrame(data=d2)
+
+# select where token == "IO" in df
+xs = df[df["token"] == "IO"]["attention"]
+ys = df[df["token"] == "IO"]["change"]
+
+# correlation coefficient
+np.corrcoef(xs, ys)
