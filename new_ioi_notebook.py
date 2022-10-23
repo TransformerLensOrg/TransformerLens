@@ -135,7 +135,7 @@ def e(mess=""):
 
 #%% [markdown] The model, and loads and loads of datasets
 model = EasyTransformer("gpt2", use_attn_result=True).cuda()
-N = 500
+N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts(
     ("S2", "RAND")
