@@ -516,6 +516,7 @@ for letter in ["a", "b", "c", "d", "e"]:
                     fig.show()
                     all_results.append(results.clone())
                     all_mlp_results.append(mlp_results.clone())
+    break
     #%% [markdown] plotting (your downfalls!)
     cc = deepcopy(CLASS_COLORS)
     circuit = deepcopy(CIRCUIT)
@@ -585,6 +586,171 @@ for letter in ["a", "b", "c", "d", "e"]:
     fig.write_image(f"svgs/{fname}.svg")
     fig.show()
 
+#%% [markdown] do the scatter plot, but now with direct effect on logit diff
+
+receiver_hooks = [("blocks.11.hook_resid_post", None)]
+layer = 10
+head_idx = 4
+
+hooks = direct_patch_and_freeze(
+    model=model,
+    source_dataset=all_diff_dataset,
+    target_dataset=ioi_dataset,
+    ioi_dataset=ioi_dataset,
+    sender_heads=[(layer, head_idx)],
+    receiver_hooks=receiver_hooks,
+    max_layer=12,
+    positions=["end"],
+    verbose=False,
+    return_hooks=True,
+)
+
+attention_hook_name = f"blocks.{layer}.attn.hook_attn"
+# (batch, head, from, to)
+
+ys = []
+
+all_io_attentions = []
+all_s_attentions = []
+all_io_logits = []
+all_s_logits = []
+
+for add_hooks in [False, True]:
+    model.reset_hooks()
+    if add_hooks:
+        for hook in hooks:
+            model.add_hook(*hook)
+
+    cache = {}
+    model.cache_some(cache, lambda name: name == attention_hook_name)
+
+    io_logits, s_logits = logit_diff(model, ioi_dataset, all=True, both=True)
+    io_logits = io_logits.detach().cpu()
+    s_logits = s_logits.detach().cpu()
+
+    all_io_logits.append(io_logits)
+    all_s_logits.append(s_logits)
+
+    for token, all_attentions in zip(
+        ["IO", "S"], [all_io_attentions, all_s_attentions]
+    ):
+        attention = (
+            cache[attention_hook_name][
+                torch.arange(ioi_dataset.N),
+                head_idx,
+                ioi_dataset.word_idx["end"],
+                ioi_dataset.word_idx[token],
+            ]
+            .detach()
+            .cpu()
+        )
+        all_attentions.append(attention.clone())
+
+# df.append([prob, dot, tok_type, prompt["text"]])
+
+# # most of the pandas stuff is intuitive, no need to deeply understand
+# viz_df = pd.DataFrame(
+#     df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
+# )
+# fig = px.scatter(
+#     viz_df,
+#     x=f"Attn Prob on Name",
+#     y=f"Dot w Name Embed",
+#     color="Name Type",
+#     hover_data=["text"],
+#     color_discrete_sequence=["rgb(114,255,100)", "rgb(201,165,247)"],
+#     title=f"How Strong {layer_no}.{head_no} Writes in the Name Embed Direction Relative to Attn Prob",
+# )
+
+df = pd.concat(
+    [
+        pd.DataFrame(
+            {
+                "attention": all_s_attentions[0],
+                "change": -(all_s_logits[1] - all_s_logits[0]),
+                "token": "S",
+                "text": ioi_dataset.text_prompts,
+                # "change": (all_io_logits[0] - all_s_logits[0])
+                # - (all_io_logits[1] - all_s_logits[1]),
+            }
+        ),
+        pd.DataFrame(
+            {
+                "attention": all_io_attentions[0],
+                "change": -(all_io_logits[1] - all_io_logits[0]),
+                "token": "IO",
+                "text": ioi_dataset.text_prompts,
+            }s
+        ),
+    ]
+)
+
+
+fig = px.scatter(
+    df,
+    x=f"attention",
+    y=f"change",
+    color="token",
+    hover_data=["text"],
+    color_discrete_sequence=["rgb(114,255,100)", "rgb(201,165,247)"],
+    title=f"How {layer}.{head_idx} affects logits (change after patch-and-freeze)",
+)
+
+# update y axis label
+y_label = "Change in logits"
+fig.update_yaxes(title_text=y_label)
+fig.update_xaxes(title_text="Attention on token")
+
+fig.write_image(f"svgs/attention_scatter_{y_label}_{ctime()}.svg")
+fig.write_image(f"svgs/attention_scatter_{y_label}_{ctime()}.png")
+fig.show()
+#%%
+#%%
+ys = []
+average_attention = {}
+
+for idx, dataset in enumerate([ioi_dataset]):
+    fig = go.Figure()
+    print(idx, ["ioi", "abca"][idx])
+    heads = [(10, 10)]
+    heads_raw = (10, 10)
+    average_attention[heads_raw] = {}
+    cur_ys = []
+    cur_stds = []
+    att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
+    for head in tqdm(heads):
+        att += show_attention_patterns(
+            model, [head], dataset, return_mtx=True, mode="scores"
+        )
+    att /= len(heads)
+
+    vals = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][: dataset.N], :]
+    evals = torch.exp(vals)
+    val_sum = torch.sum(evals, dim=1)
+    assert val_sum.shape == (dataset.N,), val_sum.shape
+    print(f"{heads=} {val_sum.mean()=}")
+
+    for key in ioi_dataset.word_idx.keys():
+        end_to_s2 = att[
+            torch.arange(dataset.N),
+            ioi_dataset.word_idx["end"][: dataset.N],
+            ioi_dataset.word_idx[key][: dataset.N],
+        ]
+        # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
+        cur_ys.append(end_to_s2.mean().item())
+        cur_stds.append(end_to_s2.std().item())
+        average_attention[heads_raw][key] = end_to_s2.mean().item()
+    fig.add_trace(
+        go.Bar(
+            x=list(ioi_dataset.word_idx.keys()),
+            y=cur_ys,
+            error_y=dict(type="data", array=cur_stds),
+            name=str(heads_raw),
+        )
+    )  # ["IOI", "ABCA"][idx]))
+
+    fig.update_layout(title_text="Attention scores; from END to S2")
+    fig.show()
 #%% [markdown back to old ioi_experiments stuff]
 # text = ioi_dataset.text_prompts[0]
 # probs, tokens = g(model, text)

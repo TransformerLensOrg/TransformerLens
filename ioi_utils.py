@@ -177,7 +177,8 @@ def show_attention_patterns(
             model.cache_some(
                 cache=cache, names=lambda x: x in good_names
             )  # shape: batch head_no seq_len seq_len
-            logits = model(ioi_dataset.text_prompts)
+            logits = model(ioi_dataset.toks.long())
+            print(cache.keys(), good_names)
         else:
             cache = precomputed_cache
         attn_results = torch.zeros(
@@ -285,9 +286,7 @@ def scatter_attention_and_contribution(
     for each input sequence with the attention paid to IO and S
     and the amount that is written in the IO and S directions
     """
-
-    warnings.warn("See ioi_notebook writing direction heamp")
-
+    warnings.warn("See new_ioi_notebook scatter (with direct effect)")
     n_heads = model.cfg.n_heads
     n_layers = model.cfg.n_layers
     model_unembed = model.unembed.W_U.detach().cpu()
