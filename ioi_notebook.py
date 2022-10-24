@@ -3013,7 +3013,6 @@ px.line(
     labels={"index": "Position in sequence of random tokens", "value": "Dot product"},
 )
 #%% [markdown] Arthur messing around
-
 hook_names = [
     "hook_embed",
     "hook_pos_embed",
