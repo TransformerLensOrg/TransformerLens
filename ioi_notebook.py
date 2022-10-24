@@ -397,7 +397,35 @@ for letter in ["a", "b", "c", "d", "e"]:
 
     for use_extra_hooks in [False, True]:
         if use_extra_hooks:
-            exclude_heads = max_2d(all_results[0], k=3)[0]
+
+            # BLAH1
+            # top_heads=all_top_heads.get(model.cfg.model_name, [])
+
+            # for head in top_heads:
+            #     exclude_heads.remove(head)
+            # the_extra_hooks = do_circuit_extraction(
+            #     model=model,
+            #     heads_to_keep={},
+            #     mlps_to_remove={},
+            #     ioi_dataset=ioi_dataset,
+            #     mean_dataset=all_diff_dataset,
+            #     excluded=exclude_heads,
+            #     return_hooks=True,
+            # )
+            # model.reset_hooks()
+
+            # all_results = []
+            # all_mlp_results = []
+            # BLAH2
+
+            exclude_heads = [
+                (layer, head_idx)
+                for layer in range(model.cfg.n_layers)
+                for head_idx in range(model.cfg.n_heads)
+            ]
+            max_heads = max_2d(-all_results[0], k=3)[0]
+            for head in max_heads:
+                exclude_heads.remove(head)
             extra_hooks = do_circuit_extraction(
                 model=model,
                 heads_to_keep={},
@@ -407,6 +435,7 @@ for letter in ["a", "b", "c", "d", "e"]:
                 excluded=exclude_heads,
                 return_hooks=True,
             )
+            assert len(extra_hooks) == 3, extra_hooks
             model.reset_hooks()
 
         else:
@@ -488,16 +517,15 @@ for letter in ["a", "b", "c", "d", "e"]:
                     fig.show()
                     all_results.append(results.clone())
                     all_mlp_results.append(mlp_results.clone())
-    ##%% [markdown] plotting (your downfalls!)
+    #%% [markdown] plotting (your downfalls!)
     cc = deepcopy(CLASS_COLORS)
     circuit = deepcopy(CIRCUIT)
 
     def what_class(layer, head, circuit):
         for circuit_class in circuit:
-            if (layer, head) in circuit[circuit_class]:
-                return circuit_class
+            if (layer, head) in max_heads:
+                return "name mover"  # circuit[circuit_class]:
         return "duplicate token"
-        raise ValueError((layer, head), circuit)
 
     # plot the most important heads by
 
@@ -521,17 +549,17 @@ for letter in ["a", "b", "c", "d", "e"]:
 
     for name, result in zip(
         ["Left: WT", "Right: KO of most important NMs"],
-        [all_results[1], all_results[0]],
+        [all_results[0], all_results[1]],
     ):
         heights = [
-            result[layer][head]
+            -result[layer][head]
             for layer, head in top_heads
             # if (layer, head) not in exclude_heads
         ]
         colors = [
             cc[what_class(layer, head_idx, circuit=circuit)]
             for layer, head_idx in top_heads
-            if (layer, head_idx) not in exclude_heads
+            # if (layer, head_idx) not in exclude_heads
         ]
 
         # plot a bar chart
@@ -545,10 +573,13 @@ for letter in ["a", "b", "c", "d", "e"]:
             )
         )
 
+    # no legend
+    fig.update_layout(showlegend=False)
+
     # stack them
     # set y axis range to [-1, 1]
     fig.update_yaxes(range=[-3, 3])
-    fname = f"Direct_effect_on_logit_difference_change_Plot_{ctime()}"
+    fname = f"Contribution to logit difference (left: wild type, right: after top three name mover knockout)"
 
     # update title
     fig.update_layout(title=fname)

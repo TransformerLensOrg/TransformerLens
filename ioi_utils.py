@@ -285,6 +285,9 @@ def scatter_attention_and_contribution(
     for each input sequence with the attention paid to IO and S
     and the amount that is written in the IO and S directions
     """
+
+    warnings.warn("See ioi_notebook writing direction heamp")
+
     n_heads = model.cfg.n_heads
     n_layers = model.cfg.n_layers
     model_unembed = model.unembed.W_U.detach().cpu()
@@ -454,7 +457,9 @@ def posses(model, ioi_dataset, all=False, std=False):
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
     warnings.warn("+1ing")
-    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"]+1, :]  # batch * vocab_size
+    end_logits = logits[
+        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"] + 1, :
+    ]  # batch * vocab_size
 
     positions = torch.argsort(end_logits, dim=1)
     io_positions = positions[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs]
@@ -467,9 +472,13 @@ def probs(model, ioi_dataset, all=False, std=False, type="io", verbose=False):
     IO probs
     """
 
-    logits = model(ioi_dataset.toks.long()).detach()  # batch * sequence length * vocab_size
+    logits = model(
+        ioi_dataset.toks.long()
+    ).detach()  # batch * sequence length * vocab_size
     warnings.warn("Not +1ing")
-    end_logits = logits[torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
+    end_logits = logits[
+        torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :
+    ]  # batch * vocab_size
 
     end_probs = torch.softmax(end_logits, dim=1)
 
@@ -482,12 +491,15 @@ def probs(model, ioi_dataset, all=False, std=False, type="io", verbose=False):
 
     assert len(end_probs.shape) == 2
     io_probs = end_probs[torch.arange(ioi_dataset.N), token_ids]
-    if verbose: print(io_probs)
+    if verbose:
+        print(io_probs)
     return handle_all_and_std(io_probs, all, std)
 
 
 def get_top_tokens_and_probs(model, text_prompt):
-    logits, tokens = model(text_prompt, prepend_bos=False, return_type="logits_and_tokens")
+    logits, tokens = model(
+        text_prompt, prepend_bos=False, return_type="logits_and_tokens"
+    )
     logits = logits.squeeze(0)
     end_probs = torch.softmax(logits, dim=1)
     # topk = torch.topk(end_probs[])
