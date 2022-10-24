@@ -3012,3 +3012,55 @@ px.line(
     all_prods,
     labels={"index": "Position in sequence of random tokens", "value": "Dot product"},
 )
+#%% [markdown] Arthur messing around
+
+hook_names = [
+    "hook_embed",
+    "hook_pos_embed",
+    "blocks.0.hook_resid_pre",
+    "blocks.0.hook_resid_post",
+]
+model.reset_hooks()
+cache = {}
+model.cache_some(cache, lambda x: x in hook_names)
+logits = model(ioi_dataset.toks.long())
+
+
+def act_patch(z, hook):
+    # z -= cache["hook_embed"]
+    # z -= cache["hook_pos_embed"]
+    z -= cache["blocks.0.hook_resid_pre"]
+    return z
+
+
+hook = get_act_hook(
+    act_patch,
+    alt_act=None,  # target_cache[hook_name],
+    idx=None,
+    dim=None,  # 2 if head_idx is not None else None,
+    name=hook_names[-1],
+)
+model.reset_hooks()
+model.add_hook(hook_names[-1], hook)
+cur_logit_diff = logit_diff(model, ioi_dataset)
+print(cur_logit_diff)
+#%%
+model.reset_hooks()
+hooks = do_circuit_extraction(
+    model=model,
+    heads_to_keep={},
+    mlps_to_keep={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=all_diff_dataset,
+    excluded=[(layer, head_idx) for layer in range(12) for head_idx in range(12)],
+    return_hooks=True,
+)
+
+model.reset_hooks()
+default_logit_diff = logit_diff(model, ioi_dataset)
+
+model.reset_hooks()
+for i in range(1, 12):
+    model.add_hook(*hooks[i])
+cur_logit_diff = logit_diff(model, ioi_dataset)
+print(f"Layer {i} logit diff: {cur_logit_diff} {default_logit_diff}")
