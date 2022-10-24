@@ -590,18 +590,31 @@ receiver_hooks = [(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)]
 layer = 9
 head_idx = 9
 model.reset_hooks()
-hooks = direct_patch_and_freeze(
-    model=model,
-    source_dataset=all_diff_dataset,
-    target_dataset=ioi_dataset,
-    ioi_dataset=ioi_dataset,
-    sender_heads=[(layer, head_idx)],
-    receiver_hooks=receiver_hooks,
-    max_layer=12,
-    positions=["end"],
-    verbose=False,
-    return_hooks=True,
-)
+hooks_database = [[]]
+AVERAGE_OVER = 100
+
+for _ in tqdm(range(AVERAGE_OVER)):
+
+    cur_all_diff_dataset = (
+        ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+        .gen_flipped_prompts(("S", "RAND"))
+        .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+    )
+
+    hooks_database.append(
+        direct_patch_and_freeze(
+            model=model,
+            source_dataset=cur_all_diff_dataset,
+            target_dataset=ioi_dataset,
+            ioi_dataset=ioi_dataset,
+            sender_heads=[(layer, head_idx)],
+            receiver_hooks=receiver_hooks,
+            max_layer=12,
+            positions=["end"],
+            verbose=False,
+            return_hooks=True,
+        )
+    )
 
 attention_hook_name = f"blocks.{layer}.attn.hook_attn"
 # (batch, head, from, to)
@@ -613,11 +626,10 @@ all_s_attentions = []
 all_io_logits = []
 all_s_logits = []
 
-for add_hooks in [False, True]:
+for hooks in tqdm(hooks_database):
     model.reset_hooks()
-    if add_hooks:
-        for hook in hooks:
-            model.add_hook(*hook)
+    for hook in hooks:
+        model.add_hook(*hook)
 
     cache = {}
     model.cache_some(cache, lambda name: name == attention_hook_name)
@@ -643,10 +655,19 @@ for add_hooks in [False, True]:
             .cpu()
         )
         all_attentions.append(attention.clone())
-    # break
+
+for i in range(2, AVERAGE_OVER + 1):
+    all_io_attentions[1] += all_io_attentions[i]
+    all_s_attentions[1] += all_s_attentions[i]
+    all_io_logits[1] += all_io_logits[i]
+    all_s_logits[1] += all_s_logits[i]
+
+all_io_attentions[1] /= AVERAGE_OVER
+all_s_attentions[1] /= AVERAGE_OVER
+all_io_logits[1] /= AVERAGE_OVER
+all_s_logits[1] /= AVERAGE_OVER
 
 # df.append([prob, dot, tok_type, prompt["text"]])
-
 # # most of the pandas stuff is intuitive, no need to deeply understand
 # viz_df = pd.DataFrame(
 #     df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
@@ -703,7 +724,13 @@ fig.update_xaxes(title_text="Attention on token")
 fig.write_image(f"svgs/attention_scatter_{y_label}_{ctime()}.svg")
 fig.write_image(f"svgs/attention_scatter_{y_label}_{ctime()}.png")
 fig.show()
-#%%
+
+# select where token == "IO" in df
+xs = df[df["token"] == "IO"]["attention"]
+ys = df[df["token"] == "IO"]["change"]
+
+# correlation coefficient
+print(f"{np.corrcoef(xs, ys)[0, 1]=}")
 #%%
 ys = []
 average_attention = {}
