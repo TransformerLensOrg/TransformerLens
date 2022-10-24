@@ -3018,6 +3018,8 @@ hook_names = [
     "hook_embed",
     "hook_pos_embed",
     "blocks.0.hook_resid_pre",
+    "blocks.0.hook_mlp_out",
+    "blocks.0.hook_attn_out",
     "blocks.0.hook_resid_post",
 ]
 model.reset_hooks()
@@ -3029,7 +3031,7 @@ logits = model(ioi_dataset.toks.long())
 def act_patch(z, hook):
     # z -= cache["hook_embed"]
     # z -= cache["hook_pos_embed"]
-    z -= cache["blocks.0.hook_resid_pre"]
+    z -= cache[hook_names[-4]]
     return z
 
 
