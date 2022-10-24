@@ -127,397 +127,396 @@ if ipython is not None:
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
 #%% Plot writing in the IO - S direction
-for letter in ["GPT@SMALL"]:  # ["a", "b", "c", "d", "e"]:
-    letter = letter.upper()
-    if False:
-        model = EasyTransformer(
-            model_name, use_attn_result=True
-        )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
-    if True:
-        model = EasyTransformer.from_pretrained("gpt2").cuda()
-        # model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
-        # model = EasyTransformer.from_pretrained("gpt2-medium").cuda()
-        # model = EasyTransformer.from_pretrained(
-        #     f"stanford-gpt2-small-{letter}"
-        # ).cuda()  # to E!
-        model.set_use_attn_result(True)
+if False:
+    model = EasyTransformer(
+        model_name, use_attn_result=True
+    )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+if True:
+    model = EasyTransformer.from_pretrained("gpt2").cuda()
+    # model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+    # model = EasyTransformer.from_pretrained("gpt2-medium").cuda()
+    # model = EasyTransformer.from_pretrained(
+    #     f"stanford-gpt2-small-{letter}"
+    # ).cuda()  # to E!
+    model.set_use_attn_result(True)
 
-    device = "cuda"
-    if torch.cuda.is_available():
-        model.to(device)
-    print_gpu_mem("Gpt2 loaded")
-    N = 100
-    ioi_dataset = IOIDataset(
-        prompt_type="mixed",
-        N=N,
-        tokenizer=model.tokenizer,
-        prepend_bos=True,
-        has_start_padding_and_start_is_end=True,
-    )
-    all_diff_dataset = (
-        ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
-        .gen_flipped_prompts(("S", "RAND"))
-        .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
-    )
-    warnings.warn("Edit the last two here")
-    ##%% [markdown] wait what about without start garbage?
+device = "cuda"
+if torch.cuda.is_available():
+    model.to(device)
+print_gpu_mem("Gpt2 loaded")
+N = 100
+ioi_dataset = IOIDataset(
+    prompt_type="mixed",
+    N=N,
+    tokenizer=model.tokenizer,
+    prepend_bos=True,
+    has_start_padding_and_start_is_end=True,
+)
+all_diff_dataset = (
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+)
+warnings.warn("Edit the last two here")
+##%% [markdown] wait what about without start garbage?
 
-    ioi_dataset_2 = IOIDataset(
-        prompt_type="mixed",
-        N=N,
-        tokenizer=model.tokenizer,
-        prepend_bos=False,
-        has_start_padding_and_start_is_end=False,
-        prompts=ioi_dataset.ioi_prompts,
-    )
-    all_diff_dataset_2 = (
-        ioi_dataset_2.gen_flipped_prompts(("IO", "RAND"))
-        .gen_flipped_prompts(("S", "RAND"))
-        .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
-    )
-    ##%%
-    all_diff_dataset, all_diff_dataset_2 = all_diff_dataset_2, all_diff_dataset
-    ioi_dataset, ioi_dataset_2 = ioi_dataset_2, ioi_dataset
+ioi_dataset_2 = IOIDataset(
+    prompt_type="mixed",
+    N=N,
+    tokenizer=model.tokenizer,
+    prepend_bos=False,
+    has_start_padding_and_start_is_end=False,
+    prompts=ioi_dataset.ioi_prompts,
+)
+all_diff_dataset_2 = (
+    ioi_dataset_2.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+)
+##%%
+all_diff_dataset, all_diff_dataset_2 = all_diff_dataset_2, all_diff_dataset
+ioi_dataset, ioi_dataset_2 = ioi_dataset_2, ioi_dataset
 
-    ##%% [markdown] test to see if the word_idx is legit
-    for new_N in range(1, 3):
-        # d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
-        d = ioi_dataset
-        print(f"new_N={new_N}")
-        for i in range(new_N):
-            for key in d.word_idx.keys():
-                print(
-                    f"key={key} {int(d.word_idx[key][i])} {d.tokenizer.decode(d.toks[i][d.word_idx[key][i]])}"
-                )
-    print("Seem fine?")
-    ##%%
-    totd = 0
-    cp = 0
+##%% [markdown] test to see if the word_idx is legit
+for new_N in range(1, 3):
+    # d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
+    d = ioi_dataset
+    print(f"new_N={new_N}")
+    for i in range(new_N):
+        for key in d.word_idx.keys():
+            print(
+                f"key={key} {int(d.word_idx[key][i])} {d.tokenizer.decode(d.toks[i][d.word_idx[key][i]])}"
+            )
+print("Seem fine?")
+##%%
+totd = 0
+cp = 0
+model.reset_hooks()
+for d in [ioi_dataset]:
+    # for i in range(dataset.N):
+    # d = ioi_dataset[i:i+1]
+    circuit_logit_diff = logit_diff(model, d)
+    totd += circuit_logit_diff
+    circuit_probs = probs(model, d)
+    probs2 = probs(model, d, type="s")
+    cp += circuit_probs
+    print(f"{circuit_logit_diff=} {probs2=} {circuit_probs=}")
+##%% [markdown] look at logit writing for the GPT NEO
+
+
+def patch_positions(z, source_act, hook, positions=["end"]):
+    for pos in positions:
+        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
+            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+        ]
+    return z
+
+
+def patch_all(z, source_act, hook):
+    return source_act
+
+
+def direct_patch_and_freeze(
+    model,
+    source_dataset,
+    target_dataset,
+    ioi_dataset,
+    sender_heads,
+    receiver_hooks,
+    max_layer,
+    positions=["end"],
+    verbose=False,
+    return_hooks=False,
+    extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
+    freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
+):
+    """
+    Patch in the effect of `sender_heads` on `receiver_hooks` only
+    (though MLPs are "ignored", so are slight confounders)
+
+    If max_layer < model.cfg.n_layers, then let some part of the model do computations (not frozen)
+    """
+
+    sender_hooks = []
+
+    for layer, head_idx in sender_heads:
+        if head_idx is None:
+            sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
+
+        else:
+            sender_hooks.append((f"blocks.{layer}.attn.hook_result", head_idx))
+
+    sender_hook_names = [x[0] for x in sender_hooks]
+    receiver_hook_names = [x[0] for x in receiver_hooks]
+
+    sender_cache = {}
     model.reset_hooks()
-    for d in [ioi_dataset]:
-        # for i in range(dataset.N):
-        # d = ioi_dataset[i:i+1]
-        circuit_logit_diff = logit_diff(model, d)
-        totd += circuit_logit_diff
-        circuit_probs = probs(model, d)
-        probs2 = probs(model, d, type="s")
-        cp += circuit_probs
-        print(f"{circuit_logit_diff=} {probs2=} {circuit_probs=}")
-    ##%% [markdown] look at logit writing for the GPT NEO
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    model.cache_some(sender_cache, lambda x: x in sender_hook_names)
+    # print(f"{sender_hook_names=}")
+    source_logits = model(
+        source_dataset.toks.long()
+    )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
 
-    def patch_positions(z, source_act, hook, positions=["end"]):
-        for pos in positions:
-            z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
-                torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
-            ]
-        return z
+    target_cache = {}
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    model.cache_all(target_cache)
+    target_logits = model(target_dataset.toks.long())
 
-    def patch_all(z, source_act, hook):
-        return source_act
+    # for all the Q, K, V things
+    model.reset_hooks()
+    for layer in range(max_layer):
+        for head_idx in range(model.cfg.n_heads):
+            for hook_template in [
+                "blocks.{}.attn.hook_q",
+                "blocks.{}.attn.hook_k",
+                "blocks.{}.attn.hook_v",
+            ]:
+                hook_name = hook_template.format(layer)
 
-    def direct_patch_and_freeze(
-        model,
-        source_dataset,
-        target_dataset,
-        ioi_dataset,
-        sender_heads,
-        receiver_hooks,
-        max_layer,
-        positions=["end"],
-        verbose=False,
-        return_hooks=False,
-        extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
-        freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
-    ):
-        """
-        Patch in the effect of `sender_heads` on `receiver_hooks` only
-        (though MLPs are "ignored", so are slight confounders)
+                if hook_name in receiver_hook_names:
+                    continue
 
-        If max_layer < model.cfg.n_layers, then let some part of the model do computations (not frozen)
-        """
-
-        sender_hooks = []
-
-        for layer, head_idx in sender_heads:
-            if head_idx is None:
-                sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
-
-            else:
-                sender_hooks.append((f"blocks.{layer}.attn.hook_result", head_idx))
-
-        sender_hook_names = [x[0] for x in sender_hooks]
-        receiver_hook_names = [x[0] for x in receiver_hooks]
-
-        sender_cache = {}
-        model.reset_hooks()
-        for hook in extra_hooks:
-            model.add_hook(*hook)
-        model.cache_some(sender_cache, lambda x: x in sender_hook_names)
-        # print(f"{sender_hook_names=}")
-        source_logits = model(
-            source_dataset.toks.long()
-        )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
-
-        target_cache = {}
-        model.reset_hooks()
-        for hook in extra_hooks:
-            model.add_hook(*hook)
-        model.cache_all(target_cache)
-        target_logits = model(target_dataset.toks.long())
-
-        # for all the Q, K, V things
-        model.reset_hooks()
-        for layer in range(max_layer):
-            for head_idx in range(model.cfg.n_heads):
-                for hook_template in [
-                    "blocks.{}.attn.hook_q",
-                    "blocks.{}.attn.hook_k",
-                    "blocks.{}.attn.hook_v",
-                ]:
-                    hook_name = hook_template.format(layer)
-
-                    if hook_name in receiver_hook_names:
-                        continue
-
-                    hook = get_act_hook(
-                        patch_all,
-                        alt_act=target_cache[hook_name],
-                        idx=head_idx,
-                        dim=2 if head_idx is not None else None,
-                        name=hook_name,
-                    )
-                    model.add_hook(hook_name, hook)
-
-            if freeze_mlps:
-                hook_name = f"blocks.{layer}.hook_mlp_out"
                 hook = get_act_hook(
                     patch_all,
                     alt_act=target_cache[hook_name],
-                    idx=None,
-                    dim=None,
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
                     name=hook_name,
                 )
                 model.add_hook(hook_name, hook)
 
-        for hook in extra_hooks:
-            # ughhh, think that this is what we want, this should override the QKV above
-            model.add_hook(*hook)
-
-        # we can override the hooks above for the sender heads, though
-        for hook_name, head_idx in sender_hooks:
-            assert not torch.allclose(
-                sender_cache[hook_name], target_cache[hook_name]
-            ), (
-                hook_name,
-                head_idx,
-            )
+        if freeze_mlps:
+            hook_name = f"blocks.{layer}.hook_mlp_out"
             hook = get_act_hook(
-                partial(patch_positions, positions=positions),
-                alt_act=sender_cache[hook_name],
-                idx=head_idx,
-                dim=2 if head_idx is not None else None,
+                patch_all,
+                alt_act=target_cache[hook_name],
+                idx=None,
+                dim=None,
                 name=hook_name,
             )
             model.add_hook(hook_name, hook)
 
-        # measure the receiver heads' values
-        receiver_cache = {}
-        model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
-        receiver_logits = model(target_dataset.toks.long())
+    for hook in extra_hooks:
+        # ughhh, think that this is what we want, this should override the QKV above
+        model.add_hook(*hook)
 
-        # patch these values in
+    # we can override the hooks above for the sender heads, though
+    for hook_name, head_idx in sender_hooks:
+        assert not torch.allclose(sender_cache[hook_name], target_cache[hook_name]), (
+            hook_name,
+            head_idx,
+        )
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions),
+            alt_act=sender_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        model.add_hook(hook_name, hook)
+
+    # measure the receiver heads' values
+    receiver_cache = {}
+    model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
+    receiver_logits = model(target_dataset.toks.long())
+
+    # patch these values in
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(
+            *hook
+        )  # ehh probably doesn't actually matter cos end thing hooked
+
+    hooks = []
+    for hook_name, head_idx in receiver_hooks:
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions),
+            alt_act=receiver_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        hooks.append((hook_name, hook))
+
+    if return_hooks:
+        return hooks
+    else:
+        for hook_name, hook in hooks:
+            model.add_hook(hook_name, hook)
+        return model
+
+
+#%% [markdown] first patch-and-freeze experiments
+# TODO why are there effects that come AFTER the patching?? it's before 36 mins in voko I think
+
+dataset_names = [
+    # "ioi_dataset",
+    # "abca_dataset",
+    # "dcc_dataset",
+    # "acca_dataset",
+    # "acba_dataset",
+    "all_diff_dataset",
+    # "totally_diff_dataset",
+]
+
+# ([(19, 1),
+#   (12, 3),
+#   (13, 4),
+#   (13, 13),
+#   (15, 8),
+#   (16, 0),
+#   (15, 14),
+
+# knockout some heads !!!
+exclude_heads = [
+    (layer, head_idx)
+    for layer in range(model.cfg.n_layers)
+    for head_idx in range(model.cfg.n_heads)
+]
+
+all_top_heads = {
+    "stanford-gpt2-small-A": [(10, 4), (10, 10), (10, 11)],
+    "gpt2": [(9, 9), (9, 6), (10, 0)],
+    "elutherAI": [(9, 4), (11, 4), (11, 2)],
+    "gpt2-medium": [(19, 1), (12, 3), (13, 4)],
+}
+
+top_heads = all_top_heads.get(model.cfg.model_name, [])
+
+for head in top_heads:
+    exclude_heads.remove(head)
+
+the_extra_hooks = []
+all_results = []
+all_mlp_results = []
+
+for use_extra_hooks in [False, True]:
+    if use_extra_hooks:
+
+        # BLAH1
+        # top_heads=all_top_heads.get(model.cfg.model_name, [])
+
+        # for head in top_heads:
+        #     exclude_heads.remove(head)
+        # the_extra_hooks = do_circuit_extraction(
+        #     model=model,
+        #     heads_to_keep={},
+        #     mlps_to_remove={},
+        #     ioi_dataset=ioi_dataset,
+        #     mean_dataset=all_diff_dataset,
+        #     excluded=exclude_heads,
+        #     return_hooks=True,
+        # )
+        # model.reset_hooks()
+
+        # all_results = []
+        # all_mlp_results = []
+        # BLAH2
+
+        exclude_heads = [
+            (layer, head_idx)
+            for layer in range(model.cfg.n_layers)
+            for head_idx in range(model.cfg.n_heads)
+        ]
+        max_heads = max_2d(-all_results[0], k=3)[0]
+        for head in max_heads:
+            exclude_heads.remove(head)
+        extra_hooks = do_circuit_extraction(
+            model=model,
+            heads_to_keep={},
+            mlps_to_remove={},
+            ioi_dataset=ioi_dataset,
+            mean_dataset=all_diff_dataset,
+            excluded=exclude_heads,
+            return_hooks=True,
+        )
+        assert len(extra_hooks) == 3, extra_hooks
         model.reset_hooks()
-        for hook in extra_hooks:
-            model.add_hook(
-                *hook
-            )  # ehh probably doesn't actually matter cos end thing hooked
 
-        hooks = []
-        for hook_name, head_idx in receiver_hooks:
-            hook = get_act_hook(
-                partial(patch_positions, positions=positions),
-                alt_act=receiver_cache[hook_name],
-                idx=head_idx,
-                dim=2 if head_idx is not None else None,
-                name=hook_name,
-            )
-            hooks.append((hook_name, hook))
+    else:
+        extra_hooks = []
 
-        if return_hooks:
-            return hooks
-        else:
-            for hook_name, hook in hooks:
-                model.add_hook(hook_name, hook)
-            return model
+    model.reset_hooks()
+    for extra_hook in extra_hooks:
+        model.add_hook(*extra_hook)
+    default_logit_diff = logit_diff(model, ioi_dataset)
 
-    ##%% [markdown] first patch-and-freeze experiments
-    # TODO why are there effects that come AFTER the patching?? it's before 36 mins in voko I think
-
-    dataset_names = [
-        # "ioi_dataset",
-        # "abca_dataset",
-        # "dcc_dataset",
-        # "acca_dataset",
-        # "acba_dataset",
-        "all_diff_dataset",
-        # "totally_diff_dataset",
-    ]
-
-    # ([(19, 1),
-    #   (12, 3),
-    #   (13, 4),
-    #   (13, 13),
-    #   (15, 8),
-    #   (16, 0),
-    #   (15, 14),
-
-    # knockout some heads !!!
-    exclude_heads = [
-        (layer, head_idx)
-        for layer in range(model.cfg.n_layers)
-        for head_idx in range(model.cfg.n_heads)
-    ]
-
-    all_top_heads = {
-        "stanford-gpt2-small-A": [(10, 4), (10, 10), (10, 11)],
-        "gpt2": [(9, 9), (9, 6), (10, 0)],
-        "elutherAI": [(9, 4), (11, 4), (11, 2)],
-        "gpt2-medium": [(19, 1), (12, 3), (13, 4)],
-    }
-
-    top_heads = all_top_heads.get(model.cfg.model_name, [])
-
-    for head in top_heads:
-        exclude_heads.remove(head)
-
-    the_extra_hooks = []
-    all_results = []
-    all_mlp_results = []
-
-    for use_extra_hooks in [False, True]:
-        if use_extra_hooks:
-
-            # BLAH1
-            # top_heads=all_top_heads.get(model.cfg.model_name, [])
-
-            # for head in top_heads:
-            #     exclude_heads.remove(head)
-            # the_extra_hooks = do_circuit_extraction(
-            #     model=model,
-            #     heads_to_keep={},
-            #     mlps_to_remove={},
-            #     ioi_dataset=ioi_dataset,
-            #     mean_dataset=all_diff_dataset,
-            #     excluded=exclude_heads,
-            #     return_hooks=True,
-            # )
-            # model.reset_hooks()
-
-            # all_results = []
-            # all_mlp_results = []
-            # BLAH2
-
-            exclude_heads = [
-                (layer, head_idx)
-                for layer in range(model.cfg.n_layers)
-                for head_idx in range(model.cfg.n_heads)
-            ]
-            max_heads = max_2d(-all_results[0], k=3)[0]
-            for head in max_heads:
-                exclude_heads.remove(head)
-            extra_hooks = do_circuit_extraction(
-                model=model,
-                heads_to_keep={},
-                mlps_to_remove={},
-                ioi_dataset=ioi_dataset,
-                mean_dataset=all_diff_dataset,
-                excluded=exclude_heads,
-                return_hooks=True,
-            )
-            assert len(extra_hooks) == 3, extra_hooks
+    results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
+    mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
+    for source_layer in tqdm(range(model.cfg.n_layers)):
+        for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
+            receiver_hooks = []
+            # for layer, head_idx in circuit["name mover"]:
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+            receiver_hooks.append(
+                (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
+            )
 
-        else:
-            extra_hooks = []
+            model = direct_patch_and_freeze(
+                model=model,
+                source_dataset=all_diff_dataset,
+                target_dataset=ioi_dataset,
+                ioi_dataset=ioi_dataset,
+                sender_heads=[(source_layer, source_head_idx)],
+                receiver_hooks=receiver_hooks,
+                max_layer=model.cfg.n_heads,
+                positions=["end"],
+                verbose=False,
+                return_hooks=False,
+                freeze_mlps=False,
+                extra_hooks=extra_hooks,
+            )
+            cur_logit_diff = logit_diff(model, ioi_dataset)
 
-        model.reset_hooks()
-        for extra_hook in extra_hooks:
-            model.add_hook(*extra_hook)
-        default_logit_diff = logit_diff(model, ioi_dataset)
-
-        results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
-        mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
-        for source_layer in tqdm(range(model.cfg.n_layers)):
-            for source_head_idx in [None] + list(range(model.cfg.n_heads)):
-                model.reset_hooks()
-                receiver_hooks = []
-                # for layer, head_idx in circuit["name mover"]:
-                # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
-                # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
-                # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
-                receiver_hooks.append(
-                    (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
+            if source_head_idx is None:
+                mlp_results[source_layer] = cur_logit_diff - default_logit_diff
+            else:
+                results[source_layer][source_head_idx] = (
+                    cur_logit_diff - default_logit_diff
                 )
 
-                model = direct_patch_and_freeze(
-                    model=model,
-                    source_dataset=all_diff_dataset,
-                    target_dataset=ioi_dataset,
-                    ioi_dataset=ioi_dataset,
-                    sender_heads=[(source_layer, source_head_idx)],
-                    receiver_hooks=receiver_hooks,
-                    max_layer=model.cfg.n_heads,
-                    positions=["end"],
-                    verbose=False,
-                    return_hooks=False,
-                    freeze_mlps=False,
-                    extra_hooks=extra_hooks,
+            if (
+                source_layer == model.cfg.n_layers - 1
+                and source_head_idx == model.cfg.n_heads - 1
+            ):
+                # show attention head results
+                fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    results.T,
+                    title=f"{fname=} patching NMs",
+                    return_fig=True,
+                    show_fig=False,
                 )
-                cur_logit_diff = logit_diff(model, ioi_dataset)
 
-                if source_head_idx is None:
-                    mlp_results[source_layer] = cur_logit_diff - default_logit_diff
-                else:
-                    results[source_layer][source_head_idx] = (
-                        cur_logit_diff - default_logit_diff
-                    )
+                fig.write_image(
+                    f"svgs/patch_and_freezes/to_duplicate_token_K_{use_extra_hooks}.png"
+                )
 
-                if (
-                    source_layer == model.cfg.n_layers - 1
-                    and source_head_idx == model.cfg.n_heads - 1
-                ):
-                    # show attention head results
-                    fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
-                    fig = show_pp(
-                        results.T,
-                        title=f"{fname=} patching NMs",
-                        return_fig=True,
-                        show_fig=False,
-                    )
+                fig.write_image(fname + ".png")
+                fig.write_image(fname + ".svg")
+                fig.show()
 
-                    fig.write_image(
-                        f"svgs/patch_and_freezes/to_duplicate_token_K_{use_extra_hooks}.png"
-                    )
-
-                    fig.write_image(fname + ".png")
-                    fig.write_image(fname + ".svg")
-                    fig.show()
-
-                    # # show mlp results # mlps are (hopefully not anymore???) fucked
-                    fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
-                    fig = show_pp(
-                        mlp_results.T,
-                        title="Direct effect of MLPs on Logit Difference",
-                        return_fig=True,
-                        show_fig=False,
-                    )
-                    fig.write_image(fname + ".png")
-                    fig.write_image(fname + ".svg")
-                    fig.show()
-                    all_results.append(results.clone())
-                    all_mlp_results.append(mlp_results.clone())
-    break
-    #%% [markdown] plotting (your downfalls!)
+                # # show mlp results # mlps are (hopefully not anymore???) fucked
+                fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    mlp_results.T,
+                    title="Direct effect of MLPs on Logit Difference",
+                    return_fig=True,
+                    show_fig=False,
+                )
+                fig.write_image(fname + ".png")
+                fig.write_image(fname + ".svg")
+                fig.show()
+                all_results.append(results.clone())
+                all_mlp_results.append(mlp_results.clone())
+    #%% [markdown] plotting (your downfalls!) # weird ass indentation
     cc = deepcopy(CLASS_COLORS)
     circuit = deepcopy(CIRCUIT)
 
@@ -525,7 +524,7 @@ for letter in ["GPT@SMALL"]:  # ["a", "b", "c", "d", "e"]:
         for circuit_class in circuit:
             if (layer, head) in max_heads:
                 return "name mover"  # circuit[circuit_class]:
-        return "duplicate token"
+            return "duplicate token"
 
     # plot the most important heads by
 
@@ -644,7 +643,7 @@ for add_hooks in [False, True]:
             .cpu()
         )
         all_attentions.append(attention.clone())
-    break
+    # break
 
 # df.append([prob, dot, tok_type, prompt["text"]])
 
