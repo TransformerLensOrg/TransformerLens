@@ -341,6 +341,7 @@ model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
 # for pos in ["S+1", "S", "IO", "S2", "end"]:
+# WHYYY BROKENS????
 for pos in ["end"]:
     print(pos)
     results = torch.zeros(size=(12, 12))
@@ -366,6 +367,7 @@ for pos in ["end"]:
                 positions=[pos],
                 verbose=False,
                 return_hooks=False,
+                freeze_mlps=False,
             )
 
             cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -406,8 +408,6 @@ for pos in ["end"]:
                 fig.write_image(fname + ".png")
                 fig.write_image(fname + ".svg")
                 fig.show()
-
-
 #%% [markdown] MLP indirect effect
 
 mlp_hooks = do_circuit_extraction(

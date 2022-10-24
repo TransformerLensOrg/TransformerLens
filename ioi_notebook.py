@@ -127,19 +127,19 @@ if ipython is not None:
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
 #%% Plot writing in the IO - S direction
-for letter in ["a", "b", "c", "d", "e"]:
+for letter in ["GPT@SMALL"]:  # ["a", "b", "c", "d", "e"]:
     letter = letter.upper()
     if False:
         model = EasyTransformer(
             model_name, use_attn_result=True
         )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
     if True:
-        # model = EasyTransformer.from_pretrained("gpt2").cuda()
+        model = EasyTransformer.from_pretrained("gpt2").cuda()
         # model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
         # model = EasyTransformer.from_pretrained("gpt2-medium").cuda()
-        model = EasyTransformer.from_pretrained(
-            f"stanford-gpt2-small-{letter}"
-        ).cuda()  # to E!
+        # model = EasyTransformer.from_pretrained(
+        #     f"stanford-gpt2-small-{letter}"
+        # ).cuda()  # to E!
         model.set_use_attn_result(True)
 
     device = "cuda"
@@ -587,11 +587,10 @@ for letter in ["a", "b", "c", "d", "e"]:
     fig.show()
 
 #%% [markdown] do the scatter plot, but now with direct effect on logit diff
-
-receiver_hooks = [("blocks.11.hook_resid_post", None)]
-layer = 10
-head_idx = 4
-
+receiver_hooks = [(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)]
+layer = 9
+head_idx = 9
+model.reset_hooks()
 hooks = direct_patch_and_freeze(
     model=model,
     source_dataset=all_diff_dataset,
@@ -645,6 +644,7 @@ for add_hooks in [False, True]:
             .cpu()
         )
         all_attentions.append(attention.clone())
+    break
 
 # df.append([prob, dot, tok_type, prompt["text"]])
 
