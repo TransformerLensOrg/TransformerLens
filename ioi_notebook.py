@@ -680,7 +680,7 @@ df = pd.concat(
                 "change": -(all_io_logits[1] - all_io_logits[0]),
                 "token": "IO",
                 "text": ioi_dataset.text_prompts,
-            }s
+            }
         ),
     ]
 )
