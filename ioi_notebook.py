@@ -126,8 +126,7 @@ if ipython is not None:
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
-#%% # plot writing in the IO - S direction
-
+#%% Plot writing in the IO - S direction
 for letter in ["a", "b", "c", "d", "e"]:
     letter = letter.upper()
     if False:
