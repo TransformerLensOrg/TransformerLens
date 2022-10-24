@@ -133,7 +133,8 @@ if False:
 if True:
     # model = EasyTransformer.from_pretrained("gpt2").cuda()
     # model = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
-    model = EasyTransformer.from_pretrained("gpt2-medium").cuda()
+    # model = EasyTransformer.from_pretrained("gpt2-medium").cuda()
+    model = EasyTransformer.from_pretrained("stanford-gpt2-small-A").cuda() # to E!
     model.set_use_attn_result(True)
 
 device = "cuda"
@@ -342,15 +343,24 @@ dataset_names = [
     # "totally_diff_dataset",
 ]
 
+# ([(19, 1),
+#   (12, 3),
+#   (13, 4),
+#   (13, 13),
+#   (15, 8),
+#   (16, 0),
+#   (15, 14),
+
 # knockout some heads !!!
 exclude_heads = [(layer, head_idx) for layer in range(model.cfg.n_layers) for head_idx in range(model.cfg.n_heads)]
-for head in {"gpt2": [(9, 9), (9, 6), (10, 0)], "elutherAI": [(9, 4), (11, 4), (11, 2)], "gpt2-medium": [(19, 1),
+
+all_top_heads = {"stanford-gpt2-small-A": [(10, 4), (10, 10), (10, 11)], "gpt2": [(9, 9), (9, 6), (10, 0)], "elutherAI": [(9, 4), (11, 4), (11, 2)], "gpt2-medium": [(19, 1),
   (12, 3),
-  (13, 4),
-  (13, 13),
-  (15, 8),
-  (16, 0),
-  (15, 14)]}[model.cfg.model_name]:
+  (13, 4)]}
+  
+top_heads=all_top_heads.get(model.cfg.model_name, [])
+
+for head in top_heads:
     exclude_heads.remove(head)
 the_extra_hooks = do_circuit_extraction(
     model=model,
@@ -367,7 +377,6 @@ all_results = []
 all_mlp_results = []
 
 for use_extra_hooks in [True, False]:
-
     if use_extra_hooks:
         extra_hooks = the_extra_hooks
     else:
@@ -401,7 +410,7 @@ for use_extra_hooks in [True, False]:
                 positions=["end"],
                 verbose=False,
                 return_hooks=False,
-                freeze_mlps=True,
+                freeze_mlps=False,
                 extra_hooks=extra_hooks,
             )
             cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -475,7 +484,7 @@ exclude_heads = [
 
 fig = go.Figure()
 
-for name, result in zip(["Left: WT", "Right: KO of most important NMs"], all_results):
+for name, result in zip(["Left: WT", "Right: KO of most important NMs"], [all_results[1], all_results[0]]):
     heights = [
         result[layer][head]
         for layer, head in top_heads

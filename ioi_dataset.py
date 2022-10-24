@@ -672,8 +672,8 @@ class IOIDataset:
         prefixes=None,
         nb_templates=None,
         ioi_prompts_for_word_idxs=None,
-        prepend_bos=None,
-        has_start_padding_and_start_is_end=None,
+        prepend_bos=False,
+        has_start_padding_and_start_is_end=False,
         manual_word_idx=None,
     ):
         """
