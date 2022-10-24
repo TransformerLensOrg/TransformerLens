@@ -286,7 +286,7 @@ class EasyTransformer(HookedRootModule):
         token = self.to_tokens(string, prepend_bos=False).squeeze()
         # If token shape is non-empty, raise error
         assert not token.shape, f"Input string: {string} is not a single token!"
-        return token
+        return token.item()
     
     def single_token_to_residual(
         self, 
@@ -359,6 +359,9 @@ class EasyTransformer(HookedRootModule):
 
         if model_name.endswith("-old"):
             return cls.from_pretrained_solu_old(model_name, fold_ln, center_writing_weights, center_unembed, **model_kwargs)
+        elif model_name.endswith("-c4-code") and model_name.startswith("solu"):
+            return cls.from_pretrained_solu_c4_code(model_name, fold_ln, center_writing_weights, center_unembed, **model_kwargs)
+
         elif model_name == "attn-only-2l-induction-demo":
             return cls.from_pretrained_attn_only_old(center_unembed, **model_kwargs)
 
@@ -494,6 +497,47 @@ class EasyTransformer(HookedRootModule):
             'act_fn': 'solu_ln',
             'final_rms': final_rms,
             'tokenizer_name': 'EleutherAI/gpt-neox-20b',
+            'normalization_type': 'LNPre' if fold_ln else "LN"
+        }
+
+        model = cls(config, **model_kwargs)
+        model.load_and_process_state_dict(state_dict, fold_ln, center_writing_weights, center_unembed)
+        return model
+    
+    @classmethod
+    def from_pretrained_solu_c4_code(cls, 
+                                model_name: str, 
+                                fold_ln = True, 
+                                center_writing_weights = True, 
+                                center_unembed = True,
+                                **model_kwargs):
+        """ 
+        A helper function to load in SoLU models trained with my new code, custom tokenizer
+
+        Model name format: solu-{n_layers}l-c4-code
+
+        These models were all trained on 22B tokens of 80% C4 and 20% Code
+        """
+        layer_number = int(re.match("solu-(\d*)l-c4-code", model_name, re.IGNORECASE).group(1))
+        api = HfApi()
+        repo_name = f"NeelNanda/SoLU_{layer_number}L512W_C4_Code"
+        
+        files = api.list_repo_files(repo_name)
+        model_files = [f for f in files if "final" in f]
+        file_name = model_files[0]
+
+        # Download weights from HuggingFace. AutoModel is not supported for these models.
+        state_dict = download_file_from_hf(repo_name, "model_final.pth", force_is_torch=True)
+        
+
+        config = {
+            'n_layers': layer_number,
+            'd_vocab': state_dict['embed.W_E'].size(0),
+            'd_model': state_dict['embed.W_E'].size(1),
+            'd_head': 64,
+            'n_ctx': 1024,
+            'act_fn': 'solu_ln',
+            'tokenizer_name': 'NeelNanda/gpt-neox-tokenizer-digits',
             'normalization_type': 'LNPre' if fold_ln else "LN"
         }
 
