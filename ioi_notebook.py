@@ -2348,8 +2348,8 @@ def patch_positions(
     z, source_act, hook, positions=["END"]
 ):  # we patch at the "to" token
     for pos in positions:
-        z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
-            torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
+        z[torch.arange(early_dataset.N), early_dataset.word_idx[pos]] = source_act[
+            torch.arange(late_dataset.N), late_dataset.word_idx[pos]
         ]
     return z
 
@@ -2366,7 +2366,7 @@ config = PatchingConfig(
     cache_act=True,
     verbose=False,
     patch_fn=patch_s2,
-    layers=(0, 11),
+    layers=(0, 8),
 )  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
 metric = ExperimentMetric(
     logit_diff,
@@ -2420,7 +2420,6 @@ for idx, head_set in enumerate(
     print(f"{idx=} {cur_logit_diff=} ")  # {cur_io_probs=}")
 #%%
 # some [logit difference, IO probs] for the different modes
-
 # model_results = {"x": 3.8212, "y": 0.5281, "name": "model"}  # saved from prompts2.py
 # duplicate_results = {"x": 3.0485, "y": 0.4755, "name": "duplicate"}
 # duplicate_and_induction_results = {
