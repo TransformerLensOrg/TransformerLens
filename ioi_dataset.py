@@ -1,4 +1,5 @@
 import io
+from logging import warning
 from typing import Union, List
 from site import PREFIXES
 import warnings
@@ -479,7 +480,7 @@ def get_name_idxs(
     prompts,
     tokenizer,
     idx_types=["IO", "S", "S2"],
-    has_start_padding_and_start_is_end=False,
+    prepend_bos=False,
 ):
     name_idx_dict = dict((idx_type, []) for idx_type in idx_types)
     double_s2 = False
@@ -505,7 +506,7 @@ def get_name_idxs(
         warnings.warn("S2 index has been computed as the same for S and S2")
 
     return [
-        int(has_start_padding_and_start_is_end) + torch.tensor(name_idx_dict[idx_type])
+        int(prepend_bos) + torch.tensor(name_idx_dict[idx_type])
         for idx_type in idx_types
     ]
 
@@ -514,11 +515,11 @@ def get_end_idxs(
     prompts,
     tokenizer,
     name_tok_len=1,
-    has_start_padding_and_start_is_end=False,
+    prepend_bos=False,
     toks=None,
 ):
     # toks = torch.Tensor(tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids).type(torch.int)
-    relevant_idx = int(has_start_padding_and_start_is_end)
+    relevant_idx = int(prepend_bos)
     # if the sentence begins with an end token
     # AND the model pads at the end with the same end token,
     # then we need make special arrangements
@@ -613,20 +614,20 @@ ALL_SEM = [
 
 
 def get_idx_dict(
-    ioi_prompts, tokenizer, has_start_padding_and_start_is_end=False, toks=None
+    ioi_prompts, tokenizer, prepend_bos=False, toks=None
 ):
     (IO_idxs, S_idxs, S2_idxs,) = get_name_idxs(
         ioi_prompts,
         tokenizer,
         idx_types=["IO", "S", "S2"],
-        has_start_padding_and_start_is_end=has_start_padding_and_start_is_end,
+        prepend_bos=prepend_bos,
     )
 
     end_idxs = get_end_idxs(
         ioi_prompts,
         tokenizer,
         name_tok_len=1,
-        has_start_padding_and_start_is_end=has_start_padding_and_start_is_end,
+        prepend_bos=prepend_bos,
         toks=toks,
     )
     rand_idxs = get_rand_idxs(end_idxs, exclude=[IO_idxs, S_idxs, S2_idxs])
@@ -716,7 +717,6 @@ class IOIDataset:
         nb_templates=None,
         ioi_prompts_for_word_idxs=None,
         prepend_bos=False,
-        has_start_padding_and_start_is_end=False,
         manual_word_idx=None,
     ):
         """
@@ -725,13 +725,14 @@ class IOIDataset:
             (example use case: making a ABCA dataset)
         """
 
+        if not (N == 1 or prepend_bos == False or tokenizer.bos_token_id == tokenizer.eos_token_id):
+            warnings.warn("Probably word_idx will be calculated incorrectly due to this formatting")
         assert not (symmetric and prompt_type == "ABC")
         assert (
             (prompts is not None) or (not symmetric) or (N % 2 == 0)
         ), f"{symmetric} {N}"
         assert nb_templates is None or (nb_templates % 2 == 0 or prompt_type != "mixed")
         self.prompt_type = prompt_type
-        self.prepend_bos = prepend_bos
 
         if nb_templates is None:
             nb_templates = len(BABA_TEMPLATES)
@@ -825,10 +826,10 @@ class IOIDataset:
         self.word_idx = get_idx_dict(
             ioi_prompts_for_word_idxs,
             self.tokenizer,
-            has_start_padding_and_start_is_end=has_start_padding_and_start_is_end,
+            prepend_bos=prepend_bos,
             toks=self.toks,
         )
-        self.has_start_padding_and_start_is_end = has_start_padding_and_start_is_end
+        self.prepend_bos = prepend_bos
         if manual_word_idx is not None:
             self.word_idx = manual_word_idx
 
@@ -855,7 +856,7 @@ class IOIDataset:
         for i in range(self.N):
             self.tokenized_prompts.append(
                 "|".join([self.tokenizer.decode(tok) for tok in self.toks[i]])
-            )
+            ) 
 
     @classmethod
     def construct_from_ioi_prompts_metadata(cls, templates, ioi_prompts_data, **kwargs):
@@ -933,7 +934,6 @@ class IOIDataset:
             prefixes=self.prefixes,
             ioi_prompts_for_word_idxs=flipped_prompts if flip[0] == "RAND" else None,
             prepend_bos=self.prepend_bos,
-            has_start_padding_and_start_is_end=self.has_start_padding_and_start_is_end,
             manual_word_idx=manual_word_idx,
         )
         return flipped_ioi_dataset
@@ -959,7 +959,6 @@ class IOIDataset:
             tokenizer=self.tokenizer,
             prompts=sliced_prompts,
             prefixes=self.prefixes,
-            has_start_padding_and_start_is_end=self.has_start_padding_and_start_is_end,
             prepend_bos=self.prepend_bos,
         )
         return sliced_dataset
