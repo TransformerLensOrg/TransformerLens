@@ -114,7 +114,7 @@ def solu(input):
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
-    
+
     LayerNorm implemented by the MLP class.
     """
     return input * F.softmax(input, dim=-1)
