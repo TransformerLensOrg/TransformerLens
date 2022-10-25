@@ -307,7 +307,7 @@ def do_circuit_extraction(
     mean_dataset=None,
     model=None,
     metric=None,
-    excluded=[], # tuple of (layer, head) or (layer, None for MLPs)
+    excluded=[],  # tuple of (layer, head) or (layer, None for MLPs)
     return_hooks=False,
     hooks_dict=False,
 ):
@@ -381,7 +381,3 @@ def do_circuit_extraction(
         for hook in hooks.values():
             model.add_hook(*hook)
         return model, abl
-
-
-if __name__ == "__main__":
-    print(CIRCUIT)
