@@ -476,12 +476,7 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
 # *Tok Idxs Methods
 
 
-def get_name_idxs(
-    prompts,
-    tokenizer,
-    idx_types=["IO", "S", "S2"],
-    prepend_bos=False,
-):
+def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"], prepend_bos=False):
     name_idx_dict = dict((idx_type, []) for idx_type in idx_types)
     double_s2 = False
     for prompt in prompts:
@@ -511,13 +506,7 @@ def get_name_idxs(
     ]
 
 
-def get_end_idxs(
-    prompts,
-    tokenizer,
-    name_tok_len=1,
-    prepend_bos=False,
-    toks=None,
-):
+def get_end_idxs(prompts, tokenizer, name_tok_len=1, prepend_bos=False, toks=None):
     # toks = torch.Tensor(tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids).type(torch.int)
     relevant_idx = int(prepend_bos)
     # if the sentence begins with an end token
@@ -543,13 +532,8 @@ def get_end_idxs(
         nonzers = nonzers[0]
         nonzers = nonzers.item()
         end_idxs_raw.append(nonzers)
-
-    # print(pad_token_id)
-    # end_idxs = torch.tensor(
-    #     [(toks[i] == pad_token_id).nonzero()[relevant_idx][0].item() if pad_token_id in toks[i][1:] else toks.shape[1] for i in range(toks.shape[0])]
-    # )
     end_idxs = torch.tensor(end_idxs_raw)
-    end_idxs = end_idxs - 1 - name_tok_len  # YOU'RE LOOKING AT TO NOT FINAL IO TOKEN
+    end_idxs = end_idxs - 1 - name_tok_len
 
     for i in range(toks.shape[0]):
         assert toks[i][end_idxs[i] + 1] != 0 and (
@@ -570,7 +554,7 @@ def get_rand_idxs(end_idxs, exclude):
     return rand_idxs
 
 
-def get_word_idxs(prompts, word_list, tokenizer):
+def get_word_idxs(prompts, word_list, tokenizer, prepend_bos=False):
     """Get the index of the words in word_list in the prompts. Exactly one of the word_list word has to be present in each prompt"""
     idxs = []
     tokenized_words = [
@@ -597,7 +581,7 @@ def get_word_idxs(prompts, word_list, tokenizer):
             raise ValueError(f"Word {word_list} and {i} not found {prompt}")
         idxs.append(idx)
     warnings.warn("Try to implement with less special casing (e.g +1...)")
-    return 1 + torch.tensor(idxs)
+    return torch.tensor(idxs)
 
 
 import torch
@@ -613,9 +597,7 @@ ALL_SEM = [
 ]  # , "verb", "starts", "S-1", "punct"] # Kevin's antic averages
 
 
-def get_idx_dict(
-    ioi_prompts, tokenizer, prepend_bos=False, toks=None
-):
+def get_idx_dict(ioi_prompts, tokenizer, prepend_bos=False, toks=None):
     (IO_idxs, S_idxs, S2_idxs,) = get_name_idxs(
         ioi_prompts,
         tokenizer,
@@ -639,7 +621,7 @@ def get_idx_dict(
         )  # if there is "," and '.' in the prompt, only the '.' index will be kept.
     except:
         warnings.warn("Punctuation not implemented")
-    verb_idxs = get_word_idxs(ioi_prompts, VERBS, tokenizer)
+    verb_idxs = get_word_idxs(ioi_prompts, VERBS, tokenizer, prepend_bos=prepend_bos)
     # and_idxs = get_word_idxs(ioi_prompts, [" and"], tokenizer)
 
     return {
@@ -658,6 +640,8 @@ def get_idx_dict(
         "starts": torch.zeros_like(verb_idxs),
     }
 
+
+# Some functions for experiments on Pointer Arithmetic
 
 PREFIXES = [
     "             Afterwards,",
@@ -725,8 +709,14 @@ class IOIDataset:
             (example use case: making a ABCA dataset)
         """
 
-        if not (N == 1 or prepend_bos == False or tokenizer.bos_token_id == tokenizer.eos_token_id):
-            warnings.warn("Probably word_idx will be calculated incorrectly due to this formatting")
+        if not (
+            N == 1
+            or prepend_bos == False
+            or tokenizer.bos_token_id == tokenizer.eos_token_id
+        ):
+            warnings.warn(
+                "Probably word_idx will be calculated incorrectly due to this formatting"
+            )
         assert not (symmetric and prompt_type == "ABC")
         assert (
             (prompts is not None) or (not symmetric) or (N % 2 == 0)
@@ -856,7 +846,7 @@ class IOIDataset:
         for i in range(self.N):
             self.tokenized_prompts.append(
                 "|".join([self.tokenizer.decode(tok) for tok in self.toks[i]])
-            ) 
+            )
 
     @classmethod
     def construct_from_ioi_prompts_metadata(cls, templates, ioi_prompts_data, **kwargs):
