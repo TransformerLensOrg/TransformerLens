@@ -538,8 +538,7 @@ def get_end_idxs(prompts, tokenizer, name_tok_len=1, prepend_bos=False, toks=Non
     for i in range(toks.shape[0]):
         assert toks[i][end_idxs[i] + 1] != 0 and (
             toks.shape[1] == end_idxs[i] + 2 or toks[i][end_idxs[i] + 2] == pad_token_id
-        ), (toks[i], end_idxs[i], toks[i].shape)
-    print("Passed end clipped test")
+        ), (toks[i], end_idxs[i], toks[i].shape, "the END idxs aren't properly formatted")
 
     return end_idxs
 

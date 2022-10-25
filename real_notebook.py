@@ -127,20 +127,37 @@ ioi_dataset = IOIDataset(
     tokenizer=model.tokenizer,
     prepend_bos=False,
 )
-cur_logit_diff = logit_diff(model, ioi_dataset)
+model_logit_diff = logit_diff(model, ioi_dataset)
 
 print(
-    f"The model gets average logit difference {cur_logit_diff.item()} over {N=} examples"
+    f"The model gets average logit difference {model_logit_diff.item()} over {N=} examples"
 )
 #%% [markdown] The Circuit
 
+circuit = deepcopy(CIRCUIT)
+
 # we make the ABC dataset in order to knockout other model components
-abc_dataset = all_diff_dataset = (
+abc_dataset = (
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
 )
 
+# we then add hooks to the model to knockout all the heads except the circuit
+model.reset_hooks()
+model, _ = do_circuit_extraction(
+    model=model,
+    heads_to_keep=get_heads_circuit(ioi_dataset=ioi_dataset, circuit=circuit),
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=abc_dataset,
+)
+
+circuit_logit_diff = logit_diff(model, ioi_dataset)
+print(
+    f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N=} examples"
+)
+#%% Delete this: hacky stuff
 #%% [markdown] IOI dataset with prepend_bos...
 
 ioi_dataset_2 = IOIDataset(
