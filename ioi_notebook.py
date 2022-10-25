@@ -23,11 +23,7 @@ from copy import deepcopy
 import os
 import torch
 
-<<<<<<< HEAD
 if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
-=======
-if os.environ["USER"] == "exx":  # so Arthur can safely use octobox
->>>>>>> arthur/reproduce-pointer
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import LayerNormPre
@@ -163,6 +159,7 @@ all_diff_dataset = (
     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
 )
 warnings.warn("Edit the last two here")
+
 ##%% [markdown] wait what about without start garbage?
 
 ioi_dataset_2 = IOIDataset(
@@ -791,7 +788,6 @@ for idx, dataset in enumerate([ioi_dataset]):
 # %%
 # IOI Dataset initialisation
 N = 100
-<<<<<<< HEAD
 ioi_dataset_baba = IOIDataset(
     prompt_type="BABA",
     N=N,
@@ -813,11 +809,6 @@ ioi_dataset = IOIDataset(
     prepend_bos=True,
     has_start_padding_and_start_is_end=True,
 )
-=======
-ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
-ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
-ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
->>>>>>> arthur/reproduce-pointer
 abca_dataset = ioi_dataset.gen_flipped_prompts(
     ("S2", "RAND")
 )  # we flip the second b for a random c
@@ -1246,14 +1237,10 @@ def writing_direction_heatmap(
         model.cache_all(
             cache, device="cuda"
         )  # TODO maybe speed up by only caching relevant things
-<<<<<<< HEAD
         toks = ioi_dataset[i : i + 1].toks.long()
         print(toks)
         logits = model(toks)  # text_prompts[i])
         #  print(f"{cache.keys()=}")
-=======
-        logits = model(ioi_dataset.text_prompts[i])
->>>>>>> arthur/reproduce-pointer
 
         res_stream_sum = torch.zeros(
             size=(d_model,), device="cuda"
@@ -1261,14 +1248,9 @@ def writing_direction_heatmap(
         res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]  # .detach().cpu()
         # the pos and token embeddings
 
-<<<<<<< HEAD
         warnings.warn("Set this to the last layer of model!!!")
         layer_norm_div = get_layer_norm_div(
             cache[f"blocks.{model.cfg.n_layers - 1}.hook_resid_post"][0, -2, :]
-=======
-        layer_norm_div = get_layer_norm_div(
-            cache["blocks.11.hook_resid_post"][0, -2, :]
->>>>>>> arthur/reproduce-pointer
         )
 
         for lay in range(n_layers):
@@ -3098,8 +3080,6 @@ late_dataset = IOIDataset.construct_from_ioi_prompts_metadata(
     N=100,
 )
 #%%
-
-
 def patch_positions(
     z, source_act, hook, positions=["END"]
 ):  # we patch at the "to" token
@@ -3164,7 +3144,7 @@ for idx, head_set in enumerate(
         hook = patching.get_hook(
             layer,
             head_idx,
-            manual_patch_fn=partial(
+            patch_fn=partial(
                 patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]
             ),
         )
@@ -3174,9 +3154,3 @@ for idx, head_set in enumerate(
     cur_logit_diff = logit_diff(model, ioi_dataset)
     # cur_io_probs = probs(model, ioi_dataset)
     print(f"{idx=} {cur_logit_diff=} ")  # {cur_io_probs=}")
-#%%
-# some [logit difference, IO probs] for the different modes
-# model_results = {"x": 3.8212, "y": 0.5281, "name": "model"}  # saved from prompts2.py
-# duplicate_results = {"x": 3.0485, "y": 0.4755, "name": "duplicate"}
-# duplicate_and_induction_results = {
-#     "x": -0.66,

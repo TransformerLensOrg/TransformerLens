@@ -504,13 +504,16 @@ class EasyPatching(EasyExperiment):
     def run_patching(self):
         return self.run_experiment()
 
-    def get_hook(self, layer, head=None, target_module=None):
+    def get_hook(self, layer, head=None, target_module=None, patch_fn=None):
         # If the target is a layer, head is None.
         hook_name, dim = self.get_target(layer, head, target_module=target_module)
         if self.cfg.cache_act:
             act = self.act_cache[hook_name]  # activation on the source dataset
         else:
             act = self.get_act(hook_name)
+
+        if patch_fn is None:
+            patch_fn = self.cfg.patch_fn
 
         hook = get_act_hook(self.cfg.patch_fn, act, head, dim=dim)
         return (hook_name, hook)
