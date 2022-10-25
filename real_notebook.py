@@ -117,7 +117,7 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-#%% [markdown] Model and Dataset
+#%% [markdown] Model and Dataset (use larger N or fewer templates for no warnings about in-template ablation)
 model = EasyTransformer.from_pretrained("gpt2").cuda()
 model.set_use_attn_result(True)
 N = 100
@@ -153,7 +153,7 @@ ioi_dataset_2 = IOIDataset(
 #%%
 for new_N in range(1, 3):
     # d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
-    d = ioi_dataset_2
+    d = ioi_dataset
     print(f"new_N={new_N}")
     for i in range(new_N):
         for key in d.word_idx.keys():

@@ -572,17 +572,6 @@ def get_idx_dict(ioi_prompts, tokenizer, prepend_bos=False, toks=None):
         prepend_bos=prepend_bos,
         toks=toks,
     )
-    rand_idxs = get_rand_idxs(end_idxs, exclude=[IO_idxs, S_idxs, S2_idxs])
-    punc_idxs = None
-    warnings.warn("Punctuation not implemented")
-    try:
-        punc_idxs = get_word_idxs(
-            ioi_prompts, [",", "."], tokenizer
-        )  # if there is "," and '.' in the prompt, only the '.' index will be kept.
-    except:
-        warnings.warn("Punctuation not implemented")
-    verb_idxs = get_word_idxs(ioi_prompts, VERBS, tokenizer, prepend_bos=prepend_bos)
-    # and_idxs = get_word_idxs(ioi_prompts, [" and"], tokenizer)
 
     return {
         "IO": IO_idxs,
@@ -592,12 +581,8 @@ def get_idx_dict(ioi_prompts, tokenizer, prepend_bos=False, toks=None):
         "S-1": S_idxs - 1,
         "S+1": S_idxs + 1,
         "S2": S2_idxs,
-        "end": end_idxs,  # the " to" token, the last one.
-        "rand": rand_idxs,  # random index at each
-        "punct": punc_idxs,
-        "verb": verb_idxs,
-        # "and": and_idxs,
-        "starts": torch.zeros_like(verb_idxs),
+        "end": end_idxs,
+        "starts": torch.zeros_like(end_idxs),
     }
 
 
