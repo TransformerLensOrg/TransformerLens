@@ -339,7 +339,7 @@ def do_circuit_extraction(
     config = AblationConfig(
         abl_type="custom",
         abl_fn=ablation,
-        mean_dataset=mean_dataset,  # TODO nb of prompts useless ?
+        mean_dataset=mean_dataset.toks.long(),  # TODO nb of prompts useless ?
         target_module="attn_head",
         head_circuit="result",
         cache_means=True,  # circuit extraction *has* to cache means. the get_mean reset the
