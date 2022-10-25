@@ -361,8 +361,8 @@ def do_circuit_extraction(
     # sort in lexicographic order
     heads_keys.sort(key=lambda x: (x[0], x[1]))
 
-    for layer, head in heads_keys:
-        if (layer, head) in excluded:
+    for layer, head in heads_keys: # a sketchy edit here didn't really improve things : (
+        if (layer, head) in excluded: 
             continue
         assert (layer, head) not in hooks, ((layer, head), "already in hooks")
         hooks[(layer, head)] = abl.get_hook(layer, head)
