@@ -339,7 +339,7 @@ def do_circuit_extraction(
     config = AblationConfig(
         abl_type="custom",
         abl_fn=ablation,
-        mean_dataset=mean_dataset.text_prompts,  # TODO nb of prompts useless ?
+        mean_dataset=mean_dataset,  # TODO nb of prompts useless ?
         target_module="attn_head",
         head_circuit="result",
         cache_means=True,  # circuit extraction *has* to cache means. the get_mean reset the
@@ -361,8 +361,11 @@ def do_circuit_extraction(
     # sort in lexicographic order
     heads_keys.sort(key=lambda x: (x[0], x[1]))
 
-    for layer, head in heads_keys: # a sketchy edit here didn't really improve things : (
-        if (layer, head) in excluded: 
+    for (
+        layer,
+        head,
+    ) in heads_keys:  # a sketchy edit here didn't really improve things : (
+        if (layer, head) in excluded:
             continue
         assert (layer, head) not in hooks, ((layer, head), "already in hooks")
         hooks[(layer, head)] = abl.get_hook(layer, head)

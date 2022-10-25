@@ -402,7 +402,7 @@ class EasyAblation(EasyExperiment):
         self.act_cache = {}
         self.model.reset_hooks()
         self.model.cache_all(self.act_cache)
-        self.model(self.cfg.mean_dataset)
+        self.model(self.cfg.mean_dataset.toks.long())
         self.mean_cache = {}
         for hk in self.act_cache.keys():
             if "blocks" in hk:  # TODO optimize to cache only the right activations
