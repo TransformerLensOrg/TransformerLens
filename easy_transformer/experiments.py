@@ -171,7 +171,7 @@ class AblationConfig(ExperimentConfig):
     def __init__(
         self,
         abl_type: str = "zero",
-        mean_dataset: List[str] = None,
+        mean_dataset=None,  # must be a datatype so that we can call model(mean_dataset)
         cache_means: bool = True,
         batch_size: int = None,
         max_seq_len: int = None,
