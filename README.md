@@ -1,4 +1,4 @@
-This repository contains the code for all experiments in the paper `INTERPRETABILITY IN THE WILD: A CIRCUIT FOR INDIRECT OBJECT IDENTIFICATION IN GPT-2 SMALL' (Wang et al, 2022).
+This repository contains the code for all experiments in the paper `interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small' (Wang et al, 2022).
 
 # Easy Transformer
 
