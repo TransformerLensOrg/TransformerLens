@@ -133,3 +133,20 @@ print(f"The model gets average logit difference {cur_logit_diff.item()} over {N=
 #%% [markdown] The Circuit
 
 # we make the ABC dataset in order to knockout other model components
+abc_dataset = all_diff_dataset = (
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+)
+
+#%%
+for new_N in range(1, 3):
+    # d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
+    d = ioi_dataset
+    print(f"new_N={new_N}")
+    for i in range(new_N):
+        for key in d.word_idx.keys():
+            print(
+                f"key={key} {int(d.word_idx[key][i])} {d.tokenizer.decode(d.toks[i][d.word_idx[key][i]])}"
+            )
+print("Seem fine?")
