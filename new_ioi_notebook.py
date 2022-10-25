@@ -258,7 +258,7 @@ def direct_patch_and_freeze(
                 hook_name = hook_template.format(layer)
 
                 if hook_name in receiver_hook_names:
-                    continue
+                    continue  # TODO maybe this should be break. No I don't think so
 
                 hook = get_act_hook(
                     patch_all,
@@ -289,7 +289,9 @@ def direct_patch_and_freeze(
 
     # measure the receiver heads' values
     receiver_cache = {}
-    model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
+    model.cache_some(
+        receiver_cache, lambda x: x in receiver_hook_names
+    )  # TODO check that this doesn't do the annoying thing of measuring the overwritten stuff
     receiver_logits = model(target_dataset.text_prompts)
 
     # patch these values in

@@ -19,10 +19,15 @@
 
 # %% [markdown]
 # ## Imports
+from copy import deepcopy
 import os
 import torch
 
+<<<<<<< HEAD
 if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
+=======
+if os.environ["USER"] == "exx":  # so Arthur can safely use octobox
+>>>>>>> arthur/reproduce-pointer
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import LayerNormPre
@@ -786,6 +791,7 @@ for idx, dataset in enumerate([ioi_dataset]):
 # %%
 # IOI Dataset initialisation
 N = 100
+<<<<<<< HEAD
 ioi_dataset_baba = IOIDataset(
     prompt_type="BABA",
     N=N,
@@ -807,6 +813,11 @@ ioi_dataset = IOIDataset(
     prepend_bos=True,
     has_start_padding_and_start_is_end=True,
 )
+=======
+ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
+ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
+ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+>>>>>>> arthur/reproduce-pointer
 abca_dataset = ioi_dataset.gen_flipped_prompts(
     ("S2", "RAND")
 )  # we flip the second b for a random c
@@ -1235,10 +1246,14 @@ def writing_direction_heatmap(
         model.cache_all(
             cache, device="cuda"
         )  # TODO maybe speed up by only caching relevant things
+<<<<<<< HEAD
         toks = ioi_dataset[i : i + 1].toks.long()
         print(toks)
         logits = model(toks)  # text_prompts[i])
         #  print(f"{cache.keys()=}")
+=======
+        logits = model(ioi_dataset.text_prompts[i])
+>>>>>>> arthur/reproduce-pointer
 
         res_stream_sum = torch.zeros(
             size=(d_model,), device="cuda"
@@ -1246,9 +1261,14 @@ def writing_direction_heatmap(
         res_stream_sum += cache["blocks.0.hook_resid_pre"][0, -2, :]  # .detach().cpu()
         # the pos and token embeddings
 
+<<<<<<< HEAD
         warnings.warn("Set this to the last layer of model!!!")
         layer_norm_div = get_layer_norm_div(
             cache[f"blocks.{model.cfg.n_layers - 1}.hook_resid_post"][0, -2, :]
+=======
+        layer_norm_div = get_layer_norm_div(
+            cache["blocks.11.hook_resid_post"][0, -2, :]
+>>>>>>> arthur/reproduce-pointer
         )
 
         for lay in range(n_layers):
@@ -3065,3 +3085,98 @@ for i in range(1, 12):
     model.add_hook(*hooks[i])
 cur_logit_diff = logit_diff(model, ioi_dataset)
 print(f"Layer {i} logit diff: {cur_logit_diff} {default_logit_diff}")
+
+# %%
+#%% [markdown] weird patching
+
+from ioi_dataset import BABA_LONG_TEMPLATES
+
+early_dataset = IOIDataset(prompt_type=BABA_TEMPLATES, N=100)
+late_dataset = IOIDataset.construct_from_ioi_prompts_metadata(
+    templates=BABA_LONG_TEMPLATES,
+    ioi_prompts_data=deepcopy(early_dataset.ioi_prompts),
+    N=100,
+)
+#%%
+
+
+def patch_positions(
+    z, source_act, hook, positions=["END"]
+):  # we patch at the "to" token
+    for pos in positions:
+        z[torch.arange(early_dataset.N), early_dataset.word_idx[pos]] = source_act[
+            torch.arange(late_dataset.N), late_dataset.word_idx[pos]
+        ]
+    return z
+
+
+patch_last_tokens = partial(patch_positions, positions=["end"])
+patch_s2 = partial(patch_positions, positions=["S2"])
+
+
+config = PatchingConfig(
+    source_dataset=late_dataset.text_prompts,
+    target_dataset=early_dataset.text_prompts,
+    target_module="attn_head",
+    head_circuit="result",
+    cache_act=True,
+    verbose=False,
+    patch_fn=patch_s2,
+    layers=(0, 8),
+)  # we stop at layer "LAYER" because it's useless to patch after layer 9 if what we measure is attention of a head at layer 9.
+metric = ExperimentMetric(
+    logit_diff,
+    # partial(attention_probs, scale=False),
+    config.target_dataset,
+    relative_metric=False,
+    scalar_metric=False,
+)
+patching = EasyPatching(model, config, metric)
+#%%
+model.reset_hooks()
+# new_heads_to_keep = get_heads_circuit(ioi_dataset, circuit=circuit)
+# model, _ = do_circuit_extraction(
+#     model=model,
+#     heads_to_keep=new_heads_to_keep,
+#     mlps_to_remove={},
+#     ioi_dataset=ioi_dataset,
+#     mean_dataset=abca_dataset,
+# )
+
+circuit = deepcopy(CIRCUIT)
+from ioi_circuit_extraction import RELEVANT_TOKENS
+
+for idx, head_set in enumerate(
+    [
+        [],
+        ["duplicate token"],
+        ["induction"],
+        ["s2 inhibition"],
+        ["induction", "duplicate token"],
+        ["s2 inhibition"] + ["induction"] + ["duplicate token"],
+    ]
+):
+    model.reset_hooks()
+    heads = []
+    for circuit_class in head_set:
+        heads += circuit[circuit_class]
+    for layer, head_idx in heads:
+        hook = patching.get_hook(
+            layer,
+            head_idx,
+            manual_patch_fn=partial(
+                patch_positions, positions=RELEVANT_TOKENS[(layer, head_idx)]
+            ),
+        )
+        model.add_hook(*hook)
+
+    # print(f"{head_set=}, IO S S2, {att_probs=}")  # print("IO S S2")
+    cur_logit_diff = logit_diff(model, ioi_dataset)
+    # cur_io_probs = probs(model, ioi_dataset)
+    print(f"{idx=} {cur_logit_diff=} ")  # {cur_io_probs=}")
+#%%
+# some [logit difference, IO probs] for the different modes
+# model_results = {"x": 3.8212, "y": 0.5281, "name": "model"}  # saved from prompts2.py
+# duplicate_results = {"x": 3.0485, "y": 0.4755, "name": "duplicate"}
+# duplicate_and_induction_results = {
+#     "x": -0.66,
