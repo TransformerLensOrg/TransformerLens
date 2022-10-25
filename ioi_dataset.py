@@ -145,6 +145,24 @@ BABA_TEMPLATES = [
     "Friends [B] and [A] found a [OBJECT] at the [PLACE]. [B] gave it to [A]",
 ]
 
+BABA_LONG_TEMPLATES = [
+    "Then in the morning, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    "Then in the morning, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
+    "Then in the morning, [B] and [A] were working at the [PLACE]. [B] decided to give a [OBJECT] to [A]",
+    "Then in the morning, [B] and [A] were thinking about going to the [PLACE]. [B] wanted to give a [OBJECT] to [A]",
+    "Then in the morning, [B] and [A] had a long argument, and afterwards [B] said to [A]",
+    "After taking a long break [B] and [A] went to the [PLACE], [B] gave a [OBJECT] to [A]",
+    "When soon afterwards [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give it to [A]",
+    "When soon afterwards [B] and [A] got a [OBJECT] at the [PLACE], [B] decided to give the [OBJECT] to [A]",
+    "While spending time together [B] and [A] were working at the [PLACE], [B] gave a [OBJECT] to [A]",
+    "While spending time together [B] and [A] were commuting to the [PLACE], [B] gave a [OBJECT] to [A]",
+    "After the lunch in the afternoon, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    "Afterwards, while spending time together [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
+    "Then in the morning afterwards, [B] and [A] had a long argument. Afterwards [B] said to [A]",
+    "The local big [PLACE] [B] and [A] went to had a [OBJECT]. [B] gave it to [A]",
+    "Friends separated at birth [B] and [A] found a [OBJECT] at the [PLACE]. [B] gave it to [A]",
+]
+
 BABA_LATE_IOS = [
     "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
     "Then, [B] and [A] had a lot of fun at the [PLACE]. [B] gave a [OBJECT] to [A]",
