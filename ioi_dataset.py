@@ -544,46 +544,6 @@ def get_end_idxs(prompts, tokenizer, name_tok_len=1, prepend_bos=False, toks=Non
     return end_idxs
 
 
-def get_rand_idxs(end_idxs, exclude):
-    rand_idxs = []
-    for i in range(len(end_idxs)):
-        idx = np.random.randint(end_idxs[i])
-        while idx in torch.vstack(exclude)[:, i]:
-            idx = np.random.randint(end_idxs[i])
-        rand_idxs.append(idx)
-    return rand_idxs
-
-
-def get_word_idxs(prompts, word_list, tokenizer, prepend_bos=False):
-    """Get the index of the words in word_list in the prompts. Exactly one of the word_list word has to be present in each prompt"""
-    idxs = []
-    tokenized_words = [
-        tokenizer.decode(tokenizer(word)["input_ids"][0]) for word in word_list
-    ]
-    for pr_idx, prompt in enumerate(prompts):
-        toks = [
-            tokenizer.decode(t)
-            for t in tokenizer(prompt["text"], return_tensors="pt", padding=True)[
-                "input_ids"
-            ][0]
-        ]
-        idx = None
-        for i, w_tok in enumerate(tokenized_words):
-            if word_list[i] in prompt["text"]:
-                try:
-                    idx = toks.index(w_tok)
-                    if toks.count(w_tok) > 1:
-                        idx = len(toks) - toks[::-1].index(w_tok) - 1
-                except:
-                    idx = toks.index(w_tok)
-                    # raise ValueError(toks, w_tok, prompt["text"])
-        if idx is None:
-            raise ValueError(f"Word {word_list} and {i} not found {prompt}")
-        idxs.append(idx)
-    warnings.warn("Try to implement with less special casing (e.g +1...)")
-    return torch.tensor(idxs)
-
-
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
