@@ -1007,7 +1007,7 @@ def path_patching(
 ):
     """
     Patch in the effect of `sender_heads` on `receiver_hooks` only
-    (though MLPs are "ignored", so are slight confounders)
+    (though MLPs are "ignored", so are slight confounders. As are intermeditate heads)
 
     If max_layer < model.cfg.n_layers, then let some part of the model do computations (not frozen)
     """
