@@ -1054,15 +1054,15 @@ def path_patching(
 
     # measure the receiver heads' values
     receiver_cache = {}
+    model.reset_hooks()
     model.cache_some(
         receiver_cache,
         lambda x: x in receiver_hook_names,
         suppress_warning=True,
-        verbose=False,
+        verbose=True,
     )
 
     # for all the Q, K, V things
-    model.reset_hooks()
     for layer in range(max_layer):
         for head_idx in range(model.cfg.n_heads):
             for hook_template in [
@@ -1078,6 +1078,7 @@ def path_patching(
                     idx=head_idx,
                     dim=2 if head_idx is not None else None,
                     name=hook_name,
+                    # message=f"Overwriting {hook_name}",
                 )
                 model.add_hook(hook_name, hook)
 
