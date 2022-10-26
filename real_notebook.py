@@ -176,10 +176,12 @@ for pos in ["end"]:
         for source_head_idx in [None] + list(range(12)):
             model.reset_hooks()
             receiver_hooks = []
+
             # for layer, head_idx in circuit["name mover"]:
             # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
             # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
             # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+
             receiver_hooks.append(
                 (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
             )
@@ -195,7 +197,7 @@ for pos in ["end"]:
                 positions=[pos],
                 verbose=False,
                 return_hooks=False,
-                freeze_mlps=False,
+                freeze_mlps=True,
             )
 
             cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -217,9 +219,7 @@ for pos in ["end"]:
                     show_fig=False,
                 )
 
-                fig.write_image(
-                    f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
-                )
+                fig.write_image(f"svgs/to_duplicate_token_K_{pos}.png")
 
                 fig.write_image(fname + ".png")
                 fig.write_image(fname + ".svg")
@@ -229,7 +229,7 @@ for pos in ["end"]:
                 fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     mlp_results.T,
-                    title="Direct effect of MLPs on Logit Difference",
+                    title=f"{fname}",
                     return_fig=True,
                     show_fig=False,
                 )
