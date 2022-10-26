@@ -168,7 +168,7 @@ for head in [(9, 9), (9, 6), (10, 0)]:
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-for pos in ["S"]:
+for pos in ["S+1"]:
     results = torch.zeros(size=(12, 12))
     mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
@@ -194,7 +194,7 @@ for pos in ["S"]:
                 positions=[pos],
                 verbose=False,
                 return_hooks=False,
-                freeze_mlps=False,
+                freeze_mlps=True,
             )
 
             cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -207,32 +207,35 @@ for pos in ["S"]:
                 )
 
             if source_layer == 11 and source_head_idx == 11:
+
+                show_pp((results - results[11][11]).T)
+
                 # show attention head results
-                fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
-                fig = show_pp(
-                    results.T,
-                    title=f"{fname=} {pos=} patching NMs",
-                    return_fig=True,
-                    show_fig=False,
-                )
+                # fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
+                # fig = show_pp(
+                #     results.T,
+                #     title=f"{fname=} {pos=} patching NMs",
+                #     return_fig=True,
+                #     show_fig=False,
+                # )
 
-                fig.write_image(f"svgs/to_duplicate_token_K_{pos}.png")
+                # fig.write_image(f"svgs/to_duplicate_token_K_{pos}.png")
 
-                fig.write_image(fname + ".png")
-                fig.write_image(fname + ".svg")
-                fig.show()
+                # fig.write_image(fname + ".png")
+                # fig.write_image(fname + ".svg")
+                # fig.show()
 
-                # # show mlp results # mlps are (hopefully not anymore???) fucked
-                fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
-                fig = show_pp(
-                    mlp_results.T,
-                    title=f"{fname}",
-                    return_fig=True,
-                    show_fig=False,
-                )
-                fig.write_image(fname + ".png")
-                fig.write_image(fname + ".svg")
-                fig.show()
+                # # # show mlp results # mlps are (hopefully not anymore???) fucked
+                # fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
+                # fig = show_pp(
+                #     mlp_results.T,
+                #     title=f"{fname}",
+                #     return_fig=True,
+                #     show_fig=False,
+                # )
+                # fig.write_image(fname + ".png")
+                # fig.write_image(fname + ".svg")
+                # fig.show()
 #%% Delete this: hacky stuff
 #%% [markdown] IOI dataset with prepend_bos...
 
@@ -302,14 +305,16 @@ def direct_patch_and_freeze(
 
     sender_cache = {}
     model.reset_hooks()
-    model.cache_some(sender_cache, lambda x: x in sender_hook_names)
+    model.cache_some(
+        sender_cache, lambda x: x in sender_hook_names, suppress_warning=True
+    )
     # print(f"{sender_hook_names=}")
-    source_logits = model(source_dataset.text_prompts)
+    source_logits = model(source_dataset.toks.long())
 
     target_cache = {}
     model.reset_hooks()
-    model.cache_all(target_cache)
-    target_logits = model(target_dataset.text_prompts)
+    model.cache_all(target_cache, suppress_warning=True)
+    target_logits = model(target_dataset.toks.long())
 
     # for all the Q, K, V things
     model.reset_hooks()
@@ -348,8 +353,10 @@ def direct_patch_and_freeze(
 
     # measure the receiver heads' values
     receiver_cache = {}
-    model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
-    receiver_logits = model(target_dataset.text_prompts)
+    model.cache_some(
+        receiver_cache, lambda x: x in receiver_hook_names, suppress_warning=True
+    )
+    receiver_logits = model(target_dataset.toks.long())
 
     # patch these values in
     model.reset_hooks()
