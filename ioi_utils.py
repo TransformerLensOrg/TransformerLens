@@ -1059,7 +1059,7 @@ def path_patching(
         receiver_cache,
         lambda x: x in receiver_hook_names,
         suppress_warning=True,
-        verbose=True,
+        verbose=False,
     )
 
     # for all the Q, K, V things
@@ -1072,13 +1072,15 @@ def path_patching(
             ]:
                 hook_name = hook_template.format(layer)
 
+                if have_internal_interactions and hook_name in receiver_hook_names:
+                    continue
+
                 hook = get_act_hook(
                     patch_all,
                     alt_act=target_cache[hook_name],
                     idx=head_idx,
                     dim=2 if head_idx is not None else None,
                     name=hook_name,
-                    # message=f"Overwriting {hook_name}",
                 )
                 model.add_hook(hook_name, hook)
 
