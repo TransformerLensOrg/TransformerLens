@@ -172,13 +172,13 @@ for pos in ["end"]:
         for source_head_idx in [None] + list(range(12)):
             model.reset_hooks()
             receiver_hooks = []
-            # for layer, head_idx in circuit["s2 inhibition"]:
-            # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+            for layer, head_idx in circuit["name mover"]:
+                receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
             # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
             # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
-            receiver_hooks.append(
-                (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
-            )
+            # receiver_hooks.append(
+            # (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
+            # )
 
             model = path_patching_without_internal_interactions(
                 model=model,
@@ -209,35 +209,32 @@ for pos in ["end"]:
                 results /= default_logit_diff
                 mlp_results /= default_logit_diff
 
-                show_pp((results - results[11][11]).T)
-                show_pp((mlp_results - results[11][11]).T)
+                # show_pp((results - results[11][11]).T, return_fig=True)
+                # show_pp((mlp_results - results[11][11]).T)
 
                 # show attention head results
-                # fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
-                # fig = show_pp(
-                #     results.T,
-                #     title=f"{fname=} {pos=} patching NMs",
-                #     return_fig=True,
-                #     show_fig=False,
-                # )
+                fname = f"svgs/path_patching_{pos}_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    results.T,
+                    title=f"{fname=} {pos=} patching NMs",
+                    return_fig=True,
+                    show_fig=False,
+                )
+                fig.write_image(fname + ".png")
+                fig.write_image(fname + ".svg")
+                fig.show()
 
-                # fig.write_image(f"svgs/to_duplicate_token_K_{pos}.png")
-
-                # fig.write_image(fname + ".png")
-                # fig.write_image(fname + ".svg")
-                # fig.show()
-
-                # # # show mlp results # mlps are (hopefully not anymore???) fucked
-                # fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
-                # fig = show_pp(
-                #     mlp_results.T,
-                #     title=f"{fname}",
-                #     return_fig=True,
-                #     show_fig=False,
-                # )
-                # fig.write_image(fname + ".png")
-                # fig.write_image(fname + ".svg")
-                # fig.show()
+                # show mlp results # mlps are (hopefully not anymore???) fucked
+                fname = f"svgs/path_patching_mlp_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    mlp_results.T,
+                    title=f"{fname}",
+                    return_fig=True,
+                    show_fig=False,
+                )
+                fig.write_image(fname + ".png")
+                fig.write_image(fname + ".svg")
+                fig.show()
 #%% Delete this: hacky stuff
 #%% [markdown] IOI dataset with prepend_bos...
 
