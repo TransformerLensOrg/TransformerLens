@@ -139,9 +139,9 @@ circuit = deepcopy(CIRCUIT)
 
 # we make the ABC dataset in order to knockout other model components
 abc_dataset = (
-    ioi_dataset.gen_flipped_prompts(("IO", "RAND"), suppress_warnings=True)
-    .gen_flipped_prompts(("S", "RAND"), suppress_warnings=True)
-    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))  # (), suppress_warnings=True)
+    .gen_flipped_prompts(("S", "RAND"))  # , suppress_warnings=True)
+    .gen_flipped_prompts(("S1", "RAND"))  # , manual_word_idx=ioi_dataset.word_idx)
 )
 
 # we then add hooks to the model to knockout all the heads except the circuit
