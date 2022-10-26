@@ -1052,6 +1052,15 @@ def path_patching(
     model.cache_all(target_cache, suppress_warning=True)
     target_logits = model(target_dataset.toks.long())
 
+    # measure the receiver heads' values
+    receiver_cache = {}
+    model.cache_some(
+        receiver_cache,
+        lambda x: x in receiver_hook_names,
+        suppress_warning=True,
+        verbose=False,
+    )
+
     # for all the Q, K, V things
     model.reset_hooks()
     for layer in range(max_layer):
@@ -1062,9 +1071,6 @@ def path_patching(
                 "blocks.{}.attn.hook_v",
             ]:
                 hook_name = hook_template.format(layer)
-
-                if hook_name in receiver_hook_names:
-                    continue
 
                 hook = get_act_hook(
                     patch_all,
@@ -1104,27 +1110,6 @@ def path_patching(
             name=hook_name,
         )
         model.add_hook(hook_name, hook)
-
-    # measure the receiver heads' values
-    receiver_cache = {}
-    model.cache_some(
-        receiver_cache,
-        lambda x: x in receiver_hook_names,
-        suppress_warning=True,
-        verbose=False,
-    )
-    if (
-        not have_internal_interactions
-    ):  # force the override of the receiver hooks. But after the saving!
-        for hook_name, head_idx in receiver_hooks:
-            hook = get_act_hook(
-                partial(patch_positions, positions=positions, verbose=False),
-                alt_act=target_cache[hook_name],
-                idx=head_idx,
-                dim=2 if head_idx is not None else None,
-                name=hook_name,
-            )
-            model.add_hook(hook_name, hook)
     receiver_logits = model(target_dataset.toks.long())
 
     # receiver_cache stuff ...
