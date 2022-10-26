@@ -161,12 +161,7 @@ print(
     f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N=} examples"
 )
 
-#%% [markdown] Edge Patching
-
-exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
-for head in [(9, 9), (9, 6), (10, 0)]:
-    exclude_heads.remove(head)
-
+#%% [markdown] edge patching
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
@@ -196,7 +191,7 @@ for pos in ["S2"]:
                 positions=[pos],
                 verbose=False,
                 return_hooks=False,
-                freeze_mlps=True,
+                freeze_mlps=False,
             )
 
             cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -209,6 +204,8 @@ for pos in ["S2"]:
                 )
 
             if source_layer == 11 and source_head_idx == 11:
+                results /= default_logit_diff
+                mlp_results /= default_logit_diff
 
                 show_pp((results - results[11][11]).T)
                 show_pp((mlp_results - results[11][11]).T)
