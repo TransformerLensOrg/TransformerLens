@@ -75,7 +75,9 @@ class PosEmbed(nn.Module):
         Output shape [pos, d_model] - will be broadcast along batch dim"""
 
         tokens_length = tokens.size(-1)
-        return self.W_pos[past_kv_pos_offset:tokens_length + past_kv_pos_offset, :]  # [pos, d_model]
+        pos_embed = self.W_pos[past_kv_pos_offset:tokens_length + past_kv_pos_offset, :]  # [pos, d_model]
+        broadcast_pos_embed = einops.repeat(pos_embed, "... -> batch ...", batch=tokens.size(0))  # [batch, pos, d_model]
+        return broadcast_pos_embed
 
 
 # LayerNormPre
@@ -347,6 +349,7 @@ class Attention(nn.Module):
                 attn_scores, 
                 kv_cache_pos_offset
             ) # [batch, head_index, query_pos, key_pos]
+        attn_scores = self.hook_attn_scores(attn_scores)
         attn_matrix = self.hook_attn(
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]

@@ -35,8 +35,6 @@ class ActivationCache:
         self.ctx_size = self.cache_dict["hook_embed"].size(1)
         
         # Broadcast pos_embed up to batch size, so it has the same shape as all other residual vectors
-        if "hook_pos_embed" in self.cache_dict:
-            self.cache_dict["hook_pos_embed"] = einops.repeat(self.cache_dict['hook_pos_embed'], 'pos d_model -> batch pos d_model', batch=self.batch_size)
     
     def remove_batch_dim(self):
         if self.has_batch_dim:
