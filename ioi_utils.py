@@ -1135,7 +1135,7 @@ def path_patching(
         return model
 
 
-def path_patching_without_internal_interactions(
+def path_patching(
     model,
     source_dataset,
     target_dataset,
@@ -1148,6 +1148,7 @@ def path_patching_without_internal_interactions(
     return_hooks=False,
     extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
     freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
+    have_internal_interactions=False,
 ):
     """
     Patch in the effect of `sender_heads` on `receiver_hooks` only
@@ -1256,15 +1257,16 @@ def path_patching_without_internal_interactions(
         suppress_warning=True,
         verbose=False,
     )
-    for hook_name, head_idx in receiver_hooks:  # NOOOO INNER CLASS!!!
-        hook = get_act_hook(
-            partial(patch_positions, positions=positions, verbose=False),
-            alt_act=target_cache[hook_name],
-            idx=head_idx,
-            dim=2 if head_idx is not None else None,
-            name=hook_name,
-        )
-        model.add_hook(hook_name, hook)
+    if not have_internal_interactions: # force the override of the receiver hooks. But after the saving!
+        for hook_name, head_idx in receiver_hooks:
+            hook = get_act_hook(
+                partial(patch_positions, positions=positions, verbose=False),
+                alt_act=target_cache[hook_name],
+                idx=head_idx,
+                dim=2 if head_idx is not None else None,
+                name=hook_name,
+            )
+            model.add_hook(hook_name, hook)
     receiver_logits = model(target_dataset.toks.long())
 
     # receiver_cache stuff ...
