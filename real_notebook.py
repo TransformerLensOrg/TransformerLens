@@ -86,7 +86,7 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
-    edge_patching,
+    path_patching,
     max_2d,
     CLASS_COLORS,
     all_subsets,
@@ -133,7 +133,7 @@ model_logit_diff = logit_diff(model, ioi_dataset)
 print(
     f"The model gets average logit difference {model_logit_diff.item()} over {N=} examples"
 )
-#%% [markdown] The Circuit
+#%% [markdown] the circuit
 
 circuit = deepcopy(CIRCUIT)
 
@@ -146,6 +146,8 @@ abc_dataset = (
 
 # we then add hooks to the model to knockout all the heads except the circuit
 model.reset_hooks()
+relevant_heads = get_heads_circuit(ioi_dataset=ioi_dataset, circuit=circuit)
+# relevant_heads.pop((5, 9))
 model, _ = do_circuit_extraction(
     model=model,
     heads_to_keep=get_heads_circuit(ioi_dataset=ioi_dataset, circuit=circuit),
@@ -168,14 +170,14 @@ for head in [(9, 9), (9, 6), (10, 0)]:
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-for pos in ["S+1"]:
+for pos in ["S2"]:
     results = torch.zeros(size=(12, 12))
     mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
         for source_head_idx in [None] + list(range(12)):
             model.reset_hooks()
             receiver_hooks = []
-            for layer, head_idx in circuit["induction"]:
+            for layer, head_idx in circuit["s2 inhibition"]:
                 # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
                 # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
                 receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
@@ -183,14 +185,14 @@ for pos in ["S+1"]:
             #     (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
             # )
 
-            model = edge_patching(
+            model = path_patching(
                 model=model,
                 source_dataset=abc_dataset,
                 target_dataset=ioi_dataset,
                 ioi_dataset=ioi_dataset,
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
-                max_layer=7,
+                max_layer=12,
                 positions=[pos],
                 verbose=False,
                 return_hooks=False,
@@ -209,6 +211,7 @@ for pos in ["S+1"]:
             if source_layer == 11 and source_head_idx == 11:
 
                 show_pp((results - results[11][11]).T)
+                show_pp((mlp_results - results[11][11]).T)
 
                 # show attention head results
                 # fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"

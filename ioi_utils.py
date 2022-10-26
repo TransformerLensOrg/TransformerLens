@@ -991,7 +991,7 @@ def patch_all(z, source_act, hook):
     return source_act
 
 
-def edge_patching(
+def path_patching(
     model,
     source_dataset,
     target_dataset,

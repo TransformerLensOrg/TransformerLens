@@ -93,7 +93,7 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
-    edge_patching,
+    path_patching,
     max_2d,
     CLASS_COLORS,
     all_subsets,
@@ -328,7 +328,7 @@ for use_extra_hooks in [False, True]:
                 (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
             )
 
-            model = edge_patching(
+            model = path_patching(
                 model=model,
                 source_dataset=all_diff_dataset,
                 target_dataset=ioi_dataset,
@@ -471,7 +471,7 @@ for _ in tqdm(range(AVERAGE_OVER)):
     )
 
     hooks_database.append(
-        edge_patching(
+        path_patching(
             model=model,
             source_dataset=cur_all_diff_dataset,
             target_dataset=ioi_dataset,
