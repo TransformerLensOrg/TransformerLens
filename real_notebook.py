@@ -165,22 +165,22 @@ print(
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-for pos in ["end"]:
+for pos in ["S+1"]:
     results = torch.zeros(size=(12, 12))
     mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
         for source_head_idx in [None] + list(range(12)):
             model.reset_hooks()
             receiver_hooks = []
-            for layer, head_idx in circuit["name mover"]:
-                receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
-            # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
-            # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+            for layer, head_idx in circuit["induction"]:
+                # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+                # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+                receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
             # receiver_hooks.append(
-            # (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
+            #     (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
             # )
 
-            model = path_patching_without_internal_interactions(
+            model = path_patching(
                 model=model,
                 source_dataset=abc_dataset,
                 target_dataset=ioi_dataset,
@@ -192,6 +192,7 @@ for pos in ["end"]:
                 verbose=False,
                 return_hooks=False,
                 freeze_mlps=False,
+                have_internal_interactions=True,
             )
             cur_logit_diff = logit_diff(model, ioi_dataset)
 
