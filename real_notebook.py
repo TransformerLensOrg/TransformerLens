@@ -190,7 +190,7 @@ for pos in ["S"]:
                 ioi_dataset=ioi_dataset,
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
-                max_layer=12,
+                max_layer=7,
                 positions=[pos],
                 verbose=False,
                 return_hooks=False,
