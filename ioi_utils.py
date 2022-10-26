@@ -1256,7 +1256,7 @@ def path_patching_without_internal_interactions(
         suppress_warning=True,
         verbose=False,
     )
-    for hook_name, head_idx in receiver_hooks:
+    for hook_name, head_idx in receiver_hooks:  # NOOOO INNER CLASS!!!
         hook = get_act_hook(
             partial(patch_positions, positions=positions, verbose=False),
             alt_act=target_cache[hook_name],
