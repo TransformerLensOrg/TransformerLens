@@ -86,6 +86,7 @@ from ioi_dataset import (
     ABBA_TEMPLATES,
 )
 from ioi_utils import (
+    edge_patching,
     max_2d,
     CLASS_COLORS,
     all_subsets,
@@ -138,8 +139,8 @@ circuit = deepcopy(CIRCUIT)
 
 # we make the ABC dataset in order to knockout other model components
 abc_dataset = (
-    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
-    .gen_flipped_prompts(("S", "RAND"))
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"), suppress_warnings=True)
+    .gen_flipped_prompts(("S", "RAND"), suppress_warnings=True)
     .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
 )
 
@@ -151,17 +152,90 @@ model, _ = do_circuit_extraction(
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
     mean_dataset=abc_dataset,
-    # excluded=[
-    #     (layer, head_idx)
-    #     for layer in range(12)
-    #     for head_idx in range(12)
-    # ],
 )
 
 circuit_logit_diff = logit_diff(model, ioi_dataset)
 print(
     f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N=} examples"
 )
+
+#%% [markdown] Edge Patching
+
+exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
+for head in [(9, 9), (9, 6), (10, 0)]:
+    exclude_heads.remove(head)
+
+model.reset_hooks()
+default_logit_diff = logit_diff(model, ioi_dataset)
+
+for pos in ["end"]:
+    print(pos)
+    results = torch.zeros(size=(12, 12))
+    mlp_results = torch.zeros(size=(12, 1))
+    for source_layer in tqdm(range(12)):
+        for source_head_idx in [None] + list(range(12)):
+            model.reset_hooks()
+            receiver_hooks = []
+            # for layer, head_idx in circuit["name mover"]:
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+            # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+            receiver_hooks.append(
+                (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
+            )
+
+            model = edge_patching(
+                model=model,
+                source_dataset=abc_dataset,
+                target_dataset=ioi_dataset,
+                ioi_dataset=ioi_dataset,
+                sender_heads=[(source_layer, source_head_idx)],
+                receiver_hooks=receiver_hooks,
+                max_layer=12,
+                positions=[pos],
+                verbose=False,
+                return_hooks=False,
+                freeze_mlps=False,
+            )
+
+            cur_logit_diff = logit_diff(model, ioi_dataset)
+
+            if source_head_idx is None:
+                mlp_results[source_layer] = cur_logit_diff - default_logit_diff
+            else:
+                results[source_layer][source_head_idx] = (
+                    cur_logit_diff - default_logit_diff
+                )
+
+            if source_layer == 11 and source_head_idx == 11:
+                # show attention head results
+                fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    results.T,
+                    title=f"{fname=} {pos=} patching NMs",
+                    return_fig=True,
+                    show_fig=False,
+                )
+
+                fig.write_image(
+                    f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
+                )
+
+                fig.write_image(fname + ".png")
+                fig.write_image(fname + ".svg")
+                fig.show()
+
+                # # show mlp results # mlps are (hopefully not anymore???) fucked
+                fname = f"svgs/patch_and_freeze_mlp_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    mlp_results.T,
+                    title="Direct effect of MLPs on Logit Difference",
+                    return_fig=True,
+                    show_fig=False,
+                )
+                fig.write_image(fname + ".png")
+                fig.write_image(fname + ".svg")
+                fig.show()
 #%% Delete this: hacky stuff
 #%% [markdown] IOI dataset with prepend_bos...
 

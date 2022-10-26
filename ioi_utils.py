@@ -984,3 +984,147 @@ def compute_composition_OV_QK(
         W_12 = torch.einsum("db,bc->dc", W_QK, W_OV)
     elif mode == "K":
         W_12 = torch.einsum("bc,bc->dc", W_OV, W_QK)  # OV^T * QK
+
+def patch_all(z, source_act, hook):
+    return source_act
+
+def edge_patching(
+    model,
+    source_dataset,
+    target_dataset,
+    ioi_dataset,
+    sender_heads,
+    receiver_hooks,
+    max_layer,
+    positions=["end"],
+    verbose=False,
+    return_hooks=False,
+    extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
+    freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
+):
+    """
+    Patch in the effect of `sender_heads` on `receiver_hooks` only
+    (though MLPs are "ignored", so are slight confounders)
+
+    If max_layer < model.cfg.n_layers, then let some part of the model do computations (not frozen)
+    """
+
+    def patch_positions(z, source_act, hook, positions=["end"]):
+        for pos in positions:
+            z[torch.arange(target_dataset.N), target_dataset.word_idx[pos]] = source_act[
+                torch.arange(source_dataset.N), source_dataset.word_idx[pos]
+            ]
+        return z
+
+
+    sender_hooks = []
+
+    for layer, head_idx in sender_heads:
+        if head_idx is None:
+            sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
+
+        else:
+            sender_hooks.append((f"blocks.{layer}.attn.hook_result", head_idx))
+
+    sender_hook_names = [x[0] for x in sender_hooks]
+    receiver_hook_names = [x[0] for x in receiver_hooks]
+
+    sender_cache = {}
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    model.cache_some(sender_cache, lambda x: x in sender_hook_names)
+    # print(f"{sender_hook_names=}")
+    source_logits = model(
+        source_dataset.toks.long()
+    )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
+
+    target_cache = {}
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    model.cache_all(target_cache)
+    target_logits = model(target_dataset.toks.long())
+
+    # for all the Q, K, V things
+    model.reset_hooks()
+    for layer in range(max_layer):
+        for head_idx in range(model.cfg.n_heads):
+            for hook_template in [
+                "blocks.{}.attn.hook_q",
+                "blocks.{}.attn.hook_k",
+                "blocks.{}.attn.hook_v",
+            ]:
+                hook_name = hook_template.format(layer)
+
+                if hook_name in receiver_hook_names:
+                    continue
+
+                hook = get_act_hook(
+                    patch_all,
+                    alt_act=target_cache[hook_name],
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                    name=hook_name,
+                )
+                model.add_hook(hook_name, hook)
+
+        if freeze_mlps:
+            hook_name = f"blocks.{layer}.hook_mlp_out"
+            hook = get_act_hook(
+                patch_all,
+                alt_act=target_cache[hook_name],
+                idx=None,
+                dim=None,
+                name=hook_name,
+            )
+            model.add_hook(hook_name, hook)
+
+    for hook in extra_hooks:
+        # ughhh, think that this is what we want, this should override the QKV above
+        model.add_hook(*hook)
+
+    # we can override the hooks above for the sender heads, though
+    for hook_name, head_idx in sender_hooks:
+        assert not torch.allclose(sender_cache[hook_name], target_cache[hook_name]), (
+            hook_name,
+            head_idx,
+        )
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions),
+            alt_act=sender_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        model.add_hook(hook_name, hook)
+
+    # measure the receiver heads' values
+    receiver_cache = {}
+    model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
+    receiver_logits = model(target_dataset.toks.long())
+
+    # patch these values in
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(
+            *hook
+        )  # ehh probably doesn't actually matter cos end thing hooked
+
+    hooks = []
+    for hook_name, head_idx in receiver_hooks:
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions),
+            alt_act=receiver_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        hooks.append((hook_name, hook))
+
+    if return_hooks:
+        return hooks
+    else:
+        for hook_name, hook in hooks:
+            model.add_hook(hook_name, hook)
+        return model
