@@ -27,7 +27,7 @@ from easy_transformer.caching import (
 )
 
 from easy_transformer.components import *
-import easy_transformer.weight_conversion as weight_conversion
+import easy_transformer.loading_from_pretrained as loading
 from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores
 
 
@@ -54,10 +54,6 @@ class EasyTransformer(HookedRootModule):
     It can have a pretrained Transformer's weights automatically loaded in via the EasyTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or EasyTransformerConfig object. 
     """
     
-    VALID_PRETRAINED_MODEL_NAMES = weight_conversion.VALID_PRETRAINED_MODEL_NAMES
-    PRETRAINED_MODEL_NAMES_DICT = weight_conversion.PRETRAINED_MODEL_NAMES_DICT
-    STANFORD_CRFM_CHECKPOINTS = weight_conversion.STANFORD_CRFM_CHECKPOINTS
-
     def __init__(
         self,
         cfg,
@@ -413,18 +409,18 @@ class EasyTransformer(HookedRootModule):
 
         # Load model weights, and fold in layer norm weights
         if model_family == "gpt2":
-            state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
+            state_dict = loading.convert_gpt2_weights(hf_model, model.cfg)
         elif model_family == "mistral":
             # Stanford (Mistral) models have identical structure to GPT-2, but scale attention scores by 1/(layer_id+1) before softmax.
-            state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
+            state_dict = loading.convert_gpt2_weights(hf_model, model.cfg)
         elif model_family == "neo":
-            state_dict = weight_conversion.convert_neo_weights(hf_model, model.cfg)
+            state_dict = loading.convert_neo_weights(hf_model, model.cfg)
         elif model_family == "gptj":
-            state_dict = weight_conversion.convert_gptj_weights(hf_model, model.cfg)
+            state_dict = loading.convert_gptj_weights(hf_model, model.cfg)
         elif model_family == "neox":
-            state_dict = weight_conversion.convert_neox_weights(hf_model, model.cfg)
+            state_dict = loading.convert_neox_weights(hf_model, model.cfg)
         elif model_family == "opt":
-            state_dict = weight_conversion.convert_opt_weights(hf_model, model.cfg)
+            state_dict = loading.convert_opt_weights(hf_model, model.cfg)
         else:
             raise ValueError(f"Loading weights from this model family is not currently supported: {model_family}, generated from model name {model_name}. Feel free to open an issue on GitHub to request this feature.")
         
