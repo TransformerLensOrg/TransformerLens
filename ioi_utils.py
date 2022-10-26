@@ -1135,7 +1135,7 @@ def path_patching(
         return model
 
 
-def path_patching(
+def path_patching_without_internal_interactions(
     model,
     source_dataset,
     target_dataset,
@@ -1156,7 +1156,9 @@ def path_patching(
     If max_layer < model.cfg.n_layers, then let some part of the model do computations (not frozen)
     """
 
-    def patch_positions(z, source_act, hook, positions=["end"]):
+    def patch_positions(z, source_act, hook, positions=["end"], verbose=False):
+        if verbose:
+            print("patching", hook.ctx)
         for pos in positions:
             z[
                 torch.arange(target_dataset.N), target_dataset.word_idx[pos]
@@ -1249,9 +1251,23 @@ def path_patching(
     # measure the receiver heads' values
     receiver_cache = {}
     model.cache_some(
-        receiver_cache, lambda x: x in receiver_hook_names, suppress_warning=True
+        receiver_cache,
+        lambda x: x in receiver_hook_names,
+        suppress_warning=True,
+        verbose=True,
     )
+    for hook_name, head_idx in receiver_hooks:
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions, verbose=True),
+            alt_act=target_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        model.add_hook(hook_name, hook)
     receiver_logits = model(target_dataset.toks.long())
+
+    # receiver_cache stuff ...
 
     # patch these values in
     model.reset_hooks()
@@ -1262,6 +1278,17 @@ def path_patching(
 
     hooks = []
     for hook_name, head_idx in receiver_hooks:
+        for pos in positions:
+            if torch.allclose(
+                receiver_cache[hook_name][
+                    torch.arange(target_dataset.N), target_dataset.word_idx[pos]
+                ],
+                target_cache[hook_name][
+                    torch.arange(target_dataset.N), target_dataset.word_idx[pos]
+                ],
+            ):
+                # assert False, (hook_name, head_idx)
+                print("AAA", hook_name, head_idx)
         hook = get_act_hook(
             partial(patch_positions, positions=positions),
             alt_act=receiver_cache[hook_name],
@@ -1271,6 +1298,7 @@ def path_patching(
         )
         hooks.append((hook_name, hook))
 
+    model.reset_hooks()
     if return_hooks:
         return hooks
     else:

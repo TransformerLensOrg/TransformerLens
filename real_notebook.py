@@ -87,6 +87,7 @@ from ioi_dataset import (
 )
 from ioi_utils import (
     path_patching,
+    path_patching_without_internal_interactions,
     max_2d,
     CLASS_COLORS,
     all_subsets,
@@ -160,7 +161,6 @@ circuit_logit_diff = logit_diff(model, ioi_dataset)
 print(
     f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N=} examples"
 )
-
 #%% [markdown] edge patching
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
@@ -180,7 +180,7 @@ for pos in ["S2"]:
             #     (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
             # )
 
-            model = path_patching(
+            model = path_patching_without_internal_interactions(
                 model=model,
                 source_dataset=abc_dataset,
                 target_dataset=ioi_dataset,
@@ -193,7 +193,6 @@ for pos in ["S2"]:
                 return_hooks=False,
                 freeze_mlps=False,
             )
-
             cur_logit_diff = logit_diff(model, ioi_dataset)
 
             if source_head_idx is None:

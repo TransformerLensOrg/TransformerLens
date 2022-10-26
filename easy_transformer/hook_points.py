@@ -215,6 +215,7 @@ class HookedRootModule(nn.Module):
         device=None,
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
+        verbose=False,
     ) -> dict:
         """Adds hooks to the model to cache activations. Note: It does NOT actually run the model to get activations, that must be done separately.
 
@@ -248,12 +249,16 @@ class HookedRootModule(nn.Module):
         self.is_caching = True
 
         def save_hook(tensor, hook):
+            if verbose:
+                print("Saving   ", hook.name)
             if remove_batch_dim:
                 cache[hook.name] = tensor.detach().to(device)[0]
             else:
                 cache[hook.name] = tensor.detach().to(device)
 
         def save_hook_back(tensor, hook):
+            if verbose:
+                print("Saving   ", hook.name)
             if remove_batch_dim:
                 cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
             else:
@@ -340,6 +345,7 @@ class HookedRootModule(nn.Module):
         device=None,
         remove_batch_dim=False,
         suppress_warning=False,
+        verbose=False,
     ):
         """Cache a list of hook provided by names, Boolean function on names"""
         if not suppress_warning:
@@ -347,6 +353,7 @@ class HookedRootModule(nn.Module):
                 "cache_some is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache"
             )
         self.add_caching_hooks(
+            verbose=verbose,
             names_filter=names,
             cache=cache,
             incl_bwd=incl_bwd,
