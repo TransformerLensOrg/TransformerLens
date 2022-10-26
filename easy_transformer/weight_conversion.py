@@ -9,6 +9,7 @@ VALID_PRETRAINED_MODEL_NAMES = set(
         "gpt2-medium",
         "gpt2-large",
         "gpt2-xl",
+        "distilgpt2",
         "facebook/opt-125m",
         "facebook/opt-1.3b",
         "facebook/opt-2.7b",
