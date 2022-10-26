@@ -252,17 +252,17 @@ class HookedRootModule(nn.Module):
             if verbose:
                 print("Saving   ", hook.name)
             if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
+                cache[hook.name] = tensor.detach().to(device).clone()[0]
             else:
-                cache[hook.name] = tensor.detach().to(device)
+                cache[hook.name] = tensor.detach().to(device).clone()
 
         def save_hook_back(tensor, hook):
             if verbose:
                 print("Saving   ", hook.name)
             if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
+                cache[hook.name + "_grad"] = tensor[0].detach().clone().to(device)[0]
             else:
-                cache[hook.name + "_grad"] = tensor[0].detach().to(device)
+                cache[hook.name + "_grad"] = tensor[0].detach().clone().to(device)
 
         for name, hp in self.hook_dict.items():
             if names_filter(name):

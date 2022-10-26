@@ -202,6 +202,9 @@ for pos in ["S2"]:
                     cur_logit_diff - default_logit_diff
                 )
 
+            if source_layer == 1:
+                assert not torch.allclose(results, 0.0 * results), results
+
             if source_layer == 11 and source_head_idx == 11:
                 results /= default_logit_diff
                 mlp_results /= default_logit_diff

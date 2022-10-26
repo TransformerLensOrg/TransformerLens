@@ -1254,11 +1254,11 @@ def path_patching_without_internal_interactions(
         receiver_cache,
         lambda x: x in receiver_hook_names,
         suppress_warning=True,
-        verbose=True,
+        verbose=False,
     )
     for hook_name, head_idx in receiver_hooks:
         hook = get_act_hook(
-            partial(patch_positions, positions=positions, verbose=True),
+            partial(patch_positions, positions=positions, verbose=False),
             alt_act=target_cache[hook_name],
             idx=head_idx,
             dim=2 if head_idx is not None else None,
@@ -1288,7 +1288,8 @@ def path_patching_without_internal_interactions(
                 ],
             ):
                 # assert False, (hook_name, head_idx)
-                print("AAA", hook_name, head_idx)
+                # print("AAA", hook_name, head_idx)
+                pass
         hook = get_act_hook(
             partial(patch_positions, positions=positions),
             alt_act=receiver_cache[hook_name],
