@@ -168,23 +168,20 @@ for head in [(9, 9), (9, 6), (10, 0)]:
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
-for pos in ["end"]:
-    print(pos)
+for pos in ["S"]:
     results = torch.zeros(size=(12, 12))
     mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
         for source_head_idx in [None] + list(range(12)):
             model.reset_hooks()
             receiver_hooks = []
-
-            # for layer, head_idx in circuit["name mover"]:
-            # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
-            # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
-            # receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
-
-            receiver_hooks.append(
-                (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
-            )
+            for layer, head_idx in circuit["induction"]:
+                # receiver_hooks.append((f"blocks.{layer}.attn.hook_q", head_idx))
+                # receiver_hooks.append((f"blocks.{layer}.attn.hook_v", head_idx))
+                receiver_hooks.append((f"blocks.{layer}.attn.hook_k", head_idx))
+            # receiver_hooks.append(
+            #     (f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)
+            # )
 
             model = edge_patching(
                 model=model,
@@ -197,7 +194,7 @@ for pos in ["end"]:
                 positions=[pos],
                 verbose=False,
                 return_hooks=False,
-                freeze_mlps=True,
+                freeze_mlps=False,
             )
 
             cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -249,7 +246,7 @@ ioi_dataset_2 = IOIDataset(
 #%%
 for new_N in range(1, 3):
     # d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
-    d = [ioi_dataset, abc_dataset, ioi_dataset_2][new_N - 1]
+    d = [ioi_dataset, abc_dataset, ioi_dataset][new_N - 1]
     print(f"new_N={new_N}")
     for i in range(new_N):
         for key in d.word_idx.keys():
