@@ -986,8 +986,10 @@ def compute_composition_OV_QK(
     elif mode == "K":
         W_12 = torch.einsum("bc,bc->dc", W_OV, W_QK)  # OV^T * QK
 
+
 def patch_all(z, source_act, hook):
     return source_act
+
 
 def edge_patching(
     model,
@@ -1012,11 +1014,10 @@ def edge_patching(
 
     def patch_positions(z, source_act, hook, positions=["end"]):
         for pos in positions:
-            z[torch.arange(target_dataset.N), target_dataset.word_idx[pos]] = source_act[
-                torch.arange(source_dataset.N), source_dataset.word_idx[pos]
-            ]
+            z[
+                torch.arange(target_dataset.N), target_dataset.word_idx[pos]
+            ] = source_act[torch.arange(source_dataset.N), source_dataset.word_idx[pos]]
         return z
-
 
     sender_hooks = []
 
@@ -1034,8 +1035,9 @@ def edge_patching(
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
-    model.cache_some(sender_cache, lambda x: x in sender_hook_names, suppress_warning=True)
-    # print(f"{sender_hook_names=}")
+    model.cache_some(
+        sender_cache, lambda x: x in sender_hook_names, suppress_warning=True
+    )
     source_logits = model(
         source_dataset.toks.long()
     )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
@@ -1102,7 +1104,9 @@ def edge_patching(
 
     # measure the receiver heads' values
     receiver_cache = {}
-    model.cache_some(receiver_cache, lambda x: x in receiver_hook_names, suppress_warning=True)
+    model.cache_some(
+        receiver_cache, lambda x: x in receiver_hook_names, suppress_warning=True
+    )
     receiver_logits = model(target_dataset.toks.long())
 
     # patch these values in

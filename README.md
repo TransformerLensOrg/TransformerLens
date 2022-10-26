@@ -1,3 +1,5 @@
+NOTE: development paused to fix conceptual difficulties with `patch_and_freeze`
+
 This repository contains the code for all experiments in the paper "Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small" (Wang et al, 2022).
 
 For now, it may be easier to view an earlier version of the experiments at https://drive.google.com/file/d/1kFpJdqIEgjFVJRb5FpdPyuluXq6fUPb_/view . The code in this repository is a work in progress.
