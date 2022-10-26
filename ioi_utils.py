@@ -1034,7 +1034,7 @@ def edge_patching(
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
-    model.cache_some(sender_cache, lambda x: x in sender_hook_names)
+    model.cache_some(sender_cache, lambda x: x in sender_hook_names, suppress_warning=True)
     # print(f"{sender_hook_names=}")
     source_logits = model(
         source_dataset.toks.long()
@@ -1044,7 +1044,7 @@ def edge_patching(
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
-    model.cache_all(target_cache, suppress_warnings=True)
+    model.cache_all(target_cache, suppress_warning=True)
     target_logits = model(target_dataset.toks.long())
 
     # for all the Q, K, V things
