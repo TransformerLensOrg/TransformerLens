@@ -60,14 +60,17 @@ class HookPoint(nn.Module):
         # which are the same for a HookPoint)
 
         if dir == "fwd":
+
             def full_hook(module, module_input, module_output):
                 return hook(module_output, hook=self)
+
             handle = self.register_forward_hook(full_hook)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
+
             handle = self.register_full_backward_hook(full_hook)
             self.bwd_hooks.append(handle)
         else:
@@ -99,19 +102,22 @@ class HookPoint(nn.Module):
         split_name = self.name.split(".")
         return int(split_name[1])
 
+
 # %%
 class HookedRootModule(nn.Module):
     """
     A class building on nn.Module to interface nicely with HookPoints
     Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks, and run_with_cache to run the model on some input and return a cache of all activations
 
-    WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the start and end by default, and I recommend using reset_hooks liberally in your code. 
+    WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the start and end by default, and I recommend using reset_hooks liberally in your code.
 
     The main time this goes wrong is when you want to use backward hooks (to cache or intervene on gradients). In this case, you need to keep the hooks around as global state until you've run loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
     """
+
     def __init__(self, *args):
         super().__init__()
         self.is_caching = False
+
     def setup(self):
         # Setup function - this needs to be run in __init__ AFTER defining all
         # layers
@@ -152,7 +158,14 @@ class HookedRootModule(nn.Module):
                     hp.add_hook(hook, dir=dir)
 
     def run_with_hooks(
-        self, *model_args, fwd_hooks=[], bwd_hooks=[], reset_hooks_start=True, reset_hooks_end=True, clear_contexts=False, **model_kwargs
+        self,
+        *model_args,
+        fwd_hooks=[],
+        bwd_hooks=[],
+        reset_hooks_start=True,
+        reset_hooks_end=True,
+        clear_contexts=False,
+        **model_kwargs,
     ):
         """
         fwd_hooks: A list of (name, hook), where name is either the name of
@@ -189,18 +202,20 @@ class HookedRootModule(nn.Module):
         out = self.forward(*model_args, **model_kwargs)
         if reset_hooks_end:
             if len(bwd_hooks) > 0:
-                logging.warning("WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur")
+                logging.warning(
+                    "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
+                )
             self.reset_hooks(clear_contexts)
         return out
 
     def add_caching_hooks(
-        self, 
-        names_filter: NamesFilter=None, 
-        incl_bwd: bool=False, 
+        self,
+        names_filter: NamesFilter = None,
+        incl_bwd: bool = False,
         device=None,
-        remove_batch_dim: bool=False,
-        cache: Optional[dict]=None
-        ) -> dict:
+        remove_batch_dim: bool = False,
+        cache: Optional[dict] = None,
+    ) -> dict:
         """Adds hooks to the model to cache activations. Note: It does NOT actually run the model to get activations, that must be done separately.
 
         Args:
@@ -209,25 +224,27 @@ class HookedRootModule(nn.Module):
             device (_type_, optional): The device to store on. Defaults to CUDA if available else CPU.
             remove_batch_dim (bool, optional): Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.
             cache (Optional[dict], optional): The cache to store activations in, a new dict is created by default. Defaults to None.
-        
+
         Returns:
             cache (dict): The cache where activations will be stored.
         """
         if remove_batch_dim:
-            logging.warning("Remove batch dim in caching hooks is deprecated. Use the Cache object or run_with_cache flags instead")
+            logging.warning(
+                "Remove batch dim in caching hooks is deprecated. Use the Cache object or run_with_cache flags instead"
+            )
 
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         if cache is None:
             cache = {}
-        
+
         if names_filter is None:
             names_filter = lambda name: True
-        elif type(names_filter)==str:
-            names_filter = lambda name: name==names_filter
-        elif type(names_filter)==list:
+        elif type(names_filter) == str:
+            names_filter = lambda name: name == names_filter
+        elif type(names_filter) == list:
             names_filter = lambda name: name in names_filter
-        
+
         self.is_caching = True
 
         def save_hook(tensor, hook):
@@ -241,18 +258,18 @@ class HookedRootModule(nn.Module):
                 cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
             else:
                 cache[hook.name + "_grad"] = tensor[0].detach().to(device)
-        
+
         for name, hp in self.hook_dict.items():
             if names_filter(name):
                 hp.add_hook(save_hook, "fwd")
                 if incl_bwd:
                     hp.add_hook(save_hook_back, "bwd")
         return cache
-    
+
     def run_with_cache(
         self,
-        *model_args, 
-        names_filter: NamesFilter=None,
+        *model_args,
+        names_filter: NamesFilter = None,
         device=None,
         remove_batch_dim=False,
         incl_bwd=False,
@@ -260,7 +277,8 @@ class HookedRootModule(nn.Module):
         reset_hooks_start=True,
         clear_contexts=False,
         return_cache_object=True,
-        **model_kwargs):
+        **model_kwargs,
+    ):
         """
         Runs the model and returns model output and a Cache object
 
@@ -277,28 +295,64 @@ class HookedRootModule(nn.Module):
         """
         if reset_hooks_start:
             self.reset_hooks(clear_contexts)
-        cache_dict = self.add_caching_hooks(names_filter, incl_bwd, device, remove_batch_dim)
+        cache_dict = self.add_caching_hooks(
+            names_filter, incl_bwd, device, remove_batch_dim
+        )
         model_out = self(*model_args, **model_kwargs)
 
         if incl_bwd:
             model_out.backward()
-        
+
         if return_cache_object:
             cache = ActivationCache(cache_dict, self)
         else:
             cache = cache_dict
-        
+
         if reset_hooks_end:
             self.reset_hooks(clear_contexts)
         return model_out, cache
 
+    def cache_all(
+        self,
+        cache,
+        incl_bwd=False,
+        device=None,
+        remove_batch_dim=False,
+        suppress_warning=False,
+    ):
+        if not suppress_warning:
+            logging.warning(
+                "cache_all is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache"
+            )
+        self.add_caching_hooks(
+            names_filter=lambda name: True,
+            cache=cache,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+        )
 
-    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
-        logging.warning("cache_all is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache")
-        self.add_caching_hooks(names_filter=lambda name: True, cache=cache, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
-
-    def cache_some(self, cache, names: Callable[[str], bool], incl_bwd=False, device=None, remove_batch_dim=False):
+    def cache_some(
+        self,
+        cache,
+        names: Callable[[str], bool],
+        incl_bwd=False,
+        device=None,
+        remove_batch_dim=False,
+        suppress_warning=False,
+    ):
         """Cache a list of hook provided by names, Boolean function on names"""
-        logging.warning("cache_some is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache")
-        self.add_caching_hooks(names_filter=names, cache=cache, incl_bwd=incl_bwd, device=device, remove_batch_dim=remove_batch_dim)
+        if not suppress_warning:
+            logging.warning(
+                "cache_some is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache"
+            )
+        self.add_caching_hooks(
+            names_filter=names,
+            cache=cache,
+            incl_bwd=incl_bwd,
+            device=device,
+            remove_batch_dim=remove_batch_dim,
+        )
+
+
 # %%

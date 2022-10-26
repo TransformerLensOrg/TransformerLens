@@ -1,3 +1,4 @@
+from contextlib import suppress
 import warnings
 from functools import partial
 from easy_transformer import EasyTransformer
@@ -1043,7 +1044,7 @@ def edge_patching(
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
-    model.cache_all(target_cache)
+    model.cache_all(target_cache, suppress_warnings=True)
     target_logits = model(target_dataset.toks.long())
 
     # for all the Q, K, V things
@@ -1101,7 +1102,7 @@ def edge_patching(
 
     # measure the receiver heads' values
     receiver_cache = {}
-    model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
+    model.cache_some(receiver_cache, lambda x: x in receiver_hook_names, suppress_warning=True)
     receiver_logits = model(target_dataset.toks.long())
 
     # patch these values in
