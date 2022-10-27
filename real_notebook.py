@@ -215,7 +215,6 @@ for source_layer in tqdm(range(12)):
 scatter_attention_and_contribution(
     model=model, layer_no=9, head_no=9, ioi_dataset=ioi_dataset
 )
-
 #%% [markdown] Copy score
 
 
