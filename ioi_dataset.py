@@ -738,18 +738,19 @@ class IOIDataset:
                 f"Some groups have less than 5 prompts, they have lengths {small_groups}"
             )
 
-        self.text_prompts = [
+        text_prompts = [
             prompt["text"] for prompt in self.ioi_prompts
-        ]  # a list of strings
+        ]  # a list of strings. No longer an attribute as it causes problems on forward passes
 
         self.templates_by_prompt = []  # for each prompt if it's ABBA or BABA
         for i in range(N):
-            if self.text_prompts[i].index(
+            if text_prompts[i].index(
                 self.ioi_prompts[i]["IO"]
-            ) < self.text_prompts[i].index(self.ioi_prompts[i]["S"]):
+            ) < text_prompts[i].index(self.ioi_prompts[i]["S"]):
                 self.templates_by_prompt.append("ABBA")
             else:
                 self.templates_by_prompt.append("BABA")
+
 
         # print(self.ioi_prompts, "that's that")
         texts = [

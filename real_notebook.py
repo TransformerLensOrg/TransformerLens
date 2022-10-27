@@ -10,11 +10,12 @@
 #
 # Reminder of the circuit:
 # <img src="https://i.imgur.com/arokEMj.png">
-#%% [markdown] 
+#%% [markdown]
 # Setup (TODO cut extras)
 from copy import deepcopy
 import os
 import torch
+
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
@@ -116,7 +117,7 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-#%% [markdown] 
+#%% [markdown]
 # Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
 model = EasyTransformer.from_pretrained("gpt2").cuda()
 model.set_use_attn_result(True)
@@ -131,14 +132,16 @@ ioi_dataset = IOIDataset(
 )
 
 print(f"Here are two of the prompts from the dataset: {ioi_dataset.text_prompts[:2]}")
-#%% [markdown] see logit difference
+#%% [markdown]
+# See logit difference
 model_logit_diff = logit_diff(model, ioi_dataset)
 model_io_probs = probs(model, ioi_dataset)
 print(
     f"The model gets average logit difference {model_logit_diff.item()} over {N} examples"
 )
 print(f"The model gets average IO probs {model_io_probs.item()} over {N} examples")
-#%% [markdown] the circuit
+#%% [markdown]
+# The circuit
 circuit = deepcopy(CIRCUIT)
 
 # we make the ABC dataset in order to knockout other model components
@@ -149,8 +152,6 @@ abc_dataset = (
 )
 # we then add hooks to the model to knockout all the heads except the circuit
 model.reset_hooks()
-relevant_heads = get_heads_circuit(ioi_dataset=ioi_dataset, circuit=circuit)
-# relevant_heads.pop((5, 9))
 model, _ = do_circuit_extraction(
     model=model,
     heads_to_keep=get_heads_circuit(ioi_dataset=ioi_dataset, circuit=circuit),
@@ -163,65 +164,177 @@ circuit_logit_diff = logit_diff(model, ioi_dataset)
 print(
     f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"
 )
-#%% [markdown] edge patching
-model.reset_hooks()
-default_logit_diff = logit_diff(model, ioi_dataset)
-results = torch.zeros(size=(12, 12))
-mlp_results = torch.zeros(size=(12, 1))
-for source_layer in tqdm(range(12)):
-    for source_head_idx in [None] + list(range(12)):
-        model.reset_hooks()
-        receiver_hooks = []
-        receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
+#%% [markdown]
+# Edge patching
 
-        model = path_patching(
-            model=model,
-            source_dataset=abc_dataset,
-            target_dataset=ioi_dataset,
-            ioi_dataset=ioi_dataset,
-            sender_heads=[(source_layer, source_head_idx)],
-            receiver_hooks=receiver_hooks,
-            max_layer=12,
-            positions=["end"],
-            verbose=False,
-            return_hooks=False,
-            freeze_mlps=False,
-            have_internal_interactions=False,
-        )
-        cur_logit_diff = logit_diff(model, ioi_dataset)
 
-        if source_head_idx is None:
-            mlp_results[source_layer] = cur_logit_diff - default_logit_diff
-        else:
-            results[source_layer][source_head_idx] = cur_logit_diff - default_logit_diff
+def plot_edge_patching(
+    model,
+    ioi_dataset,
+    receiver_hooks,  # list of tuples (hook_name, idx). If idx is not None, then at dim 2 index in with idx (used for doing things for specific attention heads)
+    position,
+):
+    model.reset_hooks()
+    default_logit_diff = logit_diff(model, ioi_dataset)
+    results = torch.zeros(size=(12, 12))
+    mlp_results = torch.zeros(size=(12, 1))
+    for source_layer in tqdm(range(12)):
+        for source_head_idx in [None] + list(range(12)):
+            model.reset_hooks()
 
-        if source_layer == 1:
-            assert not torch.allclose(results, 0.0 * results), results
-
-        if source_layer == 11 and source_head_idx == 11:
-            results /= default_logit_diff
-            mlp_results /= default_logit_diff
-
-            # show attention head results
-            fig = show_pp(
-                results.T,
-                title=f"Effect of patching (Heads->Final Residual Stream State) path",
-                return_fig=True,
-                show_fig=False,
-                bartitle="% change in logit difference",
+            model = path_patching(
+                model=model,
+                source_dataset=abc_dataset,
+                target_dataset=ioi_dataset,
+                ioi_dataset=ioi_dataset,
+                sender_heads=[(source_layer, source_head_idx)],
+                receiver_hooks=receiver_hooks,
+                max_layer=12,
+                positions=[position],
+                verbose=False,
+                return_hooks=False,
+                freeze_mlps=False,
+                have_internal_interactions=False,
             )
-            fig.show()
-#%% [markdown] reproduce writing results (change the )
+            cur_logit_diff = logit_diff(model, ioi_dataset)
+
+            if source_head_idx is None:
+                mlp_results[source_layer] = cur_logit_diff - default_logit_diff
+            else:
+                results[source_layer][source_head_idx] = (
+                    cur_logit_diff - default_logit_diff
+                )
+
+            if source_layer == 1:
+                assert not torch.allclose(results, 0.0 * results), results
+
+            if source_layer == 11 and source_head_idx == 11:
+                results /= default_logit_diff
+                mlp_results /= default_logit_diff
+
+                # show attention head results
+                fig = show_pp(
+                    results.T,
+                    title=f"Effect of patching (Heads->Final Residual Stream State) path",
+                    return_fig=True,
+                    show_fig=False,
+                    bartitle="% change in logit difference",
+                )
+                fig.show()
+
+
+plot_edge_patching(
+    model,
+    ioi_dataset,
+    receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
+    position="end",
+)
+#%% [markdown]
+# Reproduce writing results (change the layer_no and head_no)
 scatter_attention_and_contribution(
     model=model, layer_no=9, head_no=9, ioi_dataset=ioi_dataset
 )
-#%% [markdown] Copy score
+#%% [markdown]
+# Look at the copy score for the Name Mover and Negative heads
 
 
+def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False):
+    cache = {}
+    model.cache_some(cache, lambda x: x == "blocks.0.hook_resid_post")
+    model(ioi_dataset.toks.long())
+    if neg:
+        sign = -1
+    else:
+        sign = 1
+    z_0 = model.blocks[1].ln1(cache["blocks.0.hook_resid_post"])
 
-#%% [markdown] S-Inhibition patching
+    v = torch.einsum("eab,bc->eac", z_0, model.blocks[layer].attn.W_V[head])
+    v += model.blocks[layer].attn.b_V[head].unsqueeze(0).unsqueeze(0)
+
+    o = sign * torch.einsum("sph,hd->spd", v, model.blocks[layer].attn.W_O[head])
+    logits = model.unembed(model.ln_final(o))
+
+    k = 5
+    n_right = 0
+
+    for seq_idx, prompt in enumerate(ioi_dataset.ioi_prompts):
+        for word in ["IO", "S", "S2"]:
+            pred_tokens = [
+                model.tokenizer.decode(token)
+                for token in torch.topk(
+                    logits[seq_idx, ioi_dataset.word_idx[word][seq_idx]], k
+                ).indices
+            ]
+            if "S" in word:
+                name = "S"
+            else:
+                name = word
+            if " " + prompt[name] in pred_tokens:
+                n_right += 1
+            else:
+                if verbose:
+                    print("-------")
+                    print("Seq: " + ioi_dataset.text_prompts[seq_idx])
+                    print("Target: " + ioi_dataset.ioi_prompts[seq_idx][name])
+                    print(
+                        " ".join(
+                            [
+                                f"({i+1}):{model.tokenizer.decode(token)}"
+                                for i, token in enumerate(
+                                    torch.topk(
+                                        logits[
+                                            seq_idx, ioi_dataset.word_idx[word][seq_idx]
+                                        ],
+                                        k,
+                                    ).indices
+                                )
+                            ]
+                        )
+                    )
+    percent_right = (n_right / (ioi_dataset.N * 3)) * 100
+    print(
+        f"Copy circuit for head {layer}.{head} (sign={sign}) : Top {k} accuracy: {percent_right}%"
+    )
+    return percent_right
+
+
+neg_sign = False
+print(" --- Name Mover heads --- ")
+check_copy_circuit(model, 9, 9, ioi_dataset, neg=neg_sign)
+check_copy_circuit(model, 10, 0, ioi_dataset, neg=neg_sign)
+check_copy_circuit(model, 9, 6, ioi_dataset, neg=neg_sign)
+
+neg_sign = True
+print(" --- Calibration heads --- ")
+check_copy_circuit(model, 10, 7, ioi_dataset, neg=neg_sign)
+check_copy_circuit(model, 11, 10, ioi_dataset, neg=neg_sign)
+
+neg_sign = False
+print(" ---  Random heads for control ---  ")
+check_copy_circuit(
+    model, random.randint(0, 11), random.randint(0, 11), ioi_dataset, neg=neg_sign
+)
+check_copy_circuit(
+    model, random.randint(0, 11), random.randint(0, 11), ioi_dataset, neg=neg_sign
+)
+check_copy_circuit(
+    model, random.randint(0, 11), random.randint(0, 11), ioi_dataset, neg=neg_sign
+)
+#%% [markdown]
+# S-Inhibition patching
+
+plot_edge_patching(
+    model,
+    ioi_dataset,
+    receiver_hooks=[
+        (f"blocks.{layer_idx}.attn.hook_v", head_idx)
+        for layer_idx, head_idx in circuit["s2 inhibition"]
+    ],
+    position="S2",
+)
 
 #%% [markdown] Attention probs of NMs (ehhh is just making a bar chart?)
+
 
 #%% [markdown] And attention on a single sentence
 
