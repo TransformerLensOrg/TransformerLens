@@ -85,7 +85,7 @@ from ioi_utils import (
     safe_del,
 )
 from ioi_circuit_extraction import (
-    ALEX_NAIVE,
+    NAIVE,
     join_lists,
     CIRCUIT,
     RELEVANT_TOKENS,
@@ -120,7 +120,7 @@ cde_dataset = (
 mean_dataset = cde_dataset
 #%% # do some initial experiments with the naive circuit
 # UH - IS THIS JUST NOT GOOD?
-circuits = [None, CIRCUIT.copy(), ALEX_NAIVE.copy()]
+circuits = [None, CIRCUIT.copy(), NAIVE.copy()]
 circuit = circuits[1]
 
 metric = logit_diff
@@ -513,7 +513,7 @@ fig.update_layout(
 
 fig.show()
 # %% # show some previous token head importance results (not that important)
-circuit = ALEX_NAIVE.copy()
+circuit = NAIVE.copy()
 lds = {}
 prbs = {}
 

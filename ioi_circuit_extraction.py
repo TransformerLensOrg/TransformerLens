@@ -165,29 +165,6 @@ def get_extracted_idx(idx_list: List[str], ioi_dataset):
     return int_idx
 
 
-SMALL_CIRCUIT = {
-    "name mover": [
-        (9, 9),
-        (10, 0),
-        (9, 6),
-    ],
-    "negative": [],
-    "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-    "induction": [(5, 5), (5, 8), (5, 9), (6, 9)],
-    "duplicate token": [(0, 1), (0, 10), (3, 0)],
-    "previous token": [(2, 2), (2, 9), (4, 11)],
-}
-
-MED_CIRCUIT = deepcopy(SMALL_CIRCUIT)
-CIRCUIT = deepcopy(SMALL_CIRCUIT)
-
-for head in [(10, 10), (10, 2), (11, 2), (10, 6), (10, 1), (11, 9), (9, 7), (11, 3)]:
-    CIRCUIT["name mover"].append(head)
-
-for head in [(10, 7), (11, 10)]:
-    for circuit in [CIRCUIT, MED_CIRCUIT]:
-        circuit["negative"].append(head)
-
 CIRCUIT = {
     "name mover": [
         (9, 9),  # by importance
@@ -201,7 +178,6 @@ CIRCUIT = {
         (9, 7),
         (9, 0),
         (11, 9),
-        # (11, 3), # very weak
     ],
     "negative": [(10, 7), (11, 10)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
@@ -212,7 +188,7 @@ CIRCUIT = {
         (3, 0),
         # (7, 1),
     ],  # unclear exactly what (7,1) does
-    "previous token": [  # sheesh
+    "previous token": [
         (2, 2),
         # (2, 9),
         (4, 11),
@@ -225,9 +201,6 @@ CIRCUIT = {
     ],
 }
 
-ARTHUR_CIRCUIT = deepcopy(CIRCUIT)
-ARTHUR_CIRCUIT.pop("duplicate token")
-ARTHUR_CIRCUIT["induction"] = [(5, 5), (6, 9)]
 
 RELEVANT_TOKENS = {}
 for head in CIRCUIT["name mover"] + CIRCUIT["negative"] + CIRCUIT["s2 inhibition"]:
@@ -247,18 +220,8 @@ for h in RELEVANT_TOKENS:
     for tok in RELEVANT_TOKENS[h]:
         ALL_NODES.append((h, tok))
 
-# ALEX_NAIVE_CIRCUIT = {
-#     "name mover": [
-#         (10, 6),
-#         (9, 9),
-#         (10, 2),
-#     ],
-#     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
-#     "duplicate token": [(1, 11), (0, 10), (3, 0)],
-# }
 
-
-ALEX_NAIVE = {
+NAIVE = {
     "name mover": [(9, 6), (9, 9), (10, 0)],
     "s2 inhibition": [(7, 3), (7, 9), (8, 6), (8, 10)],
     "induction": [(5, 5), (5, 9)],

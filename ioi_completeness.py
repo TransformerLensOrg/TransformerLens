@@ -2,7 +2,7 @@
 import os
 import torch
 
-from ioi_circuit_extraction import ALEX_NAIVE
+from ioi_circuit_extraction import NAIVE
 
 if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
@@ -97,7 +97,7 @@ from ioi_utils import (
 from ioi_circuit_extraction import (
     join_lists,
     CIRCUIT,
-    ALEX_NAIVE,
+    NAIVE,
     RELEVANT_TOKENS,
     get_extracted_idx,
     get_heads_circuit,
@@ -120,8 +120,8 @@ plotly_colors = [
 from functools import partial
 
 #%% [markdown]
-# # <h1><b>Setup</b></h1>
-# Import model and dataset
+# # <h1><b>Completeness</b></h1>
+# In this notebook, we compute the incompleteness scores for the circuit classes, and use precomputed data to plot the random and greedy incompleteness scores
 
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
@@ -135,7 +135,7 @@ if torch.cuda.is_available():
     model.to(device)
 
 print_gpu_mem("Gpt2 loaded")
-# %%
+#%%
 # IOI Dataset initialisation
 
 N = 100
@@ -158,194 +158,6 @@ def get_all_nodes(circuit):
     return nodes
 
 
-# ## define useful function
-
-
-# def get_heads_from_nodes(nodes, ioi_dataset):
-#     heads_to_keep_tok = {}
-#     for h, t in nodes:
-#         if h not in heads_to_keep_tok:
-#             heads_to_keep_tok[h] = []
-#         if t not in heads_to_keep_tok[h]:
-#             heads_to_keep_tok[h].append(t)
-
-#     heads_to_keep = {}
-#     for h in heads_to_keep_tok:
-#         heads_to_keep[h] = get_extracted_idx(heads_to_keep_tok[h], ioi_dataset)
-
-#     return heads_to_keep
-
-
-# def circuit_from_nodes_logit_diff(model, ioi_dataset, nodes):
-#     """Take a list of nodes, return the logit diff of the circuit described by the nodes"""
-#     heads_to_keep = get_heads_from_nodes(nodes, ioi_dataset)
-#     # print(heads_to_keep)
-#     model.reset_hooks()
-#     model, _ = do_circuit_extraction(
-#         model=model,
-#         heads_to_keep=heads_to_keep,
-#         mlps_to_remove={},
-#         ioi_dataset=ioi_dataset,
-#     )
-#     return logit_diff(model, ioi_dataset, all=False)
-
-
-# def circuit_from_heads_logit_diff(
-#     model, ioi_dataset, mean_dataset, heads_to_rmv=None, heads_to_kp=None, all=False
-# ):
-#     model.reset_hooks()
-#     model, _ = do_circuit_extraction(
-#         model=model,
-#         heads_to_keep=heads_to_kp,
-#         heads_to_remove=heads_to_rmv,
-#         mlps_to_remove={},
-#         ioi_dataset=ioi_dataset,
-#         mean_dataset=mean_dataset,
-#     )
-#     return logit_diff(model, ioi_dataset, all=all)
-
-
-# def greed_search_max_broken(get_circuit_logit_diff):
-#     NODES_PER_STEP = 10
-#     NB_SETS = 5
-#     NB_ITER = 10
-#     current_nodes = ALL_NODES.copy()
-#     all_sets = []
-#     all_node_baseline = get_circuit_logit_diff(ALL_NODES)
-
-#     for step in range(NB_SETS):
-#         current_nodes = ALL_NODES.copy()
-#         nodes_removed = []
-#         baseline = all_node_baseline
-
-#         for iter in range(NB_ITER):
-#             to_test = random.sample(current_nodes, NODES_PER_STEP)
-
-#             results = []
-#             for node in to_test:  # check wich heads in to_test causes the biggest drop
-#                 circuit_minus_node = current_nodes.copy()
-#                 circuit_minus_node.remove(node)
-#                 results.append(get_circuit_logit_diff(circuit_minus_node))
-
-#             diff_to_baseline = [(results[i] - baseline) for i in range(len(results))]
-#             best_node_idx = np.argmin(diff_to_baseline)
-
-#             best_node = to_test[best_node_idx]
-#             current_nodes.remove(best_node)  # we remove the best node from the circuit
-#             nodes_removed.append(best_node)
-
-#             if (
-#                 iter > NB_ITER // 2 - 1
-#             ):  # we begin to save the sets after half of the iterations
-#                 all_sets.append(
-#                     {
-#                         "circuit_nodes": current_nodes.copy(),
-#                         "removed_nodes": nodes_removed.copy(),
-#                     }
-#                 )
-
-#             print(
-#                 f"iter: {iter} - best node:{best_node} - drop:{min(diff_to_baseline)} - baseline:{baseline}"
-#             )
-#             print_gpu_mem(f"iter {iter}")
-#             baseline = results[best_node_idx]  # new baseline for the next iteration
-#     return all_sets
-
-
-# def test_minimality(model, ioi_dataset, v, J, absolute=True):
-#     """Compute |Metric( (C\J) U {v}) - Metric(C\J)| where J is a list of nodes, v is a node"""
-#     C_minus_J = list(set(ALL_NODES.copy()) - set(J.copy()))
-
-#     LD_C_m_J = circuit_from_nodes_logit_diff(
-#         model, ioi_dataset, C_minus_J
-#     )  # metric(C\J)
-#     C_minus_J_plus_v = set(C_minus_J.copy())
-#     C_minus_J_plus_v.add(v)
-#     C_minus_J_plus_v = list(C_minus_J_plus_v)
-
-#     LD_C_m_J_plus_v = circuit_from_nodes_logit_diff(
-#         model, ioi_dataset, C_minus_J_plus_v
-#     )  # metric( (C\J) U {v})
-#     if absolute:
-#         return np.abs(LD_C_m_J - LD_C_m_J_plus_v)
-#     else:
-#         return LD_C_m_J - LD_C_m_J_plus_v
-
-
-# def add_key_to_json_dict(fname, key, value):
-#     with open(fname, "r") as f:
-#         d = json.load(f)
-#     d[key] = value
-#     with open(fname, "w") as f:
-#         json.dump(d, f)
-
-
-# def greed_search_max_brok_cob_diff(
-#     get_cob_brok_from_nodes,
-#     init_set=[],
-#     NODES_PER_STEP=10,
-#     NB_SETS=5,
-#     NB_ITER=10,
-#     verbose=True,
-#     save_to_file=False,
-# ):
-#     """Greedy search to find G that maximize the difference between broken and cobbled circuit |metric(C\G) - metric(M\G)| . Return a list of node sets."""
-#     all_sets = []
-
-#     neg_head_in_G = False
-#     if neg_head_in_G:
-#         init_set = list(set(init_set) + set([((10, 7), "end"), ((11, 10), "end")]))
-
-#     all_node_baseline = get_cob_brok_from_nodes(
-#         nodes=init_set
-#     )  # |metric(C) - metric(M)|
-
-#     C_minus_G_init = ALL_NODES.copy()
-#     for n in init_set:
-#         C_minus_G_init.remove(n)
-
-#     for step in range(NB_SETS):
-
-#         C_minus_G = C_minus_G_init.copy()
-#         G = init_set.copy()
-
-#         old_diff = all_node_baseline
-
-#         for iter in range(NB_ITER):
-
-#             to_test = random.sample(C_minus_G, min(NODES_PER_STEP, len(C_minus_G)))
-
-#             results = []
-#             for node in to_test:  # check wich heads in to_test causes the biggest drop
-#                 G_plus_node = G.copy()
-#                 G_plus_node.append(node)
-#                 results.append(get_cob_brok_from_nodes(G_plus_node))
-
-#             best_node_idx = np.argmax(results)
-#             max_diff = results[best_node_idx]
-#             if max_diff > old_diff:
-#                 best_node = to_test[best_node_idx]
-#                 C_minus_G.remove(best_node)  # we remove the best node from the circuit
-#                 G.append(best_node)
-#                 old_diff = max_diff
-
-#                 all_sets.append(
-#                     {"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()}
-#                 )
-#                 if verbose:
-#                     print(
-#                         f"iter: {iter} - best node:{best_node} - max brok cob diff:{max(results)} - baseline:{all_node_baseline}"
-#                     )
-#                     print_gpu_mem(f"iter {iter}")
-#         all_sets.append({"circuit_nodes": C_minus_G.copy(), "removed_nodes": G.copy()})
-#         if save_to_file:
-#             with open(
-#                 f"jsons/greed_search_max_brok_cob_diff_{step}_{ctime()}.json", "w"
-#             ) as f:
-#                 json.dump(all_sets, f)
-#     return all_sets
-
-
 #%% [markdown]
 # # <h1><b>Setup</b></h1>
 # Import model and dataset
@@ -357,7 +169,7 @@ model.reset_hooks()
 logit_diff_M = logit_diff(model, ioi_dataset)
 print(f"logit_diff_M: {logit_diff_M}")
 
-for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
+for circuit in [CIRCUIT.copy(), NAIVE.copy()]:
     all_nodes = get_all_nodes(circuit)
     heads_to_keep = get_heads_circuit(ioi_dataset, excluded=[], circuit=circuit)
     model, _ = do_circuit_extraction(
@@ -370,8 +182,8 @@ for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
 
     logit_diff_circuit = logit_diff(model, ioi_dataset)
     print(f"{logit_diff_circuit}")
-# %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
-circuit = deepcopy(ALEX_NAIVE)
+# %% [markdown] select CIRCUIT or NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
+circuit = deepcopy(NAIVE)
 print("Working with", circuit)
 cur_metric = logit_diff
 
@@ -557,12 +369,15 @@ fig.write_image(fpath)
 fig.show()
 
 #%% [markdown]
-# Run a greedy search
+# Run a greedy search. Set `skip_greedy` to `True` to skip this step.
 
+skip_greedy = True
 do_asserts = False
 
 for doover in range(int(1e9)):
-    for raw_circuit_idx, raw_circuit in enumerate([CIRCUIT, ALEX_NAIVE]):
+    if skip_greedy:
+        break
+    for raw_circuit_idx, raw_circuit in enumerate([CIRCUIT, NAIVE]):
 
         if doover == 0 and raw_circuit_idx == 0:
             print("Starting with the NAIVE!")
@@ -796,11 +611,12 @@ for doover in range(int(1e9)):
             verbose=True,
         )
 #%% [markdown]
-# Do random search too
+# Do random search too. Set `skip_random` to `True` to skip this part.
 
+skip_random = True
 mode = "naive"
 if mode == "naive":
-    circuit = deepcopy(ALEX_NAIVE)
+    circuit = deepcopy(NAIVE)
 else:
     circuit = deepcopy(CIRCUIT)
 all_nodes = get_all_nodes(circuit)
@@ -809,6 +625,8 @@ xs = []
 ys = []
 
 for _ in range(100):
+    if skip_random:
+        break
     indicator = torch.randint(0, 2, (len(all_nodes),))
     nodes = [node[0] for node, ind in zip(all_nodes, indicator) if ind == 1]
     c = circuit_eval(model, nodes)
@@ -818,15 +636,11 @@ for _ in range(100):
     xs.append(c)
     ys.append(m)
 
-torch.save(xs, f"pts/{mode}_random_xs.pt")
-torch.save(ys, f"pts/{mode}_random_ys.pt")
+if not skip_random:
+    torch.save(xs, f"pts/{mode}_random_xs.pt")
+    torch.save(ys, f"pts/{mode}_random_ys.pt")
 
 #%% [markdown] hopefully ignoarable plottig proceessin
-
-# style of file
-"""
-{"no_runs": 10, "no_iters": 10, "no_samples": 5, "run 0": {"result": 2.9001526832580566, "best set": [[0, 10], [2, 2], [8, 10], [4, 11]], "ceval": -1.0231037139892578, "meval": 1.8770489692687988}}
-"""
 
 assert os.getcwd().endswith("Easy-Transformer"), os.getcwd
 fnames = os.listdir("jsons")
@@ -854,7 +668,8 @@ for circuit_idx in range(0, 2):  # 0 is our circuit, 1 is naive
 
                 else:
                     pass
-#%%
+#%% [markdown]
+# Plot the plot for greedy or naive. Change `mode` to switch between the two.
 
 mode = "complete"
 # mode = "naive"
@@ -900,8 +715,8 @@ for i, perf in enumerate(perf_by_sets):
     continue
 
 # add the greedy
-greedy_xs = torch.load(f"pts/{mode}_xs.pt")[:30]
-greedy_ys = torch.load(f"pts/{mode}_ys.pt")[:30]
+greedy_xs = torch.load(f"pts/{mode}_xs.pt")
+greedy_ys = torch.load(f"pts/{mode}_ys.pt")
 
 fig.add_trace(
     go.Scatter(
@@ -914,8 +729,8 @@ fig.add_trace(
 )
 
 # add the random
-random_xs = torch.load(f"pts/{mode}_random_xs.pt")  # [:10]
-random_ys = torch.load(f"pts/{mode}_random_ys.pt")  # [:10]
+random_xs = torch.load(f"pts/{mode}_random_xs.pt")
+random_ys = torch.load(f"pts/{mode}_random_ys.pt")
 
 fig.add_trace(
     go.Scatter(
