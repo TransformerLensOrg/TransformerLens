@@ -159,10 +159,10 @@ def show_attention_patterns(
         "val",
         "scores",
     ]  # value weighted attention or attn for attention probas
-    if "IOIDataset" in str(type(ioi_dataset)):
-        prompts = ioi_dataset.text_prompts
-    else:
-        prompts = ioi_dataset
+    assert isinstance(
+        ioi_dataset, IOIDataset
+    ), f"ioi_dataset must be an IOIDataset {type(ioi_dataset)}"
+    prompts = ioi_dataset.sentences
     assert len(heads) == 1 or not (return_fig or return_mtx)
 
     for (layer, head) in heads:
@@ -178,7 +178,6 @@ def show_attention_patterns(
                 cache=cache, names=lambda x: x in good_names
             )  # shape: batch head_no seq_len seq_len
             logits = model(ioi_dataset.toks.long())
-            print(cache.keys(), good_names)
         else:
             cache = precomputed_cache
         attn_results = torch.zeros(
@@ -188,7 +187,7 @@ def show_attention_patterns(
 
         for i, text in enumerate(prompts):
             # assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
-            toks = model.tokenizer(text)["input_ids"]
+            toks = ioi_dataset.toks[i] # model.tokenizer(text)["input_ids"]
             current_length = len(toks)
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
@@ -231,11 +230,8 @@ def show_attention_patterns(
         if return_fig and not return_mtx:
             return fig
         elif return_mtx and not return_fig:
-            # if mode in ["attn", "scores"]:
             warnings.warn("Unsafe")
             return attn_results
-
-            raise NotImplementedError("I think this is easy but I'm not doing it now")
 
 
 def safe_del(a):
@@ -296,7 +292,7 @@ def scatter_attention_and_contribution(
 
     logits = model(ioi_dataset.toks.long())
 
-    for i, prompt in tqdm(enumerate(ioi_dataset.ioi_prompts)):
+    for i, prompt in enumerate(ioi_dataset.ioi_prompts):
 
         io_tok = model.tokenizer(" " + prompt["IO"])["input_ids"][0]
         s_tok = model.tokenizer(" " + prompt["S"])["input_ids"][0]

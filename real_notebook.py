@@ -131,7 +131,7 @@ ioi_dataset = IOIDataset(
     prepend_bos=False,
 )
 
-print(f"Here are two of the prompts from the dataset: {ioi_dataset.text_prompts[:2]}")
+print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
 #%% [markdown]
 # See logit difference
 model_logit_diff = logit_diff(model, ioi_dataset)
@@ -166,8 +166,6 @@ print(
 )
 #%% [markdown]
 # Edge patching
-
-
 def plot_edge_patching(
     model,
     ioi_dataset,
@@ -212,6 +210,9 @@ def plot_edge_patching(
                 results /= default_logit_diff
                 mlp_results /= default_logit_diff
 
+                results *= 100
+                mlp_results *= 100
+
                 # show attention head results
                 fig = show_pp(
                     results.T,
@@ -231,6 +232,7 @@ plot_edge_patching(
 )
 #%% [markdown]
 # Reproduce writing results (change the layer_no and head_no)
+
 scatter_attention_and_contribution(
     model=model, layer_no=9, head_no=9, ioi_dataset=ioi_dataset
 )
@@ -274,7 +276,7 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False
             else:
                 if verbose:
                     print("-------")
-                    print("Seq: " + ioi_dataset.text_prompts[seq_idx])
+                    print("Seq: " + ioi_dataset.sentences[seq_idx])
                     print("Target: " + ioi_dataset.ioi_prompts[seq_idx][name])
                     print(
                         " ".join(
@@ -333,12 +335,56 @@ plot_edge_patching(
     position="S2",
 )
 
-#%% [markdown] Attention probs of NMs (ehhh is just making a bar chart?)
+#%% [markdown]
+# Attention probs of NMs
 
+ys = []
+average_attention = {}
 
+for idx, dataset in enumerate([ioi_dataset, abc_dataset]):
+    fig = go.Figure()
+    for heads_raw in circuit["name mover"][
+        :3
+    ]: 
+        heads = [heads_raw]
+        average_attention[heads_raw] = {}
+        cur_ys = []
+        cur_stds = []
+        att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
+        for head in tqdm(heads):
+            att += show_attention_patterns(
+                model, [head], dataset, return_mtx=True, mode="attn"
+            )
+        att /= len(heads)
+
+        vals = att[torch.arange(dataset.N), ioi_dataset.word_idx["end"][: dataset.N], :]
+        evals = torch.exp(vals)
+        val_sum = torch.sum(evals, dim=1)
+        assert val_sum.shape == (dataset.N,), val_sum.shape
+
+        for key in ioi_dataset.word_idx.keys():
+            end_to_s2 = att[
+                torch.arange(dataset.N),
+                ioi_dataset.word_idx["end"][: dataset.N],
+                ioi_dataset.word_idx[key][: dataset.N],
+            ]
+            cur_ys.append(end_to_s2.mean().item())
+            cur_stds.append(end_to_s2.std().item())
+            average_attention[heads_raw][key] = end_to_s2.mean().item()
+        fig.add_trace(
+            go.Bar(
+                x=list(ioi_dataset.word_idx.keys()),
+                y=cur_ys,
+                error_y=dict(type="data", array=cur_stds),
+                name=str(heads_raw),
+            )
+        )
+        fig.update_layout(title_text=f"Attention of NMs from END to various positions on {["ioi_dataset", "abc_dataset"][idx]}")
+    fig.show()
 #%% [markdown] And attention on a single sentence
 
-#%% [markdown] Duplicate tokens and Inductions
+model.reset_hooks()
+show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 
 #%% [markdown] Position and token signals???
 

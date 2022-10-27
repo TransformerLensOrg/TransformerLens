@@ -2085,6 +2085,7 @@ cur_io_probs = probs(model, ioi_dataset)
 print(f"{cur_logit_diff}, {cur_io_probs}")
 #%% [markdown] -> S2 Inhibition: Q versus K composition
 # save the Inhibition K scores, when we ablate all the Induction and Duplicate token heads
+
 names = [
     "ioi_dataset",
     "abca_dataset",

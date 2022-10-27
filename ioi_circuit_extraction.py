@@ -53,7 +53,7 @@ def process_heads_and_mlps(
     n_layers = model.cfg.n_layers
     n_heads = model.cfg.n_heads
 
-    dataset_length = len(ioi_dataset.text_prompts)
+    dataset_length = ioi_dataset.N
 
     if mlps_to_remove is not None:
         mlps = mlps_to_remove.copy()
@@ -112,7 +112,7 @@ def get_circuit_replacement_hook(
     else:
         heads2, mlps2 = heads, mlps
 
-    dataset_length = len(ioi_dataset.text_prompts)
+    dataset_length = ioi_dataset.N
 
     def circuit_replmt_hook(z, act, hook):  # batch, seq, heads, head dim
         layer = int(hook.name.split(".")[1])
@@ -150,7 +150,7 @@ def join_lists(
 
 
 def get_extracted_idx(idx_list: List[str], ioi_dataset):
-    int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
+    int_idx = [[] for i in range(len(ioi_dataset.sentences))]
     for idx_name in idx_list:
         try:
             int_idx_to_add = [
@@ -331,7 +331,7 @@ def do_circuit_extraction(
     )
 
     metric = ExperimentMetric(
-        metric=metric, dataset=ioi_dataset.text_prompts, relative_metric=False
+        metric=metric, dataset=ioi_dataset.sentences, relative_metric=False
     )  # TODO make dummy metric
 
     if mean_dataset is None:
