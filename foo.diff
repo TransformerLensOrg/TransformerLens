@@ -9618,7 +9618,7 @@ index ae492b4..ba53319 100644
 +    circuit_probs = probs(model, d)
 +    probs2 = probs(model, d, type="s")
 +    cp += circuit_probs
-+    print(f"{circuit_logit_diff=} {probs2=} {circuit_probs=}")
++    print(f"{circuit_logit_diff} {probs2} {circuit_probs}")
 +##%% [markdown] look at logit writing for the GPT NEO
 +
 +
@@ -9672,7 +9672,7 @@ index ae492b4..ba53319 100644
 +    for hook in extra_hooks:
 +        model.add_hook(*hook)
 +    model.cache_some(sender_cache, lambda x: x in sender_hook_names)
-+    # print(f"{sender_hook_names=}")
++    # print(f"{sender_hook_names}")
 +    source_logits = model(
 +        source_dataset.toks.long()
 +    )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
@@ -9908,7 +9908,7 @@ index ae492b4..ba53319 100644
 +                fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
 +                fig = show_pp(
 +                    results.T,
-+                    title=f"{fname=} patching NMs",
++                    title=f"{fname} patching NMs",
 +                    return_fig=True,
 +                    show_fig=False,
 +                )
@@ -10148,7 +10148,7 @@ index ae492b4..ba53319 100644
 +ys = df[df["token"] == "IO"]["change"]
 +
 +# correlation coefficient
-+print(f"{np.corrcoef(xs, ys)[0, 1]=}")
++print(f"{np.corrcoef(xs, ys)[0, 1]}")
 +#%%
 +ys = []
 +average_attention = {}
@@ -10172,7 +10172,7 @@ index ae492b4..ba53319 100644
 +    evals = torch.exp(vals)
 +    val_sum = torch.sum(evals, dim=1)
 +    assert val_sum.shape == (dataset.N,), val_sum.shape
-+    print(f"{heads=} {val_sum.mean()=}")
++    print(f"{heads} {val_sum.mean()}")
 +
 +    for key in ioi_dataset.word_idx.keys():
 +        end_to_s2 = att[
@@ -10373,7 +10373,7 @@ index ae492b4..ba53319 100644
 +        toks = ioi_dataset[i : i + 1].toks.long()
 +        print(toks)
 +        logits = model(toks)  # text_prompts[i])
-+        #  print(f"{cache.keys()=}")
++        #  print(f"{cache.keys()}")
 +
 +        res_stream_sum = torch.zeros(
 +            size=(d_model,), device="cuda"
@@ -10418,7 +10418,7 @@ index ae492b4..ba53319 100644
 -            atol=1e-2,
 +            rtol=1e-3,
 +            atol=1e-3,
-         ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+         ), f"{i} {cur_writing} {logit_diffs[i]}"
  
      attn_vals /= ioi_dataset.N
      mlp_vals /= ioi_dataset.N
@@ -11267,10 +11267,10 @@ index ae492b4..ba53319 100644
 +        )
 +        model.add_hook(*hook)
 +
-+    # print(f"{head_set=}, IO S S2, {att_probs=}")  # print("IO S S2")
++    # print(f"{head_set}, IO S S2, {att_probs}")  # print("IO S S2")
 +    cur_logit_diff = logit_diff(model, ioi_dataset)
 +    # cur_io_probs = probs(model, ioi_dataset)
-+    print(f"{idx=} {cur_logit_diff=} ")  # {cur_io_probs=}")
++    print(f"{idx} {cur_logit_diff} ")  # {cur_io_probs}")
 diff --git a/ioi_utils.py b/ioi_utils.py
 index 40dda5f..d7ed65d 100644
 --- a/ioi_utils.py
@@ -11624,7 +11624,7 @@ index 0000000..5468303
 +model_logit_diff = logit_diff(model, ioi_dataset)
 +
 +print(
-+    f"The model gets average logit difference {model_logit_diff.item()} over {N=} examples"
++    f"The model gets average logit difference {model_logit_diff.item()} over {N} examples"
 +)
 +#%% [markdown] The Circuit
 +
@@ -11649,7 +11649,7 @@ index 0000000..5468303
 +
 +circuit_logit_diff = logit_diff(model, ioi_dataset)
 +print(
-+    f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N=} examples"
++    f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"
 +)
 +#%% Delete this: hacky stuff
 +#%% [markdown] IOI dataset with prepend_bos...

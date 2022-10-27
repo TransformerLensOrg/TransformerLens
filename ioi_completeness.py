@@ -437,7 +437,7 @@ for circuit in [CIRCUIT.copy(), ALEX_NAIVE.copy()]:
     )
 
     logit_diff_circuit = logit_diff(model, ioi_dataset)
-    print(f"{logit_diff_circuit=}")
+    print(f"{logit_diff_circuit}")
 # %% [markdown] select CIRCUIT or ALEX_NAIVE in otder to choose between the two circuits studied in the paper. Look at the `perf_by_sets.append` line to see how the results are saved
 circuit = deepcopy(ALEX_NAIVE)
 print("Working with", circuit)
@@ -837,7 +837,7 @@ for doover in range(int(1e9)):
         if do_asserts:
             c = circuit_eval(model, [])
             m = cobble_eval(model, [])
-            print(f"{c=}, {m=} {torch.abs(c-m)=}")
+            print(f"{c}, {m} {torch.abs(c-m)}")
 
             for entry in perf_by_sets:  # check backwards compatibility
                 circuit_class = entry["removed_group"]  # includes "none"
@@ -860,7 +860,7 @@ for doover in range(int(1e9)):
                     circuit_class,
                 )
 
-                print(f"{circuit_class=} {c=}, {m=} {torch.abs(c-m)=}")
+                print(f"{circuit_class} {c}, {m} {torch.abs(c-m)}")
 
         # [markdown] now do the greedy set experiments
 
@@ -991,7 +991,7 @@ for _ in range(100):
     nodes = [node[0] for node, ind in zip(all_nodes, indicator) if ind == 1]
     c = circuit_eval(model, nodes)
     m = cobble_eval(model, nodes)
-    print(f"{c=}, {m=} {torch.abs(c-m)=}")
+    print(f"{c}, {m} {torch.abs(c-m)}")
 
     xs.append(c)
     ys.append(m)
@@ -1194,7 +1194,7 @@ important_heads = [
 ]
 
 for subset_size in range(0, len(important_heads) + 1):
-    print(f"{subset_size=}")
+    print(f"{subset_size}")
     path = Path(f"all_greedy/{subset_size}.json")
 
     # make an empty json file

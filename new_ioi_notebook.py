@@ -246,7 +246,7 @@ for pos in ["end"]:
                 fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T,
-                    title=f"{fname=} {pos=} patching NMs",
+                    title=f"{fname} {pos} patching NMs",
                     return_fig=True,
                     show_fig=False,
                 )
@@ -325,7 +325,7 @@ from ioi_circuit_extraction import RELEVANT_TOKENS, CIRCUIT
 
 circuit = deepcopy(CIRCUIT)
 # circuit["duplicate token"].remove((7, 1))
-print(f"{circuit=}")
+print(f"{circuit}")
 model.reset_hooks()
 
 for dataset_name, mean_dataset in [
@@ -350,7 +350,7 @@ for dataset_name, mean_dataset in [
 
         cur_logit_diff = logit_diff(model, dataset)
         cur_io_probs = probs(model, dataset)
-        print(f"{make_circuit=} {cur_logit_diff=} {cur_io_probs=}")
+        print(f"{make_circuit} {cur_logit_diff} {cur_io_probs}")
     print()
 
 #%% [markdown] brief dive into 7.1, ignore (this cell vizualizes the average attention)
@@ -391,7 +391,7 @@ for dataset_name in [
         evals = torch.exp(vals)
         val_sum = torch.sum(evals, dim=1)
         assert val_sum.shape == (dataset.N,), val_sum.shape
-        print(f"{heads=} {val_sum.mean()=}")
+        print(f"{heads} {val_sum.mean()}")
 
         for key in dataset.word_idx.keys():
             end_to_s2 = att[

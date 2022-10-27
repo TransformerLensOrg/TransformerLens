@@ -203,7 +203,7 @@ for d in [ioi_dataset]:
     circuit_probs = probs(model, d)
     probs2 = probs(model, d, type="s")
     cp += circuit_probs
-    print(f"{circuit_logit_diff=} {probs2=} {circuit_probs=}")
+    print(f"{circuit_logit_diff} {probs2} {circuit_probs}")
 ##%% [markdown] look at logit writing for the GPT NEO
 
 
@@ -359,7 +359,7 @@ for use_extra_hooks in [False, True]:
                 fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T,
-                    title=f"{fname=} patching NMs",
+                    title=f"{fname} patching NMs",
                     return_fig=True,
                     show_fig=False,
                 )
@@ -599,7 +599,7 @@ xs = df[df["token"] == "IO"]["attention"]
 ys = df[df["token"] == "IO"]["change"]
 
 # correlation coefficient
-print(f"{np.corrcoef(xs, ys)[0, 1]=}")
+print(f"{np.corrcoef(xs, ys)[0, 1]}")
 #%%
 ys = []
 average_attention = {}
@@ -623,7 +623,7 @@ for idx, dataset in enumerate([ioi_dataset]):
     evals = torch.exp(vals)
     val_sum = torch.sum(evals, dim=1)
     assert val_sum.shape == (dataset.N,), val_sum.shape
-    print(f"{heads=} {val_sum.mean()=}")
+    print(f"{heads} {val_sum.mean()}")
 
     for key in ioi_dataset.word_idx.keys():
         end_to_s2 = att[
@@ -1107,7 +1107,7 @@ def writing_direction_heatmap(
         toks = ioi_dataset[i : i + 1].toks.long()
         print(toks)
         logits = model(toks)  # text_prompts[i])
-        #  print(f"{cache.keys()=}")
+        #  print(f"{cache.keys()}")
 
         res_stream_sum = torch.zeros(
             size=(d_model,), device="cuda"
@@ -1168,7 +1168,7 @@ def writing_direction_heatmap(
             logit_diffs[i],
             rtol=1e-3,
             atol=1e-3,
-        ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+        ), f"{i} {cur_writing} {logit_diffs[i]}"
 
     attn_vals /= ioi_dataset.N
     mlp_vals /= ioi_dataset.N
@@ -2182,7 +2182,7 @@ for ablate_negative in [
         y=y_label,
         hover_data=["sentence"],
         text="beg",
-        title=f"Change in logit diff when {ablate_negative=}",
+        title=f"Change in logit diff when {ablate_negative}",
     ).show()
 #%% # let's check that the circuit isn't changing relative to which template we are using
 
@@ -3017,7 +3017,7 @@ for idx, head_set in enumerate(
         )
         model.add_hook(*hook)
 
-    # print(f"{head_set=}, IO S S2, {att_probs=}")  # print("IO S S2")
+    # print(f"{head_set}, IO S S2, {att_probs}")  # print("IO S S2")
     cur_logit_diff = logit_diff(model, ioi_dataset)
     # cur_io_probs = probs(model, ioi_dataset)
-    print(f"{idx=} {cur_logit_diff=} ")  # {cur_io_probs=}")
+    print(f"{idx} {cur_logit_diff} ")  # {cur_io_probs}")

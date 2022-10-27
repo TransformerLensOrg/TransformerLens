@@ -831,7 +831,7 @@ class IOIDataset:
 
         assert isinstance(flip, tuple) or flip in [
             "prefix",
-        ], f"{flip=} is not a tuple. Probably change to ('IO', 'RAND') or equivalent?"
+        ], f"{flip} is not a tuple. Probably change to ('IO', 'RAND') or equivalent?"
 
         if flip == "prefix":
             flipped_prompts = flip_prefixes(self.ioi_prompts)

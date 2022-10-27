@@ -231,7 +231,7 @@ for a_dataset in [
 ]:
     circuit_logit_diff = logit_diff(model, a_dataset)
     circuit_probs = probs(model, a_dataset)
-    print(f"{circuit_logit_diff=} {circuit_probs=}")
+    print(f"{circuit_logit_diff} {circuit_probs}")
 
 #%% [markdown] Add some ablation of MLP0 to try and tell what's up
 model.reset_hooks()
@@ -400,7 +400,7 @@ NEGS = {
 model.reset_hooks()
 e()
 whole_circuit_base, whole_std = logit_diff(model, ioi_dataset.text_prompts, std=True)
-print(f"{whole_circuit_base=} {whole_std=}")
+print(f"{whole_circuit_base} {whole_std}")
 
 heads_to_keep_new = {}
 for head in NEW_CIRCUIT.keys():
@@ -414,7 +414,7 @@ new_model, _ = do_circuit_extraction(
 )
 e()
 new_circuit_base, new_std = logit_diff(new_model, ioi_dataset.text_prompts, std=True)
-print(f"{new_circuit_base=} {new_std=}")
+print(f"{new_circuit_base} {new_std}")
 model.reset_hooks()
 heads_to_keep_neg_new = heads_to_keep_new.copy()
 heads_to_keep = {}
@@ -438,7 +438,7 @@ e()
 calib_model_base, calib_std = logit_diff(
     calib_model, ioi_dataset.text_prompts, std=True
 )
-print(f"{calib_model_base=} {calib_std=}")
+print(f"{calib_model_base} {calib_std}")
 # %%
 seq_len = ioi_dataset.toks.shape[1]
 
@@ -452,7 +452,7 @@ for mlp in range(12):
     )
     e()
     mlp_base, mlp_std = logit_diff(calib_model, ioi_dataset.text_prompts, std=True)
-    print(f"{mlp} {mlp_base=} {mlp_std=}")
+    print(f"{mlp} {mlp_base} {mlp_std}")
 #%% # quick S2 experiment
 from ioi_circuit_extraction import ARTHUR_CIRCUIT
 
@@ -525,7 +525,7 @@ model, abl = do_circuit_extraction(
     # exclude_heads=early_heads,
 )
 init_probs = probs(model, ioi_dataset)
-print(f"{init_probs=}")
+print(f"{init_probs}")
 
 vprobs = torch.zeros(7, 12)
 
@@ -843,7 +843,7 @@ if True:
             cached_score,
             rtol=1e-2,
             atol=1e-2,
-        ), f"{i=} {calculated_k.shape=} {get_corner(cached_score, n=4)=} {get_corner(calculated_k, n=4)=}"
+        ), f"{i} {calculated_k.shape} {get_corner(cached_score, n=4)} {get_corner(calculated_k, n=4)}"
 
     attn_vals /= ioi_dataset.N
     mlp_vals /= ioi_dataset.N
@@ -987,7 +987,7 @@ def writing_direction_heatmap(
             logit_diffs[i],
             rtol=1e-2,
             atol=1e-2,
-        ), f"{i=} {cur_writing=} {logit_diffs[i]}"
+        ), f"{i} {cur_writing} {logit_diffs[i]}"
 
     attn_vals /= ioi_dataset.N
     mlp_vals /= ioi_dataset.N
@@ -1095,7 +1095,7 @@ for change in [False, True]:
             model.add_hook(hook_name, cur_hook)
 
     io_probs = probs(model, ioi_dataset)
-    print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}")
+    print(f" {logit_diff(model, ioi_dataset)}, {io_probs}")
 #%% evidence for the S2 story
 # ablating V for everywhere except S2 barely affects LD. But ablating all V has LD go to almost 0
 
@@ -1140,7 +1140,7 @@ for layer, head_idx in [(7, 9), (8, 6), (7, 3), (8, 10)]:
 
 new_ld = logit_diff(model, ioi_dataset)
 new_probs = probs(model, ioi_dataset)
-print(f"{new_ld=}, {new_probs=}")
+print(f"{new_ld}, {new_probs}")
 #%% # new shit: attention probs on S2 is the score
 heads_to_patch = circuit["s2 inhibition"].copy()
 attn_circuit_template = "blocks.{patch_layer}.attn.hook_v"
@@ -1162,7 +1162,7 @@ metric = partial(attention_on_token, head_idx=9, layer=9, token="IO")
 
 model.reset_hooks()
 base_metric = metric(model, ioi_dataset)
-print(f"{base_metric=}")
+print(f"{base_metric}")
 
 experiment_metric = ExperimentMetric(
     metric=metric, dataset=ioi_dataset, relative_metric=False
@@ -1259,7 +1259,7 @@ for layer in range(12):
         else:
             logit_diffs[layer, head_idx] = ld.detach().cpu()
 
-        print(f"{layer=}, {head_idx=}, {ld=}")
+        print(f"{layer}, {head_idx}, {ld}")
 
 att_heads_mean_diff = logit_diffs - base_metric
 show_pp(
@@ -1290,7 +1290,7 @@ for j in range(2, 5):
 
         # cur = z[torch.arange(ioi_dataset.N), s2_positions, s_positions+1]
         # print(cur)
-        # print(f"{cur.shape=}")
+        # print(f"{cur.shape}")
         # some_atts = torch.argmax(cur, dim=1)
         # for i in range(20):
         # print(i, model.tokenizer.decode(ioi_dataset.toks[i][some_atts[i]]), ":", model.tokenizer.decode(ioi_dataset.toks[i][:6]))
@@ -1332,7 +1332,7 @@ for j in range(2, 5):
 
     ld2 = F(model, ioi_dataset)
     print(
-        f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2=}"
+        f"Initially there's a logit difference of {ld}, and after permuting by {j-1}, the new logit difference is {ld2}"
     )
 #%%
 heads_to_patch = (
@@ -1358,7 +1358,7 @@ for layer, head_idx in heads_to_patch:
     model.add_hook(f"blocks.{layer}.attn.hook_result", cur_hook)
 
 l = logit_diff(model, ioi_dataset)
-print(f"{l=}")
+print(f"{l}")
 model.reset_hooks()
 #%%
 ys = []
@@ -1385,7 +1385,7 @@ for idx, dataset in enumerate([ioi_dataset, abca_dataset]):
         evals = torch.exp(vals)
         val_sum = torch.sum(evals, dim=1)
         assert val_sum.shape == (dataset.N,), val_sum.shape
-        print(f"{heads=} {val_sum.mean()=}")
+        print(f"{heads} {val_sum.mean()}")
 
         for key in ioi_dataset.word_idx.keys():
             end_to_s2 = att[
@@ -1571,10 +1571,10 @@ for idx, head_set in enumerate(
     att_probs = attention_probs(
         model, ioi_dataset.text_prompts, variation=False, scale=False
     )
-    print(f"{head_set=}, IO S S2, {att_probs=}")  # print("IO S S2")
+    print(f"{head_set}, IO S S2, {att_probs}")  # print("IO S S2")
     cur_logit_diff = logit_diff(model, ioi_dataset)
     cur_io_probs = probs(model, ioi_dataset)
-    print(f"{idx=} {cur_logit_diff=} {cur_io_probs=}")
+    print(f"{idx} {cur_logit_diff} {cur_io_probs}")
 #%%
 # some [logit difference, IO probs] for the different modes
 
@@ -1687,7 +1687,7 @@ mixed_dataset = IOIDataset("ABC mixed", N, model.tokenizer)
 for dataset in [ioi_dataset, ABC_dataset, BAC_dataset, mixed_dataset]:
     circuit_logit_diff = logit_diff(model, dataset)
     circuit_probs = probs(model, dataset)
-    print(f"{circuit_logit_diff=} {circuit_probs=}")
+    print(f"{circuit_logit_diff} {circuit_probs}")
 
 logit_diff_min = 2.8
 io_probs_min = 0.23
@@ -1741,7 +1741,7 @@ def objective(trial, manual=None):
     )
     circuit_logit_diff = logit_diff(new_model, ioi_dataset)
     circuit_probs = probs(new_model, ioi_dataset)
-    print(f"{circuit_logit_diff=} {circuit_probs=}")
+    print(f"{circuit_logit_diff} {circuit_probs}")
     ans = -circuit_logit_diff
     # if circuit_logit_diff > logit_diff_min and circuit_probs > io_probs_min:
     #     ans += 100000 - 100 * total_things
@@ -1777,7 +1777,7 @@ tuples = [
 ]
 
 ans = objective(None, tuples)
-print(f"{ans=}")
+print(f"{ans}")
 #%% [markdown] Patch and freeze !!!
 # do a run where we mean ablate IO position and S position
 # do a run where we patch at S2 and patch the name movers' K with these things
@@ -1793,7 +1793,7 @@ e()
 
 use_circuit = False
 modes = ["IO"]
-warnings.warn(f"{use_circuit=}")
+warnings.warn(f"{use_circuit}")
 
 
 def patch_all(z, source_act, hook):
@@ -1888,15 +1888,15 @@ io_probs = probs(model, ioi_dataset)
 att_probs = attention_probs(
     model, ioi_dataset.text_prompts, variation=False, scale=False
 )
-print(f"IO S S2, {att_probs=}")
-print(f" {logit_diff(model, ioi_dataset)}, {io_probs=}")
+print(f"IO S S2, {att_probs}")
+print(f" {logit_diff(model, ioi_dataset)}, {io_probs}")
 #%%
 ds = []
 all_templates = list(set(BABA_EARLY_IOS + BABA_LATE_IOS + BABA_TEMPLATES))
 # THIS IS BABA ONLY!
 
 for i, template in enumerate(all_templates):
-    print(f"{i=} {template=}")
+    print(f"{i} {template}")
     d = IOIDataset(N=1, prompt_type=[template])
     ds.append(d)
 #%%
@@ -1962,7 +1962,7 @@ for source_dataset in [totally_diff_dataset]:
 
         cur_logit_diff = logit_diff(model, ioi_dataset)
         cur_io_probs = probs(model, ioi_dataset)
-        print(f"{head_set=} {cur_logit_diff}, {cur_io_probs=}")
+        print(f"{head_set} {cur_logit_diff}, {cur_io_probs}")
         # results[(i, j, idx)] = cur_logit_diff, cur_io_probs
 #%%
 for all_head_sets_idx, head_set in enumerate(all_head_sets):
@@ -2062,7 +2062,7 @@ hook_template = "blocks.{}.attn.hook_k"
 hook_names = list(set(hook_template.format(layer) for layer, _ in circuit["induction"]))
 model.cache_some(cache, lambda name: name in hook_names)
 cur_logit_diff = logit_diff(model, ioi_dataset)
-print(f"{cur_logit_diff=}")
+print(f"{cur_logit_diff}")
 
 # def patch_new_v(z, source_act, hook):
 #     z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S+1"]] = source_act[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["S+1"]]
@@ -2082,7 +2082,7 @@ for layer, head_idx in circuit["induction"]:
 # model.reset_hooks()
 cur_logit_diff = logit_diff(model, ioi_dataset)
 cur_io_probs = probs(model, ioi_dataset)
-print(f"{cur_logit_diff}, {cur_io_probs=}")
+print(f"{cur_logit_diff}, {cur_io_probs}")
 #%% [markdown] -> S2 Inhibition: Q versus K composition
 # save the Inhibition K scores, when we ablate all the Induction and Duplicate token heads
 names = [
@@ -2162,10 +2162,10 @@ for i, hook_templates in enumerate(
         raw_cache = {}
         model.cache_some(raw_cache, lambda name: name in hook_names)
         cur_logit_diff = logit_diff(model, dataset)
-        print(f"{cur_logit_diff=}")
+        print(f"{cur_logit_diff}")
         cache = deepcopy(raw_cache)
         cur_logit_diff = logit_diff(model, ioi_dataset)
-        print(f"Actually on IOI: {cur_logit_diff=}")
+        print(f"Actually on IOI: {cur_logit_diff}")
 
         model.reset_hooks()
         for layer, head_idx in circuit["s2 inhibition"]:
@@ -2182,7 +2182,7 @@ for i, hook_templates in enumerate(
         # model.reset_hooks()
         cur_logit_diff = logit_diff(model, ioi_dataset)
         cur_io_probs = probs(model, ioi_dataset)
-        print(f"{cur_logit_diff}, {cur_io_probs=}")
+        print(f"{cur_logit_diff}, {cur_io_probs}")
         results[i].append(cur_logit_diff)
 
 fig = go.Figure()

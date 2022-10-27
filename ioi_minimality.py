@@ -142,7 +142,7 @@ model, _ = do_circuit_extraction(
 )
 
 circuit_baseline_metric = metric(model, ioi_dataset)
-print(f"{model_baseline_metric=} {circuit_baseline_metric=}")
+print(f"{model_baseline_metric} {circuit_baseline_metric}")
 #%%
 def get_basic_extracted_model(
     model, ioi_dataset, mean_dataset=None, circuit=circuits[1]
@@ -186,10 +186,10 @@ baseline_ldiff, baseline_ldiff_std = logit_diff(model, ioi_dataset, std=True)
 torch.cuda.empty_cache()
 baseline_prob, baseline_prob_std = probs(model, ioi_dataset, std=True)
 
-print(f"{circuit_baseline_diff=}, {circuit_baseline_diff_std=}")
-print(f"{circuit_baseline_prob=}, {circuit_baseline_prob_std=}")
-print(f"{baseline_ldiff=}, {baseline_ldiff_std=}")
-print(f"{baseline_prob=}, {baseline_prob_std=}")
+print(f"{circuit_baseline_diff}, {circuit_baseline_diff_std}")
+print(f"{circuit_baseline_prob}, {circuit_baseline_prob_std}")
+print(f"{baseline_ldiff}, {baseline_ldiff_std}")
+print(f"{baseline_prob}, {baseline_prob_std}")
 
 if metric == logit_diff:
     circuit_baseline_metric = circuit_baseline_diff
@@ -269,7 +269,7 @@ for circuit_class in circuit.keys():
             results[head][idx] = results_cache[ablated_stuff]
 
         print(
-            f"{head=} with {J[head]=}: progress from {results[head][0]} to {results[head][1]}"
+            f"{head} with {J[head]}: progress from {results[head][0]} to {results[head][1]}"
         )
 
 ac = ALL_COLORS

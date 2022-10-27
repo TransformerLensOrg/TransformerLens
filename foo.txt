@@ -9618,7 +9618,7 @@
 [32m+[m[32m    circuit_probs = probs(model, d)[m
 [32m+[m[32m    probs2 = probs(model, d, type="s")[m
 [32m+[m[32m    cp += circuit_probs[m
-[32m+[m[32m    print(f"{circuit_logit_diff=} {probs2=} {circuit_probs=}")[m
+[32m+[m[32m    print(f"{circuit_logit_diff} {probs2} {circuit_probs}")[m
 [32m+[m[32m##%% [markdown] look at logit writing for the GPT NEO[m
 [32m+[m
 [32m+[m
@@ -9672,7 +9672,7 @@
 [32m+[m[32m    for hook in extra_hooks:[m
 [32m+[m[32m        model.add_hook(*hook)[m
 [32m+[m[32m    model.cache_some(sender_cache, lambda x: x in sender_hook_names)[m
-[32m+[m[32m    # print(f"{sender_hook_names=}")[m
+[32m+[m[32m    # print(f"{sender_hook_names}")[m
 [32m+[m[32m    source_logits = model([m
 [32m+[m[32m        source_dataset.toks.long()[m
 [32m+[m[32m    )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)[m
@@ -9908,7 +9908,7 @@
 [32m+[m[32m                fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"[m
 [32m+[m[32m                fig = show_pp([m
 [32m+[m[32m                    results.T,[m
-[32m+[m[32m                    title=f"{fname=} patching NMs",[m
+[32m+[m[32m                    title=f"{fname} patching NMs",[m
 [32m+[m[32m                    return_fig=True,[m
 [32m+[m[32m                    show_fig=False,[m
 [32m+[m[32m                )[m
@@ -10148,7 +10148,7 @@
 [32m+[m[32mys = df[df["token"] == "IO"]["change"][m
 [32m+[m
 [32m+[m[32m# correlation coefficient[m
-[32m+[m[32mprint(f"{np.corrcoef(xs, ys)[0, 1]=}")[m
+[32m+[m[32mprint(f"{np.corrcoef(xs, ys)[0, 1]}")[m
 [32m+[m[32m#%%[m
 [32m+[m[32mys = [][m
 [32m+[m[32maverage_attention = {}[m
@@ -10172,7 +10172,7 @@
 [32m+[m[32m    evals = torch.exp(vals)[m
 [32m+[m[32m    val_sum = torch.sum(evals, dim=1)[m
 [32m+[m[32m    assert val_sum.shape == (dataset.N,), val_sum.shape[m
-[32m+[m[32m    print(f"{heads=} {val_sum.mean()=}")[m
+[32m+[m[32m    print(f"{heads} {val_sum.mean()}")[m
 [32m+[m
 [32m+[m[32m    for key in ioi_dataset.word_idx.keys():[m
 [32m+[m[32m        end_to_s2 = att[[m
@@ -10373,7 +10373,7 @@
 [32m+[m[32m        toks = ioi_dataset[i : i + 1].toks.long()[m
 [32m+[m[32m        print(toks)[m
 [32m+[m[32m        logits = model(toks)  # text_prompts[i])[m
-[32m+[m[32m        #  print(f"{cache.keys()=}")[m
+[32m+[m[32m        #  print(f"{cache.keys()}")[m
 [32m+[m
 [32m+[m[32m        res_stream_sum = torch.zeros([m
 [32m+[m[32m            size=(d_model,), device="cuda"[m
@@ -10418,7 +10418,7 @@
 [31m-            atol=1e-2,[m
 [32m+[m[32m            rtol=1e-3,[m
 [32m+[m[32m            atol=1e-3,[m
-         ), f"{i=} {cur_writing=} {logit_diffs[i]}"[m
+         ), f"{i} {cur_writing} {logit_diffs[i]}"[m
  [m
      attn_vals /= ioi_dataset.N[m
      mlp_vals /= ioi_dataset.N[m
@@ -11267,10 +11267,10 @@
 [32m+[m[32m        )[m
 [32m+[m[32m        model.add_hook(*hook)[m
 [32m+[m
-[32m+[m[32m    # print(f"{head_set=}, IO S S2, {att_probs=}")  # print("IO S S2")[m
+[32m+[m[32m    # print(f"{head_set}, IO S S2, {att_probs}")  # print("IO S S2")[m
 [32m+[m[32m    cur_logit_diff = logit_diff(model, ioi_dataset)[m
 [32m+[m[32m    # cur_io_probs = probs(model, ioi_dataset)[m
-[32m+[m[32m    print(f"{idx=} {cur_logit_diff=} ")  # {cur_io_probs=}")[m
+[32m+[m[32m    print(f"{idx} {cur_logit_diff} ")  # {cur_io_probs}")[m
 [1mdiff --git a/ioi_utils.py b/ioi_utils.py[m
 [1mindex 40dda5f..d7ed65d 100644[m
 [1m--- a/ioi_utils.py[m
@@ -11624,7 +11624,7 @@ Binary files /dev/null and b/myfile.zip differ
 [32m+[m[32mmodel_logit_diff = logit_diff(model, ioi_dataset)[m
 [32m+[m
 [32m+[m[32mprint([m
-[32m+[m[32m    f"The model gets average logit difference {model_logit_diff.item()} over {N=} examples"[m
+[32m+[m[32m    f"The model gets average logit difference {model_logit_diff.item()} over {N} examples"[m
 [32m+[m[32m)[m
 [32m+[m[32m#%% [markdown] The Circuit[m
 [32m+[m
@@ -11649,7 +11649,7 @@ Binary files /dev/null and b/myfile.zip differ
 [32m+[m
 [32m+[m[32mcircuit_logit_diff = logit_diff(model, ioi_dataset)[m
 [32m+[m[32mprint([m
-[32m+[m[32m    f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N=} examples"[m
+[32m+[m[32m    f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"[m
 [32m+[m[32m)[m
 [32m+[m[32m#%% Delete this: hacky stuff[m
 [32m+[m[32m#%% [markdown] IOI dataset with prepend_bos...[m

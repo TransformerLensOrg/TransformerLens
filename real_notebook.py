@@ -135,9 +135,9 @@ print(f"Here are two of the prompts from the dataset: {ioi_dataset.text_prompts[
 model_logit_diff = logit_diff(model, ioi_dataset)
 model_io_probs = probs(model, ioi_dataset)
 print(
-    f"The model gets average logit difference {model_logit_diff.item()} over {N=} examples"
+    f"The model gets average logit difference {model_logit_diff.item()} over {N} examples"
 )
-print(f"The model gets average IO probs {model_io_probs.item()} over {N=} examples")
+print(f"The model gets average IO probs {model_io_probs.item()} over {N} examples")
 #%% [markdown] the circuit
 circuit = deepcopy(CIRCUIT)
 
@@ -161,7 +161,7 @@ model, _ = do_circuit_extraction(
 
 circuit_logit_diff = logit_diff(model, ioi_dataset)
 print(
-    f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N=} examples"
+    f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"
 )
 #%% [markdown] edge patching
 model.reset_hooks()
