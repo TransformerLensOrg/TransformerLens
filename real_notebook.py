@@ -11,13 +11,10 @@
 # Reminder of the circuit:
 # <img src="https://i.imgur.com/arokEMj.png">
 #%% [markdown] 
-# Setup # TODO cut extras
+# Setup (TODO cut extras)
 from copy import deepcopy
 import os
 import torch
-
-if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
-    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
@@ -220,6 +217,8 @@ scatter_attention_and_contribution(
 )
 
 #%% [markdown] Copy score
+
+
 
 #%% [markdown] S-Inhibition patching
 
