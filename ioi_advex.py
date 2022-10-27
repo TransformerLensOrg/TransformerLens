@@ -5,7 +5,7 @@ import torch
 if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
-from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
+from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
 import pandas as pd
 import torch
@@ -90,7 +90,6 @@ from ioi_circuit_extraction import (
     process_heads_and_mlps,
     turn_keep_into_rmv,
     CIRCUIT,
-    ARTHUR_CIRCUIT,
 )
 
 from rich import print as rprint
@@ -100,23 +99,22 @@ if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 
-# %%
+#%% [markdown]
+# Load the model
 
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
-
 print_gpu_mem("About to load model")
-model = EasyTransformer(
-    model_name, use_attn_result=True
-)  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+model = EasyTransformer.from_pretrained(
+    model_name,
+)
+model.set_use_attn_result(True)
 device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
 print_gpu_mem("Gpt2 loaded")
-
-# %%
+#%%
 N = 150
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-
 
 # %%
 
@@ -189,7 +187,7 @@ blue: BLUE""",
 
 
 test_prompt(
-    """Then, Kyle and Jessica were thinking about going to the office. Jessica had a good day. Kyle wanted to give a computer to Jessia.
+    """Then, Kyle and Jessica were thinking about going to the office. Jessica had a good day. Kyle wanted to give a computer to Jessica.
 """,
     " ",
 )
@@ -219,7 +217,7 @@ DOUBLE_ADX_TEMPLATE = [x1 + x2 for x1 in ADX_TEMPLATE for x2 in ADX_TEMPLATE]
 
 def gen_adv(ioi_dataset, model, templates, name="IO"):
     adv_ioi_dataset = ioi_dataset.copy()
-    for i, s in enumerate(ioi_dataset.text_prompts):
+    for i, s in enumerate(ioi_dataset.sentences):
         adv_temp = rd.choice(templates)
         adv_temp = adv_temp.replace("[A]", ioi_dataset.ioi_prompts[i][name])
 

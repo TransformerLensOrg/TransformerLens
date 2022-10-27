@@ -390,10 +390,6 @@ show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 
 # TODO
 
-#%% [markdown] Minimality
-
-#%% [markdown] Naive
-
 #%% [markdown] Advexes
 
 #%% [markdown] Backup NMs
