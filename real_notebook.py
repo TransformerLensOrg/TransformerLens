@@ -208,7 +208,7 @@ for source_layer in tqdm(range(12)):
                 title=f"Effect of patching (Heads->Final Residual Stream State) path",
                 return_fig=True,
                 show_fig=False,
-                colorbartitle="% change in logit difference",
+                bartitle="% change in logit difference",
             )
             fig.show()
 #%% [markdown] reproduce writing results (change the )
