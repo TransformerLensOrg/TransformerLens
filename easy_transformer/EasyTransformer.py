@@ -229,6 +229,8 @@ class EasyTransformer(HookedRootModule):
                     return loss
                 elif return_type == "both":
                     return {"logits": logits, "loss": loss}
+                elif return_type == "logits_and_tokens":
+                    return logits, tokens
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None

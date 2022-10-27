@@ -1,4 +1,5 @@
 __pycache__
+<<<<<<< HEAD
 Testing_Notebook.ipynb
 \.*
 easy_transformer/scratch.py
@@ -11,3 +12,13 @@ core.py
 *.yml
 nbs
 _modidx.py
+*.zip
+=======
+*.db 
+*.pdf
+*.svg 
+*.csv
+*.zip
+*.json
+*.png
+>>>>>>> alex-global-patching
