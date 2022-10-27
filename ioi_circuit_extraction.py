@@ -1,3 +1,4 @@
+from typing import List
 import warnings
 from copy import deepcopy
 from easy_transformer.experiments import (
@@ -148,7 +149,7 @@ def join_lists(
     return l
 
 
-def get_extracted_idx(idx_list: list[str], ioi_dataset):
+def get_extracted_idx(idx_list: List[str], ioi_dataset):
     int_idx = [[] for i in range(len(ioi_dataset.text_prompts))]
     for idx_name in idx_list:
         try:
