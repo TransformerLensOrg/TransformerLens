@@ -349,8 +349,8 @@ bet_sub = 0
 bet_sub_2 = 0
 for it in tqdm(range(1000)):
     cur_list = deepcopy(my_toks)
-    new_mary_tok = my_list[ri(0, -1 + len(my_list))]  # ri(0, 50_000)
-    new_john_tok = my_list[ri(0, -1 + len(my_list))]  # ri(0, 50_000)
+    new_mary_tok = my_List[ri(0, -1 + len(my_list))]  # ri(0, 50_000)
+    new_john_tok = my_List[ri(0, -1 + len(my_list))]  # ri(0, 50_000)
     cur_list = replace(cur_list, mary_tok, new_mary_tok)
     cur_list = replace(cur_list, john_tok, new_john_tok)
     logits = model(torch.Tensor([cur_list]).long()).detach().cpu()[0, -2]

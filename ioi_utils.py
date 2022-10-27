@@ -867,8 +867,8 @@ def find_owt_stimulus(
 
 
 def sample_activation(
-    model, dataset: list[str], hook_names: list[str], n: int
-) -> dict[str, torch.Tensor]:
+    model, dataset: List[str], hook_names: List[str], n: int
+) -> Dict[str, torch.Tensor]:
     data = np.random.choice(dataset, n)
     data = [str(elem) for elem in data]  # need to convert from numpy.str_
     cache = {}
@@ -915,7 +915,7 @@ def get_hook_name(model, module: str, layer: int, head: int) -> str:
 
 def compute_composition(
     model,
-    dataset: list[str],
+    dataset: List[str],
     n_samples: int,
     l1: int,
     h1: int,
@@ -968,7 +968,7 @@ def compute_composition(
 
 def compute_composition_OV_QK(
     model,
-    dataset: list[str],
+    dataset: List[str],
     n_samples: int,
     l1: int,
     h1: int,
