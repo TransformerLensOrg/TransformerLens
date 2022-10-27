@@ -10,7 +10,8 @@
 #
 # Reminder of the circuit:
 # <img src="https://i.imgur.com/arokEMj.png">
-#%% [markdown] Setup # TODO cut extras
+#%% [markdown] 
+# Setup # TODO cut extras
 from copy import deepcopy
 import os
 import torch
@@ -118,10 +119,12 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-#%% [markdown] initialise model (use larger N or fewer templates for no warnings about in-template ablation)
+#%% [markdown] 
+# Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
 model = EasyTransformer.from_pretrained("gpt2").cuda()
 model.set_use_attn_result(True)
-#%% [markdown] initialise dataset
+#%% [markdown]
+# Initialise dataset
 N = 100
 ioi_dataset = IOIDataset(
     prompt_type="mixed",
@@ -215,3 +218,29 @@ for source_layer in tqdm(range(12)):
 scatter_attention_and_contribution(
     model=model, layer_no=9, head_no=9, ioi_dataset=ioi_dataset
 )
+
+#%% [markdown] Copy score
+
+#%% [markdown] S-Inhibition patching
+
+#%% [markdown] Attention probs of NMs (ehhh is just making a bar chart?)
+
+#%% [markdown] And attention on a single sentence
+
+#%% [markdown] Duplicate tokens and Inductions
+
+#%% [markdown] Position and token signals???
+
+#%% [markdown] Completeness
+
+#%% [markdown] Minimality
+
+#%% [markdown] Naive
+
+#%% [markdown] Advexes
+
+#%% [markdown] Backup NMs
+
+#%% [markdown] Random sequence stuff
+
+#%% [markdown] Direct and indirect effects of MLPs
