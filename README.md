@@ -1,10 +1,16 @@
-Arthur test.
-
 This repository contains the code for all experiments in the paper "Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small" (Wang et al, 2022).
 
 For now, it may be easier to view an earlier version of the experiments at https://drive.google.com/file/d/1kFpJdqIEgjFVJRb5FpdPyuluXq6fUPb_/view . The code in this repository is a work in progress. 
 
 Contact arthur@rdwrs.com for help running code, etc.
+
+# Setup
+
+## Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
 
 # Easy Transformer
 
