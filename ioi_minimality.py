@@ -102,7 +102,8 @@ if ipython is not None:
 #%%
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 print_gpu_mem("About to load model")
-model = EasyTransformer(model_name, use_attn_result=True)
+model = EasyTransformer.from_pretrained(model_name)
+model.set_use_attn_result(True)
 device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
@@ -110,16 +111,15 @@ print_gpu_mem("Gpt2 loaded")
 N = 100
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 
-
-cde_dataset = (
+abc_dataset = (
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+    .gen_flipped_prompts(("S1", "RAND"))
 )
 
-mean_dataset = cde_dataset
+mean_dataset = abc_dataset
 #%% # do some initial experiments with the naive circuit
-# UH - IS THIS JUST NOT GOOD?
+
 circuits = [None, CIRCUIT.copy(), NAIVE.copy()]
 circuit = circuits[1]
 
