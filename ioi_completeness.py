@@ -20,6 +20,7 @@ import json
 from numpy import sin, cos, pi
 from time import ctime
 from dataclasses import dataclass
+from ioi_utils import logit_diff
 from tqdm import tqdm
 import pandas as pd
 import torch
@@ -114,9 +115,10 @@ from functools import partial
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
 print_gpu_mem("About to load model")
-model = EasyTransformer(
-    model_name, use_attn_result=True
+model = EasyTransformer.from_pretrained(
+    model_name,
 )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+model.set_use_attn_result(True)
 device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
@@ -136,6 +138,7 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 #     "".join(show_tokens(webtext["train"]["text"][i][:2000], model, return_list=True)[: ioi_dataset.max_len])
 #     for i in range(ioi_dataset.N)
 # ]
+
 
 #%%
 from ioi_circuit_extraction import (
@@ -157,36 +160,6 @@ def get_all_nodes(circuit):
         for head in circuit[circuit_class]:
             nodes.append((head, RELEVANT_TOKENS[head][0]))
     return nodes
-
-
-def logit_diff(model, ioi_dataset, logits=None, all=False, std=False):
-    """
-    Difference between the IO and the S logits at the "to" token
-    """
-    if logits is None:
-        text_prompts = ioi_dataset.text_prompts
-        logits = model(text_prompts).detach()
-    L = len(text_prompts)
-    IO_logits = logits[
-        torch.arange(len(text_prompts)),
-        ioi_dataset.word_idx["end"][:L],
-        ioi_dataset.io_tokenIDs[:L],
-    ]
-    S_logits = logits[
-        torch.arange(len(text_prompts)),
-        ioi_dataset.word_idx["end"][:L],
-        ioi_dataset.s_tokenIDs[:L],
-    ]
-
-    if all and not std:
-        return (IO_logits - S_logits).detach().cpu()
-    if std:
-        if all:
-            first_bit = (IO_logits - S_logits).detach().cpu()
-        else:
-            first_bit = (IO_logits - S_logits).mean().detach().cpu()
-        return first_bit, torch.std(IO_logits - S_logits).detach().cpu()
-    return (IO_logits - S_logits).mean().detach().cpu()
 
 
 ## define useful function
@@ -387,9 +360,9 @@ if __name__ == "__main__":
     model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
     print_gpu_mem("About to load model")
-    model = EasyTransformer(
-        model_name, use_attn_result=True
-    )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+    # model = EasyTransformer(
+    #     model_name, use_attn_result=True
+    # )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
     device = "cuda"
     if torch.cuda.is_available():
         model.to(device)
@@ -404,7 +377,7 @@ if __name__ == "__main__":
 cde_dataset = (
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+    .gen_flipped_prompts(("S1", "RAND"))
 )
 
 mean_dataset = cde_dataset
@@ -510,7 +483,7 @@ if run_original:
                     "removed_set_id": G,
                     "ldiff_broken": float(cur_metric_broken_circuit[i].cpu().numpy()),
                     "ldiff_cobble": float(cur_metric_cobble[i].cpu().numpy()),
-                    "sentence": ioi_dataset.text_prompts[i],
+                    "sentence": ioi_dataset.sentences[i],
                     "template": ioi_dataset.templates_by_prompt[i],
                 }
             )
@@ -666,8 +639,8 @@ if False:
 #%% [markdown] make the figure
 
 fig = go.Figure()
-## add the grey region
 
+## add the grey region
 # make the dotted line
 minx = -2
 maxx = 6
