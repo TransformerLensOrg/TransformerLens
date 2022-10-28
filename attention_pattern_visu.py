@@ -6,10 +6,9 @@ import torch
 if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 assert torch.cuda.device_count() == 1
-from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
+from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
 import pandas as pd
-from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
@@ -92,7 +91,6 @@ from ioi_circuit_extraction import (
     process_heads_and_mlps,
     turn_keep_into_rmv,
     CIRCUIT,
-    ARTHUR_CIRCUIT,
 )
 
 ipython = get_ipython()
@@ -113,17 +111,15 @@ import pysvelte
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
 print_gpu_mem("About to load model")
-model = EasyTransformer(
-    model_name, use_attn_result=True
+model = EasyTransformer.from_pretrained(
+    model_name,
 )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+model.set_use_attn_result(True)
 device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
 print_gpu_mem("Gpt2 loaded")
-
-
 # %%
-
 # IOI Dataset initialisation
 N = 150
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
@@ -197,7 +193,7 @@ heads = [(7, 3), (7, 9), (8, 6), (8, 10)]
 l = 3
 head_for_layer = [(l, x) for x in range(12)]
 
-show_attention(model, owb_seqs[6][:2000], mode="val", heads=heads)
+show_attention(model, owb_seqs[6][:2000], mode="val", heads=heads)  # bugged here : (
 # %%
 prep_seq = []
 for i in range(20):
