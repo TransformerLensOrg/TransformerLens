@@ -89,8 +89,8 @@ abc_dataset = (
 #%% [markdown]
 # Induction
 
-seq_len = 100
-rand_tokens = torch.randint(1000, 10000, (4, seq_len))
+seq_len = 50
+rand_tokens = torch.randint(1000, 10000, (100, seq_len))
 rand_tokens_repeat = einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
 
 
@@ -111,62 +111,82 @@ def filter_attn_hooks(hook_name):
 
 arrs = []
 
-for mode, offset in [
-    ("induction", 1 - seq_len),
-    ("duplicate", -seq_len),
-    ("previous", -1),
-]:
-    arr = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
-    old_arr = deepcopy(arr)
-    logits, loss = model.run_with_hooks(
-        rand_tokens_repeat,
-        fwd_hooks=[(filter_attn_hooks, partial(calc_score, offset=offset, arr=arr))],
-        return_type="both",
-        loss_return_per_token=True,
-    ).values()
-    fig = px.imshow(
-        arr,
-        labels={"y": "Layer", "x": "Head"},
-        color_continuous_scale="Blues",
-    )
-    fig.update_layout(title=f"Attention pattern for {mode} mode")
-    fig.show()
-    arrs.append(arr)
+#%%
+# for mode, offset in [
+#     ("induction", 1 - seq_len),
+#     ("duplicate", -seq_len),
+#     ("previous", -1),
+# ]:
+#     arr = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
+#     old_arr = deepcopy(arr)
+#     logits, loss = model.run_with_hooks(
+#         rand_tokens_repeat,
+#         fwd_hooks=[(filter_attn_hooks, partial(calc_score, offset=offset, arr=arr))],
+#         return_type="both",
+#         loss_return_per_token=True,
+#     ).values()
+#     fig = px.imshow(
+#         arr,
+#         labels={"y": "Layer", "x": "Head"},
+#         color_continuous_scale="Blues",
+#     )
+#     fig.update_layout(title=f"Attention pattern for {mode} mode")
+#     fig.show()
+#     arrs.append(arr)
 
-#%% [markdown]
-# Compare loss
+# #%% [markdown]
+# # Compare loss
 
-for model_name in ["gpt2", "neo"]:
-    model = eval(model_name)
-    offset = 1 - seq_len
-    logits, loss = model.run_with_hooks(
-        rand_tokens_repeat,
-        fwd_hooks=[(filter_attn_hooks, partial(calc_score, offset=offset, arr=arr))],
-        return_type="both",
-        loss_return_per_token=True,
-    ).values()
+# for model_name in ["gpt2", "neo"]:
+#     model = eval(model_name)
+#     offset = 1 - seq_len
+#     logits, loss = model.run_with_hooks(
+#         rand_tokens_repeat,
+#         fwd_hooks=[(filter_attn_hooks, partial(calc_score, offset=offset, arr=arr))],
+#         return_type="both",
+#         loss_return_per_token=True,
+#     ).values()
 
-    # verify that loss = - log p
-    ps = torch.softmax(logits, dim=-1)
-    neg_log_ps = -torch.log(ps)  # 4 200 50257
-    losses = [[] for _ in range(4)]
+#     # verify that loss = - log p
+#     ps = torch.softmax(logits, dim=-1)
+#     neg_log_ps = -torch.log(ps)  # 4 200 50257
+#     losses = [[] for _ in range(4)]
 
-    for i in range(suff.shape[0]):
-        for j in range(suff.shape[1] - 101, suff.shape[1] - 1):
-            losses[i].append(neg_log_ps[i][j][rand_tokens_repeat[i][j + 1]])
+#     for i in range(suff.shape[0]):
+#         for j in range(suff.shape[1] - 101, suff.shape[1] - 1):
+#             losses[i].append(neg_log_ps[i][j][rand_tokens_repeat[i][j + 1]])
 
-    losses = torch.tensor(losses)
+#     losses = torch.tensor(losses)
 
-    assert torch.allclose(
-        losses[:, -100:].cpu(),
-        loss[:, -100:].cpu(),
-        rtol=1e-5,
-        atol=1e-5,  # OK, just about works!
-    )
+#     assert torch.allclose(
+#         losses[:, -100:].cpu(),
+#         loss[:, -100:].cpu(),
+#         rtol=1e-5,
+#         atol=1e-5,  # OK, just about works!
+#     )
 
-    print(model_name, loss[:, -50:].mean().item(), loss[:, -50:].std().item())
+#     print(model_name, loss[:, -50:].mean().item(), loss[:, -50:].std().item())
 
 # see lab notes, seems OK to compare
+
+#%% [markdown]
+
+ys = [[], []]
+
+for idx, model_name in enumerate(["gpt2", "neo"]):
+    model = eval(model_name)
+    logits, loss = model(
+        rand_tokens_repeat, return_type="both", loss_return_per_token=True
+    ).values()
+    print(model_name, loss[:, -50:].mean().item(), loss[:, -50:].std().item())
+    mean_loss = loss.mean(dim=0)
+    ys[idx] = loss[:, -100:].detach().cpu()  # .numpy()
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(y=ys[0], name="gpt2"))
+fig.add_trace(go.Scatter(y=ys[1], name="neo"))
+fig.update_layout(title="Loss over time")
+fig.show()
 
 #%% [markdown]
 # Induction compensation
