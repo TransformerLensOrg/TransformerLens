@@ -336,7 +336,7 @@ for head in top_name_movers:
 
 extra_hooks = do_circuit_extraction(
     model=model,
-    heads_to_keep=get_heads_circuit(
+    heads_to_remove=get_heads_circuit(
         ioi_dataset=ioi_dataset,
         circuit={"name mover": top_name_movers},
     ),
@@ -347,7 +347,7 @@ extra_hooks = do_circuit_extraction(
     excluded=exclude_heads,
 )
 
-extra_hooks = []
+# extra_hooks = []
 model.reset_hooks()
 for hook in extra_hooks:
     model.add_hook(*hook)
