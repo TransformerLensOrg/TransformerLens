@@ -191,21 +191,20 @@ initial_logits, initial_loss = model(
 ).values()
 
 for idx, extra_hooks in enumerate([[], the_extra_hooks]):
-    results = torch.zeros(size=(12, 12))
-    mlp_results = torch.zeros(size=(12, 1))
     if extra_hooks is None:
         break
-
+    results = torch.zeros(size=(12, 12))
+    mlp_results = torch.zeros(size=(12, 1))
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
     initial_loss = model(
         rand_tokens_repeat, return_type="both", loss_return_per_token=True
-    )["loss"][:, -seq_len:].mean()
+    )["loss"][:, -seq_len // 2 :].mean()
     print(f"Initial loss: {initial_loss.item()}")
 
     for source_layer in tqdm(range(12)):
-        for source_head_idx in list(range(12)):
+        for source_head_idx in [None] + list(range(12)):
             model.reset_hooks()
             receiver_hooks = []
             receiver_hooks.append(("blocks.11.hook_resid_post", None))
@@ -218,10 +217,11 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 start_token=seq_len + 1,
                 end_token=2 * seq_len,
                 device="cuda",
+                freeze_mlps=True,
             )
             loss = model(
                 rand_tokens_repeat, return_type="both", loss_return_per_token=True
-            )["loss"][:, -seq_len:].mean()
+            )["loss"][:, -seq_len // 2 :].mean()
 
             if source_head_idx is None:
                 mlp_results[source_layer] = loss - initial_loss

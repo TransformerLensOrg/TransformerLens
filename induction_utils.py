@@ -36,12 +36,12 @@ def path_patching_attribution(
     """
     Do path patching in order to see which heads matter the most
     for directly writing the correct answer (see loss change)
-
     """
 
     def patch_all(z, source_act, hook):
         # z[start_token:end_token] = source_act[start_token:end_token]
-        z = source_act
+        # z = source_act
+        z[:] = 0
         return z
 
     # see path patching in ioi utils
@@ -140,7 +140,6 @@ def path_patching_attribution(
 
     # we can override the hooks above for the sender heads, though
     for hook_name, head_idx in sender_hooks:
-
         hook = get_act_hook(
             patch_all,
             alt_act=sender_cache[hook_name],
