@@ -271,5 +271,5 @@ print(
     f"Mean prob S: {prob_s.mean():.3f} | Adv S: {prob_adv_s.mean():.3f} | Mean relative var.: {(prob_diff_s).mean():.3f}"
 )
 print(
-    f"Ori pref:Mean logit diff: {ld.mean():.3f} | Mean prob IO: {prob.mean():.3f} | Mean prob S: {prob_s.mean():.3f} |  Init perf {(ld > 0).cpu().numpy().astype(int).mean():.3f} "
+    f"Ori pref: Mean logit diff: {ld.mean():.3f} | Mean prob IO: {prob.mean():.3f} | Mean prob S: {prob_s.mean():.3f} |  Init perf {(ld > 0).cpu().numpy().astype(int).mean():.3f} "
 )
