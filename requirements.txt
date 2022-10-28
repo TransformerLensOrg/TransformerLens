@@ -1,0 +1,12 @@
+einops
+datasets
+transformers
+fancy_einsum
+torch
+matplotlib
+numpy
+pandas
+scipy
+sklearn
+tqdm
+plotly

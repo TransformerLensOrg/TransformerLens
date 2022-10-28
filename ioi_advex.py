@@ -220,7 +220,6 @@ def gen_adv(ioi_dataset, model, templates, name="IO"):
     for i, s in enumerate(ioi_dataset.sentences):
         adv_temp = rd.choice(templates)
         adv_temp = adv_temp.replace("[A]", ioi_dataset.ioi_prompts[i][name])
-
         adv_tok_len = len(show_tokens(adv_temp, model, return_list=True))
 
         punct_idx = int(ioi_dataset.word_idx["punct"][i])
