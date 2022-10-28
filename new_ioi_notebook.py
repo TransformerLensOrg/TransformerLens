@@ -355,7 +355,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     mlp_results = torch.zeros(size=(12, 1))
 
     model.reset_hooks()
-    for hook in the_extra_hooks:
+    for hook in extra_hooks:
         model.add_hook(*hook)
     hooked_logit_diff = logit_diff(model, ioi_dataset)
 
@@ -393,9 +393,8 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T,
-                    title=f"Direct effect of removing heads on logit diff" + ""
-                    if idx == 0
-                    else " (with top 3 name movers knocked out)",
+                    title=f"Direct effect of removing heads on logit diff"
+                    + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                     return_fig=True,
                     show_fig=False,
                 )
@@ -417,10 +416,9 @@ def what_class(layer, head, circuit):
         if (layer, head) in circuit[circuit_class]:
             return circuit_class
     return "duplicate token"
-    raise ValueError((layer, head), circuit)
 
 
-# plot the most important heads by
+# plot the most important heads
 
 for idx, results in enumerate(both_results):
     k = 15
@@ -462,10 +460,12 @@ for idx, results in enumerate(both_results):
     # set y axis range to [-1, 1]
     fig.update_yaxes(range=[-3, 3])
 
+    # update y axis
+    fig.update_yaxes(title_text="Change in logit diffenrence after direct patching")
+
     # update title
     fig.update_layout(
-        "Most important heads by direct effect on logits" + ""
-        if idx == 0
-        else " (with top 3 name movers knocked out)"
+        title="Most important heads by direct effect on logits"
+        + ("" if idx == 0 else " (with top 3 name movers knocked out)")
     )
     fig.show()

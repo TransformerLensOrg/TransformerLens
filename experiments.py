@@ -108,7 +108,6 @@ from ioi_circuit_extraction import (
     process_heads_and_mlps,
     turn_keep_into_rmv,
     CIRCUIT,
-    ARTHUR_CIRCUIT,
 )
 from ioi_utils import logit_diff, probs
 from ioi_utils import get_top_tokens_and_probs as g
@@ -381,15 +380,161 @@ for idx, dataset in enumerate([ioi_dataset, abc_dataset]):
         )
         fig.update_layout(title_text=f"Attention of NMs from END to various positions on {["ioi_dataset", "abc_dataset"][idx]}")
     fig.show()
-#%% [markdown] And attention on a single sentence
+#%% [markdown]
+# See attention patterns on one sentence
 
 model.reset_hooks()
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 
-#%% [markdown] Backup NMs
+#%% [markdown]
+# See the backup NM effect! After ablating several attention heads, we actually get that 
+
+print(f"Recall that the initial logit diff is {default_logit_diff}")
+
+top_name_movers = [(9, 9), (9, 6), (10, 0)]
+exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
+for head in top_name_movers:
+    exclude_heads.remove(head)
+
+the_extra_hooks = do_circuit_extraction(
+    model=model,
+    heads_to_remove=get_heads_circuit(
+        ioi_dataset=ioi_dataset,
+        circuit={"name mover": top_name_movers},
+    ),
+    mlps_to_remove={},
+    ioi_dataset=ioi_dataset,
+    mean_dataset=abc_dataset,
+    return_hooks=True,
+    excluded=exclude_heads,
+)
+model.reset_hooks()
+for hook in the_extra_hooks:
+    model.add_hook(*hook)
+hooked_logit_diff = logit_diff(model, ioi_dataset)
+print(f"After knocking out the three most important MLPs, logit diff is {hooked_logit_diff=}")
+model.reset_hooks()
+
+both_results = []
+pos = "end"
+
+for idx, extra_hooks in enumerate([[], the_extra_hooks]):
+    results = torch.zeros(size=(12, 12))
+    mlp_results = torch.zeros(size=(12, 1))
+
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    hooked_logit_diff = logit_diff(model, ioi_dataset)
+    model.reset_hooks()
+
+    for source_layer in tqdm(range(12)):
+        for source_head_idx in list(range(12)):
+            model.reset_hooks()
+            receiver_hooks = []
+            receiver_hooks.append(("blocks.11.hook_resid_post", None))
+            model = path_patching(
+                model=model,
+                source_dataset=abc_dataset,
+                target_dataset=ioi_dataset,
+                ioi_dataset=ioi_dataset,
+                sender_heads=[(source_layer, source_head_idx)],
+                receiver_hooks=receiver_hooks,
+                max_layer=12,
+                positions=[pos],
+                verbose=False,
+                return_hooks=False,
+                extra_hooks=extra_hooks,
+            )
+            cur_logit_diff = logit_diff(model, ioi_dataset)
+
+            if source_head_idx is None:
+                mlp_results[source_layer] = cur_logit_diff - hooked_logit_diff
+            else:
+                results[source_layer][source_head_idx] = (
+                    cur_logit_diff - hooked_logit_diff
+                )
+
+            if source_layer == 11 and source_head_idx == 11:
+                fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    results.T,
+                    title=f"Direct effect of removing heads on logit diff"
+                    + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
+                    return_fig=True,
+                    show_fig=False,
+                )
+
+                both_results.append(results.clone())
+                fig.show()
+#%% [markdown]
+# Plot the two sets of results
+
+from ioi_utils import CLASS_COLORS
+
+cc = deepcopy(CLASS_COLORS)
+no_112 = deepcopy(CIRCUIT)
+no_112["name mover"].remove((11, 2))
+circuit = deepcopy(CIRCUIT)
+
+def what_class(layer, head, circuit):
+    for circuit_class in circuit:
+        if (layer, head) in circuit[circuit_class]:
+            return circuit_class
+    return "duplicate token"
 
 
+# plot the most important heads
+
+for idx, results in enumerate(both_results):
+    k = 15
+    top_heads = max_2d(torch.abs(results), k=k)[  # backup results or initial results
+        0
+    ]  # initial results is the patch with no KOs; direct effect on logits
+
+    exclude_heads = []
+    exclude_heads = [
+        (layer_idx, head)
+        for layer_idx in range(12)
+        for head in range(12)
+        if what_class(layer_idx, head, circuit=circuit)
+        not in ["name mover", "negative", "s2 inhibition"]
+    ]
+
+    fig = go.Figure()
+    heights = [
+        results[layer][head]
+        for layer, head in top_heads
+        if (layer, head) not in exclude_heads
+    ]
+    colors = [
+        cc[what_class(layer, head_idx, circuit=circuit)]
+        for layer, head_idx in top_heads
+        if (layer, head_idx) not in exclude_heads
+    ]
+
+    # plot a bar chart
+    fig.add_trace(
+        go.Bar(
+            x=[str(x) for x in top_heads if x not in exclude_heads],
+            y=heights,
+            orientation="v",
+            marker_color=colors,
+        )
+    )
+
+    # set y axis range to [-1, 1]
+    fig.update_yaxes(range=[-3, 3])
+
+    # update y axis
+    fig.update_yaxes(title_text="Change in logit diffenrence after direct patching")
+
+    # update title
+    fig.update_layout(
+        title="Most important heads by direct effect on logits"
+        + ("" if idx == 0 else " (with top 3 name movers knocked out)")
+    )
+    fig.show()
 
 #%% [markdown] Random sequence stuff
-
 
