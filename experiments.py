@@ -392,4 +392,4 @@ show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 
 #%% [markdown] Random sequence stuff
 
-#%% [markdown] Direct and indirect effects of MLPs
+
