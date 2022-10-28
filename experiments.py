@@ -386,11 +386,9 @@ for idx, dataset in enumerate([ioi_dataset, abc_dataset]):
 model.reset_hooks()
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 
-#%% [markdown] Position and token signals???
-
-
-
 #%% [markdown] Backup NMs
+
+
 
 #%% [markdown] Random sequence stuff
 
