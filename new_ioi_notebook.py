@@ -344,16 +344,17 @@ extra_hooks = do_circuit_extraction(
     ioi_dataset=ioi_dataset,
     mean_dataset=all_diff_dataset,
     return_hooks=True,
-    # excluded=exclude_heads,
+    excluded=exclude_heads,
 )
 
-# extra_hooks = []
+extra_hooks = []
+model.reset_hooks()
 for hook in extra_hooks:
     model.add_hook(*hook)
 hooked_logit_diff = logit_diff(model, ioi_dataset)
+
 print(f"{hooked_logit_diff=}")
 model.reset_hooks()
-
 
 for pos in ["end"]:
     print(pos)
@@ -380,10 +381,10 @@ for pos in ["end"]:
             cur_logit_diff = logit_diff(model, ioi_dataset)
 
             if source_head_idx is None:
-                mlp_results[source_layer] = cur_logit_diff - default_logit_diff
+                mlp_results[source_layer] = cur_logit_diff - hooked_logit_diff
             else:
                 results[source_layer][source_head_idx] = (
-                    cur_logit_diff - default_logit_diff
+                    cur_logit_diff - hooked_logit_diff
                 )
 
             if source_layer == 11 and source_head_idx == 11:
