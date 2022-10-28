@@ -325,10 +325,9 @@ dataset_names = [
 results = torch.zeros(size=(12, 12))
 mlp_results = torch.zeros(size=(12, 1))
 
-# patch all heads into the name mover input (hopefully find S2 Inhibition)
-
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
+print(default_logit_diff)
 
 top_name_movers = [(9, 9), (9, 6), (10, 0)]
 exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
@@ -345,8 +344,16 @@ extra_hooks = do_circuit_extraction(
     ioi_dataset=ioi_dataset,
     mean_dataset=all_diff_dataset,
     return_hooks=True,
-    excluded=exclude_heads,
+    # excluded=exclude_heads,
 )
+
+# extra_hooks = []
+for hook in extra_hooks:
+    model.add_hook(*hook)
+hooked_logit_diff = logit_diff(model, ioi_dataset)
+print(f"{hooked_logit_diff=}")
+model.reset_hooks()
+
 
 for pos in ["end"]:
     print(pos)
@@ -370,7 +377,6 @@ for pos in ["end"]:
                 return_hooks=False,
                 extra_hooks=extra_hooks,
             )
-
             cur_logit_diff = logit_diff(model, ioi_dataset)
 
             if source_head_idx is None:
