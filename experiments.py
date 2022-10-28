@@ -387,7 +387,7 @@ model.reset_hooks()
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 
 #%% [markdown]
-# See the backup NM effect! After ablating several attention heads, we actually get that 
+# See the backup NM effect! After ablating several attention heads, we actually an increase in logit difference
 
 print(f"Recall that the initial logit diff is {default_logit_diff}")
 
@@ -537,10 +537,7 @@ for idx, results in enumerate(both_results):
     fig.show()
 
 #%% [markdown] 
-# Are the tasks of looking at previous tokens, inducting, and duplicating tokens performed on the general OWT distribution, rather than just p_IOI?
-
-# %% [markdown]
-# Investigation of identified heads on random tokens
+# Are the tasks of looking at previous tokens, inducting, and duplicating tokens performed on the general OWT distribution, rather than just p_IOI? Investigation of identified heads on random tokens
 
 seq_len = 100
 rand_tokens = torch.randint(1000, 10000, (4, seq_len))
