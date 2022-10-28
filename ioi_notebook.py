@@ -2623,18 +2623,14 @@ seq_len = 100
 rand_tokens = torch.randint(1000, 10000, (4, seq_len))
 rand_tokens_repeat = einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
 
-
-induction_scores_array = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
-
-
-def calc_induction_score(attn_pattern, hook):
+def calc_score(attn_pattern, hook, offset, arr):
     # Pattern has shape [batch, index, query_pos, key_pos]
-    induction_stripe = attn_pattern.diagonal(1 - seq_len, dim1=-2, dim2=-1)
-    induction_scores = einops.reduce(
-        induction_stripe, "batch index pos -> index", "mean"
-    )
+    stripe = attn_pattern.diagonal(offset, dim1=-2, dim2=-1)
+    scores = einops.reduce(stripe, "batch index pos -> index", "mean")
     # Store the scores in a common array
-    induction_scores_array[hook.layer()] = induction_scores.detach().cpu().numpy()
+    arr[hook.layer()] = scores.detach().cpu().numpy()
+    # return arr
+    return attn_pattern
 
 
 def filter_attn_hooks(hook_name):
@@ -2642,16 +2638,25 @@ def filter_attn_hooks(hook_name):
     return split_name[-1] == "hook_attn"
 
 
-induction_logits = model.run_with_hooks(
-    rand_tokens_repeat, fwd_hooks=[(filter_attn_hooks, calc_induction_score)]
-)
-px.imshow(
-    induction_scores_array,
-    labels={"y": "Layer", "x": "Head"},
-    color_continuous_scale="Blues",
-)
-
-
+for mode, offset in [
+    ("induction", 1 - seq_len),
+    ("duplicate", -seq_len),
+    ("previous", -1),
+]:
+    arr = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
+    old_arr = deepcopy(arr)
+    logits = model.run_with_hooks(
+        rand_tokens_repeat,
+        fwd_hooks=[(filter_attn_hooks, partial(calc_score, offset=offset, arr=arr))],
+    )
+    # print(torch.allclose(arr, old_arr))
+    fig = px.imshow(
+        arr,
+        labels={"y": "Layer", "x": "Head"},
+        color_continuous_scale="Blues",
+    )
+    fig.update_layout(title=f"Attention pattern for {mode} mode")
+    fig.show()
 # %%
 from ioi_utils import compute_next_tok_dot_prod
 import torch.nn.functional as F
