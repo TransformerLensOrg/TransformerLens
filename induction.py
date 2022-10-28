@@ -147,14 +147,12 @@ for model_name in ["gpt2", "neo"]:
     ).values()
 
     # verify that loss = - log p
-
     ps = torch.softmax(logits, dim=-1)
     neg_log_ps = -torch.log(ps)  # 4 200 50257
     losses = [[] for _ in range(4)]
 
     for i in range(suff.shape[0]):
         for j in range(suff.shape[1] - 101, suff.shape[1] - 1):
-            # losses[i][j] = suff[i][j][rand_tokens_repeat[i][j + 100]]
             losses[i].append(neg_log_ps[i][j][rand_tokens_repeat[i][j + 1]])
 
     losses = torch.tensor(losses)
@@ -166,7 +164,7 @@ for model_name in ["gpt2", "neo"]:
         atol=1e-5,  # OK, just about works!
     )
 
-    print(model_name, loss[:, 100:].mean().item(), loss[:, 100:].std().item())
+    print(model_name, loss[:, -50:].mean().item(), loss[:, -50:].std().item())
 
 # see lab notes, seems OK to compare
 
