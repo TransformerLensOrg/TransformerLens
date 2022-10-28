@@ -218,7 +218,11 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 end_token=2 * seq_len,
                 device="cuda",
                 freeze_mlps=True,
+                return_hooks=False,
             )
+            # model.reset_hooks()
+            # for hook in hooks:
+            #     model.add_hook(*hook)
             loss = model(
                 rand_tokens_repeat, return_type="both", loss_return_per_token=True
             )["loss"][:, -seq_len // 2 :].mean()
