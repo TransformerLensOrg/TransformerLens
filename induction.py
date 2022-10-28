@@ -94,7 +94,7 @@ abc_dataset = (
 
 seq_len = 10
 batch_size = 10
-interweave = 1  # have this many things before a repeat
+interweave = 10  # have this many things before a repeat
 
 rand_tokens = torch.randint(1000, 10000, (batch_size, seq_len))
 rand_tokens_repeat = torch.zeros(
@@ -128,7 +128,6 @@ def filter_attn_hooks(hook_name):
 
 
 arrs = []
-
 #%% [markdown]
 # sweeeeeet plot
 
@@ -201,8 +200,8 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     for hook in extra_hooks:
         model.add_hook(*hook)
     initial_loss = model(
-        rand_tokens_repeat, return_type="both", loss_return_per_token=False
-    )["loss"]
+        rand_tokens_repeat, return_type="both", loss_return_per_token=True
+    )["loss"][:, -seq_len:].mean()
     print(f"Initial loss: {initial_loss.item()}")
 
     for source_layer in tqdm(range(12)):
@@ -217,12 +216,12 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
                 start_token=seq_len + 1,
-                end_token=2 * seq_len - 1,
+                end_token=2 * seq_len,
                 device="cuda",
             )
             loss = model(
-                rand_tokens_repeat, return_type="both", loss_return_per_token=False
-            )["loss"]
+                rand_tokens_repeat, return_type="both", loss_return_per_token=True
+            )["loss"][:, -seq_len:].mean()
 
             if source_head_idx is None:
                 mlp_results[source_layer] = loss - initial_loss
@@ -232,7 +231,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             if source_layer == 11 and source_head_idx == 11:
                 fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
-                    results.T,
+                    results.T.detach(),
                     title=f"Direct effect of removing heads on logit diff"
                     + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                     return_fig=True,
@@ -339,5 +338,3 @@ fig.update_layout(
     yaxis_title="Induction loss",
 )
 fig.show()
-
-# %%

@@ -40,7 +40,8 @@ def path_patching_attribution(
     """
 
     def patch_all(z, source_act, hook):
-        z = source_act.cuda()
+        # z[start_token:end_token] = source_act[start_token:end_token]
+        z = source_act
         return z
 
     # see path patching in ioi utils
