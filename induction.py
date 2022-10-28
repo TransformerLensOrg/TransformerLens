@@ -34,6 +34,7 @@ from ioi_utils import (
     path_patching,
     max_2d,
     CLASS_COLORS,
+    e,
     show_pp,
     show_attention_patterns,
     scatter_attention_and_contribution,
@@ -87,6 +88,7 @@ abc_dataset = (
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"))
 )
+
 #%% [markdown]
 # Induction
 
@@ -180,10 +182,11 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
-    hooked_logit_diff = logit_diff(model, ioi_dataset)
-    model.reset_hooks()
-
-    print("Hooked logit diff", hooked_logit_diff.item())
+    initial_loss = model(
+        rand_tokens_repeat, return_type="both", loss_return_per_token=False
+    )["loss"]
+    print(f"Initial loss: {initial_loss.item()}")
+    dek
 
     for source_layer in tqdm(range(12)):
         for source_head_idx in list(range(12)):
@@ -199,17 +202,17 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 start_token=seq_len + 1,
                 end_token=2 * seq_len - 1,
             )
-            cur_logit_diff = logit_diff(model, ioi_dataset)
+            loss = model(
+                rand_tokens_repeat, return_type="both", loss_return_per_token=False
+            )["loss"]
 
             if source_head_idx is None:
-                mlp_results[source_layer] = cur_logit_diff - hooked_logit_diff
+                mlp_results[source_layer] = loss - initial_loss
             else:
-                results[source_layer][source_head_idx] = (
-                    cur_logit_diff - hooked_logit_diff
-                )
+                results[source_layer][source_head_idx] = loss - initial_loss
 
             if source_layer == 11 and source_head_idx == 11:
-                fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
+                fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T,
                     title=f"Direct effect of removing heads on logit diff"
@@ -318,3 +321,5 @@ fig.update_layout(
     yaxis_title="Induction loss",
 )
 fig.show()
+
+# %%

@@ -982,6 +982,14 @@ def patch_all(z, source_act, hook):
     return source_act
 
 
+def e(s=""):
+    try:
+        f"del {s}"
+    except:
+        pass
+    torch.cuda.empty_cache()
+
+
 def path_patching(
     model,
     source_dataset,
