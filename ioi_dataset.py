@@ -506,6 +506,35 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"], prepend_bos=F
     ]
 
 
+def get_word_idxs(prompts, word_list, tokenizer):
+    """Get the index of the words in word_list in the prompts. Exactly one of the word_list word has to be present in each prompt"""
+    idxs = []
+    tokenized_words = [
+        tokenizer.decode(tokenizer(word)["input_ids"][0]) for word in word_list
+    ]
+    for pr_idx, prompt in enumerate(prompts):
+        toks = [
+            tokenizer.decode(t)
+            for t in tokenizer(prompt["text"], return_tensors="pt", padding=True)[
+                "input_ids"
+            ][0]
+        ]
+        idx = None
+        for i, w_tok in enumerate(tokenized_words):
+            if word_list[i] in prompt["text"]:
+                try:
+                    idx = toks.index(w_tok)
+                    if toks.count(w_tok) > 1:
+                        idx = len(toks) - toks[::-1].index(w_tok) - 1
+                except:
+                    idx = toks.index(w_tok)
+                    # raise ValueError(toks, w_tok, prompt["text"])
+        if idx is None:
+            raise ValueError(f"Word {word_list} and {i} not found {prompt}")
+        idxs.append(idx)
+    return torch.tensor(idxs)
+
+
 def get_end_idxs(prompts, tokenizer, name_tok_len=1, prepend_bos=False, toks=None):
     # toks = torch.Tensor(tokenizer([prompt["text"] for prompt in prompts], padding=True).input_ids).type(torch.int)
     relevant_idx = int(prepend_bos)
@@ -577,6 +606,8 @@ def get_idx_dict(ioi_prompts, tokenizer, prepend_bos=False, toks=None):
         toks=toks,
     )
 
+    punct_idxs = get_word_idxs(ioi_prompts, [",", "."], tokenizer)
+
     return {
         "IO": IO_idxs,
         "IO-1": IO_idxs - 1,
@@ -587,6 +618,7 @@ def get_idx_dict(ioi_prompts, tokenizer, prepend_bos=False, toks=None):
         "S2": S2_idxs,
         "end": end_idxs,
         "starts": torch.zeros_like(end_idxs),
+        "punct": punct_idxs,
     }
 
 
@@ -744,13 +776,12 @@ class IOIDataset:
 
         self.templates_by_prompt = []  # for each prompt if it's ABBA or BABA
         for i in range(N):
-            if self.sentences[i].index(
-                self.ioi_prompts[i]["IO"]
-            ) < self.sentences[i].index(self.ioi_prompts[i]["S"]):
+            if self.sentences[i].index(self.ioi_prompts[i]["IO"]) < self.sentences[
+                i
+            ].index(self.ioi_prompts[i]["S"]):
                 self.templates_by_prompt.append("ABBA")
             else:
                 self.templates_by_prompt.append("BABA")
-
 
         # print(self.ioi_prompts, "that's that")
         texts = [
