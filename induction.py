@@ -93,8 +93,21 @@ abc_dataset = (
 # Induction
 
 seq_len = 25
+interweave = 5  # have this many things before a repeat
+
 rand_tokens = torch.randint(1000, 10000, (100, seq_len))
-rand_tokens_repeat = einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
+rand_tokens_repeat = torch.zeros(
+    size=(100, seq_len * 2)
+).long()  # einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
+
+for i in range(seq_len // interweave):
+    rand_tokens_repeat[
+        :, i * (2 * interweave) : i * (2 * interweave) + interweave
+    ] = rand_tokens[:, i * interweave : i * interweave + interweave]
+    rand_tokens_repeat[
+        :, i * (2 * interweave) + interweave : i * (2 * interweave) + 2 * interweave
+    ] = rand_tokens[:, i * interweave : i * interweave + interweave]
+
 rand_tokens_control = torch.randint(1000, 10000, (100, seq_len * 2))
 
 
@@ -118,7 +131,7 @@ arrs = []
 #%% [markdown]
 # sweeeeeet plot
 
-if False:  # might hog memory
+if True:  # might hog memory
     ys = [[], []]
 
     for idx, model_name in enumerate(["gpt2", "neo"]):
