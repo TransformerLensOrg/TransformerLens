@@ -347,21 +347,21 @@ the_extra_hooks = do_circuit_extraction(
     excluded=exclude_heads,
 )
 
-# extra_hooks = []
-model.reset_hooks()
-for hook in the_extra_hooks:
-    model.add_hook(*hook)
-hooked_logit_diff = logit_diff(model, ioi_dataset)
-
-print(f"{hooked_logit_diff=}")
-model.reset_hooks()
-
 both_results = []
 pos = "end"
 
 for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     results = torch.zeros(size=(12, 12))
     mlp_results = torch.zeros(size=(12, 1))
+
+    model.reset_hooks()
+    for hook in the_extra_hooks:
+        model.add_hook(*hook)
+    hooked_logit_diff = logit_diff(model, ioi_dataset)
+
+    print(f"{hooked_logit_diff=}")
+    model.reset_hooks()
+
     for source_layer in tqdm(range(12)):
         for source_head_idx in list(range(12)):
             model.reset_hooks()
@@ -411,8 +411,6 @@ no_112 = deepcopy(CIRCUIT)
 no_112["name mover"].remove((11, 2))
 circuit = deepcopy(CIRCUIT)
 
-initial_results = results2.clone()
-
 
 def what_class(layer, head, circuit):
     for circuit_class in circuit:
@@ -424,51 +422,50 @@ def what_class(layer, head, circuit):
 
 # plot the most important heads by
 
-k = 15
-top_heads = max_2d(
-    torch.abs(initial_results), k=k
-)[  # backup results or initial results
-    0
-]  # initial results is the patch with no KOs; direct effect on logits
+for idx, results in enumerate(both_results):
+    k = 15
+    top_heads = max_2d(torch.abs(results), k=k)[  # backup results or initial results
+        0
+    ]  # initial results is the patch with no KOs; direct effect on logits
 
-exclude_heads = []
-exclude_heads = [
-    (layer_idx, head)
-    for layer_idx in range(12)
-    for head in range(12)
-    if what_class(layer_idx, head, circuit=circuit)
-    not in ["name mover", "negative", "s2 inhibition"]
-]
+    exclude_heads = []
+    exclude_heads = [
+        (layer_idx, head)
+        for layer_idx in range(12)
+        for head in range(12)
+        if what_class(layer_idx, head, circuit=circuit)
+        not in ["name mover", "negative", "s2 inhibition"]
+    ]
 
-fig = go.Figure()
-heights = [
-    -initial_results[layer][head]
-    for layer, head in top_heads
-    if (layer, head) not in exclude_heads
-]
-colors = [
-    cc[what_class(layer, head_idx, circuit=circuit)]
-    for layer, head_idx in top_heads
-    if (layer, head_idx) not in exclude_heads
-]
+    fig = go.Figure()
+    heights = [
+        results[layer][head]
+        for layer, head in top_heads
+        if (layer, head) not in exclude_heads
+    ]
+    colors = [
+        cc[what_class(layer, head_idx, circuit=circuit)]
+        for layer, head_idx in top_heads
+        if (layer, head_idx) not in exclude_heads
+    ]
 
-# plot a bar chart
-fig.add_trace(
-    go.Bar(
-        x=[str(x) for x in top_heads if x not in exclude_heads],
-        y=heights,
-        orientation="v",
-        marker_color=colors,
+    # plot a bar chart
+    fig.add_trace(
+        go.Bar(
+            x=[str(x) for x in top_heads if x not in exclude_heads],
+            y=heights,
+            orientation="v",
+            marker_color=colors,
+        )
     )
-)
 
-# stack them
+    # set y axis range to [-1, 1]
+    fig.update_yaxes(range=[-3, 3])
 
-# set y axis range to [-1, 1]
-fig.update_yaxes(range=[-3, 3])
-fname = f"backup_nm_plot_{ctime()}"
-
-# update title
-fig.update_layout(title=fname)
-fig.write_image(f"svgs/{fname}.svg")
-fig.show()
+    # update title
+    fig.update_layout(
+        "Most important heads by direct effect on logits" + ""
+        if idx == 0
+        else " (with top 3 name movers knocked out)"
+    )
+    fig.show()
