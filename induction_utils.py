@@ -70,7 +70,16 @@ def path_patching_attribution(
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
-    model.cache_all(target_cache, suppress_warning=True)
+    model.cache_some(
+        target_cache,
+        lambda x: (
+            "attn.hook_q" in x
+            or "hook_mlp_out" in x
+            or "attn.hook_k" in x
+            or "attn.hook_v" in x
+        ),
+        suppress_warning=True,
+    )
     target_logits, target_loss = model(
         tokens, return_type="both", loss_return_per_token=True
     ).values()
@@ -124,10 +133,7 @@ def path_patching_attribution(
 
     # we can override the hooks above for the sender heads, though
     for hook_name, head_idx in sender_hooks:
-        assert not torch.allclose(sender_cache[hook_name], target_cache[hook_name]), (
-            hook_name,
-            head_idx,
-        )
+
         hook = get_act_hook(
             patch_all,
             alt_act=sender_cache[hook_name],
@@ -150,8 +156,8 @@ def path_patching_attribution(
 
     hooks = []
     for hook_name, head_idx in receiver_hooks:
-        if torch.allclose(receiver_cache[hook_name], target_cache[hook_name]):
-            assert False, (hook_name, head_idx)
+        # if torch.allclose(receiver_cache[hook_name], target_cache[hook_name]):
+        #     assert False, (hook_name, head_idx)
         hook = get_act_hook(
             patch_all,
             alt_act=receiver_cache[hook_name],

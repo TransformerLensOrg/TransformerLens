@@ -418,7 +418,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
 
             if source_layer == 11 and source_head_idx == 11:
                 fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
-                fig = show_pp(
+                fig = show_pp(3
                     results.T,
                     title=f"Direct effect of removing heads on logit diff"
                     + ("" if idx == 0 else " (with top 3 name movers knocked out)"),

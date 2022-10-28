@@ -92,8 +92,8 @@ abc_dataset = (
 #%% [markdown]
 # Induction
 
-seq_len = 25
-interweave = 5  # have this many things before a repeat
+seq_len = 10
+interweave = 1  # have this many things before a repeat
 
 rand_tokens = torch.randint(1000, 10000, (100, seq_len))
 rand_tokens_repeat = torch.zeros(
@@ -131,7 +131,7 @@ arrs = []
 #%% [markdown]
 # sweeeeeet plot
 
-if True:  # might hog memory
+if False:  # might hog memory
     ys = [[], []]
 
     for idx, model_name in enumerate(["gpt2", "neo"]):
@@ -199,7 +199,6 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
         rand_tokens_repeat, return_type="both", loss_return_per_token=False
     )["loss"]
     print(f"Initial loss: {initial_loss.item()}")
-    dek
 
     for source_layer in tqdm(range(12)):
         for source_head_idx in list(range(12)):
