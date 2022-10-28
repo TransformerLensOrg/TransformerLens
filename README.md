@@ -1,6 +1,6 @@
 This repository contains the code for all experiments in the paper "Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small" (Wang et al, 2022).
 
-<img src="https://i.imgur.com/MgObeUE.png">
+<img src="https://i.imgur.com/iptFVBc.png">
 
 This is intended as a one-time code drop. <b>The authors recommend those interested in mechanistic interpretability using the <a href="https://github.com/neelnanda-io/Easy-Transformer">Easy Transformer</a> library</b>. Contact arthur@rdwrs.com or open an issue or PR for issues with this repository.
 
