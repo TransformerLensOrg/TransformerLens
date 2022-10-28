@@ -93,11 +93,12 @@ abc_dataset = (
 # Induction
 
 seq_len = 10
+batch_size = 10
 interweave = 1  # have this many things before a repeat
 
-rand_tokens = torch.randint(1000, 10000, (100, seq_len))
+rand_tokens = torch.randint(1000, 10000, (batch_size, seq_len))
 rand_tokens_repeat = torch.zeros(
-    size=(100, seq_len * 2)
+    size=(batch_size, seq_len * 2)
 ).long()  # einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
 
 for i in range(seq_len // interweave):
@@ -108,7 +109,7 @@ for i in range(seq_len // interweave):
         :, i * (2 * interweave) + interweave : i * (2 * interweave) + 2 * interweave
     ] = rand_tokens[:, i * interweave : i * interweave + interweave]
 
-rand_tokens_control = torch.randint(1000, 10000, (100, seq_len * 2))
+rand_tokens_control = torch.randint(1000, 10000, (batch_size, seq_len * 2))
 
 
 def calc_score(attn_pattern, hook, offset, arr):
@@ -139,7 +140,11 @@ if False:  # might hog memory
         logits, loss = model(
             rand_tokens_repeat, return_type="both", loss_return_per_token=True
         ).values()
-        print(model_name, loss[:, -50:].mean().item(), loss[:, -50:].std().item())
+        print(
+            model_name,
+            loss[:, -seq_len // 2 :].mean().item(),
+            loss[:, -seq_len // 2 :].std().item(),
+        )
         mean_loss = loss.mean(dim=0)
         ys[idx] = mean_loss.detach().cpu()  # .numpy()
 
@@ -151,15 +156,15 @@ if False:  # might hog memory
     # add a line at x = 50 saying that this should be the first guessable
     fig.add_shape(
         type="line",
-        x0=50,
+        x0=seq_len,
         y0=0,
-        x1=50,
+        x1=seq_len,
         y1=ys[0].max(),
         line=dict(color="Black", width=1, dash="dash"),
     )
     # add a label to this line
     fig.add_annotation(
-        x=50,
+        x=seq_len,
         y=ys[0].max(),
         text="First case of induction",
         showarrow=False,
@@ -170,7 +175,7 @@ if False:  # might hog memory
         arrowwidth=2,
         arrowcolor="#636363",
         ax=0,
-        ay=-40,
+        ay=-seq_len - 5,
     )
 
     fig.show()
@@ -213,7 +218,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 receiver_hooks=receiver_hooks,
                 start_token=seq_len + 1,
                 end_token=2 * seq_len - 1,
-                device="cpu",
+                device="cuda",
             )
             loss = model(
                 rand_tokens_repeat, return_type="both", loss_return_per_token=False
