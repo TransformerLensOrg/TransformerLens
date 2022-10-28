@@ -11,103 +11,46 @@
 # Reminder of the circuit:
 # <img src="https://i.imgur.com/arokEMj.png">
 #%% [markdown]
-# Setup (TODO cut extras)
+# Setup
 from copy import deepcopy
-from email.policy import default
-import os
 import torch
 
 assert torch.cuda.device_count() == 1
-from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
 import pandas as pd
 import torch
 import torch as t
-from easy_transformer.utils import (
-    gelu_new,
-    to_numpy,
-    get_corner,
-    print_gpu_mem,
-)  # helper functions
-from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.EasyTransformer import (
     EasyTransformer,
-    TransformerBlock,
-    MLP,
-    Attention,
-    LayerNormPre,
-    PosEmbed,
-    Unembed,
-    Embed,
-)
-from easy_transformer.experiments import (
-    ExperimentMetric,
-    AblationConfig,
-    EasyAblation,
-    EasyPatching,
-    PatchingConfig,
-    get_act_hook,
 )
 from time import ctime
 from functools import partial
-from typing import Any, Callable, Dict, List, Set, Tuple, Union, Optional, Iterable
-import itertools
+
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
 import plotly.express as px
 import plotly.io as pio
-from plotly.subplots import make_subplots
 import plotly.graph_objects as go
-import warnings
-import plotly
-from sklearn.linear_model import LinearRegression
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import random
-import spacy
-import re
-from einops import rearrange
 import einops
-from pprint import pprint
-import gc
-from datasets import load_dataset
 from IPython import get_ipython
-import matplotlib.pyplot as plt
-import random as rd
 from copy import deepcopy
 from ioi_dataset import (
     IOIDataset,
-    NOUNS_DICT,
-    NAMES,
-    gen_flipped_prompts,
-    gen_prompt_uniform,
-    BABA_TEMPLATES,
-    ABBA_TEMPLATES,
 )
 from ioi_utils import (
     path_patching,
     max_2d,
     CLASS_COLORS,
-    all_subsets,
-    clear_gpu_mem,
-    show_tokens,
     show_pp,
     show_attention_patterns,
-    safe_del,
     scatter_attention_and_contribution,
 )
 from random import randint as ri
 from ioi_circuit_extraction import (
     do_circuit_extraction,
-    gen_prompt_uniform,
-    get_act_hook,
-    get_circuit_replacement_hook,
-    get_extracted_idx,
     get_heads_circuit,
-    join_lists,
-    list_diff,
-    process_heads_and_mlps,
-    turn_keep_into_rmv,
     CIRCUIT,
 )
 from ioi_utils import logit_diff, probs
