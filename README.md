@@ -17,11 +17,11 @@ pip install -r requirements.txt
 # In this repo
 
 In this repo, you can find the following notebooks:
-
+`
 * `experiments.py`: a notebook of several of the most interesting experiments of the IOI project.
-* `ioi_completeness.py`: a notebook that generate the completeness plots in the paper, and implements the completeness functions.
-* `ioi_minimality.py`: as above for minimality.
-* `ioi_advex.py`: a notebook that generates adversarial examples as in the paper.
+* `completeness.py`: a notebook that generate the completeness plots in the paper, and implements the completeness functions.
+* `minimality.py`: as above for minimality.
+* `advex.py`: a notebook that generates adversarial examples as in the paper.
 
 # Easy Transformer
 
