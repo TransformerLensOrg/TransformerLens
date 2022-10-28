@@ -330,23 +330,28 @@ mlp_results = torch.zeros(size=(12, 1))
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
 
+top_name_movers = [(9, 9), (9, 6), (10, 0)]
+exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(12)]
+for head in top_name_movers:
+    exclude_heads.remove(head)
+
 extra_hooks = do_circuit_extraction(
     model=model,
     heads_to_keep=get_heads_circuit(
         ioi_dataset=ioi_dataset,
-        circuit={"name mover": [(9, 9), (9, 6), (10, 0)]},
+        circuit={"name mover": top_name_movers},
     ),
     mlps_to_remove={},
     ioi_dataset=ioi_dataset,
     mean_dataset=all_diff_dataset,
     return_hooks=True,
+    excluded=exclude_heads,
 )
-extra_hooks = []
 
 for pos in ["end"]:
     print(pos)
     results = torch.zeros(size=(12, 12))
-    mlp_results = [torch.zeros(size=(12, 1))
+    mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
         for source_head_idx in list(range(12)):
             model.reset_hooks()
@@ -385,12 +390,12 @@ for pos in ["end"]:
                     show_fig=False,
                 )
 
-                fig.write_image(
-                    f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
-                )
+                # fig.write_image(
+                #     f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
+                # )
+                # fig.write_image(fname + ".png")
+                # fig.write_image(fname + ".svg")
 
-                fig.write_image(fname + ".png")
-                fig.write_image(fname + ".svg")
                 fig.show()
 
                 # # # show mlp results # mlps are fucked
