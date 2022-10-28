@@ -28,8 +28,13 @@ from easy_transformer.caching import (
 
 from easy_transformer.components import *
 import easy_transformer.weight_conversion as weight_conversion
-from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores
-
+from easy_transformer.utils import (
+    lm_cross_entropy_loss,
+    sample_logits,
+    download_file_from_hf,
+    FactoredMatrix,
+    composition_scores,
+)
 
 
 """
@@ -51,9 +56,9 @@ class EasyTransformer(HookedRootModule):
     This class implements a full Transformer using the components in ./components.py, with
     HookPoints on every interesting activation. It inherits from HookedRootModule.
 
-    It can have a pretrained Transformer's weights automatically loaded in via the EasyTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or EasyTransformerConfig object. 
+    It can have a pretrained Transformer's weights automatically loaded in via the EasyTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or EasyTransformerConfig object.
     """
-    
+
     VALID_PRETRAINED_MODEL_NAMES = weight_conversion.VALID_PRETRAINED_MODEL_NAMES
     PRETRAINED_MODEL_NAMES_DICT = weight_conversion.PRETRAINED_MODEL_NAMES_DICT
     STANFORD_CRFM_CHECKPOINTS = weight_conversion.STANFORD_CRFM_CHECKPOINTS
@@ -61,16 +66,16 @@ class EasyTransformer(HookedRootModule):
     def __init__(
         self,
         cfg,
-        tokenizer = None,
-        move_to_device = True,
+        tokenizer=None,
+        move_to_device=True,
     ):
         """
         Model initialization. Note that if you want to load the model from pretrained weights, you should use the EasyTransformer.from_pretrained() class method instead of this one.
 
         cfg Union[EasyTransformerConfig, Dict]: The config to use for the
-            model. 
+            model.
         tokenizer (*optional): The tokenizer to use for the model. If not
-            provided, it is inferred from cfg.tokenizer_name or initialized to None. 
+            provided, it is inferred from cfg.tokenizer_name or initialized to None.
             If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
         move_to_device (bool): Whether to move the model to the device specified in cfg.
             device.
@@ -79,7 +84,9 @@ class EasyTransformer(HookedRootModule):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig(**cfg)
         elif isinstance(cfg, str):
-            raise ValueError("Please pass in a config dictionary or EasyTransformerConfig object. If you want to load a pretrained model, use EasyTransformer.from_pretrained() instead.")
+            raise ValueError(
+                "Please pass in a config dictionary or EasyTransformerConfig object. If you want to load a pretrained model, use EasyTransformer.from_pretrained() instead."
+            )
         self.cfg = cfg
         if tokenizer is not None:
             self.tokenizer = tokenizer
@@ -90,7 +97,7 @@ class EasyTransformer(HookedRootModule):
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
-        
+
         if not self.cfg.d_vocab:
             # If we have a tokenizer, vocab size can be inferred from it.
             assert (
@@ -105,14 +112,14 @@ class EasyTransformer(HookedRootModule):
         if self.cfg.positional_embedding_type != "rotary":
             self.pos_embed = PosEmbed(self.cfg)
             self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
-        
+
         self.blocks = nn.ModuleList(
             [
                 TransformerBlock(self.cfg, block_index)
                 for block_index in range(self.cfg.n_layers)
             ]
         )
-        
+
         if self.cfg.normalization_type == "LN":
             if self.cfg.final_rms:
                 self.ln_final = RMSNorm(self.cfg)
@@ -138,18 +145,18 @@ class EasyTransformer(HookedRootModule):
 
         if move_to_device:
             self.to(self.cfg.device)
-        
+
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
         self.setup()
 
     def forward(
-        self, 
-        input: Union[str, torch.Tensor], 
-        return_type: Optional[str] = "logits", 
-        prepend_bos: bool = True, 
-        past_kv_cache: Optional[EasyTransformerKeyValueCache] = None
-        ) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        self,
+        input: Union[str, torch.Tensor],
+        return_type: Optional[str] = "logits",
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
+    ) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
@@ -167,22 +174,29 @@ class EasyTransformer(HookedRootModule):
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
         assert isinstance(tokens, torch.Tensor)
-        # If we're doing caching, then we reuse keys and values from previous runs, as that's the only 
-        # way that past activations will affect the final logits. The cache contains those so we don't 
-        # need to recompute them. This is useful for generating text. As we have absolute positional 
-        # encodings, to implement this we have a `pos_offset` variable, defaulting to zero, which says 
-        # to offset which positional encodings are used (cached keys and values were calculated with 
+        # If we're doing caching, then we reuse keys and values from previous runs, as that's the only
+        # way that past activations will affect the final logits. The cache contains those so we don't
+        # need to recompute them. This is useful for generating text. As we have absolute positional
+        # encodings, to implement this we have a `pos_offset` variable, defaulting to zero, which says
+        # to offset which positional encodings are used (cached keys and values were calculated with
         # their own positional encodings).
         if past_kv_cache is None:
             pos_offset = 0
         else:
             batch_size, ctx_length = tokens.shape
-            cached_batch_size, cache_ctx_length, num_heads_in_cache, d_head_in_cache = past_kv_cache[0].past_keys.shape
+            (
+                cached_batch_size,
+                cache_ctx_length,
+                num_heads_in_cache,
+                d_head_in_cache,
+            ) = past_kv_cache[0].past_keys.shape
             assert cached_batch_size == batch_size
             assert num_heads_in_cache == self.cfg.n_heads
             assert d_head_in_cache == self.cfg.d_head
             # If we want to generate from the empty string, we'd pass in an empty cache, so we need to handle that case
-            assert cache_ctx_length == 0 or ctx_length == 1, "Pass in one token at a time after loading cache"
+            assert (
+                cache_ctx_length == 0 or ctx_length == 1
+            ), "Pass in one token at a time after loading cache"
             pos_offset = cache_ctx_length
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         if self.cfg.positional_embedding_type == "standard":
@@ -211,9 +225,11 @@ class EasyTransformer(HookedRootModule):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
             residual = block(
-                residual, 
-                past_kv_cache_entry = past_kv_cache[i] if past_kv_cache is not None else None, # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
-                shortformer_pos_embed = shortformer_pos_embed
+                residual,
+                past_kv_cache_entry=past_kv_cache[i]
+                if past_kv_cache is not None
+                else None,  # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
+                shortformer_pos_embed=shortformer_pos_embed,
             )  # [batch, pos, d_model]
         if return_type is None:
             return None
@@ -234,7 +250,7 @@ class EasyTransformer(HookedRootModule):
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
-                
+
     def set_tokenizer(self, tokenizer):
         """
         Sets the tokenizer to use for this model.
@@ -244,7 +260,7 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, input, prepend_bos=True):
+    def to_tokens(self, input, prepend_bos=False):
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos:
             if isinstance(input, str):
@@ -252,12 +268,10 @@ class EasyTransformer(HookedRootModule):
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
         return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
-    
+
     def to_str_tokens(
-        self, 
-        input: Union[str, torch.Tensor, list], 
-        prepend_bos: bool = True
-        ):
+        self, input: Union[str, torch.Tensor, list], prepend_bos: bool = True
+    ):
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
         Args:
@@ -268,39 +282,41 @@ class EasyTransformer(HookedRootModule):
             str_tokens: List of individual tokens as strings
         """
         if isinstance(input, list):
-            return list(map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input))
+            return list(
+                map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input)
+            )
         elif isinstance(input, str):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
         elif isinstance(input, torch.Tensor):
             tokens = input
-            tokens = tokens.squeeze() # Get rid of a trivial batch dimension
-            assert tokens.dim() == 1, f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+            tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            assert (
+                tokens.dim() == 1
+            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-        str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+        str_tokens = self.tokenizer.batch_decode(
+            tokens, clean_up_tokenization_spaces=False
+        )
         return str_tokens
-    
+
     def to_single_token(self, string):
-        """Maps a string that makes up a single token to the id for that token. Raises an error for strings that are not a single token! If uncertain use to_tokens
-        """
+        """Maps a string that makes up a single token to the id for that token. Raises an error for strings that are not a single token! If uncertain use to_tokens"""
 
         # We use the to_tokens method, do not append a BOS token
         token = self.to_tokens(string, prepend_bos=False).squeeze()
         # If token shape is non-empty, raise error
         assert not token.shape, f"Input string: {string} is not a single token!"
         return token.item()
-    
-    def single_token_to_residual(
-        self, 
-        token: Union[str, int, torch.Tensor]
-        ):
-        """Maps a token to the unembedding vector for that token, ie the vector in the residual stream that we do with to the get the logit for that token. 
+
+    def single_token_to_residual(self, token: Union[str, int, torch.Tensor]):
+        """Maps a token to the unembedding vector for that token, ie the vector in the residual stream that we do with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map.
 
         Args:
             token (Union[str, int, torch.Tensor]): The single token. Can be a single element tensor, an integer, or string. If string, will be mapped to a single token using to_single_token, and an error raised if it's multiply tokens.
-        
+
         Returns:
             residual_direction torch.Tensor: The unembedding vector for the token, a [d_model] tensor.
         """
@@ -312,12 +328,12 @@ class EasyTransformer(HookedRootModule):
             token = token.item()
         else:
             raise ValueError(f"Invalid token type: {type(token)}")
-        
+
         residual_direction = self.W_U[:, token]
         return residual_direction
-    
+
     def to(self, device):
-        """ 
+        """
         Wrapper around to that also changes self.cfg.device if it's a torch.device or string. If torch.dtype, just passes through
         """
         if isinstance(device, torch.device):
@@ -331,38 +347,52 @@ class EasyTransformer(HookedRootModule):
         nn.Module.to(self, device)
 
     @classmethod
-    def from_pretrained(cls, 
-                        model_name: str, 
-                        fold_ln = True, 
-                        center_writing_weights = True, 
-                        center_unembed = True,
-                        checkpoint = None,
-                        hf_model = None,
-                        device = None,
-                        **model_kwargs):
+    def from_pretrained(
+        cls,
+        model_name: str,
+        fold_ln=True,
+        center_writing_weights=True,
+        center_unembed=True,
+        checkpoint=None,
+        hf_model=None,
+        device=None,
+        **model_kwargs,
+    ):
         """Class method to load a pretrained model from HuggingFace and to automatically convert and load those weights into EasyTransformer format.
-        
+
         See fold_layer_norm for more details on the folding and centering.
 
         Args:
             model_name (str): The model name - must be in VALID_MODEL_NAMES
-            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the 
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the
                 subsequent linear layer. This does not change the computation. Defaults to True.
-            center_writing_weights (bool, optional): Whether to center weights writing to   
+            center_writing_weights (bool, optional): Whether to center weights writing to
                 the residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
-            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). 
+            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero).
                 Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
             keep_original_model (bool, optional): Whether to delete the model loaded from    HuggingFace (stored as model.hf_model). Defaults to False.
             device (str, optional): The device to load the model onto. By default will load to CUDA if available, else CPU
         """
-        assert (
-            (model_name in cls.VALID_PRETRAINED_MODEL_NAMES) or (model_name in cls.PRETRAINED_MODEL_NAMES_DICT)
+        assert (model_name in cls.VALID_PRETRAINED_MODEL_NAMES) or (
+            model_name in cls.PRETRAINED_MODEL_NAMES_DICT
         ), f"Invalid model name: {model_name}. Valid model names are: {cls.VALID_PRETRAINED_MODEL_NAMES}"
 
         if model_name.endswith("-old"):
-            return cls.from_pretrained_solu_old(model_name, fold_ln, center_writing_weights, center_unembed, **model_kwargs)
+            return cls.from_pretrained_solu_old(
+                model_name,
+                fold_ln,
+                center_writing_weights,
+                center_unembed,
+                **model_kwargs,
+            )
         elif model_name.endswith("-c4-code") and model_name.startswith("solu"):
-            return cls.from_pretrained_solu_c4_code(model_name, fold_ln, center_writing_weights, center_unembed, **model_kwargs)
+            return cls.from_pretrained_solu_c4_code(
+                model_name,
+                fold_ln,
+                center_writing_weights,
+                center_unembed,
+                **model_kwargs,
+            )
 
         elif model_name == "attn-only-2l-induction-demo":
             return cls.from_pretrained_attn_only_old(center_unembed, **model_kwargs)
@@ -374,16 +404,14 @@ class EasyTransformer(HookedRootModule):
             hf_model_name = model_name
         # The model family (eg "gpt2" or "neo")
         model_family = cls.get_model_family(hf_model_name)
-        
+
         if hf_model is None:
             if checkpoint is not None:
                 if "stanford" not in model_name:
                     logging.warning(
                         f"Loading checkpoints is not supported for the model {model_name}. Loading without checkpoints"
                     )
-                    hf_model = AutoModelForCausalLM.from_pretrained(
-                        hf_model_name
-                    )
+                    hf_model = AutoModelForCausalLM.from_pretrained(hf_model_name)
                 else:
                     assert (
                         checkpoint in cls.STANFORD_CRFM_CHECKPOINTS
@@ -392,13 +420,9 @@ class EasyTransformer(HookedRootModule):
                         hf_model_name, revision=f"checkpoint-{checkpoint}"
                     )
             else:
-                hf_model = AutoModelForCausalLM.from_pretrained(
-                    hf_model_name
-                )
+                hf_model = AutoModelForCausalLM.from_pretrained(hf_model_name)
 
-        cfg = cls.convert_hf_config(
-            hf_model.config, model_family=model_family
-        )
+        cfg = cls.convert_hf_config(hf_model.config, model_family=model_family)
         if device is not None:
             cfg.device = device
         cfg.checkpoint = checkpoint
@@ -428,39 +452,54 @@ class EasyTransformer(HookedRootModule):
         elif model_family == "opt":
             state_dict = weight_conversion.convert_opt_weights(hf_model, model.cfg)
         else:
-            raise ValueError(f"Loading weights from this model family is not currently supported: {model_family}, generated from model name {model_name}. Feel free to open an issue on GitHub to request this feature.")
-        
-        model.load_and_process_state_dict(state_dict, 
-                        fold_ln=fold_ln, 
-                        center_writing_weights=center_writing_weights, 
-                        center_unembed=center_unembed,
-                        move_dict_to_device=True)
+            raise ValueError(
+                f"Loading weights from this model family is not currently supported: {model_family}, generated from model name {model_name}. Feel free to open an issue on GitHub to request this feature."
+            )
+
+        model.load_and_process_state_dict(
+            state_dict,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
+            move_dict_to_device=True,
+        )
         print(f"Finished loading pretrained model {model_name} into EasyTransformer!")
         return model
-    
+
     @classmethod
-    def from_pretrained_solu_old(cls, 
-                                model_name: str, 
-                                fold_ln = True, 
-                                center_writing_weights = True, 
-                                center_unembed = True,
-                                **model_kwargs):
-        """ 
+    def from_pretrained_solu_old(
+        cls,
+        model_name: str,
+        fold_ln=True,
+        center_writing_weights=True,
+        center_unembed=True,
+        **model_kwargs,
+    ):
+        """
         A helper function to load in SoLU models trained with my original code
 
         Model name format: solu-{n_layers}l-old
 
         These models were all trained on 15B tokens of the Pile
         """
-        layer_number = int(re.match("solu-(\d*)l-old", model_name, re.IGNORECASE).group(1))
+        layer_number = int(
+            re.match("solu-(\d*)l-old", model_name, re.IGNORECASE).group(1)
+        )
         api = HfApi()
-        repo_names = {1:'SoLU_1L_v9_old', 2:'SoLU_2L_v10_old', 4:'SoLU_4L_v11_old', 6:'SoLU_6L_v13_old', 8:'SoLU_8L_v21_old', 10:'SoLU_10L_v22_old'}
+        repo_names = {
+            1: "SoLU_1L_v9_old",
+            2: "SoLU_2L_v10_old",
+            4: "SoLU_4L_v11_old",
+            6: "SoLU_6L_v13_old",
+            8: "SoLU_8L_v21_old",
+            10: "SoLU_10L_v22_old",
+        }
         repo_name = f"NeelNanda/{repo_names[layer_number]}"
-        
+
         files = api.list_repo_files(repo_name)
         model_files = [f for f in files if "final" in f]
         file_name = model_files[0]
-        
+
         # Early models have left facing W_pos
         reverse_pos = layer_number <= 8
 
@@ -481,7 +520,7 @@ class EasyTransformer(HookedRootModule):
             final_rms = True
         else:
             final_rms = False
-        
+
         if reverse_pos:
             new_state_dict["pos_embed.W_pos"] = new_state_dict["pos_embed.W_pos"].T
         if reverse_weights:
@@ -491,65 +530,74 @@ class EasyTransformer(HookedRootModule):
         state_dict = new_state_dict
 
         config = {
-            'n_layers': layer_number,
-            'd_vocab': new_state_dict['embed.W_E'].size(0),
-            'd_model': new_state_dict['embed.W_E'].size(1),
-            'd_head': 64,
-            'n_ctx': 1024,
-            'act_fn': 'solu_ln',
-            'final_rms': final_rms,
-            'tokenizer_name': 'EleutherAI/gpt-neox-20b',
-            'normalization_type': 'LNPre' if fold_ln else "LN"
+            "n_layers": layer_number,
+            "d_vocab": new_state_dict["embed.W_E"].size(0),
+            "d_model": new_state_dict["embed.W_E"].size(1),
+            "d_head": 64,
+            "n_ctx": 1024,
+            "act_fn": "solu_ln",
+            "final_rms": final_rms,
+            "tokenizer_name": "EleutherAI/gpt-neox-20b",
+            "normalization_type": "LNPre" if fold_ln else "LN",
         }
 
         model = cls(config, **model_kwargs)
-        model.load_and_process_state_dict(state_dict, fold_ln, center_writing_weights, center_unembed)
+        model.load_and_process_state_dict(
+            state_dict, fold_ln, center_writing_weights, center_unembed
+        )
         return model
-    
+
     @classmethod
-    def from_pretrained_solu_c4_code(cls, 
-                                model_name: str, 
-                                fold_ln = True, 
-                                center_writing_weights = True, 
-                                center_unembed = True,
-                                **model_kwargs):
-        """ 
+    def from_pretrained_solu_c4_code(
+        cls,
+        model_name: str,
+        fold_ln=True,
+        center_writing_weights=True,
+        center_unembed=True,
+        **model_kwargs,
+    ):
+        """
         A helper function to load in SoLU models trained with my new code, custom tokenizer
 
         Model name format: solu-{n_layers}l-c4-code
 
         These models were all trained on 22B tokens of 80% C4 and 20% Code
         """
-        layer_number = int(re.match("solu-(\d*)l-c4-code", model_name, re.IGNORECASE).group(1))
+        layer_number = int(
+            re.match("solu-(\d*)l-c4-code", model_name, re.IGNORECASE).group(1)
+        )
         api = HfApi()
         repo_name = f"NeelNanda/SoLU_{layer_number}L512W_C4_Code"
-        
+
         files = api.list_repo_files(repo_name)
         model_files = [f for f in files if "final" in f]
         file_name = model_files[0]
 
         # Download weights from HuggingFace. AutoModel is not supported for these models.
-        state_dict = download_file_from_hf(repo_name, "model_final.pth", force_is_torch=True)
-        
+        state_dict = download_file_from_hf(
+            repo_name, "model_final.pth", force_is_torch=True
+        )
 
         config = {
-            'n_layers': layer_number,
-            'd_vocab': state_dict['embed.W_E'].size(0),
-            'd_model': state_dict['embed.W_E'].size(1),
-            'd_head': 64,
-            'n_ctx': 1024,
-            'act_fn': 'solu_ln',
-            'tokenizer_name': 'NeelNanda/gpt-neox-tokenizer-digits',
-            'normalization_type': 'LNPre' if fold_ln else "LN"
+            "n_layers": layer_number,
+            "d_vocab": state_dict["embed.W_E"].size(0),
+            "d_model": state_dict["embed.W_E"].size(1),
+            "d_head": 64,
+            "n_ctx": 1024,
+            "act_fn": "solu_ln",
+            "tokenizer_name": "NeelNanda/gpt-neox-tokenizer-digits",
+            "normalization_type": "LNPre" if fold_ln else "LN",
         }
 
         model = cls(config, **model_kwargs)
-        model.load_and_process_state_dict(state_dict, fold_ln, center_writing_weights, center_unembed)
+        model.load_and_process_state_dict(
+            state_dict, fold_ln, center_writing_weights, center_unembed
+        )
         return model
-    
+
     @classmethod
-    def from_pretrained_attn_only_old(cls, center_unembed = True, **model_kwargs):
-        """ 
+    def from_pretrained_attn_only_old(cls, center_unembed=True, **model_kwargs):
+        """
         A helper function to load in a 2L512W attn-only model trained on 6B tokens of the Pile - used in an induction heads tutorial.
 
         The model has no LN, and was trained with a shortformer variant - positional embeddings are only added in to the residual stream when input to the queries and keys and NOT when input to values (ie is never actually in the residual stream and cannot be moved between positions)
@@ -564,22 +612,26 @@ class EasyTransformer(HookedRootModule):
 
         # This model was trained with EasyTransformer, so weights already have the right format!
         config = {
-            'model_name': 'attn-only-2l-induction-demo',
-            'n_layers': 2,
-            'd_vocab': state_dict['embed.W_E'].size(0),
-            'd_model': 512,
-            'd_head': 64,
-            'n_ctx': 1024,
-            'tokenizer_name': 'EleutherAI/gpt-neox-20b',
-            'normalization_type': None,
-            'positional_embedding_type':'shortformer',
-            'attn_only': True,
+            "model_name": "attn-only-2l-induction-demo",
+            "n_layers": 2,
+            "d_vocab": state_dict["embed.W_E"].size(0),
+            "d_model": 512,
+            "d_head": 64,
+            "n_ctx": 1024,
+            "tokenizer_name": "EleutherAI/gpt-neox-20b",
+            "normalization_type": None,
+            "positional_embedding_type": "shortformer",
+            "attn_only": True,
         }
 
         model = cls(config, **model_kwargs)
-        model.load_and_process_state_dict(state_dict, fold_ln=False, center_writing_weights=False, center_unembed=center_unembed)
+        model.load_and_process_state_dict(
+            state_dict,
+            fold_ln=False,
+            center_writing_weights=False,
+            center_unembed=center_unembed,
+        )
         return model
-
 
     @classmethod
     def get_model_family(cls, model_name):
@@ -593,7 +645,11 @@ class EasyTransformer(HookedRootModule):
             return "neox"
         elif model_name == "EleutherAI/gpt-j-6B":
             return "gptj"
-        elif model_name in ['EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B',]:
+        elif model_name in [
+            "EleutherAI/gpt-neo-125M",
+            "EleutherAI/gpt-neo-1.3B",
+            "EleutherAI/gpt-neo-2.7B",
+        ]:
             # Important to exclude GPT-J and GPT-NeoX, they have different config.
             return "neo"
         else:
@@ -710,44 +766,46 @@ class EasyTransformer(HookedRootModule):
         """
         Initialize weights matrices with a normal of std=initializer_range (default=0.02). This roughly follows the GPT-2 paper's scheme (but with truncation, and not halving the std for W_pos).
 
-        LayerNorm weights are already initialized to 1.0, and all biases are initialized to 0.0 (including LayerNorm), so this just initializes weight matrices. 
-        
+        LayerNorm weights are already initialized to 1.0, and all biases are initialized to 0.0 (including LayerNorm), so this just initializes weight matrices.
+
         Weight matrices are set to empty by default (to save space + compute, since they're the bulk of the parameters), so it is important to call this if you are not loading in pretrained weights! Note that this function assumes that weight names being with W_
 
         Set seed here to ensure determinism.
 
         This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but no one has gotten round to updating it?
         https://github.com/pytorch/pytorch/issues/18182
-        
+
         PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the exact same weights?! https://github.com/pytorch/pytorch/issues/72253
 
         The best paper I've found on transformer initialization is the muP paper, but haven't integrated those ideas yet: https://arxiv.org/abs/2203.03466
         """
-        
+
         if self.cfg.seed is not None:
             torch.manual_seed(self.cfg.seed)
-        
+
         for name, param in self.named_parameters():
             if "W_" in name:
                 nn.init.normal_(param, std=self.cfg.initializer_range)
-    
-    def load_and_process_state_dict(self, 
-                                    state_dict: Dict[str, torch.Tensor], 
-                                    fold_ln: bool=True, 
-                                    center_writing_weights: bool = True, 
-                                    center_unembed: bool = True,
-                                    move_dict_to_device: bool = True):
+
+    def load_and_process_state_dict(
+        self,
+        state_dict: Dict[str, torch.Tensor],
+        fold_ln: bool = True,
+        center_writing_weights: bool = True,
+        center_unembed: bool = True,
+        move_dict_to_device: bool = True,
+    ):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
-        
+
         See fold_layer_norm for more details on the folding and centering.
 
         Args:
             state_dict (dict): The state dict of the model, in EasyTransformer format
-            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the   
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the
                 subsequent linear layer. This does not change the computation. Defaults to True.
-            center_writing_weights (bool, optional): Whether to center weights writing to the 
+            center_writing_weights (bool, optional): Whether to center weights writing to the
                 residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
-            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). 
+            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero).
                 Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
             move_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
         """
@@ -761,7 +819,6 @@ class EasyTransformer(HookedRootModule):
         if center_unembed:
             state_dict = self.center_unembed(state_dict)
         self.load_state_dict(state_dict)
-
 
     def fill_missing_keys(self, state_dict):
         """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
@@ -780,14 +837,18 @@ class EasyTransformer(HookedRootModule):
         missing_keys = set(default_state_dict.keys()) - set(state_dict.keys())
         # Fill in the missing keys with the default initialization
         for key in missing_keys:
-            if 'hf_model' in key:
+            if "hf_model" in key:
                 # Skip keys that are from the HuggingFace model, if loading from HF.
                 continue
-            if 'W_' in key:
-                logging.warning("Missing key for a weight matrix in pretrained, filled in with an empty tensor: {}".format(key))
+            if "W_" in key:
+                logging.warning(
+                    "Missing key for a weight matrix in pretrained, filled in with an empty tensor: {}".format(
+                        key
+                    )
+                )
             state_dict[key] = default_state_dict[key]
         return state_dict
-    
+
     def fold_layer_norm(self, state_dict: Dict[str, torch.Tensor]):
         """Takes in a state dict from a pretrained model, formatted to be consistent with EasyTransformer but with LayerNorm weights and biases. Folds these into the neighbouring weights. See EasyTransformerConfig for more details
 
@@ -795,67 +856,131 @@ class EasyTransformer(HookedRootModule):
             state_dict (Dict[str, torch.Tensor]): State dict of pretrained model
         """
         for l in range(self.cfg.n_layers):
-            # Fold ln1 into attention - it's important to fold biases first, 
+            # Fold ln1 into attention - it's important to fold biases first,
             # since biases depend on weights but not vice versa
             # The various indexing is just to broadcast ln.b and ln.w along every axis other than d_model. Each weight matrix right multiplies.
             # To fold in the bias, we use the W_ matrix to map it to the hidden space of the layer, so we need to sum along axis -2, which is the residual stream space axis.
-            state_dict[f"blocks.{l}.attn.b_Q"] = state_dict[f"blocks.{l}.attn.b_Q"] + (state_dict[f"blocks.{l}.attn.W_Q"] * state_dict[f"blocks.{l}.ln1.b"][None, :, None]).sum(-2)
-            state_dict[f"blocks.{l}.attn.b_K"] = state_dict[f"blocks.{l}.attn.b_K"] + (state_dict[f"blocks.{l}.attn.W_K"] * state_dict[f"blocks.{l}.ln1.b"][None, :, None]).sum(-2)
-            state_dict[f"blocks.{l}.attn.b_V"] = state_dict[f"blocks.{l}.attn.b_V"] + (state_dict[f"blocks.{l}.attn.W_V"] * state_dict[f"blocks.{l}.ln1.b"][None, :, None]).sum(-2)
-            
-            state_dict[f"blocks.{l}.attn.W_Q"] = state_dict[f"blocks.{l}.attn.W_Q"] * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
-            state_dict[f"blocks.{l}.attn.W_K"] = state_dict[f"blocks.{l}.attn.W_K"] * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
-            state_dict[f"blocks.{l}.attn.W_V"] = state_dict[f"blocks.{l}.attn.W_V"] * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
-            del state_dict[f"blocks.{l}.ln1.w"], state_dict[f"blocks.{l}.ln1.b"], 
-            
-            
+            state_dict[f"blocks.{l}.attn.b_Q"] = state_dict[f"blocks.{l}.attn.b_Q"] + (
+                state_dict[f"blocks.{l}.attn.W_Q"]
+                * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
+            ).sum(-2)
+            state_dict[f"blocks.{l}.attn.b_K"] = state_dict[f"blocks.{l}.attn.b_K"] + (
+                state_dict[f"blocks.{l}.attn.W_K"]
+                * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
+            ).sum(-2)
+            state_dict[f"blocks.{l}.attn.b_V"] = state_dict[f"blocks.{l}.attn.b_V"] + (
+                state_dict[f"blocks.{l}.attn.W_V"]
+                * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
+            ).sum(-2)
+
+            state_dict[f"blocks.{l}.attn.W_Q"] = (
+                state_dict[f"blocks.{l}.attn.W_Q"]
+                * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            )
+            state_dict[f"blocks.{l}.attn.W_K"] = (
+                state_dict[f"blocks.{l}.attn.W_K"]
+                * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            )
+            state_dict[f"blocks.{l}.attn.W_V"] = (
+                state_dict[f"blocks.{l}.attn.W_V"]
+                * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            )
+            del (
+                state_dict[f"blocks.{l}.ln1.w"],
+                state_dict[f"blocks.{l}.ln1.b"],
+            )
+
             # Fold ln2 into MLP
             if not self.cfg.attn_only:
-                state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[f"blocks.{l}.mlp.b_in"] + (state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.b"][:, None]).sum(-2)
-                state_dict[f"blocks.{l}.mlp.W_in"] = state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"][:, None]
+                state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[
+                    f"blocks.{l}.mlp.b_in"
+                ] + (
+                    state_dict[f"blocks.{l}.mlp.W_in"]
+                    * state_dict[f"blocks.{l}.ln2.b"][:, None]
+                ).sum(
+                    -2
+                )
+                state_dict[f"blocks.{l}.mlp.W_in"] = (
+                    state_dict[f"blocks.{l}.mlp.W_in"]
+                    * state_dict[f"blocks.{l}.ln2.w"][:, None]
+                )
                 del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
 
             if self.cfg.act_fn.startswith("solu"):
                 # Fold ln3 into activation
-                state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[f"blocks.{l}.mlp.b_out"] + (state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]).sum(-2)
-                state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
-                del state_dict[f"blocks.{l}.mlp.ln.w"], state_dict[f"blocks.{l}.mlp.ln.b"]
+                state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[
+                    f"blocks.{l}.mlp.b_out"
+                ] + (
+                    state_dict[f"blocks.{l}.mlp.W_out"]
+                    * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]
+                ).sum(
+                    -2
+                )
+                state_dict[f"blocks.{l}.mlp.W_out"] = (
+                    state_dict[f"blocks.{l}.mlp.W_out"]
+                    * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
+                )
+                del (
+                    state_dict[f"blocks.{l}.mlp.ln.w"],
+                    state_dict[f"blocks.{l}.mlp.ln.b"],
+                )
         # Fold ln_final into Unembed
         if not self.cfg.final_rms:
             # Dumb bug from my old SoLU training code, some models have RMSNorm instead of LayerNorm pre unembed.
-            state_dict[f"unembed.b_U"] = state_dict[f"unembed.b_U"] + (state_dict[f"unembed.W_U"] * state_dict[f"ln_final.b"][:, None]).sum(dim=-2)
+            state_dict[f"unembed.b_U"] = state_dict[f"unembed.b_U"] + (
+                state_dict[f"unembed.W_U"] * state_dict[f"ln_final.b"][:, None]
+            ).sum(dim=-2)
             del state_dict[f"ln_final.b"]
-        state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
+        state_dict[f"unembed.W_U"] = (
+            state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
+        )
         del state_dict[f"ln_final.w"]
         return state_dict
-    
-    
+
     def center_writing_weights(self, state_dict: Dict[str, torch.Tensor]):
-        """Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and W_out. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. See fold_layer_norm for more details.
-        """
-        state_dict['embed.W_E'] = state_dict['embed.W_E'] - state_dict['embed.W_E'].mean(-1, keepdim=True)
+        """Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and W_out. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. See fold_layer_norm for more details."""
+        state_dict["embed.W_E"] = state_dict["embed.W_E"] - state_dict[
+            "embed.W_E"
+        ].mean(-1, keepdim=True)
         if self.cfg.positional_embedding_type != "rotary":
-            state_dict['pos_embed.W_pos'] = state_dict['pos_embed.W_pos'] - state_dict['pos_embed.W_pos'].mean(-1, keepdim=True)
+            state_dict["pos_embed.W_pos"] = state_dict["pos_embed.W_pos"] - state_dict[
+                "pos_embed.W_pos"
+            ].mean(-1, keepdim=True)
         for l in range(self.cfg.n_layers):
-            state_dict[f'blocks.{l}.attn.W_O'] = state_dict[f'blocks.{l}.attn.W_O'] - state_dict[f'blocks.{l}.attn.W_O'].mean(-1, keepdim=True) # W_O is [head_index, d_model, d_head]
-            state_dict[f'blocks.{l}.attn.b_O'] = state_dict[f'blocks.{l}.attn.b_O'] - state_dict[f'blocks.{l}.attn.b_O'].mean() # b_O is [d_model]
-            state_dict[f'blocks.{l}.mlp.W_out'] = state_dict[f'blocks.{l}.mlp.W_out'] - state_dict[f'blocks.{l}.mlp.W_out'].mean(-1, keepdim=True)
-            state_dict[f'blocks.{l}.mlp.b_out'] = state_dict[f'blocks.{l}.mlp.b_out'] - state_dict[f'blocks.{l}.mlp.b_out'].mean()
+            state_dict[f"blocks.{l}.attn.W_O"] = state_dict[
+                f"blocks.{l}.attn.W_O"
+            ] - state_dict[f"blocks.{l}.attn.W_O"].mean(
+                -1, keepdim=True
+            )  # W_O is [head_index, d_model, d_head]
+            state_dict[f"blocks.{l}.attn.b_O"] = (
+                state_dict[f"blocks.{l}.attn.b_O"]
+                - state_dict[f"blocks.{l}.attn.b_O"].mean()
+            )  # b_O is [d_model]
+            state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[
+                f"blocks.{l}.mlp.W_out"
+            ] - state_dict[f"blocks.{l}.mlp.W_out"].mean(-1, keepdim=True)
+            state_dict[f"blocks.{l}.mlp.b_out"] = (
+                state_dict[f"blocks.{l}.mlp.b_out"]
+                - state_dict[f"blocks.{l}.mlp.b_out"].mean()
+            )
         return state_dict
-    
+
     def center_unembed(self, state_dict: Dict[str, torch.Tensor]):
-        """Centers the unembedding weights W_U. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. As softmax is translation invariant, this changes the logits but not the log probs, and makes the model logits (slightly) more interpretable - when trying to understand how components contribute to the logits, we'll be less misled by components that just add something to every logit.
-        """
-        state_dict['unembed.W_U'] = state_dict['unembed.W_U'] - state_dict['unembed.W_U'].mean(-1, keepdim=True)
-        state_dict['unembed.b_U'] = state_dict['unembed.b_U'] - state_dict['unembed.b_U'].mean()
+        """Centers the unembedding weights W_U. This is done by subtracting the mean of the weights from the weights themselves. This is done in-place. As softmax is translation invariant, this changes the logits but not the log probs, and makes the model logits (slightly) more interpretable - when trying to understand how components contribute to the logits, we'll be less misled by components that just add something to every logit."""
+        state_dict["unembed.W_U"] = state_dict["unembed.W_U"] - state_dict[
+            "unembed.W_U"
+        ].mean(-1, keepdim=True)
+        state_dict["unembed.b_U"] = (
+            state_dict["unembed.b_U"] - state_dict["unembed.b_U"].mean()
+        )
         return state_dict
-    
+
     def set_use_attn_result(self, use_attn_result):
         """
         Toggles whether to explicitly calculate and expose the result for each attention head - useful for interpretability but can easily burn through GPU memory.
         """
         self.cfg.use_attn_result = use_attn_result
-        
+
     @torch.inference_mode()
     def generate(
         self,
@@ -870,7 +995,7 @@ class EasyTransformer(HookedRootModule):
         freq_penalty: float = 0.0,
         num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
-        prepend_bos = True,
+        prepend_bos=True,
         return_type: Optional[str] = "input",
     ):
         """
@@ -892,7 +1017,7 @@ class EasyTransformer(HookedRootModule):
             freq_penalty (float): Frequency penalty for sampling - how much to penalise previous tokens. Higher values will make the model more random
             use_past_kv_cache (bool): If True, create and use cache to speed up generation
             prepend_bos (bool): If True, prepend the model's bos_token_id to the input, if it's a string. Irrelevant if input is a tensor.
-            return_type (str, *optional*): The type of the output to return - either a string (str), a tensor of tokens (tensor) or whatever the format of the input was (input). 
+            return_type (str, *optional*): The type of the output to return - either a string (str), a tensor of tokens (tensor) or whatever the format of the input was (input).
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens - by default returns same type as input
         """
@@ -915,7 +1040,9 @@ class EasyTransformer(HookedRootModule):
         batch_size, ctx_length = tokens.shape
         tokens = tokens.to(self.cfg.device)
         if use_past_kv_cache:
-            past_kv_cache = EasyTransformerKeyValueCache.init_cache(self.cfg, self.cfg.device, batch_size)
+            past_kv_cache = EasyTransformerKeyValueCache.init_cache(
+                self.cfg, self.cfg.device, batch_size
+            )
         else:
             past_kv_cache = None
 
@@ -925,10 +1052,12 @@ class EasyTransformer(HookedRootModule):
             ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
 
             eos_token_id = self.tokenizer.eos_token_id
-            
+
             # An array to track which sequences in the batch have finished.
-            finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=self.cfg.device)
-        
+            finished_sequences = torch.zeros(
+                batch_size, dtype=torch.bool, device=self.cfg.device
+            )
+
         # Currently nothing in EasyTransformer changes with eval, but this is here in case that changes in the future
         self.eval()
         for index in tqdm.tqdm(range(max_new_tokens)):
@@ -936,10 +1065,16 @@ class EasyTransformer(HookedRootModule):
             # We keep adding the sampled tokens to the end of tokens.
             if use_past_kv_cache:
                 # We just take the final tokens, as a [batch, 1] tensor
-                if index>0:
-                    logits = self.forward(tokens[:, -1:], return_type="logits", past_kv_cache=past_kv_cache)
+                if index > 0:
+                    logits = self.forward(
+                        tokens[:, -1:],
+                        return_type="logits",
+                        past_kv_cache=past_kv_cache,
+                    )
                 else:
-                    logits = self.forward(tokens, return_type="logits", past_kv_cache=past_kv_cache)
+                    logits = self.forward(
+                        tokens, return_type="logits", past_kv_cache=past_kv_cache
+                    )
 
             else:
                 # We input the entire sequence, as a [batch, pos] tensor, since we aren't using the cache
@@ -954,17 +1089,17 @@ class EasyTransformer(HookedRootModule):
                 freq_penalty=freq_penalty,
                 tokens=tokens,
             )
-            
+
             if stop_at_eos:
                 # For all unfinished sequences, add on the next token. If a sequence finished, we throw away the generated token and instead add an EOS token to pad.
                 sampled_tokens[finished_sequences] = eos_token_id
                 finished_sequences.logical_or_(sampled_tokens == eos_token_id)
-            
+
             tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
 
             if stop_at_eos and finished_sequences.all():
                 break
-        
+
         if return_type == "str":
             if prepend_bos:
                 # If we prepended a BOS token, remove it when returning output.
@@ -974,76 +1109,73 @@ class EasyTransformer(HookedRootModule):
 
         else:
             return tokens
-    
+
     # Give access to all weights as properties. Layer weights are stacked into one massive tensor and a cache is used to avoid repeated computation. If GPU memory is a bottleneck, don't use these properties!
     @property
     def W_U(self):
         return self.unembed.W_U
-    
+
     @property
     def W_E(self):
         return self.embed.W_E
-    
+
     @property
     def W_pos(self):
         return self.pos_embed.W_pos
 
     @property
     def W_E_pos(self):
-        """ 
+        """
         Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
         """
         return torch.cat([self.W_E, self.W_pos], dim=1)
-    
+
     @property
     @lru_cache(maxsize=None)
     def W_K(self):
         """Stacks the key weights across all layers"""
         return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
-    
+
     @property
     @lru_cache(maxsize=None)
     def W_Q(self):
         """Stacks the query weights across all layers"""
         return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
-    
+
     @property
     @lru_cache(maxsize=None)
     def W_V(self):
         """Stacks the value weights across all layers"""
         return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
-    
+
     @property
     @lru_cache(maxsize=None)
     def W_O(self):
         """Stacks the attn output weights across all layers"""
         return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
-    
+
     @property
     @lru_cache(maxsize=None)
     def W_in(self):
         """Stacks the MLP input weights across all layers"""
         return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
-    
+
     @property
     @lru_cache(maxsize=None)
     def W_out(self):
         """Stacks the MLP output weights across all layers"""
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
-    
+
     @property
     def QK(self):
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
-    
+
     @property
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
-       
+
     # Various utility functions
-    def accumulated_bias(
-        self, 
-        layer: int, 
-        mlp_input: bool=False):
+    def accumulated_bias(self, layer: int, mlp_input: bool = False):
         """Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the input of layer L.
 
         Args:
@@ -1058,33 +1190,43 @@ class EasyTransformer(HookedRootModule):
             accumulated_bias += self.blocks[i].attn.b_O
             accumulated_bias += self.blocks[i].mlp.b_out
         if mlp_input:
-            assert layer<self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
+            assert (
+                layer < self.cfg.n_layers
+            ), "Cannot include attn_bias from beyond the final layer"
             accumulated_bias += self.blocks[layer].attn.b_O
         return accumulated_bias
-    
+
     def all_composition_scores(self, mode):
         """Returns the Composition scores for all pairs of heads, as a L1, H1, L2, H2 tensor (which is upper triangular on the first and third axes)
-        
+
         mode is one of ["Q", "K", "V"]
 
         See https://transformer-circuits.pub/2021/framework/index.html#:~:text=The%20above%20diagram%20shows%20Q%2D%2C%20K%2D%2C%20and%20V%2DComposition for three metrics used
         """
         left = self.OV
-        if mode=="Q":
+        if mode == "Q":
             right = self.QK
-        elif mode=="K":
+        elif mode == "K":
             right = self.QK.T
-        elif mode=="V":
+        elif mode == "V":
             right = self.OV
         else:
             raise ValueError(f"mode must be one of ['Q', 'K', 'V'] not {mode}")
 
         scores = composition_scores(left, right, broadcast_dims=True)
         # Mask scores to be zero for all pairs with the right head in the same layer or earlier layer than the left head.
-        mask = torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None] < torch.arange(self.cfg.n_layers, device=self.cfg.device)[None, None, :, None]
+        mask = (
+            torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None]
+            < torch.arange(self.cfg.n_layers, device=self.cfg.device)[
+                None, None, :, None
+            ]
+        )
         scores = torch.where(mask, scores, torch.zeros_like(scores))
         return scores
-    
-    def all_head_labels(self):
-        return [f"L{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)]
 
+    def all_head_labels(self):
+        return [
+            f"L{l}H{h}"
+            for l in range(self.cfg.n_layers)
+            for h in range(self.cfg.n_heads)
+        ]

@@ -260,8 +260,10 @@ if True:
         adv_ioi_dataset.text_prompts[i] = s
         adv_ioi_dataset.word_idx["end"][i] += adv_tok_len
         adv_ioi_dataset.word_idx["S2"][i] += adv_tok_len
-    return adv_ioi_dataset
-
+    # return adv_ioi_dataset
+#%%
+s = ioi_dataset.sentences[0]
+t = model.to_tokens(s)
 
 # %%
 
