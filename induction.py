@@ -213,6 +213,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 receiver_hooks=receiver_hooks,
                 start_token=seq_len + 1,
                 end_token=2 * seq_len - 1,
+                device="cpu",
             )
             loss = model(
                 rand_tokens_repeat, return_type="both", loss_return_per_token=False

@@ -13,7 +13,7 @@ import plotly.express as px
 import gc
 import einops
 from easy_transformer.experiments import get_act_hook
-
+from ioi_utils import e
 from ioi_dataset import IOIDataset
 from ioi_circuit_extraction import do_circuit_extraction
 
@@ -31,6 +31,7 @@ def path_patching_attribution(
     extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
     freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
     have_internal_interactions=False,
+    device="cuda",
 ):
     """
     Do path patching in order to see which heads matter the most
@@ -39,7 +40,7 @@ def path_patching_attribution(
     """
 
     def patch_all(z, source_act, hook):
-        z = source_act
+        z = source_act.cuda()
         return z
 
     # see path patching in ioi utils
@@ -60,7 +61,10 @@ def path_patching_attribution(
     for hook in extra_hooks:
         model.add_hook(*hook)
     model.cache_some(
-        sender_cache, lambda x: x in sender_hook_names, suppress_warning=True
+        sender_cache,
+        lambda x: x in sender_hook_names,
+        suppress_warning=True,
+        device=device,
     )
     source_logits, source_loss = model(
         patch_tokens, return_type="both", loss_return_per_token=True
@@ -79,6 +83,7 @@ def path_patching_attribution(
             or "attn.hook_v" in x
         ),
         suppress_warning=True,
+        device=device,
     )
     target_logits, target_loss = model(
         tokens, return_type="both", loss_return_per_token=True
@@ -92,6 +97,7 @@ def path_patching_attribution(
         lambda x: x in receiver_hook_names,
         suppress_warning=True,
         verbose=False,
+        device=device,
     )
 
     # for all the Q, K, V things
@@ -160,12 +166,15 @@ def path_patching_attribution(
         #     assert False, (hook_name, head_idx)
         hook = get_act_hook(
             patch_all,
-            alt_act=receiver_cache[hook_name],
+            alt_act=receiver_cache[hook_name].clone(),
             idx=head_idx,
             dim=2 if head_idx is not None else None,
             name=hook_name,
         )
         hooks.append((hook_name, hook))
+
+    for obj in ["receiver_cache", "target_cache", "sender_cache"]:
+        e(obj)
 
     model.reset_hooks()
     if return_hooks:
