@@ -18,6 +18,26 @@ from ioi_dataset import IOIDataset
 from ioi_circuit_extraction import do_circuit_extraction
 
 
+def prepend_padding(tens, model_tokenizer=None, pad_token=None):
+    """
+    Add a padding token
+    """
+
+    assert (
+        model_tokenizer is not None or pad_token is not None
+    ), "Either model_tokenizer or pad_token must be provided"
+
+    if pad_token is None:
+        pad_token = model_tokenizer.pad_token_id
+
+    assert len(tens.shape) == 2, f"{tens.shape} not 2D"
+
+    new_tens = torch.zeros((tens.shape[0], tens.shape[1] + 1), dtype=tens.dtype)
+    new_tens[:, 1:] = tens
+    new_tens[:, 0] = pad_token
+    return new_tens
+
+
 def path_patching_attribution(
     model,
     tokens,

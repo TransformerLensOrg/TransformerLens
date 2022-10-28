@@ -4,7 +4,7 @@ from copy import deepcopy
 import torch
 
 from easy_transformer.experiments import get_act_hook
-from induction_utils import path_patching_attribution
+from induction_utils import path_patching_attribution, prepend_padding
 
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
@@ -62,7 +62,7 @@ gpt2.set_use_attn_result(True)
 neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
 neo.set_use_attn_result(True)
 
-model = gpt2
+model = neo
 #%% [markdown]
 # Initialise dataset
 N = 100
@@ -108,8 +108,11 @@ for i in range(seq_len // interweave):
     rand_tokens_repeat[
         :, i * (2 * interweave) + interweave : i * (2 * interweave) + 2 * interweave
     ] = rand_tokens[:, i * interweave : i * interweave + interweave]
-
 rand_tokens_control = torch.randint(1000, 10000, (batch_size, seq_len * 2))
+
+rand_tokens = prepend_padding(rand_tokens, model.tokenizer)
+rand_tokens_repeat = prepend_padding(rand_tokens_repeat, model.tokenizer)
+rand_tokens_control = prepend_padding(rand_tokens_control, model.tokenizer)
 
 
 def calc_score(attn_pattern, hook, offset, arr):
@@ -131,7 +134,7 @@ arrs = []
 #%% [markdown]
 # sweeeeeet plot
 
-if False:  # might hog memory
+if True:  # might hog memory
     ys = [[], []]
 
     for idx, model_name in enumerate(["gpt2", "neo"]):
@@ -342,3 +345,5 @@ fig.update_layout(
     yaxis_title="Induction loss",
 )
 fig.show()
+
+# %%
