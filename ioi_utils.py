@@ -982,24 +982,6 @@ def patch_all(z, source_act, hook):
     return source_act
 
 
-def path_patching_attribution(
-    model,
-    tokens,
-    patch_tokens,
-    start_token,
-    end_token,
-    sender_heads,
-    receiver_hooks,
-):
-    """
-    Do path patching in order to see which heads matter the most
-    for directly writing the correct answer (see loss change)
-
-    """
-
-    pass
-
-
 def path_patching(
     model,
     source_dataset,

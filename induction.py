@@ -4,6 +4,7 @@ from copy import deepcopy
 import torch
 
 from easy_transformer.experiments import get_act_hook
+from induction_utils import path_patching_attribution
 
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
@@ -89,7 +90,7 @@ abc_dataset = (
 #%% [markdown]
 # Induction
 
-seq_len = 50
+seq_len = 25
 rand_tokens = torch.randint(1000, 10000, (100, seq_len))
 rand_tokens_repeat = einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
 rand_tokens_control = torch.randint(1000, 10000, (100, seq_len * 2))
@@ -115,48 +116,49 @@ arrs = []
 #%% [markdown]
 # sweeeeeet plot
 
-ys = [[], []]
+if False:  # might hog memory
+    ys = [[], []]
 
-for idx, model_name in enumerate(["gpt2", "neo"]):
-    model = eval(model_name)
-    logits, loss = model(
-        rand_tokens_repeat, return_type="both", loss_return_per_token=True
-    ).values()
-    print(model_name, loss[:, -50:].mean().item(), loss[:, -50:].std().item())
-    mean_loss = loss.mean(dim=0)
-    ys[idx] = mean_loss.detach().cpu()  # .numpy()
+    for idx, model_name in enumerate(["gpt2", "neo"]):
+        model = eval(model_name)
+        logits, loss = model(
+            rand_tokens_repeat, return_type="both", loss_return_per_token=True
+        ).values()
+        print(model_name, loss[:, -50:].mean().item(), loss[:, -50:].std().item())
+        mean_loss = loss.mean(dim=0)
+        ys[idx] = mean_loss.detach().cpu()  # .numpy()
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(y=ys[0], name="gpt2"))
-fig.add_trace(go.Scatter(y=ys[1], name="neo"))
-fig.update_layout(title="Loss over time")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(y=ys[0], name="gpt2"))
+    fig.add_trace(go.Scatter(y=ys[1], name="neo"))
+    fig.update_layout(title="Loss over time")
 
-# add a line at x = 50 saying that this should be the first guessable
-fig.add_shape(
-    type="line",
-    x0=50,
-    y0=0,
-    x1=50,
-    y1=ys[0].max(),
-    line=dict(color="Black", width=1, dash="dash"),
-)
-# add a label to this line
-fig.add_annotation(
-    x=50,
-    y=ys[0].max(),
-    text="First case of induction",
-    showarrow=False,
-    font=dict(size=16),
-    align="center",
-    arrowhead=2,
-    arrowsize=1,
-    arrowwidth=2,
-    arrowcolor="#636363",
-    ax=0,
-    ay=-40,
-)
+    # add a line at x = 50 saying that this should be the first guessable
+    fig.add_shape(
+        type="line",
+        x0=50,
+        y0=0,
+        x1=50,
+        y1=ys[0].max(),
+        line=dict(color="Black", width=1, dash="dash"),
+    )
+    # add a label to this line
+    fig.add_annotation(
+        x=50,
+        y=ys[0].max(),
+        text="First case of induction",
+        showarrow=False,
+        font=dict(size=16),
+        align="center",
+        arrowhead=2,
+        arrowsize=1,
+        arrowwidth=2,
+        arrowcolor="#636363",
+        ax=0,
+        ay=-40,
+    )
 
-fig.show()
+    fig.show()
 
 #%% [markdown]
 # Which heads are the most important for induction?
@@ -164,6 +166,10 @@ fig.show()
 model.reset_hooks()
 both_results = []
 the_extra_hooks = None
+
+initial_logits, initial_loss = model(
+    rand_tokens_repeat, return_type="both", loss_return_per_token=True
+).values()
 
 for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     results = torch.zeros(size=(12, 12))
@@ -184,14 +190,14 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             model.reset_hooks()
             receiver_hooks = []
             receiver_hooks.append(("blocks.11.hook_resid_post", None))
-            model = path_patching_atttribution(
+            model = path_patching_attribution(
                 model=model,
                 tokens=rand_tokens_repeat,
                 patch_tokens=rand_tokens_control,
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
-                start_token=51,
-                end_token=99,
+                start_token=seq_len + 1,
+                end_token=2 * seq_len - 1,
             )
             cur_logit_diff = logit_diff(model, ioi_dataset)
 
