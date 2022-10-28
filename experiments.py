@@ -525,3 +525,5 @@ for mode, offset in [
     )
     fig.update_layout(title=f"Attention pattern for {mode} mode")
     fig.show()
+#%% [markdown]
+# Induction compensation
