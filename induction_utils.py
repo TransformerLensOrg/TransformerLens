@@ -40,8 +40,8 @@ def path_patching_attribution(
 
     def patch_all(z, source_act, hook):
         # z[start_token:end_token] = source_act[start_token:end_token]
-        # z = source_act
-        z[:] = 0
+        z = source_act
+        # z[:] = 0
         return z
 
     # see path patching in ioi utils

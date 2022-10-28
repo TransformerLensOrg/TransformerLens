@@ -93,7 +93,7 @@ abc_dataset = (
 # Induction
 
 seq_len = 10
-batch_size = 10
+batch_size = 5
 interweave = 10  # have this many things before a repeat
 
 rand_tokens = torch.randint(1000, 10000, (batch_size, seq_len))
