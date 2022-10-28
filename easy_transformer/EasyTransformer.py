@@ -156,6 +156,7 @@ class EasyTransformer(HookedRootModule):
         return_type: Optional[str] = "logits",
         prepend_bos: bool = True,
         past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
+        loss_return_per_token: bool = False,
     ) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
@@ -240,7 +241,7 @@ class EasyTransformer(HookedRootModule):
             if return_type == "logits":
                 return logits
             else:
-                loss = lm_cross_entropy_loss(logits, tokens)
+                loss = lm_cross_entropy_loss(logits, tokens, return_per_token=loss_return_per_token)
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
