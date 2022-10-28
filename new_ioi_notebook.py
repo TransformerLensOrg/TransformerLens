@@ -334,7 +334,7 @@ exclude_heads = [(layer, head_idx) for layer in range(12) for head_idx in range(
 for head in top_name_movers:
     exclude_heads.remove(head)
 
-extra_hooks = do_circuit_extraction(
+the_extra_hooks = do_circuit_extraction(
     model=model,
     heads_to_remove=get_heads_circuit(
         ioi_dataset=ioi_dataset,
@@ -349,15 +349,17 @@ extra_hooks = do_circuit_extraction(
 
 # extra_hooks = []
 model.reset_hooks()
-for hook in extra_hooks:
+for hook in the_extra_hooks:
     model.add_hook(*hook)
 hooked_logit_diff = logit_diff(model, ioi_dataset)
 
 print(f"{hooked_logit_diff=}")
 model.reset_hooks()
 
-for pos in ["end"]:
-    print(pos)
+both_results = []
+pos = "end"
+
+for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     results = torch.zeros(size=(12, 12))
     mlp_results = torch.zeros(size=(12, 1))
     for source_layer in tqdm(range(12)):
@@ -388,125 +390,85 @@ for pos in ["end"]:
                 )
 
             if source_layer == 11 and source_head_idx == 11:
-                # show attention head results
                 fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T,
-                    title=f"{fname=} {pos=} patching NMs",
+                    title=f"Direct effect of removing heads on logit diff" + ""
+                    if idx == 0
+                    else " (with top 3 name movers knocked out)",
                     return_fig=True,
                     show_fig=False,
                 )
 
-                # fig.write_image(
-                #     f"svgs/patch_and_freezes/to_duplicate_token_K_{pos}.png"
-                # )
-                # fig.write_image(fname + ".png")
-                # fig.write_image(fname + ".svg")
-
+                both_results.append(results.clone())
                 fig.show()
+#%% [markdown] plotting (your downfalls!)
 
-                # # # show mlp results # mlps are fucked
-                # # fig = show_pp(
-                # #     mlp_results[dataset_idx].T,
-                # #     title=f"{dataset_name=} {pos=} patching NMs",
-                # #     return_fig=True,
-                # #     show_fig=False,
-                # # )
-                # fname = f"svgs/patch_and_freeze_{dataset_name}_{pos}_mlp_{ctime()}_{ri(2134, 123759)}"
-                # fig.write_image(fname + ".png")
-                # fig.write_image(fname + ".svg")
-                # fig.show()
-#%% [markdown] hack some LD and IO probs stuff
+from ioi_utils import CLASS_COLORS
 
-from ioi_circuit_extraction import RELEVANT_TOKENS, CIRCUIT
-
+cc = deepcopy(CLASS_COLORS)
+no_112 = deepcopy(CIRCUIT)
+no_112["name mover"].remove((11, 2))
 circuit = deepcopy(CIRCUIT)
-print(f"{circuit=}")
-model.reset_hooks()
 
-for dataset_name, mean_dataset in [
-    ("ioi_dataset", all_diff_dataset),
-    ("abba_dataset", abba_all_diff),
-    ("baba_dataset", baba_all_diff),
-]:
-    print(dataset_name)
-    dataset = eval(dataset_name)
-    for make_circuit in [False, True]:
-        model.reset_hooks()
+initial_results = results2.clone()
 
-        if make_circuit:
-            heads_circuit = get_heads_circuit(ioi_dataset=dataset, circuit=circuit)
-            model, _ = do_circuit_extraction(
-                model=model,
-                heads_to_keep=heads_circuit,
-                mlps_to_remove={},
-                ioi_dataset=dataset,
-                mean_dataset=mean_dataset,
-            )
 
-        cur_logit_diff = logit_diff(model, dataset)
-        cur_io_probs = probs(model, dataset)
-        print(f"{make_circuit=} {cur_logit_diff=} {cur_io_probs=}")
-    print()
+def what_class(layer, head, circuit):
+    for circuit_class in circuit:
+        if (layer, head) in circuit[circuit_class]:
+            return circuit_class
+    return "duplicate token"
+    raise ValueError((layer, head), circuit)
 
-#%% [markdown] brief dive into 7.1, ignore (this cell vizualizes the average attention)
-ys = []
-average_attention = {}
 
-baba_dataset = IOIDataset(N=100, prompt_type="BABA")
-abba_dataset = IOIDataset(N=100, prompt_type="ABBA")
+# plot the most important heads by
 
-for dataset_name in [
-    "abba_dataset",
-    "baba_dataset",
-    "ioi_dataset",
-    "all_diff_dataset",
-    "totally_diff_dataset",
-]:
-    fig = go.Figure()
-    print(dataset_name)
-    dataset = eval(dataset_name)
+k = 15
+top_heads = max_2d(
+    torch.abs(initial_results), k=k
+)[  # backup results or initial results
+    0
+]  # initial results is the patch with no KOs; direct effect on logits
 
-    for heads_raw in [(7, 1)]:  # circuit["duplicate token"]:  # ["induction"]:
-        heads = [heads_raw]
-        average_attention[heads_raw] = {}
-        cur_ys = []
-        cur_stds = []
-        att = torch.zeros(size=(dataset.N, dataset.max_len, dataset.max_len))
-        for head in tqdm(heads):
-            att += show_attention_patterns(
-                model,
-                [head],
-                dataset,
-                return_mtx=True,
-                mode="attn",  # , mode="scores"
-            )
-        att /= len(heads)
+exclude_heads = []
+exclude_heads = [
+    (layer_idx, head)
+    for layer_idx in range(12)
+    for head in range(12)
+    if what_class(layer_idx, head, circuit=circuit)
+    not in ["name mover", "negative", "s2 inhibition"]
+]
 
-        vals = att[torch.arange(dataset.N), dataset.word_idx["S2"][: dataset.N], :]
-        evals = torch.exp(vals)
-        val_sum = torch.sum(evals, dim=1)
-        assert val_sum.shape == (dataset.N,), val_sum.shape
-        print(f"{heads=} {val_sum.mean()=}")
+fig = go.Figure()
+heights = [
+    -initial_results[layer][head]
+    for layer, head in top_heads
+    if (layer, head) not in exclude_heads
+]
+colors = [
+    cc[what_class(layer, head_idx, circuit=circuit)]
+    for layer, head_idx in top_heads
+    if (layer, head_idx) not in exclude_heads
+]
 
-        for key in dataset.word_idx.keys():
-            end_to_s2 = att[
-                torch.arange(dataset.N),
-                dataset.word_idx["S2"][: dataset.N],
-                dataset.word_idx[key][: dataset.N],
-            ]
-            # ABCA dataset calculates S2 in trash way... so we use the IOI dataset indices
-            cur_ys.append(end_to_s2.mean().item())
-            cur_stds.append(end_to_s2.std().item())
-            average_attention[heads_raw][key] = end_to_s2.mean().item()
-        fig.add_trace(
-            go.Bar(
-                x=list(dataset.word_idx.keys()),
-                y=cur_ys,
-                error_y=dict(type="data", array=cur_stds),
-                name=str(heads_raw),
-            )
-        )  # ["IOI", "ABCA"][idx]))
+# plot a bar chart
+fig.add_trace(
+    go.Bar(
+        x=[str(x) for x in top_heads if x not in exclude_heads],
+        y=heights,
+        orientation="v",
+        marker_color=colors,
+    )
+)
 
-        fig.update_layout(title_text="Attention probs; from S2 to blah")
-    fig.show()
+# stack them
+
+# set y axis range to [-1, 1]
+fig.update_yaxes(range=[-3, 3])
+fname = f"backup_nm_plot_{ctime()}"
+
+# update title
+fig.update_layout(title=fname)
+fig.write_image(f"svgs/{fname}.svg")
+fig.show()
