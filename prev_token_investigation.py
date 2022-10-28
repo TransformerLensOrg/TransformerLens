@@ -9,7 +9,7 @@ from curses import A_ALTCHARSET
 import warnings
 
 from ioi_utils import logit_diff, probs
-from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
+from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
 import pandas as pd
 import torch
@@ -94,7 +94,6 @@ from ioi_circuit_extraction import (
     process_heads_and_mlps,
     turn_keep_into_rmv,
     CIRCUIT,
-    ARTHUR_CIRCUIT,
 )
 
 ipython = get_ipython()
@@ -109,14 +108,14 @@ if ipython is not None:
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
 print_gpu_mem("About to load model")
-model = EasyTransformer(
-    model_name, use_attn_result=True
+model = EasyTransformer.from_pretrained(
+    model_name
 )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+model.set_use_attn_result(True)
 device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
 print_gpu_mem("Gpt2 loaded")
-
 # %% [markdown]
 # Each prompts is a dictionnary containing 'IO', 'S' and the "text", the sentence that will be given to the model.
 # The prompt type can be "ABBA", "BABA" or "mixed" (half of the previous two) depending on the pattern you want to study
@@ -129,7 +128,7 @@ ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
 abca_dataset = ioi_dataset.gen_flipped_prompts(
     ("S2", "RAND")
 )  # we flip the second b for a random c
-pprint(abca_dataset.text_prompts[:5])
+pprint(abca_dataset.sentences[:5])
 
 
 acc_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND"))
@@ -139,7 +138,7 @@ dcc_pref_fliped = dcc_dataset.gen_flipped_prompts("prefix")
 acba_dataset = ioi_dataset.gen_flipped_prompts(
     ("S1", "RAND")
 )  # we flip the first occurence of S
-acba_dataset.text_prompts[0], ioi_dataset.text_prompts[0]
+acba_dataset.sentences[0], ioi_dataset.sentences[0]
 
 
 heads_to_measure = [(9, 6), (9, 9), (10, 0)]  # name movers
@@ -321,8 +320,8 @@ def patch_s_plus_1(z, source_act, hook):  # we patch at the "to" token
 
 
 config = PatchingConfig(
-    source_dataset=acba_dataset.text_prompts,
-    target_dataset=ioi_dataset.text_prompts,
+    source_dataset=acba_dataset.toks.long(),
+    target_dataset=ioi_dataset.toks.long(),
     target_module="attn_head",
     head_circuit="result",
     cache_act=True,
@@ -354,7 +353,6 @@ for i, key in enumerate(["IO", "S", "S2"]):
 
 # %% Redo the patching experiment by freezing the induction heads
 
-
 cache = {}
 
 
@@ -368,9 +366,8 @@ def filter_induct_heads(name):
 
 model.reset_hooks()
 model.cache_some(cache, filter_induct_heads)
-logit = model(ioi_dataset.text_prompts)
+logit = model(ioi_dataset.toks.long())
 model.reset_hooks()
-
 
 induct_heads = {5: [5, 8, 9], 6: [9]}
 missing = "5.9"
@@ -386,7 +383,6 @@ patching.other_hooks = [(filter_induct_heads, freeze_attention_head)]
 
 result = patching.run_patching()
 
-
 for i, key in enumerate(["IO", "S", "S2"]):
     fig = px.imshow(
         result[:, :, i],
@@ -398,14 +394,14 @@ for i, key in enumerate(["IO", "S", "S2"]):
     fig.show()
 # %% ########################## at S2 position -- S-IN EXPERIMENTS ##########################
 
-s_p_1_flipped = ioi_dataset.gen_flipped_prompts("S+1")
+s_p_1_flipped = ioi_dataset.gen_flipped_prompts(("S+1", "RAND"))
 positions = ["S2"]
 
 patcher = partial(patch_positions, positions=positions)
 
 config = PatchingConfig(
-    source_dataset=abca_dataset.text_prompts,
-    target_dataset=ioi_dataset.text_prompts,
+    source_dataset=abca_dataset.toks.long(),
+    target_dataset=ioi_dataset.toks.long(),
     target_module="attn_head",
     head_circuit="result",
     cache_act=True,
@@ -480,7 +476,7 @@ cache = {}
 
 model.reset_hooks()
 model.cache_some(cache, filter_act)
-logit = model(ioi_dataset.text_prompts)
+logit = model(ioi_dataset.toks.long())
 model.reset_hooks()
 
 
@@ -579,8 +575,8 @@ def freeze_attention_head_end_one_sentence(z, hook):
 
 
 config2 = PatchingConfig(
-    source_dataset=abca_dataset.text_prompts[IDX : IDX + 1],
-    target_dataset=ioi_dataset.text_prompts[IDX : IDX + 1],
+    source_dataset=abca_dataset.toks.long()[IDX : IDX + 1],
+    target_dataset=ioi_dataset.toks.long()[IDX : IDX + 1],
     target_module="attn_head",
     head_circuit="result",
     cache_act=True,
@@ -591,7 +587,7 @@ config2 = PatchingConfig(
 
 metric2 = ExperimentMetric(
     lambda x, y: 0,
-    dataset=ioi_dataset.text_prompts[IDX : IDX + 1],
+    dataset=ioi_dataset.toks.long()[IDX : IDX + 1],
     relative_metric=False,
     scalar_metric=False,
 )
@@ -982,5 +978,3 @@ show_attention_patterns(
     mode="attn",
     title_suffix=" Pre-patching",
 )
-
-# %%

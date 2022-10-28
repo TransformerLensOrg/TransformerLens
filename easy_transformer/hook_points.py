@@ -323,7 +323,7 @@ class HookedRootModule(nn.Module):
         incl_bwd=False,
         device=None,
         remove_batch_dim=False,
-        suppress_warning=False,
+        suppress_warning=True,  # we aren't going to keep this library updated with Easy-Transformer
     ):
         if not suppress_warning:
             logging.warning(
@@ -344,7 +344,7 @@ class HookedRootModule(nn.Module):
         incl_bwd=False,
         device=None,
         remove_batch_dim=False,
-        suppress_warning=False,
+        suppress_warning=True,  # we aren't going to keep this library updated with Easy-Transformer
         verbose=False,
     ):
         """Cache a list of hook provided by names, Boolean function on names"""

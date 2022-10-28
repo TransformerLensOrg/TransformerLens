@@ -21,7 +21,6 @@ In this repo, you can find the following notebooks:
 * `ioi_minimality.py`: as above for minimality.
 * `ioi_advex.py`: a notebook that generates adversarial examples as in the paper.
 
-
 # Easy Transformer
 
 ## An implementation of transformers tailored for mechanistic interpretability.
