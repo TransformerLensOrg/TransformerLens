@@ -4,6 +4,8 @@ This repository contains the code for all experiments in the paper "Interpretabi
 
 This is intended as a one-time code drop. <b>The authors recommend those interested in mechanistic interpretability using the <a href="https://github.com/neelnanda-io/Easy-Transformer">Easy Transformer</a> library</b>. Contact arthur@rdwrs.com or open an issue or PR for issues with this repository.
 
+See the experiments for free on Google Colab: https://colab.research.google.com/drive/1kyMjs10poMaYW5fPMJpwgn7ABIKOET0K?usp=sharing .
+
 # Setup
 
 ## Install dependencies

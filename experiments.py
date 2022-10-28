@@ -416,7 +416,7 @@ for hook in the_extra_hooks:
     model.add_hook(*hook)
 hooked_logit_diff = logit_diff(model, ioi_dataset)
 print(
-    f"After knocking out the three most important MLPs, logit diff is {hooked_logit_diff=}"
+    f"After knocking out the three most important MLPs, logit diff is {hooked_logit_diff}"
 )
 model.reset_hooks()
 
