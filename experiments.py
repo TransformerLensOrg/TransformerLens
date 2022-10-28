@@ -118,6 +118,8 @@ print(
 )
 #%% [markdown]
 # Edge patching
+
+
 def plot_edge_patching(
     model,
     ioi_dataset,
