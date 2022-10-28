@@ -4,7 +4,7 @@ from copy import deepcopy
 import torch
 
 from easy_transformer.experiments import get_act_hook
-from induction_utils import path_patching_attribution, prepend_padding
+from induction_utils import path_patching_attribution, prepend_padding, patch_all
 
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
@@ -137,7 +137,7 @@ arrs = []
 if True:  # might hog memory
     ys = [[], []]
 
-    for idx, model_name in enumerate(["gpt2", "neo"]):
+    for idx, model_name in enumerate(["neo", "gpt2"]):
         model = eval(model_name)
         logits, loss = model(
             rand_tokens_repeat, return_type="both", loss_return_per_token=True
@@ -151,8 +151,8 @@ if True:  # might hog memory
         ys[idx] = mean_loss.detach().cpu()  # .numpy()
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(y=ys[0], name="gpt2"))
-    fig.add_trace(go.Scatter(y=ys[1], name="neo"))
+    fig.add_trace(go.Scatter(y=ys[0], name="neo"))
+    fig.add_trace(go.Scatter(y=ys[1], name="gpt2"))
     fig.update_layout(title="Loss over time")
 
     # add a line at x = 50 saying that this should be the first guessable
@@ -223,9 +223,11 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 freeze_mlps=True,
                 return_hooks=False,
             )
+
             # model.reset_hooks()
             # for hook in hooks:
             #     model.add_hook(*hook)
+
             loss = model(
                 rand_tokens_repeat, return_type="both", loss_return_per_token=True
             )["loss"][:, -seq_len // 2 :].mean()
@@ -244,9 +246,97 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                     return_fig=True,
                     show_fig=False,
                 )
-
                 both_results.append(results.clone())
                 fig.show()
+                show_pp(mlp_results.detach().cpu())
+#%% [markdown]
+# look into compensation in both cases despite it seeming very different
+
+cache = {}
+
+model.cache_some(
+    cache,
+    lambda x: "attn.hook_result" in x,
+    suppress_warning=True,
+    # device=device,
+)
+logits, loss = model(
+    rand_tokens_control, return_type="both", loss_return_per_token=True
+).values()
+
+top_heads = [
+    (9, 9),
+    (9, 6),
+    (10, 1),
+    (7, 10),
+    (10, 0),
+    # (11, 9),
+    # (7, 2),
+    # (6, 9),
+    # (10, 6),
+    # (10, 3),
+]
+
+hooks = {}
+
+for layer, head_idx in top_heads:
+    hook_name = f"blocks.{layer}.attn.hook_result"
+    hooks[(layer, head_idx)] = (
+        hook_name,
+        get_act_hook(
+            patch_all,
+            alt_act=cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        ),
+    )
+
+#%%
+
+
+def get_random_subset(l, size):
+    return [l[i] for i in sorted(random.sample(range(len(l)), size))]
+
+
+# for layer, head_idx in top_heads:
+
+ys = []
+
+for subset_size in range(5):
+    model.reset_hooks()
+
+    curv = 0
+    for _ in range(10):
+        model.reset_hooks()
+        for hook in get_random_subset(list(hooks.values()), subset_size):
+            model.add_hook(*hook)
+        loss = model(
+            rand_tokens_repeat, return_type="both", loss_return_per_token=True
+        )["loss"][:, -seq_len // 2 :].mean()
+        print(f"Layer {layer}, head {head_idx}: {loss.mean().item()}")
+        curv += loss.mean().item()
+    curv /= 10
+    ys.append(curv)
+
+# plot the results
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=list(range(1, 6)),
+        y=ys,
+        mode="lines+markers",
+        name="Random subset",
+        line=dict(color="Black", width=1),
+    )
+)
+
+
+#%% [markdown]
+
+for tens in [froze_results, froze_mlp, flow_results, flow_mlp]:
+    print(torch.sum(tens))
+
 #%% [markdown]
 # Induction compensation
 

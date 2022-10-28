@@ -38,6 +38,13 @@ def prepend_padding(tens, model_tokenizer=None, pad_token=None):
     return new_tens
 
 
+def patch_all(z, source_act, hook):
+    # z[start_token:end_token] = source_act[start_token:end_token]
+    z = source_act
+    # z[:] = 0
+    return z
+
+
 def path_patching_attribution(
     model,
     tokens,
@@ -57,12 +64,6 @@ def path_patching_attribution(
     Do path patching in order to see which heads matter the most
     for directly writing the correct answer (see loss change)
     """
-
-    def patch_all(z, source_act, hook):
-        # z[start_token:end_token] = source_act[start_token:end_token]
-        z = source_act
-        # z[:] = 0
-        return z
 
     # see path patching in ioi utils
     sender_hooks = []
