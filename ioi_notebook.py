@@ -116,7 +116,6 @@ from ioi_circuit_extraction import (
     process_heads_and_mlps,
     turn_keep_into_rmv,
     CIRCUIT,
-    ARTHUR_CIRCUIT,
 )
 from ioi_utils import logit_diff, probs
 from ioi_utils import get_top_tokens_and_probs as g
@@ -151,36 +150,15 @@ ioi_dataset = IOIDataset(
     prompt_type="mixed",
     N=N,
     tokenizer=model.tokenizer,
-    prepend_bos=True,
-    has_start_padding_and_start_is_end=True,
+    prepend_bos=False,
 )
 all_diff_dataset = (
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
+    .gen_flipped_prompts(("S1", "RAND"))
 )
-warnings.warn("Edit the last two here")
 
-##%% [markdown] wait what about without start garbage?
-
-ioi_dataset_2 = IOIDataset(
-    prompt_type="mixed",
-    N=N,
-    tokenizer=model.tokenizer,
-    prepend_bos=False,
-    has_start_padding_and_start_is_end=False,
-    prompts=ioi_dataset.ioi_prompts,
-)
-all_diff_dataset_2 = (
-    ioi_dataset_2.gen_flipped_prompts(("IO", "RAND"))
-    .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"), manual_word_idx=ioi_dataset.word_idx)
-)
-##%%
-all_diff_dataset, all_diff_dataset_2 = all_diff_dataset_2, all_diff_dataset
-ioi_dataset, ioi_dataset_2 = ioi_dataset_2, ioi_dataset
-
-##%% [markdown] test to see if the word_idx is legit
+#%% [markdown] test to see if the word_idx is legit
 for new_N in range(1, 3):
     # d = IOIDataset(prompt_type="mixed", N=new_N, tokenizer=model.tokenizer, prepend_bos=True, has_start_padding_and_start_is_end=True)
     d = ioi_dataset
@@ -2686,7 +2664,7 @@ def zero_ablate(hook, z):
 
 
 head_mask = torch.empty((12, 12), dtype=torch.bool)
-head_mask = torch.fill(head_mask, False)
+head_mask[:] = False
 head_mask[5, 5] = True
 head_mask[6, 9] = False
 
@@ -2722,7 +2700,7 @@ for k in range(len(induct_head) + 1):
     results = []
     for _ in range(10):
         head_mask = torch.empty((12, 12), dtype=torch.bool)
-        head_mask = torch.fill(head_mask, False)
+        head_mask[:] = False
         rd_set = rd.sample(induct_head, k=k)
         for (l, h) in rd_set:
             head_mask[l, h] = True
