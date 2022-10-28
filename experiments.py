@@ -108,8 +108,8 @@ print(
     f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"
 )
 #%% [markdown]
-# Edge patching
-def plot_edge_patching(
+# Path patching
+def plot_path_patching(
     model,
     ioi_dataset,
     receiver_hooks,  # list of tuples (hook_name, idx). If idx is not None, then at dim 2 index in with idx (used for doing things for specific attention heads)
@@ -167,7 +167,7 @@ def plot_edge_patching(
                 fig.show()
 
 
-plot_edge_patching(
+plot_plot_patching(
     model,
     ioi_dataset,
     receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
@@ -268,7 +268,7 @@ check_copy_circuit(
 #%% [markdown]
 # S-Inhibition patching
 
-plot_edge_patching(
+plot_path_patching(
     model,
     ioi_dataset,
     receiver_hooks=[
