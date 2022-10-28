@@ -384,8 +384,6 @@ def logit_diff(
     Difference between the IO and the S logits at the "to" token
     """
 
-    # assert isinstance(ioi_dataset, IOIDataset), type(ioi_dataset)
-
     logits = model(ioi_dataset.toks.long()).detach()
 
     # uhhhh, I guess logit sum is constatn, but the constant is -516763 which seems weird (not 0?)
@@ -470,7 +468,6 @@ def probs(model, ioi_dataset, all=False, std=False, type="io", verbose=False):
     logits = model(
         ioi_dataset.toks.long()
     ).detach()  # batch * sequence length * vocab_size
-    warnings.warn("Not +1ing")
     end_logits = logits[
         torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :
     ]  # batch * vocab_size

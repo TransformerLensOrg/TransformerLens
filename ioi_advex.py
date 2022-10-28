@@ -7,6 +7,7 @@ if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
 assert torch.cuda.device_count() == 1
 from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
+from copy import deepcopy
 import pandas as pd
 import torch
 import torch as t
@@ -215,35 +216,8 @@ ADX_TEMPLATE = [
 DOUBLE_ADX_TEMPLATE = [x1 + x2 for x1 in ADX_TEMPLATE for x2 in ADX_TEMPLATE]
 
 
-# def gen_adv(ioi_dataset, model, templates, name="IO"):
-#     adv_ioi_dataset = ioi_dataset.copy()
-#     for i, s in enumerate(ioi_dataset.sentences):
-#         adv_temp = rd.choice(templates)
-#         adv_temp = adv_temp.replace("[A]", ioi_dataset.ioi_prompts[i][name])
-#         adv_tok_len = len(show_tokens(adv_temp, model, return_list=True))
-
-#         punct_idx = int(ioi_dataset.word_idx["punct"][i])
-#         txt_toks = show_tokens(s, model, return_list=True)
-#         punct_str_idx = len("".join(txt_toks[:punct_idx]))
-#         assert (
-#             s[punct_str_idx] == "." or s[punct_str_idx] == ","
-#         ), f"{s} --- {s[punct_str_idx]} -- {punct_str_idx} -- {i}"
-#         s = s[: punct_str_idx + 1] + adv_temp + s[punct_str_idx + 1 :]
-#         adv_ioi_dataset.ioi_prompts[i]["text"] = s
-#         adv_ioi_dataset.text_prompts[i] = s
-#         adv_ioi_dataset.word_idx["end"][i] += adv_tok_len
-#         adv_ioi_dataset.word_idx["S2"][i] += adv_tok_len
-#     return adv_ioi_dataset
-
-
-N = 500
-ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-# adv_dataset = gen_adv(ioi_dataset, model, DOUBLE_ADX_TEMPLATE, name="IO")
-
-templates = DOUBLE_ADX_TEMPLATE
-name = "IO"
-if True:
-    adv_ioi_dataset = ioi_dataset.copy()
+def gen_adv(ioi_dataset, model, templates, name="IO"):
+    adv_ioi_dataset = deepcopy(ioi_dataset)
     for i, s in enumerate(ioi_dataset.sentences):
         adv_temp = rd.choice(templates)
         adv_temp = adv_temp.replace("[A]", ioi_dataset.ioi_prompts[i][name])
@@ -257,38 +231,35 @@ if True:
         ), f"{s} --- {s[punct_str_idx]} -- {punct_str_idx} -- {i}"
         s = s[: punct_str_idx + 1] + adv_temp + s[punct_str_idx + 1 :]
         adv_ioi_dataset.ioi_prompts[i]["text"] = s
-        adv_ioi_dataset.text_prompts[i] = s
+        adv_ioi_dataset.sentences[i] = s
         adv_ioi_dataset.word_idx["end"][i] += adv_tok_len
         adv_ioi_dataset.word_idx["S2"][i] += adv_tok_len
-    # return adv_ioi_dataset
-#%%
-s = ioi_dataset.sentences[0]
-t = model.to_tokens(s)
+        adv_ioi_dataset.toks = torch.tensor(
+            model.tokenizer(adv_ioi_dataset.sentences, padding=True)["input_ids"]
+        )
+    return adv_ioi_dataset
 
+
+N = 500
+ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
+adv_dataset = gen_adv(ioi_dataset, model, DOUBLE_ADX_TEMPLATE, name="IO")
 # %%
-
-# %%
-
 ld = logit_diff(model, ioi_dataset, all=True)
 ld_adv = logit_diff(model, adv_dataset, all=True)
 
 prob = probs(model, ioi_dataset, all=True)
 prob_adv = probs(model, adv_dataset, all=True)
 
-
 prob_s = probs(model, ioi_dataset, all=True, type="s")
 prob_adv_s = probs(model, adv_dataset, all=True, type="s")
-
-
 # %% Compute the variation in logit diff and prob between normal and adv
-
 
 ld_diff = ld_adv / ld - 1
 prob_diff = prob_adv / prob - 1
 prob_diff_s = prob_adv_s / prob_s - 1
 
 
-print(f"Example adv sentence: {adv_dataset.text_prompts[0]}")
+print(f"Example adv sentence: {adv_dataset.sentences[0]}")
 
 print(
     f"Mean logit diff: {ld.mean():.3f} | Adv: {ld_adv.mean():.3f} | Mean relative var.: {ld_diff.mean():.3f} | Init perf {(ld > 0).cpu().numpy().astype(int).mean():.3f} | Success rate: {torch.logical_and(ld_adv < 0, ld > 0).cpu().numpy().astype(int).mean():.3f}"
@@ -302,5 +273,3 @@ print(
 print(
     f"Ori pref:Mean logit diff: {ld.mean():.3f} | Mean prob IO: {prob.mean():.3f} | Mean prob S: {prob_s.mean():.3f} |  Init perf {(ld > 0).cpu().numpy().astype(int).mean():.3f} "
 )
-
-# %%
