@@ -92,6 +92,7 @@ abc_dataset = (
 seq_len = 50
 rand_tokens = torch.randint(1000, 10000, (100, seq_len))
 rand_tokens_repeat = einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
+rand_tokens_control = torch.randint(1000, 10000, (100, seq_len * 2))
 
 
 def calc_score(attn_pattern, hook, offset, arr):
@@ -158,9 +159,61 @@ fig.add_annotation(
 fig.show()
 
 #%% [markdown]
-# Which heads are the most important for induction
+# Which heads are the most important for induction?
 
+model.reset_hooks()
+both_results = []
+the_extra_hooks = None
 
+for idx, extra_hooks in enumerate([[], the_extra_hooks]):
+    results = torch.zeros(size=(12, 12))
+    mlp_results = torch.zeros(size=(12, 1))
+    if extra_hooks is None:
+        break
+
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    hooked_logit_diff = logit_diff(model, ioi_dataset)
+    model.reset_hooks()
+
+    print("Hooked logit diff", hooked_logit_diff.item())
+
+    for source_layer in tqdm(range(12)):
+        for source_head_idx in list(range(12)):
+            model.reset_hooks()
+            receiver_hooks = []
+            receiver_hooks.append(("blocks.11.hook_resid_post", None))
+            model = path_patching_atttribution(
+                model=model,
+                tokens=rand_tokens_repeat,
+                patch_tokens=rand_tokens_control,
+                sender_heads=[(source_layer, source_head_idx)],
+                receiver_hooks=receiver_hooks,
+                start_token=51,
+                end_token=99,
+            )
+            cur_logit_diff = logit_diff(model, ioi_dataset)
+
+            if source_head_idx is None:
+                mlp_results[source_layer] = cur_logit_diff - hooked_logit_diff
+            else:
+                results[source_layer][source_head_idx] = (
+                    cur_logit_diff - hooked_logit_diff
+                )
+
+            if source_layer == 11 and source_head_idx == 11:
+                fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
+                fig = show_pp(
+                    results.T,
+                    title=f"Direct effect of removing heads on logit diff"
+                    + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
+                    return_fig=True,
+                    show_fig=False,
+                )
+
+                both_results.append(results.clone())
+                fig.show()
 #%% [markdown]
 # Induction compensation
 

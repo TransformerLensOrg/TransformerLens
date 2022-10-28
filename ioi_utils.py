@@ -187,7 +187,7 @@ def show_attention_patterns(
 
         for i, text in enumerate(prompts):
             # assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
-            toks = ioi_dataset.toks[i] # model.tokenizer(text)["input_ids"]
+            toks = ioi_dataset.toks[i]  # model.tokenizer(text)["input_ids"]
             current_length = len(toks)
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
@@ -980,6 +980,24 @@ def compute_composition_OV_QK(
 
 def patch_all(z, source_act, hook):
     return source_act
+
+
+def path_patching_attribution(
+    model,
+    tokens,
+    patch_tokens,
+    start_token,
+    end_token,
+    sender_heads,
+    receiver_hooks,
+):
+    """
+    Do path patching in order to see which heads matter the most
+    for directly writing the correct answer (see loss change)
+
+    """
+
+    pass
 
 
 def path_patching(
