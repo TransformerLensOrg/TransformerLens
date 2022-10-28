@@ -230,7 +230,6 @@ def show_attention_patterns(
         if return_fig and not return_mtx:
             return fig
         elif return_mtx and not return_fig:
-            warnings.warn("Unsafe")
             return attn_results
 
 

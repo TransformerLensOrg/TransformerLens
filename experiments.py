@@ -13,6 +13,7 @@
 #%% [markdown]
 # Setup (TODO cut extras)
 from copy import deepcopy
+from email.policy import default
 import os
 import torch
 
@@ -342,9 +343,7 @@ average_attention = {}
 
 for idx, dataset in enumerate([ioi_dataset, abc_dataset]):
     fig = go.Figure()
-    for heads_raw in circuit["name mover"][
-        :3
-    ]: 
+    for heads_raw in circuit["name mover"][:3]:
         heads = [heads_raw]
         average_attention[heads_raw] = {}
         cur_ys = []
@@ -378,7 +377,9 @@ for idx, dataset in enumerate([ioi_dataset, abc_dataset]):
                 name=str(heads_raw),
             )
         )
-        fig.update_layout(title_text=f"Attention of NMs from END to various positions on {["ioi_dataset", "abc_dataset"][idx]}")
+        fig.update_layout(
+            title_text=f'Attention of NMs from END to various positions on {["ioi_dataset", "abc_dataset"][idx]}'
+        )
     fig.show()
 #%% [markdown]
 # See attention patterns on one sentence
@@ -389,6 +390,8 @@ show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 #%% [markdown]
 # See the backup NM effect! After ablating several attention heads, we actually an increase in logit difference
 
+model.reset_hooks()
+default_logit_diff = logit_diff(model, ioi_dataset)
 print(f"Recall that the initial logit diff is {default_logit_diff}")
 
 top_name_movers = [(9, 9), (9, 6), (10, 0)]
@@ -412,7 +415,9 @@ model.reset_hooks()
 for hook in the_extra_hooks:
     model.add_hook(*hook)
 hooked_logit_diff = logit_diff(model, ioi_dataset)
-print(f"After knocking out the three most important MLPs, logit diff is {hooked_logit_diff=}")
+print(
+    f"After knocking out the three most important MLPs, logit diff is {hooked_logit_diff=}"
+)
 model.reset_hooks()
 
 both_results = []
@@ -473,9 +478,8 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
 from ioi_utils import CLASS_COLORS
 
 cc = deepcopy(CLASS_COLORS)
-no_112 = deepcopy(CIRCUIT)
-no_112["name mover"].remove((11, 2))
 circuit = deepcopy(CIRCUIT)
+
 
 def what_class(layer, head, circuit):
     for circuit_class in circuit:
@@ -536,12 +540,13 @@ for idx, results in enumerate(both_results):
     )
     fig.show()
 
-#%% [markdown] 
+#%% [markdown]
 # Are the tasks of looking at previous tokens, inducting, and duplicating tokens performed on the general OWT distribution, rather than just p_IOI? Investigation of identified heads on random tokens
 
 seq_len = 100
 rand_tokens = torch.randint(1000, 10000, (4, seq_len))
 rand_tokens_repeat = einops.repeat(rand_tokens, "batch pos -> batch (2 pos)")
+
 
 def calc_score(attn_pattern, hook, offset, arr):
     # Pattern has shape [batch, index, query_pos, key_pos]
