@@ -170,6 +170,7 @@ arrs = []
 # see lab notes, seems OK to compare
 
 #%% [markdown]
+# sweeeeeet plot
 
 ys = [[], []]
 
@@ -180,12 +181,39 @@ for idx, model_name in enumerate(["gpt2", "neo"]):
     ).values()
     print(model_name, loss[:, -50:].mean().item(), loss[:, -50:].std().item())
     mean_loss = loss.mean(dim=0)
-    ys[idx] = loss[:, -100:].detach().cpu()  # .numpy()
+    ys[idx] = mean_loss.detach().cpu()  # .numpy()
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(y=ys[0], name="gpt2"))
 fig.add_trace(go.Scatter(y=ys[1], name="neo"))
 fig.update_layout(title="Loss over time")
+
+# add a line at x = 50 saying that this should be the first guessable
+fig.add_shape(
+    type="line",
+    x0=50,
+    y0=0,
+    x1=50,
+    y1=ys[0].max(),
+    line=dict(color="Black", width=1, dash="dash"),
+)
+# add a label to this line
+fig.add_annotation(
+    x=50,
+    y=ys[0].max(),
+    text="First case of induction",
+    showarrow=False,
+    font=dict(size=16),
+    align="center",
+    arrowhead=2,
+    arrowsize=1,
+    arrowwidth=2,
+    arrowcolor="#636363",
+    ax=0,
+    ay=-40,
+)
+
+
 fig.show()
 
 #%% [markdown]
