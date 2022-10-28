@@ -29,6 +29,14 @@ from functools import partial
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
+
+from easy_transformer.experiments import (
+    ExperimentMetric,
+    AblationConfig,
+    EasyAblation,
+    EasyPatching,
+    PatchingConfig,
+)
 import plotly.express as px
 import plotly.io as pio
 import plotly.graph_objects as go
@@ -167,7 +175,7 @@ def plot_path_patching(
                 fig.show()
 
 
-plot_plot_patching(
+plot_path_patching(
     model,
     ioi_dataset,
     receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
