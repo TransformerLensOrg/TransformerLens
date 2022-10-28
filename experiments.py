@@ -15,6 +15,8 @@
 from copy import deepcopy
 import torch
 
+from easy_transformer.experiments import get_act_hook
+
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
 import pandas as pd
@@ -48,11 +50,13 @@ from ioi_utils import (
     scatter_attention_and_contribution,
 )
 from random import randint as ri
+from easy_transformer.experiments import get_act_hook
 from ioi_circuit_extraction import (
     do_circuit_extraction,
     get_heads_circuit,
     CIRCUIT,
 )
+import random as rd
 from ioi_utils import logit_diff, probs
 from ioi_utils import get_top_tokens_and_probs as g
 
@@ -62,8 +66,13 @@ if ipython is not None:
     ipython.magic("autoreload 2")
 #%% [markdown]
 # Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
-model = EasyTransformer.from_pretrained("gpt2").cuda()
-model.set_use_attn_result(True)
+gpt2 = EasyTransformer.from_pretrained("gpt2").cuda()
+gpt2.set_use_attn_result(True)
+
+neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+neo.set_use_attn_result(True)
+
+model = gpt2
 #%% [markdown]
 # Initialise dataset
 N = 100
@@ -134,7 +143,7 @@ def plot_edge_patching(
                 positions=[position],
                 verbose=False,
                 return_hooks=False,
-                freeze_mlps=False,
+                freeze_mlps=True,
                 have_internal_interactions=False,
             )
             cur_logit_diff = logit_diff(model, ioi_dataset)
@@ -166,8 +175,10 @@ def plot_edge_patching(
                 )
                 fig.show()
 
+    return results, mlp_results
 
-plot_edge_patching(
+
+results, mlp_results = plot_edge_patching(
     model,
     ioi_dataset,
     receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
@@ -506,6 +517,8 @@ def filter_attn_hooks(hook_name):
     return split_name[-1] == "hook_attn"
 
 
+arrs = []
+
 for mode, offset in [
     ("induction", 1 - seq_len),
     ("duplicate", -seq_len),
@@ -525,5 +538,103 @@ for mode, offset in [
     )
     fig.update_layout(title=f"Attention pattern for {mode} mode")
     fig.show()
+    arrs.append(arr)
 #%% [markdown]
 # Induction compensation
+
+from ioi_utils import compute_next_tok_dot_prod
+import torch.nn.functional as F
+
+IDX = 0
+
+
+def zero_ablate(hook, z):
+    return torch.zeros_like(z)
+
+
+head_mask = torch.empty((12, 12), dtype=torch.bool)
+head_mask[:] = False
+head_mask[5, 5] = True
+head_mask[6, 9] = False
+
+attn_head_mask = head_mask
+
+
+def filter_value_hooks(name):
+    return name.split(".")[-1] == "hook_v"
+
+
+def compute_logit_probs(rand_tokens_repeat, model):
+    induction_logits = model(rand_tokens_repeat)
+    induction_log_probs = F.log_softmax(induction_logits, dim=-1)
+    induction_pred_log_probs = torch.gather(
+        induction_log_probs[:, :-1].cuda(), -1, rand_tokens_repeat[:, 1:, None].cuda()
+    )[..., 0]
+    return induction_pred_log_probs[:, seq_len:].mean().cpu().detach().numpy()
+
+
+compute_logit_probs(rand_tokens_repeat, model)
+# %%
+# induct_head = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
+induct_head = [
+    (6, 1),
+    (8, 1),
+    (6, 6),
+    (8, 0),
+    (8, 8),
+]  # max_2d(torch.tensor(arrs[0]), k=5) equiv
+
+all_means = []
+for k in range(len(induct_head) + 1):
+    results = []
+    for _ in range(10):
+        head_mask = torch.empty((12, 12), dtype=torch.bool)
+        head_mask[:] = False
+        rd_set = rd.sample(induct_head, k=k)
+        for (l, h) in rd_set:
+            head_mask[l, h] = True
+
+        def prune_attn_heads(value, hook):
+            # Value has shape [batch, pos, index, d_head]
+            mask = head_mask[hook.layer()]  # just the heads at this particular value
+            value[:, :, mask] = 0.0
+            return value
+
+        def zero_ablate(z, hook):
+            z[:] = 0.0
+            return z
+
+        model.reset_hooks()
+        for l, h in rd_set:
+            # if l == 7:
+            # heads = [(7, 2), (7, 10)]
+            # else:
+            heads = [(l, h)]
+            for layer, head_idx in heads:
+                hook_name = f"blocks.{layer}.attn.hook_v"
+                hook = get_act_hook(
+                    zero_ablate,
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                    name=hook_name,
+                )
+                model.add_hook(hook_name, hook)
+
+        # model.reset_hooks()
+        # model.add_hook(filter_value_hooks, prune_attn_heads)
+        results.append(compute_logit_probs(rand_tokens_repeat, model))
+
+    results = np.array(results)
+    all_means.append(results.mean())
+
+fig = px.bar(
+    all_means,
+    title="Loss on repeated random tokens sequences (average on 10 random set of KO heads) 5.5 excluded",
+)
+
+
+fig.update_layout(
+    xaxis_title="Number of induction head zero-KO",
+    yaxis_title="Induction loss",
+)
+fig.show()
