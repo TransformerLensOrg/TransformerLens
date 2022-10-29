@@ -62,16 +62,16 @@ if ipython is not None:
 # neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
 # neo.set_use_attn_result(True)
 
-opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
-opt.set_use_attn_result(True)
+# opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
+# opt.set_use_attn_result(True)
 
-# solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
-# solu.set_use_attn_result(True)
+solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
+solu.set_use_attn_result(True)
 
 # distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
 # distil.set_use_attn_result(True)
 
-model = opt
+model = solu
 #%% [markdown]
 # Initialise dataset
 N = 100
@@ -340,8 +340,8 @@ top_heads = [
     for head_idx in [None] + list(range(model.cfg.n_heads))
 ]
 
-skipper = 2
-top_heads = max_2d(results, 10)[0][skipper:]
+skipper = 0
+top_heads = max_2d(results, 10)[0]  # [skipper:]
 
 
 def zero_all(z, act, hook):
@@ -381,7 +381,7 @@ def get_random_subset(l, size):
 
 ys = []
 ys2 = []
-max_len = 8
+max_len = 12
 no_iters = 30
 
 for subset_size in range(max_len):
