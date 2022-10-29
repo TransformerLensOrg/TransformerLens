@@ -73,6 +73,7 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/Attn_Only_3L512W_C4_Code",
     "NeelNanda/Attn_Only_4L512W_C4_Code",
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr",
+    "NeelNanda/SoLU_4L512W_Wiki_Finetune",
 ]
 
 # Model Aliases:
@@ -101,6 +102,7 @@ MODEL_ALIASES = {
     # "NeelNanda/SoLU_10L1280W_C4_Code": ["solu-10l", "solu-10l-new", "solu-10l-c4-code"],
     "NeelNanda/SoLU_12L1536W_C4_Code": ["solu-12l", "solu-12l-new", "solu-12l-c4-code"],
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr": ["attn-only-2l-shortformer-6b-big-lr", "attn-only-2l-induction-demo", "attn-only-demo", "attn-only-2l-demo"],
+    "NeelNanda/SoLU_4L512W_Wiki_Finetune": ["solu-4l-wiki-finetune", "solu-4l-wiki", "solu-4l-finetune"],
     "EleutherAI/pythia-19m": ["pythia-19m", "pythia"],
     "EleutherAI/pythia-125m": ["pythia-125m",],
     "EleutherAI/pythia-350m": ["pythia-350m",],
