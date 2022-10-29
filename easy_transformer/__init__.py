@@ -12,3 +12,4 @@ from .EasyTransformerConfig import EasyTransformerConfig
 from . import train
 from . import components
 from .EasyTransformer import EasyTransformer
+from . import loading_from_pretrained as loading

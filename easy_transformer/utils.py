@@ -489,7 +489,6 @@ class FactoredMatrix:
     
     def __getitem__(self, idx):
         """Indexing - assumed to only apply to the leading dimensions."""
-        
         return FactoredMatrix(self.A[idx], self.B[idx])
     
     def norm(self):
@@ -528,6 +527,10 @@ class FactoredMatrix:
     
     def unsqueeze(self, k):
         return FactoredMatrix(self.A.unsqueeze(k), self.B.unsqueeze(k))
+    
+    @property
+    def pair(self):
+        return (self.A, self.B)
 
 def composition_scores(left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True):
     """
