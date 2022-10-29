@@ -336,7 +336,7 @@ class EasyAblation(EasyExperiment):
         if self.cfg.mean_dataset is None and config.compute_means:
             self.cfg.mean_dataset = self.metric.dataset
 
-        if self.cfg.abl_type == "random":
+        if self.cfg.abl_type == "random": # note that it's unclear whether this is "patching" or "ablation"
             if self.cfg.batch_size is None:
                 self.cfg.batch_size = len(self.metric.dataset)
             if self.cfg.max_seq_len is None:

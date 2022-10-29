@@ -11,3 +11,6 @@ core.py
 *.yml
 nbs
 _modidx.py
+*.svg
+*.png
+arthur_testing.py
