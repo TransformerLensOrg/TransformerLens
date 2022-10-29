@@ -62,16 +62,16 @@ gpt2.set_use_attn_result(True)
 neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
 neo.set_use_attn_result(True)
 
-opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
-opt.set_use_attn_result(True)
+# opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
+# opt.set_use_attn_result(True)
 
 solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
-distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
-distil.set_use_attn_result(True)
+# distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
+# distil.set_use_attn_result(True)
 
-model = gpt2
+model = solu
 #%% [markdown]
 # Initialise dataset
 N = 100
@@ -101,7 +101,7 @@ abc_dataset = (
 # Induction
 
 seq_len = 10
-batch_size = 5
+batch_size = 1
 interweave = 10  # have this many things before a repeat
 
 rand_tokens = torch.randint(1000, 10000, (batch_size, seq_len))
@@ -145,7 +145,7 @@ arrs = []
 if True:  # might hog memory
     ys = [[] for _ in range(12)]
     fig = go.Figure()
-    for idx, model_name in enumerate(["distill", "neo", "solu", "opt", "gpt2"]):
+    for idx, model_name in enumerate(["neo", "solu", "opt", "gpt2"]):
         model = eval(model_name)
         if model_name == "solu":
             rand_tokens_repeat[:, 0] = 0
@@ -212,8 +212,8 @@ initial_logits, initial_loss = model(
 for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     if extra_hooks is None:
         break
-    results = torch.zeros(size=(12, 12))
-    mlp_results = torch.zeros(size=(12, 1))
+    results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
+    mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
@@ -222,8 +222,8 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     )["loss"][:, -seq_len // 2 :].mean()
     print(f"Initial loss: {initial_loss.item()}")
 
-    for source_layer in tqdm(range(12)):
-        for source_head_idx in [None] + list(range(12)):
+    for source_layer in tqdm(range(5)):  # model.cfg.n_layers)):
+        for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
             receiver_hooks = []
             receiver_hooks.append(("blocks.11.hook_resid_post", None))
@@ -253,6 +253,9 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 rand_tokens_repeat, return_type="both", loss_return_per_token=True
             )["loss"][:, -seq_len // 2 :].mean()
 
+            a = hooks.pop((source_layer, source_head_idx))
+            e("a")
+
             if source_head_idx is None:
                 mlp_results[source_layer] = loss - initial_loss
             else:
@@ -270,6 +273,13 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 both_results.append(results.clone())
                 fig.show()
                 show_pp(mlp_results.detach().cpu())
+
+#%%
+
+results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
+results[0:5] = torch.load("pts/early_results.pt")[:5]
+results[5:10] = torch.load("pts/latter_results.pt")[5:]
+
 #%% [markdown]
 # look into compensation in both cases despite it seeming very different
 
@@ -327,8 +337,10 @@ hooks = {}
 top_heads = [
     (layer, head_idx)
     for layer in range(model.cfg.n_layers)
-    for head_idx in [None] + list(range(12))
+    for head_idx in [None] + list(range(model.cfg.n_heads))
 ]
+
+top_heads = max_2d(results, 10)[0][1:]
 
 
 def zero_all(z, act, hook):
@@ -350,7 +362,7 @@ for layer, head_idx in top_heads:
     hooks[(layer, head_idx)] = (
         hook_name,
         get_act_hook(
-            random_patching,
+            zero_all,
             alt_act=cache[hook_name],
             idx=head_idx,
             dim=2 if head_idx is not None else None,
@@ -368,29 +380,32 @@ def get_random_subset(l, size):
 
 ys = []
 ys2 = []
-max_len = 5
+max_len = 10
 no_iters = 30
 
 for subset_size in range(max_len):
     model.reset_hooks()
 
     curv = 0
-    curw = 0  # "EXPECTED" increase
+    # curw = initial_loss.item()  # "EXPECTED" increase
     for _ in range(30):
         model.reset_hooks()
-        # for hook in list(hooks.items())[:subset_size]:
-        for hook in get_random_subset(list(hooks.items()), subset_size):
+        for hook in list(hooks.items())[1 : 1 + subset_size]:
+            # for hook in get_random_subset(list(hooks.items()), subset_size):
             model.add_hook(*hook[1])
             # curw += results[hook[0]].item()
         loss = model(
             rand_tokens_repeat, return_type="both", loss_return_per_token=True
         )["loss"][:, -seq_len // 2 :].mean()
         # print(f"Layer {layer}, head {head_idx}: {loss.mean().item()}")
-        curv += loss.mean().item()
+        curv += loss.mean().item()  # + initial_loss.item()
     curv /= no_iters
     curw /= no_iters
     ys.append(curv)
-    curw += ys[0]
+    curw = (
+        initial_loss.item()
+        + torch.sum(max_2d(results, 15)[1][1 : 1 + subset_size]).item()
+    )
     ys2.append(curw)
 
 # plot the results
@@ -440,7 +455,7 @@ def zero_ablate(hook, z):
     return torch.zeros_like(z)
 
 
-head_mask = torch.empty((12, 12), dtype=torch.bool)
+head_mask = torch.empty((model.cfg.n_layers, model.cfg.n_heads), dtype=torch.bool)
 head_mask[:] = False
 head_mask[5, 5] = True
 head_mask[6, 9] = False
@@ -476,7 +491,9 @@ all_means = []
 for k in range(len(induct_head) + 1):
     results = []
     for _ in range(10):
-        head_mask = torch.empty((12, 12), dtype=torch.bool)
+        head_mask = torch.empty(
+            (model.cfg.n_layers, model.cfg.n_heads), dtype=torch.bool
+        )
         head_mask[:] = False
         rd_set = rd.sample(induct_head, k=k)
         for (l, h) in rd_set:
