@@ -56,14 +56,15 @@ if ipython is not None:
     ipython.magic("autoreload 2")
 #%% [markdown]
 # Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
-# gpt2 = EasyTransformer.from_pretrained("gpt2").cuda()
-# gpt2.set_use_attn_result(True)
 
-# neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
-# neo.set_use_attn_result(True)
+gpt2 = EasyTransformer.from_pretrained("gpt2").cuda()
+gpt2.set_use_attn_result(True)
 
-# opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
-# opt.set_use_attn_result(True)
+opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
+opt.set_use_attn_result(True)
+
+neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+neo.set_use_attn_result(True)
 
 solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
@@ -71,7 +72,8 @@ solu.set_use_attn_result(True)
 # distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
 # distil.set_use_attn_result(True)
 
-model = solu
+model = gpt2
+model_names = ["gpt2", "opt", "neo", "solu"]
 #%% [markdown]
 # Initialise dataset
 N = 100
@@ -145,7 +147,7 @@ arrs = []
 if True:  # might hog memory
     ys = [[] for _ in range(12)]
     fig = go.Figure()
-    for idx, model_name in enumerate(["neo", "solu", "opt", "gpt2"]):
+    for idx, model_name in enumerate(model_names):
         model = eval(model_name)
         if model_name == "solu":
             rand_tokens_repeat[:, 0] = 0
@@ -163,13 +165,13 @@ if True:  # might hog memory
         ys[idx] = mean_loss.detach().cpu()  # .numpy()
         fig.add_trace(
             go.Scatter(
-                y=mean_loss.detach().cpu(),
+                y=torch.exp(-mean_loss.detach().cpu()),
                 name=model_name,
                 mode="lines",
                 # line=dict(color=CLASS_COLORS[idx]),
             )
         )
-    fig.update_layout(title="Loss over time")
+    fig.update_layout(title="Probabilities over time")
 
     # add a line at x = 50 saying that this should be the first guessable
     fig.add_shape(
@@ -228,7 +230,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             receiver_hooks = []
             receiver_hooks.append(("blocks.11.hook_resid_post", None))
 
-            if False:
+            if True:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -340,8 +342,8 @@ top_heads = [
     for head_idx in [None] + list(range(model.cfg.n_heads))
 ]
 
-skipper = 0
-top_heads = max_2d(results, 10)[0]  # [skipper:]
+# skipper = 0
+# top_heads = max_2d(results, 10)[0]  # [skipper:]
 
 
 def zero_all(z, act, hook):
