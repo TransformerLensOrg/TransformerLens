@@ -56,22 +56,22 @@ if ipython is not None:
     ipython.magic("autoreload 2")
 #%% [markdown]
 # Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
-gpt2 = EasyTransformer.from_pretrained("gpt2").cuda()
-gpt2.set_use_attn_result(True)
+# gpt2 = EasyTransformer.from_pretrained("gpt2").cuda()
+# gpt2.set_use_attn_result(True)
 
-neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
-neo.set_use_attn_result(True)
+# neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+# neo.set_use_attn_result(True)
 
-# opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
-# opt.set_use_attn_result(True)
+opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
+opt.set_use_attn_result(True)
 
-solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
-solu.set_use_attn_result(True)
+# solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
+# solu.set_use_attn_result(True)
 
 # distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
 # distil.set_use_attn_result(True)
 
-model = solu
+model = opt
 #%% [markdown]
 # Initialise dataset
 N = 100
@@ -101,7 +101,7 @@ abc_dataset = (
 # Induction
 
 seq_len = 10
-batch_size = 1
+batch_size = 5
 interweave = 10  # have this many things before a repeat
 
 rand_tokens = torch.randint(1000, 10000, (batch_size, seq_len))
@@ -222,7 +222,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     )["loss"][:, -seq_len // 2 :].mean()
     print(f"Initial loss: {initial_loss.item()}")
 
-    for source_layer in tqdm(range(5)):  # model.cfg.n_layers)):
+    for source_layer in tqdm(range(model.cfg.n_layers)):
         for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
             receiver_hooks = []
@@ -340,7 +340,8 @@ top_heads = [
     for head_idx in [None] + list(range(model.cfg.n_heads))
 ]
 
-top_heads = max_2d(results, 10)[0][1:]
+skipper = 2
+top_heads = max_2d(results, 10)[0][skipper:]
 
 
 def zero_all(z, act, hook):
@@ -362,7 +363,7 @@ for layer, head_idx in top_heads:
     hooks[(layer, head_idx)] = (
         hook_name,
         get_act_hook(
-            zero_all,
+            random_patching,
             alt_act=cache[hook_name],
             idx=head_idx,
             dim=2 if head_idx is not None else None,
@@ -380,17 +381,17 @@ def get_random_subset(l, size):
 
 ys = []
 ys2 = []
-max_len = 10
+max_len = 8
 no_iters = 30
 
 for subset_size in range(max_len):
     model.reset_hooks()
 
     curv = 0
-    # curw = initial_loss.item()  # "EXPECTED" increase
+    curw = initial_loss.item()  # "EXPECTED" increase
     for _ in range(30):
         model.reset_hooks()
-        for hook in list(hooks.items())[1 : 1 + subset_size]:
+        for hook in list(hooks.items())[skipper : skipper + subset_size]:
             # for hook in get_random_subset(list(hooks.items()), subset_size):
             model.add_hook(*hook[1])
             # curw += results[hook[0]].item()
@@ -404,7 +405,7 @@ for subset_size in range(max_len):
     ys.append(curv)
     curw = (
         initial_loss.item()
-        + torch.sum(max_2d(results, 15)[1][1 : 1 + subset_size]).item()
+        + torch.sum(max_2d(results, 15)[1][skipper : skipper + subset_size]).item()
     )
     ys2.append(curw)
 
