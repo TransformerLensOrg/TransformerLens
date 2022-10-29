@@ -232,7 +232,7 @@ class PatchingConfig(ExperimentConfig):
         self.direct_patching = direct_patching
         assert not (self.direct_patching and not self.cache_act), "You must cache activations for direct patching"
         if self.direct_patching:
-            assert self.cfg.target_module == "mlp" or self.cfg.head_circuit == "result", "Direct patching only works for results of heads or MLPs"
+            assert self.target_module == "mlp" or self.head_circuit == "result", "Direct patching only works for results of heads or MLPs"
 
 # TODO : loss metric, zero ablation, mean ablation
 # TODO : add different direction for the mean, add tokens, change type of
@@ -485,13 +485,16 @@ class EasyPatching(EasyExperiment):
         hook_name, dim = self.get_target(layer, head, target_module=target_module)
         assert "hook_result" in hook_name or "mlp_out" in hook_name
 
-        def direct_patch(z, act, hook):
+        def direct_patch(z, hook):
             if head is None:
                 z += self.act_cache[hook_name]
                 z -= self.target_cache[hook_name]
             else:
-                z += self.act_cache[hook_name][:, head]
-                z -= self.target_cache[hook_name][:, head]
+                try:
+                    z += self.act_cache[hook_name][:, :, head]
+                    z -= self.target_cache[hook_name][:, :, head]
+                except:
+                    print(z.shape, self.act_cache[hook_name].shape, self.target_cache[hook_name].shape)
             return z
 
         return (f"blocks.{self.model.cfg.n_layers - 1}.hook_resid_post", direct_patch)
