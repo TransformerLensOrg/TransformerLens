@@ -264,27 +264,46 @@ logits, loss = model(
     rand_tokens_control, return_type="both", loss_return_per_token=True
 ).values()
 
+# top_heads = [
+#     (9, 9),
+#     (9, 6),
+#     (10, 1),
+#     (7, 10),
+#     (10, 0),
+#     (11, 9),
+#     (7, 2),
+#     (6, 9),
+#     # (10, 6),
+#     # (10, 3),
+# ]
+
 top_heads = [
-    (9, 9),
     (9, 6),
-    (10, 1),
-    (7, 10),
     (10, 0),
-    (11, 9),
     (7, 2),
-    (6, 9),
-    # (10, 6),
-    # (10, 3),
+    (9, 9),
+    (7, 10),
+    # (9, 1),
+    # (11, 5),
+    # (6, 9),
+    # (10, 1),
+    # (11, 9),
 ]
 
 hooks = {}
+
+
+def zero_all(z, act, hook):
+    z[:] = 0
+    return z
+
 
 for layer, head_idx in top_heads:
     hook_name = f"blocks.{layer}.attn.hook_result"
     hooks[(layer, head_idx)] = (
         hook_name,
         get_act_hook(
-            patch_all,
+            zero_all,
             alt_act=cache[hook_name],
             idx=head_idx,
             dim=2 if head_idx is not None else None,
@@ -300,7 +319,7 @@ def get_random_subset(l, size):
 
 
 ys = []
-max_len = 8
+max_len = 5
 no_iters = 30
 
 for subset_size in range(max_len):
@@ -309,6 +328,7 @@ for subset_size in range(max_len):
     curv = 0
     for _ in range(30):
         model.reset_hooks()
+        # for hook in list(hooks.values())[:subset_size]:
         for hook in get_random_subset(list(hooks.values()), subset_size):
             model.add_hook(*hook)
         loss = model(
@@ -323,7 +343,7 @@ for subset_size in range(max_len):
 fig = go.Figure()
 fig.add_trace(
     go.Scatter(
-        x=list(range(1, max_len)),
+        x=list(range(0, max_len)),
         y=ys,
         mode="lines+markers",
         name="Random subset",
