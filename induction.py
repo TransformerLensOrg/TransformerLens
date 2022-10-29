@@ -283,9 +283,9 @@ top_heads = [
     (7, 2),
     (9, 9),
     (7, 10),
-    # (9, 1),
-    # (11, 5),
-    # (6, 9),
+    (9, 1),
+    (11, 5),
+    (6, 9),
     # (10, 1),
     # (11, 9),
 ]
@@ -319,25 +319,31 @@ def get_random_subset(l, size):
 
 
 ys = []
-max_len = 5
+ys2 = []
+max_len = 8
 no_iters = 30
 
 for subset_size in range(max_len):
     model.reset_hooks()
 
     curv = 0
+    curw = 0  # "EXPECTED" increase
     for _ in range(30):
         model.reset_hooks()
-        # for hook in list(hooks.values())[:subset_size]:
-        for hook in get_random_subset(list(hooks.values()), subset_size):
-            model.add_hook(*hook)
+        for hook in list(hooks.items())[:subset_size]:
+            # for hook in get_random_subset(list(hooks.items()), subset_size):
+            model.add_hook(*hook[1])
+            curw += results[hook[0]].item()
         loss = model(
             rand_tokens_repeat, return_type="both", loss_return_per_token=True
         )["loss"][:, -seq_len // 2 :].mean()
         # print(f"Layer {layer}, head {head_idx}: {loss.mean().item()}")
         curv += loss.mean().item()
     curv /= no_iters
+    curw /= no_iters
     ys.append(curv)
+    curw += ys[0]
+    ys2.append(curw)
 
 # plot the results
 fig = go.Figure()
@@ -350,7 +356,15 @@ fig.add_trace(
         line=dict(color="Black", width=1),
     )
 )
-
+fig.add_trace(
+    go.Scatter(
+        x=list(range(0, max_len)),
+        y=ys2,
+        mode="lines+markers",
+        name="Expected",
+        line=dict(color="Red", width=1),
+    )
+)
 
 #%% [markdown]
 
