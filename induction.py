@@ -230,7 +230,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             receiver_hooks = []
             receiver_hooks.append(("blocks.11.hook_resid_post", None))
 
-            if True:
+            if False:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -342,8 +342,8 @@ top_heads = [
     for head_idx in [None] + list(range(model.cfg.n_heads))
 ]
 
-# skipper = 0
-# top_heads = max_2d(results, 10)[0]  # [skipper:]
+skipper = 1
+top_heads = max_2d(results, 20)[0][skipper:]
 
 
 def zero_all(z, act, hook):
@@ -383,10 +383,10 @@ def get_random_subset(l, size):
 
 ys = []
 ys2 = []
-max_len = 12
+max_len = 20 - skipper
 no_iters = 30
 
-for subset_size in range(max_len):
+for subset_size in tqdm(range(max_len)):
     model.reset_hooks()
 
     curv = 0
