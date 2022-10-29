@@ -287,7 +287,7 @@ def convert_neel_model_config(official_model_name: str):
         "tokenizer_name": cfg_json["tokenizer_name"],
         "act_fn": cfg_json["act_fn"],
         "attn_only": cfg_json["attn_only"],
-        "final_rms": cfg_json["final_rms"],
+        "final_rms": cfg_json.get("final_rms", False),
         "original_architecture": "neel" if "_old" not in official_model_name else "neel-solu-old",
     }
     if "normalization" in cfg_json:

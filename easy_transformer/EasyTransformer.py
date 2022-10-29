@@ -28,7 +28,7 @@ from easy_transformer.caching import (
 
 from easy_transformer.components import *
 import easy_transformer.loading_from_pretrained as loading
-from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores
+from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores, get_corner
 
 
 
@@ -335,6 +335,7 @@ class EasyTransformer(HookedRootModule):
                         fold_ln = True, 
                         center_writing_weights = True, 
                         center_unembed = True,
+                        factored_to_even = False,
                         checkpoint_index = None,
                         checkpoint_value = None,
                         hf_model = None,
@@ -360,6 +361,8 @@ class EasyTransformer(HookedRootModule):
             to be zero). 
                 Softmax is translation invariant so this doesn't affect log
                 probs or loss, but does change logits. Defaults to True.
+            factored_to_even (bool, optional): Whether to convert the factored 
+                matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             checkpoint_index (int, optional): If loading from a checkpoint, the index of 
                 the checkpoint to load. Defaults to None.
             checkpoint_value (int, optional): If loading from a checkpoint, the value of 
@@ -397,44 +400,12 @@ class EasyTransformer(HookedRootModule):
         # Create the EasyTransformer object
         model = cls(cfg, **model_kwargs)
 
-        model.load_and_process_state_dict(state_dict, fold_ln=fold_ln, center_writing_weights=center_writing_weights, center_unembed=center_unembed, move_state_dict_to_device=move_state_dict_to_device)
+        model.load_and_process_state_dict(state_dict, fold_ln=fold_ln, center_writing_weights=center_writing_weights, center_unembed=center_unembed, 
+            factored_to_even=factored_to_even,move_state_dict_to_device=move_state_dict_to_device)
 
         print(f"Finished loading pretrained model {model_name} into EasyTransformer!")
 
         return model
-    
-    # @classmethod
-    # def from_pretrained_attn_only_old(cls, center_unembed = True, **model_kwargs):
-    #     """ 
-    #     A helper function to load in a 2L512W attn-only model trained on 6B tokens of the Pile - used in an induction heads tutorial.
-
-    #     The model has no LN, and was trained with a shortformer variant - positional embeddings are only added in to the residual stream when input to the queries and keys and NOT when input to values (ie is never actually in the residual stream and cannot be moved between positions)
-
-    #     Model name is attn-only-2l-induction-demo
-    #     """
-
-    #     # Download model weights from HuggingFace
-    #     repo_name = f"NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr"
-    #     file_name = "model_final.pth"
-    #     state_dict = download_file_from_hf(repo_name, file_name, force_is_torch=True)
-
-    #     # This model was trained with EasyTransformer, so weights already have the right format!
-    #     config = {
-    #         'model_name': 'attn-only-2l-induction-demo',
-    #         'n_layers': 2,
-    #         'd_vocab': state_dict['embed.W_E'].size(0),
-    #         'd_model': 512,
-    #         'd_head': 64,
-    #         'n_ctx': 1024,
-    #         'tokenizer_name': 'EleutherAI/gpt-neox-20b',
-    #         'normalization_type': None,
-    #         'positional_embedding_type':'shortformer',
-    #         'attn_only': True,
-    #     }
-
-    #     model = cls(config, **model_kwargs)
-    #     model.load_and_process_state_dict(state_dict, fold_ln=False, center_writing_weights=False, center_unembed=center_unembed)
-    #     return model
 
     def init_weights(self):
         """
@@ -466,10 +437,11 @@ class EasyTransformer(HookedRootModule):
                                     fold_ln: bool=True, 
                                     center_writing_weights: bool = True, 
                                     center_unembed: bool = True,
+                                    factored_to_even: bool = False,
                                     move_state_dict_to_device: bool = True):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
         
-        See fold_layer_norm for more details on the folding and centering.
+        See the relevant method (same name as the flag) for more details on the folding, centering and processing flags.
 
         Args:
             state_dict (dict): The state dict of the model, in EasyTransformer format
@@ -479,22 +451,30 @@ class EasyTransformer(HookedRootModule):
                 residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
             center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero). 
                 Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
+            factored_to_even (bool, optional): Whether to convert the factored 
+                matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
         """
+        
         if move_state_dict_to_device:
             state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
-            state_dict = self.fold_layer_norm(state_dict)
+            if self.cfg.normalization_type not in ["LN", "LNPre"]:
+                logging.warning("You are not using LayerNorm, so the layer norm weights can't be folded! Skipping")
+            else:
+                state_dict = self.fold_layer_norm(state_dict)
         if center_writing_weights:
             if self.cfg.normalization_type not in ["LN", "LNPre"]:
-                print("You are not using LayerNorm, so the writing weights can't be centered!")
+                logging.warning("You are not using LayerNorm, so the writing weights can't be centered! Skipping")
             elif self.cfg.final_rms:
-                print("This model is using final RMS normalization, so the writing weights can't be centered!")
+                logging.warning("This model is using final RMS normalization, so the writing weights can't be centered! Skipping")
             else:
                 state_dict = self.center_writing_weights(state_dict)
         if center_unembed:
             state_dict = self.center_unembed(state_dict)
+        if factored_to_even:
+            state_dict = self.factored_to_even(state_dict)
         self.load_state_dict(state_dict)
 
 
@@ -583,6 +563,55 @@ class EasyTransformer(HookedRootModule):
         """
         state_dict['unembed.W_U'] = state_dict['unembed.W_U'] - state_dict['unembed.W_U'].mean(-1, keepdim=True)
         state_dict['unembed.b_U'] = state_dict['unembed.b_U'] - state_dict['unembed.b_U'].mean()
+        return state_dict
+    
+    def factored_to_even(self, state_dict: Dict[str, torch.Tensor]):
+        """ 
+        Experimental method for managing queries, keys and values. As argued in [A Mathematical Framework for Transformer Circuits](https://transformer-circuits.pub/2021/framework/index.html), queries, keys and values are somewhat arbitrary intermediate terms when computing with the low rank factored matrices W_QK = W_Q @ W_K.T and W_OV = W_V @ W_O, and these matrices are the only thing determining head behaviour.
+
+        Accordingly, if eg W_OV = U @ S @ Vh.T in its singular value decomposition, (where S is in R^d_head not R^d_model, as W_OV is low rank), W_OV = (U @ S.sqrt()) @ (S.sqrt() @ Vh.T) is a more principled low rank factorisation, where rows/columns of each matrix are orthogonal and have the same norm. And the intermediate term is more meaningful!
+
+        Biases are more fiddly to deal with. For OV it's pretty easy - we just need (x @ W_V + b_V) @ W_O + b_O to be preserved, so we can set b_V' = 0. and b_O' = b_V @ W_O + b_O (note that b_V in R^{head_index x d_head} while b_O in R^{d_model}, so we need to sum b_V @ W_O along the head_index dimension too).
+
+        For QK it's messy - we need to preserve the bilinear form of (x @ W_Q +
+        b_Q) * (y @ W_K + b_K), which is fairly messy. To deal with the biases,
+        we concatenate them to W_Q and W_K to simulate a d_model+1 dimensional
+        input (whose final coordinate is always 1), do the SVD factorization on
+        this effective matrix, then separate out into final weights and biases
+
+
+        """
+        for l in range(self.cfg.n_layers):
+            # W_QK = W_Q @ W_K.T 
+            # Concatenate biases to make a d_model+1 input dimension
+            W_Q_eff = torch.cat([state_dict[f'blocks.{l}.attn.W_Q'], state_dict[f'blocks.{l}.attn.b_Q'][:, None, :]], dim=1)
+            W_K_eff = torch.cat([state_dict[f'blocks.{l}.attn.W_K'], state_dict[f'blocks.{l}.attn.b_K'][:, None, :]], dim=1)
+
+            W_Q_eff_even, W_K_eff_even_T = FactoredMatrix(W_Q_eff, W_K_eff.transpose(-1, -2)).make_even().pair
+            W_K_eff_even = W_K_eff_even_T.transpose(-1, -2)
+
+            state_dict[f"blocks.{l}.attn.W_Q"] = W_Q_eff_even[:, :-1, :]
+            state_dict[f"blocks.{l}.attn.b_Q"] = W_Q_eff_even[:, -1, :]
+            state_dict[f"blocks.{l}.attn.W_K"] = W_K_eff_even[:, :-1, :]
+            state_dict[f"blocks.{l}.attn.b_K"] = W_K_eff_even[:, -1, :]
+
+            # W_OV = W_V @ W_O
+            W_V = state_dict[f"blocks.{l}.attn.W_V"]
+            W_O = state_dict[f"blocks.{l}.attn.W_O"]
+            
+            # Factors the bias to be consistent.
+            b_V = state_dict[f"blocks.{l}.attn.b_V"]
+            b_O = state_dict[f"blocks.{l}.attn.b_O"]
+            effective_bias = b_O + einsum("head_index d_head, head_index d_head d_model -> d_model", b_V, W_O)
+            state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros_like(b_V)
+            state_dict[f"blocks.{l}.attn.b_O"] = effective_bias
+            
+            # Helper class to efficiently deal with low rank factored matrices.
+            W_OV = FactoredMatrix(W_V, W_O)
+            W_OV_even = W_OV.make_even()
+            state_dict[f"blocks.{l}.attn.W_V"] = W_OV_even.A
+            state_dict[f"blocks.{l}.attn.W_O"] = W_OV_even.B
+
         return state_dict
     
     def set_use_attn_result(self, use_attn_result):

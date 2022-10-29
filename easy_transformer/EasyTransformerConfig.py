@@ -63,8 +63,9 @@ class EasyTransformerConfig:
             local attention
         weight_init_mode (str): the initialization mode to use for the 
             weights. Only relevant for custom models, ignored for pre-trained.
-            Options are 'pytorch' (for PyTorch defaults) and 'gpt2' (for GPT-2
-            defaults), defaults to 'gpt2
+            Currently the only supported mode is 'gpt2', where biases are
+            initialized to 0 and weights are standard normals of range
+            initializer_range.
         normalization_type (str, *optional*): the type of normalization to use.
             Options are None (no normalization), 'LN' (use LayerNorm, including weights
             & biases) and 'LNPre' (use LayerNorm, but no weights & biases).
