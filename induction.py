@@ -286,12 +286,28 @@ top_heads = [
     (9, 1),
     (11, 5),
     (6, 9),
-    # (10, 1),
-    # (11, 9),
+    (10, 1),
+    (11, 9),
+    (8, 1),
+    (10, 6),
+    (5, 1),
+    (10, 10),
+    (10, 3),
 ]
+
+top_heads = [
+    (6, 1),
+    (8, 1),
+    (6, 6),
+    (8, 0),
+    (8, 8),
+]
+
+top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
 
 hooks = {}
 
+top_heads = 
 
 def zero_all(z, act, hook):
     z[:] = 0
@@ -300,6 +316,7 @@ def zero_all(z, act, hook):
 
 for layer, head_idx in top_heads:
     hook_name = f"blocks.{layer}.attn.hook_result"
+
     hooks[(layer, head_idx)] = (
         hook_name,
         get_act_hook(
@@ -320,7 +337,7 @@ def get_random_subset(l, size):
 
 ys = []
 ys2 = []
-max_len = 8
+max_len = 5
 no_iters = 30
 
 for subset_size in range(max_len):
@@ -330,10 +347,10 @@ for subset_size in range(max_len):
     curw = 0  # "EXPECTED" increase
     for _ in range(30):
         model.reset_hooks()
-        for hook in list(hooks.items())[:subset_size]:
-            # for hook in get_random_subset(list(hooks.items()), subset_size):
+        # for hook in list(hooks.items())[:subset_size]:
+        for hook in get_random_subset(list(hooks.items()), subset_size):
             model.add_hook(*hook[1])
-            curw += results[hook[0]].item()
+            # curw += results[hook[0]].item()
         loss = model(
             rand_tokens_repeat, return_type="both", loss_return_per_token=True
         )["loss"][:, -seq_len // 2 :].mean()
@@ -352,7 +369,7 @@ fig.add_trace(
         x=list(range(0, max_len)),
         y=ys,
         mode="lines+markers",
-        name="Random subset",
+        name="Top N heads removed",
         line=dict(color="Black", width=1),
     )
 )
@@ -361,10 +378,18 @@ fig.add_trace(
         x=list(range(0, max_len)),
         y=ys2,
         mode="lines+markers",
-        name="Expected",
+        name="Sum of direct effects",
         line=dict(color="Red", width=1),
     )
 )
+
+# add x axis labels
+fig.update_layout(
+    xaxis_title="Number of heads removed",
+    yaxis_title="Loss",
+    title="Effect of removing heads on logit difference",
+)
+
 
 #%% [markdown]
 
@@ -407,14 +432,14 @@ def compute_logit_probs(rand_tokens_repeat, model):
 
 compute_logit_probs(rand_tokens_repeat, model)
 # %%
-# induct_head = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
-induct_head = [
-    (6, 1),
-    (8, 1),
-    (6, 6),
-    (8, 0),
-    (8, 8),
-]  # max_2d(torch.tensor(arrs[0]), k=5) equiv
+induct_head = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
+# induct_head = [
+#     (6, 1),
+#     (8, 1),
+#     (6, 6),
+#     (8, 0),
+#     (8, 8),
+# ]  # max_2d(torch.tensor(arrs[0]), k=5) equiv
 
 all_means = []
 for k in range(len(induct_head) + 1):
