@@ -270,9 +270,9 @@ top_heads = [
     (10, 1),
     (7, 10),
     (10, 0),
-    # (11, 9),
-    # (7, 2),
-    # (6, 9),
+    (11, 9),
+    (7, 2),
+    (6, 9),
     # (10, 6),
     # (10, 3),
 ]
@@ -299,31 +299,31 @@ def get_random_subset(l, size):
     return [l[i] for i in sorted(random.sample(range(len(l)), size))]
 
 
-# for layer, head_idx in top_heads:
-
 ys = []
+max_len = 8
+no_iters = 30
 
-for subset_size in range(5):
+for subset_size in range(max_len):
     model.reset_hooks()
 
     curv = 0
-    for _ in range(10):
+    for _ in range(30):
         model.reset_hooks()
         for hook in get_random_subset(list(hooks.values()), subset_size):
             model.add_hook(*hook)
         loss = model(
             rand_tokens_repeat, return_type="both", loss_return_per_token=True
         )["loss"][:, -seq_len // 2 :].mean()
-        print(f"Layer {layer}, head {head_idx}: {loss.mean().item()}")
+        # print(f"Layer {layer}, head {head_idx}: {loss.mean().item()}")
         curv += loss.mean().item()
-    curv /= 10
+    curv /= no_iters
     ys.append(curv)
 
 # plot the results
 fig = go.Figure()
 fig.add_trace(
     go.Scatter(
-        x=list(range(1, 6)),
+        x=list(range(1, max_len)),
         y=ys,
         mode="lines+markers",
         name="Random subset",
