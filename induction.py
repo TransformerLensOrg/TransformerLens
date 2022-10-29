@@ -1,79 +1,79 @@
-    #%% [markdown]
-    # Arthur investigation into dropout
-    from copy import deepcopy
-    import torch
+#%% [markdown]
+# Arthur investigation into dropout
+from copy import deepcopy
+import torch
 
-    from easy_transformer.experiments import get_act_hook
-    from induction_utils import path_patching_attribution, prepend_padding, patch_all
+from easy_transformer.experiments import get_act_hook
+from induction_utils import path_patching_attribution, prepend_padding, patch_all
 
-    assert torch.cuda.device_count() == 1
-    from tqdm import tqdm
-    import pandas as pd
-    import torch
-    import torch as t
-    from easy_transformer.EasyTransformer import (
-        EasyTransformer,
-    )
-    from time import ctime
-    from functools import partial
+assert torch.cuda.device_count() == 1
+from tqdm import tqdm
+import pandas as pd
+import torch
+import torch as t
+from easy_transformer.EasyTransformer import (
+    EasyTransformer,
+)
+from time import ctime
+from functools import partial
 
-    import numpy as np
-    from tqdm import tqdm
-    import pandas as pd
-    import plotly.express as px
-    import plotly.io as pio
-    import plotly.graph_objects as go
-    import random
-    import einops
-    from IPython import get_ipython
-    from copy import deepcopy
-    from ioi_dataset import (
-        IOIDataset,
-    )
-    from ioi_utils import (
-        path_patching,
-        max_2d,
-        CLASS_COLORS,
-        e,
-        show_pp,
-        show_attention_patterns,
-        scatter_attention_and_contribution,
-    )
-    from random import randint as ri
-    from easy_transformer.experiments import get_act_hook
-    from ioi_circuit_extraction import (
-        do_circuit_extraction,
-        get_heads_circuit,
-        CIRCUIT,
-    )
-    import random as rd
-    from ioi_utils import logit_diff, probs
-    from ioi_utils import get_top_tokens_and_probs as g
+import numpy as np
+from tqdm import tqdm
+import pandas as pd
+import plotly.express as px
+import plotly.io as pio
+import plotly.graph_objects as go
+import random
+import einops
+from IPython import get_ipython
+from copy import deepcopy
+from ioi_dataset import (
+    IOIDataset,
+)
+from ioi_utils import (
+    path_patching,
+    max_2d,
+    CLASS_COLORS,
+    e,
+    show_pp,
+    show_attention_patterns,
+    scatter_attention_and_contribution,
+)
+from random import randint as ri
+from easy_transformer.experiments import get_act_hook
+from ioi_circuit_extraction import (
+    do_circuit_extraction,
+    get_heads_circuit,
+    CIRCUIT,
+)
+import random as rd
+from ioi_utils import logit_diff, probs
+from ioi_utils import get_top_tokens_and_probs as g
 
-    ipython = get_ipython()
-    if ipython is not None:
-        ipython.magic("load_ext autoreload")
-        ipython.magic("autoreload 2")
-    #%% [markdown]
-    # Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
+ipython = get_ipython()
+if ipython is not None:
+    ipython.magic("load_ext autoreload")
+    ipython.magic("autoreload 2")
+#%% [markdown]
+# Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
 
-    gpt2 = EasyTransformer.from_pretrained("gpt2").cuda()
-    gpt2.set_use_attn_result(True)
+gpt2 = EasyTransformer.from_pretrained("gpt2").cuda()
+gpt2.set_use_attn_result(True)
 
-    opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
-    opt.set_use_attn_result(True)
+opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
+opt.set_use_attn_result(True)
 
-    neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
-    neo.set_use_attn_result(True)
+neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
+neo.set_use_attn_result(True)
 
-    solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
-    solu.set_use_attn_result(True)
+solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
+solu.set_use_attn_result(True)
 
-    # distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
-    # distil.set_use_attn_result(True)
+# distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
+# distil.set_use_attn_result(True)
 
-    model = gpt2
-    model_names = ["gpt2", "opt", "neo", "solu"]
+model = gpt2
+model_names = ["gpt2", "opt", "neo", "solu"]
 #%% [markdown]
 # Initialise dataset
 N = 100
@@ -383,7 +383,7 @@ def get_random_subset(l, size):
 
 ys = []
 ys2 = []
-max_len = 8 # 20 - skipper
+max_len = 8  # 20 - skipper
 no_iters = 30
 
 for subset_size in tqdm(range(max_len)):
