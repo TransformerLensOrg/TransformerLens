@@ -213,8 +213,14 @@ class PatchingConfig(ExperimentConfig):
         target_dataset: List[str] = None,
         patch_fn: Callable[[torch.tensor, torch.tensor, HookPoint], torch.tensor] = None,
         cache_act: bool = True,
+        direct_patching: bool = False,
         **kwargs,
     ):
+        """
+        `direct_patching` True means that we only patch in the changed head or MLP output at the end of the residual stream . This removes indirect effects, which has both advantages and disadvantages. TODO extend functionality so that we can have effects on things like later attention heads so we don't just detect things that directly change logits.
+        """
+
+
         super().__init__(**kwargs)
 
         self.source_dataset = source_dataset
@@ -223,7 +229,10 @@ class PatchingConfig(ExperimentConfig):
         self.patch_fn = patch_fn
         if patch_fn is None:  # default patch_fn
             self.patch_fn = cst_fn
-
+        self.direct_patching = direct_patching
+        assert not (self.direct_patching and not self.cache_act), "You must cache activations for direct patching"
+        if self.direct_patching:
+            assert self.cfg.target_module == "mlp" or self.cfg.head_circuit == "result", "Direct patching only works for results of heads or MLPs"
 
 # TODO : loss metric, zero ablation, mean ablation
 # TODO : add different direction for the mean, add tokens, change type of
@@ -370,6 +379,7 @@ class EasyAblation(EasyExperiment):
         for hk in self.act_cache.keys():
             if "blocks" in hk:  # TODO optimize to cache only the right activations
                 self.mean_cache[hk] = self.compute_mean(self.act_cache[hk], hk)
+            
 
     def get_mean(self, hook_name):
         cache = {}
@@ -456,6 +466,10 @@ class EasyPatching(EasyExperiment):
         return self.run_experiment()
 
     def get_hook(self, layer, head=None, target_module=None):
+
+        if self.cfg.direct_patching:
+            return self.get_hook_direct_patching(layer=layer, head=head, target_module=target_module)
+        
         # If the target is a layer, head is None.
         hook_name, dim = self.get_target(layer, head, target_module=target_module)
         if self.cfg.cache_act:
@@ -466,11 +480,36 @@ class EasyPatching(EasyExperiment):
         hook = get_act_hook(self.cfg.patch_fn, act, head, dim=dim)
         return (hook_name, hook)
 
+    def get_hook_direct_patching(self, layer, head=None, target_module=None):
+        # If the target is a layer, head is None.
+        hook_name, dim = self.get_target(layer, head, target_module=target_module)
+        assert "hook_result" in hook_name or "mlp_out" in hook_name
+
+        def direct_patch(z, act, hook):
+            if head is None:
+                z += self.act_cache[hook_name]
+                z -= self.target_cache[hook_name]
+            else:
+                z += self.act_cache[hook_name][:, head]
+                z -= self.target_cache[hook_name][:, head]
+            return z
+
+        return (f"blocks.{self.model.cfg.n_layers - 1}.hook_resid_post", direct_patch)
+
+
     def get_all_act(self):
         self.act_cache = {}
         self.model.reset_hooks()
         self.model.cache_all(self.act_cache)
         self.model(self.cfg.source_dataset)
+        self.model.reset_hooks()
+
+        if self.cfg.direct_patching:
+            self.target_cache = {}
+            self.model.reset_hooks()
+            self.model.cache_all(self.target_cache)
+            self.model(self.cfg.target_dataset)
+            self.model.reset_hooks()
 
     def get_act(self, hook_name):
         cache = {}
