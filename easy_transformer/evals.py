@@ -11,6 +11,18 @@ from torch.utils.data import DataLoader
 import einops
 
 # %%
+def sanity_check(model):
+    """ 
+    Very basic eval - just feeds a string into the model (in this case, the first paragraph of Circuits: Zoom In), and returns the loss. It's a rough and quick sanity check - if the loss is <5 the model is probably OK, if the loss is >7 something's gone wrong.
+
+    Note that this is a very basic eval, and doesn't really tell you much about the model's performance.
+    """
+
+    text = "Many important transition points in the history of science have been moments when science 'zoomed in.' At these points, we develop a visualization or tool that allows us to see the world in a new level of detail, and a new field of science develops to study the world through this lens."
+
+    return model(text, return_type="loss")
+
+# %%
 def make_wiki_data_loader(tokenizer, batch_size=8):
     """ 
     Evaluate on Wikitext 2, a dump of Wikipedia articles. (Using the train set because it's larger, I don't really expect anyone to bother with quarantining the validation set nowadays.)

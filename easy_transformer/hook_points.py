@@ -3,34 +3,8 @@ import logging
 from typing import Callable, Union, Optional, Sequence
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import numpy as np
-import einops
-from tqdm import tqdm
-
-import random
-import time
-
-from pathlib import Path
-import pickle
-import os
-
-import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.io as pio
-import plotly.graph_objects as go
-
-from torch.utils.data import DataLoader
 
 from functools import *
-import pandas as pd
-import gc
-import collections
-import copy
-
-# import comet_ml
-import itertools
 
 from easy_transformer.activation_cache import ActivationCache
 

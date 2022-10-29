@@ -1,10 +1,13 @@
 # %%
-from easy_transformer import EasyTransformerConfig
+from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 import einops
 import torch
-from collections import defaultdict
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoModelForCausalLM
 import easy_transformer.utils as utils
+from typing import Optional
+import logging
+from huggingface_hub import HfApi
+import re
 
 # %% The model names used to access the models on the HuggingFace Hub.
 OFFICIAL_MODEL_NAMES = [
@@ -52,11 +55,15 @@ OFFICIAL_MODEL_NAMES = [
     'NeelNanda/SoLU_6L_v13_old',
     'NeelNanda/SoLU_8L_v21_old',
     'NeelNanda/SoLU_10L_v22_old',
+    'NeelNanda/SoLU_12L_v23_old',
     "NeelNanda/SoLU_1L512W_C4_Code",
     "NeelNanda/SoLU_2L512W_C4_Code",
     "NeelNanda/SoLU_3L512W_C4_Code",
     "NeelNanda/SoLU_4L512W_C4_Code",
+    "NeelNanda/SoLU_6L768W_C4_Code",
     "NeelNanda/SoLU_8L1024W_C4_Code",
+    # "NeelNanda/SoLU_10L1280W_C4_Code",
+    "NeelNanda/SoLU_12L1536W_C4_Code",
     "NeelNanda/GELU_1L512W_C4_Code",
     "NeelNanda/GELU_2L512W_C4_Code",
     "NeelNanda/GELU_3L512W_C4_Code",
@@ -64,7 +71,7 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/Attn_Only_1L512W_C4_Code",
     "NeelNanda/Attn_Only_2L512W_C4_Code",
     "NeelNanda/Attn_Only_3L512W_C4_Code",
-    # "NeelNanda/Attn_Only_4L512W_C4_Code",
+    "NeelNanda/Attn_Only_4L512W_C4_Code",
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr",
 ]
 
@@ -76,11 +83,11 @@ MODEL_ALIASES = {
     'NeelNanda/SoLU_6L_v13_old': ["solu-6l-old", "solu-6l-pile"],
     'NeelNanda/SoLU_8L_v21_old': ["solu-8l-old", "solu-8l-pile"],
     'NeelNanda/SoLU_10L_v22_old': ["solu-10l-old", "solu-10l-pile"],
+    'NeelNanda/SoLU_12L_v22_old': ["solu-12l-old", "solu-12l-pile"],
     "NeelNanda/SoLU_1L512W_C4_Code": ["solu-1l", "solu-1l-new", "solu-1l-c4-code"],
     "NeelNanda/SoLU_2L512W_C4_Code": ["solu-2l", "solu-2l-new", "solu-2l-c4-code"],
     "NeelNanda/SoLU_3L512W_C4_Code": ["solu-3l", "solu-3l-new", "solu-3l-c4-code"],
     "NeelNanda/SoLU_4L512W_C4_Code": ["solu-4l", "solu-4l-new", "solu-4l-c4-code"],
-    "NeelNanda/SoLU_8L1024W_C8_Code": ["solu-8l", "solu-8l-new", "solu-8l-c4-code"],
     "NeelNanda/GELU_1L512W_C4_Code": ["gelu-1l", "gelu-1l-new", "gelu-1l-c4-code"],
     "NeelNanda/GELU_2L512W_C4_Code": ["gelu-2l", "gelu-2l-new", "gelu-2l-c4-code"],
     "NeelNanda/GELU_3L512W_C4_Code": ["gelu-3l", "gelu-3l-new", "gelu-3l-c4-code"],
@@ -88,7 +95,11 @@ MODEL_ALIASES = {
     "NeelNanda/Attn_Only_1L512W_C4_Code": ["attn-only-1l", "attn-only-1l-new", "attn-only-1l-c4-code"],
     "NeelNanda/Attn_Only_2L512W_C4_Code": ["attn-only-2l", "attn-only-2l-new", "attn-only-2l-c4-code"],
     "NeelNanda/Attn_Only_3L512W_C4_Code": ["attn-only-3l", "attn-only-3l-new", "attn-only-3l-c4-code"],
-    # "NeelNanda/Attn_Only_4L512W_C4_Code": ["attn-only-4l", "attn-only-4l-new", "attn-only-4l-c4-code"],
+    "NeelNanda/Attn_Only_4L512W_C4_Code": ["attn-only-4l", "attn-only-4l-new", "attn-only-4l-c4-code"],
+    "NeelNanda/SoLU_6L768W_C4_Code": ["solu-6l", "solu-6l-new", "solu-6l-c4-code"],
+    "NeelNanda/SoLU_8L1024W_C4_Code": ["solu-8l", "solu-8l-new", "solu-8l-c4-code"],
+    # "NeelNanda/SoLU_10L1280W_C4_Code": ["solu-10l", "solu-10l-new", "solu-10l-c4-code"],
+    "NeelNanda/SoLU_12L1536W_C4_Code": ["solu-12l", "solu-12l-new", "solu-12l-c4-code"],
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr": ["attn-only-2l-shortformer-6b-big-lr", "attn-only-2l-induction-demo", "attn-only-demo", "attn-only-2l-demo"],
     "EleutherAI/pythia-19m": ["pythia-19m", "pythia"],
     "EleutherAI/pythia-125m": ["pythia-125m",],
@@ -148,15 +159,15 @@ def get_official_model_name(model_name: str):
     model_alias_map = make_model_alias_map()
     official_model_name = model_alias_map.get(model_name.lower(), None)
     if official_model_name is None:
-        raise ValueError(f"{model_name} not found. Valid model names: {OFFICIAL_MODEL_NAMES}")
+        raise ValueError(f"{model_name} not found. Valid official model names (excl aliases): {OFFICIAL_MODEL_NAMES}")
     return official_model_name
 
 def convert_hf_model_config(official_model_name: str):
     """
-    Returns the model config for a HuggingFace model, converted to an
-    EasyTransformerConfig object.
+    Returns the model config for a HuggingFace model, converted to a dictionary
+    in the EasyTransformerConfig format.
 
-    Takes the official_model_name as an input
+    Takes the official_model_name as an input.
     """
     # In case the user passed in an alias
     official_model_name = get_official_model_name(official_model_name)
@@ -249,15 +260,17 @@ def convert_hf_model_config(official_model_name: str):
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
+    # All of these models use LayerNorm
+    cfg_dict["normalization_type"] = "LN"
     cfg_dict["original_architecture"] = architecture
-    cfg = EasyTransformerConfig.from_dict(cfg_dict)
-    return cfg
-
+    # The name such that AutoTokenizer.from_pretrained works
+    cfg_dict["tokenizer_name"] = official_model_name
+    return cfg_dict
 
 def convert_neel_model_config(official_model_name: str):
     """ 
-    Loads the config for a model trained by me (NeelNanda), and converts it to
-    an EasyTransformerConfig object.
+    Loads the config for a model trained by me (NeelNanda), converted to a dictionary
+    in the EasyTransformerConfig format.
 
     AutoConfig is not supported, because these models are in the EasyTransformer format, so we directly download and load the json.
     """
@@ -274,7 +287,8 @@ def convert_neel_model_config(official_model_name: str):
         "tokenizer_name": cfg_json["tokenizer_name"],
         "act_fn": cfg_json["act_fn"],
         "attn_only": cfg_json["attn_only"],
-        "original_architecture": "neel-solu" if "_old" not in official_model_name else "neel-solu-old",
+        "final_rms": cfg_json["final_rms"],
+        "original_architecture": "neel" if "_old" not in official_model_name else "neel-solu-old",
     }
     if "normalization" in cfg_json:
         cfg_dict["normalization_type"] = cfg_json["normalization"]
@@ -284,19 +298,80 @@ def convert_neel_model_config(official_model_name: str):
         cfg_dict["positional_embedding_type"] = "shortformer" if cfg_json["shortformer_pos"] else "standard"
     else:
         cfg_dict["positional_embedding_type"] = "standard"
-    return EasyTransformerConfig.from_dict(cfg_dict)
+    return cfg_dict
 
-def get_pretrained_model_config(model_name: str):
-    """ Returns model config as an EasyTransformerConfig object"""
+def get_pretrained_model_config(
+    model_name: str,
+    checkpoint_index: Optional[int] = None,
+    checkpoint_value: Optional[int] = None,
+    fold_ln: bool = False,
+    device: Optional[str] = None,
+    ):
+    """ Returns the pretrained model config as an EasyTransformerConfig object.
+    
+    There are two types of pretrained models: HuggingFace models (where
+    AutoModel and AutoConfig work), and models trained by me (NeelNanda) which
+    aren't as integrated with HuggingFace infrastructure.
+    
+    Args:
+        model_name: The name of the model. This can be either the official
+            HuggingFace model name, or the name of a model trained by me
+            (NeelNanda). 
+        checkpoint_index (int, optional): If loading from a
+            checkpoint, the index of the checkpoint to load. Defaults to None.
+        checkpoint_value (int, optional): If loading from a checkpoint, the
+        value of 
+            the checkpoint to load, ie the step or token number (each model has
+            checkpoints labelled with exactly one of these). Defaults to None.
+        fold_ln (bool, optional): Whether to fold the layer norm into the
+            subsequent linear layers (see EasyTransformer.fold_layer_norm for
+            details). Defaults to False.
+        device (str, optional): The device to load the model onto. By
+            default will load to CUDA if available, else CPU.
+        
+    """
     official_model_name = get_official_model_name(model_name)
     if official_model_name.startswith("NeelNanda"):
-        return convert_neel_model_config(official_model_name)
+        cfg_dict = convert_neel_model_config(official_model_name)
     else:
-        return convert_hf_model_config(official_model_name)
+        cfg_dict = convert_hf_model_config(official_model_name)
+    
+    # Processing common to both model types
+    # Remove any prefix, saying the organization who made a model.
+    cfg_dict["model_name"] = official_model_name.split("/")[-1]
+    # Don't need to initialize weights, we're loading from pretrained
+    cfg_dict["init_weights"] = False
+
+    if device is not None:
+        cfg_dict["device"] = device
+    if fold_ln:
+        if cfg_dict["normalization_type"] == "LN":
+            cfg_dict["normalization_type"] = "LNPre"
+        else:
+            logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
+            pass
+    
+    if checkpoint_index is not None or checkpoint_value is not None:
+        checkpoint_labels, checkpoint_label_type = get_checkpoint_labels(official_model_name)
+        cfg_dict["from_checkpoint"] = True
+        cfg_dict["checkpoint_label_type"] = checkpoint_label_type
+        if checkpoint_index is not None:
+            cfg_dict["checkpoint_index"] = checkpoint_index
+            cfg_dict["checkpoint_value"] = checkpoint_labels[checkpoint_index]
+        elif checkpoint_value is not None:
+            cfg_dict["checkpoint_value"] = checkpoint_value
+            cfg_dict["checkpoint_index"] = checkpoint_labels.index(checkpoint_value)
+    else:
+        cfg_dict["from_checkpoint"] = False
+    
+    cfg_dict["device"] = device
+
+    cfg = EasyTransformerConfig.from_dict(cfg_dict)
+    return cfg
 
 
-# %% Load checkpointed model state dicts The steps for which there are
-# checkpoints in the stanford crfm models
+# %% Load checkpointed model state dicts 
+# The steps for which there are checkpoints in the stanford crfm models
 STANFORD_CRFM_CHECKPOINTS = (
     list(range(0, 100, 10))
     + list(range(100, 2000, 50))
@@ -304,33 +379,103 @@ STANFORD_CRFM_CHECKPOINTS = (
     + list(range(20000, 400000 + 1, 1000))
 )
 
-def get_model_checkpoint_list(official_model_name: str):
+def get_checkpoint_labels(model_name: str):
+    """ Returns the checkpoint labels for a given model, and the label_type
+    (step or token). Raises an error for models that are not checkpointed."""
+    official_model_name = get_official_model_name(model_name)
     if official_model_name.startswith("stanford-crfm/"):
-        return STANFORD_CRFM_CHECKPOINTS
+        return STANFORD_CRFM_CHECKPOINTS, "step"
+    elif official_model_name.startswith("NeelNanda/"):
+        api = HfApi()
+        files_list = api.list_repo_files(official_model_name)
+        labels = []
+        for file_name in files_list:
+            match = re.match(r"checkpoints/.*_(\d*)\.pth", file_name)
+            if match:
+                labels.append(int(match.group(1)))
+        if labels[-1]>1e9:
+            label_type="token"
+        else:
+            label_type="step"
+        return labels, label_type
     else:
-        raise NotImplementedError(f"Model {official_model_name} is not supported by this function yet.")
-
-def get_model_checkpoint_state_dict(official_model_name: str):
-    # if official_model_name.startswith("stanford-crfm/"): return
-    #     torch.hub.load_state_dict_from_url(
-    #         f"https://huggingface.co/{official_model_name}/resolve/main/checkpoint-{checkpoint}.bin",
-    #         map_location="cpu", ) else:
-    raise NotImplementedError(f"Model {official_model_name} is not supported by this function yet.")
-
-
+        raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
 # %% Loading state dicts
 
-def get_model_state_dict(official_model_name: str):
-    pass
+def get_pretrained_state_dict(
+    official_model_name: str,
+    cfg: EasyTransformerConfig,
+    hf_model = None,
+    ):
+    """ 
+    Loads in the model weights for a pretrained model, and processes them to
+    have the EasyTransformer parameter names and shapes. Supports checkpointed
+    models (and expects the checkpoint info to be stored in the config object)
+
+    hf_model: Optionally, a HuggingFace model object. If provided, we will use
+    these weights rather than reloading the model.
+    """
+    official_model_name = get_official_model_name(official_model_name)
+    if official_model_name.startswith("NeelNanda"):
+        api = HfApi()
+        repo_files = api.list_repo_files(official_model_name)
+        if cfg.from_checkpoint:
+            file_name = list(filter(lambda x: x.endswith(f"_{cfg.checkpoint_value}.pth"), repo_files))[0]
+        else:
+            file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
+        state_dict = utils.download_file_from_hf(official_model_name, file_name)
+        if cfg.original_architecture == "neel-solu-old":
+            state_dict = convert_neel_solu_old_weights(state_dict, cfg)
+        return state_dict
+    else:
+        if cfg.from_checkpoint:
+            hf_model = AutoModelForCausalLM.from_pretrained(official_model_name, revision=f"checkpoint-{cfg.checkpoint_value}")
+        elif hf_model is None:
+            hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
+        
+                # Load model weights, and fold in layer norm weights
+        if cfg.original_architecture == "GPT2LMHeadModel":
+            state_dict = convert_gpt2_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GPTNeoForCausalLM":
+            state_dict = convert_neo_weights(hf_model, cfg)
+        elif cfg.original_architecture == "OPTForCausalLM":
+            state_dict = convert_opt_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GPTJForCausalLM":
+            state_dict = convert_gptj_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GPTNeoXForCausalLM":
+            state_dict = convert_neox_weights(hf_model, cfg)
+        else:
+            raise ValueError(f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature.")
+        
+        return state_dict
 
 
 # %%
 def convert_state_dict(
     state_dict: dict, 
-    official_model_name: str,
+    cfg: EasyTransformerConfig,
     ):
-    pass
+    """ Converts a state_dict from a HuggingFace model to a state_dict
+    compatible with EasyTransformer. """
+    official_model_name = get_official_model_name(official_model_name)
+
+    if cfg["original_architecture"] == "gpt2":
+        return convert_gpt2_weights(state_dict, cfg)
+    elif cfg["original_architecture"] == "neo":
+        return convert_neo_weights(state_dict, cfg)
+    elif cfg["original_architecture"] == "gptj":
+        return convert_gptj_weights(state_dict, cfg)
+    elif cfg["original_architecture"] == "neox":
+        return convert_neox_weights(state_dict, cfg)
+    elif cfg["original_architecture"] == "opt":
+        return convert_opt_weights(state_dict, cfg)
+    elif cfg["original_architecture"] == "neel-solu-old":
+        return convert_neel_solu_old_weights(state_dict, cfg)
+    elif cfg["original_architecture"] == "neel":
+        return state_dict
+    else:
+        raise ValueError(f"Unknown architecture {cfg['original_architecture']}")
 # Convert state dicts
 def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     state_dict = {}
@@ -613,3 +758,41 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict["unembed.W_U"] = opt.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
+
+def convert_neel_solu_old_weights(
+    state_dict: dict, 
+    cfg: EasyTransformerConfig):
+    """ 
+    Converts the weights of my old SoLU models to the EasyTransformer format.
+    Takes as input a state dict, *not* a model object.
+
+    There are a bunch of dumb bugs in the original code, sorry!
+
+    Models 1L, 2L, 4L and 6L have left facing weights (ie, weights have shape
+    [dim_out, dim_in]) while EasyTransformer does right facing (ie [dim_in,
+    dim_out]).
+    
+    8L has *just* a left facing W_pos, the rest right facing.
+
+    And some models were trained with 
+    """
+    # Early models have left facing W_pos
+    reverse_pos = cfg.n_layers <= 8
+
+    # Models prior to 8L have left facing everything (8L has JUST left facing W_pos - sorry! Stupid bug)
+    reverse_weights = cfg.n_layers <= 6
+
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        k = k.replace("norm", "ln")
+        if k.startswith("ln."):
+            k = k.replace("ln.", "ln_final.")
+        new_state_dict[k] = v
+    
+    if reverse_pos:
+        new_state_dict["pos_embed.W_pos"] = new_state_dict["pos_embed.W_pos"].T
+    if reverse_weights:
+        for k, v in new_state_dict.items():
+            if "W_" in k and "W_pos" not in k:
+                new_state_dict[k] = v.transpose(-2, -1)
+    return new_state_dict

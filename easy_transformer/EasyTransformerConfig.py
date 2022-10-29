@@ -6,6 +6,8 @@ import torch.nn as nn
 import random
 import numpy as np
 import logging
+import json
+import pprint
 
 SUPPORTED_ACTIVATIONS = ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln', 'gelu_fast']
 @dataclass
@@ -42,8 +44,14 @@ class EasyTransformerConfig:
         original_architecture (str, *optional*): the family of the model, used
         to help load
             weights from HuggingFace or initialized to "custom" if not passed
-        checkpoint (str, *optional*): the checkpoint to load weights from, if
-            using a checkpointed pretrained model. 
+        from_checkpoint (bool): Whether the model weights were 
+            loaded from a checkpoint (only applies to pretrained models)
+        checkpoint_index (int, *optional*): The index of the
+            checkpoint loaded (only applies to pretrained models).
+        checkpoint_label_type (str, *optional*): Whether
+            checkpoints are labelled by the number of steps or number of tokens.
+        checkpoint_value (int, *optional*): The value of the   
+            checkpoint label (whether of steps or tokens).
         tokenizer_name (str, *optional*): the full name of the model, passed into 
             HuggingFace to access the tokenizer. Only used when passing in
             custom config, if loading from pretrained then this is not needed.
@@ -101,8 +109,12 @@ class EasyTransformerConfig:
             embeddings, may be d_head in which case only the first rotary_dim
             dimensions of each head are rotated. Defaults to None, if
             positional_embedding_type=="rotary" it defaults to d_head. 
-        dtype (torch.dtype): The float encoding to use for the model. Defaults
-            to torch.float32.
+        n_params (int, *optional*): The number of (hidden weight) 
+            parameters in the model. This is automatically calculated and not
+            intended to be set by the user. (Non embedding parameters, because
+            the [scaling laws paper](https://arxiv.org/pdf/2001.08361.pdf) found
+            that that was a more meaningful number. Ignoring biases and layer
+            norms, for convenience)
     """
 
     n_layers: int
@@ -119,13 +131,16 @@ class EasyTransformerConfig:
     use_attn_scale: bool = True
     use_local_attn: bool = False
     original_architecture: Optional[str] = None
-    checkpoint: Optional[int] = None
+    from_checkpoint: bool = False
+    checkpoint_index: Optional[int] = None
+    checkpoint_label_type: Optional[str] = None
+    checkpoint_value: Optional[int] = None
     tokenizer_name: Optional[str] = None
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = 'gpt2'
     normalization_type: Optional[str] = None
-    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device: Optional[str] = None
     attention_dir: str = 'causal'
     attn_only: bool = False
     seed: int = 42
@@ -137,7 +152,7 @@ class EasyTransformerConfig:
     d_vocab_out: Optional[int] = None
     parallel_attn_mlp: bool = False
     rotary_dim: Optional[int] = None
-    dtype: torch.dtype = torch.float32
+    n_params: Optional[int] = None
 
     def __post_init__(self):
         if self.n_heads is None:
@@ -171,6 +186,15 @@ class EasyTransformerConfig:
         
         if self.positional_embedding_type == "rotary" and self.rotary_dim is None:
             self.rotary_dim = self.d_head
+        
+        # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
+        self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
+        if not self.attn_only:
+            # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
+            self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
+        
+        if self.device is None:
+            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
@@ -179,3 +203,10 @@ class EasyTransformerConfig:
         parameters.
         """
         return cls(**config_dict)
+    
+    def to_dict(self):
+        return self.__dict__
+    
+    def __repr__(self):
+        return "EasyTransformerConfig:\n"+pprint.pformat(self.to_dict())
+    
