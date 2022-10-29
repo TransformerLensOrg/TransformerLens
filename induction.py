@@ -62,7 +62,16 @@ gpt2.set_use_attn_result(True)
 neo = EasyTransformer.from_pretrained("EleutherAI/gpt-neo-125M").cuda()
 neo.set_use_attn_result(True)
 
-model = neo
+opt = EasyTransformer.from_pretrained("facebook/opt-125m").cuda()
+opt.set_use_attn_result(True)
+
+solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
+solu.set_use_attn_result(True)
+
+distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
+distil.set_use_attn_result(True)
+
+model = gpt2
 #%% [markdown]
 # Initialise dataset
 N = 100
@@ -88,7 +97,6 @@ abc_dataset = (
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"))
 )
-
 #%% [markdown]
 # Induction
 
@@ -135,10 +143,14 @@ arrs = []
 # sweeeeeet plot
 
 if True:  # might hog memory
-    ys = [[], []]
-
-    for idx, model_name in enumerate(["neo", "gpt2"]):
+    ys = [[] for _ in range(12)]
+    fig = go.Figure()
+    for idx, model_name in enumerate(["distill", "neo", "solu", "opt", "gpt2"]):
         model = eval(model_name)
+        if model_name == "solu":
+            rand_tokens_repeat[:, 0] = 0
+        else:
+            rand_tokens_repeat[:, 0] = 50256
         logits, loss = model(
             rand_tokens_repeat, return_type="both", loss_return_per_token=True
         ).values()
@@ -149,10 +161,14 @@ if True:  # might hog memory
         )
         mean_loss = loss.mean(dim=0)
         ys[idx] = mean_loss.detach().cpu()  # .numpy()
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(y=ys[0], name="neo"))
-    fig.add_trace(go.Scatter(y=ys[1], name="gpt2"))
+        fig.add_trace(
+            go.Scatter(
+                y=mean_loss.detach().cpu(),
+                name=model_name,
+                mode="lines",
+                # line=dict(color=CLASS_COLORS[idx]),
+            )
+        )
     fig.update_layout(title="Loss over time")
 
     # add a line at x = 50 saying that this should be the first guessable
@@ -211,18 +227,23 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             model.reset_hooks()
             receiver_hooks = []
             receiver_hooks.append(("blocks.11.hook_resid_post", None))
-            model = path_patching_attribution(
-                model=model,
-                tokens=rand_tokens_repeat,
-                patch_tokens=rand_tokens_control,
-                sender_heads=[(source_layer, source_head_idx)],
-                receiver_hooks=receiver_hooks,
-                start_token=seq_len + 1,
-                end_token=2 * seq_len,
-                device="cuda",
-                freeze_mlps=True,
-                return_hooks=False,
-            )
+
+            if False:
+                model = path_patching_attribution(
+                    model=model,
+                    tokens=rand_tokens_repeat,
+                    patch_tokens=rand_tokens_control,
+                    sender_heads=[(source_layer, source_head_idx)],
+                    receiver_hooks=receiver_hooks,
+                    start_token=seq_len + 1,
+                    end_token=2 * seq_len,
+                    device="cuda",
+                    freeze_mlps=True,
+                    return_hooks=False,
+                )
+
+            else:
+                model.add_hook(*hooks[(source_layer, source_head_idx)])
 
             # model.reset_hooks()
             # for hook in hooks:
@@ -253,10 +274,10 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
 # look into compensation in both cases despite it seeming very different
 
 cache = {}
-
+model.reset_hooks()
 model.cache_some(
     cache,
-    lambda x: "attn.hook_result" in x,
+    lambda x: "attn.hook_result" in x or "mlp_out" in x,
     suppress_warning=True,
     # device=device,
 )
@@ -294,7 +315,6 @@ top_heads = [
     (10, 10),
     (10, 3),
 ]
-
 top_heads = [
     (6, 1),
     (8, 1),
@@ -302,31 +322,42 @@ top_heads = [
     (8, 0),
     (8, 8),
 ]
-
 top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
-
 hooks = {}
+top_heads = [
+    (layer, head_idx)
+    for layer in range(model.cfg.n_layers)
+    for head_idx in [None] + list(range(12))
+]
 
-top_heads = 
 
 def zero_all(z, act, hook):
     z[:] = 0
     return z
 
 
+def random_patching(z, act, hook):
+    b = z.shape[0]
+    z[torch.arange(b)] = act[torch.randperm(b)]
+    return z
+
+
 for layer, head_idx in top_heads:
     hook_name = f"blocks.{layer}.attn.hook_result"
+    if head_idx is None:
+        hook_name = f"blocks.{layer}.hook_mlp_out"
 
     hooks[(layer, head_idx)] = (
         hook_name,
         get_act_hook(
-            zero_all,
+            random_patching,
             alt_act=cache[hook_name],
             idx=head_idx,
             dim=2 if head_idx is not None else None,
             name=hook_name,
         ),
     )
+model.reset_hooks()
 
 #%%
 
