@@ -69,7 +69,7 @@ neo.set_use_attn_result(True)
 solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
-model = neo
+model = gpt2
 model_names = ["gpt2", "opt", "neo", "solu"]
 #%% [markdown]
 # Make induction dataset
@@ -348,6 +348,7 @@ top_heads = [
     (10, 10),
     (10, 3),
 ]
+
 top_heads = [
     (6, 1),
     (8, 1),
@@ -355,14 +356,17 @@ top_heads = [
     (8, 0),
     (8, 8),
 ]
-# top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
+
+# top_heads = induct_heads
+top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
+
 hooks = {}
 
-top_heads = [
-    (layer, head_idx)
-    for layer in range(model.cfg.n_layers)
-    for head_idx in [None] + list(range(model.cfg.n_heads))
-]
+# top_heads = [
+#     (layer, head_idx)
+#     for layer in range(model.cfg.n_layers)
+#     for head_idx in [None] + list(range(model.cfg.n_heads))
+# ]
 
 skipper = 0
 # top_heads = max_2d(results, 20)[0][skipper:]
@@ -406,7 +410,9 @@ initial_loss = model(
     )["loss"][:, -seq_len // 2 :].mean()
 
 # induct_heads = max_2d(torch.tensor(induction_scores_array), tot)[0]
-induct_heads = [(6, 1), (8, 0), (6, 11), (8, 1), (8, 8)]
+# induct_heads = [(6, 1), (8, 0), (6, 11), (8, 1), (8, 8)]
+induct_heads = deepcopy(top_heads)
+
 hooks = {head:hooks[head] for head in induct_heads}
 
 def get_random_subset(l, size):
@@ -432,6 +438,7 @@ def logits_metric(
     rand_tokens_repeat,
     seq_len,
 ):
+    """Double implemented from utils_induction..."""
     logits = model(rand_tokens_repeat, return_type="logits")
     # print(logits.shape) # 5 21 50257
 
@@ -453,8 +460,8 @@ for subset_size in tqdm(range(max_len)):
     for _ in range(30):
         model.reset_hooks()
 
-        # for hook in list(hooks.items())[skipper : skipper + subset_size]:
-        for hook in get_random_subset(list(hooks.items()), subset_size):
+        for hook in list(hooks.items())[skipper : skipper + subset_size]:
+        # for hook in get_random_subset(list(hooks.items()), subset_size):
             model.add_hook(*hook[1])
             # curw += results[hook[0]].item()
 
@@ -510,8 +517,8 @@ fig.add_trace(
 # add x axis labels
 fig.update_layout(
     xaxis_title="Number of heads removed",
-    yaxis_title="Loss",
-    title="Effect of removing heads on logit difference",
+    yaxis_title="Logits on correct",
+    title="Effect of removing heads on correct logits (decreasing importance)",
 )
 
 
