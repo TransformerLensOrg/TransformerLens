@@ -214,6 +214,33 @@ model.reset_hooks()
 #%% [markdown]
 # Use this cell to get a rough grip on which heads matter the most
 
+def loss_metric(
+    model,
+    rand_tokens_repeat,
+    seq_len,
+):
+    cur_loss = model(
+        rand_tokens_repeat, return_type="both", loss_return_per_token=True
+    )["loss"][:, -seq_len // 2 :].mean()
+    return cur_loss.item()
+
+def logits_metric(
+    model,
+    rand_tokens_repeat,
+    seq_len,
+):
+    """Double implemented from utils_induction..."""
+    logits = model(rand_tokens_repeat, return_type="logits")
+    # print(logits.shape) # 5 21 50257
+
+    assert len(logits.shape) == 3, logits.shape
+    batch_size, _, vocab_size = logits.shape
+    seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
+    batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
+    logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
+
+    return logits_on_correct[:, -seq_len // 2 :].mean().item()
+
 model.reset_hooks()
 both_results = []
 the_extra_hooks = None
@@ -221,6 +248,8 @@ the_extra_hooks = None
 # initial_logits, initial_loss = model(
 #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
 # ).values()
+
+metric = logits_metric
 
 for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]], the_extra_hooks]):
     if extra_hooks is None:
@@ -230,10 +259,11 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
-    initial_loss = model(
-        rand_tokens_repeat, return_type="both", loss_return_per_token=True
-    )["loss"][:, -seq_len // 2 :].mean()
-    print(f"Initial loss: {initial_loss.item()}")
+    # initial_loss = model(
+    #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
+    # )["loss"][:, -seq_len // 2 :].mean()
+    initial_metric = metric(model, rand_tokens_repeat, seq_len)
+    print(f"Initial initial_metric: {initial_metric}")
 
     for source_layer in tqdm(range(model.cfg.n_layers)):
         for source_head_idx in [None] + list(range(model.cfg.n_heads)):
@@ -273,18 +303,19 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             # for hook in hooks:
             #     model.add_hook(*hook)
 
-            loss = model(
-                rand_tokens_repeat, return_type="both", loss_return_per_token=True
-            )["loss"][:, -seq_len // 2 :].mean()
+            # loss = model(
+            #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
+            # )["loss"][:, -seq_len // 2 :].mean()
+            cur_metric = metric(model, rand_tokens_repeat, seq_len)
 
             if (source_layer, source_head_idx) != (6, 1):
                 a = hooks.pop((source_layer, source_head_idx))
                 e("a")
 
             if source_head_idx is None:
-                mlp_results[source_layer] = loss - initial_loss
+                mlp_results[source_layer] = initial_metric - cur_metric
             else:
-                results[source_layer][source_head_idx] = loss - initial_loss
+                results[source_layer][source_head_idx] = initial_metric - cur_metric
 
             if source_layer == model.cfg.n_layers-1 and source_head_idx == model.cfg.n_heads-1:
                 fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
@@ -479,35 +510,9 @@ ys2 = []
 max_len = tot  # 20 - skipper
 no_iters = 30
 
-def loss_metric(
-    model,
-    rand_tokens_repeat,
-    seq_len,
-):
-    cur_loss = model(
-        rand_tokens_repeat, return_type="both", loss_return_per_token=True
-    )["loss"][:, -seq_len // 2 :].mean()
-    return cur_loss.item()
-
-def logits_metric(
-    model,
-    rand_tokens_repeat,
-    seq_len,
-):
-    """Double implemented from utils_induction..."""
-    logits = model(rand_tokens_repeat, return_type="logits")
-    # print(logits.shape) # 5 21 50257
-
-    assert len(logits.shape) == 3, logits.shape
-    batch_size, _, vocab_size = logits.shape
-    seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
-    batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
-    logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
-
-    return logits_on_correct[:, -seq_len // 2 :].mean().item()
-
 metric = logits_metric
-mode = "random subset"
+# mode = "random subset"
+mode = "decreasing"
 
 for subset_size in tqdm(range(max_len+1)):
     model.reset_hooks()
