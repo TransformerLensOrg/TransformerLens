@@ -27,20 +27,9 @@ from easy_transformer.caching import (
 )
 
 from easy_transformer.components import *
-<<<<<<< HEAD
-import easy_transformer.weight_conversion as weight_conversion
-from easy_transformer.utils import (
-    lm_cross_entropy_loss,
-    sample_logits,
-    download_file_from_hf,
-    FactoredMatrix,
-    composition_scores,
-)
-=======
 import easy_transformer.loading_from_pretrained as loading
 from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores, get_corner
 
->>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
 
 
 """
@@ -64,15 +53,7 @@ class EasyTransformer(HookedRootModule):
 
     It can have a pretrained Transformer's weights automatically loaded in via the EasyTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or EasyTransformerConfig object.
     """
-<<<<<<< HEAD
-
-    VALID_PRETRAINED_MODEL_NAMES = weight_conversion.VALID_PRETRAINED_MODEL_NAMES
-    PRETRAINED_MODEL_NAMES_DICT = weight_conversion.PRETRAINED_MODEL_NAMES_DICT
-    STANFORD_CRFM_CHECKPOINTS = weight_conversion.STANFORD_CRFM_CHECKPOINTS
-
-=======
     
->>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
     def __init__(
         self,
         cfg,
@@ -347,15 +328,9 @@ class EasyTransformer(HookedRootModule):
 
         residual_direction = self.W_U[:, token]
         return residual_direction
-<<<<<<< HEAD
-
-    def to(self, device):
-        """
-=======
     
     def to(self, device_or_dtype):
         """ 
->>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
         Wrapper around to that also changes self.cfg.device if it's a torch.device or string. If torch.dtype, just passes through
         """
         if isinstance(device_or_dtype, torch.device):
@@ -369,95 +344,6 @@ class EasyTransformer(HookedRootModule):
         nn.Module.to(self, device_or_dtype)
 
     @classmethod
-<<<<<<< HEAD
-    def from_pretrained(
-        cls,
-        model_name: str,
-        fold_ln=True,
-        center_writing_weights=True,
-        center_unembed=True,
-        checkpoint=None,
-        hf_model=None,
-        device=None,
-        **model_kwargs,
-    ):
-        """Class method to load a pretrained model from HuggingFace and to automatically convert and load those weights into EasyTransformer format.
-
-        See fold_layer_norm for more details on the folding and centering.
-
-        Args:
-            model_name (str): The model name - must be in VALID_MODEL_NAMES
-            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the
-                subsequent linear layer. This does not change the computation. Defaults to True.
-            center_writing_weights (bool, optional): Whether to center weights writing to
-                the residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
-            center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero).
-                Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
-            keep_original_model (bool, optional): Whether to delete the model loaded from    HuggingFace (stored as model.hf_model). Defaults to False.
-            device (str, optional): The device to load the model onto. By default will load to CUDA if available, else CPU
-        """
-        assert (model_name in cls.VALID_PRETRAINED_MODEL_NAMES) or (
-            model_name in cls.PRETRAINED_MODEL_NAMES_DICT
-        ), f"Invalid model name: {model_name}. Valid model names are: {cls.VALID_PRETRAINED_MODEL_NAMES}"
-
-        if model_name.endswith("-old"):
-            return cls.from_pretrained_solu_old(
-                model_name,
-                fold_ln,
-                center_writing_weights,
-                center_unembed,
-                **model_kwargs,
-            )
-        elif model_name.endswith("-c4-code") and model_name.startswith("solu"):
-            return cls.from_pretrained_solu_c4_code(
-                model_name,
-                fold_ln,
-                center_writing_weights,
-                center_unembed,
-                **model_kwargs,
-            )
-
-        elif model_name == "attn-only-2l-induction-demo":
-            return cls.from_pretrained_attn_only_old(center_unembed, **model_kwargs)
-
-        # hf_model_name is the model's name on HuggingFace
-        if model_name in cls.PRETRAINED_MODEL_NAMES_DICT:
-            hf_model_name = cls.PRETRAINED_MODEL_NAMES_DICT[model_name]
-        else:
-            hf_model_name = model_name
-        # The model family (eg "gpt2" or "neo")
-        model_family = cls.get_model_family(hf_model_name)
-
-        if hf_model is None:
-            if checkpoint is not None:
-                if "stanford" not in model_name:
-                    logging.warning(
-                        f"Loading checkpoints is not supported for the model {model_name}. Loading without checkpoints"
-                    )
-                    hf_model = AutoModelForCausalLM.from_pretrained(hf_model_name)
-                else:
-                    assert (
-                        checkpoint in cls.STANFORD_CRFM_CHECKPOINTS
-                    ), f"Checkpoint {checkpoint} is not valid. Available checkpoints are {cls.STANFORD_CRFM_CHECKPOINTS}"
-                    hf_model = AutoModelForCausalLM.from_pretrained(
-                        hf_model_name, revision=f"checkpoint-{checkpoint}"
-                    )
-            else:
-                hf_model = AutoModelForCausalLM.from_pretrained(hf_model_name)
-
-        cfg = cls.convert_hf_config(hf_model.config, model_family=model_family)
-        if device is not None:
-            cfg.device = device
-        cfg.checkpoint = checkpoint
-        cfg.model_family = model_family
-        cfg.model_name = model_name
-
-        cfg.normalization_type = "LNPre" if fold_ln else "LN"
-        cfg.tokenizer_name = hf_model_name
-        cfg.init_weights = False
-        tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer_name)
-        tokenizer.pad_token = tokenizer.eos_token
-=======
     def from_pretrained(cls, 
                         model_name: str, 
                         fold_ln = True, 
@@ -524,345 +410,16 @@ class EasyTransformer(HookedRootModule):
 
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the EasyTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(official_model_name, cfg, hf_model)
->>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
 
         # Create the EasyTransformer object
         model = cls(cfg, **model_kwargs)
 
-<<<<<<< HEAD
-        # Load model weights, and fold in layer norm weights
-        if model_family == "gpt2":
-            state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
-        elif model_family == "mistral":
-            # Stanford (Mistral) models have identical structure to GPT-2, but scale attention scores by 1/(layer_id+1) before softmax.
-            state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
-        elif model_family == "neo":
-            state_dict = weight_conversion.convert_neo_weights(hf_model, model.cfg)
-        elif model_family == "gptj":
-            state_dict = weight_conversion.convert_gptj_weights(hf_model, model.cfg)
-        elif model_family == "neox":
-            state_dict = weight_conversion.convert_neox_weights(hf_model, model.cfg)
-        elif model_family == "opt":
-            state_dict = weight_conversion.convert_opt_weights(hf_model, model.cfg)
-        else:
-            raise ValueError(
-                f"Loading weights from this model family is not currently supported: {model_family}, generated from model name {model_name}. Feel free to open an issue on GitHub to request this feature."
-            )
-
-        model.load_and_process_state_dict(
-            state_dict,
-            fold_ln=fold_ln,
-            center_writing_weights=center_writing_weights,
-            center_unembed=center_unembed,
-            move_dict_to_device=True,
-        )
-=======
         model.load_and_process_state_dict(state_dict, fold_ln=fold_ln, center_writing_weights=center_writing_weights, center_unembed=center_unembed, 
             factored_to_even=factored_to_even,move_state_dict_to_device=move_state_dict_to_device)
 
->>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
         print(f"Finished loading pretrained model {model_name} into EasyTransformer!")
 
         return model
-<<<<<<< HEAD
-
-    @classmethod
-    def from_pretrained_solu_old(
-        cls,
-        model_name: str,
-        fold_ln=True,
-        center_writing_weights=True,
-        center_unembed=True,
-        **model_kwargs,
-    ):
-        """
-        A helper function to load in SoLU models trained with my original code
-
-        Model name format: solu-{n_layers}l-old
-
-        These models were all trained on 15B tokens of the Pile
-        """
-        layer_number = int(
-            re.match("solu-(\d*)l-old", model_name, re.IGNORECASE).group(1)
-        )
-        api = HfApi()
-        repo_names = {
-            1: "SoLU_1L_v9_old",
-            2: "SoLU_2L_v10_old",
-            4: "SoLU_4L_v11_old",
-            6: "SoLU_6L_v13_old",
-            8: "SoLU_8L_v21_old",
-            10: "SoLU_10L_v22_old",
-        }
-        repo_name = f"NeelNanda/{repo_names[layer_number]}"
-
-        files = api.list_repo_files(repo_name)
-        model_files = [f for f in files if "final" in f]
-        file_name = model_files[0]
-
-        # Early models have left facing W_pos
-        reverse_pos = layer_number <= 8
-
-        # Models prior to 8L have left facing everything (8L has JUST left facing W_pos - sorry! Stupid bug)
-        reverse_weights = layer_number <= 6
-
-        # Download weights from HuggingFace. AutoModel is not supported for these models.
-        state_dict = download_file_from_hf(repo_name, file_name, force_is_torch=True)
-        # String munging to get the weights correctly named
-        new_state_dict = {}
-        for k, v in state_dict.items():
-            k = k.replace("norm", "ln")
-            if k.startswith("ln."):
-                k = k.replace("ln.", "ln_final.")
-            new_state_dict[k] = v
-        # Dumb bug where early models were trained with RMS Norm not LayerNorm pre the final layer
-        if "ln_final.b" not in new_state_dict:
-            final_rms = True
-        else:
-            final_rms = False
-
-        if reverse_pos:
-            new_state_dict["pos_embed.W_pos"] = new_state_dict["pos_embed.W_pos"].T
-        if reverse_weights:
-            for k, v in new_state_dict.items():
-                if "W_" in k and "W_pos" not in k:
-                    new_state_dict[k] = v.transpose(-2, -1)
-        state_dict = new_state_dict
-
-        config = {
-            "n_layers": layer_number,
-            "d_vocab": new_state_dict["embed.W_E"].size(0),
-            "d_model": new_state_dict["embed.W_E"].size(1),
-            "d_head": 64,
-            "n_ctx": 1024,
-            "act_fn": "solu_ln",
-            "final_rms": final_rms,
-            "tokenizer_name": "EleutherAI/gpt-neox-20b",
-            "normalization_type": "LNPre" if fold_ln else "LN",
-        }
-
-        model = cls(config, **model_kwargs)
-        model.load_and_process_state_dict(
-            state_dict, fold_ln, center_writing_weights, center_unembed
-        )
-        return model
-
-    @classmethod
-    def from_pretrained_solu_c4_code(
-        cls,
-        model_name: str,
-        fold_ln=True,
-        center_writing_weights=True,
-        center_unembed=True,
-        **model_kwargs,
-    ):
-        """
-        A helper function to load in SoLU models trained with my new code, custom tokenizer
-
-        Model name format: solu-{n_layers}l-c4-code
-
-        These models were all trained on 22B tokens of 80% C4 and 20% Code
-        """
-        layer_number = int(
-            re.match("solu-(\d*)l-c4-code", model_name, re.IGNORECASE).group(1)
-        )
-        api = HfApi()
-        repo_name = f"NeelNanda/SoLU_{layer_number}L512W_C4_Code"
-
-        files = api.list_repo_files(repo_name)
-        model_files = [f for f in files if "final" in f]
-        file_name = model_files[0]
-
-        # Download weights from HuggingFace. AutoModel is not supported for these models.
-        state_dict = download_file_from_hf(
-            repo_name, "model_final.pth", force_is_torch=True
-        )
-
-        config = {
-            "n_layers": layer_number,
-            "d_vocab": state_dict["embed.W_E"].size(0),
-            "d_model": state_dict["embed.W_E"].size(1),
-            "d_head": 64,
-            "n_ctx": 1024,
-            "act_fn": "solu_ln",
-            "tokenizer_name": "NeelNanda/gpt-neox-tokenizer-digits",
-            "normalization_type": "LNPre" if fold_ln else "LN",
-        }
-
-        model = cls(config, **model_kwargs)
-        model.load_and_process_state_dict(
-            state_dict, fold_ln, center_writing_weights, center_unembed
-        )
-        return model
-
-    @classmethod
-    def from_pretrained_attn_only_old(cls, center_unembed=True, **model_kwargs):
-        """
-        A helper function to load in a 2L512W attn-only model trained on 6B tokens of the Pile - used in an induction heads tutorial.
-
-        The model has no LN, and was trained with a shortformer variant - positional embeddings are only added in to the residual stream when input to the queries and keys and NOT when input to values (ie is never actually in the residual stream and cannot be moved between positions)
-
-        Model name is attn-only-2l-induction-demo
-        """
-
-        # Download model weights from HuggingFace
-        repo_name = f"NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr"
-        file_name = "model_final.pth"
-        state_dict = download_file_from_hf(repo_name, file_name, force_is_torch=True)
-
-        # This model was trained with EasyTransformer, so weights already have the right format!
-        config = {
-            "model_name": "attn-only-2l-induction-demo",
-            "n_layers": 2,
-            "d_vocab": state_dict["embed.W_E"].size(0),
-            "d_model": 512,
-            "d_head": 64,
-            "n_ctx": 1024,
-            "tokenizer_name": "EleutherAI/gpt-neox-20b",
-            "normalization_type": None,
-            "positional_embedding_type": "shortformer",
-            "attn_only": True,
-        }
-
-        model = cls(config, **model_kwargs)
-        model.load_and_process_state_dict(
-            state_dict,
-            fold_ln=False,
-            center_writing_weights=False,
-            center_unembed=center_unembed,
-        )
-        return model
-
-    @classmethod
-    def get_model_family(cls, model_name):
-        if "stanford" in model_name:
-            return "mistral"
-        elif "gpt2" in model_name and "stanford" not in model_name:
-            return "gpt2"
-        elif "opt" in model_name:
-            return "opt"
-        elif model_name == "EleutherAI/gpt-neox-20b" or "pythia" in model_name:
-            return "neox"
-        elif model_name == "EleutherAI/gpt-j-6B":
-            return "gptj"
-        elif model_name in [
-            "EleutherAI/gpt-neo-125M",
-            "EleutherAI/gpt-neo-1.3B",
-            "EleutherAI/gpt-neo-2.7B",
-        ]:
-            # Important to exclude GPT-J and GPT-NeoX, they have different config.
-            return "neo"
-        else:
-            raise ValueError(f"Invalid model name: {model_name}")
-
-    @classmethod
-    def convert_hf_config(cls, hf_config, model_family):
-        cfg_dict = {}
-        if model_family == "neo":
-            cfg_dict = {
-                "d_model": hf_config.hidden_size,
-                "d_head": hf_config.hidden_size // hf_config.num_heads,
-                "n_heads": hf_config.num_heads,
-                "d_mlp": hf_config.hidden_size * 4,
-                "n_layers": hf_config.num_layers,
-                "n_ctx": hf_config.max_position_embeddings,
-                "eps": hf_config.layer_norm_epsilon,
-                "d_vocab": hf_config.vocab_size,
-                "attn_types": hf_config.attention_layers,
-                "act_fn": hf_config.activation_function,
-                "use_attn_scale": False,
-                "use_local_attn": True,
-                "window_size": hf_config.window_size,
-                "scale_attn_by_inverse_layer_idx": False,
-            }
-        elif model_family == "gpt2":
-            cfg_dict = {
-                "d_model": hf_config.n_embd,
-                "d_head": hf_config.n_embd // hf_config.n_head,
-                "n_heads": hf_config.n_head,
-                "d_mlp": hf_config.n_embd * 4,
-                "n_layers": hf_config.n_layer,
-                "n_ctx": hf_config.n_ctx,
-                "eps": hf_config.layer_norm_epsilon,
-                "d_vocab": hf_config.vocab_size,
-                "act_fn": hf_config.activation_function,
-                "use_attn_scale": True,
-                "use_local_attn": False,
-                "scale_attn_by_inverse_layer_idx": False,
-            }
-        elif model_family == "mistral":
-            cfg_dict = {
-                "d_model": hf_config.n_embd,
-                "d_head": hf_config.n_embd // hf_config.n_head,
-                "n_heads": hf_config.n_head,
-                "d_mlp": hf_config.n_embd * 4,
-                "n_layers": hf_config.n_layer,
-                "n_ctx": hf_config.n_ctx,
-                "eps": hf_config.layer_norm_epsilon,
-                "d_vocab": hf_config.vocab_size,
-                "act_fn": hf_config.activation_function,
-                "use_attn_scale": True,
-                "use_local_attn": False,
-                "scale_attn_by_inverse_layer_idx": True,
-            }
-        elif model_family == "opt":
-            cfg_dict = {
-                "d_model": hf_config.hidden_size,
-                "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
-                "n_heads": hf_config.num_attention_heads,
-                "d_mlp": hf_config.ffn_dim,
-                "n_layers": hf_config.num_hidden_layers,
-                "n_ctx": hf_config.max_position_embeddings,
-                "eps": 1e-5,
-                "d_vocab": hf_config.vocab_size,
-                "act_fn": hf_config.activation_function,
-                "use_attn_scale": True,
-                "use_local_attn": False,
-                "scale_attn_by_inverse_layer_idx": False,
-            }
-        elif model_family == "gptj":
-            cfg_dict = {
-                "d_model": hf_config.n_embd,
-                "d_head": hf_config.n_embd // hf_config.n_head,
-                "n_heads": hf_config.n_head,
-                "d_mlp": 4 * hf_config.n_embd,
-                "n_layers": hf_config.n_layer,
-                "n_ctx": hf_config.n_positions,
-                "eps": 1e-5,
-                "d_vocab": hf_config.vocab_size,
-                "act_fn": hf_config.activation_function,
-                "use_attn_scale": True,
-                "use_local_attn": False,
-                "scale_attn_by_inverse_layer_idx": False,
-                "parallel_attn_mlp": True,
-                "positional_embedding_type": "rotary",
-                "rotary_dim": hf_config.rotary_dim,
-            }
-        elif model_family == "neox":
-            cfg_dict = {
-                "d_model": hf_config.hidden_size,
-                "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
-                "n_heads": hf_config.num_attention_heads,
-                "d_mlp": hf_config.intermediate_size,
-                "n_layers": hf_config.num_hidden_layers,
-                "n_ctx": hf_config.max_position_embeddings,
-                "eps": hf_config.layer_norm_eps,
-                "d_vocab": hf_config.vocab_size,
-                "act_fn": hf_config.hidden_act,
-                "use_attn_scale": True,
-                "use_local_attn": False,
-                "scale_attn_by_inverse_layer_idx": False,
-                "parallel_attn_mlp": True,
-                "positional_embedding_type": "rotary",
-            }
-            rotary_pct = hf_config.rotary_pct
-            cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
-        else:
-            raise NotImplementedError
-        cfg = EasyTransformerConfig.from_dict(cfg_dict)
-        return cfg
-=======
->>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
 
     def init_weights(self):
         """
@@ -888,20 +445,6 @@ class EasyTransformer(HookedRootModule):
         for name, param in self.named_parameters():
             if "W_" in name:
                 nn.init.normal_(param, std=self.cfg.initializer_range)
-<<<<<<< HEAD
-
-    def load_and_process_state_dict(
-        self,
-        state_dict: Dict[str, torch.Tensor],
-        fold_ln: bool = True,
-        center_writing_weights: bool = True,
-        center_unembed: bool = True,
-        move_dict_to_device: bool = True,
-    ):
-        """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
-
-        See fold_layer_norm for more details on the folding and centering.
-=======
     
     def load_and_process_state_dict(self, 
                                     state_dict: Dict[str, torch.Tensor], 
@@ -913,7 +456,6 @@ class EasyTransformer(HookedRootModule):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
         
         See the relevant method (same name as the flag) for more details on the folding, centering and processing flags.
->>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
 
         Args:
             state_dict (dict): The state dict of the model, in EasyTransformer format
@@ -1103,9 +645,6 @@ class EasyTransformer(HookedRootModule):
             state_dict["unembed.b_U"] - state_dict["unembed.b_U"].mean()
         )
         return state_dict
-<<<<<<< HEAD
-
-=======
     
     def factored_to_even(self, state_dict: Dict[str, torch.Tensor]):
         """ 
@@ -1156,7 +695,6 @@ class EasyTransformer(HookedRootModule):
 
         return state_dict
     
->>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
     def set_use_attn_result(self, use_attn_result):
         """
         Toggles whether to explicitly calculate and expose the result for each attention head - useful for interpretability but can easily burn through GPU memory.
