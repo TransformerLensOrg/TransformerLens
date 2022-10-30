@@ -4,7 +4,7 @@ from copy import deepcopy
 import torch
 
 from easy_transformer.experiments import get_act_hook
-from utils_induction import path_patching_attribution, prepend_padding, patch_all
+from utils_induction import *
 
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
@@ -55,7 +55,7 @@ if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 #%% [markdown]
-# Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
+# Make models
 
 gpt2 = EasyTransformer.from_pretrained("gpt2").cuda()
 gpt2.set_use_attn_result(True)
@@ -69,38 +69,10 @@ neo.set_use_attn_result(True)
 solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
-# distil = EasyTransformer.from_pretrained("distilgpt2").cuda()
-# distil.set_use_attn_result(True)
-
 model = gpt2
 model_names = ["gpt2", "opt", "neo", "solu"]
 #%% [markdown]
-# Initialise dataset
-N = 100
-ioi_dataset = IOIDataset(
-    prompt_type="mixed",
-    N=N,
-    tokenizer=model.tokenizer,
-    prepend_bos=False,
-)
-
-print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
-#%% [markdown]
-# See logit difference
-model_logit_diff = logit_diff(model, ioi_dataset)
-model_io_probs = probs(model, ioi_dataset)
-print(
-    f"The model gets average logit difference {model_logit_diff.item()} over {N} examples"
-)
-print(f"The model gets average IO probs {model_io_probs.item()} over {N} examples")
-
-abc_dataset = (
-    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
-    .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"))
-)
-#%% [markdown]
-# Induction
+# Make induction dataset
 
 seq_len = 10
 batch_size = 5
@@ -144,61 +116,13 @@ arrs = []
 #%% [markdown]
 # sweeeeeet plot
 
-mode = "loss"
-assert mode in ["loss", "probs"]
-
-if True:  # might hog memory
-    ys = [[] for _ in range(12)]
-    fig = go.Figure()
-    for idx, model_name in enumerate(model_names):
-        model = eval(model_name)
-        rand_tokens_repeat[:, 0] = model.tokenizer.bos_token_id
-        logits, loss = model(
-            rand_tokens_repeat, return_type="both", loss_return_per_token=True
-        ).values()
-        print(
-            model_name,
-            loss[:, -seq_len // 2 :].mean().item(),
-            loss[:, -seq_len // 2 :].std().item(),
-        )
-        mean_loss = loss.mean(dim=0)
-        ys[idx] = mean_loss.detach().cpu()  # .numpy()
-        fig.add_trace(
-            go.Scatter(
-                y=torch.exp(-mean_loss.detach().cpu()) if mode == "probs" else mean_loss.detach().cpu(),
-                name=model_name,
-                mode="lines",
-                # line=dict(color=CLASS_COLORS[idx]),
-            )
-        )
-    fig.update_layout(title="Probabilities over time")
-
-    # add a line at x = 50 saying that this should be the first guessable
-    fig.add_shape(
-        type="line",
-        x0=seq_len,
-        y0=0,
-        x1=seq_len,
-        y1=ys[0].max(),
-        line=dict(color="Black", width=1, dash="dash"),
-    )
-    # add a label to this line
-    fig.add_annotation(
-        x=seq_len,
-        y=ys[0].max(),
-        text="First case of induction",
-        showarrow=False,
-        font=dict(size=16),
-        align="center",
-        arrowhead=2,
-        arrowsize=1,
-        arrowwidth=2,
-        arrowcolor="#636363",
-        ax=0,
-        ay=-seq_len - 5,
-    )
-
-    fig.show()
+show_losses(
+    models=[eval(model_name) for model_name in model_names],
+    model_names=model_names,
+    rand_tokens_repeat=rand_tokens_repeat,
+    seq_len=seq_len,
+    mode="loss",
+)
 
 #%% [markdown]
 # Which heads are the most important for induction?
@@ -207,9 +131,9 @@ model.reset_hooks()
 both_results = []
 the_extra_hooks = None
 
-initial_logits, initial_loss = model(
-    rand_tokens_repeat, return_type="both", loss_return_per_token=True
-).values()
+# initial_logits, initial_loss = model(
+#     rand_tokens_repeat, return_type="both", loss_return_per_token=True
+# ).values()
 
 for idx, extra_hooks in enumerate([[], the_extra_hooks]):
     if extra_hooks is None:
@@ -336,19 +260,20 @@ top_heads = [
 ]
 top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
 hooks = {}
-top_heads = [
-    (layer, head_idx)
-    for layer in range(model.cfg.n_layers)
-    for head_idx in [None] + list(range(model.cfg.n_heads))
-]
 
-skipper = 1
-top_heads = max_2d(results, 20)[0][skipper:]
+# top_heads = [
+#     (layer, head_idx)
+#     for layer in range(model.cfg.n_layers)
+#     for head_idx in [None] + list(range(model.cfg.n_heads))
+# ]
+
+skipper = 0
+# top_heads = max_2d(results, 20)[0][skipper:]
 
 
-def zero_all(z, act, hook):
-    z[:] = 0
-    return z
+# def zero_all(z, act, hook):
+#     z[:] = 0
+#     return z
 
 
 def random_patching(z, act, hook):
@@ -383,7 +308,7 @@ def get_random_subset(l, size):
 
 ys = []
 ys2 = []
-max_len = 8  # 20 - skipper
+max_len = 5  # 20 - skipper
 no_iters = 30
 
 for subset_size in tqdm(range(max_len)):
@@ -393,8 +318,8 @@ for subset_size in tqdm(range(max_len)):
     curw = initial_loss.item()  # "EXPECTED" increase
     for _ in range(30):
         model.reset_hooks()
-        for hook in list(hooks.items())[skipper : skipper + subset_size]:
-            # for hook in get_random_subset(list(hooks.items()), subset_size):
+        # for hook in list(hooks.items())[skipper : skipper + subset_size]:
+        for hook in get_random_subset(list(hooks.items()), subset_size):
             model.add_hook(*hook[1])
             # curw += results[hook[0]].item()
         loss = model(
@@ -405,10 +330,11 @@ for subset_size in tqdm(range(max_len)):
     curv /= no_iters
     curw /= no_iters
     ys.append(curv)
-    curw = (
-        initial_loss.item()
-        + torch.sum(max_2d(results, 15)[1][skipper : skipper + subset_size]).item()
-    )
+    # curw = (
+    #     initial_loss.item()
+    #     + torch.sum(max_2d(results, 15)[1][skipper : skipper + subset_size]).item()
+    # )
+    curw = curv
     ys2.append(curw)
 
 # plot the results
