@@ -112,9 +112,18 @@ def filter_attn_hooks(hook_name):
 
 arrs = []
 #%% [markdown]
-# Induction scores
+# sweeeeeet plot
 
-induction_scores_array = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
+show_losses(
+    models=[eval(model_name) for model_name in model_names],
+    model_names=model_names,
+    rand_tokens_repeat=rand_tokens_repeat,
+    seq_len=seq_len,
+    mode="logits",
+)
+#%% [markdown]
+# Induction scores
+# Use this to get a "shortlist" of the heads that matter most for ind
 
 def calc_induction_score(attn_pattern, hook):
     # Pattern has shape [batch, index, query_pos, key_pos]
@@ -131,32 +140,31 @@ def filter_attn_hooks(hook_name):
     return split_name[-1] == "hook_attn"
 
 model.reset_hooks()
-
 more_hooks = []
 
 # for head in [(11, head_idx) for head_idx in range(5)]: # nduct_heads[:5]:
     # more_hooks.append(hooks[head])
 
-induction_logits = model.run_with_hooks(
-    rand_tokens_repeat, fwd_hooks= more_hooks + [(filter_attn_hooks, calc_induction_score)], # , reset_hooks_start=False,
-)
-induction_scores_array = torch.tensor(induction_scores_array)
-px.imshow(
-    induction_scores_array,
-    labels={"y": "Layer", "x": "Head"},
-    color_continuous_scale="Blues",
-)
+for model_name in model_names:
+    model = eval(model_name)
+    induction_scores_array = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
+    induction_logits = model.run_with_hooks(
+        rand_tokens_repeat, fwd_hooks= more_hooks + [(filter_attn_hooks, calc_induction_score)], # , reset_hooks_start=False,
+    )
+    induction_scores_array = torch.tensor(induction_scores_array)
+    fig = px.imshow(
+        induction_scores_array,
+        labels={"y": "Layer", "x": "Head"},
+        color_continuous_scale="Blues",       
+    )
+    # add title
+    fig.update_layout(
+        title_text=f"Induction scores for {model_name}",
+        title_x=0.5,
+        title_font_size=20,
+    )
 
-#%% [markdown]
-# sweeeeeet plot
-
-show_losses(
-    models=[eval(model_name) for model_name in model_names],
-    model_names=model_names,
-    rand_tokens_repeat=rand_tokens_repeat,
-    seq_len=seq_len,
-    mode="logits",
-)
+    fig.show()
 
 #%% [markdown]
 # Various experiments with hooks on things and a heatmap
@@ -468,7 +476,6 @@ for subset_size in tqdm(range(max_len)):
         cur_metric = metric(
             model, rand_tokens_repeat, seq_len,
         )
-    
         # print(f"Layer {layer}, head {head_idx}: {loss.mean().item()}")
 
         curv += cur_metric
