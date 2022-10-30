@@ -17,10 +17,6 @@ from pathlib import Path
 import pickle
 import os
 
-import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.io as pio
-
 import plotly.graph_objects as go
 
 from torch.utils.data import DataLoader

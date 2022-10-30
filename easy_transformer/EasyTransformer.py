@@ -27,6 +27,7 @@ from easy_transformer.caching import (
 )
 
 from easy_transformer.components import *
+<<<<<<< HEAD
 import easy_transformer.weight_conversion as weight_conversion
 from easy_transformer.utils import (
     lm_cross_entropy_loss,
@@ -35,6 +36,11 @@ from easy_transformer.utils import (
     FactoredMatrix,
     composition_scores,
 )
+=======
+import easy_transformer.loading_from_pretrained as loading
+from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores, get_corner
+
+>>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
 
 
 """
@@ -58,11 +64,15 @@ class EasyTransformer(HookedRootModule):
 
     It can have a pretrained Transformer's weights automatically loaded in via the EasyTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or EasyTransformerConfig object.
     """
+<<<<<<< HEAD
 
     VALID_PRETRAINED_MODEL_NAMES = weight_conversion.VALID_PRETRAINED_MODEL_NAMES
     PRETRAINED_MODEL_NAMES_DICT = weight_conversion.PRETRAINED_MODEL_NAMES_DICT
     STANFORD_CRFM_CHECKPOINTS = weight_conversion.STANFORD_CRFM_CHECKPOINTS
 
+=======
+    
+>>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
     def __init__(
         self,
         cfg,
@@ -93,7 +103,12 @@ class EasyTransformer(HookedRootModule):
         if self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+            if self.tokenizer.eos_token is None:
+                self.tokenizer.eos_token = "<|endoftext|>"
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            if self.tokenizer.bos_token is None:
+                self.tokenizer.bos_token = self.tokenizer.eos_token
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
@@ -332,22 +347,29 @@ class EasyTransformer(HookedRootModule):
 
         residual_direction = self.W_U[:, token]
         return residual_direction
+<<<<<<< HEAD
 
     def to(self, device):
         """
+=======
+    
+    def to(self, device_or_dtype):
+        """ 
+>>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
         Wrapper around to that also changes self.cfg.device if it's a torch.device or string. If torch.dtype, just passes through
         """
-        if isinstance(device, torch.device):
-            self.cfg.device = device.type
-        elif isinstance(device, str):
-            self.cfg.device = device
+        if isinstance(device_or_dtype, torch.device):
+            self.cfg.device = device_or_dtype.type
             print("Moving model to device: ", self.cfg.device)
-        elif isinstance(device, torch.dtype):
-            self.cfg.dtype = device
-            print("Changing model dtype to", self.cfg.dtype)
-        nn.Module.to(self, device)
+        elif isinstance(device_or_dtype, str):
+            self.cfg.device = device_or_dtype
+            print("Moving model to device: ", self.cfg.device)
+        elif isinstance(device_or_dtype, torch.dtype):
+            print("Changing model dtype to", device_or_dtype)
+        nn.Module.to(self, device_or_dtype)
 
     @classmethod
+<<<<<<< HEAD
     def from_pretrained(
         cls,
         model_name: str,
@@ -435,9 +457,79 @@ class EasyTransformer(HookedRootModule):
         cfg.init_weights = False
         tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer_name)
         tokenizer.pad_token = tokenizer.eos_token
+=======
+    def from_pretrained(cls, 
+                        model_name: str, 
+                        fold_ln = True, 
+                        center_writing_weights = True, 
+                        center_unembed = True,
+                        factored_to_even = False,
+                        checkpoint_index = None,
+                        checkpoint_value = None,
+                        hf_model = None,
+                        device = None,
+                        move_state_dict_to_device = True,
+                        **model_kwargs):
+        """Class method to load in a pretrained model weights to the EasyTransformer format and optionally to do some processing to make the model easier to interpret. Currently supports loading from most autoregressive HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models and SoLU models trained by me (Neel Nanda).
 
+        Also supports loading from a checkpoint for checkpointed models (currently, models trained by me (NeelNanda) and the stanford-crfm models). These can either be determined by the checkpoint index (the index of the checkpoint in the checkpoint list) or by the checkpoint value (the value of the checkpoint, eg 1000 for a checkpoint taken at step 1000 or after 1000 tokens. Each model has checkpoints labelled with exactly one of labels and steps). If neither is specified the final model is loaded. If both are specified, the checkpoint index is used.
+
+        See load_and_process_state_dict for details on the processing (folding layer norm, centering the unembedding and centering the writing weights)
+
+        Args:
+            model_name (str): The model name - must be an element of OFFICIAL_MODEL_NAMES or an alias of one. 
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the 
+                subsequent linear layer. This does not change the computation.
+                Defaults to True.
+            center_writing_weights (bool, optional): Whether to center weights
+            writing to   
+                the residual stream (ie set mean to be zero). Due to LayerNorm
+                this doesn't change the computation. Defaults to True.
+            center_unembed (bool, optional): Whether to center W_U (ie set mean
+            to be zero). 
+                Softmax is translation invariant so this doesn't affect log
+                probs or loss, but does change logits. Defaults to True.
+            factored_to_even (bool, optional): Whether to convert the factored 
+                matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
+            checkpoint_index (int, optional): If loading from a checkpoint, the index of 
+                the checkpoint to load. Defaults to None.
+            checkpoint_value (int, optional): If loading from a checkpoint, the value of 
+                the checkpoint to load, ie the step or token number (each model
+                has checkpoints labelled with exactly one of these). Defaults to
+                None.
+            hf_model (AutoModelForCausalLM, optional): If you have already loaded in the 
+                HuggingFace model, you can pass it in here rather than needing
+                to recreate the object. Defaults to None.
+            device (str, optional): The device to load the model onto. By
+                default will load to CUDA if available, else CPU.
+            move_state_dict_to_device (bool): Whether to move the state dict to the    
+                relevant device before processing and loading in the weights.
+                Defaults to True.
+            model_kwargs (dict, optional): Any additional kwargs to pass to the
+                EasyTransformer initialization.
+        """
+        # Get the model name used in HuggingFace, rather than the alias.
+        official_model_name = loading.get_official_model_name(model_name)
+        
+        # Load the config into an EasyTransformerConfig object If loading from a
+        # checkpoint, the config object will contain the information about the
+        # checkpoint
+        cfg = loading.get_pretrained_model_config(
+            official_model_name, 
+            checkpoint_index=checkpoint_index, 
+            checkpoint_value=checkpoint_value,
+            fold_ln=fold_ln,
+            device=device,
+            )
+
+        # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the EasyTransformer parameter names.
+        state_dict = loading.get_pretrained_state_dict(official_model_name, cfg, hf_model)
+>>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
+
+        # Create the EasyTransformer object
         model = cls(cfg, **model_kwargs)
 
+<<<<<<< HEAD
         # Load model weights, and fold in layer norm weights
         if model_family == "gpt2":
             state_dict = weight_conversion.convert_gpt2_weights(hf_model, model.cfg)
@@ -464,8 +556,15 @@ class EasyTransformer(HookedRootModule):
             center_unembed=center_unembed,
             move_dict_to_device=True,
         )
+=======
+        model.load_and_process_state_dict(state_dict, fold_ln=fold_ln, center_writing_weights=center_writing_weights, center_unembed=center_unembed, 
+            factored_to_even=factored_to_even,move_state_dict_to_device=move_state_dict_to_device)
+
+>>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
         print(f"Finished loading pretrained model {model_name} into EasyTransformer!")
+
         return model
+<<<<<<< HEAD
 
     @classmethod
     def from_pretrained_solu_old(
@@ -762,6 +861,8 @@ class EasyTransformer(HookedRootModule):
             raise NotImplementedError
         cfg = EasyTransformerConfig.from_dict(cfg_dict)
         return cfg
+=======
+>>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
 
     def init_weights(self):
         """
@@ -787,6 +888,7 @@ class EasyTransformer(HookedRootModule):
         for name, param in self.named_parameters():
             if "W_" in name:
                 nn.init.normal_(param, std=self.cfg.initializer_range)
+<<<<<<< HEAD
 
     def load_and_process_state_dict(
         self,
@@ -799,6 +901,19 @@ class EasyTransformer(HookedRootModule):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
 
         See fold_layer_norm for more details on the folding and centering.
+=======
+    
+    def load_and_process_state_dict(self, 
+                                    state_dict: Dict[str, torch.Tensor], 
+                                    fold_ln: bool=True, 
+                                    center_writing_weights: bool = True, 
+                                    center_unembed: bool = True,
+                                    factored_to_even: bool = False,
+                                    move_state_dict_to_device: bool = True):
+        """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
+        
+        See the relevant method (same name as the flag) for more details on the folding, centering and processing flags.
+>>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
 
         Args:
             state_dict (dict): The state dict of the model, in EasyTransformer format
@@ -808,17 +923,30 @@ class EasyTransformer(HookedRootModule):
                 residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
             center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero).
                 Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
-            move_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
+            factored_to_even (bool, optional): Whether to convert the factored 
+                matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
+            move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
         """
-        if move_dict_to_device:
+        
+        if move_state_dict_to_device:
             state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
-            state_dict = self.fold_layer_norm(state_dict)
+            if self.cfg.normalization_type not in ["LN", "LNPre"]:
+                logging.warning("You are not using LayerNorm, so the layer norm weights can't be folded! Skipping")
+            else:
+                state_dict = self.fold_layer_norm(state_dict)
         if center_writing_weights:
-            state_dict = self.center_writing_weights(state_dict)
+            if self.cfg.normalization_type not in ["LN", "LNPre"]:
+                logging.warning("You are not using LayerNorm, so the writing weights can't be centered! Skipping")
+            elif self.cfg.final_rms:
+                logging.warning("This model is using final RMS normalization, so the writing weights can't be centered! Skipping")
+            else:
+                state_dict = self.center_writing_weights(state_dict)
         if center_unembed:
             state_dict = self.center_unembed(state_dict)
+        if factored_to_even:
+            state_dict = self.factored_to_even(state_dict)
         self.load_state_dict(state_dict)
 
     def fill_missing_keys(self, state_dict):
@@ -975,7 +1103,60 @@ class EasyTransformer(HookedRootModule):
             state_dict["unembed.b_U"] - state_dict["unembed.b_U"].mean()
         )
         return state_dict
+<<<<<<< HEAD
 
+=======
+    
+    def factored_to_even(self, state_dict: Dict[str, torch.Tensor]):
+        """ 
+        Experimental method for managing queries, keys and values. As argued in [A Mathematical Framework for Transformer Circuits](https://transformer-circuits.pub/2021/framework/index.html), queries, keys and values are somewhat arbitrary intermediate terms when computing with the low rank factored matrices W_QK = W_Q @ W_K.T and W_OV = W_V @ W_O, and these matrices are the only thing determining head behaviour.
+
+        Accordingly, if eg W_OV = U @ S @ Vh.T in its singular value decomposition, (where S is in R^d_head not R^d_model, as W_OV is low rank), W_OV = (U @ S.sqrt()) @ (S.sqrt() @ Vh.T) is a more principled low rank factorisation, where rows/columns of each matrix are orthogonal and have the same norm. And the intermediate term is more meaningful!
+
+        Biases are more fiddly to deal with. For OV it's pretty easy - we just need (x @ W_V + b_V) @ W_O + b_O to be preserved, so we can set b_V' = 0. and b_O' = b_V @ W_O + b_O (note that b_V in R^{head_index x d_head} while b_O in R^{d_model}, so we need to sum b_V @ W_O along the head_index dimension too).
+
+        For QK it's messy - we need to preserve the bilinear form of (x @ W_Q +
+        b_Q) * (y @ W_K + b_K), which is fairly messy. To deal with the biases,
+        we concatenate them to W_Q and W_K to simulate a d_model+1 dimensional
+        input (whose final coordinate is always 1), do the SVD factorization on
+        this effective matrix, then separate out into final weights and biases
+
+
+        """
+        for l in range(self.cfg.n_layers):
+            # W_QK = W_Q @ W_K.T 
+            # Concatenate biases to make a d_model+1 input dimension
+            W_Q_eff = torch.cat([state_dict[f'blocks.{l}.attn.W_Q'], state_dict[f'blocks.{l}.attn.b_Q'][:, None, :]], dim=1)
+            W_K_eff = torch.cat([state_dict[f'blocks.{l}.attn.W_K'], state_dict[f'blocks.{l}.attn.b_K'][:, None, :]], dim=1)
+
+            W_Q_eff_even, W_K_eff_even_T = FactoredMatrix(W_Q_eff, W_K_eff.transpose(-1, -2)).make_even().pair
+            W_K_eff_even = W_K_eff_even_T.transpose(-1, -2)
+
+            state_dict[f"blocks.{l}.attn.W_Q"] = W_Q_eff_even[:, :-1, :]
+            state_dict[f"blocks.{l}.attn.b_Q"] = W_Q_eff_even[:, -1, :]
+            state_dict[f"blocks.{l}.attn.W_K"] = W_K_eff_even[:, :-1, :]
+            state_dict[f"blocks.{l}.attn.b_K"] = W_K_eff_even[:, -1, :]
+
+            # W_OV = W_V @ W_O
+            W_V = state_dict[f"blocks.{l}.attn.W_V"]
+            W_O = state_dict[f"blocks.{l}.attn.W_O"]
+            
+            # Factors the bias to be consistent.
+            b_V = state_dict[f"blocks.{l}.attn.b_V"]
+            b_O = state_dict[f"blocks.{l}.attn.b_O"]
+            effective_bias = b_O + einsum("head_index d_head, head_index d_head d_model -> d_model", b_V, W_O)
+            state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros_like(b_V)
+            state_dict[f"blocks.{l}.attn.b_O"] = effective_bias
+            
+            # Helper class to efficiently deal with low rank factored matrices.
+            W_OV = FactoredMatrix(W_V, W_O)
+            W_OV_even = W_OV.make_even()
+            state_dict[f"blocks.{l}.attn.W_V"] = W_OV_even.A
+            state_dict[f"blocks.{l}.attn.W_O"] = W_OV_even.B
+
+        return state_dict
+    
+>>>>>>> b4e01ae6a9b171982d8e7cbd503dbd63d801818a
     def set_use_attn_result(self, use_attn_result):
         """
         Toggles whether to explicitly calculate and expose the result for each attention head - useful for interpretability but can easily burn through GPU memory.

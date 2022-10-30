@@ -25,10 +25,11 @@ def download_file_from_hf(
 
     If it's a Torch file without the ".pth" extension, set force_is_torch=True to load it as a Torch object.
     """
-    file_path = hf_hub_download(
-        repo_id=repo_name, filename=file_name, subfolder=subfolder, cache_dir=cache_dir
-    )
-    print(f"Saved at file_path: {file_path}")
+    file_path = hf_hub_download(repo_id=repo_name,
+                                                filename=file_name, 
+                                                subfolder=subfolder, 
+                                                cache_dir=cache_dir)
+
     if file_path.endswith(".pth") or force_is_torch:
         return torch.load(file_path)
     elif file_path.endswith(".json"):
@@ -558,7 +559,6 @@ class FactoredMatrix:
 
     def __getitem__(self, idx):
         """Indexing - assumed to only apply to the leading dimensions."""
-
         return FactoredMatrix(self.A[idx], self.B[idx])
 
     def norm(self):
@@ -600,6 +600,10 @@ class FactoredMatrix:
 
     def unsqueeze(self, k):
         return FactoredMatrix(self.A.unsqueeze(k), self.B.unsqueeze(k))
+    
+    @property
+    def pair(self):
+        return (self.A, self.B)
 
 
 def composition_scores(
