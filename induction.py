@@ -4,7 +4,7 @@ from copy import deepcopy
 import torch
 
 from easy_transformer.experiments import get_act_hook
-from induction_utils import path_patching_attribution, prepend_padding, patch_all
+from utils_induction import path_patching_attribution, prepend_padding, patch_all
 
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
