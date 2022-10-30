@@ -431,11 +431,17 @@ def logits_metric(
     rand_tokens_repeat,
     seq_len,
 ):
-    # intested
     logits = model(rand_tokens_repeat, return_type="logits")
     # print(logits.shape) # 5 21 50257
-    logits_on_correct = pass
-    return logits[:, -seq_len // 2 :].mean().item()
+
+    assert len(logits.shape) == 3, logits.shape
+    batch_size, _, vocab_size = logits.shape
+    seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
+    batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
+    print(batch_indices.shape, seq_indices.shape,rand_tokens_repeat.shape)
+    logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
+
+    return logits_on_correct[:, -seq_len // 2 :].mean().item()
 
 metric = logits_metric
 

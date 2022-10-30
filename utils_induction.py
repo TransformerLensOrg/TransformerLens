@@ -235,7 +235,7 @@ def show_losses(
             if mode == "probs":
                 ys[idx] = torch.exp(-ys[idx])
         else:
-            # fairly cursed indexing....
+            # fairly cursed indexing ...
             assert len(logits.shape) == 3, logits.shape
 
             seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
