@@ -240,7 +240,9 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             receiver_hooks = []
             receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
 
-            if False:
+            # for layer 
+
+            if True:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -321,6 +323,8 @@ print(induct_heads)
 
 my_heads = max_2d(torch.abs(results), k=20)[0]
 print(my_heads)
+
+my_heads = [(6, 6), (6, 11)] + induct_heads
 
 for LAYER, HEAD in my_heads:
     model.reset_hooks()
@@ -598,3 +602,14 @@ def compute_logit_probs(rand_tokens_repeat, model):
 
 
 compute_logit_probs(rand_tokens_repeat, model)
+
+"""
+Skipping (6, 6) because it's negative, with vale -0.15283656120300293
+Skipping (6, 11) because it's negative, with vale -0.09658721089363098
+Layer: 6, Head: 1, Induction score: 0.8501311540603638, Loss diff: 1.0953487157821655
+Layer: 8, Head: 1, Induction score: 0.6479660868644714, Loss diff: 0.2444022297859192
+Layer: 8, Head: 8, Induction score: 0.5408309698104858, Loss diff: 0.23612505197525024
+Layer: 8, Head: 0, Induction score: 0.6423881649971008, Loss diff: 0.21361035108566284
+Layer: 6, Head: 0, Induction score: 0.562366783618927, Loss diff: 0.02358981966972351
+[(6, 1), (8, 1), (8, 8), (8, 0), (6, 0)]
+"""
