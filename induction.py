@@ -293,11 +293,19 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
 # Get top 5 induction heads
 
 no_heads = 5
-induct_heads = max_2d(induction_scores_array, no_heads)[0]
-print(induct_heads)
+heads_by_induction = max_2d(induction_scores_array, 144)[0]
+induct_heads = []
+idx = 0
+while len(induct_heads) < no_heads:
+    head = heads_by_induction[idx]
+    idx+=1
+    if results[head] > 0:
+        induct_heads.append(head)
+    else:
+        print(f"Skipping {head} because it's negative, with vale {results[head]}")
 
-# sort induction_heads by size in results
-induct_heads = sorted(induct_heads, key=lambda x: results[x[0]][x[1]], reverse=True)
+# sort the induction heads by their results
+induct_heads = sorted(induct_heads, key=lambda x: results[x], reverse=True)
 
 # have a look at these numbers
 for layer, head in induct_heads:
@@ -378,8 +386,8 @@ top_heads = [
     (8, 8),
 ]
 
-# top_heads = induct_heads
-top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
+top_heads = induct_heads
+# top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
 
 hooks = {}
 
@@ -471,7 +479,7 @@ def logits_metric(
     return logits_on_correct[:, -seq_len // 2 :].mean().item()
 
 metric = logits_metric
-mode = "random subset"
+mode = "decreasing"
 
 for subset_size in tqdm(range(max_len+1)):
     model.reset_hooks()
