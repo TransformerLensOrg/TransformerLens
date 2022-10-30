@@ -134,8 +134,8 @@ model.reset_hooks()
 
 more_hooks = []
 
-for head in [(11, head_idx) for head_idx in range(5)]: # nduct_heads[:5]:
-    more_hooks.append(hooks[head])
+# for head in [(11, head_idx) for head_idx in range(5)]: # nduct_heads[:5]:
+    # more_hooks.append(hooks[head])
 
 induction_logits = model.run_with_hooks(
     rand_tokens_repeat, fwd_hooks= more_hooks + [(filter_attn_hooks, calc_induction_score)], # , reset_hooks_start=False,
@@ -303,7 +303,7 @@ for LAYER, HEAD in my_heads:
     show_pp(mean_att, title=f"Mean attention for head {HEAD} in layer {LAYER}")
 
 #%% [markdown]
-# look into compensation in both cases despite it seeming very different
+# Look into compensation in both cases despite it seeming very different
 
 cache = {}
 model.reset_hooks()
@@ -416,6 +416,27 @@ ys2 = []
 max_len = tot  # 20 - skipper
 no_iters = 30
 
+def loss_metric(
+    model,
+    rand_tokens_repeat,
+    seq_len,
+):
+    cur_loss = model(
+        rand_tokens_repeat, return_type="both", loss_return_per_token=True
+    )["loss"][:, -seq_len // 2 :].mean()
+    return cur_loss.item()
+
+def logits_metric(
+    model,
+    rand_tokens_repeat,
+    seq_len,
+):
+    # intested
+    logits = model(rand_tokens_repeat, return_type="logits")
+    return logits[:, -seq_len // 2 :].mean().item()
+
+metric = loss_metric
+
 for subset_size in tqdm(range(max_len)):
     model.reset_hooks()
 
@@ -423,15 +444,19 @@ for subset_size in tqdm(range(max_len)):
     curw = initial_loss.item()  # "EXPECTED" increase
     for _ in range(30):
         model.reset_hooks()
+
         # for hook in list(hooks.items())[skipper : skipper + subset_size]:
         for hook in get_random_subset(list(hooks.items()), subset_size):
             model.add_hook(*hook[1])
             # curw += results[hook[0]].item()
-        loss = model(
-            rand_tokens_repeat, return_type="both", loss_return_per_token=True
-        )["loss"][:, -seq_len // 2 :].mean()
+
+        cur_metric = metric(
+            model, rand_tokens_repeat, seq_len,
+        )
+    
         # print(f"Layer {layer}, head {head_idx}: {loss.mean().item()}")
-        curv += loss.mean().item()  # + initial_loss.item()
+
+        curv += cur_metric
     curv /= no_iters
     curw /= no_iters
     ys.append(curv)
