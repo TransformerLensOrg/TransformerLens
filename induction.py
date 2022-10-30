@@ -8,6 +8,7 @@ from utils_induction import *
 
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 import torch as t
@@ -147,7 +148,7 @@ def get_induction_scores(model, rand_tokens_repeat, title=""):
             induction_stripe, "batch index pos -> index", "mean"
         )
 
-        # Store the scores in a common array
+        # Store the scores in a common arraymlp_ = saved_tensors[-2].clone()
         induction_scores_array[hook.layer()] = induction_scores.detach().cpu().numpy()
 
     model = eval(model_name)
@@ -240,9 +241,14 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             receiver_hooks = []
             receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
 
-            # for layer 
+            # for layer in range(7, model.cfg.n_layers): # model.cfg.n_layers):
+            #     for head_idx in list(range(model.cfg.n_heads)) + [None]:
+            #         hook_name = f"blocks.{layer}.attn.hook_result"
+            #         if head_idx is None:
+            #             hook_name = f"blocks.{layer}.hook_mlp_out"
+            #         receiver_hooks.append((hook_name, head_idx))
 
-            if True:
+            if False:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -317,6 +323,21 @@ for layer, head in induct_heads:
     print(f"Layer: {layer}, Head: {head}, Induction score: {induction_scores_array[layer][head]}, Loss diff: {results[layer][head]}")
 
 print(induct_heads)
+
+#%%
+
+# plot a scatter plot in plotly with labels
+fig = go.Figure()
+for layer in range(model.cfg.n_layers):
+    for head in range(model.cfg.n_heads):
+        fig.add_trace(go.Scatter(x=[induction_scores_array[layer][head].item()], y=[results[layer][head].item()], mode='markers', name=f"Layer: {layer}, Head: {head}"))
+fig.update_layout(title="Induction score vs loss diff", xaxis_title="Induction score", yaxis_title="Loss diff")
+fig.show()
+
+
+# fig = go.Figure()
+# fig.add_trace(go.Scatter(x=induction_scores_array.flatten().cpu().detach(), y=results.flatten().cpu().detach(), mode='markers'))
+# fig.show()
 
 #%% [markdown]
 # Look at attention patterns of things
