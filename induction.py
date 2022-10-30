@@ -144,15 +144,15 @@ arrs = []
 #%% [markdown]
 # sweeeeeet plot
 
+mode = "loss"
+assert mode in ["loss", "probs"]
+
 if True:  # might hog memory
     ys = [[] for _ in range(12)]
     fig = go.Figure()
     for idx, model_name in enumerate(model_names):
         model = eval(model_name)
-        if model_name == "solu":
-            rand_tokens_repeat[:, 0] = 0
-        else:
-            rand_tokens_repeat[:, 0] = 50256
+        rand_tokens_repeat[:, 0] = model.tokenizer.bos_token_id
         logits, loss = model(
             rand_tokens_repeat, return_type="both", loss_return_per_token=True
         ).values()
@@ -165,7 +165,7 @@ if True:  # might hog memory
         ys[idx] = mean_loss.detach().cpu()  # .numpy()
         fig.add_trace(
             go.Scatter(
-                y=torch.exp(-mean_loss.detach().cpu()),
+                y=torch.exp(-mean_loss.detach().cpu()) if mode == "probs" else mean_loss.detach().cpu(),
                 name=model_name,
                 mode="lines",
                 # line=dict(color=CLASS_COLORS[idx]),
