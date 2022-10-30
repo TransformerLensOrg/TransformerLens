@@ -139,6 +139,9 @@ class EasyTransformer(HookedRootModule):
         if move_to_device:
             self.to(self.cfg.device)
         
+        if self.cfg.use_dropout:
+            self.embed_dropout = nn.Dropout(self.cfg.dropout)
+
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
         self.setup()
@@ -207,6 +210,8 @@ class EasyTransformer(HookedRootModule):
                 f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"
             )
 
+        if self.cfg.use_dropout:
+            residual = self.embed_dropout(residual)
         for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)

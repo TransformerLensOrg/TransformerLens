@@ -291,6 +291,8 @@ class Attention(nn.Module):
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
         
+        if self.cfg.use_dropout:
+            self.pattern_dropout = nn.Dropout(self.cfg.dropout)
 
     def forward(self, 
             resid_pre: torch.Tensor, 
@@ -350,6 +352,7 @@ class Attention(nn.Module):
         attn_matrix = self.hook_attn(
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]
+        attn_matrix = self.pattern_dropout(attn_matrix)
         z = self.hook_z(
             einsum("batch key_pos head_index d_head, \
                 batch head_index query_pos key_pos -> \
@@ -548,6 +551,10 @@ class TransformerBlock(nn.Module):
             self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
 
+        if self.cfg.use_dropout:
+            self.attn_dropout = nn.Dropout(self.cfg.dropout)
+            self.mlp_dropout = nn.Dropout(self.cfg.dropout)
+
     def forward(
             self, 
             resid_pre: torch.Tensor, 
@@ -572,12 +579,16 @@ class TransformerBlock(nn.Module):
                 shortformer_pos_embed = shortformer_pos_embed,
                 past_kv_cache_entry = past_kv_cache_entry)
         )  # [batch, pos, d_model]
+        if self.cfg.use_dropout:
+            attn_out = self.attn_dropout(attn_out)
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             normalized_resid_mid = self.ln2(resid_mid)
             mlp_out = self.hook_mlp_out(
                 self.mlp(normalized_resid_mid)
             )  # [batch, pos, d_model]
+            if self.cfg.use_dropout:
+                mlp_out = self.mlp_dropout(mlp_out)
             resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
@@ -586,6 +597,8 @@ class TransformerBlock(nn.Module):
             mlp_out = self.hook_mlp_out(
                 self.mlp(normalized_resid_pre_2)
             )  # [batch, pos, d_model]
+            if self.cfg.use_dropout:
+                mlp_out = self.mlp_dropout(mlp_out)
             resid_post = self.hook_resid_post(resid_pre + attn_out + mlp_out)  # [batch, pos, d_model]
         else:
             resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]

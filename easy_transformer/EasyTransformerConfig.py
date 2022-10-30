@@ -115,6 +115,8 @@ class EasyTransformerConfig:
     parallel_attn_mlp: bool = False
     rotary_dim: int = 64
     dtype: torch.dtype = torch.float32
+    dropout: float = 0.1
+    use_dropout: bool = True
 
     def __post_init__(self):
         if self.n_heads is None:
