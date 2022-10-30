@@ -295,14 +295,20 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
 no_heads = 5
 induct_heads = max_2d(induction_scores_array, no_heads)[0]
 print(induct_heads)
+
 # sort induction_heads by size in results
 induct_heads = sorted(induct_heads, key=lambda x: results[x[0]][x[1]], reverse=True)
+
+# have a look at these numbers
+for layer, head in induct_heads:
+    print(f"Layer: {layer}, Head: {head}, Induction score: {induction_scores_array[layer][head]}, Loss diff: {results[layer][head]}")
+
 print(induct_heads)
 
 #%% [markdown]
 # Look at attention patterns of things
 
-my_heads = max_2d(results, k=20)[0]
+my_heads = max_2d(torch.abs(results), k=20)[0]
 print(my_heads)
 
 for LAYER, HEAD in my_heads:
@@ -316,7 +322,7 @@ for LAYER, HEAD in my_heads:
 
     att = new_cache[hook_name]
     mean_att = att[:, HEAD].mean(dim=0)
-    show_pp(mean_att, title=f"Mean attention for head {HEAD} in layer {LAYER}")
+    show_pp(mean_att, title=f"Mean attention for head {LAYER}.{HEAD}")
 
 #%% [markdown]
 # Look into compensation in both cases despite it seeming very different
@@ -467,7 +473,7 @@ def logits_metric(
 metric = logits_metric
 mode = "random subset"
 
-for subset_size in tqdm(range(max_len)):
+for subset_size in tqdm(range(max_len+1)):
     model.reset_hooks()
 
     curv = 0
@@ -505,7 +511,7 @@ for subset_size in tqdm(range(max_len)):
 fig = go.Figure()
 fig.add_trace(
     go.Scatter(
-        x=list(range(0, max_len)),
+        x=list(range(0, max_len+1)),
         y=ys,
         mode="lines+markers",
         name="Top N heads removed",
@@ -514,7 +520,7 @@ fig.add_trace(
 )
 fig.add_trace(
     go.Scatter(
-        x=list(range(0, max_len)),
+        x=list(range(0, max_len+1)),
         y=ys2,
         mode="lines+markers",
         name="Sum of direct effects",
@@ -525,7 +531,7 @@ fig.add_trace(
 # add the line from (0, ys[0]) to (tot-1, ys[tot-1])
 fig.add_trace(
     go.Scatter(
-        x=[0, max_len - 1],
+        x=[0, max_len],
         y=[ys[0], ys[-1]],
         mode="lines",
         name="Expected",
