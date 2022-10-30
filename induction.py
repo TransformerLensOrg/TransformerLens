@@ -295,9 +295,9 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
 no_heads = 5
 induct_heads = max_2d(induction_scores_array, no_heads)[0]
 print(induct_heads)
-
 # sort induction_heads by size in results
 induct_heads = sorted(induct_heads, key=lambda x: results[x[0]][x[1]], reverse=True)
+print(induct_heads)
 
 #%% [markdown]
 # Look at attention patterns of things
@@ -418,7 +418,7 @@ model.reset_hooks()
 #%% [markdown]
 # Line graph
 
-tot = 5
+tot = len(induct_heads)
 
 initial_loss = model(
         rand_tokens_repeat, return_type="both", loss_return_per_token=True
@@ -426,7 +426,6 @@ initial_loss = model(
 
 # induct_heads = max_2d(torch.tensor(induction_scores_array), tot)[0]
 # induct_heads = [(6, 1), (8, 0), (6, 11), (8, 1), (8, 8)]
-induct_heads = deepcopy(top_heads)
 
 hooks = {head:hooks[head] for head in induct_heads}
 
@@ -466,6 +465,7 @@ def logits_metric(
     return logits_on_correct[:, -seq_len // 2 :].mean().item()
 
 metric = logits_metric
+mode = "random subset"
 
 for subset_size in tqdm(range(max_len)):
     model.reset_hooks()
@@ -475,8 +475,13 @@ for subset_size in tqdm(range(max_len)):
     for _ in range(30):
         model.reset_hooks()
 
-        for hook in list(hooks.items())[skipper : skipper + subset_size]:
-        # for hook in get_random_subset(list(hooks.items()), subset_size):
+        ordered_hook_list = []
+        if mode == "random subset":
+            ordered_hook_list = get_random_subset(list(hooks.items()), subset_size)
+        elif mode == "decreasing":
+            ordered_hook_list = list(hooks.items())[skipper:skipper+subset_size]
+
+        for hook in ordered_hook_list:
             model.add_hook(*hook[1])
             # curw += results[hook[0]].item()
 
