@@ -155,7 +155,7 @@ show_losses(
     model_names=model_names,
     rand_tokens_repeat=rand_tokens_repeat,
     seq_len=seq_len,
-    mode="loss",
+    mode="logits",
 )
 
 #%% [markdown]
@@ -433,9 +433,11 @@ def logits_metric(
 ):
     # intested
     logits = model(rand_tokens_repeat, return_type="logits")
+    # print(logits.shape) # 5 21 50257
+    logits_on_correct = pass
     return logits[:, -seq_len // 2 :].mean().item()
 
-metric = loss_metric
+metric = logits_metric
 
 for subset_size in tqdm(range(max_len)):
     model.reset_hooks()

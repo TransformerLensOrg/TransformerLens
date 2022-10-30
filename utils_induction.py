@@ -212,6 +212,7 @@ def show_losses(
     seq_len,
     mode="loss",
 ):
+    batch_size = rand_tokens_repeat.shape[0]
     ys = [[] for _ in range(len(model_names))]
     fig = go.Figure()
     for idx, model_name in enumerate(model_names):
@@ -222,14 +223,32 @@ def show_losses(
         ).values()
         print(
             model_name,
+            "loss and std on last quarter of token (TODO make this all relevant induction cases?)",
             loss[:, -seq_len // 2 :].mean().item(),
             loss[:, -seq_len // 2 :].std().item(),
         )
-        mean_loss = loss.mean(dim=0)
-        ys[idx] = mean_loss.detach().cpu()  # .numpy()
+
+        if mode != "logits":
+            mean_loss = loss.mean(dim=0)
+            ys[idx] = mean_loss.detach().cpu()  # .numpy()
+
+            if mode == "probs":
+                ys[idx] = torch.exp(-ys[idx])
+        else:
+            # fairly cursed indexing....
+            assert len(logits.shape) == 3, logits.shape
+
+            seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
+            batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
+
+            logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
+
+            ys[idx] = logits_on_correct.mean(dim=0).detach().cpu()
+
+        print(ys[idx].shape)
         fig.add_trace(
             go.Scatter(
-                y=torch.exp(-mean_loss.detach().cpu()) if mode == "probs" else mean_loss.detach().cpu(),
+                y=ys[idx], # torch.exp(-mean_loss.detach().cpu()) if mode == "probs" else mean_loss.detach().cpu(),
                 name=model_name,
                 mode="lines",
                 # line=dict(color=CLASS_COLORS[idx]),
