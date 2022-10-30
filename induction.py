@@ -125,7 +125,50 @@ show_losses(
 )
 
 #%% [markdown]
-# Which heads are the most important for induction?
+# Various experiments with hooks on things and a heatmap
+
+top_heads = [
+    (layer, head_idx)
+    for layer in range(model.cfg.n_layers)
+    for head_idx in [None] + list(range(model.cfg.n_heads))
+]
+
+def random_patching(z, act, hook):
+    b = z.shape[0]
+    z[torch.arange(b)] = act[torch.randperm(b)]
+    return z
+
+cache = {}
+model.reset_hooks()
+model.cache_some(
+    cache,
+    lambda x: "attn.hook_result" in x or "mlp_out" in x,
+    suppress_warning=True,
+    # device=device,
+)
+logits, loss = model(
+    rand_tokens_control, return_type="both", loss_return_per_token=True
+).values()
+
+hooks = {}
+
+for layer, head_idx in top_heads:
+    hook_name = f"blocks.{layer}.attn.hook_result"
+    if head_idx is None:
+        hook_name = f"blocks.{layer}.hook_mlp_out"
+
+    hooks[(layer, head_idx)] = (
+        hook_name,
+        get_act_hook(
+            random_patching,
+            alt_act=cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        ),
+    )
+model.reset_hooks()
+
 
 model.reset_hooks()
 both_results = []
@@ -152,7 +195,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
         for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
             receiver_hooks = []
-            receiver_hooks.append(("blocks.11.hook_resid_post", None))
+            receiver_hooks.append((f"blocks.{model.cfg.n_layers}.hook_resid_post", None))
 
             if False:
                 model = path_patching_attribution(
@@ -199,12 +242,6 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 both_results.append(results.clone())
                 fig.show()
                 show_pp(mlp_results.detach().cpu())
-
-#%%
-
-results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
-results[0:5] = torch.load("pts/early_results.pt")[:5]
-results[5:10] = torch.load("pts/latter_results.pt")[5:]
 
 #%% [markdown]
 # look into compensation in both cases despite it seeming very different
