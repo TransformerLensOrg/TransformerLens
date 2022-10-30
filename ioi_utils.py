@@ -85,6 +85,9 @@ def show_pp(
     Plot a heatmap of the values in the matrix `m`
     """
 
+    if isinstance(m, torch.Tensor):
+        m = m.detach().cpu().numpy()
+
     if animate_axis is None:
         fig = px.imshow(
             m.T,

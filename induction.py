@@ -69,7 +69,7 @@ neo.set_use_attn_result(True)
 solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
-model = gpt2
+model = neo
 model_names = ["gpt2", "opt", "neo", "solu"]
 #%% [markdown]
 # Make induction dataset
@@ -106,13 +106,47 @@ def calc_score(attn_pattern, hook, offset, arr):
     # return arr
     return attn_pattern
 
+def filter_attn_hooks(hook_name):
+    split_name = hook_name.split(".")
+    return split_name[-1] == "hook_attn"
+
+arrs = []
+#%% [markdown]
+# Induction scores
+
+induction_scores_array = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
+
+def calc_induction_score(attn_pattern, hook):
+    # Pattern has shape [batch, index, query_pos, key_pos]
+    induction_stripe = attn_pattern.diagonal(1 - seq_len, dim1=-2, dim2=-1)
+    induction_scores = einops.reduce(
+        induction_stripe, "batch index pos -> index", "mean"
+    )
+    # Store the scores in a common array
+    induction_scores_array[hook.layer()] = induction_scores.detach().cpu().numpy()
+
 
 def filter_attn_hooks(hook_name):
     split_name = hook_name.split(".")
     return split_name[-1] == "hook_attn"
 
+model.reset_hooks()
 
-arrs = []
+more_hooks = []
+
+for head in [(11, head_idx) for head_idx in range(5)]: # nduct_heads[:5]:
+    more_hooks.append(hooks[head])
+
+induction_logits = model.run_with_hooks(
+    rand_tokens_repeat, fwd_hooks= more_hooks + [(filter_attn_hooks, calc_induction_score)], # , reset_hooks_start=False,
+)
+induction_scores_array = torch.tensor(induction_scores_array)
+px.imshow(
+    induction_scores_array,
+    labels={"y": "Layer", "x": "Head"},
+    color_continuous_scale="Blues",
+)
+
 #%% [markdown]
 # sweeeeeet plot
 
@@ -169,7 +203,7 @@ for layer, head_idx in top_heads:
     )
 model.reset_hooks()
 
-
+#%%
 model.reset_hooks()
 both_results = []
 the_extra_hooks = None
@@ -178,7 +212,7 @@ the_extra_hooks = None
 #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
 # ).values()
 
-for idx, extra_hooks in enumerate([[], the_extra_hooks]):
+for idx, extra_hooks in enumerate([[], [hooks[((6, 1))]], [hooks[(11, 4)]], the_extra_hooks]):
     if extra_hooks is None:
         break
     results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
@@ -195,7 +229,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
         for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
             receiver_hooks = []
-            receiver_hooks.append((f"blocks.{model.cfg.n_layers}.hook_resid_post", None))
+            receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
 
             if False:
                 model = path_patching_attribution(
@@ -209,10 +243,14 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                     device="cuda",
                     freeze_mlps=True,
                     return_hooks=False,
+                    extra_hooks=extra_hooks,
                 )
+                title="Direct"
 
             else:
+                # model.add_hook(*hooks[(6, 1)])
                 model.add_hook(*hooks[(source_layer, source_head_idx)])
+                title="Indirect"
 
             # model.reset_hooks()
             # for hook in hooks:
@@ -222,26 +260,47 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 rand_tokens_repeat, return_type="both", loss_return_per_token=True
             )["loss"][:, -seq_len // 2 :].mean()
 
-            a = hooks.pop((source_layer, source_head_idx))
-            e("a")
+            if (source_layer, source_head_idx) != (6, 1):
+                a = hooks.pop((source_layer, source_head_idx))
+                e("a")
 
             if source_head_idx is None:
                 mlp_results[source_layer] = loss - initial_loss
             else:
                 results[source_layer][source_head_idx] = loss - initial_loss
 
-            if source_layer == 11 and source_head_idx == 11:
+            if source_layer == model.cfg.n_layers-1 and source_head_idx == model.cfg.n_heads-1:
                 fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T.detach(),
-                    title=f"Direct effect of removing heads on logit diff"
-                    + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
+                    title=f"{title} effect of removing heads on logit diff_{fname}",
+                    # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                     return_fig=True,
                     show_fig=False,
                 )
                 both_results.append(results.clone())
                 fig.show()
                 show_pp(mlp_results.detach().cpu())
+    break
+
+#%% [markdown]
+# Look at attention patterns of things
+
+my_heads = max_2d(results, k=20)[0]
+print(my_heads)
+
+for LAYER, HEAD in my_heads:
+    model.reset_hooks()
+    hook_name = f"blocks.{LAYER}.attn.hook_attn" # 4 12 50 50
+    new_cache = {}
+    model.cache_some(new_cache, lambda x: hook_name in x)
+    # model.add_hook(*hooks[((6, 1))])
+    # model.add_hooks(hooks)
+    model(rand_tokens_repeat)
+
+    att = new_cache[hook_name]
+    mean_att = att[:, HEAD].mean(dim=0)
+    show_pp(mean_att, title=f"Mean attention for head {HEAD} in layer {LAYER}")
 
 #%% [markdown]
 # look into compensation in both cases despite it seeming very different
@@ -295,14 +354,14 @@ top_heads = [
     (8, 0),
     (8, 8),
 ]
-top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
+# top_heads = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
 hooks = {}
 
-# top_heads = [
-#     (layer, head_idx)
-#     for layer in range(model.cfg.n_layers)
-#     for head_idx in [None] + list(range(model.cfg.n_heads))
-# ]
+top_heads = [
+    (layer, head_idx)
+    for layer in range(model.cfg.n_layers)
+    for head_idx in [None] + list(range(model.cfg.n_heads))
+]
 
 skipper = 0
 # top_heads = max_2d(results, 20)[0][skipper:]
@@ -336,16 +395,25 @@ for layer, head_idx in top_heads:
     )
 model.reset_hooks()
 
-#%%
+#%% [markdown]
+# Line graph
 
+tot = 5
+
+initial_loss = model(
+        rand_tokens_repeat, return_type="both", loss_return_per_token=True
+    )["loss"][:, -seq_len // 2 :].mean()
+
+# induct_heads = max_2d(torch.tensor(induction_scores_array), tot)[0]
+induct_heads = [(6, 1), (8, 0), (6, 11), (8, 1), (8, 8)]
+hooks = {head:hooks[head] for head in induct_heads}
 
 def get_random_subset(l, size):
     return [l[i] for i in sorted(random.sample(range(len(l)), size))]
 
-
 ys = []
 ys2 = []
-max_len = 5  # 20 - skipper
+max_len = tot  # 20 - skipper
 no_iters = 30
 
 for subset_size in tqdm(range(max_len)):
@@ -392,6 +460,17 @@ fig.add_trace(
         mode="lines+markers",
         name="Sum of direct effects",
         line=dict(color="Red", width=1),
+    )
+)
+
+# add the line from (0, ys[0]) to (tot-1, ys[tot-1])
+fig.add_trace(
+    go.Scatter(
+        x=[0, max_len - 1],
+        y=[ys[0], ys[-1]],
+        mode="lines",
+        name="Expected",
+        line=dict(color="Blue", width=1),
     )
 )
 
@@ -443,70 +522,3 @@ def compute_logit_probs(rand_tokens_repeat, model):
 
 
 compute_logit_probs(rand_tokens_repeat, model)
-# %%
-induct_head = [(5, 1), (7, 2), (7, 10), (6, 9), (5, 5)]
-# induct_head = [
-#     (6, 1),
-#     (8, 1),
-#     (6, 6),
-#     (8, 0),
-#     (8, 8),
-# ]  # max_2d(torch.tensor(arrs[0]), k=5) equiv
-
-all_means = []
-for k in range(len(induct_head) + 1):
-    results = []
-    for _ in range(10):
-        head_mask = torch.empty(
-            (model.cfg.n_layers, model.cfg.n_heads), dtype=torch.bool
-        )
-        head_mask[:] = False
-        rd_set = rd.sample(induct_head, k=k)
-        for (l, h) in rd_set:
-            head_mask[l, h] = True
-
-        def prune_attn_heads(value, hook):
-            # Value has shape [batch, pos, index, d_head]
-            mask = head_mask[hook.layer()]  # just the heads at this particular value
-            value[:, :, mask] = 0.0
-            return value
-
-        def zero_ablate(z, hook):
-            z[:] = 0.0
-            return z
-
-        model.reset_hooks()
-        for l, h in rd_set:
-            # if l == 7:
-            # heads = [(7, 2), (7, 10)]
-            # else:
-            heads = [(l, h)]
-            for layer, head_idx in heads:
-                hook_name = f"blocks.{layer}.attn.hook_v"
-                hook = get_act_hook(
-                    zero_ablate,
-                    idx=head_idx,
-                    dim=2 if head_idx is not None else None,
-                    name=hook_name,
-                )
-                model.add_hook(hook_name, hook)
-
-        # model.reset_hooks()
-        # model.add_hook(filter_value_hooks, prune_attn_heads)
-        results.append(compute_logit_probs(rand_tokens_repeat, model))
-
-    results = np.array(results)
-    all_means.append(results.mean())
-
-fig = px.bar(
-    all_means,
-    title="Loss on repeated random tokens sequences (average on 10 random set of KO heads) 5.5 excluded",
-)
-
-fig.update_layout(
-    xaxis_title="Number of induction head zero-KO",
-    yaxis_title="Induction loss",
-)
-fig.show()
-
-# %%
