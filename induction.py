@@ -70,8 +70,8 @@ solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
 model_names = ["gpt2", "opt", "neo", "solu"]
-model_name = "gpt2"
-model = eval(gpt2)
+model_name = "neo"
+model = eval(model_name)
 
 saved_tensors = []
 #%% [markdown]
@@ -128,16 +128,6 @@ show_losses(
 # Induction scores
 # Use this to get a "shortlist" of the heads that matter most for ind
 
-def calc_induction_score(attn_pattern, hook):
-    # Pattern has shape [batch, index, query_pos, key_pos]
-    induction_stripe = attn_pattern.diagonal(1 - seq_len, dim1=-2, dim2=-1)
-    induction_scores = einops.reduce(
-        induction_stripe, "batch index pos -> index", "mean"
-    )
-    # Store the scores in a common array
-    induction_scores_array[hook.layer()] = induction_scores.detach().cpu().numpy()
-
-
 def filter_attn_hooks(hook_name):
     split_name = hook_name.split(".")
     return split_name[-1] == "hook_attn"
@@ -148,7 +138,18 @@ more_hooks = []
 # for head in [(11, head_idx) for head_idx in range(5)]: # nduct_heads[:5]:
     # more_hooks.append(hooks[head])
 
-for model_name in model_names:
+def get_induction_scores(model, rand_tokens_repeat, title=""):
+
+    def calc_induction_score(attn_pattern, hook):
+        # Pattern has shape [batch, index, query_pos, key_pos]
+        induction_stripe = attn_pattern.diagonal(1 - seq_len, dim1=-2, dim2=-1)
+        induction_scores = einops.reduce(
+            induction_stripe, "batch index pos -> index", "mean"
+        )
+
+        # Store the scores in a common array
+        induction_scores_array[hook.layer()] = induction_scores.detach().cpu().numpy()
+
     model = eval(model_name)
     induction_scores_array = np.zeros((model.cfg.n_layers, model.cfg.n_heads))
     induction_logits = model.run_with_hooks(
@@ -162,12 +163,14 @@ for model_name in model_names:
     )
     # add title
     fig.update_layout(
-        title_text=f"Induction scores for {model_name}",
+        title_text=f"Induction scores for "+ title,
         title_x=0.5,
         title_font_size=20,
     )
     fig.show()
-    saved_tensors.append(induction_scores_array)
+    return induction_scores_array
+
+induction_scores_array = get_induction_scores(model, rand_tokens_repeat, title=model_name)
 #%% [markdown]
 # Various experiments with hooks on things and a heatmap
 
