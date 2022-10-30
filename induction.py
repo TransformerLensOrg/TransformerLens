@@ -69,8 +69,11 @@ neo.set_use_attn_result(True)
 solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
-model = gpt2
 model_names = ["gpt2", "opt", "neo", "solu"]
+model_name = "gpt2"
+model = eval(gpt2)
+
+saved_tensors = []
 #%% [markdown]
 # Make induction dataset
 
@@ -163,17 +166,10 @@ for model_name in model_names:
         title_x=0.5,
         title_font_size=20,
     )
-
     fig.show()
-
+    saved_tensors.append(induction_scores_array)
 #%% [markdown]
 # Various experiments with hooks on things and a heatmap
-
-top_heads = [
-    (layer, head_idx)
-    for layer in range(model.cfg.n_layers)
-    for head_idx in [None] + list(range(model.cfg.n_heads))
-]
 
 def random_patching(z, act, hook):
     b = z.shape[0]
@@ -186,15 +182,15 @@ model.cache_some(
     cache,
     lambda x: "attn.hook_result" in x or "mlp_out" in x,
     suppress_warning=True,
-    # device=device,
 )
 logits, loss = model(
     rand_tokens_control, return_type="both", loss_return_per_token=True
 ).values()
 
 hooks = {}
+all_heads_and_mlps = [(layer, head_idx) for layer in range(model.cfg.n_layers) for head_idx in [None] + list(range(model.cfg.n_heads))]
 
-for layer, head_idx in top_heads:
+for layer, head_idx in all_heads_and_mlps:
     hook_name = f"blocks.{layer}.attn.hook_result"
     if head_idx is None:
         hook_name = f"blocks.{layer}.hook_mlp_out"
@@ -211,7 +207,8 @@ for layer, head_idx in top_heads:
     )
 model.reset_hooks()
 
-#%%
+#%% [markdown]
+# Use this cell to get a rough grip on which heads matter the most
 
 model.reset_hooks()
 both_results = []
@@ -221,7 +218,7 @@ the_extra_hooks = None
 #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
 # ).values()
 
-for idx, extra_hooks in enumerate([[], [hooks[((6, 1))]], [hooks[(11, 4)]], the_extra_hooks]):
+for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]], the_extra_hooks]):
     if extra_hooks is None:
         break
     results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
@@ -290,7 +287,17 @@ for idx, extra_hooks in enumerate([[], [hooks[((6, 1))]], [hooks[(11, 4)]], the_
                 both_results.append(results.clone())
                 fig.show()
                 show_pp(mlp_results.detach().cpu())
-    break
+                saved_tensors.append(results.clone().cpu())
+                saved_tensors.append(mlp_results.clone().cpu())
+#%% [markdown]
+# Get top 5 induction heads
+
+no_heads = 5
+induct_heads = max_2d(induction_scores_array, no_heads)[0]
+print(induct_heads)
+
+# sort induction_heads by size in results
+induct_heads = sorted(induct_heads, key=lambda x: results[x[0]][x[1]], reverse=True)
 
 #%% [markdown]
 # Look at attention patterns of things
