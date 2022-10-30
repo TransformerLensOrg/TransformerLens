@@ -26,7 +26,7 @@ def download_file_from_hf(repo_name, file_name, subfolder=".", cache_dir=CACHE_D
                                                 filename=file_name, 
                                                 subfolder=subfolder, 
                                                 cache_dir=cache_dir)
-    print(f"Saved at file_path: {file_path}")
+
     if file_path.endswith(".pth") or force_is_torch:
         return torch.load(file_path)
     elif file_path.endswith(".json"):
