@@ -204,6 +204,7 @@ for layer, head_idx in top_heads:
 model.reset_hooks()
 
 #%%
+
 model.reset_hooks()
 both_results = []
 the_extra_hooks = None
@@ -438,7 +439,6 @@ def logits_metric(
     batch_size, _, vocab_size = logits.shape
     seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
     batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
-    print(batch_indices.shape, seq_indices.shape,rand_tokens_repeat.shape)
     logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
 
     return logits_on_correct[:, -seq_len // 2 :].mean().item()

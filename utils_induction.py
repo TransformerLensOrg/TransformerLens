@@ -238,10 +238,10 @@ def show_losses(
             # fairly cursed indexing ...
             assert len(logits.shape) == 3, logits.shape
 
-            seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
-            batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
+            seq_indices = einops.repeat(torch.arange(seq_len * 2), "a -> b a", b=batch_size)
+            batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len * 2)
 
-            logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
+            logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, 1:]]
 
             ys[idx] = logits_on_correct.mean(dim=0).detach().cpu()
 
