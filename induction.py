@@ -482,7 +482,7 @@ def logits_metric(
     return logits_on_correct[:, -seq_len // 2 :].mean().item()
 
 metric = logits_metric
-mode = "decreasing"
+mode = "random subset"
 
 for subset_size in tqdm(range(max_len+1)):
     model.reset_hooks()
