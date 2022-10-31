@@ -173,7 +173,7 @@ def get_induction_scores(model, rand_tokens_repeat, title=""):
 
 induction_scores_array = get_induction_scores(model, rand_tokens_repeat, title=model_name)
 #%% [markdown]
-# Various experiments with hooks on things and a heatmap
+# make all hooks
 
 def random_patching(z, act, hook):
     b = z.shape[0]
@@ -212,6 +212,26 @@ for layer, head_idx in all_heads_and_mlps:
 model.reset_hooks()
 
 #%% [markdown]
+# is GPT-Neo behaving right?
+
+logits_and_loss = model(
+    rand_tokens_repeat, return_type="both", loss_return_per_token=True
+)
+logits = logits_and_loss["logits"].cpu()[:, :-1] # remove unguessable next token
+loss = logits_and_loss["loss"].cpu()
+probs = torch.softmax(logits, dim=-1)
+
+batch_size, _, vocab_size = logits.shape
+seq_indices = einops.repeat(torch.arange(_), "a -> b a", b=batch_size)
+batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=_)
+probs_on_correct = probs[batch_indices, seq_indices, rand_tokens_repeat[:, 1:]]
+log_probs = - torch.log(probs_on_correct)
+
+assert torch.allclose(
+    log_probs, loss, rtol=1e-3, atol=1e-3, # torch.exp(log_probs.gather(-1, rand_tokens_repeat[:, 1:].unsqueeze(-1)).squeeze(-1))
+)
+
+#%% [markdown]
 # Use this cell to get a rough grip on which heads matter the most
 
 def loss_metric(
@@ -241,6 +261,17 @@ def logits_metric(
 
     return logits_on_correct[:, -seq_len // 2 :].mean().item()
 
+def denom_metric(
+    model,
+    rand_tokens_repeat,
+    seq_len,
+):
+    """Denom of the final softmax"""
+    logits = model(rand_tokens_repeat, return_type="logits") # 5 21 50257
+    denom = torch.exp(logits)
+    denom = denom[:, -seq_len // 2 :].sum(dim=-1).mean()
+    return denom.item()
+
 model.reset_hooks()
 both_results = []
 the_extra_hooks = None
@@ -249,7 +280,8 @@ the_extra_hooks = None
 #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
 # ).values()
 
-metric = logits_metric
+ 
+metric = denom_metric
 
 for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]], the_extra_hooks]):
     if extra_hooks is None:
@@ -302,16 +334,13 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             # model.reset_hooks()
             # for hook in hooks:
             #     model.add_hook(*hook)
-
             # loss = model(
             #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
             # )["loss"][:, -seq_len // 2 :].mean()
             cur_metric = metric(model, rand_tokens_repeat, seq_len)
-            print(cur_metric)
 
-            if (source_layer, source_head_idx) != (6, 1):
-                a = hooks.pop((source_layer, source_head_idx))
-                e("a")
+            a = hooks.pop((source_layer, source_head_idx))
+            e("a")
 
             if source_head_idx is None:
                 mlp_results[source_layer] = cur_metric - initial_metric
