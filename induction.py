@@ -278,7 +278,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             #             hook_name = f"blocks.{layer}.hook_mlp_out"
             #         receiver_hooks.append((hook_name, head_idx))
 
-            if False:
+            if True:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -307,21 +307,22 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
             # )["loss"][:, -seq_len // 2 :].mean()
             cur_metric = metric(model, rand_tokens_repeat, seq_len)
+            print(cur_metric)
 
             if (source_layer, source_head_idx) != (6, 1):
                 a = hooks.pop((source_layer, source_head_idx))
                 e("a")
 
             if source_head_idx is None:
-                mlp_results[source_layer] = initial_metric - cur_metric
+                mlp_results[source_layer] = cur_metric - initial_metric
             else:
-                results[source_layer][source_head_idx] = initial_metric - cur_metric
+                results[source_layer][source_head_idx] = cur_metric - initial_metric
 
             if source_layer == model.cfg.n_layers-1 and source_head_idx == model.cfg.n_heads-1:
                 fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T.detach(),
-                    title=f"{title} effect of removing heads on logit diff_{fname}",
+                    title=f"{title} effect of removing heads on {metric} {fname}",
                     # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                     return_fig=True,
                     show_fig=False,
