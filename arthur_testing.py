@@ -48,7 +48,7 @@ from random import randint as ri
 #     CIRCUIT,
 # )
 import random as rd
-# from ioi_utils import logit_diff, probs
+from ioi_utils import logit_diff, probs
 # from ioi_utils import get_top_tokens_and_probs as g
 
 ipython = get_ipython()

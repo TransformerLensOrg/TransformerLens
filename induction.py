@@ -236,7 +236,7 @@ for layer, head_idx in all_heads_and_mlps:
 model.reset_hooks()
 
 #%% [markdown]
-# Use this cell to get a rough grip on which heads matter the most
+# setup
 
 def loss_metric(
     model,
@@ -277,6 +277,10 @@ def denom_metric(
     return denom.item()
 
 model.reset_hooks()
+
+#%% [markdown]
+# use this cell to get a rough grip on which heads matter the most
+model.reset_hooks()
 both_results = []
 the_extra_hooks = None
 
@@ -305,6 +309,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             model.reset_hooks()
             receiver_hooks = []
             receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
+            # receiver_hooks.append((f"blocks.11.attn.hook_result", 4))
 
             # for layer in range(7, model.cfg.n_layers): # model.cfg.n_layers):
             #     for head_idx in list(range(model.cfg.n_heads)) + [None]:
@@ -313,7 +318,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             #             hook_name = f"blocks.{layer}.hook_mlp_out"
             #         receiver_hooks.append((hook_name, head_idx))
 
-            if False:
+            if True:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -323,11 +328,12 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
                     start_token=seq_len + 1,
                     end_token=2 * seq_len,
                     device="cuda",
-                    freeze_mlps=True,
+                    freeze_mlps=False,
                     return_hooks=False,
                     extra_hooks=extra_hooks,
                 )
                 title="Direct"
+                warnings.warn("MLPs...")
 
             else:
                 # model.add_hook(*hooks[(6, 1)])
@@ -367,6 +373,8 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
 #%% [markdown]
 # Get top 5 induction heads
 
+warnings.warn("Check that things aren't in decreasing order, maaan")
+
 no_heads = 10
 heads_by_induction = max_2d(induction_scores_array, 144)[0]
 induct_heads = []
@@ -374,15 +382,16 @@ idx = 0
 while len(induct_heads) < no_heads:
     head = heads_by_induction[idx]
     idx+=1
-    if results[head] <= 0:
-    #     induct_heads.append(head)
-    # else:
+    if "results" in dir() and results[head] <= 0:
+        induct_heads.append(head)
+    else:
         print(f" {head} because it's negative, with vale {results[head]}")
-    induct_heads.append(head)
+    # induct_heads.append(head)
 
 
 # sort the induction heads by their results
-induct_heads = sorted(induct_heads, key=lambda x: results[x], reverse=True)
+if "results" in dir():
+    induct_heads = sorted(induct_heads, key=lambda x: results[x], reverse=True)
 
 # have a look at these numbers
 for layer, head in induct_heads:
@@ -526,7 +535,9 @@ model.reset_hooks()
 #%% [markdown]
 # Line graph
 
+# reverse the order of the top heads
 tot = len(induct_heads)
+# tot=5
 
 initial_loss = model(
         rand_tokens_repeat, return_type="both", loss_return_per_token=True
@@ -546,7 +557,8 @@ max_len = tot  # 20 - skipper
 no_iters = 30
 
 metric = loss_metric
-mode = "random"
+metric = logits_metric
+# mode = "random subset"
 mode = "decreasing"
 
 for subset_size in tqdm(range(max_len+1)):
@@ -562,6 +574,8 @@ for subset_size in tqdm(range(max_len+1)):
             ordered_hook_list = get_random_subset(list(hooks.items()), subset_size)
         elif mode == "decreasing":
             ordered_hook_list = list(hooks.items())[:subset_size]
+        else:
+            raise ValueError()
 
         for hook in ordered_hook_list:
             model.add_hook(*hook[1])
@@ -673,4 +687,23 @@ Layer: 8, Head: 8, Induction score: 0.5408309698104858, Loss diff: 0.23612505197
 Layer: 8, Head: 0, Induction score: 0.6423881649971008, Loss diff: 0.21361035108566284
 Layer: 6, Head: 0, Induction score: 0.562366783618927, Loss diff: 0.02358981966972351
 [(6, 1), (8, 1), (8, 8), (8, 0), (6, 0)]
+"""
+
+"""
+(6, 6) because it's negative, with vale 1.0968360900878906
+ (6, 11) because it's negative, with vale 0.6495914459228516
+ (11, 6) because it's negative, with vale 0.6050567626953125
+ (7, 2) because it's negative, with vale 0.028009414672851562
+ (8, 9) because it's negative, with vale 0.01535797119140625
+Layer: 6, Head: 0, Induction score: 0.562366783618927, Loss diff: -0.055957794189453125
+Layer: 10, Head: 1, Induction score: 0.21510878205299377, Loss diff: -0.0745391845703125
+Layer: 8, Head: 11, Induction score: 0.4771292805671692, Loss diff: -0.1757049560546875
+Layer: 8, Head: 6, Induction score: 0.3630002439022064, Loss diff: -0.4016103744506836
+Layer: 10, Head: 3, Induction score: 0.275448203086853, Loss diff: -0.4731121063232422
+Layer: 8, Head: 2, Induction score: 0.22248125076293945, Loss diff: -0.4885101318359375
+Layer: 8, Head: 0, Induction score: 0.6423881649971008, Loss diff: -0.915496826171875
+Layer: 8, Head: 1, Induction score: 0.6479660868644714, Loss diff: -0.9298639297485352
+Layer: 8, Head: 8, Induction score: 0.5408309698104858, Loss diff: -1.0409841537475586
+Layer: 6, Head: 1, Induction score: 0.8501311540603638, Loss diff: -1.8944549560546875
+[(6, 0), (10, 1), (8, 11), (8, 6), (10, 3), (8, 2), (8, 0), (8, 1), (8, 8), (6, 1)]
 """
