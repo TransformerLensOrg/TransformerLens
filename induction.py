@@ -71,7 +71,7 @@ solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
 model_names = ["gpt2", "opt", "neo", "solu"]
-model_name = "neo"
+model_name = "gpt2"
 model = eval(model_name)
 
 saved_tensors = []
@@ -318,7 +318,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             #             hook_name = f"blocks.{layer}.hook_mlp_out"
             #         receiver_hooks.append((hook_name, head_idx))
 
-            if True:
+            if False:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -328,12 +328,11 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
                     start_token=seq_len + 1,
                     end_token=2 * seq_len,
                     device="cuda",
-                    freeze_mlps=False,
+                    freeze_mlps=True,
                     return_hooks=False,
                     extra_hooks=extra_hooks,
                 )
                 title="Direct"
-                warnings.warn("MLPs...")
 
             else:
                 # model.add_hook(*hooks[(6, 1)])
@@ -372,7 +371,6 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
                 saved_tensors.append(mlp_results.clone().cpu())
 #%% [markdown]
 # Get top 5 induction heads
-
 warnings.warn("Check that things aren't in decreasing order, maaan")
 
 no_heads = 10
@@ -385,7 +383,7 @@ while len(induct_heads) < no_heads:
     if "results" in dir() and results[head] <= 0:
         induct_heads.append(head)
     else:
-        print(f" {head} because it's negative, with vale {results[head]}")
+        print(f" {head} because it's negative, with value {results[head]}")
     # induct_heads.append(head)
 
 
@@ -536,12 +534,12 @@ model.reset_hooks()
 # Line graph
 
 # reverse the order of the top heads
-tot = len(induct_heads)
+tot = len(induct_heads) + 1
 # tot=5
 
 initial_loss = model(
-        rand_tokens_repeat, return_type="both", loss_return_per_token=True
-    )["loss"][:, -seq_len // 2 :].mean()
+    rand_tokens_repeat, return_type="both", loss_return_per_token=True
+)["loss"][:, -seq_len // 2 :].mean()
 
 # induct_heads = max_2d(torch.tensor(induction_scores_array), tot)[0]
 # induct_heads = [(6, 1), (8, 0), (6, 11), (8, 1), (8, 8)]
@@ -553,15 +551,15 @@ def get_random_subset(l, size):
 
 ys = []
 ys2 = []
-max_len = tot  # 20 - skipper
 no_iters = 30
+max_len = len(induct_heads)
 
-metric = loss_metric
+# metric = loss_metric
 metric = logits_metric
 # mode = "random subset"
 mode = "decreasing"
 
-for subset_size in tqdm(range(max_len+1)):
+for subset_size in tqdm(range(len(induct_heads) + 1)):
     model.reset_hooks()
 
     curv = 0
@@ -573,6 +571,7 @@ for subset_size in tqdm(range(max_len+1)):
         if mode == "random subset":
             ordered_hook_list = get_random_subset(list(hooks.items()), subset_size)
         elif mode == "decreasing":
+            warnings.warn("Reverso")
             ordered_hook_list = list(hooks.items())[:subset_size]
         else:
             raise ValueError()
@@ -615,6 +614,31 @@ fig.add_trace(
         mode="lines+markers",
         name="Sum of direct effects",
         line=dict(color="Red", width=1),
+    )
+)
+
+start_x = 0
+start_y = ys[0]
+end_x = tot - 1
+end_y = ys[tot - 1]
+
+contributions = {head:abs(results[head].item()) for head in induct_heads}
+contributions_sum = sum(contributions.values())
+for head in induct_heads: contributions[head] /= contributions_sum
+
+expected_x = list(range(tot))
+expected_y = [start_y]
+y_diff = end_y - start_y
+for head in induct_heads:
+    expected_y.append(expected_y[-1] + y_diff * contributions[head])
+
+fig.add_trace(
+    go.Scatter(
+        x=expected_x,
+        y=expected_y,
+        mode="lines+markers",
+        name="Expected",
+        line=dict(color="Blue", width=1),
     )
 )
 
