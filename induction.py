@@ -71,7 +71,7 @@ solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
 model_names = ["gpt2", "opt", "neo", "solu"]
-model_name = "gpt2"
+model_name = "neo"
 model = eval(model_name)
 
 saved_tensors = []
@@ -381,15 +381,16 @@ while len(induct_heads) < no_heads:
     head = heads_by_induction[idx]
     idx+=1
     if "results" in dir() and results[head] <= 0:
-        induct_heads.append(head)
+        pass
+        # induct_heads.append(head)
     else:
         print(f" {head} because it's negative, with value {results[head]}")
-    # induct_heads.append(head)
+    induct_heads.append(head)
 
 
 # sort the induction heads by their results
 if "results" in dir():
-    induct_heads = sorted(induct_heads, key=lambda x: results[x], reverse=True)
+    induct_heads = sorted(induct_heads, key=lambda x: -(results[x]), reverse=True)
 
 # have a look at these numbers
 for layer, head in induct_heads:
@@ -556,8 +557,8 @@ max_len = len(induct_heads)
 
 # metric = loss_metric
 metric = logits_metric
-# mode = "random subset"
-mode = "decreasing"
+mode = "random subset"
+# mode = "decreasing"
 
 for subset_size in tqdm(range(len(induct_heads) + 1)):
     model.reset_hooks()
@@ -622,25 +623,26 @@ start_y = ys[0]
 end_x = tot - 1
 end_y = ys[tot - 1]
 
-contributions = {head:abs(results[head].item()) for head in induct_heads}
-contributions_sum = sum(contributions.values())
-for head in induct_heads: contributions[head] /= contributions_sum
+if mode == "decreasing":
+    contributions = {head:(results[head].item()) for head in induct_heads}
+    contributions_sum = sum(contributions.values())
+    for head in induct_heads: contributions[head] /= contributions_sum
 
-expected_x = list(range(tot))
-expected_y = [start_y]
-y_diff = end_y - start_y
-for head in induct_heads:
-    expected_y.append(expected_y[-1] + y_diff * contributions[head])
+    expected_x = list(range(tot))
+    expected_y = [start_y]
+    y_diff = end_y - start_y
+    for head in induct_heads:
+        expected_y.append(expected_y[-1] + y_diff * contributions[head])
 
-fig.add_trace(
-    go.Scatter(
-        x=expected_x,
-        y=expected_y,
-        mode="lines+markers",
-        name="Expected",
-        line=dict(color="Blue", width=1),
+    fig.add_trace(
+        go.Scatter(
+            x=expected_x,
+            y=expected_y,
+            mode="lines+markers",
+            name="Expected",
+            line=dict(color="Blue", width=1),
+        )
     )
-)
 
 # add the line from (0, ys[0]) to (tot-1, ys[tot-1])
 fig.add_trace(
