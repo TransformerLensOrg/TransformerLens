@@ -557,8 +557,8 @@ max_len = len(induct_heads)
 
 # metric = loss_metric
 metric = logits_metric
-mode = "random subset"
-# mode = "decreasing"
+# mode = "random subset"
+mode = "decreasing"
 
 
 for subset_size in tqdm(range(len(induct_heads) + 1)):
@@ -604,19 +604,19 @@ fig.add_trace(
         x=list(range(0, max_len+1)),
         y=ys,
         mode="lines+markers",
-        name="Top N heads removed",
+        name="Top k heads removed",
         line=dict(color="Black", width=1),
     )
 )
-fig.add_trace(
-    go.Scatter(
-        x=list(range(0, max_len+1)),
-        y=ys2,
-        mode="lines+markers",
-        name="Sum of direct effects",
-        line=dict(color="Red", width=1),
-    )
-)
+# fig.add_trace(
+#     go.Scatter(
+#         x=list(range(0, max_len+1)),
+#         y=ys2,
+#         mode="lines+markers",
+#         name="Sum of direct effects",
+#         line=dict(color="Red", width=1),
+#     )
+# )
 
 start_x = 0
 start_y = ys[0]
@@ -644,20 +644,37 @@ if mode == "decreasing":
         )
     )
 
+expected_x_2 = list(range(tot))
+expected_y_2 = [start_y]
+
+for head in induct_heads:
+    expected_y_2.append(expected_y_2[-1] + results[head])
+
+fig.add_trace(
+    go.Scatter(
+        x=expected_x_2,
+        y=expected_y_2,
+        mode="lines+markers",
+        name="Sum the independent effects",
+        line=dict(color="Green", width=1),
+    )
+)
+
+
 # add the line from (0, ys[0]) to (tot-1, ys[tot-1])
 fig.add_trace(
     go.Scatter(
         x=[0, max_len],
         y=[ys[0], ys[-1]],
         mode="lines",
-        name="Expected",
+        name="Linear from start to end",
         line=dict(color="Blue", width=1),
     )
 )
 
 # add x axis labels
 fig.update_layout(
-    xaxis_title="Number of heads removed",
+    xaxis_title="Number of heads removed (k)",
     yaxis_title="Logits on correct",
     title="Effect of removing heads on correct logits (decreasing importance)",
 )
