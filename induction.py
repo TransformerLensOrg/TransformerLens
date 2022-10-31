@@ -284,7 +284,7 @@ the_extra_hooks = None
 #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
 # ).values()
 
-metric = denom_metric
+metric = logits_metric
 
 for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]], the_extra_hooks]):
     if extra_hooks is None:
@@ -313,7 +313,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             #             hook_name = f"blocks.{layer}.hook_mlp_out"
             #         receiver_hooks.append((hook_name, head_idx))
 
-            if True:
+            if False:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -367,17 +367,19 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
 #%% [markdown]
 # Get top 5 induction heads
 
-no_heads = 5
+no_heads = 10
 heads_by_induction = max_2d(induction_scores_array, 144)[0]
 induct_heads = []
 idx = 0
 while len(induct_heads) < no_heads:
     head = heads_by_induction[idx]
     idx+=1
-    if results[head] > 0:
-        induct_heads.append(head)
-    else:
-        print(f"Skipping {head} because it's negative, with vale {results[head]}")
+    if results[head] <= 0:
+    #     induct_heads.append(head)
+    # else:
+        print(f" {head} because it's negative, with vale {results[head]}")
+    induct_heads.append(head)
+
 
 # sort the induction heads by their results
 induct_heads = sorted(induct_heads, key=lambda x: results[x], reverse=True)
@@ -395,7 +397,7 @@ fig = go.Figure()
 for layer in range(model.cfg.n_layers):
     for head in range(model.cfg.n_heads):
         fig.add_trace(go.Scatter(x=[induction_scores_array[layer][head].item()], y=[results[layer][head].item()], mode='markers', name=f"Layer: {layer}, Head: {head}"))
-fig.update_layout(title="Induction score vs loss diff", xaxis_title="Induction score", yaxis_title="Loss diff")
+fig.update_layout(title="Induction score vs loss diff", xaxis_title="Induction score", yaxis_title="Change in logits on correct")
 fig.show()
 
 
@@ -543,8 +545,8 @@ ys2 = []
 max_len = tot  # 20 - skipper
 no_iters = 30
 
-metric = logits_metric
-# mode = "random subset"
+metric = loss_metric
+mode = "random"
 mode = "decreasing"
 
 for subset_size in tqdm(range(max_len+1)):
@@ -559,7 +561,7 @@ for subset_size in tqdm(range(max_len+1)):
         if mode == "random subset":
             ordered_hook_list = get_random_subset(list(hooks.items()), subset_size)
         elif mode == "decreasing":
-            ordered_hook_list = list(hooks.items())[skipper:skipper+subset_size]
+            ordered_hook_list = list(hooks.items())[:subset_size]
 
         for hook in ordered_hook_list:
             model.add_hook(*hook[1])
