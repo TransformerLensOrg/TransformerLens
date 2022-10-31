@@ -71,7 +71,7 @@ solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
 model_names = ["gpt2", "opt", "neo", "solu"]
-model_name = "neo"
+model_name = "gpt2"
 model = eval(model_name)
 
 saved_tensors = []
@@ -381,11 +381,11 @@ while len(induct_heads) < no_heads:
     head = heads_by_induction[idx]
     idx+=1
     if "results" in dir() and results[head] <= 0:
-        pass
-        # induct_heads.append(head)
+        # pass
+        induct_heads.append(head)
     else:
         print(f" {head} because it's negative, with value {results[head]}")
-    induct_heads.append(head)
+    # induct_heads.append(head)
 
 
 # sort the induction heads by their results
@@ -560,6 +560,7 @@ metric = logits_metric
 mode = "random subset"
 # mode = "decreasing"
 
+
 for subset_size in tqdm(range(len(induct_heads) + 1)):
     model.reset_hooks()
 
@@ -572,7 +573,6 @@ for subset_size in tqdm(range(len(induct_heads) + 1)):
         if mode == "random subset":
             ordered_hook_list = get_random_subset(list(hooks.items()), subset_size)
         elif mode == "decreasing":
-            warnings.warn("Reverso")
             ordered_hook_list = list(hooks.items())[:subset_size]
         else:
             raise ValueError()
