@@ -71,7 +71,7 @@ solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
 model_names = ["gpt2", "opt", "neo", "solu"]
-model_name = "gpt2"
+model_name = "neo"
 model = eval(model_name)
 
 saved_tensors = []
@@ -376,6 +376,7 @@ warnings.warn("Check that things aren't in decreasing order, maaan")
 no_heads = 10
 heads_by_induction = max_2d(induction_scores_array, 144)[0]
 induct_heads = []
+neg_heads = []
 idx = 0
 while len(induct_heads) < no_heads:
     head = heads_by_induction[idx]
@@ -384,6 +385,7 @@ while len(induct_heads) < no_heads:
         # pass
         induct_heads.append(head)
     else:
+        neg_heads.append(head)
         print(f" {head} because it's negative, with value {results[head]}")
     # induct_heads.append(head)
 
@@ -397,7 +399,6 @@ for layer, head in induct_heads:
     print(f"Layer: {layer}, Head: {head}, Induction score: {induction_scores_array[layer][head]}, Loss diff: {results[layer][head]}")
 
 print(induct_heads)
-
 #%%
 
 # plot a scatter plot in plotly with labels
@@ -534,7 +535,6 @@ model.reset_hooks()
 #%% [markdown]
 # Line graph
 
-# reverse the order of the top heads
 tot = len(induct_heads) + 1
 # tot=5
 
@@ -557,8 +557,8 @@ max_len = len(induct_heads)
 
 # metric = loss_metric
 metric = logits_metric
-# mode = "random subset"
-mode = "decreasing"
+mode = "random subset"
+# mode = "decreasing"
 
 
 for subset_size in tqdm(range(len(induct_heads) + 1)):
@@ -604,7 +604,7 @@ fig.add_trace(
         x=list(range(0, max_len+1)),
         y=ys,
         mode="lines+markers",
-        name="Top k heads removed",
+        name="Top k heads removed" if mode == "decreasing" else "k random heads removed",
         line=dict(color="Black", width=1),
     )
 )
@@ -676,9 +676,8 @@ fig.add_trace(
 fig.update_layout(
     xaxis_title="Number of heads removed (k)",
     yaxis_title="Logits on correct",
-    title="Effect of removing heads on correct logits (decreasing importance)",
+    title=f"Effect of removing heads on correct logits ({mode})",
 )
-
 
 #%% [markdown]
 
@@ -720,33 +719,3 @@ def compute_logit_probs(rand_tokens_repeat, model):
 
 
 compute_logit_probs(rand_tokens_repeat, model)
-
-"""
-Skipping (6, 6) because it's negative, with vale -0.15283656120300293
-Skipping (6, 11) because it's negative, with vale -0.09658721089363098
-Layer: 6, Head: 1, Induction score: 0.8501311540603638, Loss diff: 1.0953487157821655
-Layer: 8, Head: 1, Induction score: 0.6479660868644714, Loss diff: 0.2444022297859192
-Layer: 8, Head: 8, Induction score: 0.5408309698104858, Loss diff: 0.23612505197525024
-Layer: 8, Head: 0, Induction score: 0.6423881649971008, Loss diff: 0.21361035108566284
-Layer: 6, Head: 0, Induction score: 0.562366783618927, Loss diff: 0.02358981966972351
-[(6, 1), (8, 1), (8, 8), (8, 0), (6, 0)]
-"""
-
-"""
-(6, 6) because it's negative, with vale 1.0968360900878906
- (6, 11) because it's negative, with vale 0.6495914459228516
- (11, 6) because it's negative, with vale 0.6050567626953125
- (7, 2) because it's negative, with vale 0.028009414672851562
- (8, 9) because it's negative, with vale 0.01535797119140625
-Layer: 6, Head: 0, Induction score: 0.562366783618927, Loss diff: -0.055957794189453125
-Layer: 10, Head: 1, Induction score: 0.21510878205299377, Loss diff: -0.0745391845703125
-Layer: 8, Head: 11, Induction score: 0.4771292805671692, Loss diff: -0.1757049560546875
-Layer: 8, Head: 6, Induction score: 0.3630002439022064, Loss diff: -0.4016103744506836
-Layer: 10, Head: 3, Induction score: 0.275448203086853, Loss diff: -0.4731121063232422
-Layer: 8, Head: 2, Induction score: 0.22248125076293945, Loss diff: -0.4885101318359375
-Layer: 8, Head: 0, Induction score: 0.6423881649971008, Loss diff: -0.915496826171875
-Layer: 8, Head: 1, Induction score: 0.6479660868644714, Loss diff: -0.9298639297485352
-Layer: 8, Head: 8, Induction score: 0.5408309698104858, Loss diff: -1.0409841537475586
-Layer: 6, Head: 1, Induction score: 0.8501311540603638, Loss diff: -1.8944549560546875
-[(6, 0), (10, 1), (8, 11), (8, 6), (10, 3), (8, 2), (8, 0), (8, 1), (8, 8), (6, 1)]
-"""
