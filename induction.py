@@ -306,7 +306,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             receiver_hooks = []
             # receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
             receiver_hooks.append((f"blocks.11.attn.hook_result", 4))
-            # receiver_hooks.append((f"blocks.11.hook_mlp_out", None))
+            # receiver_hooks.append((f"blocks.10.hook_mlp_out", None))
 
 
             # for layer in range(7, model.cfg.n_layers): # model.cfg.n_layers):
