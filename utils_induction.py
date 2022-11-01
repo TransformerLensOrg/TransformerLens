@@ -45,6 +45,46 @@ def patch_all(z, source_act, hook):
     return z
 
 
+def loss_metric(
+    model,
+    rand_tokens_repeat,
+    seq_len,
+):
+    cur_loss = model(
+        rand_tokens_repeat, return_type="both", loss_return_per_token=True
+    )["loss"][:, -seq_len // 2 :].mean()
+    return cur_loss.item()
+
+def logits_metric(
+    model,
+    rand_tokens_repeat,
+    seq_len,
+):
+    """Double implemented from utils_induction..."""
+    logits = model(rand_tokens_repeat, return_type="logits")
+    # print(logits.shape) # 5 21 50257
+
+    assert len(logits.shape) == 3, logits.shape
+    batch_size, _, vocab_size = logits.shape
+    seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
+    batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
+    logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
+
+    return logits_on_correct[:, -seq_len // 2 :].mean().item()
+
+def denom_metric(
+    model,
+    rand_tokens_repeat,
+    seq_len,
+):
+    """Denom of the final softmax"""
+    logits = model(rand_tokens_repeat, return_type="logits") # 5 21 50257
+    denom = torch.exp(logits)
+    denom = denom[:, -seq_len // 2 :].sum(dim=-1).mean()
+    return denom.item()
+
+
+
 def path_patching_attribution(
     model,
     tokens,
@@ -58,11 +98,16 @@ def path_patching_attribution(
     freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
     have_internal_interactions=False,
     device="cuda",
+    do_assert=True,
+    **kwargs,
 ):
     """
     Do path patching in order to see which heads matter the most
     for directly writing the correct answer (see loss change)
     """
+
+    if len(kwargs) > 0:
+        warnings.warn("KWARGS snuck in: " + str(kwargs.keys()))
 
     if not freeze_mlps:
         warnings.warn("Not freezing MLPs")
@@ -164,10 +209,11 @@ def path_patching_attribution(
 
     # we can override the hooks above for the sender heads, though
     for hook_name, head_idx in sender_hooks:
-        assert not torch.allclose(
-            target_cache[hook_name], 
-            sender_cache[hook_name],
-        )
+        if do_assert:
+            assert not torch.allclose(
+                target_cache[hook_name], 
+                sender_cache[hook_name],
+            )
 
         hook = get_act_hook(
             patch_all,
@@ -177,6 +223,7 @@ def path_patching_attribution(
             name=hook_name,
         )
         model.add_hook(hook_name, hook)
+
     receiver_logits, receiver_loss = model(
         tokens, return_type="both", loss_return_per_token=True
     ).values()

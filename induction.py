@@ -71,7 +71,8 @@ solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
 model_names = ["gpt2", "opt", "neo", "solu"]
-model_name = "neo"
+model_name = "gpt2"
+print(f"USING {model_name}")
 model = eval(model_name)
 
 saved_tensors = []
@@ -235,48 +236,6 @@ for layer, head_idx in all_heads_and_mlps:
     )
 model.reset_hooks()
 
-#%% [markdown]
-# setup
-
-def loss_metric(
-    model,
-    rand_tokens_repeat,
-    seq_len,
-):
-    cur_loss = model(
-        rand_tokens_repeat, return_type="both", loss_return_per_token=True
-    )["loss"][:, -seq_len // 2 :].mean()
-    return cur_loss.item()
-
-def logits_metric(
-    model,
-    rand_tokens_repeat,
-    seq_len,
-):
-    """Double implemented from utils_induction..."""
-    logits = model(rand_tokens_repeat, return_type="logits")
-    # print(logits.shape) # 5 21 50257
-
-    assert len(logits.shape) == 3, logits.shape
-    batch_size, _, vocab_size = logits.shape
-    seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
-    batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
-    logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
-
-    return logits_on_correct[:, -seq_len // 2 :].mean().item()
-
-def denom_metric(
-    model,
-    rand_tokens_repeat,
-    seq_len,
-):
-    """Denom of the final softmax"""
-    logits = model(rand_tokens_repeat, return_type="logits") # 5 21 50257
-    denom = torch.exp(logits)
-    denom = denom[:, -seq_len // 2 :].sum(dim=-1).mean()
-    return denom.item()
-
-model.reset_hooks()
 
 #%% [markdown]
 # use this cell to get a rough grip on which heads matter the most
@@ -304,8 +263,8 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
         for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
             receiver_hooks = []
-            # receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
-            receiver_hooks.append((f"blocks.11.attn.hook_result", 4))
+            receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
+            # receiver_hooks.append((f"blocks.11.attn.hook_result", 4))
             # receiver_hooks.append((f"blocks.10.hook_mlp_out", None))
 
 
@@ -316,7 +275,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             #             hook_name = f"blocks.{layer}.hook_mlp_out"
             #         receiver_hooks.append((hook_name, head_idx))
 
-            if True:
+            if False:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
@@ -375,10 +334,13 @@ heads_by_induction = max_2d(induction_scores_array, 144)[0]
 induct_heads = []
 neg_heads = []
 idx = 0
+
+mult_factor = 1.0 if "logit" in metric.__name__ else -1.0
+
 while len(induct_heads) < no_heads:
     head = heads_by_induction[idx]
     idx+=1
-    if "results" in dir() and results[head] <= 0:
+    if "results" in dir() and (mult_factor * results[head]) <= 0:
         # pass
         induct_heads.append(head)
     else:
@@ -397,10 +359,36 @@ for layer, head in induct_heads:
 
 print(induct_heads)
 #%% [markdown]
-# Does Ryan's experiment just work?
 
-# sender_heads = [f"()"]
+all_heads = induct_heads + neg_heads
+pre_heads = [h for h in induct_heads if h[0] <= 6]
+post_heads = [h for h in all_heads if h[0] > 8]
+model.reset_hooks()
 
+patch_results = torch.zeros_like(results)
+
+for layer, head_idx in tqdm(all_heads):
+    model.reset_hooks()
+    model = path_patching_attribution(
+        model=model,
+        tokens=rand_tokens_repeat,
+        patch_tokens=rand_tokens_control,
+        sender_heads=all_heads,
+        receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx)],
+        # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
+        device="cuda",
+        freeze_mlps=False,
+        return_hooks=False,
+        max_layer=layer,
+        extra_hooks=[],
+        do_assert=True,    
+    )
+    patch_results[layer][head_idx] = metric(model, rand_tokens_repeat, seq_len) - initial_metric
+
+show_pp(patch_results.T.detach().cpu())
+
+# cur_metric = metric(model, rand_tokens_repeat, seq_len)
+# print(initial_metric, "to", cur_metric)
 #%%
 
 # plot a scatter plot in plotly with labels
