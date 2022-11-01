@@ -45,7 +45,6 @@ bloom (176B parameters)
 https://huggingface.co/docs/transformers/model_doc/bloom
 """
 
-# Full transformer
 class EasyTransformer(HookedRootModule):
     """
     This class implements a full Transformer using the components in ./components.py, with
@@ -380,6 +379,8 @@ class EasyTransformer(HookedRootModule):
             model_kwargs (dict, optional): Any additional kwargs to pass to the
                 EasyTransformer initialization.
         """
+        print(f"Loading model: {model_name}")
+
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
         

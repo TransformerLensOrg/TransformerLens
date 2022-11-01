@@ -23,12 +23,11 @@ from easy_transformer.experiments import (
     EasyAblation,
 )
 
+MODEL = "gpt2"
 
 def test_semantic_ablation():
     """
-    Compute semantic ablation
-    in a manual way, and then 
-    in the experiments.py way and check that they agree
+    Compute semantic ablation in a manual way, and then in the experiments.py way and check that they agree
     """
 
     # so we don't have to add the IOI dataset object to this library...
@@ -51,7 +50,8 @@ def test_semantic_ablation():
         S_logits = logits[torch.arange(len(text_prompts)), ioi_end_idx, ioi_s_ids]
         return (IO_logits - S_logits).mean().detach().cpu()
 
-    model = EasyTransformer("gpt2", use_attn_result=True)
+    print(f'Loading {MODEL}')
+    model = EasyTransformer.from_pretrained(MODEL)
     if torch.cuda.is_available():
         model.to("cuda")
 
@@ -136,4 +136,5 @@ def test_semantic_ablation():
 
 
 if __name__ == "__main__":
+    print("Running semantic ablation test")
     test_semantic_ablation()
