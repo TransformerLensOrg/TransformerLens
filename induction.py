@@ -326,6 +326,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
                     device="cuda",
                     freeze_mlps=True,
                     return_hooks=False,
+                    max_layer=11,
                     extra_hooks=extra_hooks,
                 )
                 title="Direct"

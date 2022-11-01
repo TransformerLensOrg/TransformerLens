@@ -52,6 +52,7 @@ def path_patching_attribution(
     sender_heads,
     receiver_hooks,
     verbose=False,
+    max_layer=12,
     return_hooks=False,
     extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
     freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
@@ -104,6 +105,7 @@ def path_patching_attribution(
             or "hook_mlp_out" in x
             or "attn.hook_k" in x
             or "attn.hook_v" in x
+            or "attn.hook_result" in x # TODO delete, for debugging
         ),
         suppress_warning=True,
         device=device,
@@ -124,7 +126,7 @@ def path_patching_attribution(
     )
 
     # for all the Q, K, V things
-    for layer in range(12):
+    for layer in range(max_layer): # make sure to ablate stuff before 
         for head_idx in range(model.cfg.n_heads):
             for hook_template in [
                 "blocks.{}.attn.hook_q",
@@ -162,6 +164,11 @@ def path_patching_attribution(
 
     # we can override the hooks above for the sender heads, though
     for hook_name, head_idx in sender_hooks:
+        assert not torch.allclose(
+            target_cache[hook_name], 
+            sender_cache[hook_name],
+        )
+
         hook = get_act_hook(
             patch_all,
             alt_act=sender_cache[hook_name],
