@@ -284,10 +284,6 @@ model.reset_hooks()
 both_results = []
 the_extra_hooks = None
 
-# initial_logits, initial_loss = model(
-#     rand_tokens_repeat, return_type="both", loss_return_per_token=True
-# ).values()
-
 metric = logits_metric
 
 for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]], the_extra_hooks]):
@@ -308,8 +304,10 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
         for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
             receiver_hooks = []
-            receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
-            # receiver_hooks.append((f"blocks.11.attn.hook_result", 4))
+            # receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
+            receiver_hooks.append((f"blocks.11.attn.hook_result", 4))
+            # receiver_hooks.append((f"blocks.11.hook_mlp_out", None))
+
 
             # for layer in range(7, model.cfg.n_layers): # model.cfg.n_layers):
             #     for head_idx in list(range(model.cfg.n_heads)) + [None]:
@@ -318,15 +316,13 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             #             hook_name = f"blocks.{layer}.hook_mlp_out"
             #         receiver_hooks.append((hook_name, head_idx))
 
-            if False:
+            if True:
                 model = path_patching_attribution(
                     model=model,
                     tokens=rand_tokens_repeat,
                     patch_tokens=rand_tokens_control,
                     sender_heads=[(source_layer, source_head_idx)],
                     receiver_hooks=receiver_hooks,
-                    start_token=seq_len + 1,
-                    end_token=2 * seq_len,
                     device="cuda",
                     freeze_mlps=True,
                     return_hooks=False,
@@ -359,7 +355,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
                 fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
                     results.T.detach(),
-                    title=f"{title} effect of removing heads on {metric} {fname}",
+                    title=f"{title} effect of path patching heads with metric {metric} {fname}",
                     # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                     return_fig=True,
                     show_fig=False,
@@ -399,6 +395,11 @@ for layer, head in induct_heads:
     print(f"Layer: {layer}, Head: {head}, Induction score: {induction_scores_array[layer][head]}, Loss diff: {results[layer][head]}")
 
 print(induct_heads)
+#%% [markdown]
+# Does Ryan's experiment just work?
+
+# sender_heads = [f"()"]
+
 #%%
 
 # plot a scatter plot in plotly with labels
@@ -415,12 +416,18 @@ fig.show()
 # fig.show()
 
 #%% [markdown]
+# Do some tracing the information flow type things
+
+
+
+#%% [markdown]
 # Look at attention patterns of things
 
-my_heads = max_2d(torch.abs(results), k=20)[0]
+my_heads = [(j, i) for i in range(12) for j in range(1, 6)]
+# my_heads = max_2d(torch.abs(results), k=20)[0]
 print(my_heads)
 
-my_heads = [(6, 6), (6, 11)] + induct_heads
+# my_sheads = [(6, 6), (6, 11)] + induct_heads
 
 for LAYER, HEAD in my_heads:
     model.reset_hooks()

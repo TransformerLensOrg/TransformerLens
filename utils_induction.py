@@ -49,8 +49,6 @@ def path_patching_attribution(
     model,
     tokens,
     patch_tokens,
-    start_token,
-    end_token,
     sender_heads,
     receiver_hooks,
     verbose=False,
@@ -64,6 +62,9 @@ def path_patching_attribution(
     Do path patching in order to see which heads matter the most
     for directly writing the correct answer (see loss change)
     """
+
+    if not freeze_mlps:
+        warnings.warn("Not freezing MLPs")
 
     # see path patching in ioi utils
     sender_hooks = []
