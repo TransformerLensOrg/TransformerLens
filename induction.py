@@ -367,23 +367,25 @@ model.reset_hooks()
 
 patch_results = torch.zeros_like(results)
 
-for layer, head_idx in tqdm(all_heads):
-    model.reset_hooks()
-    model = path_patching_attribution(
-        model=model,
-        tokens=rand_tokens_repeat,
-        patch_tokens=rand_tokens_control,
-        sender_heads=all_heads,
-        receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx)],
-        # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
-        device="cuda",
-        freeze_mlps=False,
-        return_hooks=False,
-        max_layer=layer,
-        extra_hooks=[],
-        do_assert=True,    
-    )
-    patch_results[layer][head_idx] = metric(model, rand_tokens_repeat, seq_len) - initial_metric
+# for layer, head_idx in tqdm(all_heads):
+for layer in tqdm(range(12)):
+    for head_idx in list(range(model.cfg.n_heads)):
+        model.reset_hooks()
+        model = path_patching_attribution(
+            model=model,
+            tokens=rand_tokens_repeat,
+            patch_tokens=rand_tokens_control,
+            sender_heads=all_heads,
+            receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx)],
+            # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
+            device="cuda",
+            freeze_mlps=False,
+            return_hooks=False,
+            max_layer=layer,
+            extra_hooks=[],
+            do_assert=True,    
+        )
+        patch_results[layer][head_idx] = metric(model, rand_tokens_repeat, seq_len) - initial_metric
 
 show_pp(patch_results.T.detach().cpu())
 
