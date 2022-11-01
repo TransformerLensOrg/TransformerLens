@@ -252,6 +252,28 @@ class EasyTransformer(HookedRootModule):
                 input = [self.tokenizer.bos_token + string for string in input]
         return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
     
+    def to_string(self, tokens) -> Union[str, List[str]]:
+        """ 
+        Converts a tensor of tokens to a string (if rank 1) or a list of strings (if rank 2).
+
+        Accepts lists of tokens and numpy arrays as inputs too (and converts to tensors internally)
+        """
+        assert self.tokenizer is not None, "Cannot use to_string without a tokenizer"
+
+        if not isinstance(tokens, torch.Tensor):
+            # We allow lists to be input
+            tokens = torch.tensor(tokens)
+
+        # I'm not sure what exactly clean_up_tokenization_spaces does, but if
+        # it's set, then tokenization is no longer invertible, and some tokens
+        # with a bunch of whitespace get collapsed together
+        if len(tokens.shape)==2:
+            return self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+        elif len(tokens.shape)<=1:
+            return self.tokenizer.decode(tokens, clean_up_tokenization_spaces=False)
+        else:
+            raise ValueError(f"Invalid shape passed in: {tokens.shape}")
+    
     def to_str_tokens(
         self, 
         input: Union[str, torch.Tensor, list], 
@@ -288,6 +310,47 @@ class EasyTransformer(HookedRootModule):
         # If token shape is non-empty, raise error
         assert not token.shape, f"Input string: {string} is not a single token!"
         return token.item()
+    
+    def get_token_position(
+    self, 
+    single_token: Union[str, int], 
+    tokens: Union[str, torch.Tensor], 
+    mode="first", 
+    prepend_bos=False):
+        """
+        Get the position of a single_token in a sequence of tokens. 
+
+        Args:
+            single_token (Union[str, int]): The token to search for. Can 
+                be a token index, or a string (but the string must correspond to a
+                single integer)
+            tokens (Union[str, torch.Tensor]): The sequence of tokens to 
+                search in. Can be a string or a rank 1 tensor or a rank 2 tensor
+                with a dummy batch dimension.
+            mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
+        """
+        if isinstance(tokens, str):
+            # If the tokens are a string, convert to tensor
+            tokens = self.to_tokens(tokens, prepend_bos=prepend_bos)
+        
+        if len(tokens.shape)==2:
+            # If the tokens have shape [1, seq_len], flatten to [seq_len]
+            assert tokens.shape[0]==1, f"If tokens are rank two, they must have shape [1, seq_len], not {tokens.shape}"
+            tokens = tokens[0]
+        
+        if isinstance(single_token, str):
+            # If the single token is a string, convert to an integer
+            single_token = self.to_single_token(single_token)
+        elif isinstance(single_token, torch.Tensor):
+            single_token = single_token.item()
+        
+        indices = torch.arange(len(tokens))[tokens==single_token]
+        if mode=="first":
+            return indices[0].item()
+        elif mode=="last":
+            return indices[-1].item()
+        else:
+            raise ValueError(f"mode must be 'first' or 'last', not {mode}")
     
     def single_token_to_residual(
         self, 
@@ -530,11 +593,11 @@ class EasyTransformer(HookedRootModule):
                 state_dict[f"blocks.{l}.mlp.W_in"] = state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"][:, None]
                 del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
 
-            if self.cfg.act_fn.startswith("solu"):
-                # Fold ln3 into activation
-                state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[f"blocks.{l}.mlp.b_out"] + (state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]).sum(-2)
-                state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
-                del state_dict[f"blocks.{l}.mlp.ln.w"], state_dict[f"blocks.{l}.mlp.ln.b"]
+                if self.cfg.act_fn.startswith("solu"):
+                    # Fold ln3 into activation
+                    state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[f"blocks.{l}.mlp.b_out"] + (state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]).sum(-2)
+                    state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
+                    del state_dict[f"blocks.{l}.mlp.ln.w"], state_dict[f"blocks.{l}.mlp.ln.b"]
         # Fold ln_final into Unembed
         if not self.cfg.final_rms:
             # Dumb bug from my old SoLU training code, some models have RMSNorm instead of LayerNorm pre unembed.
@@ -554,8 +617,9 @@ class EasyTransformer(HookedRootModule):
         for l in range(self.cfg.n_layers):
             state_dict[f'blocks.{l}.attn.W_O'] = state_dict[f'blocks.{l}.attn.W_O'] - state_dict[f'blocks.{l}.attn.W_O'].mean(-1, keepdim=True) # W_O is [head_index, d_model, d_head]
             state_dict[f'blocks.{l}.attn.b_O'] = state_dict[f'blocks.{l}.attn.b_O'] - state_dict[f'blocks.{l}.attn.b_O'].mean() # b_O is [d_model]
-            state_dict[f'blocks.{l}.mlp.W_out'] = state_dict[f'blocks.{l}.mlp.W_out'] - state_dict[f'blocks.{l}.mlp.W_out'].mean(-1, keepdim=True)
-            state_dict[f'blocks.{l}.mlp.b_out'] = state_dict[f'blocks.{l}.mlp.b_out'] - state_dict[f'blocks.{l}.mlp.b_out'].mean()
+            if not self.cfg.attn_only:
+                state_dict[f'blocks.{l}.mlp.W_out'] = state_dict[f'blocks.{l}.mlp.W_out'] - state_dict[f'blocks.{l}.mlp.W_out'].mean(-1, keepdim=True)
+                state_dict[f'blocks.{l}.mlp.b_out'] = state_dict[f'blocks.{l}.mlp.b_out'] - state_dict[f'blocks.{l}.mlp.b_out'].mean()
         return state_dict
     
     def center_unembed(self, state_dict: Dict[str, torch.Tensor]):
