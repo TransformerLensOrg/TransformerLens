@@ -165,6 +165,9 @@ class EasyTransformer(HookedRootModule):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
+        if len(tokens.shape)==1:
+            # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
+            tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
         assert isinstance(tokens, torch.Tensor)
@@ -229,7 +232,7 @@ class EasyTransformer(HookedRootModule):
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
-                    return {"logits": logits, "loss": loss}
+                    return (logits, loss)
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None

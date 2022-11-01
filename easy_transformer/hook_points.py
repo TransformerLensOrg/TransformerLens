@@ -251,7 +251,7 @@ class HookedRootModule(nn.Module):
         """
         if reset_hooks_start:
             self.reset_hooks(clear_contexts)
-        cache_dict = self.add_caching_hooks(names_filter, incl_bwd, device, remove_batch_dim)
+        cache_dict = self.add_caching_hooks(names_filter, incl_bwd, device)
         model_out = self(*model_args, **model_kwargs)
 
         if incl_bwd:
@@ -264,6 +264,8 @@ class HookedRootModule(nn.Module):
         
         if reset_hooks_end:
             self.reset_hooks(clear_contexts)
+        if remove_batch_dim:
+            cache.remove_batch_dim()
         return model_out, cache
 
 
