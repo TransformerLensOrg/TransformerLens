@@ -17,6 +17,9 @@ from ioi_utils import e
 from ioi_dataset import IOIDataset
 from ioi_circuit_extraction import do_circuit_extraction
 
+def get_number_in_string(string):
+    return int("".join(filter(str.isdigit, string)))
+
 
 def prepend_padding(tens, model_tokenizer=None, pad_token=None):
     """
@@ -108,9 +111,11 @@ def path_patching_attribution(
 
     if len(kwargs) > 0:
         warnings.warn("KWARGS snuck in: " + str(kwargs.keys()))
-
     if not freeze_mlps:
         warnings.warn("Not freezing MLPs")
+    for hook in receiver_hooks:
+        if get_number_in_string(hook[0]) < max_layer:
+            warnings.warn("Is max layer too large?")
 
     # see path patching in ioi utils
     sender_hooks = []
