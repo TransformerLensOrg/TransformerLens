@@ -71,7 +71,7 @@ solu = EasyTransformer.from_pretrained("solu-10l-old").cuda()
 solu.set_use_attn_result(True)
 
 model_names = ["gpt2", "opt", "neo", "solu"]
-model_name = "gpt2"
+model_name = "neo"
 print(f"USING {model_name}")
 model = eval(model_name)
 
@@ -366,17 +366,18 @@ post_heads = [h for h in all_heads if h[0] > 8]
 model.reset_hooks()
 
 patch_results = torch.zeros_like(results)
+patch_results_mlp = torch.zeros_like(mlp_results)
 
 # for layer, head_idx in tqdm(all_heads):
 for layer in tqdm(range(12)):
-    for head_idx in list(range(model.cfg.n_heads)):
+    for head_idx in [None] + list(range(model.cfg.n_heads)):
         model.reset_hooks()
         model = path_patching_attribution(
             model=model,
             tokens=rand_tokens_repeat,
             patch_tokens=rand_tokens_control,
             sender_heads=all_heads,
-            receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx)],
+            receiver_hooks=[hname(layer, head_idx)], #  [(f"blocks.{layer}.attn.hook_result", head_idx)],
             # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
             device="cuda",
             freeze_mlps=False,
@@ -385,9 +386,13 @@ for layer in tqdm(range(12)):
             extra_hooks=[],
             do_assert=True,    
         )
-        patch_results[layer][head_idx] = metric(model, rand_tokens_repeat, seq_len) - initial_metric
+        if head_idx is None:
+            patch_results_mlp[layer] = metric(model, rand_tokens_repeat, seq_len) - initial_metric
+        else:
+            patch_results[layer][head_idx] = metric(model, rand_tokens_repeat, seq_len) - initial_metric
 
 show_pp(patch_results.T.detach().cpu())
+show_pp(patch_results_mlp.T.detach().cpu())
 
 # cur_metric = metric(model, rand_tokens_repeat, seq_len)
 # print(initial_metric, "to", cur_metric)

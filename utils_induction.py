@@ -17,6 +17,12 @@ from ioi_utils import e
 from ioi_dataset import IOIDataset
 from ioi_circuit_extraction import do_circuit_extraction
 
+def hname(layer, head_idx):
+    if layer is None:
+        return (f"blocks.{layer}.hook_mlp_out", None)
+    else:
+        return (f"blocks.{layer}.attn.hook_result", head_idx)
+
 def get_number_in_string(string):
     return int("".join(filter(str.isdigit, string)))
 
