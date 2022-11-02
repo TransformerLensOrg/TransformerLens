@@ -80,7 +80,7 @@ ioi_dataset = IOIDataset(
     N=N,
     tokenizer=model.tokenizer,
     prepend_bos=False,
-)
+) # TODO make this a seeded dataset
 
 print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
 #%% [markdown]
@@ -96,7 +96,7 @@ print(f"The model gets average IO probs {model_io_probs.item()} over {N} example
 circuit = deepcopy(CIRCUIT)
 
 # we make the ABC dataset in order to knockout other model components
-abc_dataset = (
+abc_dataset = ( # TODO seeded
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"))
@@ -138,6 +138,7 @@ def plot_path_patching(
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
                 positions=[position],
+                verbose=False,
                 return_hooks=False,
                 freeze_mlps=False,
                 have_internal_interactions=False,
