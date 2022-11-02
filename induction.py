@@ -900,7 +900,7 @@ while len(nodes) > 0:
             if abs(head_results[layer, head_idx]) > threshold:
                 important_indices.add((get_hook(layer, head_idx), pos))
         if abs(mlp_results[layer]) > threshold:
-            important_indices.add((get_hook(layer, head_idx), pos))
+            important_indices.add((get_hook(layer, None), pos))
 
     important_indices.add((get_hook(layer, head_idx), cur_pos))
 
