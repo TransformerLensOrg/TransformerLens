@@ -133,14 +133,11 @@ def plot_path_patching(
 
             model = path_patching(
                 model=model,
-                source_dataset=abc_dataset,
-                target_dataset=ioi_dataset,
-                ioi_dataset=ioi_dataset,
+                D_new=abc_dataset,
+                D_orig=ioi_dataset,
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
-                max_layer=12,
                 positions=[position],
-                verbose=False,
                 return_hooks=False,
                 freeze_mlps=False,
                 have_internal_interactions=False,
