@@ -17,7 +17,7 @@ from ioi_utils import e
 from ioi_dataset import IOIDataset
 from ioi_circuit_extraction import do_circuit_extraction
 
-def hname(layer, head_idx):
+def get_hook(layer, head_idx):
     if layer is None:
         return (f"blocks.{layer}.hook_mlp_out", None)
     else:
@@ -25,6 +25,12 @@ def hname(layer, head_idx):
 
 def get_number_in_string(string):
     return int("".join(filter(str.isdigit, string)))
+
+def get_all_subsets(my_list):
+    if len(my_list) == 0:
+        return [[]]
+    subsets = get_all_subsets(my_list[1:])
+    return subsets + [[my_list[0]] + s for s in subsets]
 
 
 def prepend_padding(tens, model_tokenizer=None, pad_token=None):

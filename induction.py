@@ -120,11 +120,11 @@ arrs = []
 # sweeeeeet plot
 
 show_losses(
-    models=[eval(model_name) for model_name in model_names],
-    model_names=model_names,
-    rand_tokens_repeat=rand_tokens_repeat,
+    models=[neo], # eval(model_name) for model_name in model_names],
+    model_names=model_names[:1],
+    rand_tokens_repeat=rand_tokens_repeat.cuda(),
     seq_len=seq_len,
-    mode="logits",
+    mode="loss",
 )
 #%% [markdown]
 # Induction scores
@@ -326,6 +326,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
                 saved_tensors.append(results.clone().cpu())
                 saved_tensors.append(mlp_results.clone().cpu())
 #%% [markdown]
+
 # Get top 5 induction heads
 warnings.warn("Check that things aren't in decreasing order, maaan")
 
@@ -345,7 +346,7 @@ while len(induct_heads) < no_heads:
         induct_heads.append(head)
     else:
         neg_heads.append(head)
-        print(f" {head} because it's negative, with value {results[head]}")
+        print(f" {head} because it's negative, with value {results[head]} and induction score {induction_scores_array[head]}")
     # induct_heads.append(head)
 
 
@@ -354,8 +355,8 @@ if "results" in dir():
     induct_heads = sorted(induct_heads, key=lambda x: -(results[x]), reverse=True)
 
 # have a look at these numbers
-for layer, head in induct_heads:
-    print(f"Layer: {layer}, Head: {head}, Induction score: {induction_scores_array[layer][head]}, Loss diff: {results[layer][head]}")
+for layer, head_idx in induct_heads:
+    print(f"Layer: {layer}, Head: {head_idx}, Induction score: {induction_scores_array[layer][head_idx]}, {metric.__name__}: {results[layer][head_idx]}")
 
 print(induct_heads)
 #%% [markdown]
@@ -377,7 +378,7 @@ for layer in tqdm(range(12)):
             tokens=rand_tokens_repeat,
             patch_tokens=rand_tokens_control,
             sender_heads=all_heads,
-            receiver_hooks=[hname(layer, head_idx)], #  [(f"blocks.{layer}.attn.hook_result", head_idx)],
+            receiver_hooks=[get_hook(layer, head_idx)], #  [(f"blocks.{layer}.attn.hook_result", head_idx)],
             # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
             device="cuda",
             freeze_mlps=False,
@@ -396,9 +397,48 @@ show_pp(patch_results_mlp.T.detach().cpu())
 
 # cur_metric = metric(model, rand_tokens_repeat, seq_len)
 # print(initial_metric, "to", cur_metric)
-#%%
 
-# plot a scatter plot in plotly with labels
+#%% [markdown]
+# Subsets of these
+# TODO figure out why this cell is not deterministic : (
+
+names = []
+losses = []
+logits = []
+
+for subset in get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)]):
+    model.reset_hooks()
+
+    for layer, head_idx in subset + induct_heads[:5]:
+        model.add_hook(*hooks[(layer, head_idx)])
+
+    names.append(len(subset))
+    losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
+    logits.append(logits_metric(model, rand_tokens_repeat, seq_len)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
+
+fig = go.Figure()
+
+# make a scatter plot of losses against logits, with labels for each point
+fig.add_trace(
+    go.Scatter(
+        x=logits,
+        y=losses,
+        mode="markers",
+        text=names,
+        marker=dict(size=12, color=names, colorscale="Viridis", showscale=True),
+    )
+)
+
+# fig.add_scatter(x=logits, y=losses, mode="markers", text=names)
+
+# x axis 
+fig.update_xaxes(title_text="Logits")
+fig.update_yaxes(title_text="Loss")
+
+fig.show()
+
+#%%
+# Plot a scatter plot in plotly with labels
 fig = go.Figure()
 for layer in range(model.cfg.n_layers):
     for head in range(model.cfg.n_heads):
@@ -413,7 +453,6 @@ fig.show()
 
 #%% [markdown]
 # Do some tracing the information flow type things
-
 
 
 #%% [markdown]
@@ -722,3 +761,39 @@ def compute_logit_probs(rand_tokens_repeat, model):
 
 
 compute_logit_probs(rand_tokens_repeat, model)
+
+#%% [markdown]
+# Get some signal on the eigenvalues of all of the models' heads
+
+names = []
+metrics = []
+colors = []
+
+for layer in range(6, 9, 2):
+    for head_idx in range(12):
+        WQ = model.state_dict()[f"blocks.{layer}.attn.W_Q"][head_idx] # 12 768 64
+        WK = model.state_dict()[f"blocks.{layer}.attn.W_K"][head_idx] # 12 768 64
+        WQK = FactoredMatrix(WQ, WK.T)
+        eigs = WQK.eigenvalues.cpu()
+        reals = [point.real for point in eigs]
+        imags = [point.imag for point in eigs]
+        mags = [point.abs() for point in eigs]
+        names.append(f"Layer {layer}, head {head_idx}")
+        metrics.append(sum(reals) / sum(mags))
+        if (layer, head_idx) in induct_heads: # is induction
+            colors.append("blue")
+        elif (layer, head_idx) in neg_heads: # is negative 
+            colors.append("red")
+        else: # is other
+            colors.append("black")
+
+# plot a bar chart of the eigenvalues wiht 
+for color in ["blue", "red", "black"]:
+    inds = [i for i, c in enumerate(colors) if c == color]
+    plt.bar([names[i] for i in inds], [metrics[i] for i in inds], color=color)
+# add legend
+plt.legend(["Induction", "Negative", "Other"])
+# make the x axis labels vertical
+plt.xticks(rotation=90)
+# make frame big
+plt.gcf().set_size_inches(20, 10)
