@@ -2,7 +2,7 @@
 # Arthur investigation into dropout
 from copy import deepcopy
 import torch
-
+from queue import Queue
 from easy_transformer.experiments import get_act_hook
 from utils_induction import *
 
@@ -397,25 +397,28 @@ show_pp(patch_results_mlp.T.detach().cpu())
 # Subsets of these
 # TODO figure out why this cell is not deterministic : (
 
-show_fig = False
+show_fig = True
 vals = []
 subsets = [[] for _ in range(30)]
+tot = 0
 
 # for prefix_length in range(len(induct_heads)):
 for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
+    tot += 1
+    if tot > 50: break
     names = []
     losses = []
     logits = []
 
-    for idx, subset in enumerate(get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)])):
+    for idx, subset in enumerate(get_all_subsets(neg_heads)): # get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)])):
         if idx == 0:
             assert len(subset) == 0
         model.reset_hooks()
 
-        for layer, head_idx in subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
+        for layer, head_idx in [(6, 1)] + subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
             model.add_hook(*hooks[(layer, head_idx)])
 
-        names.append(len(subset))
+        names.append(str(subset))
         losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
         logits.append(logits_metric(model, rand_tokens_repeat, seq_len)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
 
@@ -433,7 +436,7 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
                 y=losses,
                 mode="markers",
                 text=names,
-                marker=dict(size=12, color=names, colorscale="Viridis", showscale=True),
+                # marker=dict(size=12, color=names, colorscale="Viridis", showscale=True),
             )
         )
 
@@ -445,7 +448,8 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
         )
 
         fig.show()
-    
+    break
+
 # plot a histogram of vals
 fig = go.Figure()
 fig.add_trace(go.Histogram(x=vals))
@@ -813,3 +817,59 @@ plt.legend(["Induction", "Negative", "Other"])
 plt.xticks(rotation=90)
 # make frame big
 plt.gcf().set_size_inches(20, 10)
+
+#%% [markdown]
+# Ambitious: the backwards pass of interp
+
+qu = Queue()
+
+for layer in range(model.cfg.n_layers):
+    for head_idx in [None] + list(range(model.cfg.n_heads)):
+        assert len(rand_tokens_repeat.shape) == 2, ("rand_tokens_repeat must be 2D", rand_tokens_repeat.shape)
+        
+        for pos in [rand_tokens_repeat.shape[1] - 1]:
+            """
+            For a first prototype, let's literally deal with the last index only
+            """
+            qu.put((get_hook(layer, head_idx), pos))
+
+final_node = ((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None), rand_tokens_repeat.shape[1] - 1)
+qu.put(final_node)
+important_indices = {final_node}
+
+#%%
+
+while not qu.empty():
+    hook, pos = qu.get()
+    if (hook, pos) not in important_indices:
+        print(f"Skipping {(hook, pos)} as it wasn't marked as important")
+
+    hook_name, head_idx = hook
+
+    if head_idx is None:
+        pass
+
+    else: # this is an attention head
+        pass
+
+#%%
+# def backwards_pass():
+#     """
+#     `cur_state` is a (node, position) pair
+#     """
+
+if True:
+    if is_attn_head:
+        # do patching of Q and K and V (at all positions?)
+        # all positions is a lot of iterations, man 
+
+
+    else:
+        # (is MLP)
+
+        # do patching of the inputs to me
+        # zoom in on the things that are important
+
+        # ... hook the output of this head to only the important details
+        # (man, we really need circuit rewrites cri)
+        # do this with like plussing and minusing and stuff?
