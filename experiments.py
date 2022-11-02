@@ -483,8 +483,8 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             receiver_hooks.append(("blocks.11.hook_resid_post", None))
             model = path_patching(
                 model=model,
-                source_dataset=abc_dataset,
-                target_dataset=ioi_dataset,
+                D_new=abc_dataset,
+                D_orig=ioi_dataset,
                 ioi_dataset=ioi_dataset,
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,

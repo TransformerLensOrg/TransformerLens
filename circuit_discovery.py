@@ -152,124 +152,6 @@ def path_patching(
             model.add_hook(hook_name, hook)
         return model
 
-def path_patching2(
-    model: EasyTransformer, 
-    orig_data, 
-    new_data, 
-    senders: List[Tuple], 
-    receiver_hooks: List[Tuple], 
-    max_layer: Union[int, None] = None, 
-    positions: Union[torch.Tensor, None] = None,
-    return_hooks: bool = False,
-    freeze_mlps: bool = True):
-    """ mlps are by default considered as just another component and so are
-        by default frozen when collecting acts on receivers. 
-        orig_data: string, torch.Tensor, or list of strings - any format that can be passed to the model directly
-        new_data: same as orig_data
-        senders: list of tuples (layer, head) for attention heads and (layer, None) for mlps
-        receiver_hooks: list of tuples (hook_name, head) for attn heads and (hook_name, None) for mlps
-        max_layer: layers beyond max_layer are not frozen when collecting receiver activations
-        positions: default None and patch at all positions, or a tensor specifying the positions at which to patch
-    """
-    if max_layer is None:
-        max_layer = model.cfg.n_layers
-    assert max_layer <= model.cfg.n_layers
-
-    # save activations from orig
-    orig_cache = {}
-    model.cache_all(orig_cache)
-    _ = model(orig_data)
-    model.reset_hooks()
-
-    # process senders
-    sender_hooks = []
-    for layer, head in senders:
-        if head is not None: # (layer, head) for attention heads
-            sender_hooks.append((f"blocks.{layer}.attn.hook_result", head))
-        else: # (layer, None) for mlps
-            sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
-    sender_hook_names = [x[0] for x in sender_hooks]
-
-    # save activations from new for senders
-    new_cache = {}
-    model.cache_some(new_cache, lambda x: x in sender_hook_names)
-    _ = model(new_data)
-    model.reset_hooks()
-
-    # set up receiver cache
-    receiver_hook_names = [x[0] for x in receiver_hooks]
-    receiver_cache = {}
-
-    # collect receiver acts for each receiver separately
-    for hook_name, head in receiver_hooks:
-        model.cache_some(receiver_cache, lambda x: x == hook_name)
-        receiver_layer = int(hook_name.split('.')[1]) # assumes hook names are 'blocks.n.xxx'
-        # configure hooks for freezing activations
-        for layer in range(min(max_layer, receiver_layer)):
-            # heads
-            for head in range(model.cfg.n_heads):
-                # if (layer, head) in senders:
-                #     continue
-                for hook_template in [
-                    'blocks.{}.attn.hook_q',
-                    'blocks.{}.attn.hook_k',
-                    'blocks.{}.attn.hook_v',
-                ]:
-                    hook_name = hook_template.format(layer)
-                    hook = get_act_hook(
-                        patch_all,
-                        alt_act=orig_cache[hook_name],
-                        idx=head,
-                        dim=2,
-                    )
-                    model.add_hook(hook_name, hook)
-            # mlp
-            if freeze_mlps:
-                hook_name = f'blocks.{layer}.hook_mlp_out'
-                hook = get_act_hook(
-                    patch_all,
-                    alt_act=orig_cache[hook_name],
-                    idx=None,
-                    dim=None,
-                )
-                model.add_hook(hook_name, hook)
-    
-        # for senders, add new hook to patching in new acts
-        for hook_name, head in sender_hooks:
-            #assert not torch.allclose(orig_cache[hook_name], new_cache[hook_name]), (hook_name, head)
-            hook = get_act_hook(
-                partial(patch_positions, positions=positions),
-                alt_act=new_cache[hook_name],
-                idx=head,
-                dim=2 if head is not None else None,
-            )
-            model.add_hook(hook_name, hook)
-    
-        # forward pass on orig, where patch in new acts for senders and orig acts for the rest
-        # and save activations on receivers
-        _ = model(orig_data)
-        model.reset_hooks() # should this be here??
-
-    #print(receiver_cache.keys())
-    # add hooks for final forward pass on orig, where we patch in hybrid acts for receivers
-    hooks = []
-    for hook_name, head in receiver_hooks:
-        #assert not torch.allclose(orig_cache[hook_name], receiver_cache[hook_name])
-        hook = get_act_hook(
-            partial(patch_positions, positions=positions),
-            alt_act=receiver_cache[hook_name],
-            idx=head,
-            dim=2 if head is not None else None,
-        )
-        hooks.append((hook_name, hook))
-    
-    if return_hooks:
-        return hooks
-    else:
-        for hook_name, hook in hooks:
-            model.add_hook(hook_name, hook)
-        return model
-
 # %%
 orig = "When John and Mary went to the store, John gave a bottle of milk to Mary."
 new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary."
@@ -350,7 +232,7 @@ def path_patching_up_to(
 ):
     attn_results = np.zeros((layer, model.cfg.n_heads))
     mlp_results = np.zeros(layer)
-    for l in range(layer):
+    for l in tqdm(range(layer)):
         for h in range(model.cfg.n_heads):
             model = path_patching(
                 model,
