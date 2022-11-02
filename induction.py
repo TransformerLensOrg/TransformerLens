@@ -402,7 +402,11 @@ show_pp(patch_results_mlp.T.detach().cpu())
 # Subsets of these
 # TODO figure out why this cell is not deterministic : (
 
-for prefix_length in range(len(induct_heads)):
+# for prefix_length in range(len(induct_heads)):
+for subset1 in get_all_subsets(induct_heads[1:]):
+
+    if len(subset1) < 4: continue
+
     names = []
     losses = []
     logits = []
@@ -410,7 +414,7 @@ for prefix_length in range(len(induct_heads)):
     for subset in get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)]):
         model.reset_hooks()
 
-        for layer, head_idx in subset + induct_heads[:prefix_length]:
+        for layer, head_idx in subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
             model.add_hook(*hooks[(layer, head_idx)])
 
         names.append(len(subset))
@@ -432,7 +436,7 @@ for prefix_length in range(len(induct_heads)):
 
     # add caption to colorbar    
     fig.update_layout(
-        title=f"Loss and logits when we ablate {prefix_length} top induction heads, and k (see color bar) negative induction heads",
+        title=f"Loss and logits when we ablate {subset1} (top induction heads), and k (see color bar) negative induction heads",
         xaxis_title="Logits",
         yaxis_title="Loss",
     )
