@@ -1,7 +1,7 @@
 # %%
 from utils_circuit_discovery import get_hook_tuple
 from functools import partial
-import plotly.graph_objects as go
+#import plotly.graph_objects as go
 import numpy as np
 from typing import List, Tuple, Dict, Union, Optional, Callable, Any
 from tqdm import tqdm
@@ -337,67 +337,96 @@ px.imshow(np.expand_dims(mlp_results_n, axis=0), color_continuous_scale='RdBu', 
 
 class Node():
     def __init__(self,
-        hook_name,
-        head,
-        important = False,
+        layer: int,
+        head: int,
+        position: int, 
+        important: bool = False,
     ):
-        self.hook_name = hook_name
+        self.layer = layer
         self.head = head
+        self.position = position
+        self.hook_name = get_hook_tuple(self.layer, self.head)
         self.important = important
-        self.layer = int(hook_name.split('.')[1])
 
 class HypothesisTree():
-    def __init__(self, model, metric, orig_data, new_data):
+    def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int):
         self.model = model
-        self.node_stack = []
+        #self.node_stack = []
+        #self.current_node = self.node_stack[-1]
+        self.possible_positions = [0] # TODO: deal with positions
+        self.node_stack = OrderedDict()
         self.populate_node_stack()
-        self.current_node = self.node_stack[-1]
+        self.current_node = self.node_stack[next(reversed(self.node_stack))] # last element
         self.metric = metric
+        self.dataset = dataset
         self.orig_data = orig_data
         self.new_data = new_data
+        self.threshold = threshold
+        self.edges = []
 
     def populate_node_stack(self):
-        # FIX
         for layer in range(self.model.cfg.n_layers):
-            for head in range(self.model.cfg.n_heads):
-                self.node_stack.append(Node(layer, head)] = False
-            self.node_stack[(layer, None)] = False
-        self.node_stack[(self.model.cfg.n_layers, None)] = True # this represents blocks.{last}.hook_resid_post
+            for head in list(range(self.model.cfg.n_heads)) + [None]: # includes None for mlp
+                for pos in self.possible_positions:
+                    node = Node(layer, head, pos)
+                    self.node_stack[(layer, head, pos)] = node
+                    #self.importance_dict[node] = False
+                    #self.node_stack.append(node)
+        layer = self.model.cfg.n_layers
+        pos = self.possible_positions[-1] # assume the last position specified is the one that we care about in the residual stream
+        resid_post = Node(layer, None, pos) 
+        resid_post.hook_name = f'blocks.{layer-1}.hook_resid_post'
+        self.node_stack[(layer, None, pos)] = resid_post # this represents blocks.{last}.hook_resid_post
+        #self.node_stack.append(resid_post) 
 
     def eval(self):
         """Process current_node, then move to next current_node"""
 
-        node = self.node_stack.pop()
+        _, node = self.node_stack.popitem()
 
-        # for all sender hooks
+        # do path patching on all nodes before node
         attn_results, mlp_results = path_patching_up_to(
             model=model, 
             metric=self.metric,
+            dataset=self.dataset,
+            layer=node.layer,
             orig_data=self.orig_data, 
             new_data=self.new_data, 
-            receiver_hooks=[(node.hook_name, node.head)], 
-            max_layer: Union[int, None] = None,
-            positions: Union[torch.Tensor, None] = None,
-            return_hooks: bool = False,
-            freeze_mlps: bool = True
-        )
+            receiver_hooks=[(node.hook_name, node.head)],
+            positions=node.position
+        ) 
 
-        #     # do path patching
-        # show heatmap? apply threshold (set flags)
+        # process result and mark nodes above threshold as important
+        for layer in range(attn_results.shape[0]):
+            for head in range(attn_results.shape[1]):
+                if attn_results[layer, head] > self.threshold:
+                    self.node_stack[(layer, head, node.position)].important = True
+                    self.edge.append((
+                        (node.layer, node.head, node.position), 
+                        (layer, head, node.position)))
+            if mlp_results[layer] > self.threshold:
+                self.node_stack[(layer, None, node.position)].important = True
+                self.edge.append((
+                    (node.layer, node.head, node.position), 
+                    (layer, None, node.position)))
+
         # iterate to next node
     
         # update self.current_node
-        while len(self.node_stack) > 0 and not self.node_stack[-1].important:
-            self.node_stack.pop()
+        while len(self.node_stack) > 0 and not self.node_stack[next(reversed(self.node_stack))].important:
+            self.node_stack.popitem()
         if len(self.node_stack) > 0:
-            self.current_node = self.node_stack[-1]
+            self.current_node = self.node_stack[next(reversed(self.node_stack))]
         else:
             self.current_node = None
 
     def show(self):
         print("pretty picture")
 
-h = HypothesisTree(model)    
+metric = lambda x, y: 1
+orig = "When John and Mary went to the store, John gave a bottle of milk to Mary."
+new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary."
+h = HypothesisTree(model, metric, [], orig, new, 0.2)
 
 # %%
 
@@ -446,8 +475,3 @@ for layer in range(12):
                 receiver_hooks=receiver_hooks,
                 positions=[ioi_dataset.word_idx['end']]
             )
-
-def discover_circuit(..., start_point: Tuple):
-    return new_receiver_hooks
-
-discover_circuit("blocks.11.hook_resid_post") -> [name movers]
