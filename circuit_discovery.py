@@ -1,4 +1,5 @@
 # %%
+from utils_circuit_discovery import get_hook_tuple
 from functools import partial
 import plotly.graph_objects as go
 import numpy as np
@@ -14,6 +15,11 @@ from collections import OrderedDict
 from easy_transformer import EasyTransformer
 from easy_transformer.experiments import get_act_hook
 
+from IPython import get_ipython
+ipython = get_ipython()
+if ipython is not None:
+    ipython.magic("load_ext autoreload")
+    ipython.magic("autoreload 2")
 # %%
 model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 model = EasyTransformer.from_pretrained(model_name)
@@ -230,6 +236,7 @@ def path_patching_up_to(
     receiver_hooks,
     positions
 ):
+    model.reset_hooks()
     attn_results = np.zeros((layer, model.cfg.n_heads))
     mlp_results = np.zeros(layer)
     for l in tqdm(range(layer)):
@@ -313,6 +320,7 @@ receiver_hooks = [
 attn_results, mlp_results = path_patching_up_to(
     model, 
     layer=10, 
+
     metric=logit_diff_io_s,
     dataset=ioi_dataset,
     orig_data=ioi_dataset.toks.long(),
@@ -326,28 +334,71 @@ px.imshow(attn_results_n, color_continuous_scale='RdBu', color_continuous_midpoi
 px.imshow(np.expand_dims(mlp_results_n, axis=0), color_continuous_scale='RdBu', color_continuous_midpoint=0)
 
 # %%
+
+class Node():
+    def __init__(self,
+        hook_name,
+        head,
+        important = False,
+    ):
+        self.hook_name = hook_name
+        self.head = head
+        self.important = important
+        self.layer = int(hook_name.split('.')[1])
+
 class HypothesisTree():
-    def __init__(self, model):
+    def __init__(self, model, metric, orig_data, new_data):
         self.model = model
-        self.node_stack = OrderedDict() # keys are model components, values are True for important ones and False for unimportant
+        self.node_stack = []
         self.populate_node_stack()
-        self.current_node = 
+        self.current_node = self.node_stack[-1]
+        self.metric = metric
+        self.orig_data = orig_data
+        self.new_data = new_data
 
     def populate_node_stack(self):
+        # FIX
         for layer in range(self.model.cfg.n_layers):
             for head in range(self.model.cfg.n_heads):
-                self.node_stack[(layer, head)] = False
+                self.node_stack.append(Node(layer, head)] = False
             self.node_stack[(layer, None)] = False
         self.node_stack[(self.model.cfg.n_layers, None)] = True # this represents blocks.{last}.hook_resid_post
 
-
     def eval(self):
-        # 
-        pass
+        """Process current_node, then move to next current_node"""
+
+        node = self.node_stack.pop()
+
+        # for all sender hooks
+        attn_results, mlp_results = path_patching_up_to(
+            model=model, 
+            metric=self.metric,
+            orig_data=self.orig_data, 
+            new_data=self.new_data, 
+            receiver_hooks=[(node.hook_name, node.head)], 
+            max_layer: Union[int, None] = None,
+            positions: Union[torch.Tensor, None] = None,
+            return_hooks: bool = False,
+            freeze_mlps: bool = True
+        )
+
+        #     # do path patching
+        # show heatmap? apply threshold (set flags)
+        # iterate to next node
+    
+        # update self.current_node
+        while len(self.node_stack) > 0 and not self.node_stack[-1].important:
+            self.node_stack.pop()
+        if len(self.node_stack) > 0:
+            self.current_node = self.node_stack[-1]
+        else:
+            self.current_node = None
 
     def show(self):
         print("pretty picture")
-    
+
+h = HypothesisTree(model)    
+
 # %%
 
 base_hypothesis = HypothesisTree()
