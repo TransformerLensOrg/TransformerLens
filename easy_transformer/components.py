@@ -19,7 +19,7 @@ from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
 from fancy_einsum import einsum
 
-from easy_transformer.caching import (
+from easy_transformer.past_key_value_caching import (
     EasyTransformerKeyValueCache,
     EasyTransformerKeyValueCacheEntry,
 )

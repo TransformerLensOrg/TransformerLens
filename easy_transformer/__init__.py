@@ -4,7 +4,7 @@ from . import experiments
 from . import utils
 from . import evals
 from .activation_cache import ActivationCache
-from .caching import (
+from .past_key_value_caching import (
     EasyTransformerKeyValueCache,
     EasyTransformerKeyValueCacheEntry,
 )
