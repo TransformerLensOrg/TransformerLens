@@ -354,3 +354,11 @@ def show_losses(
     )
 
     fig.show()
+
+def get_position(my_list):
+    """
+    Given a list l, return the position of l[0] in l when sorted
+    """
+    first = my_list[0]
+    my_list = sorted(my_list)
+    return my_list.index(first)

@@ -328,8 +328,6 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
 #%% [markdown]
 
 # Get top 5 induction heads
-warnings.warn("Check that things aren't in decreasing order, maaan")
-
 no_heads = 10
 heads_by_induction = max_2d(induction_scores_array, 144)[0]
 induct_heads = []
@@ -342,13 +340,10 @@ while len(induct_heads) < no_heads:
     head = heads_by_induction[idx]
     idx+=1
     if "results" in dir() and (mult_factor * results[head]) <= 0:
-        # pass
         induct_heads.append(head)
     else:
         neg_heads.append(head)
-        print(f" {head} because it's negative, with value {results[head]} and induction score {induction_scores_array[head]}")
-    # induct_heads.append(head)
-
+        print(f" {head} is a candidate `negative induction head`, with {metric.__name__}={results[head]:.2f} and induction score {induction_scores_array[head]:.2f}")
 
 # sort the induction heads by their results
 if "results" in dir():
@@ -356,7 +351,7 @@ if "results" in dir():
 
 # have a look at these numbers
 for layer, head_idx in induct_heads:
-    print(f"Layer: {layer}, Head: {head_idx}, Induction score: {induction_scores_array[layer][head_idx]}, {metric.__name__}: {results[layer][head_idx]}")
+    print(f"Layer: {layer}, Head: {head_idx}, {metric.__name__}: {results[layer][head_idx]:.2f}, Induction score: {induction_scores_array[layer][head_idx]:.2f}")
 
 print(induct_heads)
 #%% [markdown]
@@ -402,16 +397,19 @@ show_pp(patch_results_mlp.T.detach().cpu())
 # Subsets of these
 # TODO figure out why this cell is not deterministic : (
 
+show_fig = False
+vals = []
+subsets = [[] for _ in range(30)]
+
 # for prefix_length in range(len(induct_heads)):
-for subset1 in get_all_subsets(induct_heads[1:]):
-
-    if len(subset1) < 4: continue
-
+for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
     names = []
     losses = []
     logits = []
 
-    for subset in get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)]):
+    for idx, subset in enumerate(get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)])):
+        if idx == 0:
+            assert len(subset) == 0
         model.reset_hooks()
 
         for layer, head_idx in subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
@@ -421,27 +419,43 @@ for subset1 in get_all_subsets(induct_heads[1:]):
         losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
         logits.append(logits_metric(model, rand_tokens_repeat, seq_len)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
 
-    fig = go.Figure()
+    pos = get_position(logits)
+    vals.append(pos)
+    subsets[pos].append((subset1, subset, losses, logits))
 
-    # make a scatter plot of losses against logits, with labels for each point
-    fig.add_trace(
-        go.Scatter(
-            x=logits,
-            y=losses,
-            mode="markers",
-            text=names,
-            marker=dict(size=12, color=names, colorscale="Viridis", showscale=True),
+    if show_fig:
+        fig = go.Figure()
+
+        # make a scatter plot of losses against logits, with labels for each point
+        fig.add_trace(
+            go.Scatter(
+                x=logits,
+                y=losses,
+                mode="markers",
+                text=names,
+                marker=dict(size=12, color=names, colorscale="Viridis", showscale=True),
+            )
         )
-    )
 
-    # add caption to colorbar    
-    fig.update_layout(
-        title=f"Loss and logits when we ablate {subset1} (top induction heads), and k (see color bar) negative induction heads",
-        xaxis_title="Logits",
-        yaxis_title="Loss",
-    )
+        # add caption to colorbar    
+        fig.update_layout(
+            title=f"Loss and logits when we ablate {subset1} (top induction heads), and k (see color bar) negative induction heads",
+            xaxis_title="Logits",
+            yaxis_title="Loss",
+        )
 
-    fig.show()
+        fig.show()
+    
+# plot a histogram of vals
+fig = go.Figure()
+fig.add_trace(go.Histogram(x=vals))
+fig.update_layout(
+    title=f"Position of the subset of top induction heads in the list of subsets of negative induction heads",
+    xaxis_title="Position in list",
+    yaxis_title="Frequency",
+)
+fig.show()
+
 #%%
 # Plot a scatter plot in plotly with labels
 fig = go.Figure()
