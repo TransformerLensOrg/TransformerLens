@@ -372,6 +372,9 @@ def act_name(
     act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
     act_name('pre5')=='blocks.5.mlp.hook_pre'
     """
+    if ("." in name or name.startswith("hook_")) and layer is None and layer_type is None:
+        # If this was called on a full name, just return it
+        return name
     match = re.match(r"([a-z]+)(\d+)([a-z]?.*)", name)
     if match is not None:
         name, layer, layer_type = match.groups(0)
