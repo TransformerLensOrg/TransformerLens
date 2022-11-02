@@ -21,10 +21,12 @@ from transformers import (
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer import EasyTransformerConfig
 
-from easy_transformer.caching import (
+# Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
+from easy_transformer.past_key_value_caching import (
     EasyTransformerKeyValueCache,
     EasyTransformerKeyValueCacheEntry,
 )
+from easy_transformer.activation_cache import ActivationCache
 
 from easy_transformer.components import *
 import easy_transformer.loading_from_pretrained as loading
@@ -238,6 +240,21 @@ class EasyTransformer(HookedRootModule):
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
+    
+    def run_with_cache(self, 
+        *model_args, 
+        return_cache_object=True, 
+        remove_batch_dim=False, 
+        **kwargs) -> Union[ActivationCache, Dict[str, torch.Tensor]]:
+        """
+        Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful EasyTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule.
+        """
+        cache_dict = super().run_with_cache(*model_args, remove_batch_dim=remove_batch_dim, **kwargs)
+        if return_cache_object:
+            cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)
+            return cache
+        else:
+            return cache_dict
                 
     def set_tokenizer(self, tokenizer):
         """

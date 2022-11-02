@@ -187,9 +187,6 @@ class HookedRootModule(nn.Module):
         Returns:
             cache (dict): The cache where activations will be stored.
         """
-        if remove_batch_dim:
-            logging.warning("Remove batch dim in caching hooks is deprecated. Use the Cache object or run_with_cache flags instead")
-
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         if cache is None:
@@ -233,7 +230,6 @@ class HookedRootModule(nn.Module):
         reset_hooks_end=True,
         reset_hooks_start=True,
         clear_contexts=False,
-        return_cache_object=True,
         **model_kwargs):
         """
         Runs the model and returns model output and a Cache object
@@ -247,26 +243,18 @@ class HookedRootModule(nn.Module):
         reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
         including those added in this run)
         clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
-        return_cache_obj (bool): If True, returns an ActivationCache object, with many EasyTransformer specific methods. Otherwise returns a dictionary.
         """
         if reset_hooks_start:
             self.reset_hooks(clear_contexts)
-        cache_dict = self.add_caching_hooks(names_filter, incl_bwd, device)
+        cache_dict = self.add_caching_hooks(names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim)
         model_out = self(*model_args, **model_kwargs)
 
         if incl_bwd:
             model_out.backward()
         
-        if return_cache_object:
-            cache = ActivationCache(cache_dict, self)
-        else:
-            cache = cache_dict
-        
         if reset_hooks_end:
             self.reset_hooks(clear_contexts)
-        if remove_batch_dim:
-            cache.remove_batch_dim()
-        return model_out, cache
+        return model_out, cache_dict
 
 
     def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):

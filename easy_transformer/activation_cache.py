@@ -29,10 +29,11 @@ class ActivationCache:
     def __init__(
         self, 
         cache_dict: dict, 
-        model):
+        model,
+        has_batch_dim: bool=True):
         self.cache_dict = cache_dict
         self.model = model
-        self.has_batch_dim = True
+        self.has_batch_dim = has_batch_dim
         self.has_embed = "hook_embed" in self.cache_dict
         self.has_pos_embed = "hook_pos_embed" in self.cache_dict
     
