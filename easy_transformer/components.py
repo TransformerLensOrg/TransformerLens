@@ -48,10 +48,10 @@ class Unembed(nn.Module):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         # Note that there's a separate variable for d_vocab_out and d_vocab (the input vocab size). For language tasks these are always the same, but for algorithmic tasks we may want them to be different.
-        self.W_U: TensorType["d_model", "vocab_out"] = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_vocab_out))
-        self.b_U: TensorType["vocab_out"] = nn.Parameter(torch.zeros(self.cfg.d_vocab_out))
+        self.W_U: TensorType["d_model", "d_vocab_out"] = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_vocab_out))
+        self.b_U: TensorType["d_vocab_out"] = nn.Parameter(torch.zeros(self.cfg.d_vocab_out))
 
-    def forward(self, residual: TensorType["batch", "position", "d_model"]) -> TensorType["batch", "position", "vocab_out"]:
+    def forward(self, residual: TensorType["batch", "position", "d_model"]) -> TensorType["batch", "position", "d_vocab_out"]:
         return einsum("batch pos d_model, d_model vocab -> batch pos vocab", residual, self.W_U) + self.b_U
 
 # Positional Embeddings
@@ -73,7 +73,7 @@ class PosEmbed(nn.Module):
 
         tokens_length = tokens.size(-1)
         pos_embed = self.W_pos[past_kv_pos_offset:tokens_length + past_kv_pos_offset, :]  # [pos, d_model]
-        broadcast_pos_embed = einops.repeat(pos_embed, "... -> batch ...", batch=tokens.size(0))  # [batch, pos, d_model]
+        broadcast_pos_embed = einops.repeat(pos_embed, "pos d_model -> batch pos d_model", batch=tokens.size(0))  # [batch, pos, d_model]
         return broadcast_pos_embed
 
 
