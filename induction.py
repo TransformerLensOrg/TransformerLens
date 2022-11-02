@@ -1,6 +1,8 @@
 #%% [markdown]
 # Arthur investigation into dropout
 from copy import deepcopy
+from inspect import stack
+from tkinter import wantobjects
 import torch
 from queue import Queue
 from easy_transformer.experiments import get_act_hook
@@ -821,36 +823,88 @@ plt.gcf().set_size_inches(20, 10)
 #%% [markdown]
 # Ambitious: the backwards pass of interp
 
-qu = Queue()
+nodes = []
+cur_pos = rand_tokens_repeat.shape[1] - 1
 
 for layer in range(model.cfg.n_layers):
     for head_idx in [None] + list(range(model.cfg.n_heads)):
         assert len(rand_tokens_repeat.shape) == 2, ("rand_tokens_repeat must be 2D", rand_tokens_repeat.shape)
         
-        for pos in [rand_tokens_repeat.shape[1] - 1]:
+        for pos in [cur_pos]:
             """
             For a first prototype, let's literally deal with the last index only
             """
-            qu.put((get_hook(layer, head_idx), pos))
+            nodes.append((get_hook(layer, head_idx), pos))
 
-final_node = ((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None), rand_tokens_repeat.shape[1] - 1)
-qu.put(final_node)
+final_node = ((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None), cur_pos)
+nodes.append(final_node)
 important_indices = {final_node}
 
-#%%
+#%% [markdown]
 
-while not qu.empty():
-    hook, pos = qu.get()
+# make a JSON file that's an empty list 
+import json
+fname = f"jsons/{ctime2()}.json"
+with open(fname, "w") as f:
+    json.dump([], f)
+
+def jprint(*args):
+    # add this string to the JSON file
+    string = " ".join([str(arg) for arg in args])
+    print(string)
+    with open(fname, "r") as f:
+        data = json.load(f)
+    data.append(string)
+    with open(fname, "w") as f:
+        json.dump(data, f)
+
+very_initial_metric = metric(model, rand_tokens_repeat)
+jprint("The initial metric is", very_initial_metric)
+
+while len(nodes) > 0:
+    hook, pos = nodes.pop()
     if (hook, pos) not in important_indices:
-        print(f"Skipping {(hook, pos)} as it wasn't marked as important")
+        jprint(f"Skipping {(hook, pos)} as it wasn't marked as important")
+        continue
+    jprint(f"Working on {(hook, pos)}...")
 
     hook_name, head_idx = hook
 
-    if head_idx is None:
-        pass
+    # do direct patching going into this hook
+    # later we will have to do a branch statement
+    layer = model.cfg.n_layers if "resid_post" in hook_name else get_number_in_string(hook_name)
 
-    else: # this is an attention head
-        pass
+    if head_idx is not None:
+        warnings.warn("We are yet to implement attention")
+        continue
+
+    head_results, mlp_results, initial_metric = ppa_multiple(
+        model=model, 
+        tokens=rand_tokens_repeat, 
+        patch_tokens=rand_tokens_control,
+        attention_max_layer=layer, 
+        mlp_max_layer=layer-1,
+        receiver_hooks=[hook], 
+        metric=logits_metric,
+        # TODO add pos. For now we just YOLO the whole thing
+    )
+
+    jprint("The current initial metric is", initial_metric)
+    show_pp(head_results.T, title="HEAD RESULTS")
+    show_pp(mlp_results, title="MLP RESULTS")
+
+    # layer = int(input("Give me the relevant MLP"))
+    threshold = 0.1
+    for layer in range(model.cfg.n_layers):
+        for head_idx in range(model.cfg.n_heads):
+            if abs(head_results[layer, head_idx]) > threshold:
+                important_indices.add((get_hook(layer, head_idx), pos))
+        if abs(mlp_results[layer]) > threshold:
+            important_indices.add((get_hook(layer, head_idx), pos))
+
+    important_indices.add((get_hook(layer, head_idx), cur_pos))
+
+
 
 #%%
 # def backwards_pass():

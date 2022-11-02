@@ -16,6 +16,10 @@ from easy_transformer.experiments import get_act_hook
 from ioi_utils import e
 from ioi_dataset import IOIDataset
 from ioi_circuit_extraction import do_circuit_extraction
+import time
+
+def ctime2():
+    return time.ctime().replace(" ", "_")
 
 def get_hook(layer, head_idx):
     if head_idx is None:
@@ -73,9 +77,11 @@ def loss_metric(
 def logits_metric(
     model,
     rand_tokens_repeat,
-    seq_len,
+    # seq_len,
 ):
-    """Double implemented from utils_induction..."""
+    assert len(rand_tokens_repeat.shape) == 2
+    assert rand_tokens_repeat.shape[1] % 2 == 1
+    seq_len = rand_tokens_repeat.shape[1] // 2
     logits = model(rand_tokens_repeat, return_type="logits")
     # print(logits.shape) # 5 21 50257
 
@@ -276,6 +282,49 @@ def path_patching_attribution(
         for hook_name, hook in hooks:
             model.add_hook(hook_name, hook)
         return model
+
+def ppa_multiple(
+    model,
+    tokens,
+    patch_tokens,
+    attention_max_layer,
+    mlp_max_layer,    
+    receiver_hooks,
+    metric,
+    # pos, # TODO for now we YOLO this
+):
+    """
+    Do a bunch of path patching experiments (e.g getting the heatmap)
+    """
+
+    head_results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
+    mlp_results = torch.zeros(size=(model.cfg.n_layers,1))
+
+    model.reset_hooks()
+    initial_metric = metric(model, tokens)
+
+    for layer in tqdm(range(model.cfg.n_layers)):
+        for head_idx in [None] + list(range(model.cfg.n_heads)):
+            path_patching_attribution(
+                model=model,
+                tokens=tokens,
+                patch_tokens=patch_tokens,
+                sender_heads=[(layer, head_idx)],
+                receiver_hooks=receiver_hooks,
+                device="cuda",
+                freeze_mlps=True,
+                return_hooks=False,
+                max_layer=11,
+            )
+
+            cur_metric = metric(model, tokens)
+            if head_idx is None:
+                mlp_results[layer] = cur_metric - initial_metric
+            else:
+                head_results[layer, head_idx] = cur_metric - initial_metric
+
+    return head_results, mlp_results, initial_metric
+
 
 def show_losses(
     models,
