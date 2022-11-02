@@ -154,6 +154,7 @@ class EasyTransformer(HookedRootModule):
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
+        prepend_bos bool: Whether to prepend the BOS token to the input. Only applies when input is a string. Defaults to True (unlike to_tokens) - even for models not explicitly trained with this, heads often use the first position as a resting position and accordingly lose information from the first token, so this empirically seems to give better results.
 
         Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models - if you want a custom loss function, the recommended behaviour is returning the logits and then applying your custom loss function.
         """
@@ -162,6 +163,7 @@ class EasyTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
+            # This is only intended to support passing in a single string
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
@@ -246,7 +248,10 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, input, prepend_bos=True):
+    def to_tokens(self, input, prepend_bos=False):
+        """
+        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. Defaults to False for to_tokens, as this is intended to be used for substrings of the input, but True for a string input to forward.
+        """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos:
             if isinstance(input, str):
