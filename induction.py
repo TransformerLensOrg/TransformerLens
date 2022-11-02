@@ -402,41 +402,42 @@ show_pp(patch_results_mlp.T.detach().cpu())
 # Subsets of these
 # TODO figure out why this cell is not deterministic : (
 
-names = []
-losses = []
-logits = []
+for prefix_length in range(len(induct_heads)):
+    names = []
+    losses = []
+    logits = []
 
-for subset in get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)]):
-    model.reset_hooks()
+    for subset in get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)]):
+        model.reset_hooks()
 
-    for layer, head_idx in subset + induct_heads[:5]:
-        model.add_hook(*hooks[(layer, head_idx)])
+        for layer, head_idx in subset + induct_heads[:prefix_length]:
+            model.add_hook(*hooks[(layer, head_idx)])
 
-    names.append(len(subset))
-    losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
-    logits.append(logits_metric(model, rand_tokens_repeat, seq_len)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
+        names.append(len(subset))
+        losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
+        logits.append(logits_metric(model, rand_tokens_repeat, seq_len)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
 
-fig = go.Figure()
+    fig = go.Figure()
 
-# make a scatter plot of losses against logits, with labels for each point
-fig.add_trace(
-    go.Scatter(
-        x=logits,
-        y=losses,
-        mode="markers",
-        text=names,
-        marker=dict(size=12, color=names, colorscale="Viridis", showscale=True),
+    # make a scatter plot of losses against logits, with labels for each point
+    fig.add_trace(
+        go.Scatter(
+            x=logits,
+            y=losses,
+            mode="markers",
+            text=names,
+            marker=dict(size=12, color=names, colorscale="Viridis", showscale=True),
+        )
     )
-)
 
-# fig.add_scatter(x=logits, y=losses, mode="markers", text=names)
+    # add caption to colorbar    
+    fig.update_layout(
+        title=f"Loss and logits when we ablate {prefix_length} top induction heads, and k (see color bar) negative induction heads",
+        xaxis_title="Logits",
+        yaxis_title="Loss",
+    )
 
-# x axis 
-fig.update_xaxes(title_text="Logits")
-fig.update_yaxes(title_text="Loss")
-
-fig.show()
-
+    fig.show()
 #%%
 # Plot a scatter plot in plotly with labels
 fig = go.Figure()
@@ -450,9 +451,6 @@ fig.show()
 # fig = go.Figure()
 # fig.add_trace(go.Scatter(x=induction_scores_array.flatten().cpu().detach(), y=results.flatten().cpu().detach(), mode='markers'))
 # fig.show()
-
-#%% [markdown]
-# Do some tracing the information flow type things
 
 
 #%% [markdown]
