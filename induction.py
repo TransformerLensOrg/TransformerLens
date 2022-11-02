@@ -906,7 +906,9 @@ while len(nodes) > 0:
 
 
 
-#%%
+#%% [markdown]
+# Arthur's scratchpad for the backwards pass of interp
+
 # def backwards_pass():
 #     """
 #     `cur_state` is a (node, position) pair
