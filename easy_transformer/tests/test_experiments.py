@@ -27,7 +27,7 @@ from easy_transformer.experiments import (
 def test_semantic_ablation():
     """
     Compute semantic ablation
-    in a manual way, and then 
+    in a manual way, and then
     in the experiments.py way and check that they agree
     """
 

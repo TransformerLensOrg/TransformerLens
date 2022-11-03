@@ -49,13 +49,13 @@ OFFICIAL_MODEL_NAMES = [
     "EleutherAI/pythia-800m-deduped",
     "EleutherAI/pythia-1.3b-deduped",
     "EleutherAI/pythia-6.7b-deduped",
-    'NeelNanda/SoLU_1L_v9_old',
-    'NeelNanda/SoLU_2L_v10_old',
-    'NeelNanda/SoLU_4L_v11_old',
-    'NeelNanda/SoLU_6L_v13_old',
-    'NeelNanda/SoLU_8L_v21_old',
-    'NeelNanda/SoLU_10L_v22_old',
-    'NeelNanda/SoLU_12L_v23_old',
+    "NeelNanda/SoLU_1L_v9_old",
+    "NeelNanda/SoLU_2L_v10_old",
+    "NeelNanda/SoLU_4L_v11_old",
+    "NeelNanda/SoLU_6L_v13_old",
+    "NeelNanda/SoLU_8L_v21_old",
+    "NeelNanda/SoLU_10L_v22_old",
+    "NeelNanda/SoLU_12L_v23_old",
     "NeelNanda/SoLU_1L512W_C4_Code",
     "NeelNanda/SoLU_2L512W_C4_Code",
     "NeelNanda/SoLU_3L512W_C4_Code",
@@ -77,13 +77,13 @@ OFFICIAL_MODEL_NAMES = [
 
 # Model Aliases:
 MODEL_ALIASES = {
-    'NeelNanda/SoLU_1L_v9_old': ["solu-1l-old", "solu-1l-pile"],
-    'NeelNanda/SoLU_2L_v10_old': ["solu-2l-old", "solu-2l-pile"],
-    'NeelNanda/SoLU_4L_v11_old': ["solu-4l-old", "solu-4l-pile"],
-    'NeelNanda/SoLU_6L_v13_old': ["solu-6l-old", "solu-6l-pile"],
-    'NeelNanda/SoLU_8L_v21_old': ["solu-8l-old", "solu-8l-pile"],
-    'NeelNanda/SoLU_10L_v22_old': ["solu-10l-old", "solu-10l-pile"],
-    'NeelNanda/SoLU_12L_v22_old': ["solu-12l-old", "solu-12l-pile"],
+    "NeelNanda/SoLU_1L_v9_old": ["solu-1l-old", "solu-1l-pile"],
+    "NeelNanda/SoLU_2L_v10_old": ["solu-2l-old", "solu-2l-pile"],
+    "NeelNanda/SoLU_4L_v11_old": ["solu-4l-old", "solu-4l-pile"],
+    "NeelNanda/SoLU_6L_v13_old": ["solu-6l-old", "solu-6l-pile"],
+    "NeelNanda/SoLU_8L_v21_old": ["solu-8l-old", "solu-8l-pile"],
+    "NeelNanda/SoLU_10L_v22_old": ["solu-10l-old", "solu-10l-pile"],
+    "NeelNanda/SoLU_12L_v22_old": ["solu-12l-old", "solu-12l-pile"],
     "NeelNanda/SoLU_1L512W_C4_Code": ["solu-1l", "solu-1l-new", "solu-1l-c4-code"],
     "NeelNanda/SoLU_2L512W_C4_Code": ["solu-2l", "solu-2l-new", "solu-2l-c4-code"],
     "NeelNanda/SoLU_3L512W_C4_Code": ["solu-3l", "solu-3l-new", "solu-3l-c4-code"],
@@ -92,26 +92,67 @@ MODEL_ALIASES = {
     "NeelNanda/GELU_2L512W_C4_Code": ["gelu-2l", "gelu-2l-new", "gelu-2l-c4-code"],
     "NeelNanda/GELU_3L512W_C4_Code": ["gelu-3l", "gelu-3l-new", "gelu-3l-c4-code"],
     "NeelNanda/GELU_4L512W_C4_Code": ["gelu-4l", "gelu-4l-new", "gelu-4l-c4-code"],
-    "NeelNanda/Attn_Only_1L512W_C4_Code": ["attn-only-1l", "attn-only-1l-new", "attn-only-1l-c4-code"],
-    "NeelNanda/Attn_Only_2L512W_C4_Code": ["attn-only-2l", "attn-only-2l-new", "attn-only-2l-c4-code"],
-    "NeelNanda/Attn_Only_3L512W_C4_Code": ["attn-only-3l", "attn-only-3l-new", "attn-only-3l-c4-code"],
-    "NeelNanda/Attn_Only_4L512W_C4_Code": ["attn-only-4l", "attn-only-4l-new", "attn-only-4l-c4-code"],
+    "NeelNanda/Attn_Only_1L512W_C4_Code": [
+        "attn-only-1l",
+        "attn-only-1l-new",
+        "attn-only-1l-c4-code",
+    ],
+    "NeelNanda/Attn_Only_2L512W_C4_Code": [
+        "attn-only-2l",
+        "attn-only-2l-new",
+        "attn-only-2l-c4-code",
+    ],
+    "NeelNanda/Attn_Only_3L512W_C4_Code": [
+        "attn-only-3l",
+        "attn-only-3l-new",
+        "attn-only-3l-c4-code",
+    ],
+    "NeelNanda/Attn_Only_4L512W_C4_Code": [
+        "attn-only-4l",
+        "attn-only-4l-new",
+        "attn-only-4l-c4-code",
+    ],
     "NeelNanda/SoLU_6L768W_C4_Code": ["solu-6l", "solu-6l-new", "solu-6l-c4-code"],
     "NeelNanda/SoLU_8L1024W_C4_Code": ["solu-8l", "solu-8l-new", "solu-8l-c4-code"],
     # "NeelNanda/SoLU_10L1280W_C4_Code": ["solu-10l", "solu-10l-new", "solu-10l-c4-code"],
     "NeelNanda/SoLU_12L1536W_C4_Code": ["solu-12l", "solu-12l-new", "solu-12l-c4-code"],
-    "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr": ["attn-only-2l-demo", "attn-only-2l-shortformer-6b-big-lr", "attn-only-2l-induction-demo", "attn-only-demo"],
+    "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr": [
+        "attn-only-2l-demo",
+        "attn-only-2l-shortformer-6b-big-lr",
+        "attn-only-2l-induction-demo",
+        "attn-only-demo",
+    ],
     "EleutherAI/pythia-19m": ["pythia-19m", "pythia"],
-    "EleutherAI/pythia-125m": ["pythia-125m",],
-    "EleutherAI/pythia-350m": ["pythia-350m",],
-    "EleutherAI/pythia-800m": ["pythia-800m",],
-    "EleutherAI/pythia-1.3b": ["pythia-1.3b",],
-    "EleutherAI/pythia-6.7b": ["pythia-6.7b",],
-    "EleutherAI/pythia-13b": ["pythia-13b",],
-    "EleutherAI/pythia-125m-deduped": ["pythia-125m-deduped",],
-    "EleutherAI/pythia-800m-deduped": ["pythia-800m-deduped",],
-    "EleutherAI/pythia-1.3b-deduped": ["pythia-1.3b-deduped",],
-    "EleutherAI/pythia-6.7b-deduped": ["pythia-6.7b-deduped",],
+    "EleutherAI/pythia-125m": [
+        "pythia-125m",
+    ],
+    "EleutherAI/pythia-350m": [
+        "pythia-350m",
+    ],
+    "EleutherAI/pythia-800m": [
+        "pythia-800m",
+    ],
+    "EleutherAI/pythia-1.3b": [
+        "pythia-1.3b",
+    ],
+    "EleutherAI/pythia-6.7b": [
+        "pythia-6.7b",
+    ],
+    "EleutherAI/pythia-13b": [
+        "pythia-13b",
+    ],
+    "EleutherAI/pythia-125m-deduped": [
+        "pythia-125m-deduped",
+    ],
+    "EleutherAI/pythia-800m-deduped": [
+        "pythia-800m-deduped",
+    ],
+    "EleutherAI/pythia-1.3b-deduped": [
+        "pythia-1.3b-deduped",
+    ],
+    "EleutherAI/pythia-6.7b-deduped": [
+        "pythia-6.7b-deduped",
+    ],
     "gpt2": ["gpt2-small"],
     "distilgpt2": ["distillgpt2", "distill-gpt2", "distil-gpt2", "gpt2-xs"],
     "facebook/opt-125m": ["opt-125m", "opt-small", "opt"],
@@ -126,20 +167,71 @@ MODEL_ALIASES = {
     "EleutherAI/gpt-neo-2.7B": ["gpt-neo-2.7B", "gpt-neo-large", "neo-large"],
     "EleutherAI/gpt-j-6B": ["gpt-j-6B", "gpt-j", "gptj"],
     "EleutherAI/gpt-neox-20b": ["gpt-neox-20b", "gpt-neox", "neox"],
-    "stanford-crfm/alias-gpt2-small-x21": ["stanford-gpt2-small-a", "alias-gpt2-small-x21", "gpt2-mistral-small-a", "gpt2-stanford-small-a"],
-    "stanford-crfm/battlestar-gpt2-small-x49": ["stanford-gpt2-small-b", "battlestar-gpt2-small-x49", "gpt2-mistral-small-b", "gpt2-mistral-small-b"],
-    "stanford-crfm/caprica-gpt2-small-x81": ["stanford-gpt2-small-c", "caprica-gpt2-small-x81", "gpt2-mistral-small-c", "gpt2-stanford-small-c"],
-    "stanford-crfm/darkmatter-gpt2-small-x343": ["stanford-gpt2-small-d", "darkmatter-gpt2-small-x343", "gpt2-mistral-small-d", "gpt2-mistral-small-d"],
-    "stanford-crfm/expanse-gpt2-small-x777": ["stanford-gpt2-small-e", "expanse-gpt2-small-x777", "gpt2-mistral-small-e", "gpt2-mistral-small-e"],
-    "stanford-crfm/arwen-gpt2-medium-x21": ["stanford-gpt2-medium-a", "arwen-gpt2-medium-x21", "gpt2-medium-small-a", "gpt2-stanford-medium-a"],
-    "stanford-crfm/beren-gpt2-medium-x49": ["stanford-gpt2-medium-b", "beren-gpt2-medium-x49", "gpt2-medium-small-b", "gpt2-stanford-medium-b"],
-    "stanford-crfm/celebrimbor-gpt2-medium-x81": ["stanford-gpt2-medium-c", "celebrimbor-gpt2-medium-x81", "gpt2-medium-small-c", "gpt2-medium-small-c"],
-    "stanford-crfm/durin-gpt2-medium-x343": ["stanford-gpt2-medium-d", "durin-gpt2-medium-x343", "gpt2-medium-small-d", "gpt2-stanford-medium-d"],
-    "stanford-crfm/eowyn-gpt2-medium-x777": ["stanford-gpt2-medium-e", "eowyn-gpt2-medium-x777", "gpt2-medium-small-e", "gpt2-stanford-medium-e"],
+    "stanford-crfm/alias-gpt2-small-x21": [
+        "stanford-gpt2-small-a",
+        "alias-gpt2-small-x21",
+        "gpt2-mistral-small-a",
+        "gpt2-stanford-small-a",
+    ],
+    "stanford-crfm/battlestar-gpt2-small-x49": [
+        "stanford-gpt2-small-b",
+        "battlestar-gpt2-small-x49",
+        "gpt2-mistral-small-b",
+        "gpt2-mistral-small-b",
+    ],
+    "stanford-crfm/caprica-gpt2-small-x81": [
+        "stanford-gpt2-small-c",
+        "caprica-gpt2-small-x81",
+        "gpt2-mistral-small-c",
+        "gpt2-stanford-small-c",
+    ],
+    "stanford-crfm/darkmatter-gpt2-small-x343": [
+        "stanford-gpt2-small-d",
+        "darkmatter-gpt2-small-x343",
+        "gpt2-mistral-small-d",
+        "gpt2-mistral-small-d",
+    ],
+    "stanford-crfm/expanse-gpt2-small-x777": [
+        "stanford-gpt2-small-e",
+        "expanse-gpt2-small-x777",
+        "gpt2-mistral-small-e",
+        "gpt2-mistral-small-e",
+    ],
+    "stanford-crfm/arwen-gpt2-medium-x21": [
+        "stanford-gpt2-medium-a",
+        "arwen-gpt2-medium-x21",
+        "gpt2-medium-small-a",
+        "gpt2-stanford-medium-a",
+    ],
+    "stanford-crfm/beren-gpt2-medium-x49": [
+        "stanford-gpt2-medium-b",
+        "beren-gpt2-medium-x49",
+        "gpt2-medium-small-b",
+        "gpt2-stanford-medium-b",
+    ],
+    "stanford-crfm/celebrimbor-gpt2-medium-x81": [
+        "stanford-gpt2-medium-c",
+        "celebrimbor-gpt2-medium-x81",
+        "gpt2-medium-small-c",
+        "gpt2-medium-small-c",
+    ],
+    "stanford-crfm/durin-gpt2-medium-x343": [
+        "stanford-gpt2-medium-d",
+        "durin-gpt2-medium-x343",
+        "gpt2-medium-small-d",
+        "gpt2-stanford-medium-d",
+    ],
+    "stanford-crfm/eowyn-gpt2-medium-x777": [
+        "stanford-gpt2-medium-e",
+        "eowyn-gpt2-medium-x777",
+        "gpt2-medium-small-e",
+        "gpt2-stanford-medium-e",
+    ],
 }
 
+
 def make_model_alias_map():
-    """ 
+    """
     Converts OFFICIAL_MODEL_NAMES (the list of actual model names on
     HuggingFace) and MODEL_ALIASES (a dictionary mapping official model names to
     aliases) into a dictionary mapping all aliases to the official model name.
@@ -152,15 +244,19 @@ def make_model_alias_map():
         model_alias_map[official_model_name.lower()] = official_model_name
     return model_alias_map
 
+
 def get_official_model_name(model_name: str):
-    """ 
+    """
     Returns the official model name for a given model name (or alias).
     """
     model_alias_map = make_model_alias_map()
     official_model_name = model_alias_map.get(model_name.lower(), None)
     if official_model_name is None:
-        raise ValueError(f"{model_name} not found. Valid official model names (excl aliases): {OFFICIAL_MODEL_NAMES}")
+        raise ValueError(
+            f"{model_name} not found. Valid official model names (excl aliases): {OFFICIAL_MODEL_NAMES}"
+        )
     return official_model_name
+
 
 def convert_hf_model_config(official_model_name: str):
     """
@@ -267,8 +363,9 @@ def convert_hf_model_config(official_model_name: str):
     cfg_dict["tokenizer_name"] = official_model_name
     return cfg_dict
 
+
 def convert_neel_model_config(official_model_name: str):
-    """ 
+    """
     Loads the config for a model trained by me (NeelNanda), converted to a dictionary
     in the EasyTransformerConfig format.
 
@@ -288,17 +385,22 @@ def convert_neel_model_config(official_model_name: str):
         "act_fn": cfg_json["act_fn"],
         "attn_only": cfg_json["attn_only"],
         "final_rms": cfg_json.get("final_rms", False),
-        "original_architecture": "neel" if "_old" not in official_model_name else "neel-solu-old",
+        "original_architecture": "neel"
+        if "_old" not in official_model_name
+        else "neel-solu-old",
     }
     if "normalization" in cfg_json:
         cfg_dict["normalization_type"] = cfg_json["normalization"]
     else:
         cfg_dict["normalization_type"] = cfg_json["normalization_type"]
     if "shortformer_pos" in cfg_json:
-        cfg_dict["positional_embedding_type"] = "shortformer" if cfg_json["shortformer_pos"] else "standard"
+        cfg_dict["positional_embedding_type"] = (
+            "shortformer" if cfg_json["shortformer_pos"] else "standard"
+        )
     else:
         cfg_dict["positional_embedding_type"] = "standard"
     return cfg_dict
+
 
 def get_pretrained_model_config(
     model_name: str,
@@ -306,21 +408,21 @@ def get_pretrained_model_config(
     checkpoint_value: Optional[int] = None,
     fold_ln: bool = False,
     device: Optional[str] = None,
-    ):
-    """ Returns the pretrained model config as an EasyTransformerConfig object.
-    
+):
+    """Returns the pretrained model config as an EasyTransformerConfig object.
+
     There are two types of pretrained models: HuggingFace models (where
     AutoModel and AutoConfig work), and models trained by me (NeelNanda) which
     aren't as integrated with HuggingFace infrastructure.
-    
+
     Args:
         model_name: The name of the model. This can be either the official
             HuggingFace model name, or the name of a model trained by me
-            (NeelNanda). 
+            (NeelNanda).
         checkpoint_index (int, optional): If loading from a
             checkpoint, the index of the checkpoint to load. Defaults to None.
         checkpoint_value (int, optional): If loading from a checkpoint, the
-        value of 
+        value of
             the checkpoint to load, ie the step or token number (each model has
             checkpoints labelled with exactly one of these). Defaults to None.
         fold_ln (bool, optional): Whether to fold the layer norm into the
@@ -328,7 +430,7 @@ def get_pretrained_model_config(
             details). Defaults to False.
         device (str, optional): The device to load the model onto. By
             default will load to CUDA if available, else CPU.
-        
+
     """
     official_model_name = get_official_model_name(model_name)
     if official_model_name.startswith("NeelNanda"):
@@ -349,9 +451,11 @@ def get_pretrained_model_config(
         else:
             logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
             pass
-    
+
     if checkpoint_index is not None or checkpoint_value is not None:
-        checkpoint_labels, checkpoint_label_type = get_checkpoint_labels(official_model_name)
+        checkpoint_labels, checkpoint_label_type = get_checkpoint_labels(
+            official_model_name
+        )
         cfg_dict["from_checkpoint"] = True
         cfg_dict["checkpoint_label_type"] = checkpoint_label_type
         if checkpoint_index is not None:
@@ -362,11 +466,12 @@ def get_pretrained_model_config(
             cfg_dict["checkpoint_index"] = checkpoint_labels.index(checkpoint_value)
     else:
         cfg_dict["from_checkpoint"] = False
-    
+
     cfg_dict["device"] = device
 
     cfg = EasyTransformerConfig.from_dict(cfg_dict)
     return cfg
+
 
 def get_num_params_of_pretrained(model_name):
     """
@@ -376,7 +481,7 @@ def get_num_params_of_pretrained(model_name):
     return cfg.n_params
 
 
-# %% Load checkpointed model state dicts 
+# %% Load checkpointed model state dicts
 # The steps for which there are checkpoints in the stanford crfm models
 STANFORD_CRFM_CHECKPOINTS = (
     list(range(0, 100, 10))
@@ -385,8 +490,9 @@ STANFORD_CRFM_CHECKPOINTS = (
     + list(range(20000, 400000 + 1, 1000))
 )
 
+
 def get_checkpoint_labels(model_name: str):
-    """ Returns the checkpoint labels for a given model, and the label_type
+    """Returns the checkpoint labels for a given model, and the label_type
     (step or token). Raises an error for models that are not checkpointed."""
     official_model_name = get_official_model_name(model_name)
     if official_model_name.startswith("stanford-crfm/"):
@@ -399,22 +505,24 @@ def get_checkpoint_labels(model_name: str):
             match = re.match(r"checkpoints/.*_(\d*)\.pth", file_name)
             if match:
                 labels.append(int(match.group(1)))
-        if labels[-1]>1e9:
-            label_type="token"
+        if labels[-1] > 1e9:
+            label_type = "token"
         else:
-            label_type="step"
+            label_type = "step"
         return labels, label_type
     else:
         raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
+
 # %% Loading state dicts
+
 
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: EasyTransformerConfig,
-    hf_model = None,
-    ):
-    """ 
+    hf_model=None,
+):
+    """
     Loads in the model weights for a pretrained model, and processes them to
     have the EasyTransformer parameter names and shapes. Supports checkpointed
     models (and expects the checkpoint info to be stored in the config object)
@@ -427,7 +535,9 @@ def get_pretrained_state_dict(
         api = HfApi()
         repo_files = api.list_repo_files(official_model_name)
         if cfg.from_checkpoint:
-            file_name = list(filter(lambda x: x.endswith(f"_{cfg.checkpoint_value}.pth"), repo_files))[0]
+            file_name = list(
+                filter(lambda x: x.endswith(f"_{cfg.checkpoint_value}.pth"), repo_files)
+            )[0]
         else:
             file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
         state_dict = utils.download_file_from_hf(official_model_name, file_name)
@@ -436,11 +546,13 @@ def get_pretrained_state_dict(
         return state_dict
     else:
         if cfg.from_checkpoint:
-            hf_model = AutoModelForCausalLM.from_pretrained(official_model_name, revision=f"checkpoint-{cfg.checkpoint_value}")
+            hf_model = AutoModelForCausalLM.from_pretrained(
+                official_model_name, revision=f"checkpoint-{cfg.checkpoint_value}"
+            )
         elif hf_model is None:
             hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
-        
-                # Load model weights, and fold in layer norm weights
+
+            # Load model weights, and fold in layer norm weights
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoForCausalLM":
@@ -452,18 +564,20 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "GPTNeoXForCausalLM":
             state_dict = convert_neox_weights(hf_model, cfg)
         else:
-            raise ValueError(f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature.")
-        
+            raise ValueError(
+                f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
+            )
+
         return state_dict
 
 
 # %%
 def convert_state_dict(
-    state_dict: dict, 
+    state_dict: dict,
     cfg: EasyTransformerConfig,
-    ):
-    """ Converts a state_dict from a HuggingFace model to a state_dict
-    compatible with EasyTransformer. """
+):
+    """Converts a state_dict from a HuggingFace model to a state_dict
+    compatible with EasyTransformer."""
     official_model_name = get_official_model_name(official_model_name)
 
     if cfg["original_architecture"] == "gpt2":
@@ -482,6 +596,8 @@ def convert_state_dict(
         return state_dict
     else:
         raise ValueError(f"Unknown architecture {cfg['original_architecture']}")
+
+
 # Convert state dicts
 def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     state_dict = {}
@@ -492,7 +608,7 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = gpt2.transformer.h[l].ln_1.weight
         state_dict[f"blocks.{l}.ln1.b"] = gpt2.transformer.h[l].ln_1.bias
-        
+
         # In GPT-2, q,k,v are produced by one big linear map, whose output is
         # concat([q, k, v])
         W = gpt2.transformer.h[l].attn.c_attn.weight
@@ -522,22 +638,22 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
         state_dict[f"blocks.{l}.attn.b_O"] = gpt2.transformer.h[l].attn.c_proj.bias
 
-        
         state_dict[f"blocks.{l}.ln2.w"] = gpt2.transformer.h[l].ln_2.weight
         state_dict[f"blocks.{l}.ln2.b"] = gpt2.transformer.h[l].ln_2.bias
-        
+
         W_in = gpt2.transformer.h[l].mlp.c_fc.weight
         state_dict[f"blocks.{l}.mlp.W_in"] = W_in
         state_dict[f"blocks.{l}.mlp.b_in"] = gpt2.transformer.h[l].mlp.c_fc.bias
-        
+
         W_out = gpt2.transformer.h[l].mlp.c_proj.weight
         state_dict[f"blocks.{l}.mlp.W_out"] = W_out
         state_dict[f"blocks.{l}.mlp.b_out"] = gpt2.transformer.h[l].mlp.c_proj.bias
     state_dict[f"unembed.W_U"] = gpt2.lm_head.weight.T
-    
+
     state_dict["ln_final.w"] = gpt2.transformer.ln_f.weight
     state_dict["ln_final.b"] = gpt2.transformer.ln_f.bias
     return state_dict
+
 
 def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     state_dict = {}
@@ -548,7 +664,7 @@ def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = neo.transformer.h[l].ln_1.weight
         state_dict[f"blocks.{l}.ln1.b"] = neo.transformer.h[l].ln_1.bias
-        
+
         W_Q = neo.transformer.h[l].attn.attention.q_proj.weight
         W_K = neo.transformer.h[l].attn.attention.k_proj.weight
         W_V = neo.transformer.h[l].attn.attention.v_proj.weight
@@ -572,18 +688,19 @@ def convert_neo_weights(neo, cfg: EasyTransformerConfig):
 
         state_dict[f"blocks.{l}.ln2.w"] = neo.transformer.h[l].ln_2.weight
         state_dict[f"blocks.{l}.ln2.b"] = neo.transformer.h[l].ln_2.bias
-        
+
         state_dict[f"blocks.{l}.mlp.W_in"] = neo.transformer.h[l].mlp.c_fc.weight.T
         state_dict[f"blocks.{l}.mlp.b_in"] = neo.transformer.h[l].mlp.c_fc.bias
-        
+
         state_dict[f"blocks.{l}.mlp.W_out"] = neo.transformer.h[l].mlp.c_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = neo.transformer.h[l].mlp.c_proj.bias
     state_dict["ln_final.w"] = neo.transformer.ln_f.weight
     state_dict["ln_final.b"] = neo.transformer.ln_f.bias
-    
+
     state_dict["unembed.W_U"] = neo.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
+
 
 def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
     state_dict = {}
@@ -593,7 +710,7 @@ def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = gptj.transformer.h[l].ln_1.weight
         state_dict[f"blocks.{l}.ln1.b"] = gptj.transformer.h[l].ln_1.bias
-        
+
         W_Q = gptj.transformer.h[l].attn.q_proj.weight
         W_K = gptj.transformer.h[l].attn.k_proj.weight
         W_V = gptj.transformer.h[l].attn.v_proj.weight
@@ -612,23 +729,24 @@ def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
         W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model)
-        
+
         # Layer Norm 1 and 2 are tied.
         state_dict[f"blocks.{l}.ln2.w"] = state_dict[f"blocks.{l}.ln1.w"]
         state_dict[f"blocks.{l}.ln2.b"] = state_dict[f"blocks.{l}.ln1.b"]
 
         state_dict[f"blocks.{l}.mlp.W_in"] = gptj.transformer.h[l].mlp.fc_in.weight.T
         state_dict[f"blocks.{l}.mlp.b_in"] = gptj.transformer.h[l].mlp.fc_in.bias
-        
+
         state_dict[f"blocks.{l}.mlp.W_out"] = gptj.transformer.h[l].mlp.fc_out.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = gptj.transformer.h[l].mlp.fc_out.bias
     state_dict["ln_final.w"] = gptj.transformer.ln_f.weight
     state_dict["ln_final.b"] = gptj.transformer.ln_f.bias
-    
+
     state_dict["unembed.W_U"] = gptj.lm_head.weight.T
     # Contains a bias, for some reason?
     state_dict["unembed.b_U"] = gptj.lm_head.bias
     return state_dict
+
 
 def convert_neox_weights(neox, cfg: EasyTransformerConfig):
     state_dict = {}
@@ -663,26 +781,41 @@ def convert_neox_weights(neox, cfg: EasyTransformerConfig):
         state_dict[f"blocks.{l}.attn.b_Q"] = qkv_bias[0]
         state_dict[f"blocks.{l}.attn.b_K"] = qkv_bias[1]
         state_dict[f"blocks.{l}.attn.b_V"] = qkv_bias[2]
-        
+
         W_O = neox.gpt_neox.layers[l].attention.dense.weight
         W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
-        state_dict[f"blocks.{l}.attn.b_O"] = neox.gpt_neox.layers[l].attention.dense.bias
-        
-        state_dict[f"blocks.{l}.ln2.w"] = neox.gpt_neox.layers[l].post_attention_layernorm.weight
-        state_dict[f"blocks.{l}.ln2.b"] = neox.gpt_neox.layers[l].post_attention_layernorm.bias
+        state_dict[f"blocks.{l}.attn.b_O"] = neox.gpt_neox.layers[
+            l
+        ].attention.dense.bias
 
-        state_dict[f"blocks.{l}.mlp.W_in"] = neox.gpt_neox.layers[l].mlp.dense_h_to_4h.weight.T
-        state_dict[f"blocks.{l}.mlp.b_in"] = neox.gpt_neox.layers[l].mlp.dense_h_to_4h.bias
-        
-        state_dict[f"blocks.{l}.mlp.W_out"] = neox.gpt_neox.layers[l].mlp.dense_4h_to_h.weight.T
-        state_dict[f"blocks.{l}.mlp.b_out"] = neox.gpt_neox.layers[l].mlp.dense_4h_to_h.bias
+        state_dict[f"blocks.{l}.ln2.w"] = neox.gpt_neox.layers[
+            l
+        ].post_attention_layernorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = neox.gpt_neox.layers[
+            l
+        ].post_attention_layernorm.bias
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = neox.gpt_neox.layers[
+            l
+        ].mlp.dense_h_to_4h.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = neox.gpt_neox.layers[
+            l
+        ].mlp.dense_h_to_4h.bias
+
+        state_dict[f"blocks.{l}.mlp.W_out"] = neox.gpt_neox.layers[
+            l
+        ].mlp.dense_4h_to_h.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = neox.gpt_neox.layers[
+            l
+        ].mlp.dense_4h_to_h.bias
     state_dict["ln_final.w"] = neox.gpt_neox.final_layer_norm.weight
     state_dict["ln_final.b"] = neox.gpt_neox.final_layer_norm.bias
-    
+
     state_dict["unembed.W_U"] = neox.embed_out.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
+
 
 def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict = {}
@@ -691,9 +824,13 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict["pos_embed.W_pos"] = opt.model.decoder.embed_positions.weight[2:, :]
 
     for l in range(cfg.n_layers):
-        state_dict[f"blocks.{l}.ln1.w"] = opt.model.decoder.layers[l].self_attn_layer_norm.weight
-        state_dict[f"blocks.{l}.ln1.b"] = opt.model.decoder.layers[l].self_attn_layer_norm.bias
-        
+        state_dict[f"blocks.{l}.ln1.w"] = opt.model.decoder.layers[
+            l
+        ].self_attn_layer_norm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = opt.model.decoder.layers[
+            l
+        ].self_attn_layer_norm.bias
+
         W_Q = opt.model.decoder.layers[l].self_attn.q_proj.weight
         W_K = opt.model.decoder.layers[l].self_attn.k_proj.weight
         W_V = opt.model.decoder.layers[l].self_attn.v_proj.weight
@@ -751,12 +888,16 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
             l
         ].self_attn.out_proj.bias
 
-        state_dict[f"blocks.{l}.ln2.w"] = opt.model.decoder.layers[l].final_layer_norm.weight
-        state_dict[f"blocks.{l}.ln2.b"] = opt.model.decoder.layers[l].final_layer_norm.bias
-        
+        state_dict[f"blocks.{l}.ln2.w"] = opt.model.decoder.layers[
+            l
+        ].final_layer_norm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = opt.model.decoder.layers[
+            l
+        ].final_layer_norm.bias
+
         state_dict[f"blocks.{l}.mlp.W_in"] = opt.model.decoder.layers[l].fc1.weight.T
         state_dict[f"blocks.{l}.mlp.W_out"] = opt.model.decoder.layers[l].fc2.weight.T
-        
+
         state_dict[f"blocks.{l}.mlp.b_in"] = opt.model.decoder.layers[l].fc1.bias
         state_dict[f"blocks.{l}.mlp.b_out"] = opt.model.decoder.layers[l].fc2.bias
     state_dict[f"ln_final.w"] = opt.model.decoder.final_layer_norm.weight
@@ -765,10 +906,9 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
 
-def convert_neel_solu_old_weights(
-    state_dict: dict, 
-    cfg: EasyTransformerConfig):
-    """ 
+
+def convert_neel_solu_old_weights(state_dict: dict, cfg: EasyTransformerConfig):
+    """
     Converts the weights of my old SoLU models to the EasyTransformer format.
     Takes as input a state dict, *not* a model object.
 
@@ -777,10 +917,10 @@ def convert_neel_solu_old_weights(
     Models 1L, 2L, 4L and 6L have left facing weights (ie, weights have shape
     [dim_out, dim_in]) while EasyTransformer does right facing (ie [dim_in,
     dim_out]).
-    
+
     8L has *just* a left facing W_pos, the rest right facing.
 
-    And some models were trained with 
+    And some models were trained with
     """
     # Early models have left facing W_pos
     reverse_pos = cfg.n_layers <= 8
@@ -794,7 +934,7 @@ def convert_neel_solu_old_weights(
         if k.startswith("ln."):
             k = k.replace("ln.", "ln_final.")
         new_state_dict[k] = v
-    
+
     if reverse_pos:
         new_state_dict["pos_embed.W_pos"] = new_state_dict["pos_embed.W_pos"].T
     if reverse_weights:
