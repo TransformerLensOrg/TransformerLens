@@ -400,15 +400,15 @@ class EasyTransformer(HookedRootModule):
             print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, torch.dtype):
             print("Changing model dtype to", device_or_dtype)
-        nn.Module.to(self, device_or_dtype)
+        return nn.Module.to(self, device_or_dtype)
     
     def cuda(self):
         # Wrapper around cuda that also changes self.cfg.device
-        self.to("cuda")
+        return self.to("cuda")
     
     def cpu(self):
         # Wrapper around cuda that also changes self.cfg.device
-        self.to("cpu")
+        return self.to("cpu")
 
     @classmethod
     def from_pretrained(cls, 
