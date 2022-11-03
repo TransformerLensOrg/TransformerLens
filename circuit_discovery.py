@@ -1,5 +1,6 @@
 # %%
 from utils_circuit_discovery import get_hook_tuple
+import warnings
 from ioi_utils import show_pp
 from functools import partial
 #import plotly.graph_objects as go
@@ -27,13 +28,13 @@ if ipython is not None:
     ipython.magic("autoreload 2")
 # %%
 model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
+
 model = EasyTransformer.from_pretrained(model_name)
 if torch.cuda.is_available():
     model.to("cuda")
 model.set_use_attn_result(True)
 
 # %%
-
 def patch_all(z, source_act, hook):
     return source_act
 
@@ -56,7 +57,11 @@ def path_patching(
     max_layer: Union[int, None] = None, 
     position: int = 0,
     return_hooks: bool = False,
-    freeze_mlps: bool = True):
+    freeze_mlps: bool = True,
+    orig_cache = None,
+    new_cache = None,
+    prepend_bos = False, # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
+):
     """ mlps are by default considered as just another component and so are
         by default frozen when collecting acts on receivers. 
         orig_data: string, torch.Tensor, or list of strings - any format that can be passed to the model directly
@@ -72,11 +77,12 @@ def path_patching(
         max_layer = model.cfg.n_layers
     assert max_layer <= model.cfg.n_layers
 
-    # save activations from orig
-    orig_cache = {}
-    model.cache_all(orig_cache)
-    _ = model(orig_data)
-    model.reset_hooks()
+    if orig_cache is None:
+        # save activations from orig
+        orig_cache = {}
+        model.reset_hooks()
+        model.cache_all(orig_cache)
+        _ = model(orig_data, prepend_bos=False)
 
     # process senders
     sender_hooks = []
@@ -87,13 +93,17 @@ def path_patching(
             sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
     sender_hook_names = [x[0] for x in sender_hooks]
 
-    # save activations from new for senders
-    new_cache = {}
-    model.cache_some(new_cache, lambda x: x in sender_hook_names)
-    _ = model(new_data)
-    model.reset_hooks()
+    if new_cache is None:
+        # save activations from new for senders
+        model.reset_hooks()
+        new_cache = {}
+        model.cache_some(new_cache, lambda x: x in sender_hook_names)
+        _ = model(new_data, prepend_bos=False)
+    else:
+        assert all([x in new_cache for x in sender_hook_names]), f"Difference between new_cache and senders: {set(sender_hook_names) - set(new_cache.keys())}"
 
     # set up receiver cache
+    model.reset_hooks()
     receiver_hook_names = [x[0] for x in receiver_hooks]
     receiver_cache = {}
     model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
@@ -141,7 +151,7 @@ def path_patching(
     
     # forward pass on orig, where patch in new acts for senders and orig acts for the rest
     # and save activations on receivers
-    _ = model(orig_data)
+    _ = model(orig_data, prepend_bos=False)
     model.reset_hooks()
 
     # add hooks for final forward pass on orig, where we patch in hybrid acts for receivers
@@ -168,17 +178,8 @@ orig = "When John and Mary went to the store, John gave a bottle of milk to Mary
 new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary."
 #new = "A completely different gibberish sentence blalablabladfghjkoiuytrdfg"
 
+model.reset_hooks()
 logit = model(orig)[0,16,5335]
-
-# model = path_patching(
-#     model, 
-#     orig, 
-#     new, 
-#     [(8, 6)],
-#     [('blocks.9.attn.hook_q', 9)],
-#     12,
-#     positions=[torch.tensor([16])],
-# )
 
 model = path_patching(
     model, 
@@ -187,7 +188,7 @@ model = path_patching(
     [(5, 5)],
     [('blocks.8.attn.hook_v', 6)],
     12,
-    positions=[torch.tensor([16])],
+    position=[torch.tensor([16])],
 )
 
 # model = path_patching(
@@ -235,7 +236,9 @@ def path_patching_up_to(
     orig_data, 
     new_data, 
     receiver_hooks,
-    position
+    position,
+    orig_cache=None,
+    new_cache=None,
 ):
     model.reset_hooks()
     attn_results = np.zeros((layer, model.cfg.n_heads))
@@ -249,7 +252,9 @@ def path_patching_up_to(
                 senders=[(l, h)],
                 receiver_hooks=receiver_hooks,
                 max_layer=model.cfg.n_layers,
-                position=position
+                position=position,
+                orig_cache=orig_cache,
+                new_cache=new_cache,
             )
             attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
@@ -261,7 +266,9 @@ def path_patching_up_to(
             senders=[(l, None)],
             receiver_hooks=receiver_hooks,
             max_layer=model.cfg.n_layers,
-            position=position
+            position=position,
+            orig_cache=orig_cache,
+            new_cache=new_cache,
         )
         mlp_results[l] = metric(model, dataset)
         model.reset_hooks()
@@ -335,7 +342,8 @@ mlp_results_n = (mlp_results - default_logit_diff) / default_logit_diff
 px.imshow(attn_results_n, color_continuous_scale='RdBu', color_continuous_midpoint=0).show()
 px.imshow(np.expand_dims(mlp_results_n, axis=0), color_continuous_scale='RdBu', color_continuous_midpoint=0)
 
-# %%
+#%% [markdown] 
+# Main part of the automatic circuit discovery algorithm
 
 class Node():
     def __init__(self,
@@ -372,6 +380,10 @@ class HypothesisTree():
         self.new_data = new_data
         self.threshold = threshold
         self.default_metric = self.metric(model, dataset)
+        self.orig_cache = None
+        self.new_cache = None
+        # self.get_caches()
+        
 
     def populate_node_stack(self):
         for layer in range(self.model.cfg.n_layers):
@@ -388,6 +400,22 @@ class HypothesisTree():
         self.node_stack[(layer, None, pos)] = resid_post # this represents blocks.{last}.hook_resid_post
         #self.node_stack.append(resid_post) 
 
+    def get_caches(self):
+        if "orig_cache" in self.__dict__.keys():
+            warnings.warn("Caches already exist, overwriting")
+
+        # save activations from orig
+        self.orig_cache = {}
+        self.model.reset_hooks()
+        model.cache_all(self.orig_cache)
+        _ = model(self.orig_data, prepend_bos=False)
+
+        # save activations from new for senders
+        self.new_cache = {}
+        self.model.reset_hooks()
+        self.model.cache_all(self.new_cache)
+        _ = model(self.new_data, prepend_bos=False)
+
     def eval(self):
         """Process current_node, then move to next current_node"""
 
@@ -402,7 +430,9 @@ class HypothesisTree():
             orig_data=self.orig_data, 
             new_data=self.new_data, 
             receiver_hooks=[(node.hook_name, node.head)],
-            position=node.position
+            position=node.position,
+            orig_cache=self.orig_cache,
+            new_cache=self.new_cache,
         ) 
 
         attn_results -= self.default_metric
@@ -444,6 +474,7 @@ h = HypothesisTree(
     threshold=0.2
 )
 
+h.eval()
 # %%
 base_hypothesis = HypothesisTree()
 next_hypotheses = base_hypothesis.expand(1)
