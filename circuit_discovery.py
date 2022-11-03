@@ -63,7 +63,7 @@ print(logit, new_logit)
 # %%
 N = 50
 ioi_dataset = IOIDataset(
-    prompt_type="mixed",
+    prompt_type="ABBA",
     N=N,
     tokenizer=model.tokenizer,
     prepend_bos=False,
@@ -175,9 +175,10 @@ class Node():
 use_caching = True
 
 class HypothesisTree():
-    def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int):
+    def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int, possible_positions: OrderedDict):
         self.model = model
-        self.possible_positions = [ioi_dataset.word_idx['end']] # TODO: deal with positions
+        #self.possible_positions = [ioi_dataset.word_idx['end']] # TODO: deal with positions
+        self.possible_positions = possible_positions
         self.node_stack = OrderedDict()
         self.populate_node_stack()
         self.current_node = self.node_stack[next(reversed(self.node_stack))] # last element
@@ -201,7 +202,7 @@ class HypothesisTree():
                     node = Node(layer, head, pos)
                     self.node_stack[(layer, head, pos)] = node
         layer = self.model.cfg.n_layers
-        pos = self.possible_positions[-1] # assume the last position specified is the one that we care about in the residual stream
+        pos = self.possible_positions[next(reversed(self.possible_positions))] # assume the last position specified is the one that we care about in the residual stream
         resid_post = Node(layer, None, pos) 
         #resid_post.hook_name = f'blocks.{layer-1}.hook_resid_post'
         self.node_stack[(layer, None, pos)] = resid_post # this represents blocks.{last}.hook_resid_post
@@ -229,34 +230,59 @@ class HypothesisTree():
         self.important_nodes.append(node)
         print("Currently evaluating", node)
 
-        if node.layer == self.model.cfg.n_layers:
-            receiver_hooks = [
-                (f"blocks.{node.layer-1}.hook_resid_post", None)
-            ]
-        elif node.head is not None:
-            receiver_hooks = [
-                (f"blocks.{node.layer}.attn.hook_q", node.head),
-                (f"blocks.{node.layer}.attn.hook_k", node.head),
-                (f"blocks.{node.layer}.attn.hook_v", node.head)
-            ]
-        else:
-            receiver_hooks = [
-                (f"blocks.{node.layer}.hook_mlp_out", None)
-            ]
+        # if node.layer == self.model.cfg.n_layers:
+        #     receiver_hooks = [
+        #         (f"blocks.{node.layer-1}.hook_resid_post", None)
+        #     ]
+        # elif node.head is not None:
+        #     receiver_hooks = [
+        #         (f"blocks.{node.layer}.attn.hook_q", node.head),
+        #         (f"blocks.{node.layer}.attn.hook_k", node.head),
+        #         (f"blocks.{node.layer}.attn.hook_v", node.head)
+        #     ]
+        # else:
+        #     receiver_hooks = [
+        #         (f"blocks.{node.layer}.hook_mlp_out", None)
+        #     ]
 
-        # do path patching on all nodes before node
-        attn_results, mlp_results = path_patching_up_to(
-            model=model, 
-            layer=node.layer,
-            metric=self.metric,
-            dataset=self.dataset,
-            orig_data=self.orig_data, 
-            new_data=self.new_data, 
-            receiver_hooks=receiver_hooks,
-            position=node.position,
-            orig_cache=self.orig_cache,
-            new_cache=self.new_cache,
-        ) 
+        # # do path patching on all nodes before node
+        # attn_results, mlp_results = path_patching_up_to(
+        #     model=model, 
+        #     layer=node.layer,
+        #     metric=self.metric,
+        #     dataset=self.dataset,
+        #     orig_data=self.orig_data, 
+        #     new_data=self.new_data, 
+        #     receiver_hooks=receiver_hooks,
+        #     position=node.position,
+        #     orig_cache=self.orig_cache,
+        #     new_cache=self.new_cache,
+        # ) 
+
+        # for resid_post and mlps
+        if node.head is None:
+            if node.layer == self.model.cfg.n_layers:
+                receiver_hooks = [
+                    (f"blocks.{node.layer-1}.hook_resid_post", None)
+                ]
+            else:
+                receiver_hooks = [
+                    (f"blocks.{node.layer}.hook_mlp_out", None)
+                ]
+            attn_results, mlp_results = path_patching_up_to(
+                model=model, 
+                layer=node.layer,
+                metric=self.metric,
+                dataset=self.dataset,
+                orig_data=self.orig_data, 
+                new_data=self.new_data, 
+                receiver_hooks=receiver_hooks,
+                position=node.position, # same position
+                orig_cache=self.orig_cache,
+                new_cache=self.new_cache,
+            ) 
+        else: # attn head
+            pass
 
         # convert to percentage
         attn_results -= self.default_metric
@@ -312,13 +338,21 @@ class HypothesisTree():
             font_size=14,
         )
 
+positions = OrderedDict()
+positions['IO'] = ioi_dataset.word_idx['IO']
+positions['S'] = ioi_dataset.word_idx['S']
+positions['S+1'] = ioi_dataset.word_idx['S+1']
+positions['S2'] = ioi_dataset.word_idx['S2']
+positions['end'] = ioi_dataset.word_idx['end']
+
 h = HypothesisTree(
     model, 
     metric=logit_diff_io_s, 
     dataset=ioi_dataset,
     orig_data=ioi_dataset.toks.long(), 
     new_data=abc_dataset.toks.long(), 
-    threshold=0.2)
+    threshold=0.2,
+    possible_positions=positions)
 
 # %%
 %%time
