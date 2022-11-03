@@ -306,6 +306,10 @@ class EasyTransformer(HookedRootModule):
             tokens = input
             tokens = tokens.squeeze() # Get rid of a trivial batch dimension
             assert tokens.dim() == 1, f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+        elif isinstance(input, np.ndarray):
+            tokens = input
+            tokens = tokens.squeeze() # Get rid of a trivial batch dimension
+            assert tokens.ndim == 1, f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
         str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
