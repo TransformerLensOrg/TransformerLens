@@ -36,7 +36,8 @@ model.set_use_attn_result(True)
 
 # %%
 def patch_all(z, source_act, hook):
-    return source_act
+    z[:] = source_act[:]
+    return z
 
 def patch_positions(z, source_act, hook, positions):
     if positions is None: # same as patch_all
@@ -61,6 +62,7 @@ def path_patching(
     orig_cache = None,
     new_cache = None,
     prepend_bos = False, # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
+    return_caches = False, # for Arthur debugging
 ):
     """ mlps are by default considered as just another component and so are
         by default frozen when collecting acts on receivers. 
@@ -101,6 +103,9 @@ def path_patching(
         _ = model(new_data, prepend_bos=False)
     else:
         assert all([x in new_cache for x in sender_hook_names]), f"Difference between new_cache and senders: {set(sender_hook_names) - set(new_cache.keys())}"
+
+    if return_caches:
+        return orig_cache, new_cache
 
     # set up receiver cache
     model.reset_hooks()
@@ -165,7 +170,7 @@ def path_patching(
             dim=2 if head is not None else None,
         )
         hooks.append((hook_name, hook))
-    
+
     if return_hooks:
         return hooks
     else:
@@ -213,7 +218,6 @@ ioi_dataset = IOIDataset(
     tokenizer=model.tokenizer,
     prepend_bos=False,
 )
-
 abc_dataset = (
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
@@ -239,6 +243,7 @@ def path_patching_up_to(
     position,
     orig_cache=None,
     new_cache=None,
+    return_caches=False, # Arthur debuggin
 ):
     model.reset_hooks()
     attn_results = np.zeros((layer, model.cfg.n_heads))
@@ -255,6 +260,7 @@ def path_patching_up_to(
                 position=position,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
+                return_caches=return_caches, # Arthur debuggin
             )
             attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
@@ -269,15 +275,18 @@ def path_patching_up_to(
             position=position,
             orig_cache=orig_cache,
             new_cache=new_cache,
+            return_caches=return_caches, # Arthur debuggin
         )
         mlp_results[l] = metric(model, dataset)
         model.reset_hooks()
     return attn_results, mlp_results
 
-def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
+def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset, both=False):
     N = dataset.N
-    io_logits = model(dataset.toks.long())[torch.arange(N), dataset.word_idx['end'], dataset.io_tokenIDs]
-    s_logits = model(dataset.toks.long())[torch.arange(N), dataset.word_idx['end'], dataset.s_tokenIDs]
+    io_logits = model(dataset.toks.long(), prepend_bos=False)[torch.arange(N), dataset.word_idx['end'], dataset.io_tokenIDs]
+    s_logits = model(dataset.toks.long(), prepend_bos=False)[torch.arange(N), dataset.word_idx['end'], dataset.s_tokenIDs]
+    if both:
+        return io_logits.mean(), s_logits.mean()
     return (io_logits - s_logits).mean().item()
     
 # %%
@@ -407,14 +416,14 @@ class HypothesisTree():
         # save activations from orig
         self.orig_cache = {}
         self.model.reset_hooks()
-        model.cache_all(self.orig_cache)
-        _ = model(self.orig_data, prepend_bos=False)
+        self.model.cache_all(self.orig_cache)
+        _ = self.model(self.orig_data, prepend_bos=False)
 
         # save activations from new for senders
         self.new_cache = {}
         self.model.reset_hooks()
         self.model.cache_all(self.new_cache)
-        _ = model(self.new_data, prepend_bos=False)
+        _ = self.model(self.new_data, prepend_bos=False)
 
     def eval(self):
         """Process current_node, then move to next current_node"""
@@ -433,7 +442,10 @@ class HypothesisTree():
             position=node.position,
             orig_cache=self.orig_cache,
             new_cache=self.new_cache,
+            # return_caches=True, # Arthur debugging
         ) 
+        # self.new_cache = attn_results # Arthur debugging
+        # self.orig_cache = mlp_results # Arthur debugging
 
         attn_results -= self.default_metric
         attn_results /= self.default_metric
@@ -485,8 +497,7 @@ for next_hypo in next_hypotheses:
         good_hypos.append(next_hypo)
 base_hypothesis = HypothesisTree(good_hypos)
 
-# %%
-
+#%%
 # start at blocks.11.hook_resid_post
 # results = path_patching_up_to(11)
 # for h
@@ -521,3 +532,39 @@ for layer in range(12):
                 receiver_hooks=receiver_hooks,
                 positions=[ioi_dataset.word_idx['end']]
             )
+#%% [markdown]
+# The new boi has positive 8.9. Why?
+
+receiver_hooks = [('blocks.11.hook_resid_post', None)]
+
+orig_cache = h.orig_cache
+new_cache = h.new_cache
+
+model.reset_hooks()
+orig_cache2, new_cache2 = path_patching(
+    model,
+    orig_data=ioi_dataset.toks.long(),
+    new_data=abc_dataset.toks.long(),
+    senders=[(9, 8)],
+    receiver_hooks=receiver_hooks,
+    max_layer=model.cfg.n_layers,
+    position=[ioi_dataset.word_idx['end']],
+    # orig_cache=orig_cache,
+    # new_cache=new_cache,
+    return_caches=True, # return_caches, # Arthur debuggin
+)
+logits = logit_diff_io_s(model, ioi_dataset)
+model.reset_hooks()
+default_logits = logit_diff_io_s(model, ioi_dataset)
+
+change = logits - default_logits
+change /= default_logits
+
+print(f"{logits:.2f} {default_logits:.2f} {logits - default_logits:.9f} {change:.2f}")
+
+#%% [markdown]
+# this bugs on MLPS... why?
+
+for key in orig_cache.keys():
+    # print(key)
+    if not torch.allclose(orig_cache[key], orig_cache2[key], rtol=1e-3, atol=1e-3): print(key)
