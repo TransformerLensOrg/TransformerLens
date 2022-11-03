@@ -18,7 +18,8 @@ def get_hook_tuple(layer, head_idx):
         return (f"blocks.{layer}.attn.hook_result", head_idx)
 
 def patch_all(z, source_act, hook):
-    return source_act
+    z[:] = source_act # make sure to slice! Otherwise objects get copied around
+    return z
 
 def patch_positions(z, source_act, hook, positions):
     if positions is None: # same as patch_all
@@ -41,7 +42,9 @@ def path_patching(
     return_hooks: bool = False,
     freeze_mlps: bool = True,
     orig_cache = None,
-
+    new_cache = None,
+    prepend_bos = False, # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
+    return_caches = False, # for Arthur debugging
 ):
     """ mlps are by default considered as just another component and so are
         by default frozen when collecting acts on receivers. 
@@ -58,12 +61,12 @@ def path_patching(
         max_layer = model.cfg.n_layers
     assert max_layer <= model.cfg.n_layers
 
-    model.reset_hooks()
-    # save activations from orig
-    orig_cache = {}
-    model.cache_all(orig_cache)
-    _ = model(orig_data)
-    model.reset_hooks()
+    if orig_cache is None:
+        # save activations from orig
+        orig_cache = {}
+        model.reset_hooks()
+        model.cache_all(orig_cache)
+        _ = model(orig_data, prepend_bos=False)
 
     # process senders
     sender_hooks = []
@@ -74,13 +77,20 @@ def path_patching(
             sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
     sender_hook_names = [x[0] for x in sender_hooks]
 
-    # save activations from new for senders
-    new_cache = {}
-    model.cache_some(new_cache, lambda x: x in sender_hook_names)
-    _ = model(new_data)
-    model.reset_hooks()
+    if new_cache is None:
+        # save activations from new for senders
+        model.reset_hooks()
+        new_cache = {}
+        model.cache_some(new_cache, lambda x: x in sender_hook_names)
+        _ = model(new_data, prepend_bos=False)
+    else:
+        assert all([x in new_cache for x in sender_hook_names]), f"Difference between new_cache and senders: {set(sender_hook_names) - set(new_cache.keys())}"
+
+    if return_caches:
+        return orig_cache, new_cache
 
     # set up receiver cache
+    model.reset_hooks()
     receiver_hook_names = [x[0] for x in receiver_hooks]
     receiver_cache = {}
     model.cache_some(receiver_cache, lambda x: x in receiver_hook_names)
@@ -128,7 +138,7 @@ def path_patching(
     
     # forward pass on orig, where patch in new acts for senders and orig acts for the rest
     # and save activations on receivers
-    _ = model(orig_data)
+    _ = model(orig_data, prepend_bos=False)
     model.reset_hooks()
 
     # add hooks for final forward pass on orig, where we patch in hybrid acts for receivers
@@ -142,13 +152,15 @@ def path_patching(
             dim=2 if head is not None else None,
         )
         hooks.append((hook_name, hook))
-    
+
     if return_hooks:
         return hooks
     else:
         for hook_name, hook in hooks:
             model.add_hook(hook_name, hook)
         return model
+
+
 
 def path_patching_up_to(
     model: EasyTransformer, 
@@ -158,7 +170,10 @@ def path_patching_up_to(
     orig_data, 
     new_data, 
     receiver_hooks,
-    position
+    position,
+    orig_cache=None,
+    new_cache=None,
+    return_caches=False, # Arthur debuggin
 ):
     model.reset_hooks()
     attn_results = np.zeros((layer, model.cfg.n_heads))
@@ -172,7 +187,10 @@ def path_patching_up_to(
                 senders=[(l, h)],
                 receiver_hooks=receiver_hooks,
                 max_layer=model.cfg.n_layers,
-                position=position
+                position=position,
+                orig_cache=orig_cache,
+                new_cache=new_cache,
+                return_caches=return_caches, # Arthur debuggin
             )
             attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
@@ -184,7 +202,10 @@ def path_patching_up_to(
             senders=[(l, None)],
             receiver_hooks=receiver_hooks,
             max_layer=model.cfg.n_layers,
-            position=position
+            position=position,
+            orig_cache=orig_cache,
+            new_cache=new_cache,
+            return_caches=return_caches, # Arthur debuggin
         )
         mlp_results[l] = metric(model, dataset)
         model.reset_hooks()

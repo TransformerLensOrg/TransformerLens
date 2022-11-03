@@ -1,6 +1,7 @@
 # %%
 import warnings
 from utils_circuit_discovery import get_hook_tuple, path_patching, path_patching_up_to, logit_diff_io_s
+from copy import deepcopy
 from ioi_utils import show_pp
 from functools import partial
 import numpy as np
@@ -169,6 +170,8 @@ class Node():
     def repr_long(self):
         return f"Node({self.layer}, {self.head}, {self.position}) with children {[child.__repr__() for child in self.children]}"
 
+use_caching = True
+
 class HypothesisTree():
     def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int):
         self.model = model
@@ -182,8 +185,10 @@ class HypothesisTree():
         self.new_data = new_data
         self.threshold = threshold
         self.default_metric = self.metric(model, dataset)
-        self.orig_cache = {}
-        self.new_cache = {}
+        self.orig_cache = None
+        self.new_cache = None
+        if use_caching:
+            self.get_caches()
         self.important_nodes = []
 
     def populate_node_stack(self):
@@ -259,6 +264,8 @@ class HypothesisTree():
 
         show_pp(attn_results.T)
         show_pp(mlp_results)
+        self.attn_results = attn_results
+        self.mlp_results = mlp_results
 
         # process result and mark nodes above threshold as important
         for layer in range(attn_results.shape[0]):
@@ -279,14 +286,37 @@ class HypothesisTree():
     def show(self):
         print("pretty picture")
 
-
 h = HypothesisTree(
     model, 
     metric=logit_diff_io_s, 
     dataset=ioi_dataset, 
     orig_data=ioi_dataset.toks.long(), 
     new_data=abc_dataset.toks.long(), 
-    threshold=0.15)
-
+    threshold=0.15,
+)
 h.eval()
-# %%
+attn_results_fast = deepcopy(h.attn_results)
+mlp_results_fast = deepcopy(h.mlp_results)
+
+#%% [markdown]
+# Test that Arthur didn't mess up the fast caching
+
+use_caching = False
+h = HypothesisTree(
+    model, 
+    metric=logit_diff_io_s, 
+    dataset=ioi_dataset, 
+    orig_data=ioi_dataset.toks.long(), 
+    new_data=abc_dataset.toks.long(), 
+    threshold=0.15,
+)
+h.eval()
+attn_results_slow = deepcopy(h.attn_results)
+mlp_results_slow = deepcopy(h.mlp_results)
+
+for fast_res, slow_res in zip([attn_results_fast, mlp_results_fast], [attn_results_slow, mlp_results_slow]):
+    for layer in range(fast_res.shape[0]):
+        for head in range(fast_res.shape[1]):
+            assert torch.allclose(torch.tensor(fast_res[layer, head]), torch.tensor(slow_res[layer, head]), atol=1e-3, rtol=1e-3), f"fast_res[{layer}, {head}] = {fast_res[layer, head]}, slow_res[{layer}, {head}] = {slow_res[layer, head]}"
+    for layer in range(fast_res.shape[0]):
+        assert torch.allclose(torch.tensor(fast_res[layer]), torch.tensor(slow_res[layer])), f"fast_res[{layer}] = {fast_res[layer]}, slow_res[{layer}] = {slow_res[layer]}"
