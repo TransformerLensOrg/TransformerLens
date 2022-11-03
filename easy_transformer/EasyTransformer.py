@@ -260,7 +260,7 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, input, prepend_bos=False):
+    def to_tokens(self, input, prepend_bos=True):
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos:
             if isinstance(input, str):
