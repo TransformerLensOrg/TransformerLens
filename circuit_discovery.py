@@ -143,7 +143,6 @@ px.imshow(attn_results_n, color_continuous_scale='RdBu', color_continuous_midpoi
 px.imshow(np.expand_dims(mlp_results_n, axis=0), color_continuous_scale='RdBu', color_continuous_midpoint=0)
 
 # %%
-
 class Node():
     def __init__(self,
         layer: int,
@@ -186,11 +185,15 @@ class HypothesisTree():
         #resid_post.hook_name = f'blocks.{layer-1}.hook_resid_post'
         self.node_stack[(layer, None, pos)] = resid_post # this represents blocks.{last}.hook_resid_post
 
-    def eval(self):
+    def eval(self, threshold=None):
         """Process current_node, then move to next current_node"""
+
+        if threshold is None:
+            threshold = self.threshold
 
         _, node = self.node_stack.popitem()
         self.important_nodes.append(node)
+        print(f"working on node ({node.layer}, {node.head})")
 
         if node.layer == self.model.cfg.n_layers:
             receiver_hooks = [
@@ -225,15 +228,20 @@ class HypothesisTree():
         mlp_results -= self.default_metric
         mlp_results /= self.default_metric
 
-        show_pp(attn_results.T)
-        show_pp(mlp_results)
-
+        threshold = max(3 * attn_results.std(), 3 * mlp_results.std(), 0.01)
+        print(f"{attn_results.mean()=}, {attn_results.std()=}")
+        print(f"{mlp_results.mean()=}, {mlp_results.std()=}")
+        show_pp(attn_results.T, title=f'direct effect on {node.layer}.{node.head}')
+        show_pp(mlp_results, title=f'direct effect on {node.layer}.{node.head}')
+        print(f"identified")
         # process result and mark nodes above threshold as important
         for layer in range(attn_results.shape[0]):
             for head in range(attn_results.shape[1]):
-                if abs(attn_results[layer, head]) > self.threshold:
+                if abs(attn_results[layer, head]) > threshold:
+                    print(f"({layer}, {head})")
                     self.node_stack[(layer, head, node.position)].children.append(node)
-            if abs(mlp_results[layer]) > self.threshold:
+            if abs(mlp_results[layer]) > threshold:
+                print(f"mlp {layer}")
                 self.node_stack[(layer, None, node.position)].children.append(node)
 
         # update self.current_node
@@ -251,9 +259,13 @@ class HypothesisTree():
 h = HypothesisTree(
     model, 
     metric=logit_diff_io_s, 
-    dataset=ioi_dataset, 
+    dataset=ioi_dataset,
     orig_data=ioi_dataset.toks.long(), 
     new_data=abc_dataset.toks.long(), 
-    threshold=0.15)
+    threshold=0.2)
 
+# %%
+%%time
+while h.current_node is not None:
+    h.eval()
 # %%
