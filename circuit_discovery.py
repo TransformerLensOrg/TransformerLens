@@ -1,5 +1,6 @@
 # %%
 from utils_circuit_discovery import get_hook_tuple
+from ioi_utils import show_pp
 from functools import partial
 #import plotly.graph_objects as go
 import numpy as np
@@ -49,7 +50,7 @@ def path_patching(
     senders: List[Tuple], 
     receiver_hooks: List[Tuple], 
     max_layer: Union[int, None] = None, 
-    positions: Union[torch.Tensor, None] = None,
+    position: int = 0,
     return_hooks: bool = False,
     freeze_mlps: bool = True):
     """ mlps are by default considered as just another component and so are
@@ -127,7 +128,7 @@ def path_patching(
     for hook_name, head in sender_hooks:
         #assert not torch.allclose(orig_cache[hook_name], new_cache[hook_name]), (hook_name, head)
         hook = get_act_hook(
-            partial(patch_positions, positions=positions),
+            partial(patch_positions, positions=[position]),
             alt_act=new_cache[hook_name],
             idx=head,
             dim=2 if head is not None else None,
@@ -144,7 +145,7 @@ def path_patching(
     for hook_name, head in receiver_hooks:
         #assert not torch.allclose(orig_cache[hook_name], receiver_cache[hook_name])
         hook = get_act_hook(
-            partial(patch_positions, positions=positions),
+            partial(patch_positions, positions=[position]),
             alt_act=receiver_cache[hook_name],
             idx=head,
             dim=2 if head is not None else None,
@@ -204,7 +205,7 @@ from ioi_dataset import (
     IOIDataset,
 )
 
-N = 50
+N = 1
 ioi_dataset = IOIDataset(
     prompt_type="mixed",
     N=N,
@@ -234,11 +235,11 @@ def path_patching_up_to(
     orig_data, 
     new_data, 
     receiver_hooks,
-    positions
+    position
 ):
     model.reset_hooks()
     attn_results = np.zeros((layer, model.cfg.n_heads))
-    mlp_results = np.zeros(layer)
+    mlp_results = np.zeros((layer,1))
     for l in tqdm(range(layer)):
         for h in range(model.cfg.n_heads):
             model = path_patching(
@@ -248,7 +249,7 @@ def path_patching_up_to(
                 senders=[(l, h)],
                 receiver_hooks=receiver_hooks,
                 max_layer=model.cfg.n_layers,
-                positions=positions
+                position=position
             )
             attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
@@ -260,7 +261,7 @@ def path_patching_up_to(
             senders=[(l, None)],
             receiver_hooks=receiver_hooks,
             max_layer=model.cfg.n_layers,
-            positions=positions
+            position=position
         )
         mlp_results[l] = metric(model, dataset)
         model.reset_hooks()
@@ -271,7 +272,7 @@ def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
     io_logits = model(dataset.toks.long())[torch.arange(N), dataset.word_idx['end'], dataset.io_tokenIDs]
     s_logits = model(dataset.toks.long())[torch.arange(N), dataset.word_idx['end'], dataset.s_tokenIDs]
     return (io_logits - s_logits).mean().item()
-
+    
 # %%
 receiver_hooks = [('blocks.11.hook_resid_post', None)]
 attn_results, mlp_results = path_patching_up_to(
@@ -340,20 +341,24 @@ class Node():
         layer: int,
         head: int,
         position: int, 
-        important: bool = False,
+        #important: bool = False,
     ):
         self.layer = layer
         self.head = head
         self.position = position
         self.hook_name = get_hook_tuple(self.layer, self.head)
-        self.important = important
+        #self.important = important
+        self.children = []
+
+    def __repr__(self):
+        return f"Node({self.layer}, {self.head}, {self.position})"
 
 class HypothesisTree():
     def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int):
         self.model = model
         #self.node_stack = []
         #self.current_node = self.node_stack[-1]
-        self.possible_positions = [0] # TODO: deal with positions
+        self.possible_positions = [ioi_dataset.word_idx['end']] # TODO: deal with positions
         self.node_stack = OrderedDict()
         self.populate_node_stack()
         self.current_node = self.node_stack[next(reversed(self.node_stack))] # last element
@@ -362,7 +367,7 @@ class HypothesisTree():
         self.orig_data = orig_data
         self.new_data = new_data
         self.threshold = threshold
-        self.edges = []
+        self.default_metric = self.metric(model, dataset)
 
     def populate_node_stack(self):
         for layer in range(self.model.cfg.n_layers):
@@ -393,27 +398,29 @@ class HypothesisTree():
             orig_data=self.orig_data, 
             new_data=self.new_data, 
             receiver_hooks=[(node.hook_name, node.head)],
-            positions=node.position
+            position=node.position
         ) 
+
+        attn_results -= self.default_metric
+        attn_results /= self.default_metric
+        mlp_results -= self.default_metric
+        mlp_results /= self.default_metric
+
+        show_pp(attn_results.T)
+        show_pp(mlp_results)
 
         # process result and mark nodes above threshold as important
         for layer in range(attn_results.shape[0]):
             for head in range(attn_results.shape[1]):
-                if attn_results[layer, head] > self.threshold:
-                    self.node_stack[(layer, head, node.position)].important = True
-                    self.edge.append((
-                        (node.layer, node.head, node.position), 
-                        (layer, head, node.position)))
-            if mlp_results[layer] > self.threshold:
-                self.node_stack[(layer, None, node.position)].important = True
-                self.edge.append((
-                    (node.layer, node.head, node.position), 
-                    (layer, None, node.position)))
+                if abs(attn_results[layer, head]) > self.threshold:
+                    self.node_stack[(layer, head, node.position)].children.append(node)
+            if abs(mlp_results[layer]) > self.threshold:
+                self.node_stack[(layer, None, node.position)].children.append(node)
 
         # iterate to next node
     
         # update self.current_node
-        while len(self.node_stack) > 0 and not self.node_stack[next(reversed(self.node_stack))].important:
+        while len(self.node_stack) > 0 and len(self.node_stack[next(reversed(self.node_stack))].children) == 0:
             self.node_stack.popitem()
         if len(self.node_stack) > 0:
             self.current_node = self.node_stack[next(reversed(self.node_stack))]
@@ -423,10 +430,14 @@ class HypothesisTree():
     def show(self):
         print("pretty picture")
 
-metric = lambda x, y: 1
-orig = "When John and Mary went to the store, John gave a bottle of milk to Mary."
-new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary."
-h = HypothesisTree(model, metric, [], orig, new, 0.2)
+
+h = HypothesisTree(
+    model, 
+    metric=logit_diff_io_s, 
+    dataset=ioi_dataset, 
+    orig_data=ioi_dataset.toks.long(), 
+    new_data=abc_dataset.toks.long(), 
+    threshold=0.2)
 
 # %%
 
