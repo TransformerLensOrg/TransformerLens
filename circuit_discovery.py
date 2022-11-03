@@ -161,7 +161,6 @@ class Node():
         self.layer = layer
         self.head = head
         self.position = position
-        #self.hook_name = get_hook_tuple(self.layer, self.head)[0]
         self.children = []
 
     def __repr__(self):
@@ -261,11 +260,11 @@ class HypothesisTree():
         attn_results /= self.default_metric
         mlp_results -= self.default_metric
         mlp_results /= self.default_metric
+        self.attn_results = attn_results
+        self.mlp_results = mlp_results
 
         show_pp(attn_results.T)
         show_pp(mlp_results)
-        self.attn_results = attn_results
-        self.mlp_results = mlp_results
 
         # process result and mark nodes above threshold as important
         for layer in range(attn_results.shape[0]):

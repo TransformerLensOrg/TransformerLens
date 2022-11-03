@@ -44,7 +44,6 @@ def path_patching(
     orig_cache = None,
     new_cache = None,
     prepend_bos = False, # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
-    return_caches = False, # for Arthur debugging
 ):
     """ mlps are by default considered as just another component and so are
         by default frozen when collecting acts on receivers. 
@@ -85,9 +84,6 @@ def path_patching(
         _ = model(new_data, prepend_bos=False)
     else:
         assert all([x in new_cache for x in sender_hook_names]), f"Difference between new_cache and senders: {set(sender_hook_names) - set(new_cache.keys())}"
-
-    if return_caches:
-        return orig_cache, new_cache
 
     # set up receiver cache
     model.reset_hooks()
@@ -173,7 +169,6 @@ def path_patching_up_to(
     position,
     orig_cache=None,
     new_cache=None,
-    return_caches=False, # Arthur debuggin
 ):
     model.reset_hooks()
     attn_results = np.zeros((layer, model.cfg.n_heads))
@@ -190,7 +185,6 @@ def path_patching_up_to(
                 position=position,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
-                return_caches=return_caches, # Arthur debuggin
             )
             attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
@@ -205,7 +199,6 @@ def path_patching_up_to(
             position=position,
             orig_cache=orig_cache,
             new_cache=new_cache,
-            return_caches=return_caches, # Arthur debuggin
         )
         mlp_results[l] = metric(model, dataset)
         model.reset_hooks()
