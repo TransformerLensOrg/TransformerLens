@@ -164,7 +164,7 @@ class Node():
         self.children = []
 
     def __repr__(self):
-        return f"Node({self.layer}, {self.head}, {self.position})"
+        return f"Node({self.layer}, {self.head})"
 
     def repr_long(self):
         return f"Node({self.layer}, {self.head}, {self.position}) with children {[child.__repr__() for child in self.children]}"
@@ -223,6 +223,7 @@ class HypothesisTree():
 
         _, node = self.node_stack.popitem()
         self.important_nodes.append(node)
+        print("Currently evaluating", node.)
 
         if node.layer == self.model.cfg.n_layers:
             receiver_hooks = [
@@ -252,8 +253,6 @@ class HypothesisTree():
             orig_cache=self.orig_cache,
             new_cache=self.new_cache,
         ) 
-        # self.new_cache = attn_results # Arthur debugging
-        # self.orig_cache = mlp_results # Arthur debugging
 
         # convert to percentage
         attn_results -= self.default_metric
@@ -270,8 +269,10 @@ class HypothesisTree():
         for layer in range(attn_results.shape[0]):
             for head in range(attn_results.shape[1]):
                 if abs(attn_results[layer, head]) > self.threshold:
+                    print("Found important head:", (layer, head), "at position", node.position)
                     self.node_stack[(layer, head, node.position)].children.append(node)
             if abs(mlp_results[layer]) > self.threshold:
+                print("Found important MLP: layer", layer, "position", node.position)
                 self.node_stack[(layer, None, node.position)].children.append(node)
 
         # update self.current_node
