@@ -88,7 +88,7 @@ class Node():
     def __init__(self,
         layer: int,
         head: int,
-        position: int
+        position: str
     ):
         self.layer = layer
         self.head = head
@@ -98,17 +98,15 @@ class Node():
         self.parents = []
 
     def __repr__(self):
-        return f"Node({self.layer}, {self.head})"
+        return f"Node({self.layer}, {self.head}, {self.position})"
 
     def repr_long(self):
         return f"Node({self.layer}, {self.head}, {self.position}) with children {[child.__repr__() for child in self.children]}"
 
-use_caching = True
 
 class HypothesisTree():
-    def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int, possible_positions: OrderedDict):
+    def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int, possible_positions: OrderedDict, use_caching: bool = True):
         self.model = model
-        #self.possible_positions = [ioi_dataset.word_idx['end']] # TODO: deal with positions
         self.possible_positions = possible_positions
         self.node_stack = OrderedDict()
         self.populate_node_stack()
@@ -153,15 +151,18 @@ class HypothesisTree():
         self.model.cache_all(self.new_cache)
         _ = self.model(self.new_data, prepend_bos=False)
 
-    def eval(self):
+    def eval(self, threshold: Union[float, None] = None, verbose: bool = False):
         """Process current_node, then move to next current_node"""
+
+        if threshold is None:
+            threshold = self.threshold
 
         _, node = self.node_stack.popitem()
         self.important_nodes.append(node)
         print("Currently evaluating", node)
 
         current_node_position = node.position
-        for pos in positions:
+        for pos in self.possible_positions:
             if current_node_position != pos and node.head is None: # MLPs and the end state of the residual stream only care about the last position
                 continue
 
@@ -177,6 +178,8 @@ class HypothesisTree():
                     receiver_hooks.append((f"blocks.{node.layer}.attn.hook_q", node.head)) # similar story to above, only care about the last position
 
             for receiver_hook in receiver_hooks:
+                if verbose:
+                    print(f"Working on pos {pos}, receiver hook {receiver_hook}")
                 attn_results, mlp_results = path_patching_up_to(
                     model=model, 
                     layer=node.layer,
@@ -205,13 +208,14 @@ class HypothesisTree():
                 # process result and mark nodes above threshold as important
                 for layer in range(attn_results.shape[0]):
                     for head in range(attn_results.shape[1]):
-                        if abs(attn_results[layer, head]) > self.threshold:
-                            print("Found important head:", (layer, head), "at position", node.position)
-                            self.node_stack[(layer, head, node.position)].children.append(node)
-                            node.parents.append(self.node_stack[(layer, head, node.position)])
-                    if abs(mlp_results[layer]) > self.threshold:
-                        print("Found important MLP: layer", layer, "position", node.position)
-                        self.node_stack[(layer, None, node.position)].children.append(node)
+                        if abs(attn_results[layer, head]) > threshold:
+                            print("Found important head:", (layer, head), "at position", pos)
+                            self.node_stack[(layer, head, pos)].children.append((node, attn_results[layer, head]))
+                            node.parents.append(self.node_stack[(layer, head, pos)])
+                    if abs(mlp_results[layer]) > threshold:
+                        print("Found important MLP: layer", layer, "position", pos)
+                        self.node_stack[(layer, None, pos)].children.append((node, mlp_results[layer]))
+                        node.parents.append(self.node_stack[(layer, None, pos)])
 
         # update self.current_node
         while len(self.node_stack) > 0 and len(self.node_stack[next(reversed(self.node_stack))].children) == 0:
@@ -258,6 +262,7 @@ h = HypothesisTree(
     new_data=abc_dataset.toks.long(), 
     threshold=0.2,
     possible_positions=positions,
+    use_caching=True
 )
 
 # %%
