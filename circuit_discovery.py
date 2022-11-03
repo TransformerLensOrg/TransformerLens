@@ -245,8 +245,8 @@ class HypothesisTree():
             new_data=self.new_data, 
             receiver_hooks=receiver_hooks,
             position=node.position,
-            # orig_cache=self.orig_cache,
-            # new_cache=self.new_cache,
+            orig_cache=self.orig_cache,
+            new_cache=self.new_cache,
         ) 
         # self.new_cache = attn_results # Arthur debugging
         # self.orig_cache = mlp_results # Arthur debugging

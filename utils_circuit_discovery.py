@@ -39,7 +39,10 @@ def path_patching(
     max_layer: Union[int, None] = None, 
     position: int = 0,
     return_hooks: bool = False,
-    freeze_mlps: bool = True):
+    freeze_mlps: bool = True,
+    orig_cache = None,
+
+):
     """ mlps are by default considered as just another component and so are
         by default frozen when collecting acts on receivers. 
         orig_data: string, torch.Tensor, or list of strings - any format that can be passed to the model directly
