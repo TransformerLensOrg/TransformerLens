@@ -429,12 +429,18 @@ class Attention(nn.Module):
     def calculate_sin_cos_rotary(self, rotary_dim, n_ctx, base=10000):
         """
         Calculate the sine and cosine waves to use in a rotary embedding. See https://blog.eleuther.ai/rotary-embeddings/ for details
+
+        Note: For some inexplicable reason, in GPT-J each ADJACENT pair of elements in k and q are rotated, in GPT-NeoX the pair of elements at k and k+n//2 are rotated (ie folding the full length in half, and then looking at pairs accordingly). I have absolutely no clue why, it should be completely equivalent.
+        To resolve this, I've coded it to default to the GPT-J mode, but to explicitly check whether it's GPT-NeoX and then do the GPT-NeoX thing if it is.
         """
         pos = torch.arange(n_ctx, dtype=torch.float32)
         dim = torch.arange(rotary_dim//2, dtype=torch.float32)
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        freq = einops.repeat(freq, "d -> (d 2)")
+        if self.cfg.original_architecture=="GPTNeoXForCausalLM":
+            freq = einops.repeat(freq, "d -> (2 d)")
+        else:
+            freq = einops.repeat(freq, "d -> (d 2)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles), torch.cos(angles)
@@ -442,10 +448,20 @@ class Attention(nn.Module):
     def rotate_every_two(self, x):
         """ 
         Rotary helper function, splits x into blocks of size 2 along the final axis and maps [x0, x1] to [-x1, x0]
+
+        The final axis of x must have even length.
+
+        GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        rot_x[..., 0::2] = -x[..., 1::2]
-        rot_x[..., 1::2] = x[..., 0::2]
+        if self.cfg.original_architecture=="GPTNeoXForCausalLM":
+            n = x.size(-1)//2
+            rot_x[..., :n] = -x[..., n:]
+            rot_x[..., n:] = x[..., :n]
+        else:
+            rot_x[..., ::2] = -x[..., 1::2]
+            rot_x[..., 1::2] = x[..., ::2]
+
         return rot_x
     
     def apply_rotary(self, x, past_kv_pos_offset=0):

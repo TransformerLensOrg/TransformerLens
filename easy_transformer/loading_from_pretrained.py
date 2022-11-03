@@ -335,7 +335,6 @@ def get_pretrained_model_config(
         cfg_dict = convert_neel_model_config(official_model_name)
     else:
         cfg_dict = convert_hf_model_config(official_model_name)
-    
     # Processing common to both model types
     # Remove any prefix, saying the organization who made a model.
     cfg_dict["model_name"] = official_model_name.split("/")[-1]
@@ -345,7 +344,7 @@ def get_pretrained_model_config(
     if device is not None:
         cfg_dict["device"] = device
     if fold_ln:
-        if cfg_dict["normalization_type"] == "LN":
+        if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
             cfg_dict["normalization_type"] = "LNPre"
         else:
             logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
@@ -368,6 +367,13 @@ def get_pretrained_model_config(
 
     cfg = EasyTransformerConfig.from_dict(cfg_dict)
     return cfg
+
+def get_num_params_of_pretrained(model_name):
+    """
+    Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
+    """
+    cfg = get_pretrained_model_config(model_name)
+    return cfg.n_params
 
 
 # %% Load checkpointed model state dicts 

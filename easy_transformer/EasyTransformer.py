@@ -32,21 +32,6 @@ from easy_transformer.components import *
 import easy_transformer.loading_from_pretrained as loading
 from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores, get_corner
 
-
-
-"""
-TODO: Add Bloom, GPT-J and GPT-NeoX
-EleutherAI/gpt-j-6B
-EleutherAI/gpt-neox-20b
-bloom-350m
-bloom-760m
-bloom-1b3
-bloom-2b5
-bloom-6b3
-bloom (176B parameters)
-https://huggingface.co/docs/transformers/model_doc/bloom
-"""
-
 # Full transformer
 class EasyTransformer(HookedRootModule):
     """
@@ -249,12 +234,12 @@ class EasyTransformer(HookedRootModule):
         """
         Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful EasyTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule.
         """
-        cache_dict = super().run_with_cache(*model_args, remove_batch_dim=remove_batch_dim, **kwargs)
+        out, cache_dict = super().run_with_cache(*model_args, remove_batch_dim=remove_batch_dim, **kwargs)
         if return_cache_object:
             cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)
-            return cache
+            return out, cache
         else:
-            return cache_dict
+            return out, cache_dict
                 
     def set_tokenizer(self, tokenizer):
         """

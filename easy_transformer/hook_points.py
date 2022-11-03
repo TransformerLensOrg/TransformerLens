@@ -6,8 +6,6 @@ import torch.nn as nn
 
 from functools import *
 
-from easy_transformer.activation_cache import ActivationCache
-
 # %%
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
