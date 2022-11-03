@@ -20,3 +20,4 @@ _modidx.py
 *.json
 *.png
 *.pt
+*.pth
