@@ -16,6 +16,10 @@ from collections import OrderedDict
 from easy_transformer import EasyTransformer
 from easy_transformer.experiments import get_act_hook
 
+from ioi_dataset import (
+    IOIDataset,
+)
+
 from IPython import get_ipython
 ipython = get_ipython()
 if ipython is not None:
@@ -201,10 +205,6 @@ model.reset_hooks()
 print(logit, new_logit)
 
 # %%
-from ioi_dataset import (
-    IOIDataset,
-)
-
 N = 1
 ioi_dataset = IOIDataset(
     prompt_type="mixed",
@@ -283,7 +283,8 @@ attn_results, mlp_results = path_patching_up_to(
     orig_data=ioi_dataset.toks.long(),
     new_data=abc_dataset.toks.long(),
     receiver_hooks=receiver_hooks,
-    positions=[ioi_dataset.word_idx['end']])
+    positions=[ioi_dataset.word_idx['end']]
+)
 
 # %%
 model.reset_hooks()
@@ -352,6 +353,9 @@ class Node():
 
     def __repr__(self):
         return f"Node({self.layer}, {self.head}, {self.position})"
+
+    def repr_long(self):
+        return f"Node({self.layer}, {self.head}, {self.position}) with children {[child.__repr__() for child in self.children]}"
 
 class HypothesisTree():
     def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int):
@@ -437,10 +441,10 @@ h = HypothesisTree(
     dataset=ioi_dataset, 
     orig_data=ioi_dataset.toks.long(), 
     new_data=abc_dataset.toks.long(), 
-    threshold=0.2)
+    threshold=0.2
+)
 
 # %%
-
 base_hypothesis = HypothesisTree()
 next_hypotheses = base_hypothesis.expand(1)
 good_hypos = []
