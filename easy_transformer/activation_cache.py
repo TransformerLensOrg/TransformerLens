@@ -461,7 +461,8 @@ class ActivationCache:
         if self.has_pos_embed:
             labels.append("pos_embed")
             components.append(pos_slice.apply(self["pos_embed"], -2)[None])
-        bias = self.model.accumulated_bias(layer, mlp_input)
+        # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
+        bias = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
         bias = bias.expand((1,)+head_stack.shape[1:])
         labels.append("bias")
         components.append(bias)

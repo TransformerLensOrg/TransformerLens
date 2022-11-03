@@ -401,6 +401,14 @@ class EasyTransformer(HookedRootModule):
         elif isinstance(device_or_dtype, torch.dtype):
             print("Changing model dtype to", device_or_dtype)
         nn.Module.to(self, device_or_dtype)
+    
+    def cuda(self):
+        # Wrapper around cuda that also changes self.cfg.device
+        self.to("cuda")
+    
+    def cpu(self):
+        # Wrapper around cuda that also changes self.cfg.device
+        self.to("cpu")
 
     @classmethod
     def from_pretrained(cls, 
@@ -536,6 +544,7 @@ class EasyTransformer(HookedRootModule):
             if self.cfg.normalization_type not in ["LN", "LNPre"]:
                 logging.warning("You are not using LayerNorm, so the layer norm weights can't be folded! Skipping")
             else:
+                # Note - you can run fold_layer_norm while normalization_type is LN, but this is not advised! It mostly goes wrong when you're training the model. 
                 state_dict = self.fold_layer_norm(state_dict)
         if center_writing_weights:
             if self.cfg.normalization_type not in ["LN", "LNPre"]:
@@ -693,6 +702,37 @@ class EasyTransformer(HookedRootModule):
         Toggles whether to explicitly calculate and expose the result for each attention head - useful for interpretability but can easily burn through GPU memory.
         """
         self.cfg.use_attn_result = use_attn_result
+    
+    def process_weights_(self, 
+                        fold_ln: bool=True, 
+                        center_writing_weights: bool = True, 
+                        center_unembed: bool = True,
+                        factored_to_even: bool = False,
+                        move_state_dict_to_device: bool = True):
+        """
+        Wrapper around load_and_process_state_dict to allow for in-place processing of the weights. This is useful if using EasyTransformer for training, if we then want to analyse a cleaner version of the same model. 
+        """
+        state_dict = self.state_dict()
+        if fold_ln and self.cfg.normalization_type=="LN":
+            # If we're folding the LN into the weights, we need to replace all of the layernorm layers with LayerNormPres, which do not have learnable parameters.
+            # This is somewhat hacky, but it's the easiest way to do it.
+            self.cfg.normalization_type = "LNPre"
+            self.ln_final = LayerNormPre(self.cfg)
+            for layer in self.blocks:
+                layer.ln1 = LayerNormPre(self.cfg)
+                layer.ln2 = LayerNormPre(self.cfg)
+                if self.cfg.act_fn.endswith("_ln"):
+                    layer.mlp.ln = LayerNormPre(self.cfg)
+
+        self.load_and_process_state_dict(
+            state_dict,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
+            factored_to_even=factored_to_even,
+            move_state_dict_to_device=move_state_dict_to_device,
+        )
+        
         
     @torch.inference_mode()
     def generate(
@@ -813,10 +853,14 @@ class EasyTransformer(HookedRootModule):
         else:
             return tokens
     
-    # Give access to all weights as properties. Layer weights are stacked into one massive tensor and a cache is used to avoid repeated computation. If GPU memory is a bottleneck, don't use these properties!
+    # Give access to all weights as properties. Layer weights are stacked into one massive tensor and a cache is used to avoid repeated computation. Often a useful convenience when we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use these properties!
     @property
     def W_U(self):
         return self.unembed.W_U
+    
+    @property
+    def b_U(self):
+        return self.unembed.b_U
     
     @property
     def W_E(self):
@@ -870,6 +914,42 @@ class EasyTransformer(HookedRootModule):
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
     
     @property
+    @lru_cache(maxsize=None)
+    def b_K(self):
+        """Stacks the key biases across all layers"""
+        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_Q(self):
+        """Stacks the query biases across all layers"""
+        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_V(self):
+        """Stacks the value biases across all layers"""
+        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_O(self):
+        """Stacks the attn output biases across all layers"""
+        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_in(self):
+        """Stacks the MLP input biases across all layers"""
+        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_out(self):
+        """Stacks the MLP output biases across all layers"""
+        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+    
+    @property
     def QK(self):
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
     
@@ -881,12 +961,14 @@ class EasyTransformer(HookedRootModule):
     def accumulated_bias(
         self, 
         layer: int, 
-        mlp_input: bool=False):
+        mlp_input: bool=False,
+        include_mlp_biases=True):
         """Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the input of layer L.
 
         Args:
             layer (int): Layer number, in [0, n_layers]. layer==0 means no layers, layer==n_layers means all layers.
             mlp_input (bool): If True, we take the bias up to the input of the MLP of layer L (ie we include the bias from the attention output of the current layer, otherwise just biases from previous layers)
+            include_mlp_biases (bool): Whether to include the biases of MLP layers. Often useful to have as False if we're expanding attn_out into individual heads, but keeping mlp_out as is.
         Returns:
             bias (torch.Tensor): [d_model], accumulated bias
         """
@@ -894,7 +976,8 @@ class EasyTransformer(HookedRootModule):
 
         for i in range(layer):
             accumulated_bias += self.blocks[i].attn.b_O
-            accumulated_bias += self.blocks[i].mlp.b_out
+            if include_mlp_biases:
+                accumulated_bias += self.blocks[i].mlp.b_out
         if mlp_input:
             assert layer<self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             accumulated_bias += self.blocks[layer].attn.b_O

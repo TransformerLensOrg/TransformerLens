@@ -124,7 +124,7 @@ MODEL_ALIASES = {
     "EleutherAI/gpt-neo-125M": ["gpt-neo-125M", "gpt-neo-small", "neo-small", "neo"],
     "EleutherAI/gpt-neo-1.3B": ["gpt-neo-1.3B", "gpt-neo-medium", "neo-medium"],
     "EleutherAI/gpt-neo-2.7B": ["gpt-neo-2.7B", "gpt-neo-large", "neo-large"],
-    "EleutherAI/gpt-j-6B": ["gpt-j-6B", "gpt-j", "j"],
+    "EleutherAI/gpt-j-6B": ["gpt-j-6B", "gpt-j", "gptj"],
     "EleutherAI/gpt-neox-20b": ["gpt-neox-20b", "gpt-neox", "neox"],
     "stanford-crfm/alias-gpt2-small-x21": ["stanford-gpt2-small-a", "alias-gpt2-small-x21", "gpt2-mistral-small-a", "gpt2-stanford-small-a"],
     "stanford-crfm/battlestar-gpt2-small-x49": ["stanford-gpt2-small-b", "battlestar-gpt2-small-x49", "gpt2-mistral-small-b", "gpt2-mistral-small-b"],
