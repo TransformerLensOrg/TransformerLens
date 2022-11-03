@@ -81,76 +81,6 @@ abc_dataset = (
 # 2. pick threshold (probably in terms of percentage change in metric we care about?), identify components that have effect sizes above threshold
 # 3. for comp in identified components:
 ## a. run path patching on all components upstream to it, with the q, k, or v part of comp as receiver
-
-    
-# %%
-# Try out path patching at residual stream
-receiver_hooks = [('blocks.11.hook_resid_post', None)]
-attn_results, mlp_results = path_patching_up_to(
-    model, 
-    layer=12, 
-    metric=logit_diff_io_s,
-    dataset=ioi_dataset,
-    orig_data=ioi_dataset.toks.long(),
-    new_data=abc_dataset.toks.long(),
-    receiver_hooks=receiver_hooks,
-    positions=[ioi_dataset.word_idx['end']]
-)
-
-model.reset_hooks()
-default_logit_diff = logit_diff_io_s(model, ioi_dataset)
-attn_results_n = (attn_results - default_logit_diff) / default_logit_diff
-mlp_results_n = (mlp_results - default_logit_diff) / default_logit_diff
-px.imshow(attn_results_n, color_continuous_scale='RdBu', color_continuous_midpoint=0).show()
-px.imshow(np.expand_dims(mlp_results_n, axis=0), color_continuous_scale='RdBu', color_continuous_midpoint=0)
-
-# %%
-# Name mover queries
-#receiver_hooks = [('blocks.9.attn.hook_q', 9), ('blocks.9.attn.hook_q', 6), ('blocks.10.attn.hook_q', 0)]
-receiver_hooks = [
-    ('blocks.11.attn.hook_q', 10), 
-    ('blocks.11.attn.hook_k', 10), 
-    ('blocks.11.attn.hook_v', 10), ]
-    #('blocks.10.attn.hook_q', 7)]
-attn_results, mlp_results = path_patching_up_to(
-    model, 
-    layer=10, 
-    metric=logit_diff_io_s,
-    dataset=ioi_dataset,
-    orig_data=ioi_dataset.toks.long(),
-    new_data=abc_dataset.toks.long(),
-    receiver_hooks=receiver_hooks,
-    position=ioi_dataset.word_idx['end'])
-
-model.reset_hooks()
-default_logit_diff = logit_diff_io_s(model, ioi_dataset)
-attn_results_n = (attn_results - default_logit_diff) / default_logit_diff
-mlp_results_n = (mlp_results - default_logit_diff) / default_logit_diff
-px.imshow(attn_results_n, color_continuous_scale='RdBu', color_continuous_midpoint=0).show()
-px.imshow(mlp_results_n, color_continuous_scale='RdBu', color_continuous_midpoint=0)
-
-# %%
-# S-inhibition heads
-receiver_hooks = [
-    ('blocks.7.attn.hook_v', 3), 
-    ('blocks.7.attn.hook_v', 9), 
-    ('blocks.8.attn.hook_v', 6),
-    ('blocks.8.attn.hook_v', 10)]
-attn_results, mlp_results = path_patching_up_to(
-    model, 
-    layer=10, 
-    metric=logit_diff_io_s,
-    dataset=ioi_dataset,
-    orig_data=ioi_dataset.toks.long(),
-    new_data=abc_dataset.toks.long(),
-    receiver_hooks=receiver_hooks,
-    position=ioi_dataset.word_idx['S2'])
-
-attn_results_n = (attn_results - default_logit_diff) / default_logit_diff
-mlp_results_n = (mlp_results - default_logit_diff) / default_logit_diff
-px.imshow(attn_results_n, color_continuous_scale='RdBu', color_continuous_midpoint=0).show()
-px.imshow(np.expand_dims(mlp_results_n, axis=0), color_continuous_scale='RdBu', color_continuous_midpoint=0)
-
 #%% [markdown] 
 # Main part of the automatic circuit discovery algorithm
 
@@ -162,6 +92,7 @@ class Node():
     ):
         self.layer = layer
         self.head = head
+        assert isinstance(position, str), f"Position must be a string, not {type(position)}"
         self.position = position
         self.children = []
         self.parents = []
@@ -202,9 +133,8 @@ class HypothesisTree():
                     node = Node(layer, head, pos)
                     self.node_stack[(layer, head, pos)] = node
         layer = self.model.cfg.n_layers
-        pos = self.possible_positions[next(reversed(self.possible_positions))] # assume the last position specified is the one that we care about in the residual stream
+        pos = next(reversed(self.possible_positions)) # assume the last position specified is the one that we care about in the residual stream
         resid_post = Node(layer, None, pos) 
-        #resid_post.hook_name = f'blocks.{layer-1}.hook_resid_post'
         self.node_stack[(layer, None, pos)] = resid_post # this represents blocks.{last}.hook_resid_post
 
     def get_caches(self):
@@ -230,83 +160,58 @@ class HypothesisTree():
         self.important_nodes.append(node)
         print("Currently evaluating", node)
 
-        # if node.layer == self.model.cfg.n_layers:
-        #     receiver_hooks = [
-        #         (f"blocks.{node.layer-1}.hook_resid_post", None)
-        #     ]
-        # elif node.head is not None:
-        #     receiver_hooks = [
-        #         (f"blocks.{node.layer}.attn.hook_q", node.head),
-        #         (f"blocks.{node.layer}.attn.hook_k", node.head),
-        #         (f"blocks.{node.layer}.attn.hook_v", node.head)
-        #     ]
-        # else:
-        #     receiver_hooks = [
-        #         (f"blocks.{node.layer}.hook_mlp_out", None)
-        #     ]
+        current_node_position = node.position
+        for pos in positions:
+            if current_node_position != pos and node.head is None: # MLPs and the end state of the residual stream only care about the last position
+                continue
 
-        # # do path patching on all nodes before node
-        # attn_results, mlp_results = path_patching_up_to(
-        #     model=model, 
-        #     layer=node.layer,
-        #     metric=self.metric,
-        #     dataset=self.dataset,
-        #     orig_data=self.orig_data, 
-        #     new_data=self.new_data, 
-        #     receiver_hooks=receiver_hooks,
-        #     position=node.position,
-        #     orig_cache=self.orig_cache,
-        #     new_cache=self.new_cache,
-        # ) 
-
-        # for resid_post and mlps
-        if node.head is None:
+            receiver_hooks = []
             if node.layer == self.model.cfg.n_layers:
-                receiver_hooks = [
-                    (f"blocks.{node.layer-1}.hook_resid_post", None)
-                ]
+                receiver_hooks.append((f"blocks.{node.layer-1}.hook_resid_post", None))
+            elif node.head is None:
+                receiver_hooks.append((f"blocks.{node.layer}.hook_mlp_out", None))
             else:
-                receiver_hooks = [
-                    (f"blocks.{node.layer}.hook_mlp_out", None)
-                ]
-            attn_results, mlp_results = path_patching_up_to(
-                model=model, 
-                layer=node.layer,
-                metric=self.metric,
-                dataset=self.dataset,
-                orig_data=self.orig_data, 
-                new_data=self.new_data, 
-                receiver_hooks=receiver_hooks,
-                position=node.position, # same position
-                orig_cache=self.orig_cache,
-                new_cache=self.new_cache,
-            ) 
-        else: # attn head
-            pass
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_v", node.head))
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_k", node.head))
+                if pos == current_node_position:
+                    receiver_hooks.append((f"blocks.{node.layer}.attn.hook_q", node.head)) # similar story to above, only care about the last position
 
-        # convert to percentage
-        attn_results -= self.default_metric
-        attn_results /= self.default_metric
-        mlp_results -= self.default_metric
-        mlp_results /= self.default_metric
-        self.attn_results = attn_results
-        self.mlp_results = mlp_results
+            for receiver_hook in receiver_hooks:
+                attn_results, mlp_results = path_patching_up_to(
+                    model=model, 
+                    layer=node.layer,
+                    metric=self.metric,
+                    dataset=self.dataset,
+                    orig_data=self.orig_data, 
+                    new_data=self.new_data, 
+                    receiver_hooks=[receiver_hook],
+                    position=self.possible_positions[pos], # TODO TODO TODO I think we might need to have an "in position" (pos) as well as an "out position" (node.position)
+                    orig_cache=self.orig_cache,
+                    new_cache=self.new_cache,
+                )
 
-        show_pp(attn_results.T, title=f"attn results for {node}", xlabel="Head", ylabel="Layer")
-        show_pp(mlp_results, title=f"mlp results for {node}", xlabel="Layer", ylabel="")
+                # convert to percentage
+                attn_results -= self.default_metric
+                attn_results /= self.default_metric
+                mlp_results -= self.default_metric
+                mlp_results /= self.default_metric
+                self.attn_results = attn_results
+                self.mlp_results = mlp_results
 
-        #threshold = max(3 * attn_results.std(), 3 * mlp_results.std(), 0.01)
+                show_pp(attn_results.T, title=f"Attn results for {node} with receiver hook {receiver_hook}", xlabel="Head", ylabel="Layer")
+                show_pp(mlp_results, title=f"MLP results for {node} with receiver hook {receiver_hook}", xlabel="Layer", ylabel="")
 
-        # process result and mark nodes above threshold as important
-        for layer in range(attn_results.shape[0]):
-            for head in range(attn_results.shape[1]):
-                if abs(attn_results[layer, head]) > self.threshold:
-                    print("Found important head:", (layer, head), "at position", node.position)
-                    self.node_stack[(layer, head, node.position)].children.append(node)
-                    node.parents.append(self.node_stack[(layer, head, node.position)])
-            if abs(mlp_results[layer]) > self.threshold:
-                print("Found important MLP: layer", layer, "position", node.position)
-                self.node_stack[(layer, None, node.position)].children.append(node)
+                #threshold = max(3 * attn_results.std(), 3 * mlp_results.std(), 0.01)
+                # process result and mark nodes above threshold as important
+                for layer in range(attn_results.shape[0]):
+                    for head in range(attn_results.shape[1]):
+                        if abs(attn_results[layer, head]) > self.threshold:
+                            print("Found important head:", (layer, head), "at position", node.position)
+                            self.node_stack[(layer, head, node.position)].children.append(node)
+                            node.parents.append(self.node_stack[(layer, head, node.position)])
+                    if abs(mlp_results[layer]) > self.threshold:
+                        print("Found important MLP: layer", layer, "position", node.position)
+                        self.node_stack[(layer, None, node.position)].children.append(node)
 
         # update self.current_node
         while len(self.node_stack) > 0 and len(self.node_stack[next(reversed(self.node_stack))].children) == 0:
@@ -352,12 +257,13 @@ h = HypothesisTree(
     orig_data=ioi_dataset.toks.long(), 
     new_data=abc_dataset.toks.long(), 
     threshold=0.2,
-    possible_positions=positions)
+    possible_positions=positions,
+)
 
 # %%
 %%time
-while h.current_node is not None:
-    h.eval()
+# while h.current_node is not None:
+h.eval()
 
 # %%
 attn_results_fast = deepcopy(h.attn_results)
@@ -384,3 +290,29 @@ for fast_res, slow_res in zip([attn_results_fast, mlp_results_fast], [attn_resul
             assert torch.allclose(torch.tensor(fast_res[layer, head]), torch.tensor(slow_res[layer, head]), atol=1e-3, rtol=1e-3), f"fast_res[{layer}, {head}] = {fast_res[layer, head]}, slow_res[{layer}, {head}] = {slow_res[layer, head]}"
     for layer in range(fast_res.shape[0]):
         assert torch.allclose(torch.tensor(fast_res[layer]), torch.tensor(slow_res[layer])), f"fast_res[{layer}] = {fast_res[layer]}, slow_res[{layer}] = {slow_res[layer]}"
+
+#%%
+def randomise_indices(arr: np.ndarray, indices: np.ndarray):
+    """
+    Given an array arr, shuffle the elements that occur at the indices positions between themselves
+    """
+
+    # get the elements that we want to shuffle
+    elements = arr[indices]
+
+    # shuffle the elements
+    np.random.shuffle(elements)
+
+    # put the shuffled elements back into the array
+    arr[indices] = elements
+
+    return arr
+
+#%%
+
+a = [1, 2, 3, 4, 5]
+b = [1, 2, 3]
+a = np.array(a)
+b = np.array(b)
+print(randomise_indices(a, b))
+# %%
