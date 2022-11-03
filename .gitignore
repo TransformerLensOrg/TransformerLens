@@ -21,3 +21,4 @@ _modidx.py
 *.png
 *.pt
 *.pth
+*.pkl
