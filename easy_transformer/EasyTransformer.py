@@ -21,29 +21,16 @@ from transformers import (
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer import EasyTransformerConfig
 
-from easy_transformer.caching import (
+# Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
+from easy_transformer.past_key_value_caching import (
     EasyTransformerKeyValueCache,
     EasyTransformerKeyValueCacheEntry,
 )
+from easy_transformer.activation_cache import ActivationCache
 
 from easy_transformer.components import *
 import easy_transformer.loading_from_pretrained as loading
 from easy_transformer.utils import lm_cross_entropy_loss, sample_logits, download_file_from_hf, FactoredMatrix, composition_scores, get_corner
-
-
-
-"""
-TODO: Add Bloom, GPT-J and GPT-NeoX
-EleutherAI/gpt-j-6B
-EleutherAI/gpt-neox-20b
-bloom-350m
-bloom-760m
-bloom-1b3
-bloom-2b5
-bloom-6b3
-bloom (176B parameters)
-https://huggingface.co/docs/transformers/model_doc/bloom
-"""
 
 # Full transformer
 class EasyTransformer(HookedRootModule):
@@ -154,6 +141,7 @@ class EasyTransformer(HookedRootModule):
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
+        prepend_bos bool: Whether to prepend the BOS token to the input. Only applies when input is a string. Defaults to True (unlike to_tokens) - even for models not explicitly trained with this, heads often use the first position as a resting position and accordingly lose information from the first token, so this empirically seems to give better results.
 
         Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models - if you want a custom loss function, the recommended behaviour is returning the logits and then applying your custom loss function.
         """
@@ -162,9 +150,13 @@ class EasyTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
+            # This is only intended to support passing in a single string
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
+        if len(tokens.shape)==1:
+            # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
+            tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
         assert isinstance(tokens, torch.Tensor)
@@ -229,10 +221,25 @@ class EasyTransformer(HookedRootModule):
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
-                    return {"logits": logits, "loss": loss}
+                    return (logits, loss)
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
+    
+    def run_with_cache(self, 
+        *model_args, 
+        return_cache_object=True, 
+        remove_batch_dim=False, 
+        **kwargs) -> Union[ActivationCache, Dict[str, torch.Tensor]]:
+        """
+        Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful EasyTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule.
+        """
+        out, cache_dict = super().run_with_cache(*model_args, remove_batch_dim=remove_batch_dim, **kwargs)
+        if return_cache_object:
+            cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)
+            return out, cache
+        else:
+            return out, cache_dict
                 
     def set_tokenizer(self, tokenizer):
         """
@@ -243,7 +250,10 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, input, prepend_bos=True):
+    def to_tokens(self, input, prepend_bos=False):
+        """
+        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. Defaults to False for to_tokens, as this is intended to be used for substrings of the input, but True for a string input to forward.
+        """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos:
             if isinstance(input, str):
@@ -251,6 +261,28 @@ class EasyTransformer(HookedRootModule):
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
         return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
+    
+    def to_string(self, tokens) -> Union[str, List[str]]:
+        """ 
+        Converts a tensor of tokens to a string (if rank 1) or a list of strings (if rank 2).
+
+        Accepts lists of tokens and numpy arrays as inputs too (and converts to tensors internally)
+        """
+        assert self.tokenizer is not None, "Cannot use to_string without a tokenizer"
+
+        if not isinstance(tokens, torch.Tensor):
+            # We allow lists to be input
+            tokens = torch.tensor(tokens)
+
+        # I'm not sure what exactly clean_up_tokenization_spaces does, but if
+        # it's set, then tokenization is no longer invertible, and some tokens
+        # with a bunch of whitespace get collapsed together
+        if len(tokens.shape)==2:
+            return self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+        elif len(tokens.shape)<=1:
+            return self.tokenizer.decode(tokens, clean_up_tokenization_spaces=False)
+        else:
+            raise ValueError(f"Invalid shape passed in: {tokens.shape}")
     
     def to_str_tokens(
         self, 
@@ -288,6 +320,47 @@ class EasyTransformer(HookedRootModule):
         # If token shape is non-empty, raise error
         assert not token.shape, f"Input string: {string} is not a single token!"
         return token.item()
+    
+    def get_token_position(
+    self, 
+    single_token: Union[str, int], 
+    tokens: Union[str, torch.Tensor], 
+    mode="first", 
+    prepend_bos=False):
+        """
+        Get the position of a single_token in a sequence of tokens. 
+
+        Args:
+            single_token (Union[str, int]): The token to search for. Can 
+                be a token index, or a string (but the string must correspond to a
+                single integer)
+            tokens (Union[str, torch.Tensor]): The sequence of tokens to 
+                search in. Can be a string or a rank 1 tensor or a rank 2 tensor
+                with a dummy batch dimension.
+            mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
+        """
+        if isinstance(tokens, str):
+            # If the tokens are a string, convert to tensor
+            tokens = self.to_tokens(tokens, prepend_bos=prepend_bos)
+        
+        if len(tokens.shape)==2:
+            # If the tokens have shape [1, seq_len], flatten to [seq_len]
+            assert tokens.shape[0]==1, f"If tokens are rank two, they must have shape [1, seq_len], not {tokens.shape}"
+            tokens = tokens[0]
+        
+        if isinstance(single_token, str):
+            # If the single token is a string, convert to an integer
+            single_token = self.to_single_token(single_token)
+        elif isinstance(single_token, torch.Tensor):
+            single_token = single_token.item()
+        
+        indices = torch.arange(len(tokens))[tokens==single_token]
+        if mode=="first":
+            return indices[0].item()
+        elif mode=="last":
+            return indices[-1].item()
+        else:
+            raise ValueError(f"mode must be 'first' or 'last', not {mode}")
     
     def single_token_to_residual(
         self, 
@@ -328,6 +401,14 @@ class EasyTransformer(HookedRootModule):
         elif isinstance(device_or_dtype, torch.dtype):
             print("Changing model dtype to", device_or_dtype)
         nn.Module.to(self, device_or_dtype)
+    
+    def cuda(self):
+        # Wrapper around cuda that also changes self.cfg.device
+        self.to("cuda")
+    
+    def cpu(self):
+        # Wrapper around cuda that also changes self.cfg.device
+        self.to("cpu")
 
     @classmethod
     def from_pretrained(cls, 
@@ -463,6 +544,7 @@ class EasyTransformer(HookedRootModule):
             if self.cfg.normalization_type not in ["LN", "LNPre"]:
                 logging.warning("You are not using LayerNorm, so the layer norm weights can't be folded! Skipping")
             else:
+                # Note - you can run fold_layer_norm while normalization_type is LN, but this is not advised! It mostly goes wrong when you're training the model. 
                 state_dict = self.fold_layer_norm(state_dict)
         if center_writing_weights:
             if self.cfg.normalization_type not in ["LN", "LNPre"]:
@@ -530,11 +612,11 @@ class EasyTransformer(HookedRootModule):
                 state_dict[f"blocks.{l}.mlp.W_in"] = state_dict[f"blocks.{l}.mlp.W_in"] * state_dict[f"blocks.{l}.ln2.w"][:, None]
                 del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
 
-            if self.cfg.act_fn.startswith("solu"):
-                # Fold ln3 into activation
-                state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[f"blocks.{l}.mlp.b_out"] + (state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]).sum(-2)
-                state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
-                del state_dict[f"blocks.{l}.mlp.ln.w"], state_dict[f"blocks.{l}.mlp.ln.b"]
+                if self.cfg.act_fn.startswith("solu"):
+                    # Fold ln3 into activation
+                    state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[f"blocks.{l}.mlp.b_out"] + (state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]).sum(-2)
+                    state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[f"blocks.{l}.mlp.W_out"] * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
+                    del state_dict[f"blocks.{l}.mlp.ln.w"], state_dict[f"blocks.{l}.mlp.ln.b"]
         # Fold ln_final into Unembed
         if not self.cfg.final_rms:
             # Dumb bug from my old SoLU training code, some models have RMSNorm instead of LayerNorm pre unembed.
@@ -554,8 +636,9 @@ class EasyTransformer(HookedRootModule):
         for l in range(self.cfg.n_layers):
             state_dict[f'blocks.{l}.attn.W_O'] = state_dict[f'blocks.{l}.attn.W_O'] - state_dict[f'blocks.{l}.attn.W_O'].mean(-1, keepdim=True) # W_O is [head_index, d_model, d_head]
             state_dict[f'blocks.{l}.attn.b_O'] = state_dict[f'blocks.{l}.attn.b_O'] - state_dict[f'blocks.{l}.attn.b_O'].mean() # b_O is [d_model]
-            state_dict[f'blocks.{l}.mlp.W_out'] = state_dict[f'blocks.{l}.mlp.W_out'] - state_dict[f'blocks.{l}.mlp.W_out'].mean(-1, keepdim=True)
-            state_dict[f'blocks.{l}.mlp.b_out'] = state_dict[f'blocks.{l}.mlp.b_out'] - state_dict[f'blocks.{l}.mlp.b_out'].mean()
+            if not self.cfg.attn_only:
+                state_dict[f'blocks.{l}.mlp.W_out'] = state_dict[f'blocks.{l}.mlp.W_out'] - state_dict[f'blocks.{l}.mlp.W_out'].mean(-1, keepdim=True)
+                state_dict[f'blocks.{l}.mlp.b_out'] = state_dict[f'blocks.{l}.mlp.b_out'] - state_dict[f'blocks.{l}.mlp.b_out'].mean()
         return state_dict
     
     def center_unembed(self, state_dict: Dict[str, torch.Tensor]):
@@ -619,6 +702,37 @@ class EasyTransformer(HookedRootModule):
         Toggles whether to explicitly calculate and expose the result for each attention head - useful for interpretability but can easily burn through GPU memory.
         """
         self.cfg.use_attn_result = use_attn_result
+    
+    def process_weights_(self, 
+                        fold_ln: bool=True, 
+                        center_writing_weights: bool = True, 
+                        center_unembed: bool = True,
+                        factored_to_even: bool = False,
+                        move_state_dict_to_device: bool = True):
+        """
+        Wrapper around load_and_process_state_dict to allow for in-place processing of the weights. This is useful if using EasyTransformer for training, if we then want to analyse a cleaner version of the same model. 
+        """
+        state_dict = self.state_dict()
+        if fold_ln and self.cfg.normalization_type=="LN":
+            # If we're folding the LN into the weights, we need to replace all of the layernorm layers with LayerNormPres, which do not have learnable parameters.
+            # This is somewhat hacky, but it's the easiest way to do it.
+            self.cfg.normalization_type = "LNPre"
+            self.ln_final = LayerNormPre(self.cfg)
+            for layer in self.blocks:
+                layer.ln1 = LayerNormPre(self.cfg)
+                layer.ln2 = LayerNormPre(self.cfg)
+                if self.cfg.act_fn.endswith("_ln"):
+                    layer.mlp.ln = LayerNormPre(self.cfg)
+
+        self.load_and_process_state_dict(
+            state_dict,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
+            factored_to_even=factored_to_even,
+            move_state_dict_to_device=move_state_dict_to_device,
+        )
+        
         
     @torch.inference_mode()
     def generate(
@@ -739,10 +853,14 @@ class EasyTransformer(HookedRootModule):
         else:
             return tokens
     
-    # Give access to all weights as properties. Layer weights are stacked into one massive tensor and a cache is used to avoid repeated computation. If GPU memory is a bottleneck, don't use these properties!
+    # Give access to all weights as properties. Layer weights are stacked into one massive tensor and a cache is used to avoid repeated computation. Often a useful convenience when we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use these properties!
     @property
     def W_U(self):
         return self.unembed.W_U
+    
+    @property
+    def b_U(self):
+        return self.unembed.b_U
     
     @property
     def W_E(self):
@@ -796,6 +914,42 @@ class EasyTransformer(HookedRootModule):
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
     
     @property
+    @lru_cache(maxsize=None)
+    def b_K(self):
+        """Stacks the key biases across all layers"""
+        return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_Q(self):
+        """Stacks the query biases across all layers"""
+        return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_V(self):
+        """Stacks the value biases across all layers"""
+        return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_O(self):
+        """Stacks the attn output biases across all layers"""
+        return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_in(self):
+        """Stacks the MLP input biases across all layers"""
+        return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def b_out(self):
+        """Stacks the MLP output biases across all layers"""
+        return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
+    
+    @property
     def QK(self):
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
     
@@ -807,12 +961,14 @@ class EasyTransformer(HookedRootModule):
     def accumulated_bias(
         self, 
         layer: int, 
-        mlp_input: bool=False):
+        mlp_input: bool=False,
+        include_mlp_biases=True):
         """Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the input of layer L.
 
         Args:
             layer (int): Layer number, in [0, n_layers]. layer==0 means no layers, layer==n_layers means all layers.
             mlp_input (bool): If True, we take the bias up to the input of the MLP of layer L (ie we include the bias from the attention output of the current layer, otherwise just biases from previous layers)
+            include_mlp_biases (bool): Whether to include the biases of MLP layers. Often useful to have as False if we're expanding attn_out into individual heads, but keeping mlp_out as is.
         Returns:
             bias (torch.Tensor): [d_model], accumulated bias
         """
@@ -820,7 +976,8 @@ class EasyTransformer(HookedRootModule):
 
         for i in range(layer):
             accumulated_bias += self.blocks[i].attn.b_O
-            accumulated_bias += self.blocks[i].mlp.b_out
+            if include_mlp_biases:
+                accumulated_bias += self.blocks[i].mlp.b_out
         if mlp_input:
             assert layer<self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
             accumulated_bias += self.blocks[layer].attn.b_O

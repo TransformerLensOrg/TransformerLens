@@ -1,4 +1,4 @@
-
+# %%
 import easy_transformer.utils as utils
 from easy_transformer.utils import Slice, SliceInput
 import torch
@@ -11,7 +11,9 @@ import logging
 
 class ActivationCache:
     """ 
-    A wrapper around a dictionary of cached activations from a model run, with a variety of helper functions. In general, any utility which is specifically about editing/processing activations should be a method here, while any utility which is more general should be a function in utils.py, and any utility which is specifically about model weights should be in EasyTransformer.py or components.py
+    A wrapper around a dictionary of cached activations from a model run, with a variety of helper functions. In general, any utility which is specifically about editing/processing activations should be a method here, while any utility which is more general should be a function in utils.py, and any utility which is specifically about model weights should be in EasyTransformer.py or components.py.
+
+    NOTE: This is designed to be used with the EasyTransformer class, and will not work with other models. It's also designed to be used with all activations of EasyTransformer being cached, and some internal methods will break without that.
 
     WARNING: The biggest footgun and source of bugs in this code will be keeping track of indexes, dimensions, and the numbers of each. There are several kinds of activations:
 
@@ -27,14 +29,13 @@ class ActivationCache:
     def __init__(
         self, 
         cache_dict: dict, 
-        model):
+        model,
+        has_batch_dim: bool=True):
         self.cache_dict = cache_dict
         self.model = model
-        self.has_batch_dim = True
-        self.batch_size = self.cache_dict["hook_embed"].size(0)
-        self.ctx_size = self.cache_dict["hook_embed"].size(1)
-        
-        # Broadcast pos_embed up to batch size, so it has the same shape as all other residual vectors
+        self.has_batch_dim = has_batch_dim
+        self.has_embed = "hook_embed" in self.cache_dict
+        self.has_pos_embed = "hook_pos_embed" in self.cache_dict
     
     def remove_batch_dim(self):
         if self.has_batch_dim:
@@ -98,10 +99,14 @@ class ActivationCache:
     def items(self):
         return self.cache_dict.items()
     
+    def __iter__(self):
+        return self.cache_dict.__iter__()
+    
     def accumulated_resid(
         self, 
         layer, 
         incl_mid=False, 
+        pos_slice=None,
         mlp_input=False,
         return_labels=False):
         """Returns the accumulated residual stream up to a given layer, ie a stack of previous residual streams up to that layer's input. This can be thought of as a series of partial values of the residual stream, where the model gradually accumulates what it wants.
@@ -110,12 +115,15 @@ class ActivationCache:
             layer (int): The layer to take components up to - by default includes resid_pre for that layer and excludes resid_mid and resid_post for that layer. layer==n_layers means to return all residual streams, including the final one (ie immediately pre logits). The indices are taken such that this gives the accumulated streams up to the input to layer l
             incl_mid (bool, optional): Whether to return resid_mid for all previous layers. Defaults to False.
             mlp_input (bool, optional): Whether to include resid_mid for the current layer - essentially giving MLP input rather than Attn input. Defaults to False.
+            pos_slice (Slice): A slice object to apply to the pos dimension. Defaults to None, do nothing.
             return_labels (bool, optional): Whether to return a list of labels for the residual stream components. Useful for labelling graphs. Defaults to True.
 
         Returns:
             Components: A [num_components, batch_size, pos, d_model] tensor of the accumulated residual streams.
             (labels): An optional list of labels for the components.
         """
+        if not isinstance(pos_slice, Slice):
+            pos_slice = Slice(pos_slice)
         if layer is None or layer==-1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
@@ -131,7 +139,7 @@ class ActivationCache:
             if (incl_mid and l<layer) or (mlp_input and l==layer):
                 components.append(self[("resid_mid", l)])
                 labels.append(f"{l}_mid")
-        
+        components = [pos_slice.apply(c, dim=-2) for c in components]
         components = torch.stack(components, dim=0)
         if return_labels:
             return components, labels 
@@ -143,37 +151,48 @@ class ActivationCache:
         layer,
         mlp_input=False,
         mode="all",
+        pos_slice=None,
         incl_embeds=True,
         return_labels=False):
         """Decomposes the residual stream input to layer L into a stack of the output of previous layers. The sum of these is the input to layer L (plus embedding and pos embedding). This is useful for attributing model behaviour to different components of the residual stream
 
         Args:
-            layer (int): The layer to take components up to - by default includes resid_pre for that layer and excludes resid_mid and resid_post for that layer. layer==n_layers means to return all layer outputs incl in the final layer, layer==0 means just embed and pos_embed. The indices are taken such that this gives the accumulated streams up to the input to layer l
-            incl_mid (bool, optional): Whether to return resid_mid for all previous layers. Defaults to False.
-            mlp_input (bool, optional): Whether to include attn_out for the current layer - essentially giving MLP input rather than Attn input. Defaults to False.
-            mode (str): Values aare "all", "mlp" or "attn". "all" returns all components, "mlp" returns only the MLP components, and "attn" returns only the attention components. Defaults to "all".
+            layer (int): The layer to take components up to - by default includes 
+                resid_pre for that layer and excludes resid_mid and resid_post for that layer. layer==n_layers means to return all layer outputs incl in the final layer, layer==0 means just embed and pos_embed. The indices are taken such that this gives the accumulated streams up to the input to layer l
+            incl_mid (bool, optional): Whether to return resid_mid for all previous 
+                layers. Defaults to False.
+            mlp_input (bool, optional): Whether to include attn_out for the current 
+                layer - essentially decomposing the residual stream that's input to the MLP input rather than the Attn input. Defaults to False.
+            mode (str): Values are "all", "mlp" or "attn". "all" returns all 
+                components, "mlp" returns only the MLP components, and "attn" returns only the attention components. Defaults to "all".
+            pos_slice (Slice): A slice object to apply to the pos dimension. 
+                Defaults to None, do nothing.
             incl_embeds (bool): Whether to include embed & pos_embed
-            return_labels (bool, optional): Whether to return a list of labels for the residual stream components. Useful for labelling graphs. Defaults to True.
+            return_labels (bool, optional): Whether to return a list of labels for 
+                the residual stream components. Useful for labelling graphs. Defaults to True.
 
         Returns:
             Components: A [num_components, batch_size, pos, d_model] tensor of the accumulated residual streams.
             (labels): An optional list of labels for the components.
         """
+        if not isinstance(pos_slice, Slice):
+            pos_slice = Slice(pos_slice)
         if layer is None or layer==-1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
         incl_attn = mode != "mlp"
-        incl_mlp = mode != "attn"
+        incl_mlp = mode != "attn" and not self.model.cfg.attn_only
+        components = []
+        labels = []
         if incl_embeds:
-            components = [self['embed']]
-            labels = ['embed']
-            if "hook_pos_embed" in self.cache_dict:
+            if self.has_embed:
+                components = [self['hook_embed']]
+                labels.append('embed')
+            if self.has_pos_embed:
                 components.append(self['hook_pos_embed'])
                 labels.append('pos_embed')
-        else:
-            components = []
-            labels = []
+
 
         for l in range(layer):
             if incl_attn:
@@ -182,9 +201,10 @@ class ActivationCache:
             if incl_mlp:
                 components.append(self[("mlp_out", l)])
                 labels.append(f"{l}_mlp_out")
-        if mlp_input:
+        if mlp_input and incl_attn:
             components.append(self[("attn_out", layer)])
             labels.append(f"{layer}_attn_out")
+        components = [pos_slice.apply(c, dim=-2) for c in components]
         components = torch.stack(components, dim=0)
         if return_labels:
             return components, labels 
@@ -227,8 +247,9 @@ class ActivationCache:
             layer = self.model.cfg.n_layers
 
         if 'blocks.0.attn.hook_result' not in self.cache_dict:
-            raise ValueError("Must run model with use_attn_results=True or run cache.compute_head_results to use this method")
-
+            print("Tried to stack head results when they weren't cached. Computing head results now")
+            self.compute_head_results()
+    
         components = []
         labels = []
         for l in range(layer):
@@ -245,7 +266,9 @@ class ActivationCache:
         elif incl_remainder:
             components = [pos_slice.apply(self[("resid_post", layer-1)], dim=-2)]
         else:
-            components = torch.zeros(0, *self["hook_embed"].shape, device=self.model.cfg.device)
+            # If this is called with layer 0, we return an empty tensor of the right shape to be stacked correctly
+            # This uses the shape of hook_embed, which is pretty janky since it assumes embed is in the cache. But it's hard to explicitly code the shape, since it depends on the pos slice, whether we have a batch dim, etc. And it's pretty messy! 
+            components = torch.zeros(0, *pos_slice.apply(self["hook_embed"], dim=-2).shape, device=self.model.cfg.device)
             
         if return_labels:
             return components, labels
@@ -291,7 +314,9 @@ class ActivationCache:
         return_labels: bool=False,
         incl_remainder: bool=False,
     ):
-        """Returns a stack of all neuron results (ie residual stream contribution) up to layer L.
+        """Returns a stack of all neuron results (ie residual stream contribution) up to layer L - ie the amount each individual neuron contributes to the residual stream. Also returns a list of labels of the form "L0N0" for the neurons. A good way to decompose the outputs of MLP layers into attribution by specific neurons.
+
+        Note that doing this for all neurons is SUPER expensive on GPU memory and only works for small models or short inputs.
 
         Args:
             layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers]
@@ -331,7 +356,8 @@ class ActivationCache:
         elif incl_remainder:
             components = [pos_slice.apply(self[("resid_post", layer-1)], dim=-2)]
         else:
-            components = torch.zeros(0, *self["hook_embed"].shape, device=self.model.cfg.device)
+            # Returning empty, give it the right shape to stack properly
+            components = torch.zeros(0, *pos_slice.apply(self["hook_embed"], dim=-2).shape, device=self.model.cfg.device)
         if return_labels:
             return components, labels
         else:
@@ -344,20 +370,38 @@ class ActivationCache:
         mlp_input: bool=False,
         pos_slice: Union[Slice, SliceInput]  = None,
     ):
-        """Takes a stack of components of the residual stream (eg outputs of decompose_resid or accumulated_resid), treats them as the input to a specific layer, and applies the layer norm scaling of that layer to them, using the cached scale factors.
+        """Takes a stack of components of the residual stream (eg outputs of decompose_resid or accumulated_resid), treats them as the input to a specific layer, and applies the layer norm scaling of that layer to them, using the cached scale factors - simulating what that component of the residual stream contributes to that layer's input. 
+        
+        The layernorm scale is global across the entire residual stream for each layer, batch element and position, which is why we need to use the cached scale factors rather than just applying a new LayerNorm.
+
+        If the model does not use LayerNorm, it returns the residual stack unchanged.
 
         Args:
-            residual_stack (torch.Tensor): A tensor, whose final dimension is d_model. The other trailing dimensions are assumed to be the same as the stored hook_scale - which may or may not include batch or position dimensions.
-            layer (int): The layer we're taking the input to. In [0, n_layers], n_layers means the unembed. None maps to the n_layers case, ie the unembed.
-            mlp_input (bool, optional): Whether the input is to the MLP or attn (ie ln2 vs ln1). Defaults to False, ie ln1. If layer==n_layers, must be False, and we use ln_final
-            pos_slice: The slice to take of positions, if residual_stack is not over the full context, None means do nothing. See utils.Slice for details. Defaults to None.
+            residual_stack (torch.Tensor): A tensor, whose final dimension is 
+                d_model. The other trailing dimensions are assumed to be the
+                same as the stored hook_scale - which may or may not include
+                batch or position dimensions.
+            layer (int): The layer we're taking the input to. In [0, n_layers], 
+                n_layers means the unembed. None maps to the n_layers case, ie
+                the unembed.
+            mlp_input (bool, optional): Whether the input is to the MLP or attn 
+                (ie ln2 vs ln1). Defaults to False, ie ln1. If layer==n_layers,
+                must be False, and we use ln_final
+            pos_slice: The slice to take of positions, if residual_stack is not 
+                over the full context, None means do nothing. It is assumed that
+                pos_slice has already been applied to residual_stack, and this
+                is only applied to the scale. See utils.Slice for details.
+                Defaults to None.
         """
-        # First, center
+        if self.model.cfg.normalization_type not in ["LN", "LNPre"]:
+            # The model does not use LayerNorm, so we don't need to do anything.
+            return residual_stack
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
         if layer is None or layer==-1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
+        # First, center the stack
         residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         if layer==self.model.cfg.n_layers or layer is None:
@@ -366,7 +410,7 @@ class ActivationCache:
             hook_name = f"blocks.{layer}.ln{2 if mlp_input else 1}.hook_scale"
             scale = self[hook_name]
 
-        # The shape of scale is [batch, position, 1] - final dimension is a dummy thing to get broadcoasting to work nicely.
+        # The shape of scale is [batch, position, 1] or [position, 1] - final dimension is a dummy thing to get broadcoasting to work nicely.
         scale = pos_slice.apply(scale, dim=-2)
         
         return residual_stack / scale
@@ -375,8 +419,9 @@ class ActivationCache:
         self,
         layer: Optional[int]=None,
         mlp_input=False,
-        apply_ln=True,
-        pos_slice: Union[Slice, SliceInput]  = None,
+        expand_neurons=True,
+        apply_ln=False,
+        pos_slice: Union[Slice, SliceInput] = None,
         return_labels=False,
     ):
         """Returns the full decomposition of the residual stream into embed, pos_embed, each head result, each neuron result, and the accumulated biases. We break down the residual stream that is input into some layer.
@@ -384,6 +429,7 @@ class ActivationCache:
         Args:
             layer (int): The layer we're inputting into. layer is in [0, n_layers], if layer==n_layers (or None) we're inputting into the unembed (the entire stream), if layer==0 then it's just embed and pos_embed
             mlp_input (bool, optional): Are we inputting to the MLP in that layer or the attn? Must be False for final layer, since that's the unembed. Defaults to False.
+            expand_neurons (bool, optional): Whether to expand the MLP outputs to give every neuron's result or just return the MLP layer outputs. Defaults to True.
             apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to True.
             pos_slice (Slice, optional): Slice of the positions to take. Defaults to None. See utils.Slice for details.
             return_labels (bool): Whether to return the labels. Defaults to False.
@@ -395,26 +441,39 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
         head_stack, head_labels = self.stack_head_results(layer + (1 if mlp_input else 0), pos_slice=pos_slice, return_labels=True)
-        neuron_stack, neuron_labels = self.stack_neuron_results(layer, pos_slice=pos_slice, return_labels=True)
-        bias = self.model.accumulated_bias(layer, mlp_input)
-        if self.has_batch_dim:
-            bias = einops.repeat(bias, "d_model -> batch ctx d_model", batch=self.batch_size, ctx=self.ctx_size)
-        else:
-            bias = einops.repeat(bias, "d_model -> ctx d_model", ctx=self.ctx_size)
+        labels = head_labels
+        components = [head_stack]
+        if not self.model.cfg.attn_only and layer>0:
+            if expand_neurons:
+                neuron_stack, neuron_labels = self.stack_neuron_results(layer, pos_slice=pos_slice, return_labels=True)
+                labels.extend(neuron_labels)
+                components.append(neuron_stack)
+            else:
+                # Get the stack of just the MLP outputs
+                # mlp_input included for completeness, but it doesn't actually matter, since it's just for MLP outputs
+                mlp_stack, mlp_labels = self.decompose_resid(layer, mlp_input=mlp_input, pos_slice=pos_slice, incl_embeds=False, mode="mlp", return_labels=True)
+                labels.extend(mlp_labels)
+                components.append(mlp_stack)
 
-        labels = head_labels + neuron_labels + ["embed", "pos_embed", "bias"]
-        embed = pos_slice.apply(self["embed"], -2)[None]
-        pos_embed = pos_slice.apply(self["pos_embed"], -2)[None]
-        bias = pos_slice.apply(bias, -2)[None]
-        l = [head_stack, neuron_stack, embed, pos_embed, bias]
-        for i in l: print(i.shape)
-        residual_stack = torch.cat(l, dim=0)
-
+        if self.has_embed:
+            labels.append("embed")
+            components.append(pos_slice.apply(self["embed"], -2)[None])
+        if self.has_pos_embed:
+            labels.append("pos_embed")
+            components.append(pos_slice.apply(self["pos_embed"], -2)[None])
+        # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
+        bias = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
+        bias = bias.expand((1,)+head_stack.shape[1:])
+        labels.append("bias")
+        components.append(bias)
+        residual_stack = torch.cat(components, dim=0)
         if apply_ln:
-            residual_stack = self.apply_ln_to_stack(residual_stack, layer, pos_slice=pos_slice)
+            residual_stack = self.apply_ln_to_stack(residual_stack, layer, pos_slice=pos_slice, mlp_input=mlp_input)
 
         if return_labels:
             return residual_stack, labels
         else:
             return residual_stack
 
+
+# %%

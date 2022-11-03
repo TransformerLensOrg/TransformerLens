@@ -100,7 +100,7 @@ MODEL_ALIASES = {
     "NeelNanda/SoLU_8L1024W_C4_Code": ["solu-8l", "solu-8l-new", "solu-8l-c4-code"],
     # "NeelNanda/SoLU_10L1280W_C4_Code": ["solu-10l", "solu-10l-new", "solu-10l-c4-code"],
     "NeelNanda/SoLU_12L1536W_C4_Code": ["solu-12l", "solu-12l-new", "solu-12l-c4-code"],
-    "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr": ["attn-only-2l-shortformer-6b-big-lr", "attn-only-2l-induction-demo", "attn-only-demo", "attn-only-2l-demo"],
+    "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr": ["attn-only-2l-demo", "attn-only-2l-shortformer-6b-big-lr", "attn-only-2l-induction-demo", "attn-only-demo"],
     "EleutherAI/pythia-19m": ["pythia-19m", "pythia"],
     "EleutherAI/pythia-125m": ["pythia-125m",],
     "EleutherAI/pythia-350m": ["pythia-350m",],
@@ -124,18 +124,18 @@ MODEL_ALIASES = {
     "EleutherAI/gpt-neo-125M": ["gpt-neo-125M", "gpt-neo-small", "neo-small", "neo"],
     "EleutherAI/gpt-neo-1.3B": ["gpt-neo-1.3B", "gpt-neo-medium", "neo-medium"],
     "EleutherAI/gpt-neo-2.7B": ["gpt-neo-2.7B", "gpt-neo-large", "neo-large"],
-    "EleutherAI/gpt-j-6B": ["gpt-j-6B", "gpt-j", "j"],
+    "EleutherAI/gpt-j-6B": ["gpt-j-6B", "gpt-j", "gptj"],
     "EleutherAI/gpt-neox-20b": ["gpt-neox-20b", "gpt-neox", "neox"],
-    "stanford-crfm/alias-gpt2-small-x21": ["alias-gpt2-small-x21", "gpt2-mistral-small-a", "gpt2-stanford-small-a", "stanford-gpt2-small-a"],
-    "stanford-crfm/battlestar-gpt2-small-x49": ["battlestar-gpt2-small-x49", "gpt2-mistral-small-b", "gpt2-mistral-small-b", "stanford-gpt2-small-b"],
-    "stanford-crfm/caprica-gpt2-small-x81": ["caprica-gpt2-small-x81", "gpt2-mistral-small-c", "gpt2-stanford-small-c", "stanford-gpt2-small-c"],
-    "stanford-crfm/darkmatter-gpt2-small-x343": ["darkmatter-gpt2-small-x343", "gpt2-mistral-small-d", "gpt2-mistral-small-d", "stanford-gpt2-small-d"],
-    "stanford-crfm/expanse-gpt2-small-x777": ["expanse-gpt2-small-x777", "gpt2-mistral-small-e", "gpt2-mistral-small-e", "stanford-gpt2-small-e"],
-    "stanford-crfm/arwen-gpt2-medium-x21": ["arwen-gpt2-medium-x21", "gpt2-medium-small-a", "gpt2-stanford-medium-a", "stanford-gpt2-medium-a"],
-    "stanford-crfm/beren-gpt2-medium-x49": ["beren-gpt2-medium-x49", "gpt2-medium-small-b", "gpt2-stanford-medium-b", "stanford-gpt2-medium-b"],
-    "stanford-crfm/celebrimbor-gpt2-medium-x81": ["celebrimbor-gpt2-medium-x81", "gpt2-medium-small-c", "gpt2-medium-small-c", "stanford-gpt2-medium-c"],
-    "stanford-crfm/durin-gpt2-medium-x343": ["durin-gpt2-medium-x343", "gpt2-medium-small-d", "gpt2-stanford-medium-d", "stanford-gpt2-medium-d"],
-    "stanford-crfm/eowyn-gpt2-medium-x777": ["eowyn-gpt2-medium-x777", "gpt2-medium-small-e", "gpt2-stanford-medium-e", "stanford-gpt2-medium-e"],
+    "stanford-crfm/alias-gpt2-small-x21": ["stanford-gpt2-small-a", "alias-gpt2-small-x21", "gpt2-mistral-small-a", "gpt2-stanford-small-a"],
+    "stanford-crfm/battlestar-gpt2-small-x49": ["stanford-gpt2-small-b", "battlestar-gpt2-small-x49", "gpt2-mistral-small-b", "gpt2-mistral-small-b"],
+    "stanford-crfm/caprica-gpt2-small-x81": ["stanford-gpt2-small-c", "caprica-gpt2-small-x81", "gpt2-mistral-small-c", "gpt2-stanford-small-c"],
+    "stanford-crfm/darkmatter-gpt2-small-x343": ["stanford-gpt2-small-d", "darkmatter-gpt2-small-x343", "gpt2-mistral-small-d", "gpt2-mistral-small-d"],
+    "stanford-crfm/expanse-gpt2-small-x777": ["stanford-gpt2-small-e", "expanse-gpt2-small-x777", "gpt2-mistral-small-e", "gpt2-mistral-small-e"],
+    "stanford-crfm/arwen-gpt2-medium-x21": ["stanford-gpt2-medium-a", "arwen-gpt2-medium-x21", "gpt2-medium-small-a", "gpt2-stanford-medium-a"],
+    "stanford-crfm/beren-gpt2-medium-x49": ["stanford-gpt2-medium-b", "beren-gpt2-medium-x49", "gpt2-medium-small-b", "gpt2-stanford-medium-b"],
+    "stanford-crfm/celebrimbor-gpt2-medium-x81": ["stanford-gpt2-medium-c", "celebrimbor-gpt2-medium-x81", "gpt2-medium-small-c", "gpt2-medium-small-c"],
+    "stanford-crfm/durin-gpt2-medium-x343": ["stanford-gpt2-medium-d", "durin-gpt2-medium-x343", "gpt2-medium-small-d", "gpt2-stanford-medium-d"],
+    "stanford-crfm/eowyn-gpt2-medium-x777": ["stanford-gpt2-medium-e", "eowyn-gpt2-medium-x777", "gpt2-medium-small-e", "gpt2-stanford-medium-e"],
 }
 
 def make_model_alias_map():
@@ -335,7 +335,6 @@ def get_pretrained_model_config(
         cfg_dict = convert_neel_model_config(official_model_name)
     else:
         cfg_dict = convert_hf_model_config(official_model_name)
-    
     # Processing common to both model types
     # Remove any prefix, saying the organization who made a model.
     cfg_dict["model_name"] = official_model_name.split("/")[-1]
@@ -345,7 +344,7 @@ def get_pretrained_model_config(
     if device is not None:
         cfg_dict["device"] = device
     if fold_ln:
-        if cfg_dict["normalization_type"] == "LN":
+        if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
             cfg_dict["normalization_type"] = "LNPre"
         else:
             logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
@@ -368,6 +367,13 @@ def get_pretrained_model_config(
 
     cfg = EasyTransformerConfig.from_dict(cfg_dict)
     return cfg
+
+def get_num_params_of_pretrained(model_name):
+    """
+    Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
+    """
+    cfg = get_pretrained_model_config(model_name)
+    return cfg.n_params
 
 
 # %% Load checkpointed model state dicts 

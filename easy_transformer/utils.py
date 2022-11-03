@@ -414,7 +414,8 @@ class FactoredMatrix:
         self.mdim = self.B.size(-2)
         self.has_leading_dims = (self.A.ndim>2) or (self.B.ndim>2)
         self.shape = torch.broadcast_shapes(self.A.shape[:-2], self.B.shape[:-2]) + (self.ldim, self.rdim)
-        
+        self.A = self.A.broadcast_to(self.shape[:-2]+(self.ldim, self.mdim))
+        self.B = self.B.broadcast_to(self.shape[:-2]+(self.mdim, self.rdim))
 
     def __matmul__(self, other):
         if isinstance(other, torch.Tensor):
@@ -492,7 +493,17 @@ class FactoredMatrix:
     
     def __getitem__(self, idx):
         """Indexing - assumed to only apply to the leading dimensions."""
-        return FactoredMatrix(self.A[idx], self.B[idx])
+        if not isinstance(idx, tuple):
+            idx = (idx,)
+        length = len([i for i in idx if i is not None])
+        if length<=len(self.shape)-2:
+            return FactoredMatrix(self.A[idx], self.B[idx])
+        elif length==len(self.shape)-1:
+            return FactoredMatrix(self.A[idx], self.B[idx[:-1]])
+        elif length==len(self.shape):
+            return FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2]+(slice(None), idx[-1])])
+        else:
+            raise ValueError(f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}")
     
     def norm(self):
         """ 
