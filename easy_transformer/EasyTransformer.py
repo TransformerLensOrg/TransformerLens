@@ -11,9 +11,9 @@ import re
 from huggingface_hub import HfApi
 from functools import partial, lru_cache
 
+# TODO Note in the PR that i deleted some unused imports
+
 from transformers import (
-    AutoModelForCausalLM,
-    AutoConfig,
     AutoTokenizer,
     PreTrainedTokenizer,
 )
@@ -24,7 +24,6 @@ from easy_transformer import EasyTransformerConfig
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from easy_transformer.past_key_value_caching import (
     EasyTransformerKeyValueCache,
-    EasyTransformerKeyValueCacheEntry,
 )
 from easy_transformer.activation_cache import ActivationCache
 
@@ -33,11 +32,10 @@ import easy_transformer.loading_from_pretrained as loading
 from easy_transformer.utils import (
     lm_cross_entropy_loss,
     sample_logits,
-    download_file_from_hf,
     FactoredMatrix,
     composition_scores,
-    get_corner,
 )
+
 
 class EasyTransformer(HookedRootModule):
     """
@@ -139,13 +137,14 @@ class EasyTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
+    # TODO make sure type assertions are provided
     def forward(
         self,
-        input: Union[str, torch.Tensor],
+        input: Union[str, TT["batch", "pos"]],
         return_type: Optional[str] = "logits",
         prepend_bos: bool = True,
         past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
-    ) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Union[None, TT["batch", "pos"], Tuple[TT["batch", "pos"], TT["batch", "pos"]]]:
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
@@ -306,7 +305,9 @@ class EasyTransformer(HookedRootModule):
             raise ValueError(f"Invalid shape passed in: {tokens.shape}")
 
     def to_str_tokens(
-        self, input: Union[str, torch.Tensor, list], prepend_bos: bool = True
+        self,
+        input: Union[str, Union[TT["pos"], TT[1, "pos"]], list],
+        prepend_bos: bool = True,
     ):
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
@@ -345,10 +346,11 @@ class EasyTransformer(HookedRootModule):
         assert not token.shape, f"Input string: {string} is not a single token!"
         return token.item()
 
+    # TODO what happens with a batch dimension here?
     def get_token_position(
         self,
         single_token: Union[str, int],
-        tokens: Union[str, torch.Tensor],
+        tokens: Union[str, Union[TT["pos"], TT["batch", "pos"]]],
         mode="first",
         prepend_bos=False,
     ):
@@ -389,7 +391,7 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def single_token_to_residual(self, token: Union[str, int, torch.Tensor]):
+    def single_token_to_residual(self, token: Union[str, int, TT[()]]):
         """Maps a token to the unembedding vector for that token, ie the vector in the residual stream that we do with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map.
@@ -865,7 +867,7 @@ class EasyTransformer(HookedRootModule):
     @torch.inference_mode()
     def generate(
         self,
-        input: Union[str, torch.Tensor] = "",
+        input: Union[str, TT["batch", "pos"]] = "",
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
         eos_token_id: Optional[int] = None,
@@ -878,7 +880,7 @@ class EasyTransformer(HookedRootModule):
         use_past_kv_cache: bool = True,
         prepend_bos=True,
         return_type: Optional[str] = "input",
-    ):
+    ) -> TT["batch", "pos + max_new_tokens"]:
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
 
@@ -1098,7 +1100,7 @@ class EasyTransformer(HookedRootModule):
     # Various utility functions
     def accumulated_bias(
         self, layer: int, mlp_input: bool = False, include_mlp_biases=True
-    ):
+    ) -> TT["d_model", "accumulated_bias"]:
         """Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the input of layer L.
 
         Args:
