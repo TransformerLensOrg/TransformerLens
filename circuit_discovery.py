@@ -223,7 +223,7 @@ class HypothesisTree():
 
         _, node = self.node_stack.popitem()
         self.important_nodes.append(node)
-        print("Currently evaluating", node.)
+        print("Currently evaluating", node)
 
         if node.layer == self.model.cfg.n_layers:
             receiver_hooks = [
@@ -262,8 +262,8 @@ class HypothesisTree():
         self.attn_results = attn_results
         self.mlp_results = mlp_results
 
-        show_pp(attn_results.T)
-        show_pp(mlp_results)
+        show_pp(attn_results.T, title=f"attn results for {node}", xlabel="Head", ylabel="Layer")
+        show_pp(mlp_results, title=f"mlp results for {node}", xlabel="Layer", ylabel="")
 
         # process result and mark nodes above threshold as important
         for layer in range(attn_results.shape[0]):
