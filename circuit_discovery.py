@@ -289,7 +289,7 @@ class HypothesisTree():
             self.current_node = None
 
     def show(self):
-        edge_list = []
+        edge_list = [] # TODO add weights of edges
         current_node = h.root_node
         def dfs(node):
             for child in node.parents:
