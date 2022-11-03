@@ -15,12 +15,11 @@ from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 from fancy_einsum import einsum
 
 from easy_transformer.past_key_value_caching import (
-    EasyTransformerKeyValueCache,
     EasyTransformerKeyValueCacheEntry,
 )
 
 # See tests/should_fail.py for an example of how to enforce type annotations at runtime
-from torchtyping import TensorType
+from torchtyping import TensorType as TT
 
 # Embed & Unembed
 class Embed(nn.Module):
@@ -29,13 +28,13 @@ class Embed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_E: TensorType["d_vocab, d_model"] = nn.Parameter(
+        self.W_E: TT["d_vocab, d_model"] = nn.Parameter(
             torch.empty(self.cfg.d_vocab, self.cfg.d_model)
         )
 
     def forward(
-        self, tokens: TensorType["batch", "position"]
-    ) -> TensorType["batch", "position", "d_model"]:
+        self, tokens: TT["batch", "position"]
+    ) -> TT["batch", "position", "d_model"]:
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
         return self.W_E[tokens, :]
@@ -48,16 +47,14 @@ class Unembed(nn.Module):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         # Note that there's a separate variable for d_vocab_out and d_vocab (the input vocab size). For language tasks these are always the same, but for algorithmic tasks we may want them to be different.
-        self.W_U: TensorType["d_model", "d_vocab_out"] = nn.Parameter(
+        self.W_U: TT["d_model", "d_vocab_out"] = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_vocab_out)
         )
-        self.b_U: TensorType["d_vocab_out"] = nn.Parameter(
-            torch.zeros(self.cfg.d_vocab_out)
-        )
+        self.b_U: TT["d_vocab_out"] = nn.Parameter(torch.zeros(self.cfg.d_vocab_out))
 
     def forward(
-        self, residual: TensorType["batch", "position", "d_model"]
-    ) -> TensorType["batch", "position", "d_vocab_out"]:
+        self, residual: TT["batch", "position", "d_model"]
+    ) -> TT["batch", "position", "d_vocab_out"]:
         return (
             einsum(
                 "batch pos d_model, d_model vocab -> batch pos vocab",
@@ -78,8 +75,8 @@ class PosEmbed(nn.Module):
         self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model))
 
     def forward(
-        self, tokens: TensorType["batch", "position"], past_kv_pos_offset: int = 0
-    ) -> TensorType["batch", "position", "d_model"]:
+        self, tokens: TT["batch", "position"], past_kv_pos_offset: int = 0
+    ) -> TT["batch", "position", "d_model"]:
         """Tokens have shape [batch, pos]
         past_kv_pos_offset is the length of tokens in the past_kv_cache (if used, defaults to zero if unused)
         Output shape [pos, d_model] - will be broadcast along batch dim"""
@@ -117,10 +114,10 @@ class LayerNormPre(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TensorType["batch", "position", "length"]
-    ) -> TensorType["batch", "position", "length"]:
+        self, x: TT["batch", "position", "length"]
+    ) -> TT["batch", "position", "length"]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: TensorType["batch", "position", 1] = self.hook_scale(
+        scale: TT["batch", "position", 1] = self.hook_scale(
             x.pow(2).mean(-1, keepdim=True) + self.eps
         ).sqrt()
         return self.hook_normalized(x / scale)
@@ -155,8 +152,8 @@ class LayerNorm(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TensorType["batch", "position", "length"]
-    ) -> TensorType["batch", "position", "length"]:
+        self, x: TT["batch", "position", "length"]
+    ) -> TT["batch", "position", "length"]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
@@ -179,8 +176,8 @@ class RMSNormPre(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TensorType["batch", "position", "length"]
-    ) -> TensorType["batch", "position", "length"]:
+        self, x: TT["batch", "position", "length"]
+    ) -> TT["batch", "position", "length"]:
         scale = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )  # [batch, pos, 1]
@@ -214,8 +211,8 @@ class RMSNorm(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TensorType["batch", "position", "length"]
-    ) -> TensorType["batch", "position", "length"]:
+        self, x: TT["batch", "position", "length"]
+    ) -> TT["batch", "position", "length"]:
         scale = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )  # [batch, pos, 1]
@@ -310,10 +307,10 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        resid_pre: TensorType["batch", "pos", "d_model"],
+        resid_pre: TT["batch", "pos", "d_model"],
         shortformer_pos_embed: Optional[torch.Tensor] = None,
         past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
-    ) -> TensorType["batch", "pos", "d_model"]:
+    ) -> TT["batch", "pos", "d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See EasyTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
@@ -446,11 +443,11 @@ class Attention(nn.Module):
 
     def shortformer_calculate_qk(
         self,
-        x: TensorType["batch", "pos", "d_model"],
-        shortformer_pos_embed: TensorType["batch", "pos", "d_model"],
+        x: TT["batch", "pos", "d_model"],
+        shortformer_pos_embed: TT["batch", "pos", "d_model"],
     ) -> Tuple[
-        TensorType["batch", "pos", "head_index", "d_head"],
-        TensorType["batch", "pos", "head_index", "d_head"],
+        TT["batch", "pos", "head_index", "d_head"],
+        TT["batch", "pos", "head_index", "d_head"],
     ]:
         # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
         attn_input = self.hook_attn_input(
@@ -573,8 +570,8 @@ class MLP(nn.Module):
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 
     def forward(
-        self, x: TensorType["batch", "pos", "d_model"]
-    ) -> TensorType["batch", "pos", "d_model"]:
+        self, x: TT["batch", "pos", "d_model"]
+    ) -> TT["batch", "pos", "d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
             einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
@@ -638,10 +635,10 @@ class TransformerBlock(nn.Module):
 
     def forward(
         self,
-        resid_pre: TensorType["batch", "position", "d_model"],
+        resid_pre: TT["batch", "position", "d_model"],
         shortformer_pos_embed: Optional[torch.Tensor] = None,
         past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
-    ) -> TensorType["batch", "position", "d_model"]:
+    ) -> TT["batch", "position", "d_model"]:
         """A single Transformer block.
 
         Args:
