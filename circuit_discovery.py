@@ -1,5 +1,7 @@
 # %%
 import warnings
+import matplotlib.pyplot as plt
+import networkx as nx
 from utils_circuit_discovery import get_hook_tuple, path_patching, path_patching_up_to, logit_diff_io_s
 from copy import deepcopy
 from ioi_utils import show_pp
@@ -162,6 +164,7 @@ class Node():
         self.head = head
         self.position = position
         self.children = []
+        self.parents = []
 
     def __repr__(self):
         return f"Node({self.layer}, {self.head})"
@@ -178,6 +181,7 @@ class HypothesisTree():
         self.node_stack = OrderedDict()
         self.populate_node_stack()
         self.current_node = self.node_stack[next(reversed(self.node_stack))] # last element
+        self.root_node = self.current_node
         self.metric = metric
         self.dataset = dataset
         self.orig_data = orig_data
@@ -271,6 +275,7 @@ class HypothesisTree():
                 if abs(attn_results[layer, head]) > self.threshold:
                     print("Found important head:", (layer, head), "at position", node.position)
                     self.node_stack[(layer, head, node.position)].children.append(node)
+                    node.parents.append(self.node_stack[(layer, head, node.position)])
             if abs(mlp_results[layer]) > self.threshold:
                 print("Found important MLP: layer", layer, "position", node.position)
                 self.node_stack[(layer, None, node.position)].children.append(node)
@@ -284,7 +289,26 @@ class HypothesisTree():
             self.current_node = None
 
     def show(self):
-        print("pretty picture")
+        edge_list = []
+        current_node = h.root_node
+        def dfs(node):
+            for child in node.parents:
+                edge_list.append((node, child))
+                dfs(child)
+        dfs(current_node)
+        dag = nx.from_edgelist(edge_list, create_using=nx.DiGraph)
+        # make plt figure fills screen
+        fig = plt.figure(figsize=(12, 12))
+        nx.draw_planar(
+            dag,
+            arrowsize=12,
+            with_labels=True,
+            node_size=8000,
+            node_color="#ffff8f",
+            linewidths=2.0,
+            width=1.5,
+            font_size=14,
+        )
 
 h = HypothesisTree(
     model, 
@@ -297,7 +321,6 @@ h = HypothesisTree(
 h.eval()
 attn_results_fast = deepcopy(h.attn_results)
 mlp_results_fast = deepcopy(h.mlp_results)
-
 #%% [markdown]
 # Test that Arthur didn't mess up the fast caching
 
