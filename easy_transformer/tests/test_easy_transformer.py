@@ -17,6 +17,6 @@ loss_store = {'attn-only-demo': 5.701841354370117, 'gpt2-small': 5.3318557739257
 @pytest.mark.parametrize("name,expected_loss", list(loss_store.items()))
 def test_model(name, expected_loss):
     # Runs the model on short text and checks if the loss is as expected
-    model = EasyTransformer.from_pretrained(name, device='cpu')
+    model = EasyTransformer.from_pretrained(name)
     loss = model(text,return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
