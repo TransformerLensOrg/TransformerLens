@@ -10,11 +10,7 @@ import logging
 from functools import *
 
 from easy_transformer.hook_points import HookPoint
-from easy_transformer.utils import (
-    gelu_new,
-    solu,
-    gelu_fast
-)
+from easy_transformer.utils import gelu_new, solu, gelu_fast
 from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
 from fancy_einsum import einsum
@@ -36,12 +32,12 @@ class Embed(nn.Module):
     def forward(self, tokens):
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
-        return self.W_E[tokens, :] # Shape [batch pos d_model]
+        return self.W_E[tokens, :]  # Shape [batch pos d_model]
 
 
 class Unembed(nn.Module):
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
-        
+
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -52,8 +48,12 @@ class Unembed(nn.Module):
 
     def forward(self, residual):
         return (
-            einsum("batch pos d_model, d_model vocab -> batch pos vocab", 
-                   residual, self.W_U) + self.b_U
+            einsum(
+                "batch pos d_model, d_model vocab -> batch pos vocab",
+                residual,
+                self.W_U,
+            )
+            + self.b_U
         )  # [batch, pos, d_vocab]
 
 
@@ -66,17 +66,18 @@ class PosEmbed(nn.Module):
         self.cfg = cfg
         self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model))
 
-    def forward(
-        self, 
-        tokens: torch.Tensor, 
-        past_kv_pos_offset: int = 0):
+    def forward(self, tokens: torch.Tensor, past_kv_pos_offset: int = 0):
         """Tokens have shape [batch, pos]
         past_kv_pos_offset is the length of tokens in the past_kv_cache (if used, defaults to zero if unused)
         Output shape [pos, d_model] - will be broadcast along batch dim"""
 
         tokens_length = tokens.size(-1)
-        pos_embed = self.W_pos[past_kv_pos_offset:tokens_length + past_kv_pos_offset, :]  # [pos, d_model]
-        broadcast_pos_embed = einops.repeat(pos_embed, "... -> batch ...", batch=tokens.size(0))  # [batch, pos, d_model]
+        pos_embed = self.W_pos[
+            past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
+        ]  # [pos, d_model]
+        broadcast_pos_embed = einops.repeat(
+            pos_embed, "... -> batch ...", batch=tokens.size(0)
+        )  # [batch, pos, d_model]
         return broadcast_pos_embed
 
 
@@ -105,10 +106,7 @@ class LayerNormPre(nn.Module):
     def forward(self, x):
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale = self.hook_scale(
-            (
-                x.pow(2).mean(-1, keepdim=True)
-                + self.eps
-            ).sqrt()
+            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )  # [batch, pos, 1]
         return self.hook_normalized(x / scale)  # [batch, pos, length]
 
@@ -144,13 +142,11 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale = self.hook_scale(
-            (
-                x.pow(2).mean(-1, keepdim=True)
-                + self.eps
-            ).sqrt()
+            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )  # [batch, pos, 1]
-        x = (x / scale)  # [batch, pos, length]
+        x = x / scale  # [batch, pos, length]
         return self.hook_normalized(x * self.w + self.b)
+
 
 class RMSNormPre(nn.Module):
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
@@ -167,10 +163,7 @@ class RMSNormPre(nn.Module):
 
     def forward(self, x):
         scale = self.hook_scale(
-            (
-                x.pow(2).mean(-1, keepdim=True)
-                + self.eps
-            ).sqrt()
+            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )  # [batch, pos, 1]
         return self.hook_normalized(x / scale)  # [batch, pos, length]
 
@@ -203,10 +196,7 @@ class RMSNorm(nn.Module):
 
     def forward(self, x):
         scale = self.hook_scale(
-            (
-                x.pow(2).mean(-1, keepdim=True)
-                + self.eps
-            ).sqrt()
+            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )  # [batch, pos, 1]
         x = self.hook_normalized(x / scale)  # [batch, pos, length]
         return x * self.w
@@ -214,7 +204,9 @@ class RMSNorm(nn.Module):
 
 # Attention
 class Attention(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig], attn_type="global", layer_id=None):
+    def __init__(
+        self, cfg: Union[Dict, EasyTransformerConfig], attn_type="global", layer_id=None
+    ):
         """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
 
         Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
@@ -271,7 +263,7 @@ class Attention(nn.Module):
         else:
             self.attn_scale = 1.0
         if self.cfg.scale_attn_by_inverse_layer_idx:
-            self.attn_scale *= (self.layer_id + 1)
+            self.attn_scale *= self.layer_id + 1
 
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
@@ -284,21 +276,23 @@ class Attention(nn.Module):
         # See EasyTransformerConfig for more details.
         if self.cfg.positional_embedding_type == "shortformer":
             # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
-            self.hook_attn_input = HookPoint() # [batch, pos, d_model]
+            self.hook_attn_input = HookPoint()  # [batch, pos, d_model]
         elif self.cfg.positional_embedding_type == "rotary":
             # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See EasyTransformerConfig for details
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
-            sin, cos = self.calculate_sin_cos_rotary(self.cfg.rotary_dim, self.cfg.n_ctx)
+            sin, cos = self.calculate_sin_cos_rotary(
+                self.cfg.rotary_dim, self.cfg.n_ctx
+            )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
-        
 
-    def forward(self, 
-            resid_pre: torch.Tensor, 
-            shortformer_pos_embed: Optional[torch.Tensor] = None,
-            past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None
-        ):
+    def forward(
+        self,
+        resid_pre: torch.Tensor,
+        shortformer_pos_embed: Optional[torch.Tensor] = None,
+        past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
+    ):
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See EasyTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
@@ -307,25 +301,36 @@ class Attention(nn.Module):
         if self.cfg.positional_embedding_type in ["standard", "rotary"]:
             # Normal attention
             q = self.hook_q(
-                einsum("batch pos d_model, head_index d_model d_head \
-                    -> batch pos head_index d_head", 
-                            resid_pre, self.W_Q) + self.b_Q
+                einsum(
+                    "batch pos d_model, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    resid_pre,
+                    self.W_Q,
+                )
+                + self.b_Q
             )  # [batch, pos, head_index, d_head]
             k = self.hook_k(
-                einsum("batch pos d_model, head_index d_model d_head \
-                    -> batch pos head_index d_head", 
-                            resid_pre, self.W_K) + self.b_K
+                einsum(
+                    "batch pos d_model, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    resid_pre,
+                    self.W_K,
+                )
+                + self.b_K
             )  # [batch, pos, head_index, d_head]
         elif self.cfg.positional_embedding_type == "shortformer":
             # Weird shortformer attention see EasyTransformerConfig for details
             q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
         v = self.hook_v(
-            einsum("batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head", 
-                        resid_pre, self.W_V) + self.b_V
+            einsum(
+                "batch pos d_model, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                resid_pre,
+                self.W_V,
+            )
+            + self.b_V
         )  # [batch, pos, head_index, d_head]
 
-        
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
             kv_cache_pos_offset = past_kv_cache_entry.past_keys.size(1)
@@ -333,49 +338,62 @@ class Attention(nn.Module):
         else:
             # Not using a cache
             kv_cache_pos_offset = 0
-        
+
         if self.cfg.positional_embedding_type == "rotary":
             q, k = self.rotary_rotate_qk(q, k, kv_cache_pos_offset)
 
         attn_scores = (
-            einsum("batch query_pos head_index d_head, \
+            einsum(
+                "batch query_pos head_index d_head, \
                 batch key_pos head_index d_head \
-                -> batch head_index query_pos key_pos", 
-                   q, k) / self.attn_scale
+                -> batch head_index query_pos key_pos",
+                q,
+                k,
+            )
+            / self.attn_scale
         )  # [batch, head_index, query_pos, key_pos]
-        if self.cfg.attention_dir == 'causal':
+        if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
-                attn_scores, 
-                kv_cache_pos_offset
-            ) # [batch, head_index, query_pos, key_pos]
+                attn_scores, kv_cache_pos_offset
+            )  # [batch, head_index, query_pos, key_pos]
         attn_scores = self.hook_attn_scores(attn_scores)
         attn_matrix = self.hook_attn(
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]
         z = self.hook_z(
-            einsum("batch key_pos head_index d_head, \
+            einsum(
+                "batch key_pos head_index d_head, \
                 batch head_index query_pos key_pos -> \
-                batch query_pos head_index d_head", 
-                v, attn_matrix)
+                batch query_pos head_index d_head",
+                v,
+                attn_matrix,
+            )
         )  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
             out = (
-                    einsum("batch pos head_index d_head, \
+                (
+                    einsum(
+                        "batch pos head_index d_head, \
                         head_index d_head d_model -> \
-                        batch pos d_model", 
-                        z, 
-                        self.W_O)
-                ) + self.b_O  # [batch, pos, d_model]
+                        batch pos d_model",
+                        z,
+                        self.W_O,
+                    )
+                )
+                + self.b_O
+            )  # [batch, pos, d_model]
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
             result = self.hook_result(
-                einsum("batch pos head_index d_head, \
+                einsum(
+                    "batch pos head_index d_head, \
                         head_index d_head d_model -> \
-                        batch pos head_index d_model", 
-                       z, 
-                       self.W_O)
+                        batch pos head_index d_model",
+                    z,
+                    self.W_O,
+                )
             )  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(
@@ -392,40 +410,50 @@ class Attention(nn.Module):
         # If not caching, query_ctx_length == key_ctx_length
         key_ctx_length = attn_scores.size(-1)
 
-        assert query_ctx_length + past_kv_pos_offset == key_ctx_length, f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
+        assert (
+            query_ctx_length + past_kv_pos_offset == key_ctx_length
+        ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
         return torch.where(
             self.mask[
                 past_kv_pos_offset : past_kv_pos_offset + query_ctx_length,
-                : key_ctx_length,
+                :key_ctx_length,
             ],
             attn_scores,
             self.IGNORE,
         )
-    
+
     def shortformer_calculate_qk(self, x, shortformer_pos_embed):
         # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
         attn_input = self.hook_attn_input(
             x + shortformer_pos_embed
-            ) # [batch, pos, d_model]
+        )  # [batch, pos, d_model]
         q = self.hook_q(
-            einsum("batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head", 
-                        attn_input, self.W_Q) + self.b_Q
+            einsum(
+                "batch pos d_model, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                attn_input,
+                self.W_Q,
+            )
+            + self.b_Q
         )  # [batch, pos, head_index, d_head]
         k = self.hook_k(
-            einsum("batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head", 
-                        attn_input, self.W_K) + self.b_K
+            einsum(
+                "batch pos d_model, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                attn_input,
+                self.W_K,
+            )
+            + self.b_K
         )  # [batch, pos, head_index, d_head]
         return (q, k)
-    
+
     def rotary_rotate_qk(self, q, k, past_kv_pos_offset):
         # We first apply standard q and k calculation
-        
+
         q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
         k = self.hook_rot_k(self.apply_rotary(k))
         return q, k
-    
+
     def calculate_sin_cos_rotary(self, rotary_dim, n_ctx, base=10000):
         """
         Calculate the sine and cosine waves to use in a rotary embedding. See https://blog.eleuther.ai/rotary-embeddings/ for details
@@ -434,10 +462,10 @@ class Attention(nn.Module):
         To resolve this, I've coded it to default to the GPT-J mode, but to explicitly check whether it's GPT-NeoX and then do the GPT-NeoX thing if it is.
         """
         pos = torch.arange(n_ctx, dtype=torch.float32)
-        dim = torch.arange(rotary_dim//2, dtype=torch.float32)
+        dim = torch.arange(rotary_dim // 2, dtype=torch.float32)
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.original_architecture=="GPTNeoXForCausalLM":
+        if self.cfg.original_architecture == "GPTNeoXForCausalLM":
             freq = einops.repeat(freq, "d -> (2 d)")
         else:
             freq = einops.repeat(freq, "d -> (d 2)")
@@ -446,7 +474,7 @@ class Attention(nn.Module):
         return torch.sin(angles), torch.cos(angles)
 
     def rotate_every_two(self, x):
-        """ 
+        """
         Rotary helper function, splits x into blocks of size 2 along the final axis and maps [x0, x1] to [-x1, x0]
 
         The final axis of x must have even length.
@@ -454,8 +482,8 @@ class Attention(nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if self.cfg.original_architecture=="GPTNeoXForCausalLM":
-            n = x.size(-1)//2
+        if self.cfg.original_architecture == "GPTNeoXForCausalLM":
+            n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
         else:
@@ -463,15 +491,21 @@ class Attention(nn.Module):
             rot_x[..., 1::2] = x[..., ::2]
 
         return rot_x
-    
+
     def apply_rotary(self, x, past_kv_pos_offset=0):
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
         x_pos = x.size(1)
-        x_rot = x[..., :self.cfg.rotary_dim]
-        x_pass = x[..., self.cfg.rotary_dim:]
+        x_rot = x[..., : self.cfg.rotary_dim]
+        x_pass = x[..., self.cfg.rotary_dim :]
         x_flip = self.rotate_every_two(x_rot)
-        x_rotated = x_rot * self.rotary_cos[past_kv_pos_offset:past_kv_pos_offset+x_pos, None, :] + x_flip * self.rotary_sin[past_kv_pos_offset:past_kv_pos_offset+x_pos, None, :]
+        x_rotated = (
+            x_rot
+            * self.rotary_cos[past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :]
+            + x_flip
+            * self.rotary_sin[past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :]
+        )
         return torch.cat([x_rotated, x_pass], dim=-1)
+
 
 # MLP Layers
 class MLP(nn.Module):
@@ -502,7 +536,7 @@ class MLP(nn.Module):
             self.act_fn = solu
             # Hook taken between activation and layer norm
             self.hook_mid = HookPoint()  # [batch, pos, d_mlp]
-            if self.cfg.normalization_type=="LN":
+            if self.cfg.normalization_type == "LN":
                 self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
             else:
                 self.ln = LayerNormPre(self.cfg)
@@ -513,7 +547,8 @@ class MLP(nn.Module):
     def forward(self, x):
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in) + self.b_in
+            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
+            + self.b_in
         )  # [batch, pos, d_mlp]
         if not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
@@ -521,7 +556,12 @@ class MLP(nn.Module):
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
         mlp_out = (
-            einsum("batch pos d_mlp, d_mlp d_model -> batch pos d_model", post_act, self.W_out) + self.b_out
+            einsum(
+                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
+                post_act,
+                self.W_out,
+            )
+            + self.b_out
         )  # [batch, pos, d_model]
         return mlp_out
 
@@ -568,11 +608,11 @@ class TransformerBlock(nn.Module):
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
 
     def forward(
-            self, 
-            resid_pre: torch.Tensor, 
-            shortformer_pos_embed: Optional[torch.Tensor] = None,
-            past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
-        ):
+        self,
+        resid_pre: torch.Tensor,
+        shortformer_pos_embed: Optional[torch.Tensor] = None,
+        past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
+    ):
         """A single Transformer block.
 
         Args:
@@ -587,17 +627,22 @@ class TransformerBlock(nn.Module):
         normalized_resid_pre = self.ln1(resid_pre)
         attn_out = self.hook_attn_out(
             self.attn(
-                normalized_resid_pre, 
-                shortformer_pos_embed = shortformer_pos_embed,
-                past_kv_cache_entry = past_kv_cache_entry)
+                normalized_resid_pre,
+                shortformer_pos_embed=shortformer_pos_embed,
+                past_kv_cache_entry=past_kv_cache_entry,
+            )
         )  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
-            resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
+            resid_mid = self.hook_resid_mid(
+                resid_pre + attn_out
+            )  # [batch, pos, d_model]
             normalized_resid_mid = self.ln2(resid_mid)
             mlp_out = self.hook_mlp_out(
                 self.mlp(normalized_resid_mid)
             )  # [batch, pos, d_model]
-            resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(
+                resid_mid + mlp_out
+            )  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
             # In GPT-J, LN1 and LN2 are tied, in GPT-NeoX they aren't.
@@ -605,7 +650,11 @@ class TransformerBlock(nn.Module):
             mlp_out = self.hook_mlp_out(
                 self.mlp(normalized_resid_pre_2)
             )  # [batch, pos, d_model]
-            resid_post = self.hook_resid_post(resid_pre + attn_out + mlp_out)  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(
+                resid_pre + attn_out + mlp_out
+            )  # [batch, pos, d_model]
         else:
-            resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(
+                resid_pre + attn_out
+            )  # [batch, pos, d_model]
         return resid_post

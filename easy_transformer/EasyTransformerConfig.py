@@ -9,7 +9,9 @@ import logging
 import json
 import pprint
 
-SUPPORTED_ACTIVATIONS = ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln', 'gelu_fast']
+SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
+
+
 @dataclass
 class EasyTransformerConfig:
     """
@@ -18,41 +20,41 @@ class EasyTransformerConfig:
     See further_comments.md for more details on the more complex arguments.
 
     Args:
-        d_model (int): The dimensionality of the embeddings.  
-        d_head (int): The dimensionality of each attention head. 
-        n_layers (int): The number of transformer blocks (one block = one attn layer AND one MLP layer). 
-        n_ctx (int): The maximum sequence length. 
+        d_model (int): The dimensionality of the embeddings.
+        d_head (int): The dimensionality of each attention head.
+        n_layers (int): The number of transformer blocks (one block = one attn layer AND one MLP layer).
+        n_ctx (int): The maximum sequence length.
         n_heads (int, *optional*): The number of attention heads. If not
-            specified, will be set to d_model // d_head. 
+            specified, will be set to d_model // d_head.
         d_mlp (int, *optional*): The dimensionality of the feedforward mlp
-            network. Defaults to 4 * d_model, and in an attn-only model is None. 
+            network. Defaults to 4 * d_model, and in an attn-only model is None.
         d_vocab (int): The size of the vocabulary. If not set, will be
             automatically set from the tokenizer's vocab size.
         act_fn (str, *optional"): The activation function to use. Always
             lowercase. Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln',
             'gelu_fast']. Must be set unless using an attn-only model.
         eps (float): The epsilon value to use for layer normalization. Defaults
-            to 1e-5 
+            to 1e-5
         use_attn_result (bool): whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
             up, vs just calculating the sum. This can be very memory intensive
             for large models, so defaults to False
         use_attn_scale (bool): whether to scale the attention weights by
-            1/sqrt(d_head) 
+            1/sqrt(d_head)
         model_name (str): the name of the model, used to load
             weights from HuggingFace or initialized to "custom" if not passed
         original_architecture (str, *optional*): the family of the model, used
         to help load
             weights from HuggingFace or initialized to "custom" if not passed
-        from_checkpoint (bool): Whether the model weights were 
+        from_checkpoint (bool): Whether the model weights were
             loaded from a checkpoint (only applies to pretrained models)
         checkpoint_index (int, *optional*): The index of the
             checkpoint loaded (only applies to pretrained models).
         checkpoint_label_type (str, *optional*): Whether
             checkpoints are labelled by the number of steps or number of tokens.
-        checkpoint_value (int, *optional*): The value of the   
+        checkpoint_value (int, *optional*): The value of the
             checkpoint label (whether of steps or tokens).
-        tokenizer_name (str, *optional*): the full name of the model, passed into 
+        tokenizer_name (str, *optional*): the full name of the model, passed into
             HuggingFace to access the tokenizer. Only used when passing in
             custom config, if loading from pretrained then this is not needed.
         use_local_attn (bool): whether to use local attention - ie each
@@ -61,7 +63,7 @@ class EasyTransformerConfig:
             attention
         attn_types (List[str], *optional*): the types of attention to use for
             local attention
-        weight_init_mode (str): the initialization mode to use for the 
+        weight_init_mode (str): the initialization mode to use for the
             weights. Only relevant for custom models, ignored for pre-trained.
             Currently the only supported mode is 'gpt2', where biases are
             initialized to 0 and weights are standard normals of range
@@ -72,13 +74,13 @@ class EasyTransformerConfig:
             Defaults to None
         device(str): The device to use for the model. Defaults to 'cuda' if
             available, else 'cpu
-        attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2 
+        attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2
             style) or bidirectional attention. Options are 'causal' and
             'bidirectional'. Defaults to 'causal'
-        attn_only (bool): Whether to only use attention layers, no feedforward 
+        attn_only (bool): Whether to only use attention layers, no feedforward
             layers. Defaults to False
         seed (int, *optional*): The seed to use for the model. Defaults to 42.
-            Used to set sources of randomness (Python, PyTorch and 
+            Used to set sources of randomness (Python, PyTorch and
             NumPy) and to initialize weights. If set to None, does nothing.
         initializer_range (float): The standard deviation of the normal used to
             initialise the weights, initialized to 0.8 / sqrt(d_model) .
@@ -99,18 +101,18 @@ class EasyTransformerConfig:
         final_rms (bool): Whether to replace the final normalization (just
             before the unembed) with RMSNorm (ie no centering or bias, just
             scaling + weights). Only included because of a dumb bug in my
-            original SoLU code. Defaults to False. 
+            original SoLU code. Defaults to False.
         d_vocab_out (int, *optional*): The size of the output vocabulary. If not
             set, will be equal to d_vocab. Mainly useful for algorithmic tasks
-            where the input and output vocabularies may be different. 
+            where the input and output vocabularies may be different.
         parallel_attn_mlp (bool): Whether to parallelize the attention and MLP
             layers - a weird cursed thing done by GPT-J. Means that
-            mlp_out=MLP(ln1(resid_pre)) and resid_post=resid_pre+attn_out+mlp_out. Defaults to False. 
+            mlp_out=MLP(ln1(resid_pre)) and resid_post=resid_pre+attn_out+mlp_out. Defaults to False.
         rotary_dim (int, *optional*): The dimensionality of the rotary
             embeddings, may be d_head in which case only the first rotary_dim
             dimensions of each head are rotated. Defaults to None, if
-            positional_embedding_type=="rotary" it defaults to d_head. 
-        n_params (int, *optional*): The number of (hidden weight) 
+            positional_embedding_type=="rotary" it defaults to d_head.
+        n_params (int, *optional*): The number of (hidden weight)
             parameters in the model. This is automatically calculated and not
             intended to be set by the user. (Non embedding parameters, because
             the [scaling laws paper](https://arxiv.org/pdf/2001.08361.pdf) found
@@ -139,16 +141,16 @@ class EasyTransformerConfig:
     tokenizer_name: Optional[str] = None
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
-    init_mode: str = 'gpt2'
+    init_mode: str = "gpt2"
     normalization_type: Optional[str] = None
     device: Optional[str] = None
-    attention_dir: str = 'causal'
+    attention_dir: str = "causal"
     attn_only: bool = False
     seed: int = 42
-    initializer_range: float = -1.
+    initializer_range: float = -1.0
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
-    positional_embedding_type: str = 'standard'
+    positional_embedding_type: str = "standard"
     final_rms: bool = False
     d_vocab_out: Optional[int] = None
     parallel_attn_mlp: bool = False
@@ -158,10 +160,11 @@ class EasyTransformerConfig:
     def __post_init__(self):
         if self.n_heads is None:
             self.n_heads = self.d_model // self.d_head
-        
 
         if not self.d_model == (self.n_heads * self.d_head):
-            logging.warning(f"d_model={self.d_model} is not divisible by n_heads={self.n_heads} * d_head={self.d_head}")
+            logging.warning(
+                f"d_model={self.d_model} is not divisible by n_heads={self.n_heads} * d_head={self.d_head}"
+            )
 
         if self.seed is not None:
             set_seed_everywhere(self.seed)
@@ -176,26 +179,32 @@ class EasyTransformerConfig:
             if self.d_mlp is None:
                 # For some reason everyone hard codes in this hyper-parameter!
                 self.d_mlp = self.d_model * 4
-            assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
-            assert self.act_fn in SUPPORTED_ACTIVATIONS, f"act_fn={self.act_fn} must be one of {SUPPORTED_ACTIVATIONS}"
+            assert (
+                self.act_fn is not None
+            ), "act_fn must be specified for non-attn-only models"
+            assert (
+                self.act_fn in SUPPORTED_ACTIVATIONS
+            ), f"act_fn={self.act_fn} must be one of {SUPPORTED_ACTIVATIONS}"
         if self.initializer_range < 0:
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)
-        
+
         if self.d_vocab_out is None:
             self.d_vocab_out = self.d_vocab
-        
+
         if self.positional_embedding_type == "rotary" and self.rotary_dim is None:
             self.rotary_dim = self.d_head
-        
+
         # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
-        self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
+        self.n_params = self.n_layers * (
+            (self.d_model * self.d_head * self.n_heads * 4)
+        )
         if not self.attn_only:
             # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
             self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
-        
+
         if self.device is None:
-            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
@@ -204,10 +213,9 @@ class EasyTransformerConfig:
         parameters.
         """
         return cls(**config_dict)
-    
+
     def to_dict(self):
         return self.__dict__
-    
+
     def __repr__(self):
-        return "EasyTransformerConfig:\n"+pprint.pformat(self.to_dict())
-    
+        return "EasyTransformerConfig:\n" + pprint.pformat(self.to_dict())
