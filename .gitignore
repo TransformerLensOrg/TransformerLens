@@ -1,7 +1,7 @@
 __pycache__
 Testing_Notebook.ipynb
-\.*
 easy_transformer/scratch.py
+.vscode/
 wandb*
 easy_transformer\.egg*
 MANIFEST.in
