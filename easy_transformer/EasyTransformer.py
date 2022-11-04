@@ -330,6 +330,10 @@ class EasyTransformer(HookedRootModule):
             assert (
                 tokens.dim() == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+        elif isinstance(input, np.ndarray):
+            tokens = input
+            tokens = tokens.squeeze() # Get rid of a trivial batch dimension
+            assert tokens.ndim == 1, f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         else:
             raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
         str_tokens = self.tokenizer.batch_decode(
@@ -425,15 +429,15 @@ class EasyTransformer(HookedRootModule):
             print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, torch.dtype):
             print("Changing model dtype to", device_or_dtype)
-        nn.Module.to(self, device_or_dtype)
+        return nn.Module.to(self, device_or_dtype)
 
     def cuda(self):
         # Wrapper around cuda that also changes self.cfg.device
-        self.to("cuda")
+        return self.to("cuda")
 
     def cpu(self):
         # Wrapper around cuda that also changes self.cfg.device
-        self.to("cpu")
+        return self.to("cpu")
 
     @classmethod
     def from_pretrained(
