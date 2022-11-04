@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,7 +8,8 @@ import datasets
 import einops
 from transformers import AutoTokenizer
 import random
-from typing import Optional, Union, Tuple, List
+from typing import Optional, Union, Tuple, List, Dict
+from torchtyping import TensorType as TT
 import transformers
 from huggingface_hub import hf_hub_download
 import re
@@ -66,8 +68,8 @@ def to_numpy(tensor, flat=False):
 
 
 def lm_cross_entropy_loss(
-    logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
-):
+    logits: TT["batch", "pos", "d_vocab"], tokens: TT["batch", "pos"], return_per_token: bool = False
+) -> Union[TT[()], TT["batch", "pos"]]:
     """Cross entropy loss for the language model, gives the loss for predicting the NEXT token.
 
     Args:
@@ -89,8 +91,8 @@ def lm_cross_entropy_loss(
 
 
 def lm_accuracy(
-    logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
-):
+    logits: TT["batch", "pos", "d_vocab"], tokens: TT["batch", "pos"], return_per_token: bool = False
+) -> Union[TT[()], TT["batch", "pos"]]:
     """Cross-Entropy Accuracy for Language Modelling. We measure the accuracy on the logits for predicting the NEXT token.
 
     If return_per_token is True, returns the boolean for top 1 accuracy for each token in the batch. Note that this has size [batch, seq_len-1], as we cannot predict the first token.
@@ -103,7 +105,7 @@ def lm_accuracy(
         return correct_matches.sum() / correct_matches.numel()
 
 
-def gelu_new(input):
+def gelu_new(input: TT["batch", "pos", "d_mlp"]) -> TT["batch", "pos", "d_mlp"]:
     # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
     return (
         0.5
@@ -117,7 +119,7 @@ def gelu_new(input):
     )
 
 
-def gelu_fast(input):
+def gelu_fast(input: TT["batch", "pos", "d_mlp"]) -> TT["batch", "pos", "d_mlp"]:
     return (
         0.5
         * input
@@ -125,7 +127,7 @@ def gelu_fast(input):
     )
 
 
-def solu(input):
+def solu(input: TT["batch", "pos", "d_mlp"]) -> TT["batch", "pos", "d_mlp"]:
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
@@ -146,14 +148,14 @@ def keep_single_column(dataset: datasets.arrow_dataset.Dataset, col_name: str):
 
 
 def tokenize_and_concatenate(
-    dataset: datasets.arrow_dataset.Dataset,
+    dataset: datasets.Dataset,
     tokenizer: AutoTokenizer,
     streaming: bool = False,
     max_length: int = 1024,
     column_name: str = "text",
     add_bos_token: bool = True,
     num_proc: int = 10,
-):
+) -> datasets.Dataset:
     """Helper function to tokenizer and concatenate a dataset of text. This converts the text to tokens, concatenates them (separated by EOS tokens) and then reshapes them into a 2D array of shape (____, sequence_length), dropping the last batch. Tokenizers are much faster if parallelised, so we chop the string into 20, feed it into the tokenizer, in parallel with padding, then remove padding at the end.
 
     This tokenization is useful for training language models, as it allows us to efficiently train on a large corpus of text of varying lengths (without, eg, a lot of truncation or padding). Further, for models with absolute positional encodings, this avoids privileging early tokens (eg, news articles often begin with CNN, and models may learn to use early positional encodings to predict these)
@@ -181,7 +183,7 @@ def tokenize_and_concatenate(
     else:
         seq_len = max_length
 
-    def tokenize_function(examples):
+    def tokenize_function(examples: Dict[str, List[str]]) -> Dict[str, np.ndarray]:
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
         full_text = tokenizer.eos_token.join(text)
@@ -229,21 +231,20 @@ print(data)
 tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
 """
 
-
-def set_seed_everywhere(seed):
+def set_seed_everywhere(seed: int):
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
 
 
 def sample_logits(
-    final_logits: torch.Tensor,
+    final_logits: TT["batch", "d_vocab"],
     top_k: Optional[int] = None,
     top_p: Optional[int] = None,
     temperature: float = 1.0,
     freq_penalty: float = 0.0,
-    tokens: Optional[torch.Tensor] = None,
-):
+    tokens: Optional[TT["batch", "pos"]] = None,
+) -> TT["batch"]:
     """
     Sample from the logits, in order to generate text
 
@@ -303,7 +304,6 @@ def sample_logits(
 SliceInput = Optional[
     Union[int, Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor]
 ]
-
 
 class Slice:
     """
@@ -373,33 +373,6 @@ class Slice:
     def __repr__(self):
         return f"Slice: {self.slice} Mode: {self.mode} "
 
-
-# def apply_slice_to_dim(
-#     tensor: torch.Tensor,
-#     input_slice: Union[Slice, SliceInput],
-#     dim: int=0,
-#     ):
-#     """Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor.
-
-#     Note that slicing with input_slice=None means do nothing, NOT add an extra dimension (use unsqueeze for that)
-
-#     We use a custom slice syntax because Python/Torch's don't let us reduce the number of dimensions:
-
-#     Examples for dim=0:
-#     if input_slice=0, tensor -> tensor[0]
-#     elif input_slice = (1, 5), tensor -> tensor[1:5]
-#     elif input_slice = (1, 5, 2), tensor -> tensor[1:5:2] (ie indexing with [1, 3])
-#     elif input_slice = [1, 4, 5], tensor -> tensor[[1, 4, 5]] (ie changing the first axis to have length 3, and taking the indices 1, 4, 5 out).
-#     elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.
-#     """
-#     ndim = tensor.ndim
-#     slices = [slice(None)] * ndim
-#     if isinstance(input_slice, tuple):
-#         input_slice = slice(*input_slice)
-#     elif input_slice is None:
-#         input_slice = slice(None)
-#     slices[dim] = input_slice
-#     return tensor[tuple(slices)]
 # %%
 
 
@@ -456,19 +429,18 @@ def act_name(
 
 
 # %%
-def transpose(tensor):
+def transpose(tensor: TT[..., "a", "b"]) -> TT[..., "b", "a"]:
     """
     Utility to swap the last two dimensions of a tensor, regardless of the number of leading dimensions
     """
     return tensor.transpose(-1, -2)
-
 
 class FactoredMatrix:
     """
     Class to represent low rank factored matrices, where the matrix is represented as a product of two matrices. Has utilities for efficient calculation of eigenvalues, norm and SVD.
     """
 
-    def __init__(self, A, B):
+    def __init__(self, A: TT[..., "ldim", "mdim"], B: TT[..., "mdim", "rdim"]):
         self.A = A
         self.B = B
         assert self.A.size(-1) == self.B.size(
@@ -485,7 +457,7 @@ class FactoredMatrix:
         self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
         self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
 
-    def __matmul__(self, other):
+    def __matmul__(self, other: Union[TT[..., "rdim", "new_rdim"], TT["rdim"], FactoredMatrix]) -> Union[FactoredMatrix, TT[..., "ldim"]]:
         if isinstance(other, torch.Tensor):
             if other.ndim < 2:
                 # It's a vector, so we collapse the factorisation and just return a vector
@@ -502,7 +474,7 @@ class FactoredMatrix:
         elif isinstance(other, FactoredMatrix):
             return (self @ other.A) @ other.B
 
-    def __rmatmul__(self, other):
+    def __rmatmul__(self, other: Union[TT[..., "new_ldim", "ldim"], TT["ldim"], FactoredMatrix]) -> Union[FactoredMatrix, TT[..., "rdim"]]:
         if isinstance(other, torch.Tensor):
             assert (
                 other.size(-1) == self.ldim
@@ -518,12 +490,12 @@ class FactoredMatrix:
             return other.A @ (other.B @ self)
 
     @property
-    def AB(self):
+    def AB(self) -> TT["leading_dims": ..., "ldim", "rdim"]:
         """The product matrix - expensive to compute, and can consume a lot of GPU memory"""
         return self.A @ self.B
 
     @property
-    def BA(self):
+    def BA(self) -> TT["leading_dims": ..., "rdim", "ldim"]:
         """The reverse product. Only makes sense when ldim==rdim"""
         assert (
             self.rdim == self.ldim
@@ -531,13 +503,15 @@ class FactoredMatrix:
         return self.B @ self.A
 
     @property
-    def T(self):
+    def T(self) -> FactoredMatrix:
         return FactoredMatrix(self.B.transpose(-2, -1), self.A.transpose(-2, -1))
 
     @lru_cache(maxsize=None)
-    def svd(self):
+    def svd(self) -> Tuple[TT["leading_dims": ..., "ldim", "mdim"], TT["leading_dims": ..., "mdim"], TT["leading_dims": ..., "rdim", "mdim"]]:
         """
-        Efficient algorithm for finding Singular Value Decomposition, a tuple (U, S, Vh) for matrix M st S is a vector and U, Vh are orthogonal matrices, and U @ S.diag() @ Vh == M
+        Efficient algorithm for finding Singular Value Decomposition, a tuple (U, S, Vh) for matrix M st S is a vector and U, Vh are orthogonal matrices, and U @ S.diag() @ Vh.T == M
+
+        (Note that Vh is given as the transpose of the obvious thing)
         """
         Ua, Sa, Vha = torch.svd(self.A)
         Ub, Sb, Vhb = torch.svd(self.B)
@@ -549,23 +523,23 @@ class FactoredMatrix:
         return U, S, Vh
 
     @property
-    def U(self):
+    def U(self) -> TT["leading_dims": ..., "ldim", "mdim"]:
         return self.svd()[0]
 
     @property
-    def S(self):
+    def S(self) -> TT["leading_dims": ..., "mdim"]:
         return self.svd()[1]
 
     @property
-    def Vh(self):
+    def Vh(self) -> TT["leading_dims": ..., "rdim", "mdim"]:
         return self.svd()[2]
 
     @property
-    def eigenvalues(self):
+    def eigenvalues(self) -> TT["leading_dims": ..., "mdim"]:
         """Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k."""
         return torch.linalg.eig(self.BA).eigenvalues
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: Union[int, Tuple]) -> FactoredMatrix:
         """Indexing - assumed to only apply to the leading dimensions."""
         if not isinstance(idx, tuple):
             idx = (idx,)
@@ -583,16 +557,16 @@ class FactoredMatrix:
                 f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"
             )
 
-    def norm(self):
+    def norm(self) -> TT["leading_dims": ...]:
         """
         Frobenius norm is sqrt(sum of squared singular values)
         """
         return self.S.pow(2).sum(-1).sqrt()
 
     def __repr__(self):
-        return f"FactoredMatrix: Shape({self.shape}), Hidden Dim({self.mdim}), Norm({self.norm()})"
+        return f"FactoredMatrix: Shape({self.shape}), Hidden Dim({self.mdim})"
 
-    def make_even(self):
+    def make_even(self) -> FactoredMatrix:
         """
         Returns the factored form of (U @ S.sqrt().diag(), S.sqrt().diag() @ Vh) where U, S, Vh are the SVD of the matrix. This is an equivalent factorisation, but more even - each half has half the singular values, and orthogonal rows/cols
         """
@@ -605,34 +579,34 @@ class FactoredMatrix:
         return get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         return len(self.shape)
 
-    def collapse_l(self):
+    def collapse_l(self) -> TT["leading_dims": ..., "mdim", "rdim"]:
         """
         Collapses the left side of the factorization by removing the orthogonal factor (given by self.U). Returns a (..., mdim, rdim) tensor
         """
         return self.S[..., :, None] * transpose(self.Vh)
 
-    def collapse_r(self):
+    def collapse_r(self) -> TT["leading_dims": ..., "ldim", "mdim"]:
         """
         Analogous to collapse_l, returns a (..., ldim, mdim) tensor
         """
         return self.U * self.S[..., None, :]
 
-    def unsqueeze(self, k):
+    def unsqueeze(self, k: int) -> FactoredMatrix:
         return FactoredMatrix(self.A.unsqueeze(k), self.B.unsqueeze(k))
 
     @property
-    def pair(self):
+    def pair(self) -> Tuple[TT["leading_dims": ..., "ldim", "mdim"], TT["leading_dims": ..., "mdim", "rdim"]]:
         return (self.A, self.B)
 
 
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
-):
+) -> Union[TT["leading_dims": ...], TT["leading_dims_left": ..., "leading_dims_right": ...]]:
     """
-    See `EasyTransformer.all_composition_scores` for documentation
+    See `EasyTransformer.all_composition_scores` for documentation.
     """
     if broadcast_dims:
         r_leading = right.ndim - 2

@@ -155,9 +155,9 @@ class LayerNorm(nn.Module):
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale = self.hook_scale(
-            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
-        )  # [batch, pos, 1]
+        scale: TT["batch", "position", 1] = self.hook_scale(
+            x.pow(2).mean(-1, keepdim=True) + self.eps
+        ).sqrt()
         x = x / scale  # [batch, pos, length]
         return self.hook_normalized(x * self.w + self.b)
 
@@ -178,9 +178,9 @@ class RMSNormPre(nn.Module):
     def forward(
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
-        scale = self.hook_scale(
-            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
-        )  # [batch, pos, 1]
+        scale: TT["batch", "position", 1] = self.hook_scale(
+            x.pow(2).mean(-1, keepdim=True) + self.eps
+        ).sqrt()
         return self.hook_normalized(x / scale)  # [batch, pos, length]
 
 
@@ -213,9 +213,9 @@ class RMSNorm(nn.Module):
     def forward(
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
-        scale = self.hook_scale(
-            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
-        )  # [batch, pos, 1]
+        scale: TT["batch", "position", 1] = self.hook_scale(
+            x.pow(2).mean(-1, keepdim=True) + self.eps
+        ).sqrt()
         x = self.hook_normalized(x / scale)  # [batch, pos, length]
         return x * self.w
 
@@ -223,7 +223,10 @@ class RMSNorm(nn.Module):
 # Attention
 class Attention(nn.Module):
     def __init__(
-        self, cfg: Union[Dict, EasyTransformerConfig], attn_type="global", layer_id=None
+        self,
+        cfg: Union[Dict, EasyTransformerConfig],
+        attn_type: str = "global",
+        layer_id: Optional[int] = None,
     ):
         """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
 
@@ -308,7 +311,7 @@ class Attention(nn.Module):
     def forward(
         self,
         resid_pre: TT["batch", "pos", "d_model"],
-        shortformer_pos_embed: Optional[torch.Tensor] = None,
+        shortformer_pos_embed: Optional[TT["batch", "pos", "d_model"]] = None,
         past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
     ) -> TT["batch", "pos", "d_model"]:
         """
@@ -421,8 +424,11 @@ class Attention(nn.Module):
             )  # [batch, pos, d_model]
         return out
 
-    # TODO here
-    def apply_causal_mask(self, attn_scores, past_kv_pos_offset):
+    def apply_causal_mask(
+        self,
+        attn_scores: TT["batch", "head_index", "pos", "pos + past_kv_pos_offset"],
+        past_kv_pos_offset: int = 0,
+    ):
         # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it's just a single token.
         query_ctx_length = attn_scores.size(-2)
         # The key context length is the number of positions in the past - this includes all positions in the cache
@@ -473,13 +479,23 @@ class Attention(nn.Module):
         )  # [batch, pos, head_index, d_head]
         return (q, k)
 
-    def rotary_rotate_qk(self, q, k, past_kv_pos_offset):
+    def rotary_rotate_qk(
+        self,
+        q: TT["batch", "pos", "head_index", "d_head"],
+        k: TT["batch", "pos", "head_index", "d_head"],
+        past_kv_pos_offset,
+    ) -> Tuple[
+        TT["batch", "pos", "head_index", "d_head"],
+        TT["batch", "pos", "head_index", "d_head"],
+    ]:
         # We first apply standard q and k calculation
         q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
         k = self.hook_rot_k(self.apply_rotary(k))
         return q, k
 
-    def calculate_sin_cos_rotary(self, rotary_dim, n_ctx, base=10000):
+    def calculate_sin_cos_rotary(
+        self, rotary_dim: int, n_ctx: int, base: int = 10000
+    ) -> Tuple[TT["n_ctx", "rotary_dim"], TT["n_ctx", "rotary_dim"]]:
         """
         Calculate the sine and cosine waves to use in a rotary embedding. See https://blog.eleuther.ai/rotary-embeddings/ for details
 
@@ -498,7 +514,7 @@ class Attention(nn.Module):
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles), torch.cos(angles)
 
-    def rotate_every_two(self, x):
+    def rotate_every_two(self, x: TT[..., "rotary_dim"]) -> TT[..., "rotary_dim"]:
         """
         Rotary helper function, splits x into blocks of size 2 along the final axis and maps [x0, x1] to [-x1, x0]
 
@@ -517,7 +533,7 @@ class Attention(nn.Module):
 
         return rot_x
 
-    def apply_rotary(self, x, past_kv_pos_offset=0):
+    def apply_rotary(self, x: TT["batch", "pos", "head_index", "d_head"], past_kv_pos_offset=0) -> TT["batch", "pos", "head_index", "d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
@@ -636,7 +652,7 @@ class TransformerBlock(nn.Module):
     def forward(
         self,
         resid_pre: TT["batch", "position", "d_model"],
-        shortformer_pos_embed: Optional[torch.Tensor] = None,
+        shortformer_pos_embed: Optional[TT["batch", "position", "d_model"]] = None,
         past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
     ) -> TT["batch", "position", "d_model"]:
         """A single Transformer block.
