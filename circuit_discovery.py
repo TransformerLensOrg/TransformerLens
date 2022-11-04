@@ -213,13 +213,13 @@ class HypothesisTree():
                         if abs(attn_results[layer, head]) > threshold:
                             print("Found important head:", (layer, head), "at position", pos)
                             score = attn_results[layer, head]
-                            comp_type = receiver_hook[0].split('_')[-1] # q, k, v
+                            comp_type = receiver_hook[0].split('_')[-1] # q, k, v, out, post
                             self.node_stack[(layer, head, pos)].children.append((node, score, comp_type))
                             node.parents.append((self.node_stack[(layer, head, pos)], score, comp_type))
                     if abs(mlp_results[layer]) > threshold:
                         print("Found important MLP: layer", layer, "position", pos)
                         score = mlp_results[layer, 0]
-                        comp_type = 'mlp'
+                        comp_type = receiver_hook[0].split('_')[-1] # q, k, v, out, post
                         self.node_stack[(layer, None, pos)].children.append((node, score, comp_type))
                         node.parents.append((self.node_stack[(layer, None, pos)],  score, comp_type))
 
@@ -234,37 +234,52 @@ class HypothesisTree():
     def show(self, save=False):
         edge_list = [] # TODO add weights of edges
         edge_color_list = []
-        color_dict = {'q': 'black', 'k': 'blue', 'v': 'green', 'mlp': 'red', 'post': 'red'}
+        color_dict = {'q': 'black', 'k': 'blue', 'v': 'green', 'out': 'red', 'post': 'red'}
         current_node = h.root_node
+        G = nx.DiGraph()
         def dfs(node):
+            G.add_nodes_from([(node, {'layer': node.layer})])
             for child_node, child_score, child_type in node.parents:
-                edge_list.append((node, child_node, 
-                    {'weight': round(child_score,3), 'color': color_dict[child_type]}))
+                G.add_edges_from([(node, child_node, 
+                    {'weight': round(child_score,3)})])
+                #edge_list.append((node, child_node, 
+                #    {'weight': round(child_score,3), 'color': color_dict[child_type]}))
                 edge_color_list.append(color_dict[child_type])
                 dfs(child_node)
         dfs(current_node)
-        dag = nx.from_edgelist(edge_list, create_using=nx.DiGraph)
-        pos = nx.planar_layout(dag)
+        #dag = nx.from_edgelist(edge_list, create_using=nx.DiGraph)
+        #pos = nx.planar_layout(dag)
+        pos = nx.multipartite_layout(G, subset_key="layer")
         # make plt figure fills screen
-        fig = plt.figure(dpi=300, figsize=(12, 12))
-        nx.draw_networkx_nodes(
-            dag,
+        fig = plt.figure(dpi=300, figsize=(24, 24))
+        nx.draw(
+            G,
             pos,
             node_size=8000,
-            node_color="#ffff8f",
+            node_color='#b0a8a7',
             linewidths=2.0,
-        )
-        nx.draw_networkx_edges(
-            dag, 
-            pos, 
-            edgelist=edge_list,
             edge_color=edge_color_list,
             width=1.5,
-            arrowsize=12)
+            arrowsize=12
+        )
+        # nx.draw_networkx_nodes(
+        #     dag,
+        #     pos,
+        #     node_size=8000,
+        #     node_color="#ffff8f",
+        #     linewidths=2.0,
+        # )
+        # nx.draw_networkx_edges(
+        #     dag, 
+        #     pos, 
+        #     edgelist=edge_list,
+        #     edge_color=edge_color_list,
+        #     width=1.5,
+        #     arrowsize=12)
 
-        nx.draw_networkx_labels(dag, pos, font_size=14)
-        edge_labels = nx.get_edge_attributes(dag, "weight")
-        nx.draw_networkx_edge_labels(dag, pos, edge_labels)
+        nx.draw_networkx_labels(G, pos, font_size=14)
+        edge_labels = nx.get_edge_attributes(G, "weight")
+        nx.draw_networkx_edge_labels(G, pos, edge_labels)
 
         if save:
             plt.savefig('ioi_circuit.png')
