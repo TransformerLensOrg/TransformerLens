@@ -1,5 +1,5 @@
 from typing import Callable, Union, List, Tuple, Dict, Optional
-from mimetypes import init
+from torchtyping import TensorType as TT
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,8 +12,6 @@ from huggingface_hub import HfApi
 from functools import partial, lru_cache
 
 from transformers import (
-    AutoModelForCausalLM,
-    AutoConfig,
     AutoTokenizer,
     PreTrainedTokenizer,
 )
@@ -24,7 +22,6 @@ from easy_transformer import EasyTransformerConfig
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from easy_transformer.past_key_value_caching import (
     EasyTransformerKeyValueCache,
-    EasyTransformerKeyValueCacheEntry,
 )
 from easy_transformer.activation_cache import ActivationCache
 
@@ -33,13 +30,13 @@ import easy_transformer.loading_from_pretrained as loading
 from easy_transformer.utils import (
     lm_cross_entropy_loss,
     sample_logits,
-    download_file_from_hf,
     FactoredMatrix,
     composition_scores,
-    get_corner,
 )
 
-# Full transformer
+# Type alias for a single element tensor
+Loss = TT[()]
+
 class EasyTransformer(HookedRootModule):
     """
     This class implements a full Transformer using the components in ./components.py, with
@@ -140,13 +137,14 @@ class EasyTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
+    # TODO make sure type assertions are provided
     def forward(
         self,
-        input: Union[str, torch.Tensor],
+        input: Union[str, TT["batch", "pos"]],
         return_type: Optional[str] = "logits",
         prepend_bos: bool = True,
         past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
-    ) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Union[None, TT["batch", "pos"], Loss, Tuple[TT["batch", "pos"], Loss]]:
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
@@ -307,8 +305,10 @@ class EasyTransformer(HookedRootModule):
             raise ValueError(f"Invalid shape passed in: {tokens.shape}")
 
     def to_str_tokens(
-        self, input: Union[str, torch.Tensor, list], prepend_bos: bool = True
-    ):
+        self,
+        input: Union[str, Union[TT["pos"], TT[1, "pos"]], list],
+        prepend_bos: bool = True,
+    ) -> List[str]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
         Args:
@@ -355,7 +355,7 @@ class EasyTransformer(HookedRootModule):
     def get_token_position(
         self,
         single_token: Union[str, int],
-        tokens: Union[str, torch.Tensor],
+        tokens: Union[str, Union[TT["pos"], TT[1, "pos"]]],
         mode="first",
         prepend_bos=False,
     ):
@@ -396,7 +396,7 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def single_token_to_residual(self, token: Union[str, int, torch.Tensor]):
+    def single_token_to_residual(self, token: Union[str, int, TT[()]]):
         """Maps a token to the unembedding vector for that token, ie the vector in the residual stream that we do with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map.
@@ -494,6 +494,8 @@ class EasyTransformer(HookedRootModule):
             model_kwargs (dict, optional): Any additional kwargs to pass to the
                 EasyTransformer initialization.
         """
+        print(f"Loading model: {model_name}")
+
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
@@ -870,7 +872,7 @@ class EasyTransformer(HookedRootModule):
     @torch.inference_mode()
     def generate(
         self,
-        input: Union[str, torch.Tensor] = "",
+        input: Union[str, TT["batch", "pos"]] = "",
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
         eos_token_id: Optional[int] = None,
@@ -883,7 +885,7 @@ class EasyTransformer(HookedRootModule):
         use_past_kv_cache: bool = True,
         prepend_bos=True,
         return_type: Optional[str] = "input",
-    ):
+    ) -> TT["batch", "pos + new_tokens"]:
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
 
@@ -996,99 +998,110 @@ class EasyTransformer(HookedRootModule):
         else:
             return tokens
 
-    # Give access to all weights as properties. Layer weights are stacked into one massive tensor and a cache is used to avoid repeated computation. Often a useful convenience when we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use these properties!
+    # Give access to all weights as properties. 
     @property
-    def W_U(self):
+    def W_U(self) -> TT["d_model", "d_vocab"]:
+        """
+        Convenience to get the unembedding matrix (ie the linear map from the final residual stream to the output logits)
+        """
         return self.unembed.W_U
 
     @property
-    def b_U(self):
+    def b_U(self) -> TT["d_vocab"]:
         return self.unembed.b_U
 
     @property
-    def W_E(self):
+    def W_E(self) -> TT["d_vocab", "d_model"]:
+        """
+        Convenience to get the embedding matrix
+        """
         return self.embed.W_E
 
     @property
-    def W_pos(self):
+    def W_pos(self) -> TT["n_ctx", "d_model"]:
+        """
+        Convenience function to get the positional embedding. Only works on models with absolute positional embeddings!
+        """
         return self.pos_embed.W_pos
 
     @property
-    def W_E_pos(self):
+    def W_E_pos(self) -> TT["d_vocab + n_ctx", "d_model"]:
         """
         Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
         """
         return torch.cat([self.W_E, self.W_pos], dim=1)
 
+    # Layer-specific weights are stacked into one massive tensor and given as properties for convenience and a cache is used to avoid repeated computation. Often a useful convenience when we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use these properties!
+
     @property
     @lru_cache(maxsize=None)
-    def W_K(self):
+    def W_K(self) -> TT["n_layers", "n_heads", "d_model", "d_head"]:
         """Stacks the key weights across all layers"""
         return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def W_Q(self):
+    def W_Q(self) -> TT["n_layers", "n_heads", "d_model", "d_head"]:
         """Stacks the query weights across all layers"""
         return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def W_V(self):
+    def W_V(self) -> TT["n_layers", "n_heads", "d_model", "d_head"]:
         """Stacks the value weights across all layers"""
         return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def W_O(self):
+    def W_O(self) -> TT["n_layers", "n_heads", "d_head", "d_model"]:
         """Stacks the attn output weights across all layers"""
         return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def W_in(self):
+    def W_in(self) -> TT["n_layers", "d_model", "d_mlp"]:
         """Stacks the MLP input weights across all layers"""
         return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def W_out(self):
+    def W_out(self) -> TT["n_layers", "d_mlp", "d_model"]:
         """Stacks the MLP output weights across all layers"""
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def b_K(self):
+    def b_K(self) -> TT["n_layers", "n_heads", "d_head"]:
         """Stacks the key biases across all layers"""
         return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def b_Q(self):
+    def b_Q(self) -> TT["n_layers", "n_heads", "d_head"]:
         """Stacks the query biases across all layers"""
         return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def b_V(self):
+    def b_V(self) -> TT["n_layers", "n_heads", "d_head"]:
         """Stacks the value biases across all layers"""
         return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def b_O(self):
+    def b_O(self) -> TT["n_layers", "d_model"]:
         """Stacks the attn output biases across all layers"""
         return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def b_in(self):
+    def b_in(self) -> TT["n_layers", "d_mlp"]:
         """Stacks the MLP input biases across all layers"""
         return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
 
     @property
     @lru_cache(maxsize=None)
-    def b_out(self):
+    def b_out(self) -> TT["n_layers", "d_model"]:
         """Stacks the MLP output biases across all layers"""
         return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
 
@@ -1103,7 +1116,7 @@ class EasyTransformer(HookedRootModule):
     # Various utility functions
     def accumulated_bias(
         self, layer: int, mlp_input: bool = False, include_mlp_biases=True
-    ):
+    ) -> TT["layers_accumulated_over", "d_model"]:
         """Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the input of layer L.
 
         Args:
@@ -1126,7 +1139,7 @@ class EasyTransformer(HookedRootModule):
             accumulated_bias += self.blocks[layer].attn.b_O
         return accumulated_bias
 
-    def all_composition_scores(self, mode):
+    def all_composition_scores(self, mode) -> TT["n_layers", "n_heads", "n_layers", "n_heads"]:
         """Returns the Composition scores for all pairs of heads, as a L1, H1, L2, H2 tensor (which is upper triangular on the first and third axes)
 
         mode is one of ["Q", "K", "V"]

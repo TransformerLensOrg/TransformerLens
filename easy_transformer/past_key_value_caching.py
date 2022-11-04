@@ -3,12 +3,13 @@ import torch.nn as nn
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
 from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from torchtyping import TensorType as TT
 
 
 @dataclass
 class EasyTransformerKeyValueCacheEntry:
-    past_keys: torch.Tensor
-    past_values: torch.Tensor
+    past_keys: TT["batch", "pos_so_far", "n_heads", "d_head"]
+    past_values: TT["batch", "pos_so_far", "n_heads", "d_head"]
 
     @classmethod
     def init_cache_entry(
@@ -26,9 +27,17 @@ class EasyTransformerKeyValueCacheEntry:
             ),
         )
 
-    def append(self, new_keys: torch.Tensor, new_values: torch.Tensor):
-        updated_keys = torch.cat([self.past_keys, new_keys], dim=1)
-        updated_values = torch.cat([self.past_values, new_values], dim=1)
+    def append(
+        self,
+        new_keys: TT["batch", "new_tokens", "n_heads", "d_head"],
+        new_values: TT["batch", "new_tokens", "n_heads", "d_head"],
+    ):
+        updated_keys: TT[
+            "batch", "pos_so_far + new_tokens", "n_heads", "d_head"
+        ] = torch.cat([self.past_keys, new_keys], dim=1)
+        updated_values: TT[
+            "batch", "pos_so_far + new_tokens", "n_heads", "d_head"
+        ] = torch.cat([self.past_values, new_values], dim=1)
         self.past_keys = updated_keys
         self.past_values = updated_values
         return updated_keys, updated_values
