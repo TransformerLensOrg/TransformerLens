@@ -151,7 +151,7 @@ class HypothesisTree():
         self.model.cache_all(self.new_cache)
         _ = self.model(self.new_data, prepend_bos=False)
 
-    def eval(self, threshold: Union[float, None] = None, verbose: bool = False):
+    def eval(self, threshold: Union[float, None] = None, verbose: bool = False, auto_threshold: bool = False):
         """Process current_node, then move to next current_node"""
 
         if threshold is None:
@@ -204,18 +204,23 @@ class HypothesisTree():
                 show_pp(attn_results.T, title=f"Attn results for {node} with receiver hook {receiver_hook}", xlabel="Head", ylabel="Layer")
                 show_pp(mlp_results, title=f"MLP results for {node} with receiver hook {receiver_hook}", xlabel="Layer", ylabel="")
 
-                #threshold = max(3 * attn_results.std(), 3 * mlp_results.std(), 0.01)
+                if auto_threshold:
+                    threshold = max(3 * attn_results.std(), 3 * mlp_results.std(), 0.01)
                 # process result and mark nodes above threshold as important
                 for layer in range(attn_results.shape[0]):
                     for head in range(attn_results.shape[1]):
                         if abs(attn_results[layer, head]) > threshold:
                             print("Found important head:", (layer, head), "at position", pos)
-                            self.node_stack[(layer, head, pos)].children.append((node, attn_results[layer, head]))
-                            node.parents.append(self.node_stack[(layer, head, pos)])
+                            score = attn_results[layer, head]
+                            comp_type = receiver_hook[0].split('_')[-1] # q, k, v
+                            self.node_stack[(layer, head, pos)].children.append((node, score, comp_type))
+                            node.parents.append((self.node_stack[(layer, head, pos)], score, comp_type))
                     if abs(mlp_results[layer]) > threshold:
                         print("Found important MLP: layer", layer, "position", pos)
-                        self.node_stack[(layer, None, pos)].children.append((node, mlp_results[layer]))
-                        node.parents.append(self.node_stack[(layer, None, pos)])
+                        score = mlp_results[layer]
+                        comp_type = 'mlp'
+                        self.node_stack[(layer, None, pos)].children.append((node, score, comp_type))
+                        node.parents.append((self.node_stack[(layer, None, pos)],  score, comp_type))
 
         # update self.current_node
         while len(self.node_stack) > 0 and len(self.node_stack[next(reversed(self.node_stack))].children) == 0:
@@ -227,25 +232,38 @@ class HypothesisTree():
 
     def show(self):
         edge_list = [] # TODO add weights of edges
+        edge_color_list = []
+        color_dict = {'q': 'black', 'k': 'blue', 'v': 'green', 'mlp': 'red', 'post': 'red'}
         current_node = h.root_node
         def dfs(node):
-            for child in node.parents:
-                edge_list.append((node, child))
-                dfs(child)
+            for child_node, child_score, child_type in node.parents:
+                edge_list.append((node, child_node, 
+                    {'weight': round(child_score,3), 'color': color_dict[child_type]}))
+                edge_color_list.append(color_dict[child_type])
+                dfs(child_node)
         dfs(current_node)
         dag = nx.from_edgelist(edge_list, create_using=nx.DiGraph)
+        pos = nx.planar_layout(dag)
         # make plt figure fills screen
-        fig = plt.figure(figsize=(12, 12))
-        nx.draw_planar(
+        fig = plt.figure(dpi=150, figsize=(12, 12))
+        nx.draw_networkx_nodes(
             dag,
-            arrowsize=12,
-            with_labels=True,
+            pos,
             node_size=8000,
             node_color="#ffff8f",
             linewidths=2.0,
-            width=1.5,
-            font_size=14,
         )
+        nx.draw_networkx_edges(
+            dag, 
+            pos, 
+            edgelist=edge_list,
+            edge_color=edge_color_list,
+            width=1.5,
+            arrowsize=12)
+
+        nx.draw_networkx_labels(dag, pos, font_size=14)
+        edge_labels = nx.get_edge_attributes(dag, "weight")
+        nx.draw_networkx_edge_labels(dag, pos, edge_labels)
 
 positions = OrderedDict()
 positions['IO'] = ioi_dataset.word_idx['IO']
@@ -283,7 +301,7 @@ h = HypothesisTree(
     dataset=ioi_dataset, 
     orig_data=ioi_dataset.toks.long(), 
     new_data=abc_dataset.toks.long(), 
-    threshold=0.15,
+    threshold=0.15,  
 )
 h.eval()
 attn_results_slow = deepcopy(h.attn_results)
