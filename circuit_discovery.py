@@ -151,7 +151,7 @@ class HypothesisTree():
         self.model.cache_all(self.new_cache)
         _ = self.model(self.new_data, prepend_bos=False)
 
-    def eval(self, threshold: Union[float, None] = None, verbose: bool = False, auto_threshold: bool = False):
+    def eval(self, threshold: Union[float, None] = None, verbose: bool = False, show_graphics: bool = True, auto_threshold: bool = False):
         """Process current_node, then move to next current_node"""
 
         if threshold is None:
@@ -201,8 +201,9 @@ class HypothesisTree():
                 self.attn_results = attn_results
                 self.mlp_results = mlp_results
 
-                show_pp(attn_results.T, title=f"Attn results for {node} with receiver hook {receiver_hook}", xlabel="Head", ylabel="Layer")
-                show_pp(mlp_results, title=f"MLP results for {node} with receiver hook {receiver_hook}", xlabel="Layer", ylabel="")
+                if show_graphics:
+                    show_pp(attn_results.T, title=f"Attn results for {node} with receiver hook {receiver_hook}", xlabel="Head", ylabel="Layer")
+                    show_pp(mlp_results, title=f"MLP results for {node} with receiver hook {receiver_hook}", xlabel="Layer", ylabel="")
 
                 if auto_threshold:
                     threshold = max(3 * attn_results.std(), 3 * mlp_results.std(), 0.01)
@@ -217,7 +218,7 @@ class HypothesisTree():
                             node.parents.append((self.node_stack[(layer, head, pos)], score, comp_type))
                     if abs(mlp_results[layer]) > threshold:
                         print("Found important MLP: layer", layer, "position", pos)
-                        score = mlp_results[layer]
+                        score = mlp_results[layer, 0]
                         comp_type = 'mlp'
                         self.node_stack[(layer, None, pos)].children.append((node, score, comp_type))
                         node.parents.append((self.node_stack[(layer, None, pos)],  score, comp_type))
@@ -230,7 +231,7 @@ class HypothesisTree():
         else:
             self.current_node = None
 
-    def show(self):
+    def show(self, save=False):
         edge_list = [] # TODO add weights of edges
         edge_color_list = []
         color_dict = {'q': 'black', 'k': 'blue', 'v': 'green', 'mlp': 'red', 'post': 'red'}
@@ -245,7 +246,7 @@ class HypothesisTree():
         dag = nx.from_edgelist(edge_list, create_using=nx.DiGraph)
         pos = nx.planar_layout(dag)
         # make plt figure fills screen
-        fig = plt.figure(dpi=150, figsize=(12, 12))
+        fig = plt.figure(dpi=300, figsize=(12, 12))
         nx.draw_networkx_nodes(
             dag,
             pos,
@@ -264,6 +265,9 @@ class HypothesisTree():
         nx.draw_networkx_labels(dag, pos, font_size=14)
         edge_labels = nx.get_edge_attributes(dag, "weight")
         nx.draw_networkx_edge_labels(dag, pos, edge_labels)
+
+        if save:
+            plt.savefig('ioi_circuit.png')
 
 positions = OrderedDict()
 positions['IO'] = ioi_dataset.word_idx['IO']
@@ -284,58 +288,67 @@ h = HypothesisTree(
 )
 
 # %%
-%%time
-# while h.current_node is not None:
-h.eval()
+h.eval(show_graphics=False)
+while h.current_node is not None:
+    h.eval(verbose=True, show_graphics=False, auto_threshold=True)
+    h.show(save=True)
+#h.show(save=True)
 
 # %%
-attn_results_fast = deepcopy(h.attn_results)
-mlp_results_fast = deepcopy(h.mlp_results)
-#%% [markdown]
-# Test that Arthur didn't mess up the fast caching
+# attn_results_fast = deepcopy(h.attn_results)
+# mlp_results_fast = deepcopy(h.mlp_results)
+# #%% [markdown]
+# # Test that Arthur didn't mess up the fast caching
 
-use_caching = False
-h = HypothesisTree(
-    model, 
-    metric=logit_diff_io_s, 
-    dataset=ioi_dataset, 
-    orig_data=ioi_dataset.toks.long(), 
-    new_data=abc_dataset.toks.long(), 
-    threshold=0.15,  
-)
-h.eval()
-attn_results_slow = deepcopy(h.attn_results)
-mlp_results_slow = deepcopy(h.mlp_results)
+# use_caching = False
+# h = HypothesisTree(
+#     model, 
+#     metric=logit_diff_io_s, 
+#     dataset=ioi_dataset, 
+#     orig_data=ioi_dataset.toks.long(), 
+#     new_data=abc_dataset.toks.long(), 
+#     threshold=0.15,  
+# )
+# h.eval()
+# attn_results_slow = deepcopy(h.attn_results)
+# mlp_results_slow = deepcopy(h.mlp_results)
 
-for fast_res, slow_res in zip([attn_results_fast, mlp_results_fast], [attn_results_slow, mlp_results_slow]):
-    for layer in range(fast_res.shape[0]):
-        for head in range(fast_res.shape[1]):
-            assert torch.allclose(torch.tensor(fast_res[layer, head]), torch.tensor(slow_res[layer, head]), atol=1e-3, rtol=1e-3), f"fast_res[{layer}, {head}] = {fast_res[layer, head]}, slow_res[{layer}, {head}] = {slow_res[layer, head]}"
-    for layer in range(fast_res.shape[0]):
-        assert torch.allclose(torch.tensor(fast_res[layer]), torch.tensor(slow_res[layer])), f"fast_res[{layer}] = {fast_res[layer]}, slow_res[{layer}] = {slow_res[layer]}"
+# for fast_res, slow_res in zip([attn_results_fast, mlp_results_fast], [attn_results_slow, mlp_results_slow]):
+#     for layer in range(fast_res.shape[0]):
+#         for head in range(fast_res.shape[1]):
+#             assert torch.allclose(torch.tensor(fast_res[layer, head]), torch.tensor(slow_res[layer, head]), atol=1e-3, rtol=1e-3), f"fast_res[{layer}, {head}] = {fast_res[layer, head]}, slow_res[{layer}, {head}] = {slow_res[layer, head]}"
+#     for layer in range(fast_res.shape[0]):
+#         assert torch.allclose(torch.tensor(fast_res[layer]), torch.tensor(slow_res[layer])), f"fast_res[{layer}] = {fast_res[layer]}, slow_res[{layer}] = {slow_res[layer]}"
 
-#%%
-def randomise_indices(arr: np.ndarray, indices: np.ndarray):
-    """
-    Given an array arr, shuffle the elements that occur at the indices positions between themselves
-    """
+# #%%
+# def randomise_indices(arr: np.ndarray, indices: np.ndarray):
+#     """
+#     Given an array arr, shuffle the elements that occur at the indices positions between themselves
+#     """
 
-    # get the elements that we want to shuffle
-    elements = arr[indices]
+#     # get the elements that we want to shuffle
+#     elements = arr[indices]
 
-    # shuffle the elements
-    np.random.shuffle(elements)
+#     # shuffle the elements
+#     np.random.shuffle(elements)
 
-    # put the shuffled elements back into the array
-    arr[indices] = elements
+#     # put the shuffled elements back into the array
+#     arr[indices] = elements
 
-    return arr
+#     return arr
 
-#%%
+# #%%
 
-a = [1, 2, 3, 4, 5]
-b = [1, 2, 3]
-a = np.array(a)
-b = np.array(b)
-print(randomise_indices(a, b))
-# %%
+# a = [1, 2, 3, 4, 5]
+# b = [1, 2, 3]
+# a = np.array(a)
+# b = np.array(b)
+# print(randomise_indices(a, b))
+# # %%
+
+# if __name__ == '__main__':
+#     h.eval()
+#     h.show(save=True)
+#     # while h.current_node is not None:
+#     #     h.eval(verbose=True, auto_threshold=True)
+#     #     h.show()
