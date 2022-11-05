@@ -1,4 +1,4 @@
-#%% [markdown]
+#%%
 # Arthur investigation into dropout
 from copy import deepcopy
 from inspect import stack
@@ -149,7 +149,7 @@ def get_induction_scores(model, rand_tokens_repeat, title=""):
         induction_stripe = attn_pattern.diagonal(1 - seq_len, dim1=-2, dim2=-1)
         induction_scores = einops.reduce(
             induction_stripe, "batch index pos -> index", "mean"
-        )
+            )
 
         # Store the scores in a common arraymlp_ = saved_tensors[-2].clone()
         induction_scores_array[hook.layer()] = induction_scores.detach().cpu().numpy()
@@ -258,7 +258,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
     # initial_loss = model(
     #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
     # )["loss"][:, -seq_len // 2 :].mean()
-    initial_metric = metric(model, rand_tokens_repeat, seq_len)
+    initial_metric = metric(model, rand_tokens_repeat)
     print(f"Initial initial_metric: {initial_metric}")
 
     for source_layer in tqdm(range(model.cfg.n_layers)):
@@ -303,7 +303,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             # loss = model(
             #     rand_tokens_repeat, return_type="both", loss_return_per_token=True
             # )["loss"][:, -seq_len // 2 :].mean()
-            cur_metric = metric(model, rand_tokens_repeat, seq_len)
+            cur_metric = metric(model, rand_tokens_repeat)
 
             a = hooks.pop((source_layer, source_head_idx))
             e("a")
@@ -356,6 +356,38 @@ for layer, head_idx in induct_heads:
     print(f"Layer: {layer}, Head: {head_idx}, {metric.__name__}: {results[layer][head_idx]:.2f}, Induction score: {induction_scores_array[layer][head_idx]:.2f}")
 
 print(induct_heads)
+
+#%% [markdown] 
+# Can we ~retain performance while making no cross position stuff happen?
+
+answers = []
+
+model.reset_hooks()
+for layer in range(9, 12):
+    hook_name = f"blocks.{layer}.attn.hook_attn" # 4 12 50 50 shape
+
+    def remove_off_diagonal(z, hook):
+        z = z.clone()
+        print(hook.name) # : )
+        for head_idx in range(12):
+            if head_idx != 4 or "11" not in hook.name: # literally ablate all the things that aren't 11.4
+                z[:, head_idx, torch.eye(z.shape[-1], dtype=torch.bool)] = 0
+        return z
+    model.add_hook(hook_name, remove_off_diagonal)
+
+new_value = logits_metric(model, rand_tokens_repeat)
+answers.append(new_value)
+print(f"Layer: {layer}, Head: {head_idx}, {metric.__name__}: {new_value:.2f}, Induction score: {induction_scores_array[layer][head_idx]:.2f}")
+
+# plot the answers as a bar chart
+fig = plt.figure(figsize=(10, 10))
+plt.bar(range(len(answers)), answers)
+plt.show()
+
+#%%
+
+new_value = logits_metric(model, rand_tokens_repeat)
+
 #%% [markdown]
 
 all_heads = induct_heads + neg_heads
