@@ -200,7 +200,7 @@ assert torch.allclose(
     log_probs, loss, rtol=1e-3, atol=1e-3, # torch.exp(log_probs.gather(-1, rand_tokens_repeat[:, 1:].unsqueeze(-1)).squeeze(-1))
 )
 #%% [markdown]
-# make all hooks
+# THIS CELL MAKES ALL THE HOOKS : )
 
 def random_patching(z, act, hook):
     b = z.shape[0]
@@ -316,7 +316,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
             if source_layer == model.cfg.n_layers-1 and source_head_idx == model.cfg.n_heads-1:
                 fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
-                    results.T.detach(),
+                    results.detach(),
                     title=f"{title} effect of path patching heads with metric {metric} {fname}",
                     # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                     return_fig=True,
@@ -327,6 +327,59 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
                 show_pp(mlp_results.detach().cpu())
                 saved_tensors.append(results.clone().cpu())
                 saved_tensors.append(mlp_results.clone().cpu())
+
+#%% [markdown] 
+# What about the direct effects, on hook 8 resid post???
+
+results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
+mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
+model.reset_hooks()
+for hook in extra_hooks:
+    model.add_hook(*hook)
+initial_metric = metric(model, rand_tokens_repeat)
+print(f"Initial initial_metric: {initial_metric}")
+
+for source_layer in tqdm(range(model.cfg.n_layers)):
+    for source_head_idx in [None] + list(range(model.cfg.n_heads)):
+        model.reset_hooks()
+        receiver_hooks = []
+        receiver_hooks.append((f"blocks.8.hook_resid_mid", None))
+        model = path_patching_attribution(
+            model=model,
+            tokens=rand_tokens_repeat,
+            patch_tokens=rand_tokens_control,
+            sender_heads=[(source_layer, source_head_idx)],
+            receiver_hooks=receiver_hooks,
+            device="cuda",
+            freeze_mlps=True,
+            return_hooks=False,
+            max_layer=11,
+            extra_hooks=extra_hooks,
+        )
+        title="Direct"
+        cur_metric = metric(model, rand_tokens_repeat)
+        a = hooks.pop((source_layer, source_head_idx))
+        e("a")
+
+        if source_head_idx is None:
+            mlp_results[source_layer] = cur_metric - initial_metric
+        else:
+            results[source_layer][source_head_idx] = cur_metric - initial_metric
+
+        if source_layer == model.cfg.n_layers-1 and source_head_idx == model.cfg.n_heads-1:
+            fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
+            fig = show_pp(
+                results.detach(),
+                title=f"{title} effect of path patching heads with metric {metric} {fname}",
+                # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
+                return_fig=True,
+                show_fig=False,
+            )
+            both_results.append(results.clone())
+            fig.show()
+            show_pp(mlp_results.detach().cpu())
+            saved_tensors.append(results.clone().cpu())
+            saved_tensors.append(mlp_results.clone().cpu())
 #%% [markdown]
 
 # Get top 5 induction heads
@@ -524,7 +577,7 @@ fig.show()
 my_heads = [(j, i) for i in range(12) for j in range(1, 6)]
 # my_heads = max_2d(torch.abs(results), k=20)[0]
 print(my_heads)
-my_heads = [(11, 4)]
+my_heads = [(7, 0)]
 
 # my_sheads = [(6, 6), (6, 11)] + induct_heads
 
