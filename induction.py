@@ -361,28 +361,44 @@ print(induct_heads)
 # Can we ~retain performance while making no cross position stuff happen?
 
 answers = []
+from easy_transformer.utils import get_corner
+
+def remove_all_off_diagonal(z, hook):
+    z = z.clone()
+    print(hook.name) # : )
+    for head_idx in range(12):
+        if head_idx != 4 or "11" not in hook.name: # literally ablate all the things that aren't 11.4
+            z[:, head_idx, (1.0 - torch.eye(z.shape[-1])).bool()] = 0
+            print(get_corner(z[0, head_idx]))
+    return z
+
+results = torch.zeros((12, 12))
 
 model.reset_hooks()
 for layer in range(9, 12):
-    hook_name = f"blocks.{layer}.attn.hook_attn" # 4 12 50 50 shape
+    for head_idx in range(12):
+        model.reset_hooks()
+        hook_name = f"blocks.{layer}.attn.hook_attn" # 4 12 50 50 shape
+        def remove_off_diagonal(z, hook):
+            z[:, head_idx, (torch.eye(z.shape[-1])).bool()] = 0
+            print(get_corner(z[0, head_idx]))
+            return z
 
-    def remove_off_diagonal(z, hook):
-        z = z.clone()
-        print(hook.name) # : )
-        for head_idx in range(12):
-            if head_idx != 4 or "11" not in hook.name: # literally ablate all the things that aren't 11.4
-                z[:, head_idx, torch.eye(z.shape[-1], dtype=torch.bool)] = 0
-        return z
-    model.add_hook(hook_name, remove_off_diagonal)
+        model.add_hook(hook_name, remove_off_diagonal)
+        new_metric = metric(model, rand_tokens_repeat)
+        results[layer, head_idx] = (new_metric - initial_metric)/initial_metric
+        print(f"Layer: {layer}, Head: {head_idx}, {metric.__name__}: {new_value:.2f}, Induction score: {induction_scores_array[layer][head_idx]:.2f}")
 
-new_value = logits_metric(model, rand_tokens_repeat)
-answers.append(new_value)
-print(f"Layer: {layer}, Head: {head_idx}, {metric.__name__}: {new_value:.2f}, Induction score: {induction_scores_array[layer][head_idx]:.2f}")
+results[11, 4] = 0
 
-# plot the answers as a bar chart
-fig = plt.figure(figsize=(10, 10))
-plt.bar(range(len(answers)), answers)
-plt.show()
+# plot results as a labelled bar chart
+fig = show_pp(
+    results.T.detach(),
+    title=f"Effect of removing off diagonal attention with metric {metric}",
+    # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
+    return_fig=True,
+    show_fig=True,
+)
 
 #%%
 
@@ -515,6 +531,7 @@ fig.show()
 my_heads = [(j, i) for i in range(12) for j in range(1, 6)]
 # my_heads = max_2d(torch.abs(results), k=20)[0]
 print(my_heads)
+my_heads = [(11, 4)]
 
 # my_sheads = [(6, 6), (6, 11)] + induct_heads
 
