@@ -230,7 +230,7 @@ for layer, head_idx in all_heads_and_mlps:
         hook_name,
         get_act_hook(
             random_patching,
-            alt_act=cache[hook_name],
+            alt_act=cache[hook_name].clone(),
             idx=head_idx,
             dim=2 if head_idx is not None else None,
             name=hook_name,
@@ -336,6 +336,7 @@ mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
 
 model.reset_hooks()
 extra_hooks = [hooks[(6, 1)]]
+# extra_hooks = []
 for hook in extra_hooks:
     model.add_hook(*hook)
 initial_metric = metric(model, rand_tokens_repeat)
@@ -360,9 +361,6 @@ for source_layer in tqdm(range(model.cfg.n_layers)):
         )
         title="Direct"
         cur_metric = metric(model, rand_tokens_repeat)
-        # if (source_layer, source_head_idx) in hooks:
-        #     a = hooks.pop((source_layer, source_head_idx))
-        #     e("a")
 
         if source_head_idx is None:
             mlp_results[source_layer] = cur_metric - initial_metric
@@ -372,7 +370,7 @@ for source_layer in tqdm(range(model.cfg.n_layers)):
         if source_layer == model.cfg.n_layers-1 and source_head_idx == model.cfg.n_heads-1:
             fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
             fig = show_pp(
-                results.detach(),
+                results.detach(), # TODO this must be bugged, because we're getting effects from AFTER the receiver hook
                 title=f"{title} effect of path patching heads with metric {metric} {fname}",
                 # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                 return_fig=True,

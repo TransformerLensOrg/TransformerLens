@@ -18,8 +18,10 @@ from ioi_dataset import IOIDataset
 from ioi_circuit_extraction import do_circuit_extraction
 import time
 
+
 def ctime2():
     return time.ctime().replace(" ", "_")
+
 
 def get_hook(layer, head_idx):
     if head_idx is None:
@@ -27,8 +29,10 @@ def get_hook(layer, head_idx):
     else:
         return (f"blocks.{layer}.attn.hook_result", head_idx)
 
+
 def get_number_in_string(string):
     return int("".join(filter(str.isdigit, string)))
+
 
 def get_all_subsets(my_list):
     if len(my_list) == 0:
@@ -74,6 +78,7 @@ def loss_metric(
     )["loss"][:, -seq_len // 2 :].mean()
     return cur_loss.item()
 
+
 def logits_metric(
     model,
     rand_tokens_repeat,
@@ -87,11 +92,16 @@ def logits_metric(
 
     assert len(logits.shape) == 3, logits.shape
     batch_size, _, vocab_size = logits.shape
-    seq_indices = einops.repeat(torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size)
+    seq_indices = einops.repeat(
+        torch.arange(seq_len) + seq_len, "a -> b a", b=batch_size
+    )
     batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len)
-    logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1:]]
+    logits_on_correct = logits[
+        batch_indices, seq_indices, rand_tokens_repeat[:, seq_len + 1 :]
+    ]
 
     return logits_on_correct[:, -seq_len // 2 :].mean().item()
+
 
 def denom_metric(
     model,
@@ -99,11 +109,10 @@ def denom_metric(
     seq_len,
 ):
     """Denom of the final softmax"""
-    logits = model(rand_tokens_repeat, return_type="logits") # 5 21 50257
+    logits = model(rand_tokens_repeat, return_type="logits")  # 5 21 50257
     denom = torch.exp(logits)
     denom = denom[:, -seq_len // 2 :].sum(dim=-1).mean()
     return denom.item()
-
 
 
 def path_patching_attribution(
@@ -173,7 +182,7 @@ def path_patching_attribution(
             or "hook_mlp_out" in x
             or "attn.hook_k" in x
             or "attn.hook_v" in x
-            or "attn.hook_result" in x # TODO delete, for debugging
+            or "attn.hook_result" in x  # TODO delete, for debugging
         ),
         suppress_warning=True,
         device=device,
@@ -194,7 +203,7 @@ def path_patching_attribution(
     )
 
     # for all the Q, K, V things
-    for layer in range(max_layer): # make sure to ablate stuff before 
+    for layer in range(max_layer):  # make sure to ablate stuff before
         for head_idx in range(model.cfg.n_heads):
             for hook_template in [
                 "blocks.{}.attn.hook_q",
@@ -234,7 +243,7 @@ def path_patching_attribution(
     for hook_name, head_idx in sender_hooks:
         if do_assert:
             assert not torch.allclose(
-                target_cache[hook_name], 
+                target_cache[hook_name],
                 sender_cache[hook_name],
             )
 
@@ -281,14 +290,17 @@ def path_patching_attribution(
     else:
         for hook_name, hook in hooks:
             model.add_hook(hook_name, hook)
+        for hook in extra_hooks:
+            model.add_hook(*hook)
         return model
+
 
 def ppa_multiple(
     model,
     tokens,
     patch_tokens,
     attention_max_layer,
-    mlp_max_layer,    
+    mlp_max_layer,
     receiver_hooks,
     metric,
     # pos, # TODO for now we YOLO this
@@ -298,7 +310,7 @@ def ppa_multiple(
     """
 
     head_results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
-    mlp_results = torch.zeros(size=(model.cfg.n_layers,1))
+    mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
 
     model.reset_hooks()
     initial_metric = metric(model, tokens)
@@ -359,17 +371,25 @@ def show_losses(
             # fairly cursed indexing ...
             assert len(logits.shape) == 3, logits.shape
 
-            seq_indices = einops.repeat(torch.arange(seq_len * 2), "a -> b a", b=batch_size)
-            batch_indices = einops.repeat(torch.arange(batch_size), "b -> b a", a=seq_len * 2)
+            seq_indices = einops.repeat(
+                torch.arange(seq_len * 2), "a -> b a", b=batch_size
+            )
+            batch_indices = einops.repeat(
+                torch.arange(batch_size), "b -> b a", a=seq_len * 2
+            )
 
-            logits_on_correct = logits[batch_indices, seq_indices, rand_tokens_repeat[:, 1:]]
+            logits_on_correct = logits[
+                batch_indices, seq_indices, rand_tokens_repeat[:, 1:]
+            ]
 
             ys[idx] = logits_on_correct.mean(dim=0).detach().cpu()
 
         print(ys[idx].shape)
         fig.add_trace(
             go.Scatter(
-                y=ys[idx], # torch.exp(-mean_loss.detach().cpu()) if mode == "probs" else mean_loss.detach().cpu(),
+                y=ys[
+                    idx
+                ],  # torch.exp(-mean_loss.detach().cpu()) if mode == "probs" else mean_loss.detach().cpu(),
                 name=model_name,
                 mode="lines",
                 # line=dict(color=CLASS_COLORS[idx]),
@@ -403,6 +423,7 @@ def show_losses(
     )
 
     fig.show()
+
 
 def get_position(my_list):
     """
