@@ -339,8 +339,9 @@ results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
 mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
 
 model.reset_hooks()
-# extra_hooks = [hooks[(6, 1)]]
-extra_hooks = []
+extra_hooks = [hooks[(6, 1)]]
+# extra_hooks = []
+
 for hook in extra_hooks:
     model.add_hook(*hook)
 initial_metric = metric(model, rand_tokens_repeat)
@@ -375,18 +376,46 @@ for source_layer in tqdm(range(model.cfg.n_layers)):
             fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
             fig = show_pp(
                 results.detach(), # TODO this must be bugged, because we're getting effects from AFTER the receiver hook
-                title="Change in logits on correct, path patching -> layer 8, post attention layer. With 6.1 knocked out.", # f"{title} effect of path patching heads with metric {metric} {fname}",
+                title="Change in logits on correct, path patching -> layer 8, post attention layer, with 6.1 knocked out.", # f"{title} effect of path patching heads with metric {metric} {fname}",
                 # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                 return_fig=True,
                 show_fig=False,
-                xtitle="Layer",
-                ytitle="Head",
+                xlabel="Head",
+                ylabel="Layer",
             )
             both_results.append(results.clone())
             fig.show()
-            show_pp(mlp_results.T.detach().cpu(), title="MLP results", )
+            show_pp(mlp_results.detach().cpu(), title="MLP results")
             saved_tensors.append(results.clone().cpu())
             saved_tensors.append(mlp_results.clone().cpu())
+
+#%% [markdown]
+# Is Layer 8 updating on Layer 6? On MLP 6 or 7?
+
+model.reset_hooks()
+initial_metric = metric(model, rand_tokens_repeat)
+
+receiver_hooks = []
+for i in range(12):
+    if i == 1: continue
+    receiver_hooks.append((f"blocks.8.attn.hook_result", i)) # HMM something bugged as the effect seems same size if 11 or 1 head here...
+
+model = path_patching_attribution(
+    model=model,
+    tokens=rand_tokens_repeat,
+    patch_tokens=rand_tokens_control,
+    sender_heads=[(6, None)],
+    receiver_hooks=receiver_hooks,
+    device="cuda",
+    freeze_mlps=True,
+    return_hooks=False,
+    max_layer=11,
+    extra_hooks=extra_hooks,
+)
+
+new_metric = metric(model, rand_tokens_repeat)
+print(initial_metric, new_metric)
+
 #%% [markdown]
 
 # Get top 5 induction heads
