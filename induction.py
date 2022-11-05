@@ -363,7 +363,7 @@ print(induct_heads)
 answers = []
 from easy_transformer.utils import get_corner
 
-def remove_all_off_diagonal(z, hook):
+def remove_all_off_diagonal(z, hook): # ablates all off diagonal stuff
     z = z.clone()
     print(hook.name, "hook") # : )
     for head_idx in range(12):
@@ -381,10 +381,6 @@ for layer in range(9, 12):
 new_value = logits_metric(model, rand_tokens_repeat)
 print((new_value - initial_metric) / initial_metric)
 print(f"Layer: {layer}, Head: {head_idx}, {metric.__name__}: {new_value:.2f}, Induction score: {induction_scores_array[layer][head_idx]:.2f}")
-#%%
-
-new_value = logits_metric(model, rand_tokens_repeat)
-
 #%% [markdown]
 
 all_heads = induct_heads + neg_heads
@@ -440,18 +436,20 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
     names = []
     losses = []
     logits = []
+    sizes = []
 
     for idx, subset in enumerate(get_all_subsets(neg_heads)): # get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)])):
         if idx == 0:
             assert len(subset) == 0
         model.reset_hooks()
 
-        for layer, head_idx in [(6, 1)] + subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
+        for layer, head_idx in subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
             model.add_hook(*hooks[(layer, head_idx)])
 
         names.append(str(subset))
+        sizes.append(len(subset))
         losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
-        logits.append(logits_metric(model, rand_tokens_repeat, seq_len)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
+        logits.append(logits_metric(model, rand_tokens_repeat)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
 
     pos = get_position(logits)
     vals.append(pos)
@@ -467,7 +465,7 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
                 y=losses,
                 mode="markers",
                 text=names,
-                # marker=dict(size=12, color=names, colorscale="Viridis", showscale=True),
+                marker=dict(size=12, color=sizes, colorscale="Viridis", showscale=True),
             )
         )
 
