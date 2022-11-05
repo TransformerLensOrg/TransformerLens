@@ -144,7 +144,7 @@ class EasyTransformer(HookedRootModule):
         return_type: Optional[str] = "logits",
         prepend_bos: bool = True,
         past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
-    ) -> Union[None, TT["batch", "pos"], Loss, Tuple[TT["batch", "pos"], Loss]]:
+    ) -> Union[None, TT["batch", "pos", "d_vocab"], Loss, Tuple[TT["batch", "pos", "d_vocab"], Loss]]:
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
