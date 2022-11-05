@@ -203,6 +203,10 @@ assert torch.allclose(
 # THIS CELL MAKES ALL THE HOOKS : )
 
 def random_patching(z, act, hook):
+    """This keeps position the same, but changes the sequence
+    Since they're all generated from RANDOM     tokens, will be different each time
+    WARNING: can produce non-zero effects e.g even when reeiver hooks are after sender hooks cos random
+    is different each time"""
     b = z.shape[0]
     z[torch.arange(b)] = act[torch.randperm(b)]
     return z
