@@ -15,7 +15,6 @@ setup(
         "transformers",
         "tqdm",
         "pandas",
-        "datasets",
         "wandb",
         "fancy_einsum",
         "torchtyping",
