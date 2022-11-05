@@ -333,7 +333,9 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
 
 results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
 mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
+
 model.reset_hooks()
+extra_hooks = [hooks[(6, 1)]]
 for hook in extra_hooks:
     model.add_hook(*hook)
 initial_metric = metric(model, rand_tokens_repeat)
@@ -358,8 +360,9 @@ for source_layer in tqdm(range(model.cfg.n_layers)):
         )
         title="Direct"
         cur_metric = metric(model, rand_tokens_repeat)
-        a = hooks.pop((source_layer, source_head_idx))
-        e("a")
+        # if (source_layer, source_head_idx) in hooks:
+        #     a = hooks.pop((source_layer, source_head_idx))
+        #     e("a")
 
         if source_head_idx is None:
             mlp_results[source_layer] = cur_metric - initial_metric
