@@ -142,7 +142,7 @@ class EasyTransformer(HookedRootModule):
 
     def forward(
         self,
-        input: Union[str, torch.Tensor],
+        input: Union[str, List[str], torch.Tensor],
         return_type: Optional[str] = "logits",
         prepend_bos: bool = True,
         past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
@@ -226,11 +226,11 @@ class EasyTransformer(HookedRootModule):
                 else None,  # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed=shortformer_pos_embed,
             )  # [batch, pos, d_model]
+        if self.cfg.normalization_type is not None:
+            residual = self.ln_final(residual)  # [batch, pos, d_model]
         if return_type is None:
             return None
         else:
-            if self.cfg.normalization_type is not None:
-                residual = self.ln_final(residual)  # [batch, pos, d_vocab]
             logits = self.unembed(residual)  # [batch, pos, d_vocab]
             if return_type == "logits":
                 return logits
