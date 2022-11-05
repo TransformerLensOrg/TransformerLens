@@ -90,7 +90,7 @@ def show_pp(
 
     if animate_axis is None:
         fig = px.imshow(
-            m.T,
+            m,
             title=title if title else "",
             color_continuous_scale="RdBu",
             color_continuous_midpoint=0,

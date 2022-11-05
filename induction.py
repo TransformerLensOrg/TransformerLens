@@ -428,7 +428,7 @@ show_fig = True
 vals = []
 subsets = [[] for _ in range(30)]
 tot = 0
-add_extra_hooks = True
+add_extra_hooks = True[]
 
 # for prefix_length in range(len(induct_heads)):
 for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
@@ -448,7 +448,8 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
             def remove_all_off_diagonal(z, hook): # ablates all off diagonal stuff
                 z = z.clone()
                 for head_idx in range(12):
-                    z[:, head_idx, (1.0 - torch.eye(z.shape[-1])).bool()] = 0
+                    # if head_idx not in [3, 1] or "10" not in hook.name:
+                        z[:, head_idx, (1.0 - torch.eye(z.shape[-1])).bool()] = 0
                     # if head_idx not in [2, 4] or "11" not in hook.name: # literally ablate all the things that aren't 11.4
                     #     z[:, head_idx, (torch.eye(z.shape[-1])).bool()] = 0
                 return z
