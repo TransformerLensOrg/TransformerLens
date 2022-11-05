@@ -428,6 +428,7 @@ show_fig = True
 vals = []
 subsets = [[] for _ in range(30)]
 tot = 0
+add_extra_hooks = True
 
 # for prefix_length in range(len(induct_heads)):
 for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
@@ -443,7 +444,19 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
             assert len(subset) == 0
         model.reset_hooks()
 
-        for layer, head_idx in subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
+        if add_extra_hooks:
+            def remove_all_off_diagonal(z, hook): # ablates all off diagonal stuff
+                z = z.clone()
+                for head_idx in range(12):
+                    z[:, head_idx, (1.0 - torch.eye(z.shape[-1])).bool()] = 0
+                    # if head_idx not in [2, 4] or "11" not in hook.name: # literally ablate all the things that aren't 11.4
+                    #     z[:, head_idx, (torch.eye(z.shape[-1])).bool()] = 0
+                return z
+            for layer in range(9, 12):
+                hook_name = f"blocks.{layer}.attn.hook_attn"
+                model.add_hook(hook_name, remove_all_off_diagonal)
+
+        for layer, head_idx in [(6, 1)] + subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
             model.add_hook(*hooks[(layer, head_idx)])
 
         names.append(str(subset))
