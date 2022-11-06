@@ -129,6 +129,8 @@ def path_patching_attribution(
     have_internal_interactions=False,
     device="cuda",
     do_assert=True,
+    zero_ablation=False,
+    ablation_beta={},
     **kwargs,
 ):
     """
@@ -147,16 +149,21 @@ def path_patching_attribution(
             warnings.warn("Is max layer too large?")
 
     # see path patching in ioi utils
-    sender_hooks = []
+    sender_hooks = {}
 
     for layer, head_idx in sender_heads:
         if head_idx is None:
-            sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
-
+            sender_hooks[(layer, head_idx)] = (
+                f"blocks.{layer}.hook_mlp_out",
+                None,
+            )  # TODO make this use the get_hook string grabber
         else:
-            sender_hooks.append((f"blocks.{layer}.attn.hook_result", head_idx))
+            sender_hooks[(layer, head_idx)] = (
+                f"blocks.{layer}.attn.hook_result",
+                head_idx,
+            )
 
-    sender_hook_names = [x[0] for x in sender_hooks]
+    sender_hook_names = [x[0] for x in sender_hooks.values()]
     receiver_hook_names = [x[0] for x in receiver_hooks]
 
     sender_cache = {}
@@ -172,6 +179,10 @@ def path_patching_attribution(
     source_logits, source_loss = model(
         patch_tokens, return_type="both", loss_return_per_token=True
     ).values()
+
+    if zero_ablation:
+        for key in sender_cache:
+            sender_cache[key] = 0.0 * sender_cache[key]
 
     target_cache = {}
     model.reset_hooks()
@@ -192,6 +203,24 @@ def path_patching_attribution(
     target_logits, target_loss = model(
         tokens, return_type="both", loss_return_per_token=True
     ).values()
+
+    for key, val in ablation_beta.items():
+        hook = sender_hooks[key]
+        if hook[1] is None:
+            sender_cache[hook] = (
+                val * sender_cache[hook[0]]
+                + (1 - val) * target_cache[hook[0]]
+            )
+        else:
+            assert (
+                sender_cache[hook[0]].shape[2]
+                == target_cache[hook[0]].shape[2]
+                == model.cfg.n_heads
+            )
+            sender_cache[hook[0]][:, :, hook[1]] = (
+                val * sender_cache[hook[0]][:, :, hook[1]]
+                + (1 - val) * target_cache[hook[0]][:, :, hook[1]]
+            )
 
     # measure the receiver heads' values
     receiver_cache = {}
@@ -242,7 +271,7 @@ def path_patching_attribution(
         model.add_hook(*hook)
 
     # we can override the hooks above for the sender heads, though
-    for hook_name, head_idx in sender_hooks:
+    for hook_name, head_idx in sender_hooks.values():
         if do_assert:
             assert not torch.allclose(
                 target_cache[hook_name],

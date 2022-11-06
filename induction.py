@@ -544,6 +544,7 @@ thing61 = [(6, 1)]
 # thing61 = []
 tot = 0
 add_extra_hooks = False
+ablation_beta = 0.5
 
 # for prefix_length in range(len(induct_heads)):
 for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
@@ -583,6 +584,8 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
             receiver_hooks=[(f"blocks.6.hook_resid_mid", None)],
             # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
             device="cuda",
+            zero_ablation=False,
+            ablation_beta={sender_head: 1.0 for sender_head in subset},
             freeze_mlps=True,
             return_hooks=False,
             max_layer=layer,
