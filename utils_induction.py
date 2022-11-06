@@ -134,6 +134,8 @@ def path_patching_attribution(
     """
     Do path patching in order to see which heads matter the most
     for directly writing the correct answer (see loss change)
+
+    Receiver hooks are tuples that are the the name of the hook and the idx for dim 2 (for attn_hook_result)
     """
 
     if len(kwargs) > 0:

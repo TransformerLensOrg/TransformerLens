@@ -82,7 +82,7 @@ saved_tensors = []
 # Make induction dataset
 
 seq_len = 10
-batch_size = 5
+batch_size = 20
 interweave = 10  # have this many things before a repeat
 
 rand_tokens = torch.randint(1000, 10000, (batch_size, seq_len))
@@ -269,6 +269,7 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
         for source_head_idx in [None] + list(range(model.cfg.n_heads)):
             model.reset_hooks()
             receiver_hooks = []
+            warnings.warn("Don't we need to put a real hook here?")
             receiver_hooks.append((f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None))
             # receiver_hooks.append((f"blocks.11.attn.hook_result", 4))
             # receiver_hooks.append((f"blocks.10.hook_mlp_out", None))
@@ -339,19 +340,25 @@ results = torch.zeros(size=(model.cfg.n_layers, model.cfg.n_heads))
 mlp_results = torch.zeros(size=(model.cfg.n_layers, 1))
 
 model.reset_hooks()
-extra_hooks = [hooks[(6, 1)]]
-# extra_hooks = []
+# extra_hooks = [hooks[(6, 1)]]
+extra_hooks = []
 
 for hook in extra_hooks:
     model.add_hook(*hook)
 initial_metric = metric(model, rand_tokens_repeat)
 print(f"Initial initial_metric: {initial_metric}")
 
+receiver_hooks = [get_hook(8, i) for i in range(12)]
+receiver_hooks = []
+for letter in ["q", "k", "v"]:
+    template = "blocks.8.attn.hook_" + letter
+    for head_idx in range(12):
+        receiver_hooks.append((template, head_idx))
+receiver_hooks = [get_hook(6, None), get_hook(7, None), get_hook(8, None)]
+
 for source_layer in tqdm(range(model.cfg.n_layers)):
     for source_head_idx in [None] + list(range(model.cfg.n_heads)):
         model.reset_hooks()
-        receiver_hooks = []
-        receiver_hooks.append((f"blocks.8.hook_resid_mid", None))
         model = path_patching_attribution(
             model=model,
             tokens=rand_tokens_repeat,
@@ -364,7 +371,6 @@ for source_layer in tqdm(range(model.cfg.n_layers)):
             max_layer=11,
             extra_hooks=extra_hooks,
         )
-        title="Direct"
         cur_metric = metric(model, rand_tokens_repeat)
 
         if source_head_idx is None:
@@ -372,11 +378,14 @@ for source_layer in tqdm(range(model.cfg.n_layers)):
         else:
             results[source_layer][source_head_idx] = cur_metric - initial_metric
 
+        if source_layer != 0:
+            assert not torch.allclose(results, 0.0 * results)
+
         if source_layer == model.cfg.n_layers-1 and source_head_idx == model.cfg.n_heads-1:
             fname = f"svgs/patch_and_freeze_{ctime()}_{ri(2134, 123759)}"
             fig = show_pp(
                 results.detach(), # TODO this must be bugged, because we're getting effects from AFTER the receiver hook
-                title="Change in logits on correct, path patching -> layer 8, post attention layer, with 6.1 knocked out.", # f"{title} effect of path patching heads with metric {metric} {fname}",
+                title="Change in logits on correct, path patching -> layer 8, post attention layer" + (", with 6.1 knocked out." if len(extra_hooks)>0 else ""), # f"{title} effect of path patching heads with metric {metric} {fname}",
                 # + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                 return_fig=True,
                 show_fig=False,
@@ -389,16 +398,30 @@ for source_layer in tqdm(range(model.cfg.n_layers)):
             saved_tensors.append(results.clone().cpu())
             saved_tensors.append(mlp_results.clone().cpu())
 
+
+#%%
+for prefix in ["no_", ""]:
+    for suffix in ["ko_mlp_results", "ko_results"]:
+        exec(f"m = {prefix}{suffix} = torch.load('pts/{prefix}{suffix}.pt')")
+        print(torch.sum(m), prefix, suffix)
+
+diff_results = ko_results - no_ko_results
+diff_results[6, 1] = 0
+show_pp(diff_results, title="Difference in results with and without 6.1 knocked out2")
+
+diff_results2 = ko_mlp_results - no_ko_mlp_results
+# diff_results2[6, 0] = 0
+show_pp(diff_results2)
 #%% [markdown]
 # Is Layer 8 updating on Layer 6? On MLP 6 or 7?
 
 model.reset_hooks()
 initial_metric = metric(model, rand_tokens_repeat)
 
-receiver_hooks = []
-for i in range(12):
-    if i == 1: continue
-    receiver_hooks.append((f"blocks.8.attn.hook_result", i)) # HMM something bugged as the effect seems same size if 11 or 1 head here...
+# receiver_hooks = []
+# for i in range(12):
+#     if i == 1: continue
+#     receiver_hooks.append((f"blocks.8.attn.hook_result", i)) # HMM something bugged as the effect seems same size if 11 or 1 head here...
 
 model = path_patching_attribution(
     model=model,
@@ -513,11 +536,11 @@ show_pp(patch_results_mlp.T.detach().cpu())
 # Subsets of these
 # TODO figure out why this cell is not deterministic : (
 
-show_fig = True
+show_fig = False
 vals = []
 subsets = [[] for _ in range(30)]
 tot = 0
-add_extra_hooks = True[]
+add_extra_hooks = False
 
 # for prefix_length in range(len(induct_heads)):
 for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
@@ -546,7 +569,7 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
                 hook_name = f"blocks.{layer}.attn.hook_attn"
                 model.add_hook(hook_name, remove_all_off_diagonal)
 
-        for layer, head_idx in [(6, 1)] + subset + subset1: # [induct_head]: # induct_heads[:prefix_length]:
+        for layer, head_idx in subset + subset1: # ADD 6.1 HERE!!!
             model.add_hook(*hooks[(layer, head_idx)])
 
         names.append(str(subset))
@@ -555,6 +578,8 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
         logits.append(logits_metric(model, rand_tokens_repeat)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
 
     pos = get_position(logits)
+    if pos>10:
+        print(subset1, pos)
     vals.append(pos)
     subsets[pos].append((subset1, subset, losses, logits))
 
@@ -580,7 +605,8 @@ for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
         )
 
         fig.show()
-    break
+
+    # break
 
 # plot a histogram of vals
 fig = go.Figure()
