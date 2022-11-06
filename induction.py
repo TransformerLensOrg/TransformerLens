@@ -332,6 +332,37 @@ for idx, extra_hooks in enumerate([[]]): # , [hooks[((6, 1))]], [hooks[(11, 4)]]
                 saved_tensors.append(results.clone().cpu())
                 saved_tensors.append(mlp_results.clone().cpu())
 
+#%% [markdown]
+# Sort induction heads into positive and negative heads
+
+no_heads = 10
+heads_by_induction = max_2d(induction_scores_array, 144)[0]
+induct_heads = []
+neg_heads = []
+idx = 0
+
+mult_factor = 1.0 if "logit" in metric.__name__ else -1.0
+
+while len(induct_heads) < no_heads:
+    head = heads_by_induction[idx]
+    idx+=1
+    if "results" in dir() and (mult_factor * results[head]) <= 0:
+        induct_heads.append(head)
+    else:
+        neg_heads.append(head)
+        print(f" {head} is a candidate `negative induction head`, with {metric.__name__}={results[head]:.2f} and induction score {induction_scores_array[head]:.2f}")
+
+# sort the induction heads by their results
+if "results" in dir():
+    induct_heads = sorted(induct_heads, key=lambda x: -(results[x]), reverse=True)
+
+# have a look at these numbers
+for layer, head_idx in induct_heads:
+    print(f"Layer: {layer}, Head: {head_idx}, {metric.__name__}: {results[layer][head_idx]:.2f}, Induction score: {induction_scores_array[layer][head_idx]:.2f}")
+
+print(induct_heads)
+
+
 #%% [markdown] 
 # What about the direct effects, on hook 8 resid post???
 
@@ -439,37 +470,6 @@ model = path_patching_attribution(
 
 new_metric = metric(model, rand_tokens_repeat)
 print(initial_metric, new_metric)
-
-#%% [markdown]
-
-# Get top 5 induction heads
-no_heads = 10
-heads_by_induction = max_2d(induction_scores_array, 144)[0]
-induct_heads = []
-neg_heads = []
-idx = 0
-
-mult_factor = 1.0 if "logit" in metric.__name__ else -1.0
-
-while len(induct_heads) < no_heads:
-    head = heads_by_induction[idx]
-    idx+=1
-    if "results" in dir() and (mult_factor * results[head]) <= 0:
-        induct_heads.append(head)
-    else:
-        neg_heads.append(head)
-        print(f" {head} is a candidate `negative induction head`, with {metric.__name__}={results[head]:.2f} and induction score {induction_scores_array[head]:.2f}")
-
-# sort the induction heads by their results
-if "results" in dir():
-    induct_heads = sorted(induct_heads, key=lambda x: -(results[x]), reverse=True)
-
-# have a look at these numbers
-for layer, head_idx in induct_heads:
-    print(f"Layer: {layer}, Head: {head_idx}, {metric.__name__}: {results[layer][head_idx]:.2f}, Induction score: {induction_scores_array[layer][head_idx]:.2f}")
-
-print(induct_heads)
-
 #%% [markdown] 
 # Can we ~retain performance while making no cross position stuff happen?
 
@@ -544,90 +544,100 @@ thing61 = [(6, 1)]
 # thing61 = []
 tot = 0
 add_extra_hooks = False
-ablation_beta = 0.5
+beta = 1.0
 
-# for prefix_length in range(len(induct_heads)):
-for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
-    tot += 1
-    if tot > 50: break
-    names = []
-    losses = []
-    logits = []
-    sizes = []
+if show_fig:
+    fig = go.Figure()
+for beta_raw in range(0, 10):
+    beta = beta_raw / 10
+    # for prefix_length in range(len(induct_heads)):
+    for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
+        tot += 1
+        if tot > 50: break
+        names = []
+        losses = []
+        logits = []
+        sizes = []
 
-    for idx, subset in enumerate(get_all_subsets(neg_heads)): # get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)])):
-        if idx == 0:
-            assert len(subset) == 0
-        model.reset_hooks()
+        for idx, subset in enumerate(get_all_subsets(neg_heads)): # get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)])):
+            if idx == 0:
+                assert len(subset) == 0
+            model.reset_hooks()
 
-        if add_extra_hooks:
-            def remove_all_off_diagonal(z, hook): # ablates all off diagonal stuff
-                z = z.clone()
-                for head_idx in range(12):
-                    # if head_idx not in [3, 1] or "10" not in hook.name:
-                        z[:, head_idx, (1.0 - torch.eye(z.shape[-1])).bool()] = 0
-                    # if head_idx not in [2, 4] or "11" not in hook.name: # literally ablate all the things that aren't 11.4
-                    #     z[:, head_idx, (torch.eye(z.shape[-1])).bool()] = 0
-                return z
-            for layer in range(9, 12):
-                hook_name = f"blocks.{layer}.attn.hook_attn"
-                model.add_hook(hook_name, remove_all_off_diagonal)
+            if add_extra_hooks:
+                def remove_all_off_diagonal(z, hook): # ablates all off diagonal stuff
+                    z = z.clone()
+                    for head_idx in range(12):
+                        # if head_idx not in [3, 1] or "10" not in hook.name:
+                            z[:, head_idx, (1.0 - torch.eye(z.shape[-1])).bool()] = 0
+                        # if head_idx not in [2, 4] or "11" not in hook.name: # literally ablate all the things that aren't 11.4
+                        #     z[:, head_idx, (torch.eye(z.shape[-1])).bool()] = 0
+                    return z
+                for layer in range(9, 12):
+                    hook_name = f"blocks.{layer}.attn.hook_attn"
+                    model.add_hook(hook_name, remove_all_off_diagonal)
 
-        model.reset_hooks()
-        receiver_hooks = []
-        sender_heads = thing61 + subset + subset1
-        model = path_patching_attribution(
-            model=model,
-            tokens=rand_tokens_repeat,
-            patch_tokens=rand_tokens_control,
-            sender_hooks=sender_heads,
-            receiver_hooks=[(f"blocks.6.hook_resid_mid", None)],
-            # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
-            device="cuda",
-            zero_ablation=False,
-            ablation_beta={sender_head: 0.0 for sender_head in thing61},
-            freeze_mlps=True,
-            return_hooks=False,
-            max_layer=layer,
-            extra_hooks=[],
-            do_assert=True,    
-        )
-        # model.add_hook(*hooks[(layer, head_idx)])
+            model.reset_hooks()
+            receiver_hooks = []
+            sender_heads = thing61 + subset + subset1
+        
+            ablation_beta = {sender_head: beta for sender_head in subset + subset1}
+            ablation_beta[(6, 1)] = 1.0
 
-        names.append(str(subset))
-        sizes.append(len(subset))
-        losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
-        logits.append(logits_metric(model, rand_tokens_repeat)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
-
-    pos = get_position(logits)
-    # if pos>10:
-        # print(subset1, pos)
-    vals.append(pos)
-    subsets[pos].append((subset1, subset, losses, logits))
-
-    if show_fig:
-        fig = go.Figure()
-
-        # make a scatter plot of losses against logits, with labels for each point
-        fig.add_trace(
-            go.Scatter(
-                x=logits,
-                y=losses,
-                mode="markers",
-                text=names,
-                marker=dict(size=12, color=sizes, colorscale="Viridis", showscale=True),
+            model = path_patching_attribution(
+                model=model,
+                tokens=rand_tokens_repeat,
+                patch_tokens=rand_tokens_control,
+                sender_hooks=sender_heads,
+                receiver_hooks=[(f"blocks.6.hook_resid_mid", None)],
+                # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
+                device="cuda",
+                zero_ablation=False,
+                ablation_beta=ablation_beta,
+                freeze_mlps=True,
+                return_hooks=False,
+                max_layer=layer,
+                extra_hooks=[],
+                do_assert=True,    
             )
-        )
+            # model.add_hook(*hooks[(layer, head_idx)])
 
-        # add caption to colorbar    
-        fig.update_layout(
-            title=f"Loss and logits when we ablate {subset1} (top induction heads), and k (see color bar) negative induction heads",
-            xaxis_title="Logits",
-            yaxis_title="Loss",
-        )
+            names.append(str(subset) + "_" + str(beta))
+            sizes.append(len(subset))
+            losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
+            logits.append(logits_metric(model, rand_tokens_repeat)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
 
-        fig.show()
-    break
+        pos = get_position(logits)
+        # if pos>10:
+            # print(subset1, pos)
+        vals.append(pos)
+        subsets[pos].append((subset1, subset, losses, logits))
+
+        if show_fig:
+            # make a scatter plot of losses against logits, with labels for each point and different symbols
+            fig.add_trace(
+                go.Scatter(
+                    x=logits,
+                    y=losses,
+                    mode="markers",
+                    text=names,
+                    marker=dict(size=12, color=sizes, colorscale="Viridis", showscale=True, line=dict(
+                    color=4 * beta,
+                    width=2
+                )),
+                )
+            )
+
+            # add caption to colorbar    
+            fig.update_layout(
+                title=f"Loss and logits when we ablate {subset1} (top induction heads), and k (see color bar) negative induction heads",
+                xaxis_title="Logits",
+                yaxis_title="Loss",
+            )
+
+        break
+
+fig.show()
 
 # plot a histogram of vals
 fig = go.Figure()
