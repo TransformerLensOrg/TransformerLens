@@ -119,7 +119,7 @@ def path_patching_attribution(
     model,
     tokens,
     patch_tokens,
-    sender_heads,
+    sender_hooks,  # either [(6, 1)] or [("blocks.6.attn.hook_result", 1)] etc
     receiver_hooks,
     verbose=False,
     max_layer=12,
@@ -149,21 +149,10 @@ def path_patching_attribution(
             warnings.warn("Is max layer too large?")
 
     # see path patching in ioi utils
-    sender_hooks = {}
+    if isinstance(sender_hooks[0][0], int):
+        sender_hooks = [get_hook(*hook) for hook in sender_hooks]
 
-    for layer, head_idx in sender_heads:
-        if head_idx is None:
-            sender_hooks[(layer, head_idx)] = (
-                f"blocks.{layer}.hook_mlp_out",
-                None,
-            )  # TODO make this use the get_hook string grabber
-        else:
-            sender_hooks[(layer, head_idx)] = (
-                f"blocks.{layer}.attn.hook_result",
-                head_idx,
-            )
-
-    sender_hook_names = [x[0] for x in sender_hooks.values()]
+    sender_hook_names = [x[0] for x in sender_hooks]
     receiver_hook_names = [x[0] for x in receiver_hooks]
 
     sender_cache = {}
@@ -205,11 +194,10 @@ def path_patching_attribution(
     ).values()
 
     for key, val in ablation_beta.items():
-        hook = sender_hooks[key]
+        hook = get_hook(*key)
         if hook[1] is None:
             sender_cache[hook] = (
-                val * sender_cache[hook[0]]
-                + (1 - val) * target_cache[hook[0]]
+                val * sender_cache[hook[0]] + (1 - val) * target_cache[hook[0]]
             )
         else:
             assert (
@@ -271,7 +259,7 @@ def path_patching_attribution(
         model.add_hook(*hook)
 
     # we can override the hooks above for the sender heads, though
-    for hook_name, head_idx in sender_hooks.values():
+    for hook_name, head_idx in sender_hooks:
         if do_assert:
             assert not torch.allclose(
                 target_cache[hook_name],
