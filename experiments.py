@@ -116,7 +116,7 @@ print(
     f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"
 )
 #%% [markdown]
-## Path patching (and other Name Mover and S-Inhibition experiments)
+## Path patching
 
 
 def plot_path_patching(
@@ -181,13 +181,17 @@ plot_path_patching(
     position="end",
 )
 #%% [markdown]
-# Writing direction results (change the layer_no and head_no)
+## Writing direction results
+
+# (change the layer_no and head_no)
 
 scatter_attention_and_contribution(
     model=model, layer_no=9, head_no=9, ioi_dataset=ioi_dataset
 )
 #%% [markdown]
-# Look at the copy score for the Name Mover and Negative heads
+## Copy score
+
+# For NMs and Negative NMs
 
 
 def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False):
@@ -273,7 +277,7 @@ check_copy_circuit(
     model, random.randint(0, 11), random.randint(0, 11), ioi_dataset, neg=neg_sign
 )
 #%% [markdown]
-# S-Inhibition patching
+## S-Inhibition patching
 
 plot_path_patching(
     model,
@@ -286,7 +290,7 @@ plot_path_patching(
 )
 
 #%% [markdown]
-# Attention probs of NMs
+## Attention probs of NMs
 
 ys = []
 average_attention = {}
@@ -332,7 +336,7 @@ for idx, dataset in enumerate([ioi_dataset, abc_dataset]):
         )
     fig.show()
 #%% [markdown]
-# See attention patterns on one sentence
+## Visualize attention patterns
 
 model.reset_hooks()
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
@@ -584,7 +588,7 @@ for idx, results in enumerate(both_results):
     fig.show()
 
 #%% [markdown]
-# Extra: validation
+## Validation outside of IOI
 # Are the tasks of looking at previous tokens, inducting, and duplicating tokens performed on the general OWT distribution, rather than just p_IOI? Investigation of identified heads on random tokens
 
 seq_len = 100
