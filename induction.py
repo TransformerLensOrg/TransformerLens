@@ -546,7 +546,7 @@ add_extra_hooks = False
 beta = 1.0
 
 if show_fig:
-    fig = go.Figure()
+    fig = gof()
 
 x = (np.logspace(0, -1,  10) - 0.1)
 x = list(- x + 1.0)
@@ -574,7 +574,7 @@ for ablation_beta_for_negs in x:
             tokens=rand_tokens_repeat,
             patch_tokens=rand_tokens_control,
             sender_hooks=sender_heads,
-            receiver_hooks=[(f"blocks.6.hook_resid_mid", None)],
+            receiver_hooks=[(f"blocks.6.hook_resid_post", None)],
             device="cuda",
             zero_ablation=False,
             ablation_beta=ablation_beta,
@@ -621,6 +621,8 @@ for ablation_beta_for_negs in x:
 
 fig.show()
 
+#%%
+
 # plot a histogram of vals
 fig = go.Figure()
 fig.add_trace(go.Histogram(x=vals))
@@ -631,6 +633,7 @@ fig.update_layout(
 )
 fig.show()
 
+#%%
 #%%
 # Plot a scatter plot in plotly with labels
 fig = go.Figure()

@@ -23,6 +23,34 @@ def ctime2():
     return time.ctime().replace(" ", "_")
 
 
+class gof(go.Figure):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def show(self):
+        try:
+            title = self.to_dict()["layout"]["title"]["text"] + "_" + ctime2()
+        except:
+            title = ctime2()
+        self.write_json(f"jsons/{title}.json")
+        super().show()
+
+
+# fig = gof()
+
+# x = torch.arange(10)
+# y = torch.arange(10)
+
+# fig.add_trace(
+#     go.Scatter(
+#         x=x,
+#         y=y,
+#         mode="markers",
+#     )
+# )
+# fig.show() # yay does the auto saving, too!
+
+
 def get_hook(layer, head_idx):
     if head_idx is None:
         return (f"blocks.{layer}.hook_mlp_out", None)
