@@ -52,6 +52,7 @@ STANFORD_CRFM_CHECKPOINTS = (
     + list(range(20000, 400000 + 1, 1000))
 )
 
+
 def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     state_dict = {}
 
@@ -61,7 +62,7 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = gpt2.transformer.h[l].ln_1.weight
         state_dict[f"blocks.{l}.ln1.b"] = gpt2.transformer.h[l].ln_1.bias
-        
+
         # In GPT-2, q,k,v are produced by one big linear map, whose output is
         # concat([q, k, v])
         W = gpt2.transformer.h[l].attn.c_attn.weight
@@ -93,22 +94,22 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
         state_dict[f"blocks.{l}.attn.b_O"] = gpt2.transformer.h[l].attn.c_proj.bias
 
-        
         state_dict[f"blocks.{l}.ln2.w"] = gpt2.transformer.h[l].ln_2.weight
         state_dict[f"blocks.{l}.ln2.b"] = gpt2.transformer.h[l].ln_2.bias
-        
+
         W_in = gpt2.transformer.h[l].mlp.c_fc.weight
         state_dict[f"blocks.{l}.mlp.W_in"] = W_in
         state_dict[f"blocks.{l}.mlp.b_in"] = gpt2.transformer.h[l].mlp.c_fc.bias
-        
+
         W_out = gpt2.transformer.h[l].mlp.c_proj.weight
         state_dict[f"blocks.{l}.mlp.W_out"] = W_out
         state_dict[f"blocks.{l}.mlp.b_out"] = gpt2.transformer.h[l].mlp.c_proj.bias
     state_dict[f"unembed.W_U"] = gpt2.lm_head.weight.T
-    
+
     state_dict["ln_final.w"] = gpt2.transformer.ln_f.weight
     state_dict["ln_final.b"] = gpt2.transformer.ln_f.bias
     return state_dict
+
 
 def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     state_dict = {}
@@ -119,7 +120,7 @@ def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = neo.transformer.h[l].ln_1.weight
         state_dict[f"blocks.{l}.ln1.b"] = neo.transformer.h[l].ln_1.bias
-        
+
         W_Q = neo.transformer.h[l].attn.attention.q_proj.weight
         W_K = neo.transformer.h[l].attn.attention.k_proj.weight
         W_V = neo.transformer.h[l].attn.attention.v_proj.weight
@@ -143,18 +144,19 @@ def convert_neo_weights(neo, cfg: EasyTransformerConfig):
 
         state_dict[f"blocks.{l}.ln2.w"] = neo.transformer.h[l].ln_2.weight
         state_dict[f"blocks.{l}.ln2.b"] = neo.transformer.h[l].ln_2.bias
-        
+
         state_dict[f"blocks.{l}.mlp.W_in"] = neo.transformer.h[l].mlp.c_fc.weight.T
         state_dict[f"blocks.{l}.mlp.b_in"] = neo.transformer.h[l].mlp.c_fc.bias
-        
+
         state_dict[f"blocks.{l}.mlp.W_out"] = neo.transformer.h[l].mlp.c_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = neo.transformer.h[l].mlp.c_proj.bias
     state_dict["ln_final.w"] = neo.transformer.ln_f.weight
     state_dict["ln_final.b"] = neo.transformer.ln_f.bias
-    
+
     state_dict["unembed.W_U"] = neo.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
+
 
 def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict = {}
@@ -163,9 +165,13 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict["pos_embed.W_pos"] = opt.model.decoder.embed_positions.weight[2:, :]
 
     for l in range(cfg.n_layers):
-        state_dict[f"blocks.{l}.ln1.w"] = opt.model.decoder.layers[l].self_attn_layer_norm.weight
-        state_dict[f"blocks.{l}.ln1.b"] = opt.model.decoder.layers[l].self_attn_layer_norm.bias
-        
+        state_dict[f"blocks.{l}.ln1.w"] = opt.model.decoder.layers[
+            l
+        ].self_attn_layer_norm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = opt.model.decoder.layers[
+            l
+        ].self_attn_layer_norm.bias
+
         W_Q = opt.model.decoder.layers[l].self_attn.q_proj.weight
         W_K = opt.model.decoder.layers[l].self_attn.k_proj.weight
         W_V = opt.model.decoder.layers[l].self_attn.v_proj.weight
@@ -223,12 +229,16 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
             l
         ].self_attn.out_proj.bias
 
-        state_dict[f"blocks.{l}.ln2.w"] = opt.model.decoder.layers[l].final_layer_norm.weight
-        state_dict[f"blocks.{l}.ln2.b"] = opt.model.decoder.layers[l].final_layer_norm.bias
-        
+        state_dict[f"blocks.{l}.ln2.w"] = opt.model.decoder.layers[
+            l
+        ].final_layer_norm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = opt.model.decoder.layers[
+            l
+        ].final_layer_norm.bias
+
         state_dict[f"blocks.{l}.mlp.W_in"] = opt.model.decoder.layers[l].fc1.weight.T
         state_dict[f"blocks.{l}.mlp.W_out"] = opt.model.decoder.layers[l].fc2.weight.T
-        
+
         state_dict[f"blocks.{l}.mlp.b_in"] = opt.model.decoder.layers[l].fc1.bias
         state_dict[f"blocks.{l}.mlp.b_out"] = opt.model.decoder.layers[l].fc2.bias
     state_dict[f"ln_final.w"] = opt.model.decoder.final_layer_norm.weight
@@ -237,15 +247,22 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
 
+
 def convert_bert_weights(bert, cfg):
     state_dict = {}
-    state_dict["bert_embed.token_embed.W_E"] = bert.bert.embeddings.word_embeddings.weight
-    state_dict["bert_embed.pos_embed.W_pos"] = bert.bert.embeddings.position_embeddings.weight
-    state_dict["bert_embed.token_type_embed.W_token_type"] = bert.bert.embeddings.token_type_embeddings.weight
+    state_dict[
+        "bert_embed.token_embed.W_E"
+    ] = bert.bert.embeddings.word_embeddings.weight
+    state_dict[
+        "bert_embed.pos_embed.W_pos"
+    ] = bert.bert.embeddings.position_embeddings.weight
+    state_dict[
+        "bert_embed.token_type_embed.W_token_type"
+    ] = bert.bert.embeddings.token_type_embeddings.weight
     state_dict["bert_embed.ln.w"] = bert.bert.embeddings.LayerNorm.weight
     state_dict["bert_embed.ln.b"] = bert.bert.embeddings.LayerNorm.bias
     for l in range(cfg.n_layers):
-        
+
         W_Q = bert.bert.encoder.layer[l].attention.self.query.weight
         W_K = bert.bert.encoder.layer[l].attention.self.key.weight
         W_V = bert.bert.encoder.layer[l].attention.self.value.weight
@@ -302,19 +319,34 @@ def convert_bert_weights(bert, cfg):
         state_dict[f"blocks.{l}.attn.b_O"] = bert.bert.encoder.layer[
             l
         ].attention.output.dense.bias
-        
-        state_dict[f"blocks.{l}.ln1.w"] = bert.bert.encoder.layer[l].attention.output.LayerNorm.weight
-        state_dict[f"blocks.{l}.ln1.b"] = bert.bert.encoder.layer[l].attention.output.LayerNorm.bias
 
-        
-        state_dict[f"blocks.{l}.mlp.W_in"] = bert.bert.encoder.layer[l].intermediate.dense.weight.T
-        state_dict[f"blocks.{l}.mlp.W_out"] = bert.bert.encoder.layer[l].output.dense.weight.T
-        
-        state_dict[f"blocks.{l}.mlp.b_in"] = bert.bert.encoder.layer[l].intermediate.dense.bias
-        state_dict[f"blocks.{l}.mlp.b_out"] = bert.bert.encoder.layer[l].output.dense.bias
-        
-        state_dict[f"blocks.{l}.ln2.w"] = bert.bert.encoder.layer[l].output.LayerNorm.weight
-        state_dict[f"blocks.{l}.ln2.b"] = bert.bert.encoder.layer[l].output.LayerNorm.bias
+        state_dict[f"blocks.{l}.ln1.w"] = bert.bert.encoder.layer[
+            l
+        ].attention.output.LayerNorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = bert.bert.encoder.layer[
+            l
+        ].attention.output.LayerNorm.bias
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = bert.bert.encoder.layer[
+            l
+        ].intermediate.dense.weight.T
+        state_dict[f"blocks.{l}.mlp.W_out"] = bert.bert.encoder.layer[
+            l
+        ].output.dense.weight.T
+
+        state_dict[f"blocks.{l}.mlp.b_in"] = bert.bert.encoder.layer[
+            l
+        ].intermediate.dense.bias
+        state_dict[f"blocks.{l}.mlp.b_out"] = bert.bert.encoder.layer[
+            l
+        ].output.dense.bias
+
+        state_dict[f"blocks.{l}.ln2.w"] = bert.bert.encoder.layer[
+            l
+        ].output.LayerNorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = bert.bert.encoder.layer[
+            l
+        ].output.LayerNorm.bias
 
     state_dict["bert_final.W"] = bert.cls.predictions.transform.dense.weight.T
     state_dict["bert_final.b"] = bert.cls.predictions.transform.dense.bias
@@ -330,8 +362,10 @@ def convert_bert_weights(bert, cfg):
 def convert_bloom_weights(bloom, cfg):
     raise NotImplementedError
 
+
 def convert_neox_weights(neox, cfg):
     raise NotImplementedError
+
 
 def convert_gptj_weights(gptj, cfg):
     raise NotImplementedError

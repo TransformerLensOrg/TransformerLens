@@ -9,6 +9,7 @@ from transformers import AutoTokenizer
 import random
 from typing import Optional
 
+
 def get_sample_from_dataset(sequences, nb_sample=2, print_len=10):
     rd_idx = np.random.randint(0, len(sequences), 3)
     return "\n".join([str(sequences[k][:print_len]) + " ... " for k in rd_idx])
@@ -18,6 +19,7 @@ def print_gpu_mem(step_name=""):
     print(
         f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU."
     )
+
 
 def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
@@ -50,9 +52,10 @@ def to_numpy(tensor, flat=False):
     else:
         return tensor.detach().cpu().numpy()
 
+
 def lm_cross_entropy_loss(
-        logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
-    ):
+    logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
+):
     """Cross entropy loss for the language model, gives the loss for predicting the NEXT token.
 
     Args:
@@ -72,18 +75,22 @@ def lm_cross_entropy_loss(
     else:
         return -predicted_log_probs.mean()
 
-def lm_accuracy(logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False):
-    """ Cross-Entropy Accuracy for Language Modelling. We measure the accuracy on the logits for predicting the NEXT token.
-    
-    If return_per_token is True, returns the boolean for top 1 accuracy for each token in the batch. Note that this has size [batch, seq_len-1], as we cannot predict the first token. 
+
+def lm_accuracy(
+    logits: torch.Tensor, tokens: torch.Tensor, return_per_token: bool = False
+):
+    """Cross-Entropy Accuracy for Language Modelling. We measure the accuracy on the logits for predicting the NEXT token.
+
+    If return_per_token is True, returns the boolean for top 1 accuracy for each token in the batch. Note that this has size [batch, seq_len-1], as we cannot predict the first token.
     """
     top_prediction = logits.argmax(dim=-1)
     correct_matches = top_prediction[:, :-1] == tokens[:, 1:]
     if return_per_token:
         return correct_matches
     else:
-        return correct_matches.sum()/correct_matches.numel()
-    
+        return correct_matches.sum() / correct_matches.numel()
+
+
 def gelu_new(input):
     # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
     return (
@@ -102,15 +109,13 @@ def solu(input):
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
-    
+
     LayerNorm implemented by the MLP class.
     """
     return input * F.softmax(input, dim=-1)
 
 
-def keep_single_column(
-        dataset: datasets.arrow_dataset.Dataset,
-        col_name: str):
+def keep_single_column(dataset: datasets.arrow_dataset.Dataset, col_name: str):
     """
     Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful when we want to tokenize and mix together different strings
     """
@@ -119,14 +124,17 @@ def keep_single_column(
             dataset = dataset.remove_columns(key)
     return dataset
 
-def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset, 
-                             tokenizer: AutoTokenizer, 
-                             streaming: bool=False, 
-                             max_length: int=1024, 
-                             column_name: str='text', 
-                             add_bos_token: bool=True):
-    """Helper function to tokenizer and concatenate a dataset of text. This converts the text to tokens, concatenates them (separated by EOS tokens) and then reshapes them into a 2D array of shape (____, sequence_length), dropping the last batch. Tokenizers are much faster if parallelised, so we chop the string into 20, feed it into the tokenizer, in parallel with padding, then remove padding at the end. 
-    
+
+def tokenize_and_concatenate(
+    dataset: datasets.arrow_dataset.Dataset,
+    tokenizer: AutoTokenizer,
+    streaming: bool = False,
+    max_length: int = 1024,
+    column_name: str = "text",
+    add_bos_token: bool = True,
+):
+    """Helper function to tokenizer and concatenate a dataset of text. This converts the text to tokens, concatenates them (separated by EOS tokens) and then reshapes them into a 2D array of shape (____, sequence_length), dropping the last batch. Tokenizers are much faster if parallelised, so we chop the string into 20, feed it into the tokenizer, in parallel with padding, then remove padding at the end.
+
     This tokenization is useful for training language models, as it allows us to efficiently train on a large corpus of text of varying lengths (without, eg, a lot of truncation or padding). Further, for models with absolute positional encodings, this avoids privileging early tokens (eg, news articles often begin with CNN, and models may learn to use early positional encodings to predict these)
 
     Args:
@@ -143,37 +151,51 @@ def tokenize_and_concatenate(dataset: datasets.arrow_dataset.Dataset,
     dataset = keep_single_column(dataset, column_name)
     if tokenizer.pad_token is None:
         # We add a padding token, purely to implement the tokenizer. This will be removed before inputting tokens to the model, so we do not need to increment d_vocab in the model.
-        tokenizer.add_special_tokens({'pad_token': "<PAD>"})
+        tokenizer.add_special_tokens({"pad_token": "<PAD>"})
     # Define the length to chop things up into - leaving space for a bos_token if required
     if add_bos_token:
         seq_len = max_length - 1
     else:
         seq_len = max_length
-    
+
     def tokenize_function(examples):
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
         full_text = tokenizer.bos_token.join(text)
         # Divide into 20 chunks of ~ equal length
         num_chunks = 20
-        chunk_length = (len(full_text)-1)//num_chunks + 1
-        chunks = [full_text[i*chunk_length:(i+1)*chunk_length] for i in range(num_chunks)]
+        chunk_length = (len(full_text) - 1) // num_chunks + 1
+        chunks = [
+            full_text[i * chunk_length : (i + 1) * chunk_length]
+            for i in range(num_chunks)
+        ]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
-        tokens = tokenizer(chunks, return_tensors='np', padding=True)['input_ids'].flatten()
+        tokens = tokenizer(chunks, return_tensors="np", padding=True)[
+            "input_ids"
+        ].flatten()
         # Drop padding tokens
-        tokens = tokens[tokens!=tokenizer.pad_token_id]
+        tokens = tokens[tokens != tokenizer.pad_token_id]
         num_tokens = len(tokens)
-        num_batches = num_tokens//(seq_len)
+        num_batches = num_tokens // (seq_len)
         # Drop the final tokens if not enough to make a full sequence
-        tokens = tokens[:seq_len*num_batches]
-        tokens = einops.rearrange(tokens, '(batch seq) -> batch seq', batch=num_batches, seq=seq_len)
+        tokens = tokens[: seq_len * num_batches]
+        tokens = einops.rearrange(
+            tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
+        )
         if add_bos_token:
             prefix = np.full((num_batches, 1), tokenizer.bos_token_id)
             tokens = np.concatenate([prefix, tokens], axis=1)
-        return {'tokens':tokens}
-    tokenized_dataset = dataset.map(tokenize_function, batched=True, num_proc=4 if not streaming else None, remove_columns=[column_name])
-    tokenized_dataset.set_format(type='torch', columns=['tokens'])
+        return {"tokens": tokens}
+
+    tokenized_dataset = dataset.map(
+        tokenize_function,
+        batched=True,
+        num_proc=4 if not streaming else None,
+        remove_columns=[column_name],
+    )
+    tokenized_dataset.set_format(type="torch", columns=["tokens"])
     return tokenized_dataset
+
 
 def set_seed_everywhere(seed):
     torch.manual_seed(seed)
@@ -182,13 +204,14 @@ def set_seed_everywhere(seed):
 
 
 def sample_logits(
-    final_logits: torch.Tensor, 
-    top_k: Optional[int] = None, 
-    top_p: Optional[int] = None, 
-    temperature: float = 1.0, 
+    final_logits: torch.Tensor,
+    top_k: Optional[int] = None,
+    top_p: Optional[int] = None,
+    temperature: float = 1.0,
     freq_penalty: float = 0.0,
-    tokens: Optional[torch.Tensor] = None):
-    """ 
+    tokens: Optional[torch.Tensor] = None,
+):
+    """
     Sample from the logits, in order to generate text
 
     final_logits has shape [batch, vocab_size]
@@ -210,10 +233,14 @@ def sample_logits(
 
         final_logits = final_logits / temperature
         if freq_penalty > 0:
-            assert tokens is not None, "Must provide input_tokens if applying a frequency penalty"
+            assert (
+                tokens is not None
+            ), "Must provide input_tokens if applying a frequency penalty"
             for batch_index in range(final_logits.shape[0]):
                 # torch.bincount returns a tensor of length d_vocab, with the number of occurences of each token in the tokens.
-                final_logits[batch_index] = final_logits[batch_index] - freq_penalty * torch.bincount(
+                final_logits[batch_index] = final_logits[
+                    batch_index
+                ] - freq_penalty * torch.bincount(
                     tokens[batch_index], minlength=final_logits.shape[-1]
                 )
         if top_k is not None:

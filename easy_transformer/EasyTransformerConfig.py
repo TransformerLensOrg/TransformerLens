@@ -20,11 +20,11 @@ class EasyTransformerConfig:
         n_heads (int): The number of attention heads.
         n_layers (int): The number of attention layers.
         n_ctx (int): The maximum sequence length.
-        d_mlp (int, *optional*): The dimensionality of the feedforward mlp network. Must 
+        d_mlp (int, *optional*): The dimensionality of the feedforward mlp network. Must
             be set unless using an attn-only model.
-        d_vocab (int): The size of the vocabulary. If not set, will be automatically set 
+        d_vocab (int): The size of the vocabulary. If not set, will be automatically set
             from the tokenizer's vocab size.
-        act_fn (str, *optional"): The activation function to use. Always lowercase. 
+        act_fn (str, *optional"): The activation function to use. Always lowercase.
             Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln']. Must be set unless using an attn-only model.
         eps (float): The epsilon value to use for layer normalization. Defaults to 1e-5
         use_attn_result (bool): whether to explicitly calculate the amount
@@ -39,29 +39,29 @@ class EasyTransformerConfig:
         model_family (str, *optional*): the family of the model, used to help load
             weights from HuggingFace or initialized to "custom" if not passed
         checkpoint (str, *optional*): the checkpoint to load weights from, if using a checkpointed pretrained model.
-        tokenizer_name (str, *optional*): the full name of the model, passed into 
-            HuggingFace to access the tokenizer. Only used when passing in custom 
+        tokenizer_name (str, *optional*): the full name of the model, passed into
+            HuggingFace to access the tokenizer. Only used when passing in custom
             config, if loading from pretrained then this is not needed.
         window_size (int, *optional*): the size of the window for local
             attention
         attn_types (List[str], *optional*): the types of attention to use for
             local attention
-        weight_init_mode (str): the initialization mode to use for the 
-            weights. Only relevant for custom models, ignored for pre-trained. Options 
-            are 'pytorch' (for PyTorch defaults) and 'gpt2' (for GPT-2 defaults), 
+        weight_init_mode (str): the initialization mode to use for the
+            weights. Only relevant for custom models, ignored for pre-trained. Options
+            are 'pytorch' (for PyTorch defaults) and 'gpt2' (for GPT-2 defaults),
             defaults to 'gpt2
-        normalization_type (str, *optional*): the type of normalization to use. Options 
-            are None (no normalization), 'LN' (use LayerNorm, including weights & 
-            biases) and 'LNPre' (use LayerNorm, but no weights & biases). Defaults to 
+        normalization_type (str, *optional*): the type of normalization to use. Options
+            are None (no normalization), 'LN' (use LayerNorm, including weights &
+            biases) and 'LNPre' (use LayerNorm, but no weights & biases). Defaults to
             None
-        device(str): The device to use for the model. Defaults to 'cuda' if available, 
+        device(str): The device to use for the model. Defaults to 'cuda' if available,
             else 'cpu
-        attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2 
-            style) or bidirectional attention. Options are 'causal' and 'bidirectional'. 
+        attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2
+            style) or bidirectional attention. Options are 'causal' and 'bidirectional'.
             Defaults to 'causal'
-        attn_only (bool): Whether to only use attention layers, no feedforward 
+        attn_only (bool): Whether to only use attention layers, no feedforward
             layers. Defaults to False
-        seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and 
+        seed (int, *optional*): The seed to use for the model. Defaults to 42. Used to set sources of randomness (Python, PyTorch and
             NumPy) and to initialize weights. If set to None, does nothing.
         initializer_range (float): The standard deviation of the normal used to initialise the weights, initialized to 0.8 / sqrt(d_model) .
         init_weights (bool): Whether to initialize the weights. Defaults to True. If False, does not initialize weights.
@@ -70,10 +70,10 @@ class EasyTransformerConfig:
             Defaults to False.
         positional_embedding_type (str): The positional embedding used. Options are 'standard' (ie
             GPT-2 style, absolute, randomly initialized learned positional embeddings, directly added
-            to the residual stream) and 'shortformer' (GPT-2 style absolute & 
-            learned, but rather than being added to the residual stream they're only added to the 
-            inputs to the keys and the queries (ie key = W_K(res_stream + pos_embed), but values and 
-            MLPs don't get any positional info)). Sinusoidal and rotary are not currently 
+            to the residual stream) and 'shortformer' (GPT-2 style absolute &
+            learned, but rather than being added to the residual stream they're only added to the
+            inputs to the keys and the queries (ie key = W_K(res_stream + pos_embed), but values and
+            MLPs don't get any positional info)). Sinusoidal and rotary are not currently
             supported. Defaults to 'standard'.
         use_token_types (bool): Whether to use token types - used in BERT style models, where we input a mask of 0s and 1s for the two sentences. Defaults to False.
         bert_family (bool): Whether to use the BERT family of models, which use a different internal structure to the GPT-2 family. In particular, they use post LayerNorm, have an initial layernorm before the blocks, have token type embeddings, take as input a pair of sentences, and have a final linear layer before the unembed Defaults to False.
@@ -97,16 +97,16 @@ class EasyTransformerConfig:
     tokenizer_name: Optional[str] = None
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
-    init_mode: str = 'gpt2'
+    init_mode: str = "gpt2"
     normalization_type: Optional[str] = None
-    device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
-    attention_dir: str = 'causal'
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    attention_dir: str = "causal"
     attn_only: bool = False
     seed: int = 42
-    initializer_range: float = -1.
+    initializer_range: float = -1.0
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
-    positional_embedding_type: str = 'standard'
+    positional_embedding_type: str = "standard"
     use_token_types: bool = False
     bert_family: bool = False
 
@@ -122,8 +122,12 @@ class EasyTransformerConfig:
                 self.attn_types is not None
             ), "attn_types must be specified for local attention"
         if not self.attn_only:
-            assert self.d_mlp is not None, "d_mlp must be specified for non-attn-only models"
-            assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
+            assert (
+                self.d_mlp is not None
+            ), "d_mlp must be specified for non-attn-only models"
+            assert (
+                self.act_fn is not None
+            ), "act_fn must be specified for non-attn-only models"
         if self.initializer_range < 0:
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)
