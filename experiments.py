@@ -11,7 +11,7 @@
 # Reminder of the circuit:
 # <img src="https://i.imgur.com/arokEMj.png">
 #%% [markdown]
-# Setup
+## Setup
 from copy import deepcopy
 import torch
 
@@ -80,7 +80,7 @@ ioi_dataset = IOIDataset(
     N=N,
     tokenizer=model.tokenizer,
     prepend_bos=False,
-) # TODO make this a seeded dataset
+)  # TODO make this a seeded dataset
 
 print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
 #%% [markdown]
@@ -96,7 +96,7 @@ print(f"The model gets average IO probs {model_io_probs.item()} over {N} example
 circuit = deepcopy(CIRCUIT)
 
 # we make the ABC dataset in order to knockout other model components
-abc_dataset = ( # TODO seeded
+abc_dataset = (  # TODO seeded
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"))
@@ -116,7 +116,9 @@ print(
     f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"
 )
 #%% [markdown]
-# Path patching
+## Path patching
+
+
 def plot_path_patching(
     model,
     ioi_dataset,
@@ -138,7 +140,6 @@ def plot_path_patching(
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
                 positions=[position],
-                verbose=False,
                 return_hooks=False,
                 freeze_mlps=False,
                 have_internal_interactions=False,
@@ -180,13 +181,17 @@ plot_path_patching(
     position="end",
 )
 #%% [markdown]
-# Reproduce writing results (change the layer_no and head_no)
+## Writing direction results
+
+# (change the layer_no and head_no)
 
 scatter_attention_and_contribution(
     model=model, layer_no=9, head_no=9, ioi_dataset=ioi_dataset
 )
 #%% [markdown]
-# Look at the copy score for the Name Mover and Negative heads
+## Copy score
+
+# For NMs and Negative NMs
 
 
 def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False):
@@ -272,7 +277,7 @@ check_copy_circuit(
     model, random.randint(0, 11), random.randint(0, 11), ioi_dataset, neg=neg_sign
 )
 #%% [markdown]
-# S-Inhibition patching
+## S-Inhibition patching
 
 plot_path_patching(
     model,
@@ -285,7 +290,7 @@ plot_path_patching(
 )
 
 #%% [markdown]
-# Attention probs of NMs
+## Attention probs of NMs
 
 ys = []
 average_attention = {}
@@ -331,13 +336,13 @@ for idx, dataset in enumerate([ioi_dataset, abc_dataset]):
         )
     fig.show()
 #%% [markdown]
-# See attention patterns on one sentence
+## Visualize attention patterns
 
 model.reset_hooks()
 show_attention_patterns(model, [(9, 9), (9, 6), (10, 0)], ioi_dataset[:1])
 
 #%% [markdown]
-# Token and position signal results
+## Token and position signal results
 
 signal_specific_datasets = (
     {}
@@ -431,7 +436,8 @@ fig.update_layout(
 fig.show()
 
 #%% [markdown]
-# See the backup NM effect! After ablating several attention heads, we actually an increase in logit difference
+## Backup NM results
+# After ablating several attention heads, we actually an increase in logit difference
 
 model.reset_hooks()
 default_logit_diff = logit_diff(model, ioi_dataset)
@@ -483,14 +489,11 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             receiver_hooks.append(("blocks.11.hook_resid_post", None))
             model = path_patching(
                 model=model,
-                source_dataset=abc_dataset,
-                target_dataset=ioi_dataset,
-                ioi_dataset=ioi_dataset,
+                D_new=abc_dataset,
+                D_orig=ioi_dataset,
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
-                max_layer=12,
                 positions=[pos],
-                verbose=False,
                 return_hooks=False,
                 extra_hooks=extra_hooks,
             )
@@ -585,6 +588,7 @@ for idx, results in enumerate(both_results):
     fig.show()
 
 #%% [markdown]
+## Validation outside of IOI
 # Are the tasks of looking at previous tokens, inducting, and duplicating tokens performed on the general OWT distribution, rather than just p_IOI? Investigation of identified heads on random tokens
 
 seq_len = 100
