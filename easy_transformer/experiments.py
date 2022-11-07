@@ -17,8 +17,6 @@ from pathlib import Path
 import pickle
 import os
 
-import plotly.graph_objects as go
-
 from torch.utils.data import DataLoader
 
 from functools import *
