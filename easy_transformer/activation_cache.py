@@ -113,6 +113,14 @@ class ActivationCache:
 
     def __iter__(self):
         return self.cache_dict.__iter__()
+    
+    def apply_slice_to_batch_dim(self, batch_slice: Union[Slice, SliceInput]):
+        if not isinstance(batch_slice, Slice):
+            batch_slice = Slice(batch_slice)
+        assert self.has_batch_dim or batch_slice.mode=="empty", "Cannot index into a cache without a batch dim"
+        still_has_batch_dim = (batch_slice.mode!="int") and self.has_batch_dim
+        new_cache_dict = {name:batch_slice.apply(param, dim=0) for name, param in self.cache_dict.items()}
+        return ActivationCache(new_cache_dict, self.model, has_batch_dim=still_has_batch_dim)
 
     def accumulated_resid(
         self,

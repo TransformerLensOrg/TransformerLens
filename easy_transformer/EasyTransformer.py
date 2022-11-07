@@ -37,6 +37,7 @@ from easy_transformer.utils import (
 # Type alias for a single element tensor
 Loss = TT[()]
 
+
 class EasyTransformer(HookedRootModule):
     """
     This class implements a full Transformer using the components in ./components.py, with
@@ -144,7 +145,12 @@ class EasyTransformer(HookedRootModule):
         return_type: Optional[str] = "logits",
         prepend_bos: bool = True,
         past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
-    ) -> Union[None, TT["batch", "pos", "d_vocab"], Loss, Tuple[TT["batch", "pos", "d_vocab"], Loss]]:
+    ) -> Union[
+        None,
+        TT["batch", "pos", "d_vocab"],
+        Loss,
+        Tuple[TT["batch", "pos", "d_vocab"], Loss],
+    ]:
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
@@ -268,7 +274,7 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, input, prepend_bos=False):
+    def to_tokens(self, input: Union[str, List[str]], prepend_bos: bool = False):
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. Defaults to False for to_tokens, as this is intended to be used for substrings of the input, but True for a string input to forward.
         """
@@ -280,7 +286,9 @@ class EasyTransformer(HookedRootModule):
                 input = [self.tokenizer.bos_token + string for string in input]
         return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
 
-    def to_string(self, tokens) -> Union[str, List[str]]:
+    def to_string(
+        self, tokens: Union[TT["batch", "pos"], TT["pos"], np.ndarray, List[TT["pos"]]]
+    ) -> Union[str, List[str]]:
         """
         Converts a tensor of tokens to a string (if rank 1) or a list of strings (if rank 2).
 
@@ -307,7 +315,7 @@ class EasyTransformer(HookedRootModule):
     def to_str_tokens(
         self,
         input: Union[str, Union[TT["pos"], TT[1, "pos"]], list],
-        prepend_bos: bool = True,
+        prepend_bos: bool = False,
     ) -> List[str]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
@@ -365,7 +373,7 @@ class EasyTransformer(HookedRootModule):
         Args:
             single_token (Union[str, int]): The token to search for. Can
                 be a token index, or a string (but the string must correspond to a
-                single integer)
+                single token)
             tokens (Union[str, torch.Tensor]): The sequence of tokens to
                 search in. Can be a string or a rank 1 tensor or a rank 2 tensor
                 with a dummy batch dimension.
@@ -448,7 +456,7 @@ class EasyTransformer(HookedRootModule):
         fold_ln=True,
         center_writing_weights=True,
         center_unembed=True,
-        factored_to_even=False,
+        refactor_factored_attn_matrices=False,
         checkpoint_index=None,
         checkpoint_value=None,
         hf_model=None,
@@ -475,7 +483,7 @@ class EasyTransformer(HookedRootModule):
             to be zero).
                 Softmax is translation invariant so this doesn't affect log
                 probs or loss, but does change logits. Defaults to True.
-            factored_to_even (bool, optional): Whether to convert the factored
+            refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             checkpoint_index (int, optional): If loading from a checkpoint, the index of
                 the checkpoint to load. Defaults to None.
@@ -523,7 +531,7 @@ class EasyTransformer(HookedRootModule):
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
-            factored_to_even=factored_to_even,
+            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             move_state_dict_to_device=move_state_dict_to_device,
         )
 
@@ -562,7 +570,7 @@ class EasyTransformer(HookedRootModule):
         fold_ln: bool = True,
         center_writing_weights: bool = True,
         center_unembed: bool = True,
-        factored_to_even: bool = False,
+        refactor_factored_attn_matrices: bool = False,
         move_state_dict_to_device: bool = True,
     ):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
@@ -577,7 +585,7 @@ class EasyTransformer(HookedRootModule):
                 residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
             center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero).
                 Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
-            factored_to_even (bool, optional): Whether to convert the factored
+            refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
         """
@@ -606,8 +614,8 @@ class EasyTransformer(HookedRootModule):
                 state_dict = self.center_writing_weights(state_dict)
         if center_unembed:
             state_dict = self.center_unembed(state_dict)
-        if factored_to_even:
-            state_dict = self.factored_to_even(state_dict)
+        if refactor_factored_attn_matrices:
+            state_dict = self.refactor_factored_attn_matrices(state_dict)
         self.load_state_dict(state_dict)
 
     def fill_missing_keys(self, state_dict):
@@ -766,11 +774,15 @@ class EasyTransformer(HookedRootModule):
         )
         return state_dict
 
-    def factored_to_even(self, state_dict: Dict[str, torch.Tensor]):
+    def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
         """
-        Experimental method for managing queries, keys and values. As argued in [A Mathematical Framework for Transformer Circuits](https://transformer-circuits.pub/2021/framework/index.html), queries, keys and values are somewhat arbitrary intermediate terms when computing with the low rank factored matrices W_QK = W_Q @ W_K.T and W_OV = W_V @ W_O, and these matrices are the only thing determining head behaviour.
+        Experimental method for managing queries, keys and values. As argued in [A Mathematical Framework for Transformer Circuits](https://transformer-circuits.pub/2021/framework/index.html), queries, keys and values are somewhat arbitrary intermediate terms when computing with the low rank factored matrices W_QK = W_Q @ W_K.T and W_OV = W_V @ W_O, and these matrices are the only thing determining head behaviour. But there are many ways to find a low rank factorization to a given matrix, and hopefully some of these are more interpretable than others! This method is one attempt, which makes all of the matrices have orthogonal rows or columns, W_O into a rotation and W_Q and W_K having the nth column in each having the same norm. The formula is $W_V = U @ S,W_O=Vh.T,W_Q=U@S.sqrt(),W_K=Vh@S.sqrt()$.
 
-        Accordingly, if eg W_OV = U @ S @ Vh.T in its singular value decomposition, (where S is in R^d_head not R^d_model, as W_OV is low rank), W_OV = (U @ S.sqrt()) @ (S.sqrt() @ Vh.T) is a more principled low rank factorisation, where rows/columns of each matrix are orthogonal and have the same norm. And the intermediate term is more meaningful!
+        More details:
+
+        If W_OV = U @ S @ Vh.T in its singular value decomposition, (where S is in R^d_head not R^d_model, as W_OV is low rank), W_OV = (U @ S) @ (Vh.T) is an equivalent low rank factorisation, where rows/columns of each matrix are orthogonal! So setting $W_V=US$ and $W_O=Vh.T$ works just as well. I *think* this is a more interpretable setup, because now $W_O$ is just a rotation, and doesn't change the norm, so $z$ has the same norm as the result of the head. 
+
+        For $W_QK = W_Q @ W_K.T$ we use the refactor $W_Q = U @ S.sqrt()$ and $W_K = Vh @ S.sqrt()$, which is also equivalent ($S==S.sqrt() @ S.sqrt()$ as $S$ is diagonal). Here we keep the matrices as having the same norm, since there's not an obvious asymmetry between the keys and queries.
 
         Biases are more fiddly to deal with. For OV it's pretty easy - we just need (x @ W_V + b_V) @ W_O + b_O to be preserved, so we can set b_V' = 0. and b_O' = b_V @ W_O + b_O (note that b_V in R^{head_index x d_head} while b_O in R^{d_model}, so we need to sum b_V @ W_O along the head_index dimension too).
 
@@ -842,7 +854,7 @@ class EasyTransformer(HookedRootModule):
         fold_ln: bool = True,
         center_writing_weights: bool = True,
         center_unembed: bool = True,
-        factored_to_even: bool = False,
+        refactor_factored_attn_matrices: bool = False,
         move_state_dict_to_device: bool = True,
     ):
         """
@@ -865,7 +877,7 @@ class EasyTransformer(HookedRootModule):
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
-            factored_to_even=factored_to_even,
+            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             move_state_dict_to_device=move_state_dict_to_device,
         )
 
@@ -998,7 +1010,7 @@ class EasyTransformer(HookedRootModule):
         else:
             return tokens
 
-    # Give access to all weights as properties. 
+    # Give access to all weights as properties.
     @property
     def W_U(self) -> TT["d_model", "d_vocab"]:
         """
@@ -1139,7 +1151,9 @@ class EasyTransformer(HookedRootModule):
             accumulated_bias += self.blocks[layer].attn.b_O
         return accumulated_bias
 
-    def all_composition_scores(self, mode) -> TT["n_layers", "n_heads", "n_layers", "n_heads"]:
+    def all_composition_scores(
+        self, mode
+    ) -> TT["n_layers", "n_heads", "n_layers", "n_heads"]:
         """Returns the Composition scores for all pairs of heads, as a L1, H1, L2, H2 tensor (which is upper triangular on the first and third axes)
 
         mode is one of ["Q", "K", "V"]

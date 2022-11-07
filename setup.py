@@ -19,5 +19,6 @@ setup(
         "wandb",
         "fancy_einsum",
         "torchtyping",
+        "rich",
     ],
 )

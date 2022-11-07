@@ -14,6 +14,7 @@ import transformers
 from huggingface_hub import hf_hub_download
 import re
 from functools import lru_cache
+from rich import print as rprint
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
@@ -427,6 +428,53 @@ def act_name(
     act_name += f"hook_{name}"
     return act_name
 
+def remove_batch_dim(tensor: TT[1, ...]) -> TT[...]:
+    """
+    Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
+    """
+    if tensor.shape[0] == 1:
+        return tensor.squeeze(0)
+    else:
+        return tensor
+
+def test_prompt(prompt: str, answer: str, model: EasyTransformer, prepend_space_to_answer: bool=True, print_details: bool=True, prepend_bos: bool=True, top_k: int=10):
+    """
+    Function to test whether a model can give the correct answer to a prompt. Intended for exploratory analysis, so it prints things out rather than returning things.
+
+    Works for multi-token answers and multi-token prompts.
+
+    Will always print the ranks of the answer tokens, and if print_details will print the logit and prob for the answer tokens and the top k tokens returned for each answer position.
+    """
+    if prepend_space_to_answer and not answer.startswith(" "):
+        answer = " "+answer
+    # GPT-2 often treats the first token weirdly, so lets give it a resting position
+    tokens = model.to_tokens(prompt + answer, prepend_bos=prepend_bos)
+    prompt_str_tokens = model.to_str_tokens(prompt, prepend_bos=prepend_bos)
+    answer_str_tokens = model.to_str_tokens(answer, prepend_bos=False)
+    prompt_length = len(prompt_str_tokens)
+    answer_length = len(answer_str_tokens)
+    if print_details:
+        print("Tokenized prompt:", prompt_str_tokens)
+        print("Tokenized answer:", answer_str_tokens)
+    logits = remove_batch_dim(model(tokens))
+    probs = logits.softmax(dim=-1)
+    answer_ranks = []
+    for index in range(prompt_length, prompt_length + answer_length):
+        answer_token = tokens[0, index]
+        answer_str_token = answer_str_tokens[index - prompt_length]
+        # Offset by 1 because models predict the NEXT token
+        token_probs = probs[index-1]
+        sorted_token_probs, sorted_token_values = token_probs.sort(descending=True)
+        # Janky way to get the index of the token in the sorted list - I couldn't find a better way?
+        correct_rank = torch.arange(len(sorted_token_values))[sorted_token_values==answer_token].item()
+        answer_ranks.append((answer_str_token, correct_rank))
+        if print_details:
+            # String formatting syntax - the first number gives the number of characters to pad to, the second number gives the number of decimal places.
+            # rprint gives rich text printing
+            rprint(f"Performance on answer token:\n[b]Rank: {correct_rank: <8} Logit: {logits[index-1, answer_token].item():5.2f} Prob: {token_probs[answer_token].item():6.2%} Token: |{answer_str_token}|[/b]")
+            for i in range(top_k):
+                print(f"Top {i}th token. Logit: {logits[index-1, sorted_token_values[i]].item():5.2f} Prob: {sorted_token_probs[i].item():6.2%} Token: |{model.to_string(sorted_token_values[i])}|")
+    rprint(f"[b]Ranks of the answer tokens:[/b] {answer_ranks}")
 
 # %%
 def transpose(tensor: TT[..., "a", "b"]) -> TT[..., "b", "a"]:
