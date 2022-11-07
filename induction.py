@@ -552,6 +552,8 @@ x = (np.logspace(0, -1,  10) - 0.1)
 x = list(- x + 1.0)
 x = torch.tensor(x)
 
+x = torch.linspace(0, 0.9, 5)
+
 for ablation_beta_for_negs in x:
     names = []
     losses = []
@@ -610,7 +612,7 @@ for ablation_beta_for_negs in x:
 
         # add caption to colorbar    
         fig.update_layout(
-            title=f"Loss and logits when we ablate {subset1} (top induction heads), and k (see color bar) negative induction heads",
+            title=f"Loss and logits when we ablate (top induction heads), and k (see color bar) negative induction heads",
             xaxis_title="Logits",
             yaxis_title="Loss",
         )
