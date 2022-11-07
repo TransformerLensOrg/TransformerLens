@@ -552,7 +552,7 @@ x = (np.logspace(0, -1,  10) - 0.1)
 x = list(- x + 1.0)
 x = torch.tensor(x)
 
-x = torch.linspace(0, 0.9, 5)
+x = torch.linspace(0, 1, 20)
 
 for ablation_beta_for_negs in x:
     names = []
