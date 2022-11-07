@@ -117,9 +117,9 @@ class LayerNormPre(nn.Module):
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: TT["batch", "position", 1] = self.hook_scale(
+        scale: TT["batch", "position", 1] = self.hook_scale((
             x.pow(2).mean(-1, keepdim=True) + self.eps
-        ).sqrt()
+        ).sqrt())
         return self.hook_normalized(x / scale)
 
 
@@ -155,9 +155,9 @@ class LayerNorm(nn.Module):
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: TT["batch", "position", 1] = self.hook_scale(
+        scale: TT["batch", "position", 1] = self.hook_scale((
             x.pow(2).mean(-1, keepdim=True) + self.eps
-        ).sqrt()
+        ).sqrt())
         x = x / scale  # [batch, pos, length]
         return self.hook_normalized(x * self.w + self.b)
 
@@ -178,9 +178,9 @@ class RMSNormPre(nn.Module):
     def forward(
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
-        scale: TT["batch", "position", 1] = self.hook_scale(
+        scale: TT["batch", "position", 1] = self.hook_scale((
             x.pow(2).mean(-1, keepdim=True) + self.eps
-        ).sqrt()
+        ).sqrt())
         return self.hook_normalized(x / scale)  # [batch, pos, length]
 
 
@@ -213,9 +213,9 @@ class RMSNorm(nn.Module):
     def forward(
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
-        scale: TT["batch", "position", 1] = self.hook_scale(
+        scale: TT["batch", "position", 1] = self.hook_scale((
             x.pow(2).mean(-1, keepdim=True) + self.eps
-        ).sqrt()
+        ).sqrt())
         x = self.hook_normalized(x / scale)  # [batch, pos, length]
         return x * self.w
 

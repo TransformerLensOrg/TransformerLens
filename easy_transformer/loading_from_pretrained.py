@@ -62,7 +62,7 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/SoLU_4L512W_C4_Code",
     "NeelNanda/SoLU_6L768W_C4_Code",
     "NeelNanda/SoLU_8L1024W_C4_Code",
-    # "NeelNanda/SoLU_10L1280W_C4_Code",
+    "NeelNanda/SoLU_10L1280W_C4_Code",
     "NeelNanda/SoLU_12L1536W_C4_Code",
     "NeelNanda/GELU_1L512W_C4_Code",
     "NeelNanda/GELU_2L512W_C4_Code",
@@ -114,7 +114,7 @@ MODEL_ALIASES = {
     ],
     "NeelNanda/SoLU_6L768W_C4_Code": ["solu-6l", "solu-6l-new", "solu-6l-c4-code"],
     "NeelNanda/SoLU_8L1024W_C4_Code": ["solu-8l", "solu-8l-new", "solu-8l-c4-code"],
-    # "NeelNanda/SoLU_10L1280W_C4_Code": ["solu-10l", "solu-10l-new", "solu-10l-c4-code"],
+    "NeelNanda/SoLU_10L1280W_C4_Code": ["solu-10l", "solu-10l-new", "solu-10l-c4-code"],
     "NeelNanda/SoLU_12L1536W_C4_Code": ["solu-12l", "solu-12l-new", "solu-12l-c4-code"],
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr": [
         "attn-only-2l-demo",
