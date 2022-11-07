@@ -108,7 +108,7 @@ class EasyTransformerConfig:
     scale_attn_by_inverse_layer_idx: bool = False
     positional_embedding_type: str = "standard"
     use_token_types: bool = False
-    bert_family: bool = False
+    bert_family: bool = False  # TODO remove this
 
     def __post_init__(self):
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
