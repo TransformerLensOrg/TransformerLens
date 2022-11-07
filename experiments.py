@@ -261,7 +261,7 @@ check_copy_circuit(model, 10, 0, ioi_dataset, neg=neg_sign)
 check_copy_circuit(model, 9, 6, ioi_dataset, neg=neg_sign)
 
 neg_sign = True
-print(" --- Calibration heads --- ")
+print(" --- Negative heads --- ")
 check_copy_circuit(model, 10, 7, ioi_dataset, neg=neg_sign)
 check_copy_circuit(model, 11, 10, ioi_dataset, neg=neg_sign)
 
