@@ -12,6 +12,8 @@ import warnings
 import matplotlib.pyplot as plt
 import networkx as nx
 from collections import OrderedDict
+from ioi_utils import show_pp
+import graphviz # need both pip install graphviz and sudo apt-get install graphviz
 
 def get_hook_tuple(layer, head_idx):
     if head_idx is None:
@@ -309,7 +311,7 @@ class HypothesisTree():
                 if verbose:
                     print(f"Working on pos {pos}, receiver hook {receiver_hook}")
                 attn_results, mlp_results = path_patching_up_to(
-                    model=model, 
+                    model=self.model, 
                     layer=node.layer,
                     metric=self.metric,
                     dataset=self.dataset,
@@ -334,7 +336,9 @@ class HypothesisTree():
                     show_pp(mlp_results, title=f"MLP results for {node} with receiver hook {receiver_hook}", xlabel="Layer", ylabel="")
 
                 if auto_threshold:
-                    threshold = max(3 * attn_results.std(), 3 * mlp_results.std(), 0.01)
+                    threshold = max(2 * attn_results.std(), 2 * mlp_results.std(), 0.01)
+                if verbose:
+                    print(f"threshold: {threshold:.3f}")
                 # process result and mark nodes above threshold as important
                 for layer in range(attn_results.shape[0]):
                     for head in range(attn_results.shape[1]):
@@ -359,10 +363,10 @@ class HypothesisTree():
         else:
             self.current_node = None
 
-    def show(self, save=False):
+    def show(self, save_file: Optional[str] = None):
         edge_color_list = []
         color_dict = {'q': 'black', 'k': 'blue', 'v': 'green', 'out': 'red', 'post': 'red'}
-        current_node = h.root_node
+        current_node = self.root_node
         G = nx.DiGraph()
         def dfs(node):
             G.add_nodes_from([(node, {'layer': node.layer})])
@@ -390,5 +394,40 @@ class HypothesisTree():
         edge_labels = nx.get_edge_attributes(G, "weight")
         nx.draw_networkx_edge_labels(G, pos, edge_labels)
 
-        if save:
-            plt.savefig('ioi_circuit.png')
+        if save_file is not None:
+            plt.savefig(save_file)
+
+
+def display(node: Node):
+    if node.layer == 12:
+        return "resid out"
+    elif node.head is None:
+        return f"mlp{node.layer}\n{node.position}"
+    else:
+        return f"{node.layer}.{node.head}\n{node.position}"
+
+def show_graph(h: HypothesisTree):
+    g = graphviz.Digraph('G')
+    g.attr('node', shape='box')
+    color_dict = {'q': 'red', 'k': 'green', 'v': 'blue', 'out': 'black', 'post': 'black'}
+    # add each layer as a subgraph with rank=same
+    for layer in range(12):
+        with g.subgraph() as s:
+            s.attr(rank='same')
+            for node in h.important_nodes:
+                if node.layer == layer:
+                    s.node(display(node))
+
+    def scale(num: float):
+        return 3*min(1, abs(num) ** 0.4)
+
+    for node in h.important_nodes:
+        for parent in node.parents:
+            g.edge(display(parent[0]), display(node), color=color_dict[parent[2]], penwidth=str(scale(parent[1])), arrowsize=str(scale(parent[1])))
+    # add invisible edges to keep layers separate
+    for i in range(len(h.important_nodes) - 1):
+        node1 = h.important_nodes[i]
+        node2 = h.important_nodes[i+1]
+        if node1.layer != node2.layer:
+            g.edge(display(node2), display(node1), style='invis')
+    return g
