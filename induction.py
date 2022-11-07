@@ -535,7 +535,6 @@ show_pp(patch_results_mlp.T.detach().cpu())
 
 #%% [markdown]
 # Subsets of these
-# TODO figure out why this cell is not deterministic : (
 
 show_fig = True
 vals = []
@@ -548,106 +547,111 @@ beta = 1.0
 
 if show_fig:
     fig = go.Figure()
-for beta_raw in range(0, 10):
-    beta = beta_raw / 10
-    # for prefix_length in range(len(induct_heads)):
-    for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
-        tot += 1
-        if tot > 50: break
-        names = []
-        losses = []
-        logits = []
-        sizes = []
 
-        for idx, subset in enumerate(get_all_subsets(neg_heads)): # get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)])):
-            if idx == 0:
-                assert len(subset) == 0
-            model.reset_hooks()
+# get a spread of 0 to 1 numbers with more at the end
+x = (np.logspace(0, -1,  10) - 0.1) / 0.9
+x = list(- x + 1.0)
 
-            if add_extra_hooks:
-                def remove_all_off_diagonal(z, hook): # ablates all off diagonal stuff
-                    z = z.clone()
-                    for head_idx in range(12):
-                        # if head_idx not in [3, 1] or "10" not in hook.name:
-                            z[:, head_idx, (1.0 - torch.eye(z.shape[-1])).bool()] = 0
-                        # if head_idx not in [2, 4] or "11" not in hook.name: # literally ablate all the things that aren't 11.4
-                        #     z[:, head_idx, (torch.eye(z.shape[-1])).bool()] = 0
-                    return z
-                for layer in range(9, 12):
-                    hook_name = f"blocks.{layer}.attn.hook_attn"
-                    model.add_hook(hook_name, remove_all_off_diagonal)
+for beta_neg_raw in range(1):
+    for beta_61 in x:
+        # for prefix_length in range(len(induct_heads)):
+        for subset1 in tqdm(get_all_subsets(induct_heads[1:])):
+            tot += 1
+            if tot > 50: break
+            names = []
+            losses = []
+            logits = []
+            sizes = []
 
-            model.reset_hooks()
-            receiver_hooks = []
-            sender_heads = thing61 + subset + subset1
-        
-            ablation_beta = {sender_head: beta for sender_head in subset + subset1}
-            ablation_beta[(6, 1)] = 1.0
+            for idx, subset in enumerate(get_all_subsets(neg_heads)): # get_all_subsets([(6, 0), (6, 6), (7, 2), (6, 11)])):
+                if len(subset) not in [0, 4]: continue
+                if idx == 0:
+                    assert len(subset) == 0
+                model.reset_hooks()
 
-            model = path_patching_attribution(
-                model=model,
-                tokens=rand_tokens_repeat,
-                patch_tokens=rand_tokens_control,
-                sender_hooks=sender_heads,
-                receiver_hooks=[(f"blocks.6.hook_resid_mid", None)],
-                # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
-                device="cuda",
-                zero_ablation=False,
-                ablation_beta=ablation_beta,
-                freeze_mlps=True,
-                return_hooks=False,
-                max_layer=layer,
-                extra_hooks=[],
-                do_assert=True,    
-            )
-            # model.add_hook(*hooks[(layer, head_idx)])
+                if add_extra_hooks:
+                    def remove_all_off_diagonal(z, hook): # ablates all off diagonal stuff
+                        z = z.clone()
+                        for head_idx in range(12):
+                            # if head_idx not in [3, 1] or "10" not in hook.name:
+                                z[:, head_idx, (1.0 - torch.eye(z.shape[-1])).bool()] = 0
+                            # if head_idx not in [2, 4] or "11" not in hook.name: # literally ablate all the things that aren't 11.4
+                            #     z[:, head_idx, (torch.eye(z.shape[-1])).bool()] = 0
+                        return z
+                    for layer in range(9, 12):
+                        hook_name = f"blocks.{layer}.attn.hook_attn"
+                        model.add_hook(hook_name, remove_all_off_diagonal)
 
-            names.append(str(subset) + "_" + str(beta))
-            sizes.append(len(subset))
-            losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
-            logits.append(logits_metric(model, rand_tokens_repeat)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
+                model.reset_hooks()
+                receiver_hooks = []
+                sender_heads = thing61 + subset + subset1
+            
+                ablation_beta = {sender_head: 1.0 for sender_head in subset + subset1}
+                ablation_beta[(6, 1)] = beta_61
 
-        pos = get_position(logits)
-        # if pos>10:
-            # print(subset1, pos)
-        vals.append(pos)
-        subsets[pos].append((subset1, subset, losses, logits))
-
-        if show_fig:
-            # make a scatter plot of losses against logits, with labels for each point and different symbols
-            fig.add_trace(
-                go.Scatter(
-                    x=logits,
-                    y=losses,
-                    mode="markers",
-                    text=names,
-                    marker=dict(size=12, color=sizes, colorscale="Viridis", showscale=True, line=dict(
-                    color=4 * beta,
-                    width=2
-                )),
+                model = path_patching_attribution(
+                    model=model,
+                    tokens=rand_tokens_repeat,
+                    patch_tokens=rand_tokens_control,
+                    sender_hooks=sender_heads,
+                    receiver_hooks=[(f"blocks.6.hook_resid_mid", None)],
+                    # receiver_hooks=[(f"blocks.{layer}.attn.hook_result", head_idx) for layer, head_idx in neg_heads],
+                    device="cuda",
+                    zero_ablation=False,
+                    ablation_beta=ablation_beta,
+                    freeze_mlps=True,
+                    return_hooks=False,
+                    max_layer=layer,
+                    extra_hooks=[],
+                    do_assert=True,    
                 )
-            )
+                # model.add_hook(*hooks[(layer, head_idx)])
 
-            # add caption to colorbar    
-            fig.update_layout(
-                title=f"Loss and logits when we ablate {subset1} (top induction heads), and k (see color bar) negative induction heads",
-                xaxis_title="Logits",
-                yaxis_title="Loss",
-            )
+                names.append(str(subset) + "_" + str(beta_61))
+                sizes.append(len(subset))
+                losses.append(loss_metric(model, rand_tokens_repeat, seq_len))
+                logits.append(logits_metric(model, rand_tokens_repeat)) # model(rand_tokens_repeat, return_type="logits")[:, -seq_len // 2 :].mean())
 
-        break
+            pos = get_position(logits)
+            vals.append(pos)
+            subsets[pos].append((subset1, subset, losses, logits))
 
-fig.show()
+            if show_fig:
+                # make a scatter plot of losses against logits, with labels for each point and different symbols
+                fig.add_trace(
+                    go.Scatter(
+                        x=logits,
+                        y=losses,
+                        mode="lines+markers",
+                        line=dict(color="black"),
+                        text=names,
+                        marker=dict(size=12, color=sizes, colorscale="Viridis", showscale=True, line=dict(
+                        color=4 * beta,
+                        width=2
+                    )),
+                    )
+                )
 
-# plot a histogram of vals
-fig = go.Figure()
-fig.add_trace(go.Histogram(x=vals))
-fig.update_layout(
-    title=f"Position of the subset of top induction heads in the list of subsets of negative induction heads",
-    xaxis_title="Position in list",
-    yaxis_title="Frequency",
-)
-fig.show()
+                # add caption to colorbar    
+                fig.update_layout(
+                    title=f"Loss and logits when we ablate {subset1} (top induction heads), and k (see color bar) negative induction heads",
+                    xaxis_title="Logits",
+                    yaxis_title="Loss",
+                )
+
+            break
+
+    fig.show()
+
+    # plot a histogram of vals
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=vals))
+    fig.update_layout(
+        title=f"Position of the subset of top induction heads in the list of subsets of negative induction heads",
+        xaxis_title="Position in list",
+        yaxis_title="Frequency",
+    )
+    fig.show()
 
 #%%
 # Plot a scatter plot in plotly with labels
