@@ -117,9 +117,9 @@ class LayerNormPre(nn.Module):
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: TT["batch", "position", 1] = self.hook_scale((
-            x.pow(2).mean(-1, keepdim=True) + self.eps
-        ).sqrt())
+        scale: TT["batch", "position", 1] = self.hook_scale(
+            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
+        )
         return self.hook_normalized(x / scale)
 
 
@@ -155,9 +155,9 @@ class LayerNorm(nn.Module):
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: TT["batch", "position", 1] = self.hook_scale((
-            x.pow(2).mean(-1, keepdim=True) + self.eps
-        ).sqrt())
+        scale: TT["batch", "position", 1] = self.hook_scale(
+            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
+        )
         x = x / scale  # [batch, pos, length]
         return self.hook_normalized(x * self.w + self.b)
 
@@ -178,9 +178,9 @@ class RMSNormPre(nn.Module):
     def forward(
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
-        scale: TT["batch", "position", 1] = self.hook_scale((
-            x.pow(2).mean(-1, keepdim=True) + self.eps
-        ).sqrt())
+        scale: TT["batch", "position", 1] = self.hook_scale(
+            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
+        )
         return self.hook_normalized(x / scale)  # [batch, pos, length]
 
 
@@ -213,9 +213,9 @@ class RMSNorm(nn.Module):
     def forward(
         self, x: TT["batch", "position", "length"]
     ) -> TT["batch", "position", "length"]:
-        scale: TT["batch", "position", 1] = self.hook_scale((
-            x.pow(2).mean(-1, keepdim=True) + self.eps
-        ).sqrt())
+        scale: TT["batch", "position", 1] = self.hook_scale(
+            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
+        )
         x = self.hook_normalized(x / scale)  # [batch, pos, length]
         return x * self.w
 
@@ -533,7 +533,9 @@ class Attention(nn.Module):
 
         return rot_x
 
-    def apply_rotary(self, x: TT["batch", "pos", "head_index", "d_head"], past_kv_pos_offset=0) -> TT["batch", "pos", "head_index", "d_head"]:
+    def apply_rotary(
+        self, x: TT["batch", "pos", "head_index", "d_head"], past_kv_pos_offset=0
+    ) -> TT["batch", "pos", "head_index", "d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
