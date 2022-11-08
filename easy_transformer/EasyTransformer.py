@@ -1,4 +1,4 @@
-from typing import Callable, Union, List, Tuple, Dict, Optional
+from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple
 from torchtyping import TensorType as TT
 import torch
 import torch.nn as nn
@@ -10,6 +10,7 @@ import tqdm.auto as tqdm
 import re
 from huggingface_hub import HfApi
 from functools import partial, lru_cache
+from collections import namedtuple
 
 from transformers import (
     AutoTokenizer,
@@ -27,16 +28,17 @@ from easy_transformer.activation_cache import ActivationCache
 
 from easy_transformer.components import *
 import easy_transformer.loading_from_pretrained as loading
+import easy_transformer.utils as utils
 from easy_transformer.utils import (
-    lm_cross_entropy_loss,
-    sample_logits,
     FactoredMatrix,
-    composition_scores,
 )
 
 # Type alias for a single element tensor
 Loss = TT[()]
-
+# Named tuple object for if we want to output both logits and loss
+class Output(NamedTuple):
+    logits: TT["batch", "pos", "d_vocab"]
+    loss: Loss
 
 class EasyTransformer(HookedRootModule):
     """
@@ -239,14 +241,25 @@ class EasyTransformer(HookedRootModule):
             if return_type == "logits":
                 return logits
             else:
-                loss = lm_cross_entropy_loss(logits, tokens)
+                loss = self.loss_fn(logits, tokens)
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
-                    return (logits, loss)
+                    return Output(logits, loss)
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
+
+    def loss_fn(
+        self,
+        logits: TT["batch", "pos", "d_vocab"],
+        tokens: TT["batch", "pos"],
+        per_token: bool=False,
+    ):
+        """ 
+        Wrapper around utils.lm_cross_entropy_loss, used in forward() with return_type=="loss" or "both". 
+        """
+        return utils.lm_cross_entropy_loss(logits, tokens, per_token)
 
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
@@ -981,7 +994,7 @@ class EasyTransformer(HookedRootModule):
                 logits = self.forward(tokens, return_type="logits")
             final_logits = logits[:, -1, :]
 
-            sampled_tokens = sample_logits(
+            sampled_tokens = utils.sample_logits(
                 final_logits,
                 top_k=top_k,
                 top_p=top_p,
@@ -1170,7 +1183,7 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be one of ['Q', 'K', 'V'] not {mode}")
 
-        scores = composition_scores(left, right, broadcast_dims=True)
+        scores = utils.composition_scores(left, right, broadcast_dims=True)
         # Mask scores to be zero for all pairs with the right head in the same layer or earlier layer than the left head.
         mask = (
             torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None]
