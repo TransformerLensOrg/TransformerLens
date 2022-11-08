@@ -1,5 +1,13 @@
 name: TODO workflow
-on: [push, pull_request]
+
+on:
+  push:
+    branches: 
+      - master
+  pull_request:
+    branches: 
+      - master
+
 jobs:
   build:
     runs-on: ubuntu-latest
