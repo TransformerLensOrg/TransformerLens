@@ -21,4 +21,10 @@ setup(
         "torchtyping",
         "rich",
     ],
+    extras_require={
+        'dev': [
+            'pytest',
+            'mypy'
+        ]
+    }
 )
