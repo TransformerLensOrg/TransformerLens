@@ -232,6 +232,14 @@ class Node():
 
     def repr_long(self):
         return f"Node({self.layer}, {self.head}, {self.position}) with children {[child.__repr__() for child in self.children]}"
+    
+    def display(self):
+        if self.layer == 12:
+            return "resid out"
+        elif self.head is None:
+            return f"mlp{self.layer}\n{self.position}"
+        else:
+            return f"{self.layer}.{self.head}\n{self.position}"
 
 
 class HypothesisTree():
@@ -281,7 +289,7 @@ class HypothesisTree():
         self.model.cache_all(self.new_cache)
         _ = self.model(self.new_data, prepend_bos=False)
 
-    def eval(self, threshold: Union[float, None] = None, verbose: bool = False, show_graphics: bool = True, auto_threshold: bool = False):
+    def eval(self, threshold: Union[float, None] = None, verbose: bool = False, show_graphics: bool = True, auto_threshold: float = 0.0):
         """Process current_node, then move to next current_node"""
 
         if threshold is None:
@@ -336,7 +344,11 @@ class HypothesisTree():
                     show_pp(mlp_results, title=f"MLP results for {node} with receiver hook {receiver_hook}", xlabel="Layer", ylabel="")
 
                 if auto_threshold:
-                    threshold = max(2 * attn_results.std(), 2 * mlp_results.std(), 0.01)
+                    threshold = max(
+                        auto_threshold * attn_results.std(), 
+                        auto_threshold * mlp_results.std(), 
+                        0.01
+                    )
                 if verbose:
                     print(f"threshold: {threshold:.3f}")
                 # process result and mark nodes above threshold as important
@@ -364,70 +376,27 @@ class HypothesisTree():
             self.current_node = None
 
     def show(self, save_file: Optional[str] = None):
-        edge_color_list = []
-        color_dict = {'q': 'black', 'k': 'blue', 'v': 'green', 'out': 'red', 'post': 'red'}
-        current_node = self.root_node
-        G = nx.DiGraph()
-        def dfs(node):
-            G.add_nodes_from([(node, {'layer': node.layer})])
-            for child_node, child_score, child_type in node.parents:
-                G.add_edges_from([(node, child_node, 
-                    {'weight': round(child_score,3)})])
-                edge_color_list.append(color_dict[child_type])
-                dfs(child_node)
-        dfs(current_node)
-        pos = nx.multipartite_layout(G, subset_key="layer")
-        # make plt figure fills screen
-        fig = plt.figure(dpi=300, figsize=(24, 24))
-        nx.draw(
-            G,
-            pos,
-            node_size=8000,
-            node_color='#b0a8a7',
-            linewidths=2.0,
-            edge_color=edge_color_list,
-            width=1.5,
-            arrowsize=12
-        )
+        g = graphviz.Digraph(format='png')
+        g.attr('node', shape='box')
+        color_dict = {'q': 'red', 'k': 'green', 'v': 'blue', 'out': 'black', 'post': 'black'}
+        # add each layer as a subgraph with rank=same
+        for layer in range(12):
+            with g.subgraph() as s:
+                s.attr(rank='same')
+                for node in self.important_nodes:
+                    if node.layer == layer:
+                        s.node(node.display())
 
-        nx.draw_networkx_labels(G, pos, font_size=14)
-        edge_labels = nx.get_edge_attributes(G, "weight")
-        nx.draw_networkx_edge_labels(G, pos, edge_labels)
+        def scale(num: float):
+            return 3*min(1, abs(num) ** 0.4)
 
-        if save_file is not None:
-            plt.savefig(save_file)
-
-
-def display(node: Node):
-    if node.layer == 12:
-        return "resid out"
-    elif node.head is None:
-        return f"mlp{node.layer}\n{node.position}"
-    else:
-        return f"{node.layer}.{node.head}\n{node.position}"
-
-def show_graph(h: HypothesisTree):
-    g = graphviz.Digraph('G')
-    g.attr('node', shape='box')
-    color_dict = {'q': 'red', 'k': 'green', 'v': 'blue', 'out': 'black', 'post': 'black'}
-    # add each layer as a subgraph with rank=same
-    for layer in range(12):
-        with g.subgraph() as s:
-            s.attr(rank='same')
-            for node in h.important_nodes:
-                if node.layer == layer:
-                    s.node(display(node))
-
-    def scale(num: float):
-        return 3*min(1, abs(num) ** 0.4)
-
-    for node in h.important_nodes:
-        for parent in node.parents:
-            g.edge(display(parent[0]), display(node), color=color_dict[parent[2]], penwidth=str(scale(parent[1])), arrowsize=str(scale(parent[1])))
-    # add invisible edges to keep layers separate
-    for i in range(len(h.important_nodes) - 1):
-        node1 = h.important_nodes[i]
-        node2 = h.important_nodes[i+1]
-        if node1.layer != node2.layer:
-            g.edge(display(node2), display(node1), style='invis')
-    return g
+        for node in self.important_nodes:
+            for parent in node.parents:
+                g.edge(parent[0].display(), node.display(), color=color_dict[parent[2]], penwidth=str(scale(parent[1])), arrowsize=str(scale(parent[1])))
+        # add invisible edges to keep layers separate
+        for i in range(len(self.important_nodes) - 1):
+            node1 = self.important_nodes[i]
+            node2 = self.important_nodes[i+1]
+            if node1.layer != node2.layer:
+                g.edge(node2.display(), node1.display(), style='invis')
+        return g
