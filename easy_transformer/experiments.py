@@ -3,42 +3,15 @@
 from typing import Callable, Union, List, Tuple, Any
 import torch
 import warnings
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import numpy as np
 import einops
 
 from tqdm import tqdm
-import random
-import time
-
-from pathlib import Path
-import pickle
-import os
-
-from torch.utils.data import DataLoader
 
 from functools import *
-import pandas as pd
-import gc
-import collections
-import copy
 import warnings
 
-# import comet_ml
-import itertools
-
-from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
-
-from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer.utils import (
-    gelu_new,
-    to_numpy,
-    get_corner,
-    print_gpu_mem,
-    get_sample_from_dataset,
-)
+from easy_transformer.hook_points import HookPoint
+from easy_transformer.utils import get_sample_from_dataset
 from easy_transformer.EasyTransformer import EasyTransformer
 
 

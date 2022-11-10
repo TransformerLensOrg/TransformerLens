@@ -1,7 +1,6 @@
 import torch
-import torch.nn as nn
 from dataclasses import dataclass
-from typing import Union, Tuple, List, Dict, Any, Optional
+from typing import List
 from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 from torchtyping import TensorType as TT
 

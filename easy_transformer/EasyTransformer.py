@@ -1,15 +1,11 @@
-from typing import Callable, Union, List, Tuple, Dict, Optional
+from typing import Union, List, Tuple, Dict, Optional
 from torchtyping import TensorType as TT
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
-import einops
 import logging
 import tqdm.auto as tqdm
-import re
-from huggingface_hub import HfApi
-from functools import partial, lru_cache
+from functools import lru_cache
 
 from transformers import (
     AutoTokenizer,

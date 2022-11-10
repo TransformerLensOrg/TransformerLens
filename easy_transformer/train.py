@@ -1,14 +1,10 @@
 from easy_transformer import EasyTransformer
-from easy_transformer import EasyTransformerConfig
 from dataclasses import dataclass
-from typing import Optional, Callable
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import wandb
 import torch
-import torch.nn as nn
 from tqdm.auto import tqdm
-from einops import rearrange
 
 
 @dataclass
