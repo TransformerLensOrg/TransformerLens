@@ -123,10 +123,7 @@ ABC_TEMPLATES = [
     "Friends [A], [B] and [C] went to the [PLACE]. [B] and [C] gave a [OBJECT] to [A]",
 ]
 
-BAC_TEMPLATES = [
-    template.replace("[B]", "[A]", 1).replace("[A]", "[B]", 1)
-    for template in ABC_TEMPLATES
-]
+BAC_TEMPLATES = [template.replace("[B]", "[A]", 1).replace("[A]", "[B]", 1) for template in ABC_TEMPLATES]
 
 BABA_TEMPLATES = [
     "Then, [B] and [A] went to the [PLACE]. [B] gave a [OBJECT] to [A]",
@@ -279,9 +276,7 @@ def iter_sample_fast(iterable, samplesize):
 NOUNS_DICT = NOUNS_DICT = {"[PLACE]": PLACES, "[OBJECT]": OBJECTS}
 
 
-def gen_prompt_uniform(
-    templates, names, nouns_dict, N, symmetric, prefixes=None, abc=False
-):
+def gen_prompt_uniform(templates, names, nouns_dict, N, symmetric, prefixes=None, abc=False):
     nb_gen = 0
     ioi_prompts = []
     while nb_gen < N:
@@ -330,9 +325,7 @@ def gen_prompt_uniform(
             prompt2 = prompt.replace("[A]", name_2)
             prompt2 = prompt2.replace("[B]", name_1)
             prompt2 = pref + prompt2
-            ioi_prompts.append(
-                {"text": prompt2, "IO": name_2, "S": name_1, "TEMPLATE_IDX": temp_id}
-            )
+            ioi_prompts.append({"text": prompt2, "IO": name_2, "S": name_1, "TEMPLATE_IDX": temp_id})
             nb_gen += 1
     return ioi_prompts
 
@@ -449,9 +442,7 @@ def gen_flipped_prompts(prompts, names, flip=("S2", "IO")):
                 ][np.random.randint(2)]
             else:
                 t[t.index(prompt["S"]) + 1] = (
-                    t[t.index(prompt["S"])]
-                    + ", after a great day, "
-                    + t[t.index(prompt["S"]) + 1]
+                    t[t.index(prompt["S"])] + ", after a great day, " + t[t.index(prompt["S"]) + 1]
                 )
                 del t[t.index(prompt["S"])]
         else:
@@ -484,13 +475,7 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"], prepend_bos=F
         toks = tokenizer.tokenize(" ".join(t[:-1]))
         for idx_type in idx_types:
             if "2" in idx_type:
-                idx = (
-                    len(toks)
-                    - toks[::-1].index(
-                        tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]
-                    )
-                    - 1
-                )
+                idx = len(toks) - toks[::-1].index(tokenizer.tokenize(" " + prompt[idx_type[:-1]])[0]) - 1
             else:
                 idx = toks.index(tokenizer.tokenize(" " + prompt[idx_type])[0])
             name_idx_dict[idx_type].append(idx)
@@ -500,10 +485,7 @@ def get_name_idxs(prompts, tokenizer, idx_types=["IO", "S", "S2"], prepend_bos=F
     if double_s2:
         warnings.warn("S2 index has been computed as the same for S and S2")
 
-    return [
-        int(prepend_bos) + torch.tensor(name_idx_dict[idx_type])
-        for idx_type in idx_types
-    ]
+    return [int(prepend_bos) + torch.tensor(name_idx_dict[idx_type]) for idx_type in idx_types]
 
 
 def get_end_idxs(prompts, tokenizer, name_tok_len=1, prepend_bos=False, toks=None):
@@ -620,11 +602,7 @@ def flip_names(ioi_prompts):
         io = prompt["IO"]
         s = prompt["S"]
         prompt["text"] = (
-            prompt["text"][:punct_idx]
-            .replace(io, "#")
-            .replace(s, "@")
-            .replace("#", s)
-            .replace("@", io)
+            prompt["text"][:punct_idx].replace(io, "#").replace(s, "@").replace("#", s).replace("@", io)
         ) + prompt["text"][punct_idx:]
         # print(prompt["text"])
 
@@ -634,9 +612,7 @@ def flip_names(ioi_prompts):
 class IOIDataset:
     def __init__(
         self,
-        prompt_type: Union[
-            str, List[str]
-        ],  # if list, then it will be a list of templates
+        prompt_type: Union[str, List[str]],  # if list, then it will be a list of templates
         N=500,
         tokenizer=None,
         prompts=None,
@@ -646,6 +622,7 @@ class IOIDataset:
         ioi_prompts_for_word_idxs=None,
         prepend_bos=False,
         manual_word_idx=None,
+        max_names=None,
     ):
         """
         ioi_prompts_for_word_idxs:
@@ -653,18 +630,10 @@ class IOIDataset:
             (example use case: making a ABCA dataset)
         """
 
-        if not (
-            N == 1
-            or prepend_bos == False
-            or tokenizer.bos_token_id == tokenizer.eos_token_id
-        ):
-            warnings.warn(
-                "Probably word_idx will be calculated incorrectly due to this formatting"
-            )
+        if not (N == 1 or prepend_bos == False or tokenizer.bos_token_id == tokenizer.eos_token_id):
+            warnings.warn("Probably word_idx will be calculated incorrectly due to this formatting")
         assert not (symmetric and prompt_type == "ABC")
-        assert (
-            (prompts is not None) or (not symmetric) or (N % 2 == 0)
-        ), f"{symmetric} {N}"
+        assert (prompts is not None) or (not symmetric) or (N % 2 == 0), f"{symmetric} {N}"
         assert nb_templates is None or (nb_templates % 2 == 0 or prompt_type != "mixed")
         self.prompt_type = prompt_type
 
@@ -676,20 +645,14 @@ class IOIDataset:
         elif prompt_type == "BABA":
             self.templates = BABA_TEMPLATES[:nb_templates].copy()
         elif prompt_type == "mixed":
-            self.templates = (
-                BABA_TEMPLATES[: nb_templates // 2].copy()
-                + ABBA_TEMPLATES[: nb_templates // 2].copy()
-            )
+            self.templates = BABA_TEMPLATES[: nb_templates // 2].copy() + ABBA_TEMPLATES[: nb_templates // 2].copy()
             random.shuffle(self.templates)
         elif prompt_type == "ABC":
             self.templates = ABC_TEMPLATES[:nb_templates].copy()
         elif prompt_type == "BAC":
             self.templates = BAC_TEMPLATES[:nb_templates].copy()
         elif prompt_type == "ABC mixed":
-            self.templates = (
-                ABC_TEMPLATES[: nb_templates // 2].copy()
-                + BAC_TEMPLATES[: nb_templates // 2].copy()
-            )
+            self.templates = ABC_TEMPLATES[: nb_templates // 2].copy() + BAC_TEMPLATES[: nb_templates // 2].copy()
             random.shuffle(self.templates)
         elif isinstance(prompt_type, list):
             self.templates = prompt_type
@@ -704,10 +667,15 @@ class IOIDataset:
 
         self.prefixes = prefixes
         self.prompt_type = prompt_type
+
+        if max_names is None:
+            max_names = len(NAMES)
+        self.max_names = max_names
+
         if prompts is None:
             self.ioi_prompts = gen_prompt_uniform(  # a list of dict of the form {"text": "Alice and Bob bla bla. Bob gave bla to Alice", "IO": "Alice", "S": "Bob"}
                 self.templates,
-                NAMES,
+                NAMES[:max_names],
                 nouns_dict={"[PLACE]": PLACES, "[OBJECT]": OBJECTS},
                 N=N,
                 symmetric=symmetric,
@@ -729,31 +697,22 @@ class IOIDataset:
             if len(group) < 5:
                 small_groups.append(len(group))
         if len(small_groups) > 0:
-            warnings.warn(
-                f"Some groups have less than 5 prompts, they have lengths {small_groups}"
-            )
+            warnings.warn(f"Some groups have less than 5 prompts, they have lengths {small_groups}")
 
-        self.text_prompts = [
-            prompt["text"] for prompt in self.ioi_prompts
-        ]  # a list of strings
+        self.text_prompts = [prompt["text"] for prompt in self.ioi_prompts]  # a list of strings
 
         self.templates_by_prompt = []  # for each prompt if it's ABBA or BABA
         for i in range(N):
-            if self.text_prompts[i].index(
-                self.ioi_prompts[i]["IO"]
-            ) < self.text_prompts[i].index(self.ioi_prompts[i]["S"]):
+            if self.text_prompts[i].index(self.ioi_prompts[i]["IO"]) < self.text_prompts[i].index(
+                self.ioi_prompts[i]["S"]
+            ):
                 self.templates_by_prompt.append("ABBA")
             else:
                 self.templates_by_prompt.append("BABA")
 
         # print(self.ioi_prompts, "that's that")
-        texts = [
-            (self.tokenizer.bos_token if prepend_bos else "") + prompt["text"]
-            for prompt in self.ioi_prompts
-        ]
-        self.toks = torch.Tensor(self.tokenizer(texts, padding=True).input_ids).type(
-            torch.int
-        )
+        texts = [(self.tokenizer.bos_token if prepend_bos else "") + prompt["text"] for prompt in self.ioi_prompts]
+        self.toks = torch.Tensor(self.tokenizer(texts, padding=True).input_ids).type(torch.int)
 
         if ioi_prompts_for_word_idxs is None:
             ioi_prompts_for_word_idxs = self.ioi_prompts
@@ -771,26 +730,15 @@ class IOIDataset:
             k: v for k, v in self.word_idx.items() if k in ALL_SEM
         }  # the semantic indices that kevin uses
         self.N = N
-        self.max_len = max(
-            [
-                len(self.tokenizer(prompt["text"]).input_ids)
-                for prompt in self.ioi_prompts
-            ]
-        )
+        self.max_len = max([len(self.tokenizer(prompt["text"]).input_ids) for prompt in self.ioi_prompts])
 
-        self.io_tokenIDs = [
-            self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts
-        ]
-        self.s_tokenIDs = [
-            self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts
-        ]
+        self.io_tokenIDs = [self.tokenizer.encode(" " + prompt["IO"])[0] for prompt in self.ioi_prompts]
+        self.s_tokenIDs = [self.tokenizer.encode(" " + prompt["S"])[0] for prompt in self.ioi_prompts]
 
         self.tokenized_prompts = []
 
         for i in range(self.N):
-            self.tokenized_prompts.append(
-                "|".join([self.tokenizer.decode(tok) for tok in self.toks[i]])
-            )
+            self.tokenized_prompts.append("|".join([self.tokenizer.decode(tok) for tok in self.toks[i]]))
 
     @classmethod
     def construct_from_ioi_prompts_metadata(cls, templates, ioi_prompts_data, **kwargs):
@@ -869,6 +817,7 @@ class IOIDataset:
             ioi_prompts_for_word_idxs=flipped_prompts if flip[0] == "RAND" else None,
             prepend_bos=self.prepend_bos,
             manual_word_idx=manual_word_idx,
+            max_names=self.max_names,
         )
         return flipped_ioi_dataset
 
@@ -878,10 +827,9 @@ class IOIDataset:
             N=self.N,
             tokenizer=self.tokenizer,
             prompts=self.ioi_prompts.copy(),
-            prefixes=self.prefixes.copy()
-            if self.prefixes is not None
-            else self.prefixes,
+            prefixes=self.prefixes.copy() if self.prefixes is not None else self.prefixes,
             ioi_prompts_for_word_idxs=self.ioi_prompts.copy(),
+            max_names=self.max_names,
         )
         return copy_ioi_dataset
 
@@ -894,6 +842,7 @@ class IOIDataset:
             prompts=sliced_prompts,
             prefixes=self.prefixes,
             prepend_bos=self.prepend_bos,
+            max_names=self.max_names,
         )
         return sliced_dataset
 

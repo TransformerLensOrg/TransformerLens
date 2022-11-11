@@ -9,7 +9,7 @@ from curses import A_ALTCHARSET
 import warnings
 
 from ioi_utils import logit_diff, probs
-from easy_transformer.EasyTransformer import MODEL_NAMES_DICT, LayerNormPre
+from easy_transformer.EasyTransformer import LayerNormPre
 from tqdm import tqdm
 import pandas as pd
 import torch
@@ -74,14 +74,7 @@ from ioi_dataset import (
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
 )
-from ioi_utils import (
-    all_subsets,
-    clear_gpu_mem,
-    show_tokens,
-    show_pp,
-    show_attention_patterns,
-    safe_del,
-)
+from ioi_utils import all_subsets, clear_gpu_mem, show_tokens, show_pp, show_attention_patterns, safe_del, path_patching
 from ioi_circuit_extraction import (
     do_circuit_extraction,
     gen_prompt_uniform,
@@ -109,9 +102,10 @@ if ipython is not None:
 model_name = "gpt2"  # Here we used gpt-2 small ("gpt2")
 
 print_gpu_mem("About to load model")
-model = EasyTransformer(
-    model_name, use_attn_result=True
+model = EasyTransformer.from_pretrained(
+    model_name
 )  # use_attn_result adds a hook blocks.{lay}.attn.hook_result that is before adding the biais of the attention layer
+model.set_use_attn_result(True)
 device = "cuda"
 if torch.cuda.is_available():
     model.to(device)
@@ -126,9 +120,7 @@ N = 200
 ioi_dataset_baba = IOIDataset(prompt_type="BABA", N=N, tokenizer=model.tokenizer)
 ioi_dataset_abba = IOIDataset(prompt_type="ABBA", N=N, tokenizer=model.tokenizer)
 ioi_dataset = IOIDataset(prompt_type="mixed", N=N, tokenizer=model.tokenizer)
-abca_dataset = ioi_dataset.gen_flipped_prompts(
-    ("S2", "RAND")
-)  # we flip the second b for a random c
+abca_dataset = ioi_dataset.gen_flipped_prompts(("S2", "RAND"))  # we flip the second b for a random c
 pprint(abca_dataset.text_prompts[:5])
 
 
@@ -136,9 +128,7 @@ acc_dataset = ioi_dataset.gen_flipped_prompts(("S", "RAND"))
 dcc_dataset = acc_dataset.gen_flipped_prompts(("IO", "RAND"))
 dcc_pref_fliped = dcc_dataset.gen_flipped_prompts("prefix")
 
-acba_dataset = ioi_dataset.gen_flipped_prompts(
-    ("S1", "RAND")
-)  # we flip the first occurence of S
+acba_dataset = ioi_dataset.gen_flipped_prompts(("S1", "RAND"))  # we flip the first occurence of S
 acba_dataset.text_prompts[0], ioi_dataset.text_prompts[0]
 
 
@@ -156,16 +146,12 @@ def attention_probs(
     """Difference between the IO and the S logits at the "to" token"""
     hook_names = [f"blocks.{l}.attn.hook_attn" for l in layers]
     cache_patched = {}
-    model.cache_some(
-        cache_patched, lambda x: x in hook_names
-    )  # we only cache the activation we're interested
+    model.cache_some(cache_patched, lambda x: x in hook_names)  # we only cache the activation we're interested
     logits = model(text_prompts).detach()
     # we want to measure Mean(Patched/baseline) and not Mean(Patched)/Mean(baseline)
     model.reset_hooks()
     cache_baseline = {}
-    model.cache_some(
-        cache_baseline, lambda x: x in hook_names
-    )  # we only cache the activation we're interested
+    model.cache_some(cache_baseline, lambda x: x in hook_names)  # we only cache the activation we're interested
     logits = model(text_prompts).detach()
     # attn score of head HEAD at token "to" (end) to token IO
 
@@ -196,54 +182,32 @@ def attention_probs(
                 ]
                 if variation:
                     attn_probs_variation.append(
-                        ((attn_probs_patched - attn_probs_base) / attn_probs_base)
-                        .mean()
-                        .unsqueeze(dim=0)
+                        ((attn_probs_patched - attn_probs_base) / attn_probs_base).mean().unsqueeze(dim=0)
                     )
                 else:
                     all_attn_probs_patch.append(attn_probs_patched.unsqueeze(dim=0))
                     all_attn_probs_base.append(attn_probs_base.unsqueeze(dim=0))
 
         if variation:
-            attn_probs_variation_by_keys.append(
-                torch.cat(attn_probs_variation).mean(dim=0, keepdim=True)
-            )
+            attn_probs_variation_by_keys.append(torch.cat(attn_probs_variation).mean(dim=0, keepdim=True))
         if not variation:
-            attn_probs_base_by_keys["mean"].append(
-                torch.cat(all_attn_probs_base).mean().unsqueeze(0)
-            )
-            attn_probs_patch_by_keys["mean"].append(
-                torch.cat(all_attn_probs_patch).mean().unsqueeze(0)
-            )
-            attn_probs_base_by_keys["std"].append(
-                torch.cat(all_attn_probs_base).std().unsqueeze(0)
-            )
-            attn_probs_patch_by_keys["std"].append(
-                torch.cat(all_attn_probs_patch).std().unsqueeze(0)
-            )
+            attn_probs_base_by_keys["mean"].append(torch.cat(all_attn_probs_base).mean().unsqueeze(0))
+            attn_probs_patch_by_keys["mean"].append(torch.cat(all_attn_probs_patch).mean().unsqueeze(0))
+            attn_probs_base_by_keys["std"].append(torch.cat(all_attn_probs_base).std().unsqueeze(0))
+            attn_probs_patch_by_keys["std"].append(torch.cat(all_attn_probs_patch).std().unsqueeze(0))
 
     if variation:
         attn_probs_variation_by_keys = torch.cat(attn_probs_variation_by_keys, dim=0)
         return attn_probs_variation_by_keys.cpu()
     else:
-        attn_probs_base_by_keys["mean"] = (
-            torch.cat(attn_probs_base_by_keys["mean"]).cpu().numpy()
-        )
-        attn_probs_base_by_keys["std"] = (
-            torch.cat(attn_probs_base_by_keys["std"]).cpu().numpy()
-        )
-        attn_probs_patch_by_keys["mean"] = (
-            torch.cat(attn_probs_patch_by_keys["mean"]).cpu().numpy()
-        )
-        attn_probs_patch_by_keys["std"] = (
-            torch.cat(attn_probs_patch_by_keys["std"]).cpu().numpy()
-        )
+        attn_probs_base_by_keys["mean"] = torch.cat(attn_probs_base_by_keys["mean"]).cpu().numpy()
+        attn_probs_base_by_keys["std"] = torch.cat(attn_probs_base_by_keys["std"]).cpu().numpy()
+        attn_probs_patch_by_keys["mean"] = torch.cat(attn_probs_patch_by_keys["mean"]).cpu().numpy()
+        attn_probs_patch_by_keys["std"] = torch.cat(attn_probs_patch_by_keys["std"]).cpu().numpy()
         return attn_probs_base_by_keys, attn_probs_patch_by_keys
 
 
-def patch_positions(
-    z, source_act, hook, positions=["S2"]
-):  # we patch at the "to" token
+def patch_positions(z, source_act, hook, positions=["S2"]):  # we patch at the "to" token
     for pos in positions:
         z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]] = source_act[
             torch.arange(ioi_dataset.N), ioi_dataset.word_idx[pos]
@@ -259,17 +223,12 @@ def print_perf_s_in_patching(patching, source_dataset):
         hk_name, hk = patching.get_hook(l, h)
         model.add_hook(hk_name, hk)  # we patch head 8.6
     print(f"Logit diff on IOI : {logit_diff(model, ioi_dataset)}")
-    print(
-        f"Logit diff on IOI with target from soure: {logit_diff(model, ioi_dataset, target_dataset=source_dataset)}"
-    )
     print()
     dataset_name = ["IOI", "source"]
-    for i, dataset in enumerate([ioi_dataset, source_dataset]):
-        for t in ["io", "s"]:
-            print(
-                f"Prob of {t} on IOI (target={dataset_name[i]}) : {probs(model, ioi_dataset, type=t, target_dataset=dataset)}"
-            )
-        print()
+
+    for t in ["io", "s"]:
+        print(f"Prob of {t} on IOI: {probs(model, ioi_dataset, type=t)}")
+    print()
 
 
 import plotly.graph_objects as pgo
@@ -283,9 +242,7 @@ def show_attn_before_after_s_in_patch(patching, title=""):
     for l, h in all_heads:
         hk_name, hk = patching.get_hook(l, h)
         model.add_hook(hk_name, hk)  # we patch head 8.6
-    attn_pre, attn_post = attention_probs(
-        model, ioi_dataset.text_prompts, variation=False
-    )
+    attn_pre, attn_post = attention_probs(model, ioi_dataset.toks.long(), variation=False)
 
     x = ["IO", "S1", "S2"]
     plot = pgo.Figure(
@@ -305,9 +262,51 @@ def show_attn_before_after_s_in_patch(patching, title=""):
         ],
     )
 
-    plot.update_layout(
-        title="Average NM attention from END after / before patching S-IN " + title
+    plot.update_layout(title="Average NM attention from END after / before patching S-IN " + title)
+    plot.show()
+
+
+def nm_attention_path_patching(heads_to_patch, source_dataset, target_dataset, positions, model):
+    model.reset_hooks()
+    model = path_patching(
+        model,
+        source_dataset,
+        target_dataset,
+        target_dataset,
+        heads_to_patch,
+        [("blocks.9.attn.hook_q", 6), ("blocks.9.attn.hook_q", 9), ("blocks.10.attn.hook_q", 0)],
+        12,
+        positions=positions,
+        verbose=False,
+        return_hooks=False,
+        extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
+        freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
+        have_internal_interactions=False,
     )
+
+    print(f"Logit diff after path patching {logit_diff(model, ioi_dataset)}")
+
+    attn_pre, attn_post = attention_probs(model, target_dataset.toks.long(), variation=False)
+
+    x = ["IO", "S1", "S2"]
+    plot = pgo.Figure(
+        data=[
+            go.Bar(
+                name="Attn pre Partching",
+                x=x,
+                y=attn_pre["mean"],
+                error_y=dict(type="data", array=attn_pre["std"]),
+            ),
+            go.Bar(
+                name="Attn post Patching",
+                x=x,
+                y=attn_post["mean"],
+                error_y=dict(type="data", array=attn_post["std"]),
+            ),
+        ],
+    )
+
+    plot.update_layout(title=f"Average NM attention from END after / before PATH patching {heads_to_patch} " + title)
     plot.show()
 
 
@@ -331,9 +330,7 @@ config = PatchingConfig(
     layers=(0, 9 - 1),
 )
 
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
 
 patching = EasyPatching(model, config, metric)
 result = patching.run_patching()
@@ -414,9 +411,7 @@ config = PatchingConfig(
     layers=(0, max(layers) - 1),
 )
 
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
 patching = EasyPatching(model, config, metric)
 # %%
 patching.other_hooks = []
@@ -451,9 +446,7 @@ for l in range(12):
 nm = [(9, 6), (9, 9), (10, 0)]
 
 layers_to_freeze = list(heads.keys())
-all_execept_heads = {
-    l: [x for x in range(12) if x not in heads[l]] for l in layers_to_freeze
-}
+all_execept_heads = {l: [x for x in range(12) if x not in heads[l]] for l in layers_to_freeze}
 
 use_complement = True
 if use_complement:
@@ -495,9 +488,7 @@ def freeze_attention_head_end(z, hook):
         end = torch.tensor(ioi_dataset.word_idx["end"]).unsqueeze(1)
         # print(z[rge, end, heads[layer], :].shape)
 
-        z[rge, end, heads_to_freeze[layer], :] = cache[hook.name][
-            rge, end, heads_to_freeze[layer], :
-        ]
+        z[rge, end, heads_to_freeze[layer], :] = cache[hook.name][rge, end, heads_to_freeze[layer], :]
     if "hook_mlp_out" in hook.name:
         z[range(ioi_dataset.N), ioi_dataset.word_idx["end"], :] = cache[hook.name][
             range(ioi_dataset.N), ioi_dataset.word_idx["end"], :
@@ -521,11 +512,7 @@ for i, key in enumerate(["IO", "S", "S2"]):
         labels={"y": "Layer", "x": "Head"},
         title=(
             f"Average attention proba of Heads {str(heads_to_measure)} from token 'to' to {key} after Patching ABC->ABB on {positions} <br>"
-            + (
-                f"Freezing all heads at END except {heads}"
-                if use_complement
-                else f"Freezing at END {heads}"
-            )
+            + (f"Freezing all heads at END except {heads}" if use_complement else f"Freezing at END {heads}")
             + f"<br> MLP frozen at END {mlp_to_freeze}"
         ),
         color_continuous_midpoint=0,
@@ -553,9 +540,7 @@ IDX = 50
 
 def one_sentence_patching(z, source_act, hook):  # we patch at the "to" token
     # print(source_act.shape, z.shape)
-    z[0, ioi_dataset.word_idx["S2"][IDX]] = source_act[
-        0, ioi_dataset.word_idx["S2"][IDX]
-    ]
+    z[0, ioi_dataset.word_idx["S2"][IDX]] = source_act[0, ioi_dataset.word_idx["S2"][IDX]]
     return z
 
 
@@ -641,9 +626,7 @@ config = PatchingConfig(
     layers=(0, max(layers) - 1),
 )
 
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
 patching = EasyPatching(model, config, metric)
 
 
@@ -693,11 +676,7 @@ def show_logit_diff(patching, title):
 
         print(c["blocks.2.hook_mlp_out"][0, ioi_dataset.word_idx["end"][0], :5])
 
-        print(
-            patching.act_cache["blocks.2.hook_mlp_out"][
-                0, ioi_dataset.word_idx["end"][0], :5
-            ]
-        )
+        print(patching.act_cache["blocks.2.hook_mlp_out"][0, ioi_dataset.word_idx["end"][0], :5])
 
     px.line(
         x=range(-1, 12),
@@ -721,9 +700,7 @@ IDX = 50
 
 def one_sentence_patching(z, source_act, hook):  # we patch at the "to" token
     # print(source_act.shape, z.shape)
-    z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[
-        0, ioi_dataset.word_idx["end"][IDX]
-    ]
+    z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[0, ioi_dataset.word_idx["end"][IDX]]
     return z
 
 
@@ -770,9 +747,7 @@ show_attention_patterns(
 # %%
 IDX = 35
 
-ioi_dataset.ioi_prompts[IDX][
-    "text"
-] = "When Kevin, Sean and Ben went to the school, Sean gave a computer to"
+ioi_dataset.ioi_prompts[IDX]["text"] = "When Kevin, Sean and Ben went to the school, Sean gave a computer to"
 
 model.reset_hooks()
 show_attention_patterns(
@@ -808,9 +783,7 @@ config = PatchingConfig(
     layers=(0, 9 - 1),
 )
 
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
+metric = ExperimentMetric(attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False)
 
 patching = EasyPatching(model, config, metric)
 result = patching.run_patching()
@@ -841,7 +814,7 @@ positions = ["end"]
 
 # flip_pref_dataset = dcc_dataset.gen_flipped_prompts("prefix")
 
-# flip_template_dataset = ioi_dataset.gen_flipped_prompts(("IO", "S1"))
+flip_template_dataset = ioi_dataset.gen_flipped_prompts(("S2", "IO"))
 
 
 dcc_pref_interval_fliped = dcc_pref_fliped.gen_flipped_prompts(("S+1", "RAND"))
@@ -852,35 +825,51 @@ dcc_template_flipped = dcc_dataset.gen_flipped_prompts(("IO", "S1"))
 temp_s_flipped = ioi_dataset.gen_flipped_prompts(("IO", "S1"))
 temp_s_flipped = temp_s_flipped.gen_flipped_prompts(("S2", "IO"))
 
-source_dataset = temp_s_flipped
-title = "DCC+Template Flipped"
+# %%
+source_dataset = flip_template_dataset
+title = "DCC"
 
 
-def patch_end(z, source_act, hook):  # we patch at the "to" token
-    z[torch.arange(ioi_dataset.N), ioi_dataset.word_idx["end"]] = source_act[
-        torch.arange(ioi_dataset.N), source_dataset.word_idx["end"]
-    ]
-    return z
+sin = [(7, 3), (7, 9), (8, 6), (8, 10)]  # 7.3 7.9 8.6 8.10
 
+position = ["end"]
 
-config = PatchingConfig(
-    source_dataset=source_dataset.text_prompts,  # abca_dataset.text_prompts,
-    target_dataset=ioi_dataset.text_prompts,
-    target_module="attn_head",
-    head_circuit="result",
-    cache_act=True,
+dup_and_ind = [(0, 1), (3, 0), (5, 5), (6, 9)]
+nm_attention_path_patching(sin, source_dataset, ioi_dataset, position, model)
+
+backup_nm = [(9, 0), (9, 7), (10, 1), (10, 2), (10, 6), (10, 10), (11, 2), (11, 9)]
+
+all_nm = [(9, 6), (9, 9), (10, 0), (10, 7), (11, 10)] + backup_nm
+
+all_nm = [(l, h) for l in range(9, 12) for h in range(12)]
+all_nm_hooks = []
+for l, h in all_nm:
+    all_nm_hooks.append((f"blocks.{l}.attn.hook_q", h))
+    all_nm_hooks.append((f"blocks.{l}.attn.hook_k", h))
+    all_nm_hooks.append((f"blocks.{l}.attn.hook_v", h))
+
+all_sin_hooks = []
+for l, h in sin:
+    all_sin_hooks.append((f"blocks.{l}.attn.hook_v", h))
+
+model.reset_hooks()
+model = path_patching(
+    model,
+    source_dataset,
+    ioi_dataset,
+    ioi_dataset,
+    sin,
+    all_nm_hooks,
+    12,
+    positions=position,
     verbose=False,
-    patch_fn=patch_end,
-    layers=(0, max(layers) - 1),
+    return_hooks=False,
+    extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
+    freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
+    have_internal_interactions=False,
 )
 
-metric = ExperimentMetric(
-    attention_probs, config.target_dataset, relative_metric=False, scalar_metric=False
-)
-patching = EasyPatching(model, config, metric)
-
-show_attn_before_after_s_in_patch(patching)
-print_perf_s_in_patching(patching, source_dataset)
+print(f"Logit diff after path patching {logit_diff(model, ioi_dataset)}")
 
 # %%
 
@@ -924,9 +913,7 @@ IDX = 50
 
 def one_sentence_patching(z, source_act, hook):  # we patch at the "to" token
     # print(source_act.shape, z.shape)
-    z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[
-        0, flip_template_dataset.word_idx["end"][IDX]
-    ]
+    z[0, ioi_dataset.word_idx["end"][IDX]] = source_act[0, flip_template_dataset.word_idx["end"][IDX]]
     return z
 
 
@@ -972,9 +959,7 @@ show_attention_patterns(
 
 # %%
 model.reset_hooks()
-ioi_dataset.text_prompts[
-    IDX
-] = "Then, Alicia and Cody had a long argument, and afterwards Cody said to Alicia"
+ioi_dataset.text_prompts[IDX] = "Then, Alicia and Cody had a long argument, and afterwards Cody said to Alicia"
 show_attention_patterns(
     model,
     [(9, 9)],

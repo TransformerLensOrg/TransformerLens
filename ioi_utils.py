@@ -169,22 +169,16 @@ def show_attention_patterns(
     for (layer, head) in heads:
         cache = {}
 
-        good_names = [
-            f"blocks.{layer}.attn.hook_attn" + ("_scores" if mode == "scores" else "")
-        ]
+        good_names = [f"blocks.{layer}.attn.hook_attn" + ("_scores" if mode == "scores" else "")]
         if mode == "val":
             good_names.append(f"blocks.{layer}.attn.hook_v")
         if precomputed_cache is None:
-            model.cache_some(
-                cache=cache, names=lambda x: x in good_names
-            )  # shape: batch head_no seq_len seq_len
+            model.cache_some(cache=cache, names=lambda x: x in good_names)  # shape: batch head_no seq_len seq_len
             logits = model(ioi_dataset.toks.long())
             print(cache.keys(), good_names)
         else:
             cache = precomputed_cache
-        attn_results = torch.zeros(
-            size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len)
-        )
+        attn_results = torch.zeros(size=(ioi_dataset.N, ioi_dataset.max_len, ioi_dataset.max_len))
         attn_results += -20
 
         for i, text in enumerate(prompts):
@@ -223,9 +217,7 @@ def show_attention_patterns(
             if return_fig and not return_mtx:
                 return fig
             elif return_mtx and not return_fig:
-                attn_results[i, :current_length, :current_length] = (
-                    attn[:current_length, :current_length].clone().cpu()
-                )
+                attn_results[i, :current_length, :current_length] = attn[:current_length, :current_length].clone().cpu()
             else:
                 fig.show()
 
@@ -318,18 +310,14 @@ def scatter_attention_and_contribution(
         ]:
             prob = sum(
                 [
-                    cache[f"blocks.{layer_no}.attn.hook_attn"][
-                        i, head_no, ioi_dataset.word_idx["end"][i], pos
-                    ]
+                    cache[f"blocks.{layer_no}.attn.hook_attn"][i, head_no, ioi_dataset.word_idx["end"][i], pos]
                     .detach()
                     .cpu()
                     for pos in posses
                 ]
             )
             resid = (
-                cache[f"blocks.{layer_no}.attn.hook_result"][
-                    i, ioi_dataset.word_idx["end"][i], head_no, :
-                ]
+                cache[f"blocks.{layer_no}.attn.hook_result"][i, ioi_dataset.word_idx["end"][i], head_no, :]
                 .detach()
                 .cpu()
             )
@@ -337,9 +325,7 @@ def scatter_attention_and_contribution(
             df.append([prob, dot, tok_type, prompt["text"]])
 
     # most of the pandas stuff is intuitive, no need to deeply understand
-    viz_df = pd.DataFrame(
-        df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"]
-    )
+    viz_df = pd.DataFrame(df, columns=[f"Attn Prob on Name", f"Dot w Name Embed", "Name Type", "text"])
     fig = px.scatter(
         viz_df,
         x=f"Attn Prob on Name",
@@ -412,17 +398,13 @@ def logit_diff(
     ]
 
     if both:
-        return handle_all_and_std(IO_logits, all, std), handle_all_and_std(
-            S_logits, all, std
-        )
+        return handle_all_and_std(IO_logits, all, std), handle_all_and_std(S_logits, all, std)
 
     else:
         return handle_all_and_std(IO_logits - S_logits, all, std)
 
 
-def attention_on_token(
-    model, ioi_dataset, layer, head_idx, token, all=False, std=False, scores=False
-):
+def attention_on_token(model, ioi_dataset, layer, head_idx, token, all=False, std=False, scores=False):
     """
     Get the attention on token `token` from the end position
     """
@@ -457,9 +439,7 @@ def posses(model, ioi_dataset, all=False, std=False):
     text_prompts = ioi_dataset.text_prompts
     logits = model(text_prompts).detach().cpu()  # batch * sequence length * vocab_size
     warnings.warn("+1ing")
-    end_logits = logits[
-        torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"] + 1, :
-    ]  # batch * vocab_size
+    end_logits = logits[torch.arange(len(text_prompts)), ioi_dataset.word_idx["end"] + 1, :]  # batch * vocab_size
 
     positions = torch.argsort(end_logits, dim=1)
     io_positions = positions[torch.arange(len(text_prompts)), ioi_dataset.io_tokenIDs]
@@ -472,13 +452,8 @@ def probs(model, ioi_dataset, all=False, std=False, type="io", verbose=False):
     IO probs
     """
 
-    logits = model(
-        ioi_dataset.toks.long()
-    ).detach()  # batch * sequence length * vocab_size
-    warnings.warn("Not +1ing")
-    end_logits = logits[
-        torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :
-    ]  # batch * vocab_size
+    logits = model(ioi_dataset.toks.long()).detach()  # batch * sequence length * vocab_size
+    end_logits = logits[torch.arange(len(ioi_dataset)), ioi_dataset.word_idx["end"], :]  # batch * vocab_size
 
     end_probs = torch.softmax(end_logits, dim=1)
 
@@ -497,9 +472,7 @@ def probs(model, ioi_dataset, all=False, std=False, type="io", verbose=False):
 
 
 def get_top_tokens_and_probs(model, text_prompt):
-    logits, tokens = model(
-        text_prompt, prepend_bos=False, return_type="logits_and_tokens"
-    )
+    logits, tokens = model(text_prompt, prepend_bos=False, return_type="logits_and_tokens")
     logits = logits.squeeze(0)
     end_probs = torch.softmax(logits, dim=1)
     # topk = torch.topk(end_probs[])
@@ -666,9 +639,7 @@ def compute_next_tok_dot_prod(
     """Compute dot product of model's next token logits with the logits of the next token in the sentences. Support batch_size > 1"""
     assert len(sentences) % batch_size == 0
     cache = {}
-    model.cache_some(
-        cache, lambda x: x in [f"blocks.{l}.attn.hook_result"], device="cuda"
-    )
+    model.cache_some(cache, lambda x: x in [f"blocks.{l}.attn.hook_result"], device="cuda")
     if seq_tokenized:
         toks = sentences
     else:
@@ -700,12 +671,7 @@ def compute_next_tok_dot_prod(
             next_tok_dir = model_unembed[next_tok]  # nb_seq, seq_len-1, dim
             # print(attn_result.shape, next_tok_dir.shape, len(toks[idx]) - 1)
             # print(next_tok_dir.shape, attn_result.shape)
-            prod.append(
-                torch.einsum("hd,hd->h", attn_result, next_tok_dir)
-                .detach()
-                .cpu()
-                .numpy()
-            )
+            prod.append(torch.einsum("hd,hd->h", attn_result, next_tok_dir).detach().cpu().numpy())
         # get_time("post prod")
     # print_gpu_mem("post run")
     return prod
@@ -740,11 +706,7 @@ def print_toks_with_color(toks, color, show_low=False, show_high=False, show_all
 
         if show_value:
             if len(str(np.round(color[i], 2)).split(".")) > 1:
-                val = (
-                    str(np.round(color[i], 2)).split(".")[0]
-                    + "."
-                    + str(np.round(color[i], 2)).split(".")[1][:2]
-                )
+                val = str(np.round(color[i], 2)).split(".")[0] + "." + str(np.round(color[i], 2)).split(".")[1][:2]
             else:
                 val = str(np.round(color[i], 2))
             print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}({val})\033[0;0m", end="")
@@ -780,9 +742,8 @@ def export_tok_col_to_file(folder, head, layer, tok_col, toks, chunck_name):
     filename = f"{folder}/layer_{layer}_head_{head}/layer_{layer}_head_{head}_{chunck_name}.html"
     all_html = ""
     for i in range(len(tok_col)):
-        all_html += (
-            f"<br><br><br>==============Sequence {i}=============<br><br><br>"
-            + tok_color_scale_to_html(toks[i], tok_col[i])
+        all_html += f"<br><br><br>==============Sequence {i}=============<br><br><br>" + tok_color_scale_to_html(
+            toks[i], tok_col[i]
         )
     with open(filename, "w") as f:
         f.write(all_html)
@@ -810,15 +771,9 @@ def find_owt_stimulus(
     # print(max_seq_idx)
     random_idx = np.random.choice(len(owt_sentences), k)
 
-    max_seq = [
-        show_tokens(owt_sentences[i], model, return_list=True) for i in max_seq_idx
-    ]
-    min_seq = [
-        show_tokens(owt_sentences[i], model, return_list=True) for i in min_seq_idx
-    ]
-    random_seq = [
-        show_tokens(owt_sentences[i], model, return_list=True) for i in random_idx
-    ]
+    max_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in max_seq_idx]
+    min_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in min_seq_idx]
+    random_seq = [show_tokens(owt_sentences[i], model, return_list=True) for i in random_idx]
     max_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in max_seq_idx]
     min_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in min_seq_idx]
     random_seq_vals = [np.concatenate([np.array([0]), prod[i]]) for i in random_idx]
@@ -867,9 +822,7 @@ def find_owt_stimulus(
 #### Composition
 
 
-def sample_activation(
-    model, dataset: list[str], hook_names: list[str], n: int
-) -> dict[str, torch.Tensor]:
+def sample_activation(model, dataset: list[str], hook_names: list[str], n: int) -> dict[str, torch.Tensor]:
     data = np.random.choice(dataset, n)
     data = [str(elem) for elem in data]  # need to convert from numpy.str_
     cache = {}
@@ -933,9 +886,7 @@ def compute_composition(
     baselines = []
     hook_name_1 = get_hook_name(module_1, l1, h1)
     hook_name_2 = get_hook_name(module_2, l2, h2)
-    activations = sample_activation(
-        model, dataset, [hook_name_1, hook_name_2], n_samples
-    )
+    activations = sample_activation(model, dataset, [hook_name_1, hook_name_2], n_samples)
     # TODO: what to do with seq length dimension??
     # x_1 = activations[hook_name_1].mean(dim=1).squeeze().detach()
     # x_2 = activations[hook_name_2].mean(dim=1).squeeze().detach()
@@ -948,7 +899,7 @@ def compute_composition(
     c12 = torch.norm(torch.einsum("d e, b s e -> b s d", W_12, x_1), dim=-1)
     c1 = torch.norm(torch.einsum("d e, b s e -> b s d", W_1, x_1), dim=-1)
     c2 = torch.norm(torch.einsum("d e, b s e -> b s d", W_2, x_2), dim=-1)
-    comp_score = c12 / (c1 * c2 * 768**0.5)
+    comp_score = c12 / (c1 * c2 * 768 ** 0.5)
     comp_scores.append(comp_score)
 
     # compute baseline
@@ -959,12 +910,9 @@ def compute_composition(
         c12b = torch.norm(torch.einsum("d e, b s e -> b s d", W_12b, x_1), dim=-1)
         c1b = torch.norm(torch.einsum("d e, b s e -> b s d", W_1b, x_1), dim=-1)
         c2b = torch.norm(torch.einsum("d e, b s e -> b s d", W_2b, x_2), dim=-1)
-        baseline = c12b / (c1b * c2b * 768**0.5)
+        baseline = c12b / (c1b * c2b * 768 ** 0.5)
         baselines.append(baseline)
-    return (
-        torch.stack(comp_scores).mean().cpu().numpy()
-        - torch.stack(baselines).mean().cpu().numpy()
-    )
+    return torch.stack(comp_scores).mean().cpu().numpy() - torch.stack(baselines).mean().cpu().numpy()
 
 
 def compute_composition_OV_QK(
@@ -1017,9 +965,9 @@ def path_patching(
         if verbose:
             print("patching", hook.ctx)
         for pos in positions:
-            z[
-                torch.arange(target_dataset.N), target_dataset.word_idx[pos]
-            ] = source_act[torch.arange(source_dataset.N), source_dataset.word_idx[pos]]
+            z[torch.arange(target_dataset.N), target_dataset.word_idx[pos]] = source_act[
+                torch.arange(source_dataset.N), source_dataset.word_idx[pos]
+            ]
         return z
 
     sender_hooks = []
@@ -1038,9 +986,7 @@ def path_patching(
     model.reset_hooks()
     for hook in extra_hooks:
         model.add_hook(*hook)
-    model.cache_some(
-        sender_cache, lambda x: x in sender_hook_names, suppress_warning=True
-    )
+    model.cache_some(sender_cache, lambda x: x in sender_hook_names, suppress_warning=True)
     source_logits = model(
         source_dataset.toks.long()
     )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
@@ -1113,33 +1059,184 @@ def path_patching(
             name=hook_name,
         )
         model.add_hook(hook_name, hook)
-    receiver_logits = model(target_dataset.toks.long())
+    _ = model(target_dataset.toks.long())
 
     # receiver_cache stuff ...
 
     # patch these values in
     model.reset_hooks()
     for hook in extra_hooks:
-        model.add_hook(
-            *hook
-        )  # ehh probably doesn't actually matter cos end thing hooked
+        model.add_hook(*hook)  # ehh probably doesn't actually matter cos end thing hooked
 
     hooks = []
     for hook_name, head_idx in receiver_hooks:
         for pos in positions:
             if torch.allclose(
-                receiver_cache[hook_name][
-                    torch.arange(target_dataset.N), target_dataset.word_idx[pos]
-                ],
-                target_cache[hook_name][
-                    torch.arange(target_dataset.N), target_dataset.word_idx[pos]
-                ],
+                receiver_cache[hook_name][torch.arange(target_dataset.N), target_dataset.word_idx[pos]],
+                target_cache[hook_name][torch.arange(target_dataset.N), target_dataset.word_idx[pos]],
             ):
                 # assert False, (hook_name, head_idx)
                 # print("AAA", hook_name, head_idx)
                 pass
         hook = get_act_hook(
             partial(patch_positions, positions=positions),
+            alt_act=receiver_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        hooks.append((hook_name, hook))
+
+    model.reset_hooks()
+    if return_hooks:
+        return hooks
+    else:
+        for hook_name, hook in hooks:
+            model.add_hook(hook_name, hook)
+        return model
+
+
+def general_path_patching(
+    model,
+    source_dataset,
+    target_dataset,
+    sender_heads,
+    receiver_hooks,
+    max_layer,
+    positions_sender,
+    positions_receiver,
+    verbose=False,
+    return_hooks=False,
+    extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
+    freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
+    have_internal_interactions=False,
+):
+    """
+    Patch in the effect of `sender_heads` on `receiver_hooks` only
+    (though MLPs are "ignored", so are slight confounders. As are intermeditate heads)
+
+    If max_layer < model.cfg.n_layers, then let some part of the model do computations (not frozen)
+
+    path patching for use case outside IOI
+    """
+
+    def patch_positions(z, source_act, hook, positions, verbose=False):
+        if verbose:
+            print("patching", hook.ctx)
+        for pos in positions:
+            z[torch.arange(len(target_dataset)), pos] = source_act[torch.arange(len(source_dataset)), pos]
+        return z
+
+    sender_hooks = []
+
+    for layer, head_idx in sender_heads:
+        if head_idx is None:
+            sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
+
+        else:
+            sender_hooks.append((f"blocks.{layer}.attn.hook_result", head_idx))
+
+    sender_hook_names = [x[0] for x in sender_hooks]
+    receiver_hook_names = [x[0] for x in receiver_hooks]
+
+    sender_cache = {}
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    model.cache_some(sender_cache, lambda x: x in sender_hook_names, suppress_warning=True)
+    source_logits = model(
+        source_dataset
+    )  # this should see what the logits are when i) main heads are ablated + ii) we're also ablating (lay, head_idx)
+
+    target_cache = {}
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    model.cache_all(target_cache, suppress_warning=True)
+    target_logits = model(target_dataset)
+
+    # measure the receiver heads' values
+    receiver_cache = {}
+    model.reset_hooks()
+    model.cache_some(
+        receiver_cache,
+        lambda x: x in receiver_hook_names,
+        suppress_warning=True,
+        verbose=False,
+    )
+
+    # for all the Q, K, V things
+    for layer in range(max_layer):
+        for head_idx in range(model.cfg.n_heads):
+            for hook_template in [
+                "blocks.{}.attn.hook_q",
+                "blocks.{}.attn.hook_k",
+                "blocks.{}.attn.hook_v",
+            ]:
+                hook_name = hook_template.format(layer)
+
+                if have_internal_interactions and hook_name in receiver_hook_names:
+                    continue
+
+                hook = get_act_hook(
+                    patch_all,
+                    alt_act=target_cache[hook_name],
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                    name=hook_name,
+                )
+                model.add_hook(hook_name, hook)
+
+        if freeze_mlps:
+            hook_name = f"blocks.{layer}.hook_mlp_out"
+            hook = get_act_hook(
+                patch_all,
+                alt_act=target_cache[hook_name],
+                idx=None,
+                dim=None,
+                name=hook_name,
+            )
+            model.add_hook(hook_name, hook)
+
+    for hook in extra_hooks:
+        # ughhh, think that this is what we want, this should override the QKV above
+        model.add_hook(*hook)
+
+    # we can override the hooks above for the sender heads, though
+    for hook_name, head_idx in sender_hooks:
+        assert not torch.allclose(sender_cache[hook_name], target_cache[hook_name]), (
+            hook_name,
+            head_idx,
+        )
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions_sender),
+            alt_act=sender_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        model.add_hook(hook_name, hook)
+    _ = model(target_dataset)
+
+    # receiver_cache stuff ...
+
+    # patch these values in
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)  # ehh probably doesn't actually matter cos end thing hooked
+
+    hooks = []
+    for hook_name, head_idx in receiver_hooks:
+        for pos in positions_sender:
+            if torch.allclose(
+                receiver_cache[hook_name][torch.arange(len(target_dataset)), pos],
+                target_cache[hook_name][torch.arange(len(target_dataset)), pos],
+            ):
+                # assert False, (hook_name, head_idx)
+                # print("AAA", hook_name, head_idx)
+                pass
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions_receiver),
             alt_act=receiver_cache[hook_name],
             idx=head_idx,
             dim=2 if head_idx is not None else None,

@@ -1,10 +1,5 @@
 # %% Random experiment : writing direction after removing name movers
 #%%
-import os
-import torch
-if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
-    os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-assert torch.cuda.device_count() == 1
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
