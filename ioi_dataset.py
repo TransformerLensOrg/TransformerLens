@@ -520,7 +520,12 @@ def get_end_idxs(prompts, tokenizer, name_tok_len=1, prepend_bos=False, toks=Non
     for i in range(toks.shape[0]):
         assert toks[i][end_idxs[i] + 1] != 0 and (
             toks.shape[1] == end_idxs[i] + 2 or toks[i][end_idxs[i] + 2] == pad_token_id
-        ), (toks[i], end_idxs[i], toks[i].shape, "the END idxs aren't properly formatted")
+        ), (
+            toks[i],
+            end_idxs[i],
+            toks[i].shape,
+            "the END idxs aren't properly formatted",
+        )
 
     return end_idxs
 
@@ -767,7 +772,7 @@ class IOIDataset:
             # prompts[-1]["[OBJECT]"] = metadata["[OBJECT]"]
         return IOIDataset(prompt_type=templates, prompts=prompts, **kwargs)
 
-    def gen_flipped_prompts(self, flip, manual_word_idx=None):
+    def gen_flipped_prompts(self, flip):
         """
         Return a IOIDataset where the name to flip has been replaced by a random name.
         """
@@ -802,11 +807,6 @@ class IOIDataset:
                     "S+1",
                 ], flip
                 flipped_prompts = gen_flipped_prompts(self.ioi_prompts, NAMES, flip)
-
-        if manual_word_idx is None:
-            warnings.warn(
-                "Reconstructing a dataset, without recomputing word_idx, this could go wrong. TODO default this to passing the old datasets word_idx?"
-            )
 
         flipped_ioi_dataset = IOIDataset(
             prompt_type=self.prompt_type,

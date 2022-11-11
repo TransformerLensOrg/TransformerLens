@@ -115,7 +115,6 @@ def show_pp(
             y=1,
             ticks="outside",
         ),
-        xaxis_title="",
     )
 
     if highlight_points is not None:
@@ -279,7 +278,7 @@ def scatter_attention_and_contribution(
     for each input sequence with the attention paid to IO and S
     and the amount that is written in the IO and S directions
     """
-    warnings.warn("See new_ioi_notebook scatter (with direct effect)")
+
     n_heads = model.cfg.n_heads
     n_layers = model.cfg.n_layers
     model_unembed = model.unembed.W_U.detach().cpu()
@@ -287,7 +286,7 @@ def scatter_attention_and_contribution(
     cache = {}
     model.cache_all(cache)
 
-    logits = model(ioi_dataset.text_prompts)
+    logits = model(ioi_dataset.toks.long())
 
     for i, prompt in tqdm(enumerate(ioi_dataset.ioi_prompts)):
 
@@ -299,8 +298,8 @@ def scatter_attention_and_contribution(
         s2_pos = toks[s1_pos + 1 :].index(s_tok) + (s1_pos + 1)
         assert toks[-1] == io_tok
 
-        io_dir = model_unembed[io_tok].detach()
-        s_dir = model_unembed[s_tok].detach()
+        io_dir = model_unembed[:, io_tok].detach()
+        s_dir = model_unembed[:, s_tok].detach()
 
         # model.reset_hooks() # should allow things to be done with ablated models
 
