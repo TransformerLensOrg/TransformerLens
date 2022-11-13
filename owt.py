@@ -538,6 +538,7 @@ print(f"Found {len(the_1024s)} 1024+ tokens !!!")
 
 def pos_neg(
     model_name,
+    heads=[],
 ):
     # SAME AS DO THING
     model = EasyTransformer.from_pretrained(model_name).cuda()
@@ -585,10 +586,16 @@ def pos_neg(
 
 if "all_losses" not in globals():
     all_losses = {}
-# pos_neg("EleutherAI/gpt-neo-125M")
-pos_neg("gpt2")
 
-a = all_losses["gpt2"][0]["losses"]
+if "summary_stats" not in globals():
+    summary_stats = {}
+
+# pos_neg("EleutherAI/gpt-neo-125M")
+# pos_neg("gpt2")
+
+#%%
+
+a = all_losses["gpt2"][0]["losses"]  # base
 b = all_losses["gpt2"][-1][
     "losses"
 ]  # ugh this is pretty manual, poking around with head 9.9
@@ -599,24 +606,40 @@ b = all_losses["EleutherAI/gpt-neo-125M"][1]["losses"]  # this was the 11.4 thin
 # empty numpy array
 vals = np.zeros(shape=(1,))
 
-for i in range(100):
-    cur_vals = []
-    assert a[i].shape == b[i].shape
-    # vals = []
-    for j in tqdm(range((a[i].shape[1]))):
-        assert a[i][0, j].shape == b[i][0, j].shape
-        cur_vals.append(b[i][0, j] - a[i][0, j])
-    cur_vals = torch.tensor(cur_vals)
-    cur_vals = np.array(cur_vals)
-    cur_vals = cur_vals.flatten()
+for layer in range(12):
+    for head_idx in range(12):
+        for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
+            print("Doing", model_name, layer, head_idx)
+            a = all_losses[model_name][0]["losses"]
+            pos_neg(model_name, heads=[(layer, head_idx)])
+            b = all_losses[model_name][-1]["losses"]
 
-    # extend the numpy array
-    vals = np.concatenate((vals, cur_vals), axis=0)
+            for i in range(100):
+                cur_vals = []
+                assert a[i].shape == b[i].shape
+                # vals = []
+                for j in tqdm(range((a[i].shape[1]))):
+                    assert a[i][0, j].shape == b[i][0, j].shape
+                    cur_vals.append(b[i][0, j] - a[i][0, j])
+                cur_vals = torch.tensor(cur_vals)
+                cur_vals = np.array(cur_vals)
+                cur_vals = cur_vals.flatten()
+                vals = np.concatenate((vals, cur_vals), axis=0)
 
-    # plot a histogram of the lengths
-    if i % 10 == 0:
-        # print(sum(vals))
-        plt.hist(vals, bins=100)
-        # set the x axis max to 1024
-        plt.xlim(-1, 1)
-        plt.show()
+            summary_stats[(model_name, layer, head_idx)] = {
+                "mean": vals.mean(),
+                "std": vals.std(),
+                "max": vals.max(),
+                "min": vals.min(),
+                "ctime": ctime(),
+                "q1": np.quantile(vals, 0.25),
+                "q3": np.quantile(vals, 0.75),
+            }
+
+            # # plot a histogram of the lengths
+            # if i % 10 == 0:
+            #     # print(sum(vals))
+            #     plt.hist(vals, bins=100)
+            #     # set the x axis max to 1024
+            #     plt.xlim(-1, 1)
+            #     plt.show()
