@@ -374,16 +374,20 @@ def get_loss(model, tokens):
 tot = []
 
 
-def get_bpbs(model_name):
+def get_bpbs(model_name, manual_eos=None):
     print("Loading model", model_name)
     model = EasyTransformer.from_pretrained(model_name)
     print("Done")
     tot = [[]]
 
+    print(model.cfg)
+
     for idx in tqdm(range(100)):  # range(len(lens)):
         cur = torch.cat(
             (
-                torch.tensor([model.tokenizer.pad_token_id]),
+                torch.tensor([model.tokenizer.pad_token_id])
+                if manual_eos is None
+                else torch.tensor([manual_eos]),
                 toks[torch.sum(lens[:idx]) : torch.sum(lens[: idx + 1])],
             )
         )
@@ -404,13 +408,12 @@ def get_bpbs(model_name):
 for model_name in [
     "gpt2",
     "EleutherAI/gpt-neo-125M",
-    "gpt2-medium",
-    "EleutherAI/gpt-neo-1.3B",
     "gpt2-large",
-    "EleutherAI/gpt-neo-2.7B",
+    "EleutherAI/gpt-neo-1.3B",
     "gpt2-xl",
+    "EleutherAI/gpt-neo-2.7B",
 ]:
-    bs = get_bpbs(model_name)
+    bs = get_bpbs(model_name, manual_eos=0)
     print(
         f"Model {model_name} bpb: {bs.mean()} +- {bs.std()}"
     )  # 1.22 and 1.04 according to the table. Checks out!
