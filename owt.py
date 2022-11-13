@@ -370,7 +370,9 @@ def do_thing(model_name):
 
     acts = []
 
-    the_1024 = the_1024s[randint(0, len(the_1024s) - 1)][:, :1024] # this is something that is a global variable ... I don't THINK anything else is
+    the_1024 = the_1024s[randint(0, len(the_1024s) - 1)][
+        :, :1024
+    ]  # this is something that is a global variable ... I don't THINK anything else is
     the_1024[:, 0] = model.tokenizer.bos_token_id
 
     print("Caching random things")
@@ -384,7 +386,7 @@ def do_thing(model_name):
         cur_heads = random.sample(all_heads, num_heads)
         losses = get_losses(model, heads=cur_heads, acts=acts)
         print(
-            f"Model {model_name} bpb: {losses.mean()} +- {losses.std()}, {num_heads} heads"
+            f"Model {model_name} loss: {losses.mean()} +- {losses.std()}, {num_heads} heads"
         )
         all_results[model_name].append(
             {"num_heads": num_heads, "losses": losses, "ctime": ctime()}
@@ -403,13 +405,57 @@ def line_with_error(xs, ys, errs, show=True):
     xs = torch.tensor(xs)
     ys = torch.tensor(ys)
     errs = torch.tensor(errs)
-    plt.plot(xs, ys)
-    plt.fill_between(xs, ys - errs, ys + errs, alpha=0.2)
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="lines",
+            line=dict(color="royalblue", width=2),
+            name="Mean",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys + errs,
+            mode="lines",
+            line=dict(color="royalblue", width=0),
+            showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys - errs,
+            fill="tonexty",
+            fillcolor="rgba(68, 68, 68, 0.3)",
+            mode="lines",
+            line=dict(color="royalblue", width=0),
+            showlegend=False,
+        )
+    )
+    fig.update_layout(
+        xaxis_title="Number of heads",
+        yaxis_title="Loss",
+        font=dict(family="Courier New, monospace", size=18, color="#7f7f7f"),
+    )
     if show:
-        plt.show()
+        fig.show()
+    return fig
 
 
-for model_name in model_name_list[0:1]:  #  ["gpt2", "EleutherAI/gpt-neo-125M"]:
+# def line_with_error(xs, ys, errs, show=True):
+#     xs = torch.tensor(xs)
+#     ys = torch.tensor(ys)
+#     errs = torch.tensor(errs)
+#     plt.plot(xs, ys)
+#     plt.fill_between(xs, ys - errs, ys + errs, alpha=0.2)
+#     if show:
+#         plt.show()
+
+
+for model_name in model_name_list[:2]:  #  ["gpt2", "EleutherAI/gpt-neo-125M"]:
     ys = all_results[model_name]
 
     # sort ys by the head_no key
@@ -423,16 +469,11 @@ for model_name in model_name_list[0:1]:  #  ["gpt2", "EleutherAI/gpt-neo-125M"]:
     # ]
 
     line_with_error(
-        head_nos, [y["bs"].mean() for y in ys], [y["bs"].std() for y in ys], show=False
+        head_nos,
+        [y["losses"].mean() for y in ys],
+        [y["losses"].std() for y in ys],
+        show=True,
     )
-
-plt.legend(["gpt2", "gpt-neo-125M"])  # big hmm
-plt.xlabel("Number of heads")
-plt.ylabel("Bits per token")
-plt.title("Bits per token vs number of heads")
-plt.show()
-
-# lines = []
 
 #%%
 
