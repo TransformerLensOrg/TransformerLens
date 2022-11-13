@@ -357,15 +357,15 @@ def perplexity(losses):
 
 def bpb(losses):
     """Cursed EleutherAI value"""
-    return (0.29335 / np.log(2)) * torch.mean(losses)
+    return (0.29335 / np.log(2)) * losses
 
 
 tot = 0
 
 
 def get_loss(model, tokens):
-    losses = m(
-        cur_tokens,
+    losses = model(
+        tokens,
         return_type="loss",
     )
     return losses.mean().item()
@@ -373,12 +373,14 @@ def get_loss(model, tokens):
 
 tot = []
 
-for m in [model, model2]:
 
-    tot.append([])
+def get_bpbs(model_name):
+    print("Loading model", model_name)
+    model = EasyTransformer.from_pretrained(model_name)
+    print("Done")
+    tot = [[]]
 
     for idx in tqdm(range(100)):  # range(len(lens)):
-
         cur = torch.cat(
             (
                 torch.tensor([model.tokenizer.pad_token_id]),
@@ -387,19 +389,28 @@ for m in [model, model2]:
         )
         cur_tokens = cur.unsqueeze(0)[:, :1024]
 
-        losses = get_loss(m, cur_tokens)
+        losses = get_loss(model, cur_tokens)
         tot[-1].append(losses)
 
         if idx > 100:
             break
 
-    tot[-1] = torch.tensor(tot[-1])
-    print(tot[-1].mean(), tot[-1].std())
+    bs = [bpb(t) for t in tot[-1]]
+    return torch.tensor(bs)
+
 
 #%%
 
-for idx, m in enumerate([model, model2]):
-    bs = [bpb(t) for t in tot[idx]]
+for model_name in [
+    "gpt2",
+    "EleutherAI/gpt-neo-125M",
+    "gpt2-medium",
+    "EleutherAI/gpt-neo-1.3B",
+    "gpt2-large",
+    "EleutherAI/gpt-neo-2.7B",
+    "gpt2-xl",
+]:
+    bs = get_bpbs(model_name)
     print(
-        f"Model {idx} bpb: {np.mean(bs)} +- {np.std(bs)}"
+        f"Model {model_name} bpb: {bs.mean()} +- {bs.std()}"
     )  # 1.22 and 1.04 according to the table. Checks out!
