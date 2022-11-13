@@ -7,7 +7,7 @@ assert torch.cuda.device_count() == 1
 from tqdm import tqdm
 from easy_transformer.experiments import get_act_hook
 import plotly.graph_objects as go
-from numpy import efrom numpy import e
+from numpy import e
 import pandas as pd
 import torch
 import torch as t
@@ -200,7 +200,7 @@ def get_loss(model, tokens, return_per_token=False):
         return_type="loss",
         return_per_token=return_per_token,
     )
-    return losses.item()
+    return losses
 
 
 model_name_list = [
@@ -229,9 +229,9 @@ def get_bpb(model_name, toks, lens, samples=100, manual_eos=None):
         cur_tokens = cur.unsqueeze(0)[:, :1024]
         cur_tokens[:, 0] = model.tokenizer.pad_token_id
 
-        losses = get_loss(
-            model, cur_tokens
-        ).mean().item()  # this is the average over a input sequence
+        losses = (
+            get_loss(model, cur_tokens).mean().item()
+        )  # this is the average over a input sequence
         loss_list.append(losses)
 
     bs = [bpb(t) for t in loss_list]
@@ -345,8 +345,15 @@ def get_losses(
                 name=hook_name,
             )
             model.add_hook(hook_name, hook)
-        list_losses.append(get_loss(model, cur_tokens, return_per_token=return_per_token))
-    return torch.tensor(list_losses)
+        list_losses.append(
+            get_loss(model, cur_tokens, return_per_token=return_per_token)
+            .cpu()
+            .detach()
+        )
+    if return_per_token:
+        return list_losses
+    else:
+        return torch.tensor(list_losses)
 
 
 #%%
@@ -356,6 +363,7 @@ head_nos += [40, 50, 60]
 
 # sort head_nos
 head_nos = sorted(head_nos)
+
 
 def do_thing(model_name):
     model = EasyTransformer.from_pretrained(model_name).cuda()
@@ -395,15 +403,24 @@ def do_thing(model_name):
         )
 
 
-for model_name in model_name_list[2:4]: # ["EleutherAI/gpt-neo-125M", "gpt2"]:
+for model_name in model_name_list[2:4]:  # ["EleutherAI/gpt-neo-125M", "gpt2"]:
     if model_name not in all_results:
         all_results[model_name] = []
     do_thing(model_name)
 
 #%%
 
+
 def line_with_error(
-    xs, ys, errs, show=True, fig=None, color="royalblue", show_err=True, name="mean", yaxis="",
+    xs,
+    ys,
+    errs,
+    show=True,
+    fig=None,
+    color="royalblue",
+    show_err=True,
+    name="mean",
+    yaxis="",
 ):
     xs = torch.tensor(xs)
     ys = torch.tensor(ys)
@@ -505,6 +522,8 @@ for idx in tqdm(range(len(lens))):  # range(len(lens)):
     if cur_tokens.shape[1] >= 1024:
         the_1024s.append(cur_tokens)
 
+print(f"Found {len(the_1024s)} 1024+ tokens !!!")
+
 # lengths.append(min(1024, cur_tokens.shape[1]))
 # # plot a histogram of the lengths
 # if idx % 500 == 100:
@@ -515,6 +534,7 @@ for idx in tqdm(range(len(lens))):  # range(len(lens)):
 
 #%% [markdown]
 # Do some positive writing direction and negative writing direction stuff
+
 
 def pos_neg(
     model_name,
@@ -543,20 +563,62 @@ def pos_neg(
     for i in tqdm(range(10)):
         acts.append(cached(model, the_1024))
     print("...done")
-    # END SAME 
+    # END SAME
 
-    all_heads = [(i, j) for i in range(12) for j in range(12)]
+    all_heads = [[]] + [[(i, j)] for i in range(12) for j in range(12)]
+    all_heads = [[(10, 7)]]
 
-    for head in all_heads:
+    for head_list in all_heads:
         if model_name not in all_losses:
             all_losses[model_name] = []
-        all_losses[model_name].append({
-            "head": head,
-            "losses": get_losses(model, heads=[head], acts=acts),
-            "ctime": ctime(),
-        })
+        all_losses[model_name].append(
+            {
+                "head": str(head_list),
+                "losses": get_losses(
+                    model, heads=head_list, acts=acts, return_per_token=True
+                ),
+                "ctime": ctime(),
+            }
+        )
         break
+
 
 if "all_losses" not in globals():
     all_losses = {}
+# pos_neg("EleutherAI/gpt-neo-125M")
 pos_neg("gpt2")
+
+#%%
+
+a = all_losses["gpt2"][0]["losses"]
+b = all_losses["gpt2"][-1][
+    "losses"
+]  # ugh this is pretty manual, poking around with head 9.9
+
+a = all_losses["EleutherAI/gpt-neo-125M"][0]["losses"]
+b = all_losses["EleutherAI/gpt-neo-125M"][1]["losses"]  # this was the 11.4 thing
+
+# empty numpy array
+vals = np.zeros(shape=(1,))
+
+for i in range(100):
+    cur_vals = []
+    assert a[i].shape == b[i].shape
+    # vals = []
+    for j in tqdm(range((a[i].shape[1]))):
+        assert a[i][0, j].shape == b[i][0, j].shape
+        cur_vals.append(b[i][0, j] - a[i][0, j])
+    cur_vals = torch.tensor(cur_vals)
+    cur_vals = np.array(cur_vals)
+    cur_vals = cur_vals.flatten()
+
+    # extend the numpy array
+    vals = np.concatenate((vals, cur_vals), axis=0)
+
+    # plot a histogram of the lengths
+    if i % 10 == 0:
+        # print(sum(vals))
+        plt.hist(vals, bins=100)
+        # set the x axis max to 1024
+        plt.xlim(-1, 1)
+        plt.show()
