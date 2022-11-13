@@ -1,16 +1,4 @@
 #%% [markdown]
-## Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small
-# <h1><b>Intro</b></h1>
-
-# This notebook implements all experiments in our paper (which is available on arXiv).
-
-# For background on the task, see the paper.
-
-# Refer to the demo of the <a href="https://github.com/neelnanda-io/Easy-Transformer">Easy-Transformer</a> library here: <a href="https://github.com/neelnanda-io/Easy-Transformer/blob/main/EasyTransformer_Demo.ipynb">demo with ablation and patching</a>.
-#
-# Reminder of the circuit:
-# <img src="https://i.imgur.com/arokEMj.png">
-#%% [markdown]
 # Setup
 from copy import deepcopy
 import torch
@@ -18,6 +6,7 @@ import torch
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
 from easy_transformer.experiments import get_act_hook
+import plotly.graph_objects as go
 import pandas as pd
 import torch
 import torch as t
@@ -56,34 +45,8 @@ from ioi_circuit_extraction import (
 )
 from ioi_utils import logit_diff, probs
 from ioi_utils import get_top_tokens_and_probs as g
+
 from random import randint
-
-ipython = get_ipython()
-if ipython is not None:
-    ipython.magic("load_ext autoreload")
-    ipython.magic("autoreload 2")
-#%% [markdown]
-# Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
-
-model = EasyTransformer.from_pretrained("gpt2").cuda()
-model.set_use_attn_result(True)
-
-# model2 = EasyTransformer.from_pretrained("gpt2-xl").cuda() # eek this is too big
-# model2.set_use_attn_result(True)
-
-#%% [markdown]
-# Initialise dataset
-N = 100
-ioi_dataset = IOIDataset(
-    prompt_type="mixed",
-    N=N,
-    tokenizer=model.tokenizer,
-    prepend_bos=False,
-)
-#%% [markdown]
-# Hello
-
-# %%
 from IPython import get_ipython
 
 ipython = get_ipython()
@@ -101,8 +64,6 @@ import pathlib
 from pathlib import PurePath as PP
 from copy import copy
 
-# F(NM(child_name)).g().get_unique_c(circuit)
-
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 os.environ[
     "XLA_FLAGS"
@@ -117,7 +78,7 @@ os.environ["INTERPRETABILITY_MODELS_DIR"] = os.environ.get(
     if os.path.exists(os.path.expanduser("~/interp_models_jax/"))
     else RRFS_INTERP_MODELS_DIR,
 )
-# %%
+
 from tqdm import tqdm
 from tabulate import tabulate
 import numpy as np
@@ -133,54 +94,12 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 
 jax.config.update("jax_platform_name", "cpu")
-
-# import matplotlib
-# # hmmm
-# matplotlib.rcParams["text.parse_math"] = False
-# %%
-
-# %%
 import os
 
 os.chdir("/home/arthur/unity")
 print("User Arthur")
 print(os.getcwd())
 
-
-from interp.circuit.circuit_compiler.settings import WithCompilerSettings
-from interp.circuit.circuit_differentiator import CircuitDifferentiator
-from interp.circuit.regression_rewrite import (
-    get_poly_feat,
-    regression_rewrite_sample,
-    rewrite_for_solution_coeffs,
-)
-from interp.tools.data_loading import get_val_seqs
-from interp.circuit.batch_transform import BatchTransform
-from interp.circuit.function_rewrites import (
-    inv_scale_for_log_exp_p_1_approx_fn,
-    log_exp_p_1_expectation_approx_rewrite,
-    multip_for_log_exp_p_1_approx_fn,
-    pair_log_softmax_to_elementwise,
-    softmax_sigmoid_rewrite,
-)
-from interp.circuit.scope_manager import ScopeManager
-from interp.plotting.plot_text_numbers import plot_text_numbers
-from interp.circuit import computational_node
-from interp.circuit.sampling_estimation import (
-    SamplingInstance,
-    get_make_default_eval_many,
-)
-from interp.circuit.circuit_model_rewrites import (
-    BatchMulTracerItem,
-    basic_cum_expand_run,
-    basic_factoring,
-    batch_mul_by_tracer,
-    extract_head,
-    add_drop_by_match,
-    batch_mul,
-    multiple_batch_mul_by_tracer,
-    run_factor_distribute,
-)
 from interp.circuit.get_update_node import (
     FalseMatcher,
     NodeMatcher,
@@ -199,118 +118,28 @@ from interp.circuit.get_update_node import (
     replace_circuit,
     sub_name,
 )
-from interp.circuit.function_rewrites import one_hot_log_loss
-from interp.tools.type_utils import assert_never
-from interp.circuit.algebric_rewrite import (
-    MulRearrangeSpec,
-    MulRearrangeSpecSub,
-    NamedItem,
-    distribute,
-    drop_mul_ones,
-    einsum_remove_unsqueeze,
-    equivalence_partition,
-    explicit_reduce,
-    factor_add_of_mul_to_mul_of_add,
-    flatten_adds,
-    try_flatten_adds,
-    flatten_adds_matching,
-    flatten_muls,
-    permute_to_einsum,
-    push_down_index,
-    push_down_permute_via_einsum,
-    rearrange_muls,
-    remove_add_times_one,
-    residual_rewrite,
-    split_einsum_concat,
-    unary_add_to_scalar_mul,
-    fuse_single_einsum,
-    weighted_to_unweighted_add,
-    try_drop_mul_ones,
-    try_fuse_einsum_rearrange,
-)
-from interp.circuit.circuit_simplification import basic_simp
-from interp.circuit.cum_algo import (
-    cumulant_function_derivative_estim,
-    rewrite_cum_to_circuit_of_cum,
-)
-from interp.circuit.print_circuit import PrintCircuit
-from interp.circuit.var import DiscreteVar, StoredCumulantVar
-import interp.tools.optional as op
-from interp.circuit.circuit_compiler.compiler import evaluate_circuits
-from interp.circuit.computational_node import (
-    Add,
-    Concat,
-    Einsum,
-    GeneralFunction,
-    Index,
-    UnaryRearrange,
-    log_exp_p_1_fn,
-    softmax_fn,
-)
-from interp.circuit.circuit import Circuit, MemoizedFn
-from interp.circuit.constant import ArrayConstant, FloatConstant, One, Zero
-from interp.circuit.cumulant import Cumulant
-from interp.circuit.sample_transform import (
-    AllRecursiveNonTrivialCumulants,
-    RandomSampleSpec,
-    RunDiscreteVarAllSpec,
-    SampleSpec,
-    StoredIdxsWeightsDiscreteSample,
-    center,
-    PartitionedSamplingFull,
-    eps_attrib,
-    sample_transform_deep,
-)
-from interp.circuit.circuit_utils import cast_circuit
-from interp.tools.indexer import TORCH_INDEXER as I, SLICER as S
-from interp.tools.interpretability_tools import (
-    begin_token,
-    get_interp_tokenizer,
-    print_max_min_by_tok_k_torch,
-    single_tokenize,
-    toks_to_string_list,
-)
-
-from interp.circuit.scope_rewrites import basic_factor_distribute
-from interp.circuit.projects.punct.rewrites import (
-    approx_head_diag_masks_a0,
-    expand_probs_a1_more,
-    get_a1_probs_deriv_expand,
-    get_trivial_expand_embeds_and_attn,
-    expand_and_factor_log_probs,
-    get_log_probs_cov_expand,
-)
-from interp.circuit.projects.estim_helper import EstimHelper
-from interp.circuit.projects.interp_utils import (
-    ChildDerivInfo,
-    get_items,
-    add_path,
-    print_for_scope,
-    run_scope_estimate,
-)
-from interp.circuit.projects.punct.punct_interp import (
-    interp_for_embeds_direct,
-    interp_for_multip_a1_k3,
-    interp_expected_probs_a0,
-    interp_a1_expected_probs,
-    interp_snd_cum_for_paths,
-    interp_thrd_cum_for_paths,
-    interp_thrd_cum_overall,
-    interp_snd_cum_overall,
-)  # TODO cleanup imports
-
-# from interp.circuit.projects.setup_utils import
-# from interp.circuit.projects.induction.utils import *
 from pathlib import PurePath as PP
 
-# %% [markdown]
-# # Goal: find induction heads with the cumulants method
-# Setup
-# WithCompilerSettings(DO_FIX_NUMERICS=True).global_update() # TODO hopefully fine
+#%%
+
+model = EasyTransformer.from_pretrained("gpt2").cuda()
+model.set_use_attn_result(True)
+
+N = 100
+ioi_dataset = IOIDataset(
+    prompt_type="mixed",
+    N=N,
+    tokenizer=model.tokenizer,
+    prepend_bos=False,
+)
+
+# model2 = EasyTransformer.from_pretrained("gpt2-xl").cuda() # eek this is too big
+# model2.set_use_attn_result(True)
+
 #%%
 # DATA SHIT
 print("WARN: not using Ryan stuff")
-data_rrfs = os.path.expanduser(f"~/rrfs/pretraining_datasets/owt_tokens_int16/0.pt")
+data_rrfs = os.path.expanduser(f"~/rrfs/pretraining_datasets/owt_tokens_int16_val/0.pt")
 data_suffix = "name_data/data-2022-07-30.pt"
 data_local = os.path.expanduser(f"~/{data_suffix}")
 try:
@@ -350,7 +179,9 @@ if False:
         if not os.path.exists(DATASET_DIR):
             print(f"Made {str(DATASET_DIR)}")
             os.mkdir(DATASET_DIR)
-#%%
+
+#%% [markdown]
+# Check that the model BPBs roughly agree with https://arxiv.org/pdf/2101.00027v1.pdf page 8
 
 
 def perplexity(losses):
@@ -362,9 +193,6 @@ def bpb(losses):
     return (0.29335 / np.log(2)) * losses
 
 
-tot = 0
-
-
 def get_loss(model, tokens):
     losses = model(
         tokens,
@@ -373,25 +201,21 @@ def get_loss(model, tokens):
     return losses.mean().item()
 
 
-tot = []
+model_name_list = [
+    "gpt2",
+    "EleutherAI/gpt-neo-125M",
+    "gpt2-large",
+    "EleutherAI/gpt-neo-1.3B",
+    "gpt2-xl",
+    "EleutherAI/gpt-neo-2.7B",
+]
 
 
-def patch_all(z, source_act, hook):
-    assert z.shape == source_act.shape, f"{z.shape} != {source_act.shape}"
-    z[:] = source_act
-    return z
-
-
-def get_bpbs(
-    model,
-    manual_eos=None,
-    heads=[],  # (random) ablate these heads
-    samples=100,
-    acts=None,
-):
-    tot = [[]]
-    for idx in tqdm(range(samples)):  # range(len(lens)):
-
+def get_bpb(model_name, toks, lens, samples=100, manual_eos=None):
+    model = EasyTransformer.from_pretrained(model_name).cuda()
+    model.set_use_attn_result(True)
+    loss_list = []
+    for idx in tqdm(range(samples)):
         cur = torch.cat(
             (
                 torch.tensor([model.tokenizer.pad_token_id])
@@ -401,8 +225,107 @@ def get_bpbs(
             )
         )
         cur_tokens = cur.unsqueeze(0)[:, :1024]
+        cur_tokens[:, 0] = model.tokenizer.pad_token_id
 
-        cur_tokens[:, 0] = model.tokenizer.bos_token_id
+        losses = get_loss(
+            model, cur_tokens
+        )  # this is the average over a input sequence
+        loss_list.append(losses)
+
+    bs = [bpb(t) for t in loss_list]
+    return torch.tensor(bs)
+
+
+#%% [markdown]
+# takes about 2 mins to run but checks the models are getting legit scores
+
+bpb_results = {}
+for model_name in tqdm(model_name_list):
+    bpb_results["model_name"] = get_bpb(model_name, toks, lens, samples=100)
+
+#%%
+fig = go.Figure()
+
+for idx, model_name in tqdm(enumerate(model_name_list)):
+    fig.add_trace(
+        go.Box(
+            y=bpb_results[model_name],
+            name=model_name,
+        )
+    )
+fig.show()
+
+#%%
+expected_ranges = {  # note these overlap
+    "gpt2": (1.25, 1.35),  # 1.22 in the pile paper
+    "EleutherAI/gpt-neo-125M": (1.25, 1.35),
+    "gpt2-large": (1.05, 1.20),  # 1.08 in the pile paper
+    "EleutherAI/gpt-neo-1.3B": (1.05, 1.20),
+    "gpt2-xl": (1.0, 1.1),  # 1.04 in the pile paper
+    "EleutherAI/gpt-neo-2.7B": (1.0, 1.1),
+}
+
+for model_name in model_name_list:
+    mean = bpb_results[model_name].mean()
+    assert (
+        expected_ranges[model_name][0] < mean < expected_ranges[model_name][1]
+    ), f"Model {model_name} has mean BPB {mean} which is outside the expected range {expected_ranges[model_name]}"
+
+for model_name_mid in model_name_list[2:4]:
+    # check that there is a sensible model performance improvement
+    for model_name_low in model_name_list[:2]:
+        assert (
+            bpb_results[model_name_mid].mean() < bpb_results[model_name_low].mean()
+        ), f"Model {model_name_mid} has mean BPB {bpb_results[model_name_mid].mean()} which is not less than {model_name_low} which has mean BPB {bpb_results[model_name_low].mean()}"
+    for model_name_high in model_name_list[4:]:
+        assert (
+            bpb_results[model_name_mid].mean() > bpb_results[model_name_high].mean()
+        ), f"Model {model_name_mid} has mean BPB {bpb_results[model_name_mid].mean()} which is not greater than {model_name_high} which has mean BPB {bpb_results[model_name_high].mean()}"
+
+if "all_results" not in globals():
+    all_results = {model_name: [] for model_name in model_name_list}
+
+#%%
+tot = []
+
+
+def patch_all(z, source_act, hook):
+    assert z.shape == source_act.shape, f"{z.shape} != {source_act.shape}"
+    z[:] = source_act
+    return z
+
+
+def get_losses(
+    model,
+    manual_eos=None,
+    heads=[],  # (random) ablate these heads
+    samples=100,
+    acts=None,
+    batch_size=1,
+):
+    list_losses = []
+
+    assert (
+        samples % batch_size == 0
+    ), f"Samples {samples} must be divisible by batch size {batch_size}"
+
+    idx = 0
+    for batch_idx in tqdm(range(samples // batch_size)):  # range(len(lens)):
+        for in_batch_idx in range(batch_size):
+            cur = torch.cat(
+                (
+                    torch.tensor([model.tokenizer.pad_token_id])
+                    if manual_eos is None
+                    else torch.tensor([manual_eos]),
+                    toks[
+                        torch.sum(
+                            lens[: in_batch_idx + batch_size * batch_idx]
+                        ) : torch.sum(lens[: in_batch_idx + batch_size * batch_idx + 1])
+                    ],
+                )
+            )
+            cur_tokens = cur.unsqueeze(0)[:, :1024]
+            cur_tokens[:, 0] = model.tokenizer.bos_token_id
 
         model.reset_hooks()
         for head in heads:
@@ -422,12 +345,9 @@ def get_bpbs(
             except:
                 print()
             model.add_hook(hook_name, hook)
+        list_losses.append(get_loss(model, cur_tokens))
 
-        losses = get_loss(model, cur_tokens)
-        tot[-1].append(losses)
-
-    bs = [bpb(t) for t in tot[-1]]
-    return torch.tensor(bs)
+    return torch.tensor(list_losses)
 
 
 #%%
@@ -450,7 +370,7 @@ def do_thing(model_name):
 
     acts = []
 
-    the_1024 = the_1024s[randint(0, len(the_1024s) - 1)][:, :1024]
+    the_1024 = the_1024s[randint(0, len(the_1024s) - 1)][:, :1024] # this is something that is a global variable ... I don't THINK anything else is
     the_1024[:, 0] = model.tokenizer.bos_token_id
 
     print("Caching random things")
@@ -462,14 +382,18 @@ def do_thing(model_name):
 
     for num_heads in head_nos:
         cur_heads = random.sample(all_heads, num_heads)
-        bs = get_bpbs(model, heads=cur_heads, acts=acts)
-        print(f"Model {model_name} bpb: {bs.mean()} +- {bs.std()}, {num_heads} heads")
+        losses = get_losses(model, heads=cur_heads, acts=acts)
+        print(
+            f"Model {model_name} bpb: {losses.mean()} +- {losses.std()}, {num_heads} heads"
+        )
         all_results[model_name].append(
-            {"num_heads": num_heads, "bs": bs, "ctime": ctime()}
+            {"num_heads": num_heads, "losses": losses, "ctime": ctime()}
         )
 
 
-for model_name in model_name_list[2:4]:  #  ["EleutherAI/gpt-neo-125M", "gpt2"]:
+for model_name in model_name_list[:2]:  #  ["EleutherAI/gpt-neo-125M", "gpt2"]:
+    if model_name not in all_results:
+        all_results[model_name] = []
     do_thing(model_name)
 
 #%%
@@ -485,24 +409,24 @@ def line_with_error(xs, ys, errs, show=True):
         plt.show()
 
 
-for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
+for model_name in model_name_list[0:1]:  #  ["gpt2", "EleutherAI/gpt-neo-125M"]:
     ys = all_results[model_name]
 
     # sort ys by the head_no key
     ys.sort(key=lambda x: x["num_heads"])
 
     # only keep one entry per head_no
-    ys = [
-        ys[i]
-        for i in range(len(ys))
-        if i == 0 or ys[i]["num_heads"] != ys[i - 1]["num_heads"]
-    ]
+    # ys = [
+    #     ys[i]
+    #     for i in range(len(ys))
+    #     if i == 0 or ys[i]["num_heads"] != ys[i - 1]["num_heads"]
+    # ]
 
     line_with_error(
         head_nos, [y["bs"].mean() for y in ys], [y["bs"].std() for y in ys], show=False
     )
 
-plt.legend(["gpt2", "gpt-neo-125M"])
+plt.legend(["gpt2", "gpt-neo-125M"])  # big hmm
 plt.xlabel("Number of heads")
 plt.ylabel("Bits per token")
 plt.title("Bits per token vs number of heads")
@@ -511,15 +435,6 @@ plt.show()
 # lines = []
 
 #%%
-
-model_name_list = [
-    "gpt2",
-    "EleutherAI/gpt-neo-125M",
-    "gpt2-large",
-    "EleutherAI/gpt-neo-1.3B",
-    "gpt2-xl",
-    "EleutherAI/gpt-neo-2.7B",
-]
 
 for model_name in model_name_list:
     bs = get_bpbs(model_name, manual_eos=0)
@@ -552,10 +467,6 @@ for idx in tqdm(range(len(lens))):  # range(len(lens)):
 #     # set the x axis max to 1024
 #     plt.xlim(0, 1024)
 #     plt.show()
-
-#%%
-
-all_results = {model_name: [] for model_name in model_name_list}
 
 #%%
 
