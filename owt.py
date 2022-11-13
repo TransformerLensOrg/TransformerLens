@@ -432,6 +432,8 @@ def get_bpbs(
 
 #%%
 
+head_nos = [0, 1, 10, 20, 40, 50, 60, 100]
+
 
 def do_thing(model_name):
     model = EasyTransformer.from_pretrained(model_name).cuda()
@@ -458,8 +460,6 @@ def do_thing(model_name):
 
     all_heads = [(i, j) for i in range(12) for j in range(12)]
 
-    head_nos = [0, 1, 10, 20, 40, 50, 60, 100]
-
     for num_heads in head_nos:
         cur_heads = random.sample(all_heads, num_heads)
         bs = get_bpbs(model, heads=cur_heads, acts=acts)
@@ -469,7 +469,7 @@ def do_thing(model_name):
         )
 
 
-for model_name in ["EleutherAI/gpt-neo-125M", "gpt2"]:
+for model_name in model_name_list[2:4]:  #  ["EleutherAI/gpt-neo-125M", "gpt2"]:
     do_thing(model_name)
 
 #%%
@@ -512,14 +512,16 @@ plt.show()
 
 #%%
 
-for model_name in [
+model_name_list = [
     "gpt2",
     "EleutherAI/gpt-neo-125M",
     "gpt2-large",
     "EleutherAI/gpt-neo-1.3B",
     "gpt2-xl",
     "EleutherAI/gpt-neo-2.7B",
-]:
+]
+
+for model_name in model_name_list:
     bs = get_bpbs(model_name, manual_eos=0)
     print(
         f"Model {model_name} bpb: {bs.mean()} +- {bs.std()}"
@@ -553,4 +555,15 @@ for idx in tqdm(range(len(lens))):  # range(len(lens)):
 
 #%%
 
-all_results = {"gpt2": []}
+all_results = {model_name: [] for model_name in model_name_list}
+
+#%%
+
+
+def bp(x):
+    import math
+
+    return math.exp(-x * math.log(2) / 0.29355)
+
+
+bp(1.5)
