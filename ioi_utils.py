@@ -1008,6 +1008,15 @@ def path_patching(
             ] = source_act[torch.arange(D_new.N), D_new.word_idx[pos]]
         return z
 
+    if positions is None: # so we can patch all positions, see ACDC
+        def patch_positions(z, source_act, hook, positions=["end"], verbose=False):
+            return source_act[:]
+
+        patch_fn = patch_positions
+
+    else:
+        patch_fn = partial(patch_positions, positions=positions)
+
     # process arguments
     sender_hooks = [] 
     for layer, head_idx in sender_heads:
@@ -1074,6 +1083,7 @@ def path_patching(
                 )
                 model.add_hook(hook_name, hook)
 
+        print(target_cache.keys())
         if freeze_mlps:
             hook_name = f"blocks.{layer}.hook_mlp_out"
             hook = get_act_hook(
@@ -1111,16 +1121,20 @@ def path_patching(
         hooks.append(hook)
         
     for hook_name, head_idx in receiver_hooks:
-        for pos in positions:
-            if torch.allclose(
-                receiver_cache[hook_name][
-                    torch.arange(D_orig.N), D_orig.word_idx[pos]
-                ],
-                target_cache[hook_name][
-                    torch.arange(D_orig.N), D_orig.word_idx[pos]
-                ],
-            ):
-                warnings.warn("Torch all close for {}".format(hook_name))
+        if positions is None:
+            if torch.allclose(receiver_cache[hook_name], target_cache[hook_name]):
+                warnings.warn(f"Hook {hook_name} unchanged!")
+        else:
+            for pos in positions:
+                if torch.allclose(
+                    receiver_cache[hook_name][
+                        torch.arange(D_orig.N), D_orig.word_idx[pos]
+                    ],
+                    target_cache[hook_name][
+                        torch.arange(D_orig.N), D_orig.word_idx[pos]
+                    ],
+                ):
+                    warnings.warn("Torch all close for {}".format(hook_name))
         hook = get_act_hook(
             partial(patch_positions, positions=positions),
             alt_act=receiver_cache[hook_name],
