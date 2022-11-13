@@ -380,8 +380,6 @@ def get_bpbs(model_name, manual_eos=None):
     print("Done")
     tot = [[]]
 
-    print(model.cfg)
-
     for idx in tqdm(range(100)):  # range(len(lens)):
         cur = torch.cat(
             (
@@ -417,3 +415,31 @@ for model_name in [
     print(
         f"Model {model_name} bpb: {bs.mean()} +- {bs.std()}"
     )  # 1.22 and 1.04 according to the table. Checks out!
+
+#%% [markdown]
+# create some things to random patch in
+# WARNING I don't think the Eleuther models have 50256...
+
+lengths = []
+the_1024s = []
+for idx in tqdm(range(len(lens))):  # range(len(lens)):
+    cur = torch.cat(
+        (
+            torch.tensor([model.tokenizer.pad_token_id]),
+            toks[torch.sum(lens[:idx]) : torch.sum(lens[: idx + 1])],
+        )
+    )
+    cur_tokens = cur.unsqueeze(0)
+
+    if cur_tokens.shape[1] >= 1024:
+        the_1024s.append(cur_tokens)
+
+# lengths.append(min(1024, cur_tokens.shape[1]))
+# # plot a histogram of the lengths
+# if idx % 500 == 100:
+#     plt.hist(lengths, bins=100)
+#     # set the x axis max to 1024
+#     plt.xlim(0, 1024)
+#     plt.show()
+
+#%% [markdown]
