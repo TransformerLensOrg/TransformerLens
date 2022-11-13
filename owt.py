@@ -588,8 +588,6 @@ if "all_losses" not in globals():
 # pos_neg("EleutherAI/gpt-neo-125M")
 pos_neg("gpt2")
 
-#%%
-
 a = all_losses["gpt2"][0]["losses"]
 b = all_losses["gpt2"][-1][
     "losses"
