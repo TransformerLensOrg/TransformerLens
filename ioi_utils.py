@@ -979,7 +979,7 @@ def compute_composition_OV_QK(
 
 
 def patch_all(z, source_act, hook):
-    return source_act
+    z[:] = source_act
 
 
 def path_patching(

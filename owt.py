@@ -17,6 +17,7 @@ import torch
 
 assert torch.cuda.device_count() == 1
 from tqdm import tqdm
+from easy_transformer.experiments import get_act_hook
 import pandas as pd
 import torch
 import torch as t
@@ -55,6 +56,7 @@ from ioi_circuit_extraction import (
 )
 from ioi_utils import logit_diff, probs
 from ioi_utils import get_top_tokens_and_probs as g
+from random import randint
 
 ipython = get_ipython()
 if ipython is not None:
@@ -64,9 +66,9 @@ if ipython is not None:
 # Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
 
 model = EasyTransformer.from_pretrained("gpt2").cuda()
-# model.set_use_attn_result(True)
+model.set_use_attn_result(True)
 
-model2 = EasyTransformer.from_pretrained("gpt2-xl").cuda()
+# model2 = EasyTransformer.from_pretrained("gpt2-xl").cuda() # eek this is too big
 # model2.set_use_attn_result(True)
 
 #%% [markdown]
@@ -374,13 +376,22 @@ def get_loss(model, tokens):
 tot = []
 
 
-def get_bpbs(model_name, manual_eos=None):
-    print("Loading model", model_name)
-    model = EasyTransformer.from_pretrained(model_name)
-    print("Done")
-    tot = [[]]
+def patch_all(z, source_act, hook):
+    assert z.shape == source_act.shape, f"{z.shape} != {source_act.shape}"
+    z[:] = source_act
+    return z
 
-    for idx in tqdm(range(100)):  # range(len(lens)):
+
+def get_bpbs(
+    model,
+    manual_eos=None,
+    heads=[],  # (random) ablate these heads
+    samples=100,
+    acts=None,
+):
+    tot = [[]]
+    for idx in tqdm(range(samples)):  # range(len(lens)):
+
         cur = torch.cat(
             (
                 torch.tensor([model.tokenizer.pad_token_id])
@@ -391,15 +402,106 @@ def get_bpbs(model_name, manual_eos=None):
         )
         cur_tokens = cur.unsqueeze(0)[:, :1024]
 
+        cur_tokens[:, 0] = model.tokenizer.bos_token_id
+
+        model.reset_hooks()
+        for head in heads:
+            hook_name = f"blocks.{head[0]}.attn.hook_result"
+            try:
+                alt_act = acts[randint(0, -1 + len(acts))][hook_name][
+                    :, : cur_tokens.shape[1]
+                ]
+
+                hook = get_act_hook(
+                    patch_all,
+                    alt_act=alt_act,
+                    idx=head[1],
+                    dim=2 if head[1] is not None else None,
+                    name=hook_name,
+                )
+            except:
+                print()
+            model.add_hook(hook_name, hook)
+
         losses = get_loss(model, cur_tokens)
         tot[-1].append(losses)
-
-        if idx > 100:
-            break
 
     bs = [bpb(t) for t in tot[-1]]
     return torch.tensor(bs)
 
+
+#%%
+
+
+def do_thing(model_name):
+    model = EasyTransformer.from_pretrained(model_name).cuda()
+    model.set_use_attn_result(True)
+
+    def cached(model, tokens):
+        model.reset_hooks()
+        cache = {}
+        model.cache_all(cache)
+        model(tokens)
+        for key in list(cache.keys()):
+            cache[key] = cache[key].detach().clone().cpu()
+        return cache
+
+    acts = []
+
+    the_1024 = the_1024s[randint(0, len(the_1024s) - 1)][:, :1024]
+    the_1024[:, 0] = model.tokenizer.bos_token_id
+
+    print("Caching random things")
+    for i in tqdm(range(10)):
+        acts.append(cached(model, the_1024))
+    print("...done")
+
+    all_heads = [(i, j) for i in range(12) for j in range(12)]
+
+    head_nos = [0, 1, 2, 5, 10, 20, 40, 80, 100]
+
+    for num_heads in head_nos:
+        cur_heads = random.sample(all_heads, num_heads)
+        bs = get_bpbs(model, heads=cur_heads, acts=acts)
+        print(f"Model {model_name} bpb: {bs.mean()} +- {bs.std()}, {num_heads} heads")
+        all_results[model_name].append(
+            {"num_heads": num_heads, "bs": bs, "ctime": ctime()}
+        )
+
+
+for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
+    do_thing(model_name)
+
+#%%
+
+
+def line_with_error(xs, ys, errs, show=True):
+    xs = torch.tensor(xs)
+    ys = torch.tensor(ys)
+    errs = torch.tensor(errs)
+    plt.plot(xs, ys)
+    plt.fill_between(xs, ys - errs, ys + errs, alpha=0.2)
+    if show:
+        plt.show()
+
+
+for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
+    ys = all_results[model_name]
+
+    # sort ys by the head_no key
+    ys.sort(key=lambda x: x["num_heads"])
+
+    line_with_error(
+        head_nos, [y["bs"].mean() for y in ys], [y["bs"].std() for y in ys], show=False
+    )
+
+plt.legend(["gpt2", "gpt-neo-125M"])
+plt.xlabel("Number of heads")
+plt.ylabel("Bits per token")
+plt.title("Bits per token vs number of heads")
+plt.show()
+
+# lines = []
 
 #%%
 
@@ -442,4 +544,6 @@ for idx in tqdm(range(len(lens))):  # range(len(lens)):
 #     plt.xlim(0, 1024)
 #     plt.show()
 
-#%% [markdown]
+#%%
+
+all_results = {"gpt2": []}
