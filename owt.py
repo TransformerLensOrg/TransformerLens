@@ -458,7 +458,7 @@ def do_thing(model_name):
 
     all_heads = [(i, j) for i in range(12) for j in range(12)]
 
-    head_nos = [0, 1, 2, 5, 10, 20, 40, 80, 100]
+    head_nos = [0, 1, 10, 20, 40, 50, 60, 100]
 
     for num_heads in head_nos:
         cur_heads = random.sample(all_heads, num_heads)
@@ -469,7 +469,7 @@ def do_thing(model_name):
         )
 
 
-for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
+for model_name in ["EleutherAI/gpt-neo-125M", "gpt2"]:
     do_thing(model_name)
 
 #%%
@@ -490,6 +490,13 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
 
     # sort ys by the head_no key
     ys.sort(key=lambda x: x["num_heads"])
+
+    # only keep one entry per head_no
+    ys = [
+        ys[i]
+        for i in range(len(ys))
+        if i == 0 or ys[i]["num_heads"] != ys[i - 1]["num_heads"]
+    ]
 
     line_with_error(
         head_nos, [y["bs"].mean() for y in ys], [y["bs"].std() for y in ys], show=False
