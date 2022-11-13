@@ -7,6 +7,7 @@ assert torch.cuda.device_count() == 1
 from tqdm import tqdm
 from easy_transformer.experiments import get_act_hook
 import plotly.graph_objects as go
+from numpy import efrom numpy import e
 import pandas as pd
 import torch
 import torch as t
@@ -193,12 +194,13 @@ def bpb(losses):
     return (0.29335 / np.log(2)) * losses
 
 
-def get_loss(model, tokens):
+def get_loss(model, tokens, return_per_token=False):
     losses = model(
         tokens,
         return_type="loss",
+        return_per_token=return_per_token,
     )
-    return losses.mean().item()
+    return losses.item()
 
 
 model_name_list = [
@@ -229,7 +231,7 @@ def get_bpb(model_name, toks, lens, samples=100, manual_eos=None):
 
         losses = get_loss(
             model, cur_tokens
-        )  # this is the average over a input sequence
+        ).mean().item()  # this is the average over a input sequence
         loss_list.append(losses)
 
     bs = [bpb(t) for t in loss_list]
@@ -302,6 +304,7 @@ def get_losses(
     samples=100,
     acts=None,
     batch_size=1,
+    return_per_token=False,
 ):
     list_losses = []
 
@@ -330,30 +333,29 @@ def get_losses(
         model.reset_hooks()
         for head in heads:
             hook_name = f"blocks.{head[0]}.attn.hook_result"
-            try:
-                alt_act = acts[randint(0, -1 + len(acts))][hook_name][
-                    :, : cur_tokens.shape[1]
-                ]
+            alt_act = acts[randint(0, -1 + len(acts))][hook_name][
+                :, : cur_tokens.shape[1]
+            ]
 
-                hook = get_act_hook(
-                    patch_all,
-                    alt_act=alt_act,
-                    idx=head[1],
-                    dim=2 if head[1] is not None else None,
-                    name=hook_name,
-                )
-            except:
-                print()
+            hook = get_act_hook(
+                patch_all,
+                alt_act=alt_act,
+                idx=head[1],
+                dim=2 if head[1] is not None else None,
+                name=hook_name,
+            )
             model.add_hook(hook_name, hook)
-        list_losses.append(get_loss(model, cur_tokens))
-
+        list_losses.append(get_loss(model, cur_tokens, return_per_token=return_per_token))
     return torch.tensor(list_losses)
 
 
 #%%
 
-head_nos = [0, 1, 10, 20, 40, 50, 60, 100]
+head_nos = [0, 1, 2, 5, 10, 15, 20, 100]
+head_nos += [40, 50, 60]
 
+# sort head_nos
+head_nos = sorted(head_nos)
 
 def do_thing(model_name):
     model = EasyTransformer.from_pretrained(model_name).cuda()
@@ -369,7 +371,7 @@ def do_thing(model_name):
         return cache
 
     acts = []
-
+    assert len(the_1024s) > 10, f"Not enough samples, only {len(the_1024s)}"
     the_1024 = the_1024s[randint(0, len(the_1024s) - 1)][
         :, :1024
     ]  # this is something that is a global variable ... I don't THINK anything else is
@@ -393,95 +395,97 @@ def do_thing(model_name):
         )
 
 
-for model_name in model_name_list[:2]:  #  ["EleutherAI/gpt-neo-125M", "gpt2"]:
+for model_name in model_name_list[2:4]: # ["EleutherAI/gpt-neo-125M", "gpt2"]:
     if model_name not in all_results:
         all_results[model_name] = []
     do_thing(model_name)
 
 #%%
 
-
-def line_with_error(xs, ys, errs, show=True):
+def line_with_error(
+    xs, ys, errs, show=True, fig=None, color="royalblue", show_err=True, name="mean", yaxis="",
+):
     xs = torch.tensor(xs)
     ys = torch.tensor(ys)
     errs = torch.tensor(errs)
-    fig = go.Figure()
+    if fig is None:
+        fig = go.Figure()
     fig.add_trace(
         go.Scatter(
             x=xs,
             y=ys,
             mode="lines",
-            line=dict(color="royalblue", width=2),
-            name="Mean",
+            line=dict(color=color, width=2),
+            name=name,
         )
     )
-    fig.add_trace(
-        go.Scatter(
-            x=xs,
-            y=ys + errs,
-            mode="lines",
-            line=dict(color="royalblue", width=0),
-            showlegend=False,
+    if show_err:
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys + errs,
+                mode="lines",
+                line=dict(color=color, width=0),
+                showlegend=False,
+            )
         )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=xs,
-            y=ys - errs,
-            fill="tonexty",
-            fillcolor="rgba(68, 68, 68, 0.3)",
-            mode="lines",
-            line=dict(color="royalblue", width=0),
-            showlegend=False,
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys - errs,
+                fill="tonexty",
+                fillcolor="rgba(68, 68, 68, 0.3)",
+                mode="lines",
+                line=dict(color=color, width=0),
+                showlegend=False,
+            )
         )
-    )
     fig.update_layout(
         xaxis_title="Number of heads",
-        yaxis_title="Loss",
-        font=dict(family="Courier New, monospace", size=18, color="#7f7f7f"),
+        yaxis_title=yaxis,
     )
     if show:
         fig.show()
     return fig
 
 
-# def line_with_error(xs, ys, errs, show=True):
-#     xs = torch.tensor(xs)
-#     ys = torch.tensor(ys)
-#     errs = torch.tensor(errs)
-#     plt.plot(xs, ys)
-#     plt.fill_between(xs, ys - errs, ys + errs, alpha=0.2)
-#     if show:
-#         plt.show()
+cutoff = 20
+colors = ["royalblue", "red", "green", "orange", "purple", "brown", "pink", "gray"]
 
+fig = go.Figure()
 
-for model_name in model_name_list[:2]:  #  ["gpt2", "EleutherAI/gpt-neo-125M"]:
+for model_idx, model_name in enumerate(
+    model_name_list[2:4]
+):  #  ["gpt2", "EleutherAI/gpt-neo-125M"]:
     ys = all_results[model_name]
 
     # sort ys by the head_no key
     ys.sort(key=lambda x: x["num_heads"])
 
     # only keep one entry per head_no
-    # ys = [
-    #     ys[i]
-    #     for i in range(len(ys))
-    #     if i == 0 or ys[i]["num_heads"] != ys[i - 1]["num_heads"]
-    # ]
+    ys = [
+        ys[i]
+        for i in range(len(ys))
+        if i == 0 or ys[i]["num_heads"] != ys[i - 1]["num_heads"]
+    ]
+
+    ys = ys[:cutoff]
 
     line_with_error(
-        head_nos,
-        [y["losses"].mean() for y in ys],
-        [y["losses"].std() for y in ys],
-        show=True,
+        head_nos[:cutoff],
+        # torch.exp(-torch.tensor([y["losses"].mean() for y in ys])),
+        # torch.exp(-torch.tensor([y["losses"].std() for y in ys])),
+        torch.tensor([y["losses"].mean() for y in ys]),
+        torch.tensor([y["losses"].std() for y in ys]),
+        show=False,
+        fig=fig,
+        color=colors[model_idx],
+        show_err=False,
+        name=model_name,
+        yaxis="loss",
     )
 
-#%%
-
-for model_name in model_name_list:
-    bs = get_bpbs(model_name, manual_eos=0)
-    print(
-        f"Model {model_name} bpb: {bs.mean()} +- {bs.std()}"
-    )  # 1.22 and 1.04 according to the table. Checks out!
+fig.show()
 
 #%% [markdown]
 # create some things to random patch in
@@ -509,13 +513,50 @@ for idx in tqdm(range(len(lens))):  # range(len(lens)):
 #     plt.xlim(0, 1024)
 #     plt.show()
 
-#%%
+#%% [markdown]
+# Do some positive writing direction and negative writing direction stuff
 
+def pos_neg(
+    model_name,
+):
+    # SAME AS DO THING
+    model = EasyTransformer.from_pretrained(model_name).cuda()
+    model.set_use_attn_result(True)
 
-def bp(x):
-    import math
+    def cached(model, tokens):
+        model.reset_hooks()
+        cache = {}
+        model.cache_all(cache)
+        model(tokens)
+        for key in list(cache.keys()):
+            cache[key] = cache[key].detach().clone().cpu()
+        return cache
 
-    return math.exp(-x * math.log(2) / 0.29355)
+    acts = []
+    assert len(the_1024s) > 10, f"Not enough samples, only {len(the_1024s)}"
+    the_1024 = the_1024s[randint(0, len(the_1024s) - 1)][
+        :, :1024
+    ]  # this is something that is a global variable ... I don't THINK anything else is
+    the_1024[:, 0] = model.tokenizer.bos_token_id
 
+    print("Caching random things")
+    for i in tqdm(range(10)):
+        acts.append(cached(model, the_1024))
+    print("...done")
+    # END SAME 
 
-bp(1.5)
+    all_heads = [(i, j) for i in range(12) for j in range(12)]
+
+    for head in all_heads:
+        if model_name not in all_losses:
+            all_losses[model_name] = []
+        all_losses[model_name].append({
+            "head": head,
+            "losses": get_losses(model, heads=[head], acts=acts),
+            "ctime": ctime(),
+        })
+        break
+
+if "all_losses" not in globals():
+    all_losses = {}
+pos_neg("gpt2")
