@@ -122,6 +122,8 @@ class HookPoint(nn.Module):
 
 
 # %%
+# TODO maybe this should be a decorator so clients don't have to call setup()?
+# or just a class should be enough?
 class HookedRootModule(nn.Module):
     """
     A class building on nn.Module to interface nicely with HookPoints
@@ -187,6 +189,7 @@ class HookedRootModule(nn.Module):
             if type(name) == str:
                 self.name_to_module[name].add_hook(hook, direction=direction)
             else:
+                # TODO add documentation here
                 # Otherwise, name is a Boolean function on names
                 for hook_name, hp in self.name_to_hook.items():
                     if name(hook_name):

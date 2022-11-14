@@ -1,12 +1,9 @@
 from dataclasses import dataclass
-from typing import Union, Tuple, List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional
 from easy_transformer.utils import set_seed_everywhere
 import torch
-import torch.nn as nn
-import random
 import numpy as np
 import logging
-import json
 import pprint
 
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
