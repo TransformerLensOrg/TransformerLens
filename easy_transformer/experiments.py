@@ -1,45 +1,40 @@
 # Ablation implem
 # Import stuff
-from typing import Callable, Union, List, Tuple, Any
-import torch
-import warnings
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import numpy as np
-import einops
-
-from tqdm import tqdm
-import random
-import time
-
-from pathlib import Path
-import pickle
-import os
-
-from torch.utils.data import DataLoader
-
-from functools import *
-import pandas as pd
-import gc
 import collections
 import copy
-import warnings
+import gc
 
 # import comet_ml
 import itertools
+import os
+import pickle
+import random
+import time
+import warnings
+from functools import *
+from pathlib import Path
+from typing import Any, Callable, List, Tuple, Union
 
-from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
+import einops
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
+from easy_transformer.EasyTransformer import EasyTransformer
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.utils import (
     gelu_new,
-    to_numpy,
     get_corner,
-    print_gpu_mem,
     get_sample_from_dataset,
+    print_gpu_mem,
+    to_numpy,
 )
-from easy_transformer.EasyTransformer import EasyTransformer
 
 
 class ExperimentMetric:

@@ -1,9 +1,10 @@
 # %%
 
-import torch as t
-from torchtyping import TT as TT, patch_typeguard
-from typeguard import typechecked
 import einops
+import torch as t
+from torchtyping import TT as TT
+from torchtyping import patch_typeguard
+from typeguard import typechecked
 
 patch_typeguard()
 

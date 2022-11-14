@@ -2,8 +2,10 @@ from typeguard.importhook import install_import_hook
 
 install_import_hook("easy_transformer")
 
+from torchtyping import TensorType as TT
+from torchtyping import patch_typeguard
+
 from easy_transformer import EasyTransformer
-from torchtyping import TensorType as TT, patch_typeguard
 
 patch_typeguard()
 

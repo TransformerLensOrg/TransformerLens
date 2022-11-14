@@ -1,25 +1,22 @@
-from typing import Union, Dict, Optional, Tuple
+import logging
+from functools import *
+from typing import Dict, Optional, Tuple, Union
+
+import einops
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import einops
-import logging
-
-from functools import *
-
-from easy_transformer.hook_points import HookPoint
-from easy_transformer.utils import gelu_new, solu, gelu_fast
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
-
 from fancy_einsum import einsum
-
-from easy_transformer.past_key_value_caching import (
-    EasyTransformerKeyValueCacheEntry,
-)
 
 # See tests/should_fail.py for an example of how to enforce type annotations at runtime
 from torchtyping import TensorType as TT
+
+from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from easy_transformer.hook_points import HookPoint
+from easy_transformer.past_key_value_caching import EasyTransformerKeyValueCacheEntry
+from easy_transformer.utils import gelu_fast, gelu_new, solu
+
 
 # Embed & Unembed
 class Embed(nn.Module):

@@ -1,9 +1,10 @@
 import logging
-from typing import Callable, Union, Optional, Sequence
+from abc import ABC, abstractmethod
+from enum import Enum
+from typing import Callable, Optional, Sequence, Union
+
 import torch
 import torch.nn as nn
-from enum import Enum
-from abc import ABC, abstractmethod
 
 
 class NamesFilter(ABC):

@@ -1,13 +1,15 @@
 # %%
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+import logging
+import re
+from typing import Optional
+
 import einops
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM
-import easy_transformer.utils as utils
-from typing import Optional
-import logging
 from huggingface_hub import HfApi
-import re
+from transformers import AutoConfig, AutoModelForCausalLM
+
+import easy_transformer.utils as utils
+from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
 # %% The model names used to access the models on the HuggingFace Hub.
 OFFICIAL_MODEL_NAMES = [

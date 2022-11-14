@@ -1,34 +1,29 @@
-from typing import Union, List, Tuple, Dict, Optional
-from torchtyping import TensorType as TT
+import logging
+from functools import lru_cache
+from typing import Dict, List, Optional, Tuple, Union
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-import logging
 import tqdm.auto as tqdm
-from functools import lru_cache
+from torchtyping import TensorType as TT
 
 # hugging face imports- useful for making this class work with a variety of popular transformers
-from transformers import (
-    AutoTokenizer,
-    PreTrainedTokenizer,
-)
+from transformers import AutoTokenizer, PreTrainedTokenizer
 
-from easy_transformer.hook_points import HookedRootModule, HookPoint
+import easy_transformer.loading_from_pretrained as loading
 from easy_transformer import EasyTransformerConfig
+from easy_transformer.activation_cache import ActivationCache
+from easy_transformer.components import *
+from easy_transformer.hook_points import HookedRootModule, HookPoint
 
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
-from easy_transformer.past_key_value_caching import (
-    EasyTransformerKeyValueCache,
-)
-from easy_transformer.activation_cache import ActivationCache
-
-from easy_transformer.components import *
-import easy_transformer.loading_from_pretrained as loading
+from easy_transformer.past_key_value_caching import EasyTransformerKeyValueCache
 from easy_transformer.utils import (
-    lm_cross_entropy_loss,
-    sample_logits,
     FactoredMatrix,
     composition_scores,
+    lm_cross_entropy_loss,
+    sample_logits,
 )
 
 # Type alias for a single element tensor

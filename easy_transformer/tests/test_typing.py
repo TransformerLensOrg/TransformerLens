@@ -4,8 +4,10 @@
 # %%
 
 import torch as t
+from torchtyping import TensorType as TT
+from torchtyping import patch_typeguard
+
 from easy_transformer import EasyTransformer, EasyTransformerConfig
-from torchtyping import TensorType as TT, patch_typeguard
 
 patch_typeguard()
 

@@ -3,12 +3,14 @@
 A file with some rough evals for models - I expect you to be likely better off using the HuggingFace evaluate library if you want to do anything properly, but this is here if you want it and want to eg cheaply and roughly compare models you've trained to baselines.
 """
 
+import einops
 import torch
 import tqdm.auto as tqdm
 from datasets import load_dataset
-from easy_transformer import EasyTransformer, EasyTransformerConfig, utils
 from torch.utils.data import DataLoader
-import einops
+
+from easy_transformer import EasyTransformer, EasyTransformerConfig, utils
+
 
 # %%
 def sanity_check(model):

@@ -1,16 +1,19 @@
 # %%
 from __future__ import annotations
+
+import logging
+import re
+from typing import Dict, Optional, Union
+
+import einops
+import numpy as np
+import torch
+from fancy_einsum import einsum
+from torchtyping import TensorType as TT
+from typing_extensions import Literal
+
 import easy_transformer.utils as utils
 from easy_transformer.utils import Slice, SliceInput
-import torch
-import einops
-from fancy_einsum import einsum
-from typing import Optional, Union, Dict
-from typing_extensions import Literal
-from torchtyping import TensorType as TT
-import re
-import numpy as np
-import logging
 
 
 class ActivationCache:

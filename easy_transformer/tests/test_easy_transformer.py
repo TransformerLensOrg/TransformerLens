@@ -4,13 +4,15 @@ from typeguard.importhook import install_import_hook
 
 install_import_hook("easy_transformer")
 
-from easy_transformer import EasyTransformer
 from torchtyping import TensorType as patch_typeguard
+
+from easy_transformer import EasyTransformer
 
 patch_typeguard()
 
-from easy_transformer import EasyTransformer
 import pytest
+
+from easy_transformer import EasyTransformer
 
 model_names = [
     "attn-only-demo",
