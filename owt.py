@@ -566,22 +566,15 @@ def pos_neg(
     print("...done")
     # END SAME
 
-    all_heads = [[]] + [[(i, j)] for i in range(12) for j in range(12)]
-    all_heads = [[(10, 7)]]
-
-    for head_list in all_heads:
-        if model_name not in all_losses:
-            all_losses[model_name] = []
-        all_losses[model_name].append(
-            {
-                "head": str(head_list),
-                "losses": get_losses(
-                    model, heads=head_list, acts=acts, return_per_token=True
-                ),
-                "ctime": ctime(),
-            }
-        )
-        break
+    if model_name not in all_losses:
+        all_losses[model_name] = []
+    all_losses[model_name].append(
+        {
+            "head": str(heads),
+            "losses": get_losses(model, heads=heads, acts=acts, return_per_token=True),
+            "ctime": ctime(),
+        }
+    )
 
 
 if "all_losses" not in globals():
@@ -604,42 +597,86 @@ a = all_losses["EleutherAI/gpt-neo-125M"][0]["losses"]
 b = all_losses["EleutherAI/gpt-neo-125M"][1]["losses"]  # this was the 11.4 thing
 
 # empty numpy array
-vals = np.zeros(shape=(1,))
 
+available_heads = []
 for layer in range(12):
     for head_idx in range(12):
-        for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
-            print("Doing", model_name, layer, head_idx)
-            a = all_losses[model_name][0]["losses"]
-            pos_neg(model_name, heads=[(layer, head_idx)])
-            b = all_losses[model_name][-1]["losses"]
+        available_heads.append((layer, head_idx))
 
-            for i in range(100):
-                cur_vals = []
-                assert a[i].shape == b[i].shape
-                # vals = []
-                for j in tqdm(range((a[i].shape[1]))):
-                    assert a[i][0, j].shape == b[i][0, j].shape
-                    cur_vals.append(b[i][0, j] - a[i][0, j])
-                cur_vals = torch.tensor(cur_vals)
-                cur_vals = np.array(cur_vals)
-                cur_vals = cur_vals.flatten()
-                vals = np.concatenate((vals, cur_vals), axis=0)
+# shuffle available heads order
+from random import shuffle
 
-            summary_stats[(model_name, layer, head_idx)] = {
-                "mean": vals.mean(),
-                "std": vals.std(),
-                "max": vals.max(),
-                "min": vals.min(),
-                "ctime": ctime(),
-                "q1": np.quantile(vals, 0.25),
-                "q3": np.quantile(vals, 0.75),
-            }
+shuffle(available_heads)
+shuffle(available_heads)  # lol
+# reverse available heads order
+available_heads = available_heads[::-1]
 
-            # # plot a histogram of the lengths
-            # if i % 10 == 0:
-            #     # print(sum(vals))
-            #     plt.hist(vals, bins=100)
-            #     # set the x axis max to 1024
-            #     plt.xlim(-1, 1)
-            #     plt.show()
+for head in available_heads:
+    for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
+        layer, head_idx = head
+        print("Doing", model_name, layer, head_idx)
+        vals = np.zeros(shape=(1,))
+        a = all_losses[model_name][0]["losses"]
+        pos_neg(model_name, heads=[(layer, head_idx)])
+        b = all_losses[model_name][-1]["losses"]
+
+        for i in range(100):
+            cur_vals = []
+            assert a[i].shape == b[i].shape
+            # vals = []
+            for j in tqdm(range((a[i].shape[1]))):
+                assert a[i][0, j].shape == b[i][0, j].shape
+                cur_vals.append(b[i][0, j] - a[i][0, j])
+            cur_vals = torch.tensor(cur_vals)
+            cur_vals = np.array(cur_vals)
+            cur_vals = cur_vals.flatten()
+            vals = np.concatenate((vals, cur_vals), axis=0)
+
+        summary_stats[(model_name, layer, head_idx)] = {
+            "mean": vals.mean(),
+            "std": vals.std(),
+            "max": vals.max(),
+            "min": vals.min(),
+            "ctime": ctime(),
+            "q1": np.quantile(vals, 0.25),
+            "q3": np.quantile(vals, 0.75),
+        }
+
+#%%
+# visualise the summary stats
+
+
+def box_plot(mean, std, q1, q3, name, color):
+    """Draws a box plot with the given parameters"""
+    plt.hlines(mean, 0, 1, color=color)
+    plt.hlines(q1, 0, 1, color=color)
+    plt.hlines(q3, 0, 1, color=color)
+    plt.vlines(0.5, q1, q3, color=color)
+    plt.scatter(0.5, mean, color=color)
+    plt.text(0.5, mean, name, color=color)
+
+
+names = []
+means = []
+stds = []
+
+for head in available_heads:
+    layer, head_idx = head
+    for model_name in ["gpt2", "EleutherAI/gpt-neo-125M"]:
+        if (model_name, layer, head_idx) not in summary_stats.keys():
+            continue
+        print("oops")
+        mean = summary_stats[(model_name, layer, head_idx)]["mean"]
+        std = summary_stats[(model_name, layer, head_idx)]["std"]
+        names.append(f"{model_name} {layer} {head_idx}")
+        means.append(mean)
+        print(f"{model_name} {layer} {head_idx} mean {mean} std {std}")
+
+# update y axis
+# plt.ylim(-0.01, 0.05)
+
+# scatter plot the values with error bars
+plt.scatter(range(len(means)), means)
+# plt.errorbar(range(len(means)), means, yerr=stds, fmt="none")
+plt.xticks(range(len(means)), names, rotation=90)
+plt.show()
