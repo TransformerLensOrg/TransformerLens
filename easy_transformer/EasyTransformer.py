@@ -144,7 +144,7 @@ class EasyTransformer(HookedRootModule):
 
         self.unembed = Unembed(self.cfg)
 
-        # TODO rename [cfg] to [config]
+        # TODO rename [cfg] to [config]- would require a bunch of rewrites and some good testing
         if self.cfg.init_weights:
             self.init_weights()
 
