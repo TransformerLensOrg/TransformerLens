@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
-from easy_transformer.utils import set_seed_everywhere
 import torch
 import torch.nn as nn
 import random
@@ -10,7 +9,6 @@ import json
 import pprint
 
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
-
 
 @dataclass
 class EasyTransformerConfig:
@@ -167,7 +165,7 @@ class EasyTransformerConfig:
             )
 
         if self.seed is not None:
-            set_seed_everywhere(self.seed)
+            self.set_seed_everywhere(self.seed)
         if self.use_local_attn:
             assert (
                 self.window_size is not None
@@ -219,3 +217,8 @@ class EasyTransformerConfig:
 
     def __repr__(self):
         return "EasyTransformerConfig:\n" + pprint.pformat(self.to_dict())
+    
+    def set_seed_everywhere(self, seed: int):
+        torch.manual_seed(seed)
+        random.seed(seed)
+        np.random.seed(seed)

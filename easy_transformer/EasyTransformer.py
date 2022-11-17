@@ -18,20 +18,16 @@ from transformers import (
 )
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer import EasyTransformerConfig
-
+from easy_transformer import EasyTransformerConfig, FactoredMatrix
+from easy_transformer.ActivationCache import ActivationCache
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from easy_transformer.past_key_value_caching import (
     EasyTransformerKeyValueCache,
 )
-from easy_transformer.activation_cache import ActivationCache
 
 from easy_transformer.components import *
 import easy_transformer.loading_from_pretrained as loading
 import easy_transformer.utils as utils
-from easy_transformer.utils import (
-    FactoredMatrix,
-)
 
 # Type alias for a single element tensor
 Loss = TT[()]
@@ -39,6 +35,7 @@ Loss = TT[()]
 class Output(NamedTuple):
     logits: TT["batch", "pos", "d_vocab"]
     loss: Loss
+
 
 class EasyTransformer(HookedRootModule):
     """
@@ -254,16 +251,24 @@ class EasyTransformer(HookedRootModule):
         self,
         logits: TT["batch", "pos", "d_vocab"],
         tokens: TT["batch", "pos"],
-        per_token: bool=False,
+        per_token: bool = False,
     ):
-        """ 
-        Wrapper around utils.lm_cross_entropy_loss, used in forward() with return_type=="loss" or "both". 
+        """
+        Wrapper around utils.lm_cross_entropy_loss, used in forward() with return_type=="loss" or "both".
         """
         return utils.lm_cross_entropy_loss(logits, tokens, per_token)
 
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
-    ) -> Union[ActivationCache, Dict[str, torch.Tensor]]:
+    ) -> Tuple[
+        Union[
+            None,
+            TT["batch", "pos", "d_vocab"],
+            Loss,
+            Tuple[TT["batch", "pos", "d_vocab"], Loss],
+        ],
+        Union[ActivationCache, Dict[str, torch.Tensor]],
+    ]:
         """
         Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful EasyTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule.
         """
@@ -287,7 +292,12 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, input: Union[str, List[str]], prepend_bos: bool = False):
+    def to_tokens(
+        self,
+        input: Union[str, List[str]],
+        prepend_bos: bool = False,
+        move_to_device: bool = True,
+    ) -> TT["batch", "pos"]:
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. Defaults to False for to_tokens, as this is intended to be used for substrings of the input, but True for a string input to forward.
         """
@@ -297,7 +307,10 @@ class EasyTransformer(HookedRootModule):
                 input = self.tokenizer.bos_token + input
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
-        return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
+        tokens = self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
+        if move_to_device:
+            tokens = tokens.to(self.cfg.device)
+        return tokens
 
     def to_string(
         self, tokens: Union[TT["batch", "pos"], TT["pos"], np.ndarray, List[TT["pos"]]]
@@ -342,7 +355,7 @@ class EasyTransformer(HookedRootModule):
         if isinstance(input, list):
             return list(
                 map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input)
-            )
+            )  # type: ignore
         elif isinstance(input, str):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
         elif isinstance(input, torch.Tensor):
@@ -966,10 +979,10 @@ class EasyTransformer(HookedRootModule):
 
             eos_token_id = self.tokenizer.eos_token_id
 
-            # An array to track which sequences in the batch have finished.
-            finished_sequences = torch.zeros(
-                batch_size, dtype=torch.bool, device=self.cfg.device
-            )
+        # An array to track which sequences in the batch have finished.
+        finished_sequences = torch.zeros(
+            batch_size, dtype=torch.bool, device=self.cfg.device
+        )
 
         # Currently nothing in EasyTransformer changes with eval, but this is here in case that changes in the future
         self.eval()
