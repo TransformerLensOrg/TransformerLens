@@ -205,7 +205,7 @@ class EasyTransformer(HookedRootModule):
             ), "Pass in one token at a time after loading cache"
             return cache_ctx_length
 
-    def __get_residual_and_shortform_pos_embed__(
+    def __get_embedding__(
         self, tokens: TokensTensor, pos_offset: int
     ) -> Tuple[Internal, Optional[Internal]]:
         embed: Internal = self.hook_embed(self.embed(tokens))
@@ -271,10 +271,7 @@ class EasyTransformer(HookedRootModule):
         pos_offset = self.__get_pos_offset_for_forward__(
             tokens=tokens, past_kv_cache=past_kv_cache
         )
-        (
-            residual,
-            shortformer_pos_embed,
-        ) = self.__get_residual_and_shortform_pos_embed__(
+        embedding = self.__get_embedding__(
             tokens=tokens, pos_offset=pos_offset
         )
 
@@ -282,6 +279,8 @@ class EasyTransformer(HookedRootModule):
         get_past_kv_cache_entry = (
             lambda i: past_kv_cache[i] if past_kv_cache is not None else None
         )
+
+        residual, shortformer_pos_embed = embedding
         for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
