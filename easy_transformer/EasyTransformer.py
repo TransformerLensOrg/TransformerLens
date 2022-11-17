@@ -43,21 +43,21 @@ class EasyTransformer(HookedRootModule):
     It can have a pretrained Transformer's weights automatically loaded in via the EasyTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or EasyTransformerConfig object.
     """
 
-    def __init_tokenizer__(self, tokenizer):
+    @classmethod
+    def __generate_tokenizer__(cls, config: EasyTransformerConfig, tokenizer: Optional[PreTrainedTokenizer])-> Optional[PreTrainedTokenizer]:
         if tokenizer is not None:
-            self.tokenizer = tokenizer
-        if self.cfg.tokenizer_name is not None:
+            return tokenizer
+
+        if config.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
-            if self.tokenizer.eos_token is None:
-                self.tokenizer.eos_token = "<|endoftext|>"
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            if self.tokenizer.bos_token is None:
-                self.tokenizer.bos_token = self.tokenizer.eos_token
+            result: PreTrainedTokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
+            result.eos_token = result.eos_token if result.eos_token is not None else "<|endoftext|>"
+            result.pad_token = result.pad_token if result.pad_token is not None else result.eos_token
+            result.bos_token = result.bos_token if result.bos_token is not None else result.eos_token
+            return result
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
-            self.tokenizer = None
+            return None
 
     def __init_d_vocab__(self):
         if not self.cfg.d_vocab:
@@ -68,14 +68,17 @@ class EasyTransformer(HookedRootModule):
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
-    def __init_config__(self, config: Union[EasyTransformerConfig, Dict]):
+    @classmethod
+    def __generate_config__(cls, config: Union[EasyTransformerConfig, Dict])-> EasyTransformerConfig:
         if isinstance(config, Dict):
             config = EasyTransformerConfig(**config)
-        elif isinstance(config, str):
+            return config
+        elif isinstance(config, EasyTransformerConfig):
+            return config 
+        else:
             raise ValueError(
                 "Please pass in a config dictionary or EasyTransformerConfig object. If you want to load a pretrained model, use EasyTransformer.from_pretrained() instead."
             )
-        self.cfg = config
 
     def __init_embeddings__(self):
         self.embed = Embed(self.cfg)
@@ -125,8 +128,8 @@ class EasyTransformer(HookedRootModule):
             device.
         """
         super().__init__()
-        self.__init_config__(config=cfg)
-        self.__init_tokenizer__(tokenizer=tokenizer)
+        self.cfg = EasyTransformer.__generate_config__(cfg)
+        self.tokenizer = EasyTransformer.__generate_tokenizer__(self.cfg, tokenizer)
         self.__init_d_vocab__()
         self.__init_embeddings__()
 
@@ -141,6 +144,7 @@ class EasyTransformer(HookedRootModule):
 
         self.unembed = Unembed(self.cfg)
 
+        # TODO rename [cfg] to [config]
         if self.cfg.init_weights:
             self.init_weights()
 
@@ -498,6 +502,7 @@ class EasyTransformer(HookedRootModule):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cpu")
 
+    # written in this style because this guarantees that [self] isn't set inside here 
     @classmethod
     def from_pretrained(
         cls,
