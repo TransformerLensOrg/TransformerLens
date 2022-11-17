@@ -151,8 +151,8 @@ class HookedRootModule(nn.Module):
             module.name = name
             self.name_to_module[
                 name
-            ] = module  # TODO why not just use self.named_modules()?
-            # TODO is this really the best way to do this?
+            ] = module  # we don't use [self.named_modules()] because that's a generator, not a dictionary
+            # this is actually the cleanest way to do this 
             if "HookPoint" in str(type(module)):
                 self.name_to_hook[name] = module
 
