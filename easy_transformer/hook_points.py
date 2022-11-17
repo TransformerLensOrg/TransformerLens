@@ -115,8 +115,15 @@ class HookPoint(nn.Module):
         Helper function that's mainly useful on EasyTransformer
         If it doesn't have this form, raises an error -
         """
-        _, layer, _ = self.name.split(".")
-        return int(layer)
+        try:
+            layer = int(self.name.split(".")[1])
+            return int(layer)
+        except ValueError:
+            # TODO maybe return [None] instead of raising an error? but test it first, might
+            # break in subtle ways
+            raise ValueError(
+                f"HookPoint name {self.name} doesn't have the form 'blocks.{layer}.{...}'"
+            )
 
 
 # %%
