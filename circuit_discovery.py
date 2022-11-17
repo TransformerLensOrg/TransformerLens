@@ -12,13 +12,10 @@ from easy_transformer import EasyTransformer
 from ioi_dataset import (
     IOIDataset,
 )
-from utils_circuit_discovery import (
-    path_patching, 
-    logit_diff_io_s,
-    HypothesisTree
-)
+from utils_circuit_discovery import path_patching, logit_diff_io_s, HypothesisTree
 
 from IPython import get_ipython
+
 ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
@@ -34,22 +31,23 @@ model.set_use_attn_result(True)
 # %%
 orig = "When John and Mary went to the store, John gave a bottle of milk to Mary."
 new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary."
-#new = "A completely different gibberish sentence blalablabladfghjkoiuytrdfg"
+# new = "A completely different gibberish sentence blalablabladfghjkoiuytrdfg"
 
 model.reset_hooks()
-logit = model(orig)[0,16,5335]
+all_logits = model(orig)
+logit = all_logits[0, -2, 5335]
 
 model = path_patching(
-    model, 
-    orig, 
-    new, 
+    model,
+    orig,
+    new,
     [(5, 5)],
-    [('blocks.8.attn.hook_v', 6)],
+    [("blocks.8.attn.hook_v", 6)],
     12,
-    position=torch.tensor([16]),
+    position=torch.tensor([all_logits.shape[1] - 2]),
 )
 
-new_logit = model(orig)[0,16,5335]
+new_logit = model(orig)[0, -2, 5335]
 model.reset_hooks()
 print(logit, new_logit)
 
@@ -68,44 +66,44 @@ abc_dataset = (
 )
 # %%
 # the circuit discovery algorithm
-# 
+#
 # we want to write down the process of discovery the IOI circuit as an algorithm
 # 1. start at the logits at the token position 'end', run path patching on each head and mlp.
 # 2. pick threshold (probably in terms of percentage change in metric we care about?), identify components that have effect sizes above threshold
 # 3. for comp in identified components:
 ## a. run path patching on all components upstream to it, with the q, k, or v part of comp as receiver
-#%% [markdown] 
+#%% [markdown]
 # Main part of the automatic circuit discovery algorithm
 
 
 positions = OrderedDict()
-positions['IO'] = ioi_dataset.word_idx['IO']
-positions['S'] = ioi_dataset.word_idx['S']
-positions['S+1'] = ioi_dataset.word_idx['S+1']
-positions['S2'] = ioi_dataset.word_idx['S2']
-positions['end'] = ioi_dataset.word_idx['end']
+positions["IO"] = ioi_dataset.word_idx["IO"]
+positions["S"] = ioi_dataset.word_idx["S"]
+positions["S+1"] = ioi_dataset.word_idx["S+1"]
+positions["S2"] = ioi_dataset.word_idx["S2"]
+positions["end"] = ioi_dataset.word_idx["end"]
 
 h = HypothesisTree(
-    model, 
-    metric=logit_diff_io_s, 
+    model,
+    metric=logit_diff_io_s,
     dataset=ioi_dataset,
-    orig_data=ioi_dataset.toks.long(), 
-    new_data=abc_dataset.toks.long(), 
+    orig_data=ioi_dataset.toks.long(),
+    new_data=abc_dataset.toks.long(),
     threshold=0.2,
     possible_positions=positions,
-    use_caching=True
+    use_caching=True,
 )
 
 # %%
 h.eval(auto_threshold=3, verbose=True, show_graphics=True)
 while h.current_node is not None:
     h.eval(auto_threshold=3, verbose=True, show_graphics=True)
-    with open('ioi_small.pkl', 'wb') as f:
+    with open("ioi_small.pkl", "wb") as f:
         pickle.dump(h, f, pickle.HIGHEST_PROTOCOL)
 
 # %%
-with open('ioi_small.pkl', 'rb') as f:
-        h = pickle.load(f)
+with open("ioi_small.pkl", "rb") as f:
+    h = pickle.load(f)
 # %%
 # attn_results_fast = deepcopy(h.attn_results)
 # mlp_results_fast = deepcopy(h.mlp_results)
@@ -114,12 +112,12 @@ with open('ioi_small.pkl', 'rb') as f:
 
 # use_caching = False
 # h = HypothesisTree(
-#     model, 
-#     metric=logit_diff_io_s, 
-#     dataset=ioi_dataset, 
-#     orig_data=ioi_dataset.toks.long(), 
-#     new_data=abc_dataset.toks.long(), 
-#     threshold=0.15,  
+#     model,
+#     metric=logit_diff_io_s,
+#     dataset=ioi_dataset,
+#     orig_data=ioi_dataset.toks.long(),
+#     new_data=abc_dataset.toks.long(),
+#     threshold=0.15,
 # )
 # h.eval()
 # attn_results_slow = deepcopy(h.attn_results)
