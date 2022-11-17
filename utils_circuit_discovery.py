@@ -2,14 +2,18 @@ from functools import partial
 import numpy as np
 from typing import List, Tuple, Dict, Union, Optional, Callable, Any
 from tqdm import tqdm
-import pandas as pd
 import torch
-import plotly.express as px
 from easy_transformer import EasyTransformer
 from easy_transformer.experiments import get_act_hook
 from ioi_dataset import (
     IOIDataset,
 )
+import warnings
+import matplotlib.pyplot as plt
+import networkx as nx
+from collections import OrderedDict
+from ioi_utils import show_pp
+import graphviz # need both pip install graphviz and sudo apt-get install graphviz
 
 def get_hook_tuple(layer, head_idx):
     if head_idx is None:
@@ -209,3 +213,190 @@ def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
     io_logits = model(dataset.toks.long())[torch.arange(N), dataset.word_idx['end'], dataset.io_tokenIDs]
     s_logits = model(dataset.toks.long())[torch.arange(N), dataset.word_idx['end'], dataset.s_tokenIDs]
     return (io_logits - s_logits).mean().item()
+
+class Node():
+    def __init__(self,
+        layer: int,
+        head: int,
+        position: str
+    ):
+        self.layer = layer
+        self.head = head
+        assert isinstance(position, str), f"Position must be a string, not {type(position)}"
+        self.position = position
+        self.children = []
+        self.parents = []
+
+    def __repr__(self):
+        return f"Node({self.layer}, {self.head}, {self.position})"
+
+    def repr_long(self):
+        return f"Node({self.layer}, {self.head}, {self.position}) with children {[child.__repr__() for child in self.children]}"
+    
+    def display(self):
+        if self.layer == 12:
+            return "resid out"
+        elif self.head is None:
+            return f"mlp{self.layer}\n{self.position}"
+        else:
+            return f"{self.layer}.{self.head}\n{self.position}"
+
+
+class HypothesisTree():
+    def __init__(self, model: EasyTransformer, metric: Callable, dataset, orig_data, new_data, threshold: int, possible_positions: OrderedDict, use_caching: bool = True):
+        self.model = model
+        self.possible_positions = possible_positions
+        self.node_stack = OrderedDict()
+        self.populate_node_stack()
+        self.current_node = self.node_stack[next(reversed(self.node_stack))] # last element
+        self.root_node = self.current_node
+        self.metric = metric
+        self.dataset = dataset
+        self.orig_data = orig_data
+        self.new_data = new_data
+        self.threshold = threshold
+        self.default_metric = self.metric(model, dataset)
+        self.orig_cache = None
+        self.new_cache = None
+        if use_caching:
+            self.get_caches()
+        self.important_nodes = []
+
+    def populate_node_stack(self):
+        for layer in range(self.model.cfg.n_layers):
+            for head in list(range(self.model.cfg.n_heads)) + [None]: # includes None for mlp
+                for pos in self.possible_positions:
+                    node = Node(layer, head, pos)
+                    self.node_stack[(layer, head, pos)] = node
+        layer = self.model.cfg.n_layers
+        pos = next(reversed(self.possible_positions)) # assume the last position specified is the one that we care about in the residual stream
+        resid_post = Node(layer, None, pos) 
+        self.node_stack[(layer, None, pos)] = resid_post # this represents blocks.{last}.hook_resid_post
+
+    def get_caches(self):
+        if "orig_cache" in self.__dict__.keys():
+            warnings.warn("Caches already exist, overwriting")
+
+        # save activations from orig
+        self.orig_cache = {}
+        self.model.reset_hooks()
+        self.model.cache_all(self.orig_cache)
+        _ = self.model(self.orig_data, prepend_bos=False)
+
+        # save activations from new for senders
+        self.new_cache = {}
+        self.model.reset_hooks()
+        self.model.cache_all(self.new_cache)
+        _ = self.model(self.new_data, prepend_bos=False)
+
+    def eval(self, threshold: Union[float, None] = None, verbose: bool = False, show_graphics: bool = True, auto_threshold: float = 0.0):
+        """Process current_node, then move to next current_node"""
+
+        if threshold is None:
+            threshold = self.threshold
+
+        _, node = self.node_stack.popitem()
+        self.important_nodes.append(node)
+        print("Currently evaluating", node)
+
+        current_node_position = node.position
+        for pos in self.possible_positions:
+            if current_node_position != pos and node.head is None: # MLPs and the end state of the residual stream only care about the last position
+                continue
+
+            receiver_hooks = []
+            if node.layer == self.model.cfg.n_layers:
+                receiver_hooks.append((f"blocks.{node.layer-1}.hook_resid_post", None))
+            elif node.head is None:
+                receiver_hooks.append((f"blocks.{node.layer}.hook_mlp_out", None))
+            else:
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_v", node.head))
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_k", node.head))
+                if pos == current_node_position:
+                    receiver_hooks.append((f"blocks.{node.layer}.attn.hook_q", node.head)) # similar story to above, only care about the last position
+
+            for receiver_hook in receiver_hooks:
+                if verbose:
+                    print(f"Working on pos {pos}, receiver hook {receiver_hook}")
+                attn_results, mlp_results = path_patching_up_to(
+                    model=self.model, 
+                    layer=node.layer,
+                    metric=self.metric,
+                    dataset=self.dataset,
+                    orig_data=self.orig_data, 
+                    new_data=self.new_data, 
+                    receiver_hooks=[receiver_hook],
+                    position=self.possible_positions[pos], # TODO TODO TODO I think we might need to have an "in position" (pos) as well as an "out position" (node.position)
+                    orig_cache=self.orig_cache,
+                    new_cache=self.new_cache,
+                )
+
+                # convert to percentage
+                attn_results -= self.default_metric
+                attn_results /= self.default_metric
+                mlp_results -= self.default_metric
+                mlp_results /= self.default_metric
+                self.attn_results = attn_results
+                self.mlp_results = mlp_results
+
+                if show_graphics:
+                    show_pp(attn_results.T, title=f"Attn results for {node} with receiver hook {receiver_hook}", xlabel="Head", ylabel="Layer")
+                    show_pp(mlp_results, title=f"MLP results for {node} with receiver hook {receiver_hook}", xlabel="Layer", ylabel="")
+
+                if auto_threshold:
+                    threshold = max(
+                        auto_threshold * attn_results.std(), 
+                        auto_threshold * mlp_results.std(), 
+                        0.01
+                    )
+                if verbose:
+                    print(f"threshold: {threshold:.3f}")
+                # process result and mark nodes above threshold as important
+                for layer in range(attn_results.shape[0]):
+                    for head in range(attn_results.shape[1]):
+                        if abs(attn_results[layer, head]) > threshold:
+                            print("Found important head:", (layer, head), "at position", pos)
+                            score = attn_results[layer, head]
+                            comp_type = receiver_hook[0].split('_')[-1] # q, k, v, out, post
+                            self.node_stack[(layer, head, pos)].children.append((node, score, comp_type))
+                            node.parents.append((self.node_stack[(layer, head, pos)], score, comp_type))
+                    if abs(mlp_results[layer]) > threshold:
+                        print("Found important MLP: layer", layer, "position", pos)
+                        score = mlp_results[layer, 0]
+                        comp_type = receiver_hook[0].split('_')[-1] # q, k, v, out, post
+                        self.node_stack[(layer, None, pos)].children.append((node, score, comp_type))
+                        node.parents.append((self.node_stack[(layer, None, pos)],  score, comp_type))
+
+        # update self.current_node
+        while len(self.node_stack) > 0 and len(self.node_stack[next(reversed(self.node_stack))].children) == 0:
+            self.node_stack.popitem()
+        if len(self.node_stack) > 0:
+            self.current_node = self.node_stack[next(reversed(self.node_stack))]
+        else:
+            self.current_node = None
+
+    def show(self, save_file: Optional[str] = None):
+        g = graphviz.Digraph(format='png')
+        g.attr('node', shape='box')
+        color_dict = {'q': 'red', 'k': 'green', 'v': 'blue', 'out': 'black', 'post': 'black'}
+        # add each layer as a subgraph with rank=same
+        for layer in range(12):
+            with g.subgraph() as s:
+                s.attr(rank='same')
+                for node in self.important_nodes:
+                    if node.layer == layer:
+                        s.node(node.display())
+
+        def scale(num: float):
+            return 3*min(1, abs(num) ** 0.4)
+
+        for node in self.important_nodes:
+            for parent in node.parents:
+                g.edge(parent[0].display(), node.display(), color=color_dict[parent[2]], penwidth=str(scale(parent[1])), arrowsize=str(scale(parent[1])))
+        # add invisible edges to keep layers separate
+        for i in range(len(self.important_nodes) - 1):
+            node1 = self.important_nodes[i]
+            node2 = self.important_nodes[i+1]
+            if node1.layer != node2.layer:
+                g.edge(node2.display(), node1.display(), style='invis')
+        return g
