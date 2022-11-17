@@ -1,10 +1,15 @@
 import logging
 from abc import ABC, abstractmethod
-from enum import Enum
-from typing import Callable, Optional, Sequence, Union
+from typing import Callable, Optional, Sequence
 
 import torch
 import torch.nn as nn
+from typing_extensions import Literal
+
+HookDirection = Literal["forward", "backward"]
+FORWARD_HOOK_DIRECTION = "forward"
+BACKWARD_HOOK_DIRECTION = "backward"
+BOTH_HOOK_DIRECTION = "both"
 
 
 class NamesFilter(ABC):
@@ -38,12 +43,6 @@ class SingleNameFilter(NamesFilter):
 # %%
 
 
-class HookDirection(Enum):
-    FORWARD = 1
-    BACKWARD = 2
-    BOTH = 3
-
-
 class HookPoint(nn.Module):
     """
     A helper class to get access to intermediate activations.
@@ -68,12 +67,12 @@ class HookPoint(nn.Module):
         # module. This is set by the root module at setup.
         self.name: str
 
-    def add_hook(self, hook, direction: HookDirection = HookDirection.FORWARD):
+    def add_hook(self, hook, direction: HookDirection = FORWARD_HOOK_DIRECTION):
         # Hook format is fn(activation, hook_name)
         # Change it into PyTorch hook format (this includes input and output,
         # which are the same for a HookPoint)
 
-        if direction == HookDirection.FORWARD:
+        if direction == FORWARD_HOOK_DIRECTION:
 
             def full_hook(module, module_input, module_output):
                 return hook(module_output, hook=self)
@@ -82,7 +81,7 @@ class HookPoint(nn.Module):
             self.forward_hooks.append(handle)
         # TODO find a tool that complains when i try to test two different-typed things for equality
 
-        elif direction == HookDirection.BACKWARD:
+        elif direction == BACKWARD_HOOK_DIRECTION:
 
             def full_hook(module, module_input, module_output):
                 # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
@@ -92,20 +91,29 @@ class HookPoint(nn.Module):
             handle = self.register_full_backward_hook(full_hook)
             self.backward_hooks.append(handle)
         else:
-            # TODO for neel nanda- do we want to allow [HookDirection.BOTH]?
+            # TODO for neel nanda- do we want to allow [BOTH_HOOK_DIRECTION]?
             raise ValueError(f"Invalid direction {direction}")
 
-    def remove_hooks(self, direction: HookDirection = HookDirection.FORWARD):
-        if not isinstance(direction, HookDirection):
-            raise ValueError(f"Invalid direction {direction}")
-        if (direction == HookDirection.FORWARD) or (direction == HookDirection.BOTH):
-            for hook in self.forward_hooks:
-                hook.remove()
+    def remove_hooks(self, direction: HookDirection = FORWARD_HOOK_DIRECTION):
+        def remove_forward_hooks():
+            for handle in self.forward_hooks:
+                handle.remove()
             self.forward_hooks = []
-        if (direction == HookDirection.BACKWARD) or (direction == HookDirection.BOTH):
-            for hook in self.backward_hooks:
-                hook.remove()
+
+        def remove_backward_hooks():
+            for handle in self.backward_hooks:
+                handle.remove()
             self.backward_hooks = []
+
+        if direction == FORWARD_HOOK_DIRECTION:
+            remove_forward_hooks()
+        elif direction == BACKWARD_HOOK_DIRECTION:
+            remove_backward_hooks()
+        elif direction == BOTH_HOOK_DIRECTION:
+            remove_forward_hooks()
+            remove_backward_hooks()
+        else:
+            raise ValueError(f"Invalid direction {direction}")
 
     def clear_context(self):
         del self.context
@@ -128,7 +136,7 @@ class HookPoint(nn.Module):
             # TODO maybe return [None] instead of raising an error? but test it first, might
             # break in subtle ways
             raise ValueError(
-                f"HookPoint name {self.name} doesn't have the form 'blocks.{layer}.{...}'"
+                f"HookPoint name {self.name} doesn't have the form 'blocks.layer.rest"
             )
 
 
@@ -172,7 +180,7 @@ class HookedRootModule(nn.Module):
     def hook_points(self):
         return self.name_to_hook.values()
 
-    def remove_all_hook_fns(self, direction=HookDirection.BOTH):
+    def remove_all_hook_fns(self, direction=BOTH_HOOK_DIRECTION):
         for hp in self.hook_points():
             hp.remove_hooks(direction)
 
@@ -180,13 +188,13 @@ class HookedRootModule(nn.Module):
         for hp in self.hook_points():
             hp.clear_context()
 
-    def reset_hooks(self, clear_contexts=True, direction=HookDirection.BOTH):
+    def reset_hooks(self, clear_contexts=True, direction=BOTH_HOOK_DIRECTION):
         if clear_contexts:
             self.clear_contexts()
         self.remove_all_hook_fns(direction)
         self.is_caching = False
 
-    def add_hook(self, name, hook, direction: HookDirection = HookDirection.FORWARD):
+    def add_hook(self, name, hook, direction: HookDirection = FORWARD_HOOK_DIRECTION):
         if type(name) == str:
             self.name_to_module[name].add_hook(hook, direction=direction)
         else:
@@ -232,8 +240,8 @@ class HookedRootModule(nn.Module):
             if self.is_caching:
                 logging.warning("Caching is on, but hooks are being reset")
             self.reset_hooks(clear_contexts)
-        self.__apply_hooks__(forward_hooks, HookDirection.FORWARD)
-        self.__apply_hooks__(backward_hooks, HookDirection.BACKWARD)
+        self.__apply_hooks__(forward_hooks, FORWARD_HOOK_DIRECTION)
+        self.__apply_hooks__(backward_hooks, BACKWARD_HOOK_DIRECTION)
         out = self.forward(*model_args, **model_kwargs)
         if reset_hooks_end:
             if len(backward_hooks) > 0:
@@ -287,9 +295,9 @@ class HookedRootModule(nn.Module):
 
         for name, hp in self.name_to_hook.items():
             if names_filter.is_included(name):
-                hp.add_hook(save_hook, HookDirection.FORWARD)
+                hp.add_hook(save_hook, FORWARD_HOOK_DIRECTION)
                 if include_backward:
-                    hp.add_hook(save_hook_back, HookDirection.BACKWARD)
+                    hp.add_hook(save_hook_back, BACKWARD_HOOK_DIRECTION)
         return cache
 
     def run_with_cache(
