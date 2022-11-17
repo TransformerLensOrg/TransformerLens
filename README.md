@@ -20,6 +20,8 @@ From the root directory of this repository: `pip install -e .`
 
 Then the library can be imported as `import easy_transformer`.
 
+We recommend using `black` and `isort`.
+
 ### Testing
 
 TODO this doesn't seem to work?

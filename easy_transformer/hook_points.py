@@ -29,12 +29,9 @@ class ConstantNameFilter(NamesFilter):
         return name in self.names
 
 
-# TODO did i fuck up by not mkaing this optional?
-
 # %%
 
 
-# TODO make sure this is used in all the right places
 class HookDirection(Enum):
     FORWARD = 1
     BACKWARD = 2
@@ -139,7 +136,7 @@ class HookedRootModule(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.is_caching = False  # TODO what's this used for?
+        self.is_caching = False  # see [run_with_hooks]  and [add_caching_hooks]
 
     def setup(self):
         """
@@ -190,7 +187,7 @@ class HookedRootModule(nn.Module):
             if type(name) == str:
                 self.name_to_module[name].add_hook(hook, direction=direction)
             else:
-                # TODO add documentation here
+                # TODO add a class here
                 # Otherwise, name is a Boolean function on names
                 for hook_name, hp in self.name_to_hook.items():
                     if name(hook_name):
@@ -260,8 +257,6 @@ class HookedRootModule(nn.Module):
 
         if names_filter is None:
             names_filter = FunctionalNameFilter(lambda _: True)
-        # TODO find the instances that take in a string and make them check for equality via a [FunctionalNameFilter]
-        # TODO find the instances that take in a list of strings and make them check for equality via a [FunctionalNameFilter]
 
         self.is_caching = True
 
