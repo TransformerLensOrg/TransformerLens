@@ -28,6 +28,12 @@ class ConstantNameFilter(NamesFilter):
     def is_included(self, name: str) -> bool:
         return name in self.names
 
+class SingleNameFilter(NamesFilter):
+    def __init__(self, name: str):
+        self.name = name
+
+    def is_included(self, name: str) -> bool:
+        return self.name == name
 
 # %%
 
