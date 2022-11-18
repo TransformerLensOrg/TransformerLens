@@ -1,9 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name="easy_transformer",
     version="0.1.0",
-    packages=["easy_transformer"],
+    packages=find_packages(),
     license="LICENSE",
     description="An implementation of transformers tailored for mechanistic interpretability.",
     long_description=open("README.md").read(),
@@ -18,5 +18,7 @@ setup(
         "datasets",
         "wandb",
         "fancy_einsum",
+        "matplotlib",
+        "IPython",
     ],
 )

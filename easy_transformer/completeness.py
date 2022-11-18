@@ -2,7 +2,7 @@
 import os
 import torch
 
-from ioi_circuit_extraction import NAIVE
+from easy_transformer.ioi_circuit_extraction import NAIVE
 
 if os.environ["USER"] in ["exx", "arthur"]:  # so Arthur can safely use octobox
     os.environ["CUDA_VISIBLE_DEVICES"] = "2"
@@ -20,7 +20,7 @@ import json
 from numpy import sin, cos, pi
 from time import ctime
 from dataclasses import dataclass
-from ioi_utils import logit_diff
+from easy_transformer.ioi_utils import logit_diff
 from tqdm import tqdm
 import pandas as pd
 import torch
@@ -73,7 +73,7 @@ from datasets import load_dataset
 import matplotlib.pyplot as plt
 
 
-from ioi_dataset import (
+from easy_transformer.ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
     NAMES,
@@ -82,7 +82,7 @@ from ioi_dataset import (
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
 )
-from ioi_utils import (
+from easy_transformer.ioi_utils import (
     basis_change,
     add_arrow,
     CLASS_COLORS,
@@ -94,7 +94,7 @@ from ioi_utils import (
     plot_ellipse,
     probs,
 )
-from ioi_circuit_extraction import (
+from easy_transformer.ioi_circuit_extraction import (
     join_lists,
     CIRCUIT,
     NAIVE,

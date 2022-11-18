@@ -14,8 +14,8 @@ import gc
 import einops
 from easy_transformer.experiments import get_act_hook
 
-from ioi_dataset import IOIDataset
-from ioi_circuit_extraction import do_circuit_extraction
+from easy_transformer.ioi_dataset import IOIDataset
+from easy_transformer.ioi_circuit_extraction import do_circuit_extraction
 
 ALL_COLORS = px.colors.qualitative.Dark2
 CLASS_COLORS = {
@@ -31,7 +31,7 @@ CLASS_COLORS = {
 }
 
 
-from ioi_circuit_extraction import get_extracted_idx
+from easy_transformer.ioi_circuit_extraction import get_extracted_idx
 
 # other utils
 
@@ -187,7 +187,7 @@ def show_attention_patterns(
 
         for i, text in enumerate(prompts):
             # assert len(list(cache.items())) == 1 + int(mode == "val"), len(list(cache.items()))
-            toks = ioi_dataset.toks[i] # model.tokenizer(text)["input_ids"]
+            toks = ioi_dataset.toks[i]  # model.tokenizer(text)["input_ids"]
             current_length = len(toks)
             words = [model.tokenizer.decode([tok]) for tok in toks]
             attn = cache[good_names[0]].detach().cpu()[i, head, :, :]
@@ -990,8 +990,8 @@ def path_patching(
     receiver_hooks,
     positions=["end"],
     return_hooks=False,
-    extra_hooks=[], # when we call reset hooks, we may want to add some extra hooks after this, add these here
-    freeze_mlps=False, # recall in IOI paper we consider these "vital model components"
+    extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
+    freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
     have_internal_interactions=False,
 ):
     """
@@ -1003,13 +1003,13 @@ def path_patching(
 
     def patch_positions(z, source_act, hook, positions=["end"], verbose=False):
         for pos in positions:
-            z[
-                torch.arange(D_orig.N), D_orig.word_idx[pos]
-            ] = source_act[torch.arange(D_new.N), D_new.word_idx[pos]]
+            z[torch.arange(D_orig.N), D_orig.word_idx[pos]] = source_act[
+                torch.arange(D_new.N), D_new.word_idx[pos]
+            ]
         return z
 
     # process arguments
-    sender_hooks = [] 
+    sender_hooks = []
     for layer, head_idx in sender_heads:
         if head_idx is None:
             sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
@@ -1028,9 +1028,7 @@ def path_patching(
     model.cache_some(
         sender_cache, lambda x: x in sender_hook_names, suppress_warning=True
     )
-    source_logits = model(
-        D_new.toks.long()
-    )
+    source_logits = model(D_new.toks.long())
 
     # Forward pass B
     target_cache = {}
@@ -1109,16 +1107,12 @@ def path_patching(
     hooks = []
     for hook in extra_hooks:
         hooks.append(hook)
-        
+
     for hook_name, head_idx in receiver_hooks:
         for pos in positions:
             if torch.allclose(
-                receiver_cache[hook_name][
-                    torch.arange(D_orig.N), D_orig.word_idx[pos]
-                ],
-                target_cache[hook_name][
-                    torch.arange(D_orig.N), D_orig.word_idx[pos]
-                ],
+                receiver_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],
+                target_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],
             ):
                 warnings.warn("Torch all close for {}".format(hook_name))
         hook = get_act_hook(

@@ -44,10 +44,10 @@ import random
 import einops
 from IPython import get_ipython
 from copy import deepcopy
-from ioi_dataset import (
+from easy_transformer.ioi_dataset import (
     IOIDataset,
 )
-from ioi_utils import (
+from easy_transformer.ioi_utils import (
     path_patching,
     max_2d,
     CLASS_COLORS,
@@ -56,13 +56,13 @@ from ioi_utils import (
     scatter_attention_and_contribution,
 )
 from random import randint as ri
-from ioi_circuit_extraction import (
+from easy_transformer.ioi_circuit_extraction import (
     do_circuit_extraction,
     get_heads_circuit,
     CIRCUIT,
 )
-from ioi_utils import logit_diff, probs
-from ioi_utils import get_top_tokens_and_probs as g
+from easy_transformer.ioi_utils import logit_diff, probs
+from easy_transformer.ioi_utils import get_top_tokens_and_probs as g
 
 ipython = get_ipython()
 if ipython is not None:
@@ -522,7 +522,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
 #%% [markdown]
 # Plot the two sets of results
 
-from ioi_utils import CLASS_COLORS
+from easy_transformer.ioi_utils import CLASS_COLORS
 
 cc = deepcopy(CLASS_COLORS)
 circuit = deepcopy(CIRCUIT)
