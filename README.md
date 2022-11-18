@@ -8,16 +8,24 @@ See the experiments for free on Google Colab: https://colab.research.google.com/
 
 # Setup
 
-## Install dependencies
+## Option 1) install with pip
+
+
+```
+pip install git+https://github.com/redwoodresearch/Easy-Transformer.git
+```
+
+## Option 2) clone repository (for development, and finer tuning)
 
 ```bash
+git clone https://github.com/redwoodresearch/Easy-Transformer/
 pip install -r requirements.txt
 ```
 
 # In this repo
 
-In this repo, you can find the following notebooks:
-`
+In this repo, you can find the following notebooks (some are in `easy_transformer/`):
+
 * `experiments.py`: a notebook of several of the most interesting experiments of the IOI project.
 * `completeness.py`: a notebook that generate the completeness plots in the paper, and implements the completeness functions.
 * `minimality.py`: as above for minimality.
