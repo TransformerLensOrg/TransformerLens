@@ -18,8 +18,9 @@ from transformers import (
 )
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer import EasyTransformerConfig, FactoredMatrix
+from easy_transformer import EasyTransformerConfig
 from easy_transformer.ActivationCache import ActivationCache
+from easy_transformer.FactoredMatrix import FactoredMatrix
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from easy_transformer.past_key_value_caching import (
     EasyTransformerKeyValueCache,
@@ -430,28 +431,38 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def single_token_to_residual(self, token: Union[str, int, TT[()]]):
-        """Maps a token to the unembedding vector for that token, ie the vector in the residual stream that we do with to the get the logit for that token.
+    def tokens_to_residual_directions(self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]) -> Union[TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]]:
+        """Maps tokens to a tensor with the unembedding vector for those tokens, ie the vector in the residual stream that we dot with to the get the logit for that token.
 
-        WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map.
+        WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map. This is done automatically with the fold_ln flag on from_pretrained
+        
+        WARNING 2: LayerNorm scaling will scale up or down the effective direction in the residual stream for each output token on any given input token position. ActivationCache.apply_ln_to_stack will apply the appropriate scaling to these directions.
 
         Args:
-            token (Union[str, int, torch.Tensor]): The single token. Can be a single element tensor, an integer, or string. If string, will be mapped to a single token using to_single_token, and an error raised if it's multiply tokens.
+            tokens (Union[str, int, torch.Tensor]): The token(s). If a single token, can be a single element tensor, an integer, or string. If string, will be mapped to a single token using to_single_token, and an error raised if it's multiple tokens.
+            The method also works for a batch of input tokens
 
         Returns:
-            residual_direction torch.Tensor: The unembedding vector for the token, a [d_model] tensor.
+            residual_direction torch.Tensor: The unembedding vector for the token(s), a stack of [d_model] tensor.
         """
-        if isinstance(token, str):
-            token = self.to_single_token(token).item()
-        elif isinstance(token, int):
-            pass
-        elif isinstance(token, torch.Tensor):
-            token = token.item()
+        if isinstance(tokens, torch.Tensor) and tokens.numel()>1:
+            # If the tokens are a tensor, and have more than one element, assume they are a batch of tokens
+            residual_directions = self.W_U[:, tokens]
+            residual_directions = einops.rearrange(residual_directions, "d_model ... -> ... d_model")
+            return residual_directions
         else:
-            raise ValueError(f"Invalid token type: {type(token)}")
+            # Otherwise there is a single token
+            if isinstance(tokens, str):
+                token = self.to_single_token(tokens)
+            elif isinstance(tokens, int):
+                token = tokens
+            elif isinstance(tokens, torch.Tensor) and tokens.numel()==1:
+                token = tokens.item()
+            else:
+                raise ValueError(f"Invalid token type: {type(tokens)}")
+            residual_direction = self.W_U[:, token]
+            return residual_direction
 
-        residual_direction = self.W_U[:, token]
-        return residual_direction
 
     def to(self, device_or_dtype):
         """

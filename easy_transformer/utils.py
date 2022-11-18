@@ -469,7 +469,7 @@ def test_prompt(
         sorted_token_probs, sorted_token_values = token_probs.sort(descending=True)
         # Janky way to get the index of the token in the sorted list - I couldn't find a better way?
         correct_rank = torch.arange(len(sorted_token_values))[
-            sorted_token_values == answer_token
+            (sorted_token_values == answer_token).cpu()
         ].item()
         answer_ranks.append((answer_str_token, correct_rank))
         if print_details:
