@@ -15,7 +15,7 @@ import plotly.express as px
 import gc
 import einops
 
-from ioi_dataset import (
+from easy_transformer.ioi.ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
     NAMES,

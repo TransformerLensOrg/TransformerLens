@@ -44,10 +44,10 @@ import random
 import einops
 from IPython import get_ipython
 from copy import deepcopy
-from ioi_dataset import (
+from easy_transformer.ioi.ioi_dataset import (
     IOIDataset,
 )
-from ioi_utils import (
+from easy_transformer.ioi.ioi_utils import (
     path_patching,
     max_2d,
     CLASS_COLORS,
@@ -56,13 +56,13 @@ from ioi_utils import (
     scatter_attention_and_contribution,
 )
 from random import randint as ri
-from ioi_circuit_extraction import (
+from easy_transformer.ioi.ioi_circuit_extraction import (
     do_circuit_extraction,
     get_heads_circuit,
     CIRCUIT,
 )
-from ioi_utils import logit_diff, probs
-from ioi_utils import get_top_tokens_and_probs as g
+from easy_transformer.ioi.ioi_utils import logit_diff, probs
+from easy_transformer.ioi.ioi_utils import get_top_tokens_and_probs as g
 
 ipython = get_ipython()
 if ipython is not None:
@@ -80,7 +80,7 @@ ioi_dataset = IOIDataset(
     N=N,
     tokenizer=model.tokenizer,
     prepend_bos=False,
-) # TODO make this a seeded dataset
+)  # TODO make this a seeded dataset
 
 print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
 #%% [markdown]
@@ -96,7 +96,7 @@ print(f"The model gets average IO probs {model_io_probs.item()} over {N} example
 circuit = deepcopy(CIRCUIT)
 
 # we make the ABC dataset in order to knockout other model components
-abc_dataset = ( # TODO seeded
+abc_dataset = (  # TODO seeded
     ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"))
@@ -138,7 +138,6 @@ def plot_path_patching(
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
                 positions=[position],
-                verbose=False,
                 return_hooks=False,
                 freeze_mlps=False,
                 have_internal_interactions=False,
@@ -519,7 +518,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
 #%% [markdown]
 # Plot the two sets of results
 
-from ioi_utils import CLASS_COLORS
+from easy_transformer.ioi.ioi_utils import CLASS_COLORS
 
 cc = deepcopy(CLASS_COLORS)
 circuit = deepcopy(CIRCUIT)

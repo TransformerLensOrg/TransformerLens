@@ -18,5 +18,7 @@ setup(
         "datasets",
         "wandb",
         "fancy_einsum",
+        "matplotlib",
+        "IPython",
     ],
 )

@@ -62,7 +62,7 @@ from IPython import get_ipython
 import matplotlib.pyplot as plt
 import random as rd
 
-from ioi_dataset import (
+from easy_transformer.ioi.ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
     NAMES,
@@ -71,7 +71,7 @@ from ioi_dataset import (
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
 )
-from ioi_utils import (
+from easy_transformer.ioi.ioi_utils import (
     all_subsets,
     clear_gpu_mem,
     show_tokens,
@@ -79,7 +79,7 @@ from ioi_utils import (
     show_attention_patterns,
     safe_del,
 )
-from ioi_circuit_extraction import (
+from easy_transformer.ioi.ioi_circuit_extraction import (
     do_circuit_extraction,
     gen_prompt_uniform,
     get_act_hook,
@@ -202,7 +202,7 @@ test_prompt(
 )
 # %% Run automatic attacks
 
-from ioi_utils import probs, logit_diff
+from easy_transformer.ioi.ioi_utils import probs, logit_diff
 
 ADX_TEMPLATE = [
     " [A] had a good day.",
