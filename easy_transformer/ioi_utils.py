@@ -14,8 +14,8 @@ import gc
 import einops
 from easy_transformer.experiments import get_act_hook
 
-from easy_transformer.ioi.ioi_dataset import IOIDataset
-from easy_transformer.ioi.ioi_circuit_extraction import do_circuit_extraction
+from easy_transformer.ioi_dataset import IOIDataset
+from easy_transformer.ioi_circuit_extraction import do_circuit_extraction
 
 ALL_COLORS = px.colors.qualitative.Dark2
 CLASS_COLORS = {
@@ -31,7 +31,7 @@ CLASS_COLORS = {
 }
 
 
-from easy_transformer.ioi.ioi_circuit_extraction import get_extracted_idx
+from easy_transformer.ioi_circuit_extraction import get_extracted_idx
 
 # other utils
 

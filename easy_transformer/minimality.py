@@ -12,10 +12,10 @@ from copy import deepcopy
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
-from easy_transformer.ioi.ioi_utils import probs
+from easy_transformer.ioi_utils import probs
 
 # from interp.circuit.projects.ioi.ioi_methods import ablate_layers, get_logit_diff
-from easy_transformer.ioi.ioi_utils import probs, logit_diff
+from easy_transformer.ioi_utils import probs, logit_diff
 import torch
 import torch as t
 from easy_transformer.utils import (
@@ -67,7 +67,7 @@ from IPython import get_ipython
 import matplotlib.pyplot as plt
 import random as rd
 
-from easy_transformer.ioi.ioi_dataset import (
+from easy_transformer.ioi_dataset import (
     IOIDataset,
     NOUNS_DICT,
     NAMES,
@@ -75,7 +75,7 @@ from easy_transformer.ioi.ioi_dataset import (
     BABA_TEMPLATES,
     ABBA_TEMPLATES,
 )
-from easy_transformer.ioi.ioi_utils import (
+from easy_transformer.ioi_utils import (
     ALL_COLORS,
     CLASS_COLORS,
     clear_gpu_mem,
@@ -84,7 +84,7 @@ from easy_transformer.ioi.ioi_utils import (
     show_attention_patterns,
     safe_del,
 )
-from easy_transformer.ioi.ioi_circuit_extraction import (
+from easy_transformer.ioi_circuit_extraction import (
     NAIVE,
     join_lists,
     CIRCUIT,
