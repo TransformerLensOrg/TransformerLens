@@ -4,15 +4,19 @@ import torch
 import numpy as np
 from copy import deepcopy
 from collections import OrderedDict
-from ioi_dataset import IOIDataset
+from easy_transformer.ioi_dataset import IOIDataset
 import pickle
 
 from easy_transformer import EasyTransformer
 
-from ioi_dataset import (
+from easy_transformer.ioi_dataset import (
     IOIDataset,
 )
-from utils_circuit_discovery import path_patching, logit_diff_io_s, HypothesisTree
+from easy_transformer.utils_circuit_discovery import (
+    path_patching,
+    logit_diff_io_s,
+    HypothesisTree,
+)
 
 from IPython import get_ipython
 
