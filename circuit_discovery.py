@@ -29,29 +29,6 @@ if torch.cuda.is_available():
 model.set_use_attn_result(True)
 
 # %%
-orig = "When John and Mary went to the store, John gave a bottle of milk to Mary."
-new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary."
-# new = "A completely different gibberish sentence blalablabladfghjkoiuytrdfg"
-
-model.reset_hooks()
-all_logits = model(orig)
-logit = all_logits[0, -2, 5335]
-
-model = path_patching(
-    model,
-    orig,
-    new,
-    [(5, 5)],
-    [("blocks.8.attn.hook_v", 6)],
-    12,
-    position=torch.tensor([all_logits.shape[1] - 2]),
-)
-
-new_logit = model(orig)[0, -2, 5335]
-model.reset_hooks()
-print(logit, new_logit)
-
-# %%
 N = 50
 ioi_dataset = IOIDataset(
     prompt_type="ABBA",
@@ -74,7 +51,6 @@ abc_dataset = (
 ## a. run path patching on all components upstream to it, with the q, k, or v part of comp as receiver
 #%% [markdown]
 # Main part of the automatic circuit discovery algorithm
-
 
 positions = OrderedDict()
 positions["IO"] = ioi_dataset.word_idx["IO"]
@@ -104,53 +80,3 @@ while h.current_node is not None:
 # %%
 with open("ioi_small.pkl", "rb") as f:
     h = pickle.load(f)
-# %%
-# attn_results_fast = deepcopy(h.attn_results)
-# mlp_results_fast = deepcopy(h.mlp_results)
-# #%% [markdown]
-# # Test that Arthur didn't mess up the fast caching
-
-# use_caching = False
-# h = HypothesisTree(
-#     model,
-#     metric=logit_diff_io_s,
-#     dataset=ioi_dataset,
-#     orig_data=ioi_dataset.toks.long(),
-#     new_data=abc_dataset.toks.long(),
-#     threshold=0.15,
-# )
-# h.eval()
-# attn_results_slow = deepcopy(h.attn_results)
-# mlp_results_slow = deepcopy(h.mlp_results)
-
-# for fast_res, slow_res in zip([attn_results_fast, mlp_results_fast], [attn_results_slow, mlp_results_slow]):
-#     for layer in range(fast_res.shape[0]):
-#         for head in range(fast_res.shape[1]):
-#             assert torch.allclose(torch.tensor(fast_res[layer, head]), torch.tensor(slow_res[layer, head]), atol=1e-3, rtol=1e-3), f"fast_res[{layer}, {head}] = {fast_res[layer, head]}, slow_res[{layer}, {head}] = {slow_res[layer, head]}"
-#     for layer in range(fast_res.shape[0]):
-#         assert torch.allclose(torch.tensor(fast_res[layer]), torch.tensor(slow_res[layer])), f"fast_res[{layer}] = {fast_res[layer]}, slow_res[{layer}] = {slow_res[layer]}"
-
-# #%%
-# def randomise_indices(arr: np.ndarray, indices: np.ndarray):
-#     """
-#     Given an array arr, shuffle the elements that occur at the indices positions between themselves
-#     """
-
-#     # get the elements that we want to shuffle
-#     elements = arr[indices]
-
-#     # shuffle the elements
-#     np.random.shuffle(elements)
-
-#     # put the shuffled elements back into the array
-#     arr[indices] = elements
-
-#     return arr
-
-# #%%
-
-# a = [1, 2, 3, 4, 5]
-# b = [1, 2, 3]
-# a = np.array(a)
-# b = np.array(b)
-# print(randomise_indices(a, b))
