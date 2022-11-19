@@ -55,7 +55,7 @@ def path_patching(
     new_cache=None,
     prepend_bos=False,  # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
 ):
-    """mlps are by default considered as just another component and so are
+    """MLPs are by default considered as just another component and so are
     by default frozen when collecting acts on receivers.
     orig_data: string, torch.Tensor, or list of strings - any format that can be passed to the model directly
     new_data: same as orig_data
@@ -64,7 +64,7 @@ def path_patching(
     max_layer: layers beyond max_layer are not frozen when collecting receiver activations
     positions: default None and patch at all positions, or a tensor specifying the positions at which to patch
 
-    NOTE: This relies on a change to the cache_some() function in EasyTransformer/hook_points.py.
+    NOTE: This relies on a change to the cache_some() function in EasyTransformer/hook_points.py [we .clone() activations, unlike in neelnanda-io/EasyTransformer]
     """
     if max_layer is None:
         max_layer = model.cfg.n_layers
