@@ -81,7 +81,7 @@ class HookedRootModule(nn.Module):
     A class building on nn.Module to interface nicely with HookPoints
     Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks, and run_with_cache to run the model on some input and return a cache of all activations
 
-    WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the start and end by default, and I recommend using reset_hooks liberally in your code.
+    WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the end by default, and I recommend using the API of this and run_with_cache. If you want to add hooks into global state, I recommend being intentional about this, and I recommend using reset_hooks liberally in your code to remove any accidentally remaining global state.
 
     The main time this goes wrong is when you want to use backward hooks (to cache or intervene on gradients). In this case, you need to keep the hooks around as global state until you've run loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
     """
@@ -134,7 +134,6 @@ class HookedRootModule(nn.Module):
         *model_args,
         fwd_hooks=[],
         bwd_hooks=[],
-        reset_hooks_start=True,
         reset_hooks_end=True,
         clear_contexts=False,
         **model_kwargs,
@@ -144,17 +143,12 @@ class HookedRootModule(nn.Module):
         a hook point or a Boolean function on hook names and hook is the
         function to add to that hook point, or the hook whose names evaluate
         to True respectively. Ditto bwd_hooks
-        reset_hooks_start (bool): If True, all prior hooks are removed at the start
         reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
         including those added in this run)
         clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
         Note that if we want to use backward hooks, we need to set
         reset_hooks_end to be False, so the backward hooks are still there - this function only runs a forward pass.
         """
-        if reset_hooks_start:
-            if self.is_caching:
-                logging.warning("Caching is on, but hooks are being reset")
-            self.reset_hooks(clear_contexts)
         for name, hook in fwd_hooks:
             if type(name) == str:
                 self.mod_dict[name].add_hook(hook, dir="fwd")
@@ -222,9 +216,9 @@ class HookedRootModule(nn.Module):
 
         def save_hook_back(tensor, hook):
             if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
+                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
             else:
-                cache[hook.name + "_grad"] = tensor[0].detach().to(device)
+                cache[hook.name + "_grad"] = tensor.detach().to(device)
 
         for name, hp in self.hook_dict.items():
             if names_filter(name):
@@ -241,7 +235,6 @@ class HookedRootModule(nn.Module):
         remove_batch_dim=False,
         incl_bwd=False,
         reset_hooks_end=True,
-        reset_hooks_start=True,
         clear_contexts=False,
         **model_kwargs,
     ):
@@ -253,13 +246,9 @@ class HookedRootModule(nn.Module):
         device (str or torch.Device): The device to cache activations on, defaults to model device. Note that this must be set if the model does not have a model.cfg.device attribute. WARNING: Setting a different device than the one used by the model leads to significant performance degradation.
         remove_batch_dim (bool): If True, will remove the batch dimension when caching. Only makes sense with batch_size=1 inputs.
         incl_bwd (bool): If True, will call backward on the model output and also cache gradients. It is assumed that the model outputs a scalar, ie. return_type="loss", for predict the next token loss. Custom loss functions are not supported
-        reset_hooks_start (bool): If True, all prior hooks are removed at the start
-        reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
-        including those added in this run)
+        reset_hooks_end (bool): If True, all hooks are removed at the end (ie, both those added in this run *and* any added before!)
         clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
         """
-        if reset_hooks_start:
-            self.reset_hooks(clear_contexts)
         cache_dict = self.add_caching_hooks(
             names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim
         )

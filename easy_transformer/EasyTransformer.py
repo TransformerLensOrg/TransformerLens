@@ -1,4 +1,4 @@
-from typing import Callable, Union, List, Tuple, Dict, Optional
+from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple
 from torchtyping import TensorType as TT
 import torch
 import torch.nn as nn
@@ -10,6 +10,7 @@ import tqdm.auto as tqdm
 import re
 from huggingface_hub import HfApi
 from functools import partial, lru_cache
+from collections import namedtuple
 
 from transformers import (
     AutoTokenizer,
@@ -18,24 +19,23 @@ from transformers import (
 
 from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer import EasyTransformerConfig
-
+from easy_transformer.ActivationCache import ActivationCache
+from easy_transformer.FactoredMatrix import FactoredMatrix
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from easy_transformer.past_key_value_caching import (
     EasyTransformerKeyValueCache,
 )
-from easy_transformer.activation_cache import ActivationCache
 
 from easy_transformer.components import *
 import easy_transformer.loading_from_pretrained as loading
-from easy_transformer.utils import (
-    lm_cross_entropy_loss,
-    sample_logits,
-    FactoredMatrix,
-    composition_scores,
-)
+import easy_transformer.utils as utils
 
 # Type alias for a single element tensor
 Loss = TT[()]
+# Named tuple object for if we want to output both logits and loss
+class Output(NamedTuple):
+    logits: TT["batch", "pos", "d_vocab"]
+    loss: Loss
 
 
 class EasyTransformer(HookedRootModule):
@@ -239,18 +239,37 @@ class EasyTransformer(HookedRootModule):
             if return_type == "logits":
                 return logits
             else:
-                loss = lm_cross_entropy_loss(logits, tokens)
+                loss = self.loss_fn(logits, tokens)
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
-                    return (logits, loss)
+                    return Output(logits, loss)
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
 
+    def loss_fn(
+        self,
+        logits: TT["batch", "pos", "d_vocab"],
+        tokens: TT["batch", "pos"],
+        per_token: bool = False,
+    ):
+        """
+        Wrapper around utils.lm_cross_entropy_loss, used in forward() with return_type=="loss" or "both".
+        """
+        return utils.lm_cross_entropy_loss(logits, tokens, per_token)
+
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
-    ) -> Union[ActivationCache, Dict[str, torch.Tensor]]:
+    ) -> Tuple[
+        Union[
+            None,
+            TT["batch", "pos", "d_vocab"],
+            Loss,
+            Tuple[TT["batch", "pos", "d_vocab"], Loss],
+        ],
+        Union[ActivationCache, Dict[str, torch.Tensor]],
+    ]:
         """
         Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful EasyTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule.
         """
@@ -274,7 +293,12 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, input: Union[str, List[str]], prepend_bos: bool = False):
+    def to_tokens(
+        self,
+        input: Union[str, List[str]],
+        prepend_bos: bool = False,
+        move_to_device: bool = True,
+    ) -> TT["batch", "pos"]:
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. Defaults to False for to_tokens, as this is intended to be used for substrings of the input, but True for a string input to forward.
         """
@@ -284,7 +308,10 @@ class EasyTransformer(HookedRootModule):
                 input = self.tokenizer.bos_token + input
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
-        return self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
+        tokens = self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
+        if move_to_device:
+            tokens = tokens.to(self.cfg.device)
+        return tokens
 
     def to_string(
         self, tokens: Union[TT["batch", "pos"], TT["pos"], np.ndarray, List[TT["pos"]]]
@@ -329,7 +356,7 @@ class EasyTransformer(HookedRootModule):
         if isinstance(input, list):
             return list(
                 map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input)
-            )
+            )  # type: ignore
         elif isinstance(input, str):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
         elif isinstance(input, torch.Tensor):
@@ -404,28 +431,38 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def single_token_to_residual(self, token: Union[str, int, TT[()]]):
-        """Maps a token to the unembedding vector for that token, ie the vector in the residual stream that we do with to the get the logit for that token.
+    def tokens_to_residual_directions(self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]) -> Union[TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]]:
+        """Maps tokens to a tensor with the unembedding vector for those tokens, ie the vector in the residual stream that we dot with to the get the logit for that token.
 
-        WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map.
+        WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map. This is done automatically with the fold_ln flag on from_pretrained
+        
+        WARNING 2: LayerNorm scaling will scale up or down the effective direction in the residual stream for each output token on any given input token position. ActivationCache.apply_ln_to_stack will apply the appropriate scaling to these directions.
 
         Args:
-            token (Union[str, int, torch.Tensor]): The single token. Can be a single element tensor, an integer, or string. If string, will be mapped to a single token using to_single_token, and an error raised if it's multiply tokens.
+            tokens (Union[str, int, torch.Tensor]): The token(s). If a single token, can be a single element tensor, an integer, or string. If string, will be mapped to a single token using to_single_token, and an error raised if it's multiple tokens.
+            The method also works for a batch of input tokens
 
         Returns:
-            residual_direction torch.Tensor: The unembedding vector for the token, a [d_model] tensor.
+            residual_direction torch.Tensor: The unembedding vector for the token(s), a stack of [d_model] tensor.
         """
-        if isinstance(token, str):
-            token = self.to_single_token(token).item()
-        elif isinstance(token, int):
-            pass
-        elif isinstance(token, torch.Tensor):
-            token = token.item()
+        if isinstance(tokens, torch.Tensor) and tokens.numel()>1:
+            # If the tokens are a tensor, and have more than one element, assume they are a batch of tokens
+            residual_directions = self.W_U[:, tokens]
+            residual_directions = einops.rearrange(residual_directions, "d_model ... -> ... d_model")
+            return residual_directions
         else:
-            raise ValueError(f"Invalid token type: {type(token)}")
+            # Otherwise there is a single token
+            if isinstance(tokens, str):
+                token = self.to_single_token(tokens)
+            elif isinstance(tokens, int):
+                token = tokens
+            elif isinstance(tokens, torch.Tensor) and tokens.numel()==1:
+                token = tokens.item()
+            else:
+                raise ValueError(f"Invalid token type: {type(tokens)}")
+            residual_direction = self.W_U[:, token]
+            return residual_direction
 
-        residual_direction = self.W_U[:, token]
-        return residual_direction
 
     def to(self, device_or_dtype):
         """
@@ -953,10 +990,10 @@ class EasyTransformer(HookedRootModule):
 
             eos_token_id = self.tokenizer.eos_token_id
 
-            # An array to track which sequences in the batch have finished.
-            finished_sequences = torch.zeros(
-                batch_size, dtype=torch.bool, device=self.cfg.device
-            )
+        # An array to track which sequences in the batch have finished.
+        finished_sequences = torch.zeros(
+            batch_size, dtype=torch.bool, device=self.cfg.device
+        )
 
         # Currently nothing in EasyTransformer changes with eval, but this is here in case that changes in the future
         self.eval()
@@ -981,7 +1018,7 @@ class EasyTransformer(HookedRootModule):
                 logits = self.forward(tokens, return_type="logits")
             final_logits = logits[:, -1, :]
 
-            sampled_tokens = sample_logits(
+            sampled_tokens = utils.sample_logits(
                 final_logits,
                 top_k=top_k,
                 top_p=top_p,
@@ -1170,7 +1207,7 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be one of ['Q', 'K', 'V'] not {mode}")
 
-        scores = composition_scores(left, right, broadcast_dims=True)
+        scores = utils.composition_scores(left, right, broadcast_dims=True)
         # Mask scores to be zero for all pairs with the right head in the same layer or earlier layer than the left head.
         mask = (
             torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None]

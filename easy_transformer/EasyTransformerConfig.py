@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
-from easy_transformer.utils import set_seed_everywhere
 import torch
 import torch.nn as nn
 import random
@@ -10,7 +9,6 @@ import json
 import pprint
 
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
-
 
 @dataclass
 class EasyTransformerConfig:
@@ -24,13 +22,13 @@ class EasyTransformerConfig:
         d_head (int): The dimensionality of each attention head.
         n_layers (int): The number of transformer blocks (one block = one attn layer AND one MLP layer).
         n_ctx (int): The maximum sequence length.
-        n_heads (int, *optional*): The number of attention heads. If not
-            specified, will be set to d_model // d_head.
+        n_heads (int): The number of attention heads. If not
+            specified, will be set to d_model // d_head. (This is represented by a default value of -1)
         d_mlp (int, *optional*): The dimensionality of the feedforward mlp
             network. Defaults to 4 * d_model, and in an attn-only model is None.
         d_vocab (int): The size of the vocabulary. If not set, will be
             automatically set from the tokenizer's vocab size.
-        act_fn (str, *optional"): The activation function to use. Always
+        act_fn (str, *optional*): The activation function to use. Always
             lowercase. Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln',
             'gelu_fast']. Must be set unless using an attn-only model.
         eps (float): The epsilon value to use for layer normalization. Defaults
@@ -71,7 +69,7 @@ class EasyTransformerConfig:
         normalization_type (str, *optional*): the type of normalization to use.
             Options are None (no normalization), 'LN' (use LayerNorm, including weights
             & biases) and 'LNPre' (use LayerNorm, but no weights & biases).
-            Defaults to None
+            Defaults to LN
         device(str): The device to use for the model. Defaults to 'cuda' if
             available, else 'cpu
         attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2
@@ -125,7 +123,7 @@ class EasyTransformerConfig:
     n_ctx: int
     d_head: int
     model_name: str = "custom"
-    n_heads: Optional[int] = None
+    n_heads: int = -1
     d_mlp: Optional[int] = None
     act_fn: Optional[str] = None
     d_vocab: Optional[int] = None
@@ -142,7 +140,7 @@ class EasyTransformerConfig:
     window_size: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
-    normalization_type: Optional[str] = None
+    normalization_type: Optional[str] = "LN"
     device: Optional[str] = None
     attention_dir: str = "causal"
     attn_only: bool = False
@@ -158,7 +156,7 @@ class EasyTransformerConfig:
     n_params: Optional[int] = None
 
     def __post_init__(self):
-        if self.n_heads is None:
+        if self.n_heads==-1:
             self.n_heads = self.d_model // self.d_head
 
         if not self.d_model == (self.n_heads * self.d_head):
@@ -167,7 +165,7 @@ class EasyTransformerConfig:
             )
 
         if self.seed is not None:
-            set_seed_everywhere(self.seed)
+            self.set_seed_everywhere(self.seed)
         if self.use_local_attn:
             assert (
                 self.window_size is not None
@@ -219,3 +217,8 @@ class EasyTransformerConfig:
 
     def __repr__(self):
         return "EasyTransformerConfig:\n" + pprint.pformat(self.to_dict())
+    
+    def set_seed_everywhere(self, seed: int):
+        torch.manual_seed(seed)
+        random.seed(seed)
+        np.random.seed(seed)

@@ -128,7 +128,7 @@ def induction_loss(
     # Run the model, and extract the per token correct log prob
     logits = model(repeated_tokens, return_type="logits")
     correct_log_probs = utils.lm_cross_entropy_loss(
-        logits, repeated_tokens, return_per_token=True
+        logits, repeated_tokens, per_token=True
     )
     # Take the loss over the second half of the sequence
     return correct_log_probs[:, subseq_len + 1 :].mean()
