@@ -264,6 +264,7 @@ class HypothesisTree:
         threshold: int,
         possible_positions: OrderedDict,
         use_caching: bool = True,
+        direct_paths_only: bool = False,
     ):
         self.model = model
         self.possible_positions = possible_positions
@@ -284,6 +285,7 @@ class HypothesisTree:
         if use_caching:
             self.get_caches()
         self.important_nodes = []
+        self.direct_paths_only = direct_paths_only
 
     def populate_node_stack(self):
         for layer in range(self.model.cfg.n_layers):
@@ -416,10 +418,10 @@ class HypothesisTree:
                             comp_type = receiver_hook[0].split("_")[
                                 -1
                             ]  # q, k, v, out, post
-                            self.node_stack[(layer, head, pos)].children.append(
+                            self.node_stack[(layer, head, pos)].parents.append(
                                 (node, score, comp_type)
                             )
-                            node.parents.append(
+                            node.children.append(
                                 (self.node_stack[(layer, head, pos)], score, comp_type)
                             )
                     if abs(mlp_results[layer]) > threshold:
@@ -428,17 +430,17 @@ class HypothesisTree:
                         comp_type = receiver_hook[0].split("_")[
                             -1
                         ]  # q, k, v, out, post
-                        self.node_stack[(layer, None, pos)].children.append(
+                        self.node_stack[(layer, None, pos)].parents.append(
                             (node, score, comp_type)
                         )
-                        node.parents.append(
+                        node.children.append(
                             (self.node_stack[(layer, None, pos)], score, comp_type)
                         )
 
         # update self.current_node
         while (
             len(self.node_stack) > 0
-            and len(self.node_stack[next(reversed(self.node_stack))].children) == 0
+            and len(self.node_stack[next(reversed(self.node_stack))].parents) == 0
         ):
             self.node_stack.popitem()
         if len(self.node_stack) > 0:
@@ -468,13 +470,13 @@ class HypothesisTree:
             return 3 * min(1, abs(num) ** 0.4)
 
         for node in self.important_nodes:
-            for parent in node.parents:
+            for child in node.children:
                 g.edge(
-                    parent[0].display(),
+                    child[0].display(),
                     node.display(),
-                    color=color_dict[parent[2]],
-                    penwidth=str(scale(parent[1])),
-                    arrowsize=str(scale(parent[1])),
+                    color=color_dict[child[2]],
+                    penwidth=str(scale(child[1])),
+                    arrowsize=str(scale(child[1])),
                 )
         # add invisible edges to keep layers separate
         for i in range(len(self.important_nodes) - 1):
