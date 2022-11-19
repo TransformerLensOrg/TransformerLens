@@ -491,6 +491,10 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 model=model,
                 D_new=abc_dataset,
                 D_orig=ioi_dataset,
+<<<<<<< HEAD
+=======
+                ioi_dataset=ioi_dataset,
+>>>>>>> arthur/haoxing
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
                 positions=[pos],

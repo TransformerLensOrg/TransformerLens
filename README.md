@@ -18,7 +18,7 @@ pip install git+https://github.com/redwoodresearch/Easy-Transformer.git
 ## Option 2) clone repository (for development, and finer tuning)
 
 ```bash
-git clone https://github.com/redwoodresearch/Easy-Transformer/
+`git clone https://github.com/redwoodresearch/Easy-Transformer/
 pip install -r requirements.txt
 ```
 
