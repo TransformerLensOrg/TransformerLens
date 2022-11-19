@@ -408,7 +408,7 @@ def act_name(
     act_name = ""
     if layer is not None:
         act_name += f"blocks.{layer}."
-    if name in ["k", "v", "q", "result", "attn", "attn_scores"]:
+    if name in ["k", "v", "q", "z", "rot_k", "rot_q", "result", "attn", "attn_scores"]:
         layer_type = "attn"
     elif name in ["pre", "post", "mid"]:
         layer_type = "mlp"
