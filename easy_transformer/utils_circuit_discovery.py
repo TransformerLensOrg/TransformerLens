@@ -250,6 +250,7 @@ def path_patching(
         """ "Probably too many asserts, ignore them"""
         N = z.shape[0]
         hook_name = hook.ctx["hook_name"]
+        model_cache = hook.ctx["model"].cache
         assert (
             len(receiver_to_senders[(hook_name, head_idx)]) > 0
         ), f"No senders for {hook_name, head_idx}, this shouldn't be attached!"
@@ -262,22 +263,28 @@ def path_patching(
 
             # we have to do both things casewise
             if sender_head_idx is None:
-                sender_value = new_cache[sender_hook_name][torch.arange(N), position]
+                sender_value = (
+                    model_cache[sender_hook_name][torch.arange(N), position]
+                    - orig_cache[sender_hook_name][torch.arange(N), position]
+                )
             else:
-                sender_value = new_cache[sender_hook_name][
-                    torch.arange(N), position, sender_head_idx
-                ]
+                sender_value = (
+                    model_cache[sender_hook_name][torch.arange(N), position, sender_head_idx]
+                    - orig_cache[sender_hook_name][
+                        torch.arange(N), position, sender_head_idx
+                    ]
+                )
 
             if head_idx is None:
                 assert (
                     z[:, position, :].shape == sender_value.shape
                 ), f"{z.shape} != {sender_value.shape}"
-                z[torch.arange(N), position] = sender_value
+                z[torch.arange(N), position] += sender_value
             else:
                 assert (
                     z[:, position, head_idx].shape == sender_value.shape
                 ), f"{z.shape} != {sender_value.shape}"
-                z[torch.arange(N), position, head_idx] = sender_value
+                z[torch.arange(N), position, head_idx] += sender_value
 
         return z
 

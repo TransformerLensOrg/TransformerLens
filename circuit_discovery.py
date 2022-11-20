@@ -84,7 +84,7 @@ model = path_patching_old(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    senders=[(9, 8)],
+    senders=[(9, 9)],
     receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
     position=dataset_orig.word_idx["end"],
 )
@@ -102,17 +102,19 @@ new_logits = path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    initial_senders=[(9, 8)],  # List[Tuple[int, Optional[int]]],
+    initial_senders=[(9, 9)],  # List[Tuple[int, Optional[int]]],
     receiver_to_senders={
-        ("blocks.11.hook_resid_post", None): [(9, 8)],
+        ("blocks.11.hook_resid_post", None): [(9, 9)],
     },
     position=dataset_orig.word_idx["end"].item(),
 )
 
-#%%
-
 new_logit_difference = logit_diff_from_logits(new_logits, dataset_orig)
 print(f"{new_logit_difference=}")
+
+#%%
+
+assert torch.allclose(logit_difference.cpu(), new_logit_difference.cpu())
 
 # %%
 # the circuit discovery algorithm
