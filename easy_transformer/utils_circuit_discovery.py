@@ -304,7 +304,7 @@ def path_patching(
             else:
                 assert (
                     new_z[:, position, head_idx].shape == sender_value.shape
-                ), f"{new_z.shape} != {sender_value.shape}"
+                ), f"{new_z[:, position, head_idx].shape} != {sender_value.shape}, {position}"
                 new_z[torch.arange(N), position, head_idx] += sender_value
 
         return new_z
@@ -563,6 +563,7 @@ class HypothesisTree:
         use_caching: bool = True,
         direct_paths_only: bool = False,
     ):
+        model.reset_hooks()
         self.model = model
         self.possible_positions = possible_positions
         self.node_stack = OrderedDict()
@@ -646,8 +647,12 @@ class HypothesisTree:
             elif node.head is None:
                 receiver_hooks.append((f"blocks.{node.layer}.hook_mlp_out", None))
             else:
-                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_v", node.head))
-                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_k", node.head))
+                receiver_hooks.append(
+                    (f"blocks.{node.layer}.attn.hook_v_input", node.head)
+                )
+                receiver_hooks.append(
+                    (f"blocks.{node.layer}.attn.hook_k_input", node.head)
+                )
                 if pos == current_node_position:
                     receiver_hooks.append(
                         (f"blocks.{node.layer}.attn.hook_q", node.head)

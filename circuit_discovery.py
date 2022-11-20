@@ -37,14 +37,12 @@ if ipython is not None:
 model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 
 model = EasyTransformer.from_pretrained(model_name)
-# if torch.cuda.is_available():
-# model.to("cuda")
 model.set_use_attn_result(True)
+model.set_use_headwise_qkv_input(True)
 
 #%%
 
 dataset_new, dataset_orig = get_datasets()
-
 #%%
 
 model = path_patching_old(
@@ -58,7 +56,6 @@ model = path_patching_old(
 )
 
 logits_old = model(dataset_orig.toks.long()).cpu()
-
 #%%
 
 logit_difference = logit_diff_from_logits(logits_old, dataset_orig)
@@ -66,7 +63,7 @@ print(f"{logit_difference=}")
 
 #%%
 
-new_logits = path_patching(
+model = path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
@@ -78,7 +75,8 @@ new_logits = path_patching(
     position=dataset_orig.word_idx["end"].item(),
 )
 
-new_logit_difference = logit_diff_from_logits(new_logits, dataset_orig)
+logits_new = model(dataset_orig.toks.long()).cpu()
+new_logit_difference = logit_diff_from_logits(logits_new, dataset_orig)
 print(f"{new_logit_difference=}")
 
 #%%

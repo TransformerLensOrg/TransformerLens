@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import einops
+import warnings
 import logging
 
 from functools import *
@@ -265,6 +266,8 @@ class Attention(nn.Module):
         if self.cfg.scale_attn_by_inverse_layer_idx:
             self.attn_scale *= self.layer_id + 1
 
+        self.ln1 = LayerNormPre(cfg)  # moved here by Arthur
+
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_v = HookPoint()  # [batch, pos, head_index, d_head]
@@ -299,7 +302,7 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        resid_pre: torch.Tensor,
+        resid_pre: torch.Tensor,  # goddamn normalized thing
         shortformer_pos_embed: Optional[torch.Tensor] = None,
         past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
     ):
@@ -308,38 +311,74 @@ class Attention(nn.Module):
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
 
         """
-        if self.cfg.positional_embedding_type in ["standard", "rotary"]:
-            # Normal attention
+
+        if self.cfg.use_headwise_qkv_input:
+            assert self.cfg.positional_embedding_type in ["standard", "rotary"]
+            head_input = einops.repeat(
+                resid_pre, "a b c -> a b x c", x=self.cfg.n_heads
+            )
+
             q = self.hook_q(
                 einsum(
-                    "batch pos d_model, head_index d_model d_head \
+                    "batch pos head_index d_model, head_index d_model d_head \
                     -> batch pos head_index d_head",
-                    self.hook_q_input(resid_pre),
+                    self.ln1(self.hook_q_input(head_input.clone())),
                     self.W_Q,
                 )
                 + self.b_Q
             )  # [batch, pos, head_index, d_head]
             k = self.hook_k(
                 einsum(
-                    "batch pos d_model, head_index d_model d_head \
+                    "batch pos head_index d_model, head_index d_model d_head \
                     -> batch pos head_index d_head",
-                    self.hook_k_input(resid_pre),
+                    self.ln1(self.hook_k_input(head_input.clone())),
                     self.W_K,
                 )
                 + self.b_K
             )  # [batch, pos, head_index, d_head]
-        elif self.cfg.positional_embedding_type == "shortformer":
-            # Weird shortformer attention see EasyTransformerConfig for details
-            q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
-        v = self.hook_v(
-            einsum(
-                "batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                self.hook_v_input(resid_pre),
-                self.W_V,
-            )
-            + self.b_V
-        )  # [batch, pos, head_index, d_head]
+            v = self.hook_v(
+                einsum(
+                    "batch pos head_index d_model, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    self.ln1(self.hook_v_input(head_input.clone())),
+                    self.W_V,
+                )
+                + self.b_V
+            )  # [batch, pos, head_index, d_head]
+
+        else:
+            if self.cfg.positional_embedding_type in ["standard", "rotary"]:
+                # Normal attention
+                q = self.hook_q(
+                    einsum(
+                        "batch pos d_model, head_index d_model d_head \
+                        -> batch pos head_index d_head",
+                        resid_pre,
+                        self.W_Q,
+                    )
+                    + self.b_Q
+                )  # [batch, pos, head_index, d_head]
+                k = self.hook_k(
+                    einsum(
+                        "batch pos d_model, head_index d_model d_head \
+                        -> batch pos head_index d_head",
+                        resid_pre,
+                        self.W_K,
+                    )
+                    + self.b_K
+                )  # [batch, pos, head_index, d_head]
+            elif self.cfg.positional_embedding_type == "shortformer":
+                # Weird shortformer attention see EasyTransformerConfig for details
+                q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
+            v = self.hook_v(
+                einsum(
+                    "batch pos d_model, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    resid_pre,
+                    self.W_V,
+                )
+                + self.b_V
+            )  # [batch, pos, head_index, d_head]
 
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
@@ -573,7 +612,7 @@ class TransformerBlock(nn.Module):
                 self.ln2 = LayerNorm(cfg)
         elif self.cfg.normalization_type == "LNPre":
             # We've folded in LayerNorm weights, so just need the center + scale parts
-            self.ln1 = LayerNormPre(cfg)
+            warnings.warn("Moved LN1 to the attention block")
             if not self.cfg.attn_only:
                 self.ln2 = LayerNormPre(cfg)
         elif self.cfg.normalization_type is None:
@@ -618,10 +657,10 @@ class TransformerBlock(nn.Module):
             _type_: _description_
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
-        normalized_resid_pre = self.ln1(resid_pre)
+        # normalized_resid_pre = self.ln1(resid_pre)
         attn_out = self.hook_attn_out(
             self.attn(
-                normalized_resid_pre,
+                resid_pre,  # edited by Arthur from normalized ... so we can go headwise
                 shortformer_pos_embed=shortformer_pos_embed,
                 past_kv_cache_entry=past_kv_cache_entry,
             )

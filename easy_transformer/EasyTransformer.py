@@ -981,6 +981,12 @@ class EasyTransformer(HookedRootModule):
         """
         self.cfg.use_attn_result = use_attn_result
 
+    def set_use_headwise_qkv_input(self, use_headwise_qkv_input):
+        """
+        Use Arthur's cursed input head thing
+        """
+        self.cfg.use_headwise_qkv_input = use_headwise_qkv_input
+
     @torch.inference_mode()
     def generate(
         self,
