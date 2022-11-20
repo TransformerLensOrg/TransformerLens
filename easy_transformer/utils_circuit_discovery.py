@@ -700,7 +700,9 @@ class HypothesisTree:
                 if verbose:
                     print(f"threshold: {threshold:.3f}")
                 # process result and mark nodes above threshold as important
-                for layer in range(attn_results.shape[0]):
+                for layer in range(
+                    attn_results.shape[0]
+                ):  # TODO seems to be able to put 9.6 in the things that affect 9.6...why
                     for head in range(attn_results.shape[1]):
                         if abs(attn_results[layer, head]) > threshold:
                             print(
