@@ -130,7 +130,6 @@ h = HypothesisTree(
 )
 
 #%%
-
 h.eval()
 
 # %%

@@ -17,11 +17,21 @@ from easy_transformer.ioi_utils import show_pp
 import graphviz  # need both pip install graphviz and sudo apt-get install graphviz
 
 
-def get_hook_tuple(layer, head_idx):
-    if head_idx is None:
-        return (f"blocks.{layer}.hook_mlp_out", None)
+def get_hook_tuple(layer, head_idx, comp=None):
+    """warning, only built for 12 layer models"""
+    if comp is None:
+        if head_idx is None:
+            if layer < 12:
+                return (f"blocks.{layer}.hook_mlp_out", None)
+            else:
+                return (f"blocks.{layer-1}.hook_resid_post", None)
+        else:
+            return (f"blocks.{layer}.attn.hook_result", head_idx)
+
     else:
-        return (f"blocks.{layer}.attn.hook_result", head_idx)
+        assert comp in ["q", "k", "v"]
+        assert head_idx is not None
+        return (f"blocks.{layer}.attn.hook_{comp}", head_idx)
 
 
 def patch_all(z, source_act, hook):
@@ -409,41 +419,40 @@ def path_patching_up_to(
     for receiver in important_nodes:
         hook = get_hook_tuple(receiver.layer, receiver.head)
 
-        # im actually a bit unsure of conditions here. Also maybe rename some things from sender and receiver
-
         if hook == receiver_hook:
             assert (
                 len(receiver.children) == 0
             ), "Receiver_hook should not have children; we're going to find them here"
 
-        elif len(receiver.children) == 0:  # this will get initially patched
+        elif len(receiver.children) == 0:
             continue
-            # actually, I don't think that we want a this as a base_initial_sender at all...
-            # base_initial_senders.append((receiver.layer, receiver.head))
 
         else:  # patch, through the paths
-            base_receivers_to_senders[hook] = []
-            for sender_child, _, _ in receiver.children:
-                base_receivers_to_senders[hook].append(
-                    (sender_child.layer, sender_child.head)
-                )
+            for sender_child, _, comp in receiver.children:
+                if comp in ["v", "k", "q"]:
+                    qkv_hook = get_hook_tuple(
+                        sender_child.layer, sender_child.head, comp
+                    )
+                    if qkv_hook not in base_initial_senders:
+                        base_receivers_to_senders[qkv_hook] = []
+                    base_receivers_to_senders[qkv_hook].append(
+                        get_hook_tuple(sender_child.layer, sender_child.head)
+                    )
 
-    # assert that the receiver_hook is a sender in the base_receivers_to_senders
-    assert any(
-        [
-            receiver_hook in base_receivers_to_senders[receiver]
-            for receiver in base_receivers_to_senders
-        ]
-    ) or receiver_hook == (
-        f"blocks.{model.cfg.n_layers-1}.hook_resid_post",
-        None,
-    ), receiver_hook
+                else:
+                    if hook not in base_receivers_to_senders:
+                        base_receivers_to_senders[hook] = []
+                    base_receivers_to_senders[hook].append(
+                        (sender_child.layer, sender_child.head)
+                    )
+
     receiver_hook_layer = int(receiver_hook[0].split(".")[1])
 
     model.reset_hooks()
-    attn_results = torch.zeros((model.cfg.n_layers, model.cfg.n_heads))
-    mlp_results = torch.zeros((model.cfg.n_layers, 1))
-    for l in tqdm(range(receiver_hook_layer + 1)):
+    layer_shape = receiver_hook_layer + (1 if receiver_hook[1] is None else 0)
+    attn_results = torch.zeros((layer_shape, model.cfg.n_heads))
+    mlp_results = torch.zeros((layer_shape, 1))
+    for l in tqdm(range(layer_shape)):
         for h in range(model.cfg.n_heads):
             senders = deepcopy(base_initial_senders)
             senders.append((l, h))
@@ -660,13 +669,13 @@ class HypothesisTree:
                     new_cache=self.new_cache,
                 )
 
+                self.attn_results = attn_results.clone()
+                self.mlp_results = mlp_results.clone()
                 # convert to percentage
                 attn_results -= self.default_metric
                 attn_results /= self.default_metric
                 mlp_results -= self.default_metric
                 mlp_results /= self.default_metric
-                self.attn_results = attn_results
-                self.mlp_results = mlp_results
 
                 if show_graphics:
                     show_pp(
