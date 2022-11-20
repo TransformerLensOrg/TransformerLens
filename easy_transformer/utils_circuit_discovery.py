@@ -41,38 +41,6 @@ def patch_positions(z, source_act, hook, positions):
         return z
 
 
-def validate_receivers_to_senders(
-    model,
-    receivers_to_senders,
-):
-    """Check correct formatting, obviously more checks possible but thanks copilot anyways"""
-    assert (
-        len(receivers_to_senders[f"blocks.{model.cfg.n_layers-1}.hook_resid_post"]) > 1
-    ), "Need patching to logits..."
-    for receiver, senders in receivers_to_senders.items():
-        assert isinstance(
-            senders, list
-        ), f"senders for {receiver} should be a list, not {type(senders)}"
-        for sender in senders:
-            assert isinstance(
-                sender, tuple
-            ), f"sender for {receiver} should be a tuple, not {type(sender)}"
-            assert (
-                len(sender) == 2
-            ), f"sender for {receiver} should be a tuple of length 2, not {len(sender)}"
-            assert isinstance(
-                sender[0], str
-            ), f"sender[0] for {receiver} should be a string, not {type(sender[0])}"
-            assert (
-                isinstance(sender[1], int) or sender[1] is None
-            ), f"sender[1] for {receiver} should be an int, not {type(sender[1])}"
-            assert (0 <= sender[1] < model.cfg.n_heads) or sender[
-                1
-            ] is None, (
-                f"sender[1] for {receiver} should be less than n_heads, not {sender[1]}"
-            )
-
-
 def path_patching(
     model: EasyTransformer,
     orig_data,
@@ -87,7 +55,7 @@ def path_patching(
     orig_cache=None,
     new_cache=None,
     prepend_bos=False,  # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
-):
+) -> torch.Tensor:  # the logits
     """
     `initial_sender_hooks` is a list of (layer, head) tuples. These are the hooks that will be patched from the `new_data`
     `receiver_to_senders`: dict of (hook_name, idx) -> [(layer_idx, head_idx), ...], where head_idx None means MLP
@@ -103,11 +71,6 @@ def path_patching(
     NOTE: This relies on a change to the cache_some() function in EasyTransformer/hook_points.py [we .clone() activations, unlike in neelnanda-io/EasyTransformer]
     """
 
-    if max_layer is None:
-        max_layer = model.cfg.n_layers
-    assert max_layer <= model.cfg.n_layers
-    validate_receiver_to_senders(receiver_to_senders)
-
     # caching...
     if orig_cache is None:
         # save activations from orig
@@ -117,7 +80,7 @@ def path_patching(
         _ = model(orig_data, prepend_bos=False)
     initial_sender_hook_names = [
         get_hook_tuple(layer_idx, head_idx)[0]
-        for layer_idx, head_idx in initial_sender_hooks
+        for layer_idx, head_idx in initial_senders
     ]
     if new_cache is None:
         # save activations from new for senders
@@ -129,6 +92,17 @@ def path_patching(
         assert all(
             [x in new_cache for x in initial_sender_hook_names]
         ), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
+
+    # add the initial senders to the receiver_to_senders dict
+    for layer_idx, head_idx in initial_senders:
+        hook_name, head_idx = get_hook_tuple(layer_idx, head_idx)
+        hook = get_act_hook(
+            fn=partial(patch_positions, positions=position),
+            alt_act=new_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+        )
+        model.add_hook(hook_name, hook)
 
     # setup a way for model components to dynamically see activations from the same forward pass
     for hp in model.hook_points():
@@ -204,7 +178,13 @@ def path_patching(
                 hook=layer_output_hook,
             )
     # don't forget hook resid post
-    model.add_hook()
+    model.add_hook(
+        name=f"blocks.{model.cfg.n_layers - 1}.hook_resid_post",
+        hook=input_activation_editor,
+    )
+    logits = model(orig_data.toks.long())
+    model.reset_hooks()
+    return logits
 
 
 # def path_patching_up_to(
