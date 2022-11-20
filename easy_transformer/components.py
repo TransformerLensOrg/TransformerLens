@@ -314,10 +314,10 @@ class Attention(nn.Module):
 
         if self.cfg.use_headwise_qkv_input:
             assert self.cfg.positional_embedding_type in ["standard", "rotary"]
+            warnings.warn("Using the new way of doing qkv input")
             head_input = einops.repeat(
                 resid_pre, "a b c -> a b x c", x=self.cfg.n_heads
             )
-
             q = self.hook_q(
                 einsum(
                     "batch pos head_index d_model, head_index d_model d_head \

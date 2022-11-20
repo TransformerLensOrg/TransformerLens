@@ -203,8 +203,10 @@ def path_patching(
     model: EasyTransformer,
     orig_data,
     new_data,
-    initial_senders=List[Tuple[int, Optional[int]]],
-    receiver_to_senders: Dict[
+    initial_receivers_to_senders=List[
+        Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int]]]
+    ],  # these are the only edges where we patch from new_cache
+    receivers_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int]]]
     ] = {},  # TODO support for pushing back to token embeddings?
     position: int = 0,  # TODO extend this ...
@@ -212,7 +214,7 @@ def path_patching(
     new_cache=None,
 ) -> EasyTransformer:  # returns the logits
     """
-    `initial_senders` is a list of (layer, head) tuples. These are the heads / MLPs that we will patch in new data for (head=None means MLP)
+    `intial_receiver_to_sender` is a list of pairs representing the edges we patch the new_cache connectiion on
     `receiver_to_senders`: dict of (hook_name, idx) -> [(layer_idx, head_idx), ...]
     these define all of the edges in the graph
 
@@ -227,8 +229,7 @@ def path_patching(
         model.cache_all(orig_cache)
         _ = model(orig_data, prepend_bos=False)
     initial_sender_hook_names = [
-        get_hook_tuple(layer_idx, head_idx)[0]
-        for layer_idx, head_idx in initial_senders
+        get_hook_tuple(*(item[1]))[0] for item in initial_receivers_to_senders
     ]
     if new_cache is None:
         # save activations from new for senders
@@ -241,16 +242,17 @@ def path_patching(
             [x in new_cache for x in initial_sender_hook_names]
         ), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
 
-    # add the initial sender hooks
-    for layer_idx, head_idx in initial_senders:
-        hook_name, head_idx = get_hook_tuple(layer_idx, head_idx)
-        hook = get_act_hook(
-            fn=partial(patch_positions, positions=position),
-            alt_act=new_cache[hook_name],
-            idx=head_idx,
-            dim=2 if head_idx is not None else None,
-        )
-        model.add_hook(hook_name, hook)
+    # don't need, cos do inside the hook?
+    # # add the initial sender hooks
+    # for (receiver_hook_name, receiver_head_idx), (sender_layer_idx, sender_head_idx) in initial_receivers_to_senders.items():
+    #     sender_hook_name, head_idx = get_hook_tuple(layer_idx, head_idx)
+    #     hook = get_act_hook(
+    #         fn=partial(patch_positions, positions=position),
+    #         alt_act=new_cache[hook_name],
+    #         idx=head_idx,
+    #         dim=2 if head_idx is not None else None,
+    #     )
+    #     model.add_hook(hook_name, hook)
 
     # setup a way for model components to dynamically see activations from the same forward pass
     for name, hp in model.hook_dict.items():
@@ -267,28 +269,37 @@ def path_patching(
     def input_activation_editor(z, hook, head_idx=None):
         """ "Probably too many asserts, ignore them"""
         new_z = z.clone()
-        N = z.shape[0]  # otherwise we ALSO edit the inputs to K and V : (
+        N = z.shape[0]
         hook_name = hook.ctx["hook_name"]
-        model_cache = hook.ctx["model"].cache
         assert (
-            len(receiver_to_senders[(hook_name, head_idx)]) > 0
+            len(receivers_to_senders[(hook_name, head_idx)]) > 0
         ), f"No senders for {hook_name, head_idx}, this shouldn't be attached!"
-        for sender_layer_idx, sender_head_idx in receiver_to_senders[
+        for sender_layer_idx, sender_head_idx in receivers_to_senders[
             (hook_name, head_idx)
         ]:
             sender_hook_name, sender_head_idx = get_hook_tuple(
                 sender_layer_idx, sender_head_idx
             )
 
+            cache_to_use = hook.ctx["model"].cache
+            if (
+                (hook_name, head_idx),
+                (sender_layer_idx, sender_head_idx),
+            ) in initial_receivers_to_senders:
+                warnings.warn(
+                    f"Using the new cache for initial receiver for {((hook_name, head_idx), (sender_layer_idx, sender_head_idx))}"
+                )
+                cache_to_use = new_cache
+
             # we have to do both things casewise
             if sender_head_idx is None:
                 sender_value = (
-                    model_cache[sender_hook_name][torch.arange(N), position]
+                    cache_to_use[sender_hook_name][torch.arange(N), position]
                     - orig_cache[sender_hook_name][torch.arange(N), position]
                 )
             else:
                 sender_value = (
-                    model_cache[sender_hook_name][
+                    cache_to_use[sender_hook_name][
                         torch.arange(N), position, sender_head_idx
                     ]
                     - orig_cache[sender_hook_name][
@@ -324,13 +335,13 @@ def path_patching(
             # if this is a receiver, then compute the input activations carefully
             for letter in ["q", "k", "v"]:
                 hook_name = f"blocks.{layer_idx}.attn.hook_{letter}_input"
-                if (hook_name, head_idx) in receiver_to_senders:
+                if (hook_name, head_idx) in receivers_to_senders:
                     model.add_hook(
                         name=hook_name,
                         hook=partial(input_activation_editor, head_idx=head_idx),
                     )
         hook_name = f"blocks.{layer_idx}.hook_mlp_out"
-        if (hook_name, None) in receiver_to_senders:
+        if (hook_name, None) in receivers_to_senders:
             model.add_hook(name=hook_name, hook=input_activation_editor)
 
         # then add the hooks that save and edit outputs
@@ -464,8 +475,8 @@ def path_patching_up_to(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
-                initial_senders=senders,
-                receiver_to_senders=receivers_to_senders,
+                initial_receivers_to_senders=[(receiver_hook, (l, h))],
+                receivers_to_senders=receivers_to_senders,
                 position=position,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
@@ -481,8 +492,8 @@ def path_patching_up_to(
             model=model,
             orig_data=orig_data,
             new_data=new_data,
-            initial_senders=senders,
-            receiver_to_senders=receivers_to_senders,
+            initial_receivers_to_senders=[(receiver_hook, (l, None))],
+            receivers_to_senders=receivers_to_senders,
             position=position,
             orig_cache=orig_cache,
             new_cache=new_cache,
