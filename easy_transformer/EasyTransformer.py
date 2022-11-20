@@ -296,11 +296,16 @@ class EasyTransformer(HookedRootModule):
     def to_tokens(
         self,
         input: Union[str, List[str]],
-        prepend_bos: bool = False,
+        prepend_bos: bool = True,
         move_to_device: bool = True,
     ) -> TT["batch", "pos"]:
         """
-        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. Defaults to False for to_tokens, as this is intended to be used for substrings of the input, but True for a string input to forward.
+        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. 
+
+        Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
+        (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
+
+        Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is capitalized. It's easy to shoot yourself in the foot here if you're not careful!
         """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos:
@@ -342,9 +347,14 @@ class EasyTransformer(HookedRootModule):
     def to_str_tokens(
         self,
         input: Union[str, Union[TT["pos"], TT[1, "pos"]], list],
-        prepend_bos: bool = False,
+        prepend_bos: bool = True,
     ) -> List[str]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
+
+        Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
+        (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
+
+        Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is capitalized. It's easy to shoot yourself in the foot here if you're not careful!
 
         Args:
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should be a tensor of shape [pos] or [1, pos]
@@ -392,10 +402,12 @@ class EasyTransformer(HookedRootModule):
         single_token: Union[str, int],
         tokens: Union[str, Union[TT["pos"], TT[1, "pos"]]],
         mode="first",
-        prepend_bos=False,
+        prepend_bos=True,
     ):
         """
         Get the position of a single_token in a sequence of tokens.
+
+        Gotcha: If you're inputting a string, it'll automatically be tokenized. Be careful about prepend_bos is true or false! When a string is input to the model, a BOS (beginning of sequence) token is prepended by default when the string is tokenized. But this should only be done at the START of the input, not when inputting part of the prompt. If you're getting weird off-by-one errors, check carefully for what the setting should be!
 
         Args:
             single_token (Union[str, int]): The token to search for. Can
@@ -405,6 +417,8 @@ class EasyTransformer(HookedRootModule):
                 search in. Can be a string or a rank 1 tensor or a rank 2 tensor
                 with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
+            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to 
+                the function, otherwise ignored. 
         """
         if isinstance(tokens, str):
             # If the tokens are a string, convert to tensor
@@ -424,6 +438,7 @@ class EasyTransformer(HookedRootModule):
             single_token = single_token.item()
 
         indices = torch.arange(len(tokens))[tokens == single_token]
+        assert len(indices)>0, f"The token does not occur in the prompt"
         if mode == "first":
             return indices[0].item()
         elif mode == "last":
@@ -874,9 +889,9 @@ class EasyTransformer(HookedRootModule):
 
             # Helper class to efficiently deal with low rank factored matrices.
             W_OV = FactoredMatrix(W_V, W_O)
-            W_OV_even = W_OV.make_even()
-            state_dict[f"blocks.{l}.attn.W_V"] = W_OV_even.A
-            state_dict[f"blocks.{l}.attn.W_O"] = W_OV_even.B
+            U, S, Vh = W_OV.svd()
+            state_dict[f"blocks.{l}.attn.W_V"] = U @ S.diag_embed()
+            state_dict[f"blocks.{l}.attn.W_O"] = utils.transpose(Vh)
 
         return state_dict
 
