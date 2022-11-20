@@ -36,7 +36,10 @@ def patch_positions(z, source_act, hook, positions):
         # return source_act
     else:
         batch = z.shape[0]
-        for pos in positions:
+        cur_positions = torch.tensor(positions)
+        if len(cur_positions.shape) == 0:
+            cur_positions = cur_positions.unsqueeze(0)
+        for pos in cur_positions:
             z[torch.arange(batch), pos] = source_act[torch.arange(batch), pos]
         return z
 
@@ -257,40 +260,25 @@ def path_patching(
                 sender_layer_idx, sender_head_idx
             )
 
-            # if sender_head_idx is None:
-            #     sender_value = new_cache[sender_hook_name][torch.arange(N), position]
-            # else:
-            #     sender_value = new_cache[sender_hook_name][
-            #         torch.arange(N), position, sender_head_idx
-            #     ]
-
+            # we have to do both things casewise
             if sender_head_idx is None:
-                assert new_cache[sender_hook_name].shape == z.shape, (
-                    f"sender {sender_hook_name} has shape {new_cache[sender_hook_name].shape}, "
-                    f"but receiver {hook_name} has shape {z.shape}"
-                )
-                assert 3 == len(z.shape), f"hook {hook_name} has shape {z.shape}"
-                z[torch.arange(N), position, :] += (
-                    new_cache[sender_hook_name][torch.arange(N), position, :]
-                    - orig_cache[sender_hook_name][torch.arange(N), position, :]
-                )
+                sender_value = new_cache[sender_hook_name][torch.arange(N), position]
+            else:
+                sender_value = new_cache[sender_hook_name][
+                    torch.arange(N), position, sender_head_idx
+                ]
 
+            if head_idx is None:
+                assert (
+                    z[:, position, :].shape == sender_value.shape
+                ), f"{z.shape} != {sender_value.shape}"
+                z[torch.arange(N), position] = sender_value
             else:
                 assert (
-                    new_cache[sender_hook_name][:, :, sender_head_idx].shape == z.shape
-                ), (
-                    f"sender {sender_hook_name} has shape {new_cache[sender_hook_name].shape}, "
-                    f"but receiver {hook_name} has shape {z.shape}"
-                )
-                assert 4 == len(z.shape), f"z.shape = {z.shape}"
-                z[torch.arange(N), position, head_idx, :] += (
-                    new_cache[sender_hook_name][
-                        torch.arange(N), position, sender_head_idx, :
-                    ]
-                    - orig_cache[sender_hook_name][
-                        torch.arange(N), position, sender_head_idx, :
-                    ]
-                )
+                    z[:, position, head_idx].shape == sender_value.shape
+                ), f"{z.shape} != {sender_value.shape}"
+                z[torch.arange(N), position, head_idx] = sender_value
+
         return z
 
     # for saving and then overwriting outputs of attention and MLP layers

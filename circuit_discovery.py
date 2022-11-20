@@ -106,8 +106,13 @@ new_logits = path_patching(
     receiver_to_senders={
         ("blocks.11.hook_resid_post", None): [(9, 8)],
     },
-    position=dataset_orig.word_idx["end"],
+    position=dataset_orig.word_idx["end"].item(),
 )
+
+#%%
+
+new_logit_difference = logit_diff_from_logits(new_logits, dataset_orig)
+print(f"{new_logit_difference=}")
 
 # %%
 # the circuit discovery algorithm
