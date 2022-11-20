@@ -380,13 +380,14 @@ class Attention(nn.Module):
                 + self.b_V
             )  # [batch, pos, head_index, d_head]
 
-        if past_kv_cache_entry is not None:
-            # Appends the new keys and values to the cached values, and automatically updates the cache
-            kv_cache_pos_offset = past_kv_cache_entry.past_keys.size(1)
-            k, v = past_kv_cache_entry.append(k, v)
-        else:
-            # Not using a cache
-            kv_cache_pos_offset = 0
+        # if past_kv_cache_entry is not None:
+        assert past_kv_cache_entry is None, "past_kv_cache_entry is not None"
+        # Appends the new keys and values to the cached values, and automatically updates the cache
+        # kv_cache_pos_offset = past_kv_cache_entry.past_keys.size(1)
+        # k, v = past_kv_cache_entry.append(k, v)
+        # else:
+        # Not using a cache
+        kv_cache_pos_offset = 0
 
         if self.cfg.positional_embedding_type == "rotary":
             q, k = self.rotary_rotate_qk(q, k, kv_cache_pos_offset)

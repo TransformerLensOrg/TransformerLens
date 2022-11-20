@@ -467,7 +467,7 @@ def path_patching_up_to(
             receivers_to_senders = deepcopy(base_receivers_to_senders)
             receivers_to_senders[receiver_hook] = [(l, h)]
 
-            cur_logits = path_patching(
+            model = path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
@@ -477,7 +477,7 @@ def path_patching_up_to(
                 orig_cache=orig_cache,
                 new_cache=new_cache,
             )
-            attn_results[l, h] = metric(cur_logits, dataset)
+            attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
         # mlp
         senders = deepcopy(base_initial_senders)
@@ -662,12 +662,12 @@ class HypothesisTree:
                 )
                 if pos == current_node_position:
                     receiver_hooks.append(
-                        (f"blocks.{node.layer}.attn.hook_q", node.head)
+                        (f"blocks.{node.layer}.attn.hook_q_input", node.head)
                     )  # similar story to above, only care about the last position
 
             for receiver_hook in receiver_hooks:
-                if verbose:
-                    print(f"Working on pos {pos}, receiver hook {receiver_hook}")
+                # if verbose:
+                print(f"Working on pos {pos}, receiver hook {receiver_hook}")
 
                 attn_results, mlp_results = path_patching_up_to(
                     model=self.model,
@@ -728,6 +728,15 @@ class HypothesisTree:
                             comp_type = receiver_hook[0].split("_")[
                                 -1
                             ]  # q, k, v, out, post
+                            if comp_type == "input":  # oh rip I edited things
+                                for letter in "qkv":
+                                    if f"_{letter}_" in receiver_hook[0]:
+                                        comp_type = letter
+                                assert comp_type in [
+                                    "q",
+                                    "k",
+                                    "v",
+                                ], f"{comp_type}, {receiver_hook[0]}"
                             self.node_stack[(layer, head, pos)].parents.append(
                                 (node, score, comp_type)
                             )
@@ -740,7 +749,9 @@ class HypothesisTree:
                         comp_type = receiver_hook[0].split("_")[
                             -1
                         ]  # q, k, v, out, post
-                        self.node_stack[(layer, None, pos)].parents.append(
+                        self.node_stack[
+                            (layer, None, pos)
+                        ].parents.append(  # TODO fix the MLP thing with GPT-NEO
                             (node, score, comp_type)
                         )
                         node.children.append(
