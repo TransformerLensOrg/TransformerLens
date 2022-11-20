@@ -130,21 +130,22 @@ assert torch.allclose(logit_difference.cpu(), new_logit_difference.cpu())
 # Main part of the automatic circuit discovery algorithm
 
 positions = OrderedDict()
-positions["IO"] = ioi_dataset.word_idx["IO"]
-positions["S"] = ioi_dataset.word_idx["S"]
-positions["S+1"] = ioi_dataset.word_idx["S+1"]
-positions["S2"] = ioi_dataset.word_idx["S2"]
-positions["end"] = ioi_dataset.word_idx["end"]
+positions["IO"] = dataset_orig.word_idx["IO"]
+positions["S"] = dataset_orig.word_idx["S"]
+positions["S+1"] = dataset_orig.word_idx["S+1"]
+positions["S2"] = dataset_orig.word_idx["S2"]
+positions["end"] = dataset_orig.word_idx["end"]
 
 h = HypothesisTree(
     model,
     metric=logit_diff_io_s,
-    dataset=ioi_dataset,
-    orig_data=ioi_dataset.toks.long(),
-    new_data=abc_dataset.toks.long(),
+    dataset=dataset_orig,
+    orig_data=dataset_orig.toks.long(),
+    new_data=dataset_new.toks.long(),
     threshold=0.2,
     possible_positions=positions,
     use_caching=True,
+    direct_paths_only=True,
 )
 
 # %%

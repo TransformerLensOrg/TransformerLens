@@ -178,27 +178,17 @@ def path_patching(
     initial_senders=List[Tuple[int, Optional[int]]],
     receiver_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int]]]
-    ] = {},  # TODO support for token embeddings?
+    ] = {},  # TODO support for pushing back to token embeddings?
     position: int = 0,  # TODO extend this ...
-    return_hooks: bool = False,
-    freeze_mlps: bool = True,
     orig_cache=None,
     new_cache=None,
-    prepend_bos=False,  # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
-) -> torch.Tensor:  # the logits
+) -> torch.Tensor:  # returns the logits
     """
-    `initial_sender_hooks` is a list of (layer, head) tuples. These are the hooks that will be patched from the `new_data`
-    `receiver_to_senders`: dict of (hook_name, idx) -> [(layer_idx, head_idx), ...], where head_idx None means MLP
-    (because senders always have to be OUTPUTS of heads or MLPs. But receivers could be just one of Q or K or V)
+    `initial_senders` is a list of (layer, head) tuples. These are the heads / MLPs that we will patch in new data for (head=None means MLP)
+    `receiver_to_senders`: dict of (hook_name, idx) -> [(layer_idx, head_idx), ...]
+    these define all of the edges in the graph
 
-    MLPs are by default considered as just another component and so are
-    by default frozen when collecting acts on receivers.
-    orig_data: string, torch.Tensor, or list of strings - any format that can be passed to the model directly
-    new_data: same as orig_data
-    max_layer: layers beyond max_layer are not frozen when collecting receiver activations
-    positions: default None and patch at all positions, or a tensor specifying the positions at which to patch
-
-    NOTE: This relies on a change to the cache_some() function in EasyTransformer/hook_points.py [we .clone() activations, unlike in neelnanda-io/EasyTransformer]
+    NOTE: This relies on several changes to Neel's library (and RR/ET main, too)
     """
 
     # caching...
@@ -223,7 +213,7 @@ def path_patching(
             [x in new_cache for x in initial_sender_hook_names]
         ), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
 
-    # add the initial senders to the receiver_to_senders dict
+    # add the initial sender hooks
     for layer_idx, head_idx in initial_senders:
         hook_name, head_idx = get_hook_tuple(layer_idx, head_idx)
         hook = get_act_hook(
@@ -241,9 +231,9 @@ def path_patching(
         ), "Multiple models used as hook point references!"
         hp.ctx["model"] = model
         hp.ctx["hook_name"] = name
-        # print(name, "... ", end=" ") # yeah we conver all things
-
-    model.cache = {}  # note this cache is quite different from other caches...
+    model.cache = (
+        {}
+    )  # note this cache is quite different from other caches... it is populated and used on the same forward pass
 
     # for specifically editing the inputs from certain previous parts
     def input_activation_editor(z, hook, head_idx=None):
@@ -269,7 +259,9 @@ def path_patching(
                 )
             else:
                 sender_value = (
-                    model_cache[sender_hook_name][torch.arange(N), position, sender_head_idx]
+                    model_cache[sender_hook_name][
+                        torch.arange(N), position, sender_head_idx
+                    ]
                     - orig_cache[sender_hook_name][
                         torch.arange(N), position, sender_head_idx
                     ]
@@ -322,7 +314,8 @@ def path_patching(
                 name=hook_name,
                 hook=layer_output_hook,
             )
-    # don't forget hook resid post
+
+    # don't forget hook resid post (if missed, it would just be overwritten, which is pointless)
     model.add_hook(
         name=f"blocks.{model.cfg.n_layers - 1}.hook_resid_post",
         hook=input_activation_editor,
@@ -332,51 +325,129 @@ def path_patching(
     return logits
 
 
-# def path_patching_up_to(
-#     model: EasyTransformer,
-#     layer: int,
-#     metric,
-#     dataset,
-#     orig_data,
-#     new_data,
-#     receiver_hooks,
-#     position,
-#     orig_cache=None,
-#     new_cache=None,
-# ):
-#     model.reset_hooks()
-#     attn_results = np.zeros((layer, model.cfg.n_heads))
-#     mlp_results = np.zeros((layer, 1))
-#     for l in tqdm(range(layer)):
-#         for h in range(model.cfg.n_heads):
-#             model = path_patching(
-#                 model,
-#                 orig_data=orig_data,
-#                 new_data=new_data,
-#                 senders=[(l, h)],
-#                 receiver_hooks=receiver_hooks,
-#                 max_layer=model.cfg.n_layers,
-#                 position=position,
-#                 orig_cache=orig_cache,
-#                 new_cache=new_cache,
-#             )
-#             attn_results[l, h] = metric(model, dataset)
-#             model.reset_hooks()
-#         # mlp
-#         model = path_patching(
-#             model,
-#             orig_data=orig_data,
-#             new_data=new_data,
-#             senders=[(l, None)],
-#             receiver_hooks=receiver_hooks,
-#             max_layer=model.cfg.n_layers,
-#             position=position,
-#             orig_cache=orig_cache,
-#             new_cache=new_cache,
-#         )
-#         mlp_results[l] = metric(model, dataset)
-#         model.reset_hooks()
-#     return attn_results, mlp_results
+def path_patching_up_to_old(
+    model: EasyTransformer,
+    layer: int,
+    metric,
+    dataset,
+    orig_data,
+    new_data,
+    receiver_hooks,
+    position,
+    orig_cache=None,
+    new_cache=None,
+):
+    model.reset_hooks()
+    attn_results = np.zeros((layer, model.cfg.n_heads))
+    mlp_results = np.zeros((layer, 1))
+    for l in tqdm(range(layer)):
+        for h in range(model.cfg.n_heads):
+            model = path_patching_old(
+                model,
+                orig_data=orig_data,
+                new_data=new_data,
+                senders=[(l, h)],
+                receiver_hooks=receiver_hooks,
+                max_layer=model.cfg.n_layers,
+                position=position,
+                orig_cache=orig_cache,
+                new_cache=new_cache,
+            )
+            attn_results[l, h] = metric(model, dataset)
+            model.reset_hooks()
+        # mlp
+        model = path_patching_old(
+            model,
+            orig_data=orig_data,
+            new_data=new_data,
+            senders=[(l, None)],
+            receiver_hooks=receiver_hooks,
+            max_layer=model.cfg.n_layers,
+            position=position,
+            orig_cache=orig_cache,
+            new_cache=new_cache,
+        )
+        mlp_results[l] = metric(model, dataset)
+        model.reset_hooks()
+    return attn_results, mlp_results
+
+
+def path_patching_up_to(
+    model: EasyTransformer,
+    receiver_hook,  # this is a tuple of (hook_name, head_idx)
+    important_nodes,
+    metric,
+    dataset,
+    orig_data,
+    new_data,
+    position,
+    orig_cache=None,
+    new_cache=None,
+):
+    """New version of path_patching_up_to
+    we are going to convert important_nodes into the receivers_to_senders_format"""
+
+    # we need receiver_hook to be a child in important_nodes, but not a parent
+    assert receiver_hook in important_nodes
+    receiver_hook_layer = int(receiver_hook[0].split(".")[1])
+    assert any(
+        (receiver_hook_layer, receiver_hook[1]) in important_nodes[hook]
+        for hook in important_nodes
+    )
+
+    # now construct the arguments
+    initial_senders = []
+    receivers_to_senders = {}
+    for receiver in important_nodes:
+        hook = get_hook_tuple(receiver.layer, receiver.head)
+
+        # im actually a bit unsure of conditions here. Also maybe rename some things from sender and receiver
+        # if (
+        #     len(receiver.children) == 0
+        #     and get_hook_tuple(receiver_hook_layer, receiver_hook[1]) != receiver_hook
+        # ):  # this will get initially patched
+        #     initial_senders.append((receiver.layer, receiver.head))
+
+        else:  # patch, through the paths
+            receivers_to_senders[hook] = []
+            for sender_child in receiver.children:
+                receivers_to_senders[hook].append(
+                    (sender_child.layer, sender_child.head)
+                )
+
+    model.reset_hooks()
+    attn_results = np.zeros((layer, model.cfg.n_heads))
+    mlp_results = np.zeros((layer, 1))
+    for l in tqdm(range(layer)):
+        for h in range(model.cfg.n_heads):
+            model = path_patching_old(
+                model,
+                orig_data=orig_data,
+                new_data=new_data,
+                senders=[(l, h)],
+                receiver_hooks=receiver_hooks,
+                max_layer=model.cfg.n_layers,
+                position=position,
+                orig_cache=orig_cache,
+                new_cache=new_cache,
+            )
+            attn_results[l, h] = metric(model, dataset)
+            model.reset_hooks()
+        # mlp
+        model = path_patching_old(
+            model,
+            orig_data=orig_data,
+            new_data=new_data,
+            senders=[(l, None)],
+            receiver_hooks=receiver_hooks,
+            max_layer=model.cfg.n_layers,
+            position=position,
+            orig_cache=orig_cache,
+            new_cache=new_cache,
+        )
+        mlp_results[l] = metric(model, dataset)
+        model.reset_hooks()
+    return attn_results, mlp_results
 
 
 def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
@@ -522,7 +593,11 @@ class HypothesisTree:
             for receiver_hook in receiver_hooks:
                 if verbose:
                     print(f"Working on pos {pos}, receiver hook {receiver_hook}")
-                attn_results, mlp_results = path_patching_up_to(
+
+                (
+                    attn_results,
+                    mlp_results,
+                ) = path_patching_up_to_old(  # change to new soon...
                     model=self.model,
                     layer=node.layer,
                     metric=self.metric,
