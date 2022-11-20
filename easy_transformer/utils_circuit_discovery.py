@@ -41,9 +41,36 @@ def patch_positions(z, source_act, hook, positions):
         return z
 
 
-class ActivationManager:
-    def __init__(self):
-        pass
+def validate_receivers_to_senders(
+    model,
+    receivers_to_senders,
+):
+    """Check correct formatting, obviously more checks possible but thanks copilot anyways"""
+    assert (
+        len(receivers_to_senders[f"blocks.{model.cfg.n_layers-1}.hook_resid_post"]) > 1
+    ), "Need patching to logits..."
+    for receiver, senders in receivers_to_senders.items():
+        assert isinstance(
+            senders, list
+        ), f"senders for {receiver} should be a list, not {type(senders)}"
+        for sender in senders:
+            assert isinstance(
+                sender, tuple
+            ), f"sender for {receiver} should be a tuple, not {type(sender)}"
+            assert (
+                len(sender) == 2
+            ), f"sender for {receiver} should be a tuple of length 2, not {len(sender)}"
+            assert isinstance(
+                sender[0], str
+            ), f"sender[0] for {receiver} should be a string, not {type(sender[0])}"
+            assert (
+                isinstance(sender[1], int) or sender[1] is None
+            ), f"sender[1] for {receiver} should be an int, not {type(sender[1])}"
+            assert (0 <= sender[1] < model.cfg.n_heads) or sender[
+                1
+            ] is None, (
+                f"sender[1] for {receiver} should be less than n_heads, not {sender[1]}"
+            )
 
 
 def path_patching(
@@ -53,8 +80,8 @@ def path_patching(
     initial_senders=List[Tuple[int, Optional[int]]],
     receiver_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int]]]
-    ] = {},
-    position: int = 0,  # TODO extend this...
+    ] = {},  # TODO support for token embeddings?
+    position: int = 0,  # TODO extend this ...
     return_hooks: bool = False,
     freeze_mlps: bool = True,
     orig_cache=None,
@@ -79,6 +106,7 @@ def path_patching(
     if max_layer is None:
         max_layer = model.cfg.n_layers
     assert max_layer <= model.cfg.n_layers
+    validate_receiver_to_senders(receiver_to_senders)
 
     # caching...
     if orig_cache is None:
@@ -104,22 +132,79 @@ def path_patching(
 
     # setup a way for model components to dynamically see activations from the same forward pass
     for hp in model.hook_points():
+        assert (
+            "model" not in hp.hook_dict or hp.hook_dict["model"] is model
+        ), "Multiple models used as hook point references!"
         hp.ctx["model"] = model
+    model.cache = {}  # note this cache is quite different from other caches...
 
-    for layer_idx in range(12):
-        for head_idx in range(12):
-            hook = get_act_hook(
-                fn=partial(patch_positions, positions=position),
-            )  # etc etc ... make sure that the metadata means we have access to where the things that matter
-            model.add_hook()
+    # for specifically editing the inputs from certain previous parts
+    def input_activation_editor(z, hook):
+        """ "Probably too many asserts, ignore them"""
+        head_idx = hook.ctx["idx"]  # can be None
+        N = z.shape[0]
+        assert (
+            len(receiver_to_senders[(hook_name, head_idx)]) > 0
+        ), f"No senders for {hook_name, head_idx}, this shouldn't be attached!"
+        for sender_layer_idx, sender_head_idx in receiver_to_senders[
+            (hook_name, head_idx)
+        ]:
+            sender_hook_name, sender_head_idx = get_hook_tuple(
+                sender_layer_idx, sender_head_idx
+            )
+            assert new_cache[sender_hook_name].shape == z.shape, (
+                f"sender {sender_hook_name} has shape {new_cache[sender_hook_name].shape}, "
+                f"but receiver {hook_name} has shape {z.shape}"
+            )
+            if head_idx is None:
+                assert 3 == len(z.shape), f"hook {hook_name} has shape {z.shape}"
+                z[torch.arange(N), position, :] += (
+                    new_cache[sender_hook_name][torch.arange(N), position, :]
+                    - orig_cache[sender_hook_name][torch.arange(N), position, :]
+                )
 
-            def save_activation_in_model(z, hook):
-                hook.ctx[
-                    "model"
-                ] = model  # could be weird... maybe only works for immutables
+            else:
+                assert 4 == len(z.shape), f"z.shape = {z.shape}"
+                z[torch.arange(N), position, head_idx:] += (
+                    new_cache[sender_hook_name][torch.arange(N), position, head_idx, :]
+                    - orig_cache[sender_hook_name][
+                        torch.arange(N), position, head_idx, :
+                    ]
+                )
+        return z
 
-        # then MLP
+    # for saving and then overwriting outputs of attention and MLP layers
+    def layer_output_hook(z, hook):
+        hook_name = hook.ctx["hook_name"]
+        hook.ctx["model"].cache[hook_name] = z.clone()  # hmm maybe CPU if debugging OOM
+        assert (
+            z.shape == orig_cache[hook_name].shape
+        ), f"Shape mismatch: {z.shape} vs {orig_cache[hook_name].shape}"
+        z[:] = orig_cache[hook_name]
+        return z
+
+    for layer_idx in range(model.cfg.n_layers):
+        for head_idx in range(model.cfg.n_heads):
+            # if this is a receiver, then compute the input activations carefully
+            for letter in ["q", "k", "v"]:
+                hook_name = f"blocks.{layer_idx}.attn.hook_{letter}_input"
+                if (hook_name, head_idx) in receiver_to_senders:
+                    model.add_hook(name=hook_name, hook=input_activation_editor)
+        hook_name = f"blocks.{layer_idx}.hook_mlp_out"
+        if (hook_name, None) in receiver_to_senders:
+            model.add_hook(name=hook_name, hook=input_activation_editor)
+
+        # then add the hooks that save and edit outputs
+        for hook_name in [
+            f"blocks.{layer_idx}.attn.hook_result",
+            f"blocks.{layer_idx}.hook_mlp_out",
+        ]:
+            model.add_hook(
+                name=hook_name,
+                hook=layer_output_hook,
+            )
     # don't forget hook resid post
+    model.add_hook()
 
 
 # def path_patching_up_to(
