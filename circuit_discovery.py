@@ -85,6 +85,7 @@ model = path_patching_old(
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
     senders=[(9, 9)],
+    # receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
     receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
     position=dataset_orig.word_idx["end"],
 )
@@ -102,9 +103,10 @@ new_logits = path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    initial_senders=[(9, 9)],  # List[Tuple[int, Optional[int]]],
+    initial_senders=[(9, 9)],
     receiver_to_senders={
-        ("blocks.11.hook_resid_post", None): [(9, 9)],
+        ("blocks.11.hook_resid_post", None): [(11, None)],
+        ("blocks.11.hook_mlp_out", None): [(9, 9)],
     },
     position=dataset_orig.word_idx["end"].item(),
 )
