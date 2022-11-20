@@ -29,7 +29,7 @@ from easy_transformer.hook_points import HookedRootModule, HookPoint
 from easy_transformer.EasyTransformer import EasyTransformer
 from easy_transformer.experiments import ExperimentMetric, AblationConfig, EasyAblation, EasyPatching, PatchingConfig
 
-from easy_transformer_utils import (
+from easy_transformer.ioi_utils import (
     show_tokens, 
     sample_next_token,
     get_topk_completions, 

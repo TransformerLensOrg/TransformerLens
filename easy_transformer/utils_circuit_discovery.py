@@ -1,3 +1,4 @@
+from copy import deepcopy
 from functools import partial
 import numpy as np
 from typing import List, Tuple, Dict, Union, Optional, Callable, Any
@@ -42,6 +43,23 @@ def patch_positions(z, source_act, hook, positions):
         for pos in cur_positions:
             z[torch.arange(batch), pos] = source_act[torch.arange(batch), pos]
         return z
+
+
+def get_datasets():
+    """from unity"""
+    batch_size = 1
+    orig = "When John and Mary went to the store, John gave a bottle of milk to Mary"
+    new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary"
+    prompts_orig = [
+        {"S": "John", "IO": "Mary", "TEMPLATE_IDX": -42, "text": orig}
+    ]  # TODO make ET dataset construction not need TEMPLATE_IDX
+    prompts_new = [dict(**prompts_orig[0])]
+    prompts_new[0]["text"] = new
+    dataset_orig = IOIDataset(
+        N=batch_size, prompts=prompts_orig, prompt_type="mixed"
+    )  # TODO make ET dataset construction not need prompt_type
+    dataset_new = IOIDataset(N=batch_size, prompts=prompts_new, prompt_type="mixed")
+    return dataset_new, dataset_orig
 
 
 def path_patching_old(
@@ -283,7 +301,6 @@ def path_patching(
     # for saving and then overwriting outputs of attention and MLP layers
     def layer_output_hook(z, hook):
         hook_name = hook.ctx["hook_name"]
-        print("A name", hook_name)
         hook.ctx["model"].cache[hook_name] = z.clone()  # hmm maybe CPU if debugging OOM
         assert (
             z.shape == orig_cache[hook_name].shape
@@ -376,7 +393,7 @@ def path_patching_up_to(
     model: EasyTransformer,
     receiver_hook,  # this is a tuple of (hook_name, head_idx)
     important_nodes,
-    metric,
+    metric: Callable[[torch.Tensor, IOIDataset], float],  # NOTE: different to before
     dataset,
     orig_data,
     new_data,
@@ -387,67 +404,85 @@ def path_patching_up_to(
     """New version of path_patching_up_to
     we are going to convert important_nodes into the receivers_to_senders_format"""
 
-    # we need receiver_hook to be a child in important_nodes, but not a parent
-    assert receiver_hook in important_nodes
-    receiver_hook_layer = int(receiver_hook[0].split(".")[1])
-    assert any(
-        (receiver_hook_layer, receiver_hook[1]) in important_nodes[hook]
-        for hook in important_nodes
-    )
+    # now construct the arguments (in each path patching run, we will edit these a bit)
+    base_initial_senders = []
+    base_receivers_to_senders = {}
 
-    # now construct the arguments
-    initial_senders = []
-    receivers_to_senders = {}
     for receiver in important_nodes:
         hook = get_hook_tuple(receiver.layer, receiver.head)
 
         # im actually a bit unsure of conditions here. Also maybe rename some things from sender and receiver
-        # if (
-        #     len(receiver.children) == 0
-        #     and get_hook_tuple(receiver_hook_layer, receiver_hook[1]) != receiver_hook
-        # ):  # this will get initially patched
-        #     initial_senders.append((receiver.layer, receiver.head))
+
+        if hook == receiver_hook:
+            assert (
+                len(receiver.children) == 0
+            ), "Receiver_hook should not have children; we're going to find them here"
+
+        elif len(receiver.children) == 0:  # this will get initially patched
+            continue
+            # actually, I don't think that we want a this as a base_initial_sender at all...
+            # base_initial_senders.append((receiver.layer, receiver.head))
 
         else:  # patch, through the paths
-            receivers_to_senders[hook] = []
+            base_receivers_to_senders[hook] = []
             for sender_child in receiver.children:
-                receivers_to_senders[hook].append(
+                base_receivers_to_senders[hook].append(
                     (sender_child.layer, sender_child.head)
                 )
 
+    # assert that the receiver_hook is a sender in the base_receivers_to_senders
+    assert any(
+        [
+            get_hook_tuple(receiver_hook) in base_receivers_to_senders[receiver]
+            for receiver in base_receivers_to_senders
+        ]
+    ) or receiver_hook == (
+        f"blocks.{model.cfg.n_layers-1}.hook_resid_post",
+        None,
+    ), receiver_hook
+    receiver_hook_layer = int(receiver_hook[0].split(".")[1])
+
     model.reset_hooks()
-    attn_results = np.zeros((layer, model.cfg.n_heads))
-    mlp_results = np.zeros((layer, 1))
-    for l in tqdm(range(layer)):
+    attn_results = torch.zeros((model.cfg.n_layers, model.cfg.n_heads))
+    mlp_results = torch.zeros((model.cfg.n_layers, 1))
+    for l in tqdm(range(receiver_hook_layer + 1)):
         for h in range(model.cfg.n_heads):
-            model = path_patching_old(
-                model,
+            senders = deepcopy(base_initial_senders)
+            senders.append((l, h))
+            receivers_to_senders = deepcopy(base_receivers_to_senders)
+            receivers_to_senders[receiver_hook] = [(l, h)]
+
+            cur_logits = path_patching(
+                model=model,
                 orig_data=orig_data,
                 new_data=new_data,
-                senders=[(l, h)],
-                receiver_hooks=receiver_hooks,
-                max_layer=model.cfg.n_layers,
+                initial_senders=senders,
+                receiver_to_senders=receivers_to_senders,
                 position=position,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
             )
-            attn_results[l, h] = metric(model, dataset)
+            attn_results[l, h] = metric(cur_logits, dataset)
             model.reset_hooks()
         # mlp
-        model = path_patching_old(
-            model,
+        senders = deepcopy(base_initial_senders)
+        senders.append((l, None))
+        receivers_to_senders = deepcopy(base_receivers_to_senders)
+        receivers_to_senders[receiver_hook] = [(l, None)]
+        cur_logits = path_patching(
+            model=model,
             orig_data=orig_data,
             new_data=new_data,
-            senders=[(l, None)],
-            receiver_hooks=receiver_hooks,
-            max_layer=model.cfg.n_layers,
+            initial_senders=senders,
+            receiver_to_senders=receivers_to_senders,
             position=position,
             orig_cache=orig_cache,
             new_cache=new_cache,
         )
-        mlp_results[l] = metric(model, dataset)
+        mlp_results[l] = metric(cur_logits, dataset)
         model.reset_hooks()
-    return attn_results, mlp_results
+
+    return attn_results.cpu().detach(), mlp_results.cpu().detach()
 
 
 def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
@@ -459,6 +494,29 @@ def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
         torch.arange(N), dataset.word_idx["end"], dataset.s_tokenIDs
     ]
     return (io_logits - s_logits).mean().item()
+
+
+def logit_diff_from_logits(
+    logits,
+    ioi_dataset,
+):
+    if len(logits.shape) == 2:
+        logits = logits.unsqueeze(0)
+    assert len(logits.shape) == 3
+    assert logits.shape[0] == len(ioi_dataset)
+
+    IO_logits = logits[
+        torch.arange(len(ioi_dataset)),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.io_tokenIDs,
+    ]
+    S_logits = logits[
+        torch.arange(len(ioi_dataset)),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.s_tokenIDs,
+    ]
+
+    return IO_logits - S_logits
 
 
 class Node:
@@ -622,7 +680,7 @@ class HypothesisTree:
 
                 if show_graphics:
                     show_pp(
-                        attn_results.T,
+                        attn_results,
                         title=f"Attn results for {node} with receiver hook {receiver_hook}",
                         xlabel="Head",
                         ylabel="Layer",

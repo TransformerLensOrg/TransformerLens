@@ -17,6 +17,14 @@ from easy_transformer.utils_circuit_discovery import (
     path_patching_old,
     logit_diff_io_s,
     HypothesisTree,
+    logit_diff_from_logits,
+    get_datasets,
+    path_patching_up_to,
+    path_patching_up_to_old,
+)
+
+from easy_transformer.ioi_utils import (
+    show_pp,
 )
 
 from IPython import get_ipython
@@ -34,47 +42,6 @@ model = EasyTransformer.from_pretrained(model_name)
 model.set_use_attn_result(True)
 
 #%%
-
-
-def get_datasets():
-    """from unity"""
-    batch_size = 1
-    orig = "When John and Mary went to the store, John gave a bottle of milk to Mary"
-    new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary"
-    prompts_orig = [
-        {"S": "John", "IO": "Mary", "TEMPLATE_IDX": -42, "text": orig}
-    ]  # TODO make ET dataset construction not need TEMPLATE_IDX
-    prompts_new = [dict(**prompts_orig[0])]
-    prompts_new[0]["text"] = new
-    dataset_orig = IOIDataset(
-        N=batch_size, prompts=prompts_orig, prompt_type="mixed"
-    )  # TODO make ET dataset construction not need prompt_type
-    dataset_new = IOIDataset(N=batch_size, prompts=prompts_new, prompt_type="mixed")
-    return dataset_new, dataset_orig
-
-
-def logit_diff_from_logits(
-    logits,
-    ioi_dataset,
-):
-    if len(logits.shape) == 2:
-        logits = logits.unsqueeze(0)
-    assert len(logits.shape) == 3
-    assert logits.shape[0] == len(ioi_dataset)
-
-    IO_logits = logits[
-        torch.arange(len(ioi_dataset)),
-        ioi_dataset.word_idx["end"],
-        ioi_dataset.io_tokenIDs,
-    ]
-    S_logits = logits[
-        torch.arange(len(ioi_dataset)),
-        ioi_dataset.word_idx["end"],
-        ioi_dataset.s_tokenIDs,
-    ]
-
-    return IO_logits - S_logits
-
 
 dataset_new, dataset_orig = get_datasets()
 
@@ -117,6 +84,34 @@ print(f"{new_logit_difference=}")
 #%%
 
 assert torch.allclose(logit_difference.cpu(), new_logit_difference.cpu())
+
+
+#%%
+
+attn_results, mlp_results = path_patching_up_to(
+    model=model,
+    receiver_hook=("blocks.11.hook_resid_post", None),
+    important_nodes=[],
+    metric=logit_diff_from_logits,
+    dataset=dataset_orig,
+    orig_data=dataset_orig.toks.long(),
+    new_data=dataset_new.toks.long(),
+    position=dataset_orig.word_idx["end"].item(),
+    orig_cache=None,
+    new_cache=None,
+)
+
+model.reset_hooks()
+logits = model(dataset_orig.toks.long())
+initial_logit_difference = logit_diff_from_logits(logits, dataset_orig).cpu().detach()
+
+#%%
+attn_results -= initial_logit_difference
+attn_results /= initial_logit_difference
+mlp_results -= initial_logit_difference
+mlp_results /= initial_logit_difference
+
+show_pp(attn_results, title="attn_results")
 
 # %%
 # the circuit discovery algorithm

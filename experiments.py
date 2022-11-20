@@ -491,10 +491,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 model=model,
                 D_new=abc_dataset,
                 D_orig=ioi_dataset,
-<<<<<<< HEAD
-=======
-                ioi_dataset=ioi_dataset,
->>>>>>> arthur/haoxing
+                ioi_dataset=ioi_dataset,  # remove this argument if wrong
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
                 positions=[pos],
@@ -513,7 +510,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             if source_layer == 11 and source_head_idx == 11:
                 fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
-                    results.T,
+                    results,
                     title=f"Direct effect of removing heads on logit diff"
                     + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                     return_fig=True,
