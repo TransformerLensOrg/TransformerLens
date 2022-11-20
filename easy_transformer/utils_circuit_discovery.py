@@ -286,9 +286,6 @@ def path_patching(
                 (hook_name, head_idx),
                 (sender_layer_idx, sender_head_idx),
             ) in initial_receivers_to_senders:
-                warnings.warn(
-                    f"Using the new cache for initial receiver for {((hook_name, head_idx), (sender_layer_idx, sender_head_idx))}"
-                )
                 cache_to_use = new_cache
 
             # we have to do both things casewise
