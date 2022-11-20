@@ -538,7 +538,14 @@ class EasyPatching(EasyExperiment):
 
 
 def get_act_hook(
-    fn, alt_act=None, idx=None, dim=None, name=None, message=None, model=None
+    fn,
+    alt_act=None,
+    idx=None,
+    dim=None,
+    name=None,
+    message=None,
+    model=None,
+    metadata=None,
 ):
     """Return an hook that modify the activation on the fly. alt_act (Alternative activations) is a tensor of the same shape of the z.
     E.g. It can be the mean activation or the activations on other dataset."""
@@ -549,6 +556,7 @@ def get_act_hook(
             hook.ctx["dim"] = dim
             hook.ctx["name"] = name
             hook.ctx["model"] = model
+            hook.ctx["metadata"] = metadata
 
             if message is not None:
                 print(message)
@@ -572,6 +580,7 @@ def get_act_hook(
             hook.ctx["dim"] = dim
             hook.ctx["name"] = name
             hook.ctx["model"] = model
+            hook.ctx["metadata"] = metadata
 
             if message is not None:
                 print(message)

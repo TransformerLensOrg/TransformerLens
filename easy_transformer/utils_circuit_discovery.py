@@ -41,7 +41,7 @@ def patch_positions(z, source_act, hook, positions):
         return z
 
 
-class ActivationManager():
+class ActivationManager:
     def __init__(self):
         pass
 
@@ -50,11 +50,11 @@ def path_patching(
     model: EasyTransformer,
     orig_data,
     new_data,
-    initial_senders = List[Tuple[int, Optional[int]]],
+    initial_senders=List[Tuple[int, Optional[int]]],
     receiver_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int]]]
-    ],
-    position: int = 0,
+    ] = {},
+    position: int = 0,  # TODO extend this...
     return_hooks: bool = False,
     freeze_mlps: bool = True,
     orig_cache=None,
@@ -87,7 +87,10 @@ def path_patching(
         orig_cache = {}
         model.cache_all(orig_cache)
         _ = model(orig_data, prepend_bos=False)
-    initial_sender_hook_names = [get_hook_tuple(layer_idx, head_idx)[0] for layer_idx, head_idx in initial_sender_hooks]
+    initial_sender_hook_names = [
+        get_hook_tuple(layer_idx, head_idx)[0]
+        for layer_idx, head_idx in initial_sender_hooks
+    ]
     if new_cache is None:
         # save activations from new for senders
         model.reset_hooks()
@@ -95,56 +98,75 @@ def path_patching(
         model.cache_some(new_cache, lambda x: x in initial_sender_hook_names)
         _ = model(new_data, prepend_bos=False)
     else:
-        assert all([x in new_cache for x in initial_sender_hook_names]), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
+        assert all(
+            [x in new_cache for x in initial_sender_hook_names]
+        ), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
 
-    # setup ActivationManager
-    a = ActivationManager()
+    # setup a way for model components to dynamically see activations from the same forward pass
+    for hp in model.hook_points():
+        hp.ctx["model"] = model
 
-def path_patching_up_to(
-    model: EasyTransformer,
-    layer: int,
-    metric,
-    dataset,
-    orig_data,
-    new_data,
-    receiver_hooks,
-    position,
-    orig_cache=None,
-    new_cache=None,
-):
-    model.reset_hooks()
-    attn_results = np.zeros((layer, model.cfg.n_heads))
-    mlp_results = np.zeros((layer, 1))
-    for l in tqdm(range(layer)):
-        for h in range(model.cfg.n_heads):
-            model = path_patching(
-                model,
-                orig_data=orig_data,
-                new_data=new_data,
-                senders=[(l, h)],
-                receiver_hooks=receiver_hooks,
-                max_layer=model.cfg.n_layers,
-                position=position,
-                orig_cache=orig_cache,
-                new_cache=new_cache,
-            )
-            attn_results[l, h] = metric(model, dataset)
-            model.reset_hooks()
-        # mlp
-        model = path_patching(
-            model,
-            orig_data=orig_data,
-            new_data=new_data,
-            senders=[(l, None)],
-            receiver_hooks=receiver_hooks,
-            max_layer=model.cfg.n_layers,
-            position=position,
-            orig_cache=orig_cache,
-            new_cache=new_cache,
-        )
-        mlp_results[l] = metric(model, dataset)
-        model.reset_hooks()
-    return attn_results, mlp_results
+    for layer_idx in range(12):
+        for head_idx in range(12):
+            hook = get_act_hook(
+                fn=partial(patch_positions, positions=position),
+            )  # etc etc ... make sure that the metadata means we have access to where the things that matter
+            model.add_hook()
+
+            def save_activation_in_model(z, hook):
+                hook.ctx[
+                    "model"
+                ] = model  # could be weird... maybe only works for immutables
+
+        # then MLP
+    # don't forget hook resid post
+
+
+# def path_patching_up_to(
+#     model: EasyTransformer,
+#     layer: int,
+#     metric,
+#     dataset,
+#     orig_data,
+#     new_data,
+#     receiver_hooks,
+#     position,
+#     orig_cache=None,
+#     new_cache=None,
+# ):
+#     model.reset_hooks()
+#     attn_results = np.zeros((layer, model.cfg.n_heads))
+#     mlp_results = np.zeros((layer, 1))
+#     for l in tqdm(range(layer)):
+#         for h in range(model.cfg.n_heads):
+#             model = path_patching(
+#                 model,
+#                 orig_data=orig_data,
+#                 new_data=new_data,
+#                 senders=[(l, h)],
+#                 receiver_hooks=receiver_hooks,
+#                 max_layer=model.cfg.n_layers,
+#                 position=position,
+#                 orig_cache=orig_cache,
+#                 new_cache=new_cache,
+#             )
+#             attn_results[l, h] = metric(model, dataset)
+#             model.reset_hooks()
+#         # mlp
+#         model = path_patching(
+#             model,
+#             orig_data=orig_data,
+#             new_data=new_data,
+#             senders=[(l, None)],
+#             receiver_hooks=receiver_hooks,
+#             max_layer=model.cfg.n_layers,
+#             position=position,
+#             orig_cache=orig_cache,
+#             new_cache=new_cache,
+#         )
+#         mlp_results[l] = metric(model, dataset)
+#         model.reset_hooks()
+#     return attn_results, mlp_results
 
 
 def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
