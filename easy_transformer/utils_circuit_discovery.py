@@ -456,7 +456,6 @@ def path_patching_up_to(
                     )
 
     receiver_hook_layer = int(receiver_hook[0].split(".")[1])
-
     model.reset_hooks()
     layer_shape = receiver_hook_layer + (1 if receiver_hook[1] is None else 0)
     attn_results = torch.zeros((layer_shape, model.cfg.n_heads))

@@ -129,12 +129,12 @@ def show_pp(
     fig.update_layout(
         yaxis_title=ylabel,
         xaxis_title=xlabel,
-        xaxis_range=[-0.5, m.shape[0] - 0.5],
+        xaxis_range=[-0.5, m.shape[1] - 0.5],
         showlegend=True,
         legend=dict(x=-0.1),
     )
     if highlight_points is not None:
-        fig.update_yaxes(range=[m.shape[1] - 0.5, -0.5], autorange=False)
+        fig.update_yaxes(range=[m.shape[0] - 0.5, -0.5], autorange=False)
     if show_fig:
         fig.show()
     if return_fig:
