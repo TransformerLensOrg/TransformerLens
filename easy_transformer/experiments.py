@@ -544,7 +544,6 @@ def get_act_hook(
     dim=None,
     name=None,
     message=None,
-    model=None,
     metadata=None,
 ):
     """Return an hook that modify the activation on the fly. alt_act (Alternative activations) is a tensor of the same shape of the z.
@@ -555,7 +554,6 @@ def get_act_hook(
             hook.ctx["idx"] = idx
             hook.ctx["dim"] = dim
             hook.ctx["name"] = name
-            hook.ctx["model"] = model
             hook.ctx["metadata"] = metadata
 
             if message is not None:
@@ -579,7 +577,6 @@ def get_act_hook(
             hook.ctx["idx"] = idx
             hook.ctx["dim"] = dim
             hook.ctx["name"] = name
-            hook.ctx["model"] = model
             hook.ctx["metadata"] = metadata
 
             if message is not None:

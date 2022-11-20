@@ -14,6 +14,7 @@ from easy_transformer.ioi_dataset import (
 )
 from easy_transformer.utils_circuit_discovery import (
     path_patching,
+    path_patching_old,
     logit_diff_io_s,
     HypothesisTree,
 )
@@ -28,23 +29,86 @@ if ipython is not None:
 model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 
 model = EasyTransformer.from_pretrained(model_name)
-if torch.cuda.is_available():
-    model.to("cuda")
+# if torch.cuda.is_available():
+# model.to("cuda")
 model.set_use_attn_result(True)
 
-# %%
-N = 50
-ioi_dataset = IOIDataset(
-    prompt_type="ABBA",
-    N=N,
-    tokenizer=model.tokenizer,
-    prepend_bos=False,
+#%%
+
+
+def get_datasets():
+    """from unity"""
+    batch_size = 1
+    orig = "When John and Mary went to the store, John gave a bottle of milk to Mary"
+    new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary"
+    prompts_orig = [
+        {"S": "John", "IO": "Mary", "TEMPLATE_IDX": -42, "text": orig}
+    ]  # TODO make ET dataset construction not need TEMPLATE_IDX
+    prompts_new = [dict(**prompts_orig[0])]
+    prompts_new[0]["text"] = new
+    dataset_orig = IOIDataset(
+        N=batch_size, prompts=prompts_orig, prompt_type="mixed"
+    )  # TODO make ET dataset construction not need prompt_type
+    dataset_new = IOIDataset(N=batch_size, prompts=prompts_new, prompt_type="mixed")
+    return dataset_new, dataset_orig
+
+
+def logit_diff_from_logits(
+    logits,
+    ioi_dataset,
+):
+    if len(logits.shape) == 2:
+        logits = logits.unsqueeze(0)
+    assert len(logits.shape) == 3
+    assert logits.shape[0] == len(ioi_dataset)
+
+    IO_logits = logits[
+        torch.arange(len(ioi_dataset)),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.io_tokenIDs,
+    ]
+    S_logits = logits[
+        torch.arange(len(ioi_dataset)),
+        ioi_dataset.word_idx["end"],
+        ioi_dataset.s_tokenIDs,
+    ]
+
+    return IO_logits - S_logits
+
+
+dataset_new, dataset_orig = get_datasets()
+
+#%%
+
+model = path_patching_old(
+    model=model,
+    orig_data=dataset_orig.toks.long(),
+    new_data=dataset_new.toks.long(),
+    senders=[(9, 8)],
+    receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
+    position=dataset_orig.word_idx["end"],
 )
-abc_dataset = (
-    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
-    .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"))
+
+logits_old = model(dataset_orig.toks.long()).cpu()
+
+#%%
+
+logit_difference = logit_diff_from_logits(logits_old, dataset_orig)
+print(f"{logit_difference=}")
+
+#%%
+
+new_logits = path_patching(
+    model=model,
+    orig_data=dataset_orig.toks.long(),
+    new_data=dataset_new.toks.long(),
+    initial_senders=[(9, 8)],  # List[Tuple[int, Optional[int]]],
+    receiver_to_senders={
+        ("blocks.11.hook_resid_post", None): [(9, 8)],
+    },
+    position=dataset_orig.word_idx["end"],
 )
+
 # %%
 # the circuit discovery algorithm
 #

@@ -232,18 +232,21 @@ def path_patching(
         model.add_hook(hook_name, hook)
 
     # setup a way for model components to dynamically see activations from the same forward pass
-    for hp in model.hook_points():
+    for name, hp in model.hook_dict.items():
         assert (
-            "model" not in hp.hook_dict or hp.hook_dict["model"] is model
+            "model" not in hp.ctx or hp.ctx["model"] is model
         ), "Multiple models used as hook point references!"
         hp.ctx["model"] = model
+        hp.ctx["hook_name"] = name
+        # print(name, "... ", end=" ") # yeah we conver all things
+
     model.cache = {}  # note this cache is quite different from other caches...
 
     # for specifically editing the inputs from certain previous parts
-    def input_activation_editor(z, hook):
+    def input_activation_editor(z, hook, head_idx=None):
         """ "Probably too many asserts, ignore them"""
-        head_idx = hook.ctx["idx"]  # can be None
         N = z.shape[0]
+        hook_name = hook.ctx["hook_name"]
         assert (
             len(receiver_to_senders[(hook_name, head_idx)]) > 0
         ), f"No senders for {hook_name, head_idx}, this shouldn't be attached!"
@@ -253,11 +256,19 @@ def path_patching(
             sender_hook_name, sender_head_idx = get_hook_tuple(
                 sender_layer_idx, sender_head_idx
             )
-            assert new_cache[sender_hook_name].shape == z.shape, (
-                f"sender {sender_hook_name} has shape {new_cache[sender_hook_name].shape}, "
-                f"but receiver {hook_name} has shape {z.shape}"
-            )
-            if head_idx is None:
+
+            # if sender_head_idx is None:
+            #     sender_value = new_cache[sender_hook_name][torch.arange(N), position]
+            # else:
+            #     sender_value = new_cache[sender_hook_name][
+            #         torch.arange(N), position, sender_head_idx
+            #     ]
+
+            if sender_head_idx is None:
+                assert new_cache[sender_hook_name].shape == z.shape, (
+                    f"sender {sender_hook_name} has shape {new_cache[sender_hook_name].shape}, "
+                    f"but receiver {hook_name} has shape {z.shape}"
+                )
                 assert 3 == len(z.shape), f"hook {hook_name} has shape {z.shape}"
                 z[torch.arange(N), position, :] += (
                     new_cache[sender_hook_name][torch.arange(N), position, :]
@@ -265,11 +276,19 @@ def path_patching(
                 )
 
             else:
+                assert (
+                    new_cache[sender_hook_name][:, :, sender_head_idx].shape == z.shape
+                ), (
+                    f"sender {sender_hook_name} has shape {new_cache[sender_hook_name].shape}, "
+                    f"but receiver {hook_name} has shape {z.shape}"
+                )
                 assert 4 == len(z.shape), f"z.shape = {z.shape}"
-                z[torch.arange(N), position, head_idx:] += (
-                    new_cache[sender_hook_name][torch.arange(N), position, head_idx, :]
+                z[torch.arange(N), position, head_idx, :] += (
+                    new_cache[sender_hook_name][
+                        torch.arange(N), position, sender_head_idx, :
+                    ]
                     - orig_cache[sender_hook_name][
-                        torch.arange(N), position, head_idx, :
+                        torch.arange(N), position, sender_head_idx, :
                     ]
                 )
         return z
@@ -277,6 +296,7 @@ def path_patching(
     # for saving and then overwriting outputs of attention and MLP layers
     def layer_output_hook(z, hook):
         hook_name = hook.ctx["hook_name"]
+        print("A name", hook_name)
         hook.ctx["model"].cache[hook_name] = z.clone()  # hmm maybe CPU if debugging OOM
         assert (
             z.shape == orig_cache[hook_name].shape
@@ -290,7 +310,10 @@ def path_patching(
             for letter in ["q", "k", "v"]:
                 hook_name = f"blocks.{layer_idx}.attn.hook_{letter}_input"
                 if (hook_name, head_idx) in receiver_to_senders:
-                    model.add_hook(name=hook_name, hook=input_activation_editor)
+                    model.add_hook(
+                        name=hook_name,
+                        hook=partial(input_activation_editor, head_idx=head_idx),
+                    )
         hook_name = f"blocks.{layer_idx}.hook_mlp_out"
         if (hook_name, None) in receiver_to_senders:
             model.add_hook(name=hook_name, hook=input_activation_editor)
@@ -309,7 +332,7 @@ def path_patching(
         name=f"blocks.{model.cfg.n_layers - 1}.hook_resid_post",
         hook=input_activation_editor,
     )
-    logits = model(orig_data.toks.long())
+    logits = model(orig_data)
     model.reset_hooks()
     return logits
 
