@@ -266,7 +266,8 @@ def path_patching(
     # for specifically editing the inputs from certain previous parts
     def input_activation_editor(z, hook, head_idx=None):
         """ "Probably too many asserts, ignore them"""
-        N = z.shape[0]
+        new_z = z.clone()
+        N = z.shape[0]  # otherwise we ALSO edit the inputs to K and V : (
         hook_name = hook.ctx["hook_name"]
         model_cache = hook.ctx["model"].cache
         assert (
@@ -297,16 +298,16 @@ def path_patching(
 
             if head_idx is None:
                 assert (
-                    z[:, position, :].shape == sender_value.shape
-                ), f"{z.shape} != {sender_value.shape}"
-                z[torch.arange(N), position] += sender_value
+                    new_z[:, position, :].shape == sender_value.shape
+                ), f"{new_z.shape} != {sender_value.shape}"
+                new_z[torch.arange(N), position] += sender_value
             else:
                 assert (
-                    z[:, position, head_idx].shape == sender_value.shape
-                ), f"{z.shape} != {sender_value.shape}"
-                z[torch.arange(N), position, head_idx] += sender_value
+                    new_z[:, position, head_idx].shape == sender_value.shape
+                ), f"{new_z.shape} != {sender_value.shape}"
+                new_z[torch.arange(N), position, head_idx] += sender_value
 
-        return z
+        return new_z
 
     # for saving and then overwriting outputs of attention and MLP layers
     def layer_output_hook(z, hook):
