@@ -143,6 +143,19 @@ h = HypothesisTree(
     direct_paths_only=True,
 )
 
+#%%
+
+h.eval()
+
+#%%
+
+assert torch.allclose(
+    torch.tensor(h.attn_results).float(),
+    torch.tensor(attn_results).float(),
+    atol=1e-4,
+    rtol=1e-4,
+)
+
 # %%
 h.eval(auto_threshold=3, verbose=True, show_graphics=True)
 while h.current_node is not None:
