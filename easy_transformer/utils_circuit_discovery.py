@@ -200,7 +200,7 @@ def path_patching(
     position: int = 0,  # TODO extend this ...
     orig_cache=None,
     new_cache=None,
-) -> torch.Tensor:  # returns the logits
+) -> EasyTransformer:  # returns the logits
     """
     `initial_senders` is a list of (layer, head) tuples. These are the heads / MLPs that we will patch in new data for (head=None means MLP)
     `receiver_to_senders`: dict of (hook_name, idx) -> [(layer_idx, head_idx), ...]
@@ -337,9 +337,7 @@ def path_patching(
         name=f"blocks.{model.cfg.n_layers - 1}.hook_resid_post",
         hook=input_activation_editor,
     )
-    logits = model(orig_data)
-    model.reset_hooks()
-    return logits
+    return model
 
 
 def path_patching_up_to_old(
@@ -425,7 +423,7 @@ def path_patching_up_to(
 
         else:  # patch, through the paths
             base_receivers_to_senders[hook] = []
-            for sender_child in receiver.children:
+            for sender_child, _, _ in receiver.children:
                 base_receivers_to_senders[hook].append(
                     (sender_child.layer, sender_child.head)
                 )
@@ -433,7 +431,7 @@ def path_patching_up_to(
     # assert that the receiver_hook is a sender in the base_receivers_to_senders
     assert any(
         [
-            get_hook_tuple(receiver_hook) in base_receivers_to_senders[receiver]
+            receiver_hook in base_receivers_to_senders[receiver]
             for receiver in base_receivers_to_senders
         ]
     ) or receiver_hook == (
@@ -487,12 +485,9 @@ def path_patching_up_to(
 
 def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
     N = dataset.N
-    io_logits = model(dataset.toks.long())[
-        torch.arange(N), dataset.word_idx["end"], dataset.io_tokenIDs
-    ]
-    s_logits = model(dataset.toks.long())[
-        torch.arange(N), dataset.word_idx["end"], dataset.s_tokenIDs
-    ]
+    logits = model(dataset.toks.long())
+    io_logits = logits[torch.arange(N), dataset.word_idx["end"], dataset.io_tokenIDs]
+    s_logits = logits[torch.arange(N), dataset.word_idx["end"], dataset.s_tokenIDs]
     return (io_logits - s_logits).mean().item()
 
 
@@ -613,6 +608,133 @@ class HypothesisTree:
         _ = self.model(self.new_data, prepend_bos=False)
 
     def eval(
+        self,
+        threshold: Union[float, None] = None,
+        verbose: bool = False,
+        show_graphics: bool = True,
+        auto_threshold: float = 0.0,
+    ):
+        """DIRECT PATH PATCHING VERSION"""
+
+        if threshold is None:
+            threshold = self.threshold
+
+        _, node = self.node_stack.popitem()
+        self.important_nodes.append(node)
+        print("Currently evaluating", node)
+
+        current_node_position = node.position
+        for pos in self.possible_positions:
+            if (
+                current_node_position != pos and node.head is None
+            ):  # MLPs and the end state of the residual stream only care about the last position
+                continue
+
+            receiver_hooks = []
+            if node.layer == self.model.cfg.n_layers:
+                receiver_hooks.append((f"blocks.{node.layer-1}.hook_resid_post", None))
+            elif node.head is None:
+                receiver_hooks.append((f"blocks.{node.layer}.hook_mlp_out", None))
+            else:
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_v", node.head))
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_k", node.head))
+                if pos == current_node_position:
+                    receiver_hooks.append(
+                        (f"blocks.{node.layer}.attn.hook_q", node.head)
+                    )  # similar story to above, only care about the last position
+
+            for receiver_hook in receiver_hooks:
+                if verbose:
+                    print(f"Working on pos {pos}, receiver hook {receiver_hook}")
+
+                attn_results, mlp_results = path_patching_up_to(
+                    model=self.model,
+                    receiver_hook=receiver_hook,
+                    important_nodes=self.important_nodes,
+                    metric=self.metric,
+                    dataset=self.dataset,
+                    orig_data=self.orig_data,
+                    new_data=self.new_data,
+                    position=self.possible_positions[pos],
+                    orig_cache=self.orig_cache,
+                    new_cache=self.new_cache,
+                )
+
+                # convert to percentage
+                attn_results -= self.default_metric
+                attn_results /= self.default_metric
+                mlp_results -= self.default_metric
+                mlp_results /= self.default_metric
+                self.attn_results = attn_results
+                self.mlp_results = mlp_results
+
+                if show_graphics:
+                    show_pp(
+                        attn_results,
+                        title=f"Attn results for {node} with receiver hook {receiver_hook}",
+                        xlabel="Head",
+                        ylabel="Layer",
+                    )
+                    show_pp(
+                        mlp_results,
+                        title=f"MLP results for {node} with receiver hook {receiver_hook}",
+                        xlabel="Layer",
+                        ylabel="",
+                    )
+
+                if auto_threshold:
+                    threshold = max(
+                        auto_threshold * attn_results.std(),
+                        auto_threshold * mlp_results.std(),
+                        0.01,
+                    )
+                if verbose:
+                    print(f"threshold: {threshold:.3f}")
+                # process result and mark nodes above threshold as important
+                for layer in range(attn_results.shape[0]):
+                    for head in range(attn_results.shape[1]):
+                        if abs(attn_results[layer, head]) > threshold:
+                            print(
+                                "Found important head:",
+                                (layer, head),
+                                "at position",
+                                pos,
+                            )
+                            score = attn_results[layer, head]
+                            comp_type = receiver_hook[0].split("_")[
+                                -1
+                            ]  # q, k, v, out, post
+                            self.node_stack[(layer, head, pos)].parents.append(
+                                (node, score, comp_type)
+                            )
+                            node.children.append(
+                                (self.node_stack[(layer, head, pos)], score, comp_type)
+                            )
+                    if abs(mlp_results[layer]) > threshold:
+                        print("Found important MLP: layer", layer, "position", pos)
+                        score = mlp_results[layer, 0]
+                        comp_type = receiver_hook[0].split("_")[
+                            -1
+                        ]  # q, k, v, out, post
+                        self.node_stack[(layer, None, pos)].parents.append(
+                            (node, score, comp_type)
+                        )
+                        node.children.append(
+                            (self.node_stack[(layer, None, pos)], score, comp_type)
+                        )
+
+        # update self.current_node
+        while (
+            len(self.node_stack) > 0
+            and len(self.node_stack[next(reversed(self.node_stack))].parents) == 0
+        ):
+            self.node_stack.popitem()
+        if len(self.node_stack) > 0:
+            self.current_node = self.node_stack[next(reversed(self.node_stack))]
+        else:
+            self.current_node = None
+
+    def eval_old(
         self,
         threshold: Union[float, None] = None,
         verbose: bool = False,

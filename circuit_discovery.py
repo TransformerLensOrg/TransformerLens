@@ -113,6 +113,26 @@ mlp_results /= initial_logit_difference
 
 show_pp(attn_results, title="attn_results")
 
+#%%
+
+positions = OrderedDict()
+positions["end"] = dataset_orig.word_idx["end"].item()
+h = HypothesisTree(
+    model,
+    metric=logit_diff_io_s,
+    dataset=dataset_orig,
+    orig_data=dataset_orig.toks.long(),
+    new_data=dataset_new.toks.long(),
+    threshold=0.2,
+    possible_positions=positions,
+    use_caching=True,
+    direct_paths_only=True,
+)
+
+#%%
+
+h.eval()
+
 # %%
 # the circuit discovery algorithm
 #
