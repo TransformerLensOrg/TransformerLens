@@ -208,18 +208,18 @@ def path_patching(
     orig_data,
     new_data,
     initial_receivers_to_senders=List[
-        Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int]]]
+        Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int], str]]
     ],  # these are the only edges where we patch from new_cache
     receivers_to_senders: Dict[  # TODO TODO TODO we need to make INPUT to MLPs work
-        Tuple[str, Optional[int]], List[Tuple[int, Optional[int]]]
-    ] = {},  # TODO support for pushing back to token embeddings?
-    position: int = 0,  # TODO extend this ...
+        Tuple[str, Optional[int]], List[Tuple[int, Optional[int], str]]
+    ],  # TODO support for pushing back to token embeddings?
+    positions,  # TODO extend this ...
     orig_cache=None,
     new_cache=None,
 ) -> EasyTransformer:
     """
     `intial_receiver_to_sender` is a list of pairs representing the edges we patch the new_cache connectiion on
-    `receiver_to_senders`: dict of (hook_name, idx) -> [(layer_idx, head_idx), ...]
+    `receiver_to_senders`: dict of (hook_name, idx, pos) -> [(layer_idx, head_idx, pos), ...]
     these define all of the edges in the graph
 
     NOTE: This relies on several changes to Neel's library (and RR/ET main, too)
@@ -289,7 +289,7 @@ def path_patching(
         assert (
             len(receivers_to_senders[(hook_name, head_idx)]) > 0
         ), f"No senders for {hook_name, head_idx}, this shouldn't be attached!"
-        for sender_layer_idx, sender_head_idx in receivers_to_senders[
+        for sender_layer_idx, sender_head_idx, sender_head_pos in receivers_to_senders[
             (hook_name, head_idx)
         ]:
             sender_hook_name, sender_head_idx = get_hook_tuple(
@@ -299,36 +299,38 @@ def path_patching(
             cache_to_use = hook.ctx["model"].cache
             if (
                 (hook_name, head_idx),
-                (sender_layer_idx, sender_head_idx),
-            ) in initial_receivers_to_senders:
+                (sender_layer_idx, sender_head_idx, sender_head_pos),
+            ) in initial_receivers_to_senders: # hopefully fires > once
                 cache_to_use = new_cache
 
             # we have to do both things casewise
             if sender_head_idx is None:
                 sender_value = (
-                    cache_to_use[sender_hook_name][torch.arange(N), position]
-                    - orig_cache[sender_hook_name][torch.arange(N), position]
+                    cache_to_use[sender_hook_name][
+                        torch.arange(N), positions[sender_head_pos]
+                    ]
+                    - orig_cache[sender_hook_name][torch.arange(N), positions[sender_head_pos]]
                 )
             else:
                 sender_value = (
                     cache_to_use[sender_hook_name][
-                        torch.arange(N), position, sender_head_idx
+                        torch.arange(N), positions[sender_head_pos], sender_head_idx
                     ]
                     - orig_cache[sender_hook_name][
-                        torch.arange(N), position, sender_head_idx
+                        torch.arange(N), positions[sender_head_pos], sender_head_idx
                     ]
                 )
 
             if head_idx is None:
                 assert (
-                    new_z[:, position, :].shape == sender_value.shape
+                    new_z[:, positions[sender_head_pos], :].shape == sender_value.shape
                 ), f"{new_z.shape} != {sender_value.shape}"
-                new_z[torch.arange(N), position] += sender_value
+                new_z[torch.arange(N), positions[sender_head_pos]] += sender_value
             else:
                 assert (
-                    new_z[:, position, head_idx].shape == sender_value.shape
-                ), f"{new_z[:, position, head_idx].shape} != {sender_value.shape}, {position}"
-                new_z[torch.arange(N), position, head_idx] += sender_value
+                    new_z[:, positions[sender_head_pos], head_idx].shape == sender_value.shape
+                ), f"{new_z[:, positions[sender_head_pos], head_idx].shape} != {sender_value.shape}, {positions[sender_head_pos].shape}"
+                new_z[torch.arange(N), positions[sender_head_pos], head_idx] += sender_value
 
         return new_z
 
@@ -382,7 +384,7 @@ def path_patching_up_to(
     dataset,
     orig_data,
     new_data,
-    position,
+    positions,
     orig_cache=None,
     new_cache=None,
 ):
@@ -407,9 +409,7 @@ def path_patching_up_to(
         else:  # patch, through the paths
             for sender_child, _, comp in receiver.children:
                 if comp in ["v", "k", "q"]:
-                    qkv_hook = get_hook_tuple(
-                        receiver.layer, receiver.head, comp
-                    )  # TODO this seemed quite broke!!! Check fixed
+                    qkv_hook = get_hook_tuple(receiver.layer, receiver.head, comp)
                     if qkv_hook not in base_initial_senders:
                         base_receivers_to_senders[qkv_hook] = []
                     base_receivers_to_senders[qkv_hook].append(
@@ -442,7 +442,7 @@ def path_patching_up_to(
                 new_data=new_data,
                 initial_receivers_to_senders=[(receiver_hook, (l, h))],
                 receivers_to_senders=receivers_to_senders,
-                position=position,
+                positions=positions,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
             )
@@ -647,7 +647,7 @@ class HypothesisTree:
                     dataset=self.dataset,
                     orig_data=self.orig_data,
                     new_data=self.new_data,
-                    position=self.possible_positions[pos],
+                    positions=self.possible_positions,
                     orig_cache=self.orig_cache,
                     new_cache=self.new_cache,
                 )
@@ -663,13 +663,13 @@ class HypothesisTree:
                 if show_graphics:
                     show_pp(
                         attn_results,
-                        title=f"Attn results for {node} with receiver hook {receiver_hook}",
+                        title=f"{node} {receiver_hook} {pos}",
                         xlabel="Head",
                         ylabel="Layer",
                     )
                     show_pp(
                         mlp_results,
-                        title=f"MLP results for {node} with receiver hook {receiver_hook}",
+                        title=f"MLP results for {node} with receiver hook {receiver_hook} position {pos}",
                         xlabel="Layer",
                         ylabel="",
                     )
