@@ -207,7 +207,7 @@ def path_patching(
     model: EasyTransformer,
     orig_data,
     new_data,
-    initial_receivers_to_senders=List[
+    initial_receivers_to_senders: List[
         Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int], str]]
     ],  # these are the only edges where we patch from new_cache
     receivers_to_senders: Dict[  # TODO TODO TODO we need to make INPUT to MLPs work
@@ -300,7 +300,7 @@ def path_patching(
             if (
                 (hook_name, head_idx),
                 (sender_layer_idx, sender_head_idx, sender_head_pos),
-            ) in initial_receivers_to_senders: # hopefully fires > once
+            ) in initial_receivers_to_senders:  # hopefully fires > once
                 cache_to_use = new_cache
 
             # we have to do both things casewise
@@ -309,7 +309,9 @@ def path_patching(
                     cache_to_use[sender_hook_name][
                         torch.arange(N), positions[sender_head_pos]
                     ]
-                    - orig_cache[sender_hook_name][torch.arange(N), positions[sender_head_pos]]
+                    - orig_cache[sender_hook_name][
+                        torch.arange(N), positions[sender_head_pos]
+                    ]
                 )
             else:
                 sender_value = (
@@ -328,9 +330,12 @@ def path_patching(
                 new_z[torch.arange(N), positions[sender_head_pos]] += sender_value
             else:
                 assert (
-                    new_z[:, positions[sender_head_pos], head_idx].shape == sender_value.shape
+                    new_z[:, positions[sender_head_pos], head_idx].shape
+                    == sender_value.shape
                 ), f"{new_z[:, positions[sender_head_pos], head_idx].shape} != {sender_value.shape}, {positions[sender_head_pos].shape}"
-                new_z[torch.arange(N), positions[sender_head_pos], head_idx] += sender_value
+                new_z[
+                    torch.arange(N), positions[sender_head_pos], head_idx
+                ] += sender_value
 
         return new_z
 
