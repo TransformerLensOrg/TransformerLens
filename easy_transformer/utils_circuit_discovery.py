@@ -445,7 +445,9 @@ def path_patching_up_to(
             senders = deepcopy(base_initial_senders)
             senders.append((l, h))
             receivers_to_senders = deepcopy(base_receivers_to_senders)
-            receivers_to_senders[receiver_hook] = [(l, h, current_position)]
+            if receiver_hook not in receivers_to_senders:
+                receivers_to_senders[receiver_hook] = []
+            receivers_to_senders[receiver_hook].append((l, h, current_position))
 
             model = path_patching(
                 model=model,

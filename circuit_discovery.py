@@ -115,7 +115,6 @@ show_pp(attn_results, title="attn_results")
 
 model.reset_hooks()
 
-initial_receivers_to_senders = [(("blocks.6.attn.hook_v_input", 11), (0, 0, "S2"))]
 receivers_to_senders = {
     ("blocks.11.hook_resid_post", None): [(9, 4, "end"), (9, None, "end")],
     ("blocks.9.hook_resid_mid", None): [(9, 4, "end")],
@@ -124,13 +123,19 @@ receivers_to_senders = {
     ("blocks.6.attn.hook_v_input", 11): [(0, 0, "S2")],
 }
 
+# initial_receivers_to_senders = [(("blocks.6.attn.hook_v_input", 11), (0, 0, "S2"))]
+last_guy = list(receivers_to_senders.items())[-1]
+# assert len(last_guy[1]) == 1
+initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
+
 model = path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
     initial_receivers_to_senders=initial_receivers_to_senders,
     receivers_to_senders=receivers_to_senders,
-    position=dataset_orig.word_idx["end"].item(),
+    positions=positions,  #  dataset_orig.word_idx["end"].item(),
+    current_position="end",
     orig_cache=None,
     new_cache=None,
 )
@@ -160,7 +165,7 @@ h = HypothesisTree(
 
 #%%
 while True:
-    h.eval(show_graphics=True)
+    h.eval(show_graphics=False)
     a = h.show()
     # save digraph object
     with open("hypothesis_tree.dot", "w") as f:
