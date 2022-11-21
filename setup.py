@@ -18,5 +18,9 @@ setup(
         "datasets",
         "wandb",
         "fancy_einsum",
+        "torchtyping",
+        "rich",
+        "typing_extensions",
     ],
+    extras_require={"dev": ["pytest", "mypy"]},
 )
