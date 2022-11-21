@@ -115,17 +115,14 @@ show_pp(attn_results, title="attn_results")
 
 model.reset_hooks()
 
-initial_receivers_to_senders = [(("blocks.8.hook_mlp_out", None), (0, 0))]
-initial_receivers_to_senders = [(("blocks.9.attn.hook_q_input", 2), (8, None))]
-# initial_receivers_to_senders = [(("blocks.11.hook_resid_post", None), (9, None))]
-# initial_receivers_to_senders = [(("blocks.9.hook_mlp_out", None), (9, 2))]
-
+initial_receivers_to_senders = [(("blocks.8.attn.hook_v_input", 10), (0, 0))]
+# initial_receivers_to_senders = [(("blocks.9.attn.hook_q_input", 2), (7, None))]
 
 receivers_to_senders = {
-    ("blocks.11.hook_resid_post", None): [(9, 4), (9, None), (11, 2)],
-    ("blocks.9.hook_mlp_out", None): [(9, 2), (9, 4)],
-    ("blocks.9.attn.hook_q_input", 2): [(8, None)],
-    # ("blocks.8.hook_mlp_out", None): [(0, 0)],
+    ("blocks.11.hook_resid_post", None): [(9, 2), (9, 4), (9, None), (11, 2)],
+    ("blocks.9.hook_mlp_out", None): [(8, 10), (9, 2), (9, 4)],
+    ("blocks.9.attn.hook_q_input", 2): [(7, None)],
+    ("blocks.8.attn.hook_v_input", 10): [(0, 0)],
 }
 
 model = path_patching(
