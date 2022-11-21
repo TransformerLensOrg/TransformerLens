@@ -150,7 +150,7 @@ class EasyTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
-    srd(
+    def forward(
         self,
         input: Union[str, torch.Tensor],
         return_type: Optional[str] = "logits",

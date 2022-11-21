@@ -212,7 +212,7 @@ def path_patching(
     position: int = 0,  # TODO extend this ...
     orig_cache=None,
     new_cache=None,
-) -> EasyTransformer:  # returns the logits
+) -> EasyTransformer:
     """
     `intial_receiver_to_sender` is a list of pairs representing the edges we patch the new_cache connectiion on
     `receiver_to_senders`: dict of (hook_name, idx) -> [(layer_idx, head_idx), ...]
@@ -221,8 +221,13 @@ def path_patching(
     NOTE: This relies on several changes to Neel's library (and RR/ET main, too)
     """
 
-    if 0 == initial_receivers_to_senders[0][1][0] and 0 == initial_receivers_to_senders[0][1][1]:
-        print("0.0 spotcheck", initial_receivers_to_senders, "is in", receivers_to_senders)
+    if (
+        0 == initial_receivers_to_senders[0][1][0]
+        and 0 == initial_receivers_to_senders[0][1][1]
+    ) or orig_cache is None:
+        print(
+            "0.0 spotcheck", initial_receivers_to_senders, "is in", receivers_to_senders
+        )
 
     # caching...
     if orig_cache is None:
@@ -240,6 +245,7 @@ def path_patching(
         new_cache = {}
         model.cache_some(new_cache, lambda x: x in initial_sender_hook_names)
         _ = model(new_data, prepend_bos=False)
+        model.reset_hooks()
     else:
         assert all(
             [x in new_cache for x in initial_sender_hook_names]
@@ -362,53 +368,6 @@ def path_patching(
     return model
 
 
-def path_patching_up_to_old(
-    model: EasyTransformer,
-    layer: int,
-    metric,
-    dataset,
-    orig_data,
-    new_data,
-    receiver_hooks,
-    position,
-    orig_cache=None,
-    new_cache=None,
-):
-    model.reset_hooks()
-    attn_results = np.zeros((layer, model.cfg.n_heads))
-    mlp_results = np.zeros((layer, 1))
-    for l in tqdm(range(layer)):
-        for h in range(model.cfg.n_heads):
-            model = path_patching_old(
-                model,
-                orig_data=orig_data,
-                new_data=new_data,
-                senders=[(l, h)],
-                receiver_hooks=receiver_hooks,
-                max_layer=model.cfg.n_layers,
-                position=position,
-                orig_cache=orig_cache,
-                new_cache=new_cache,
-            )
-            attn_results[l, h] = metric(model, dataset)
-            model.reset_hooks()
-        # mlp
-        model = path_patching_old(
-            model,
-            orig_data=orig_data,
-            new_data=new_data,
-            senders=[(l, None)],
-            receiver_hooks=receiver_hooks,
-            max_layer=model.cfg.n_layers,
-            position=position,
-            orig_cache=orig_cache,
-            new_cache=new_cache,
-        )
-        mlp_results[l] = metric(model, dataset)
-        model.reset_hooks()
-    return attn_results, mlp_results
-
-
 def path_patching_up_to(
     model: EasyTransformer,
     receiver_hook,  # this is a tuple of (hook_name, head_idx)
@@ -448,7 +407,7 @@ def path_patching_up_to(
                     if qkv_hook not in base_initial_senders:
                         base_receivers_to_senders[qkv_hook] = []
                     base_receivers_to_senders[qkv_hook].append(
-                        get_hook_tuple(sender_child.layer, sender_child.head)
+                        (sender_child.layer, sender_child.head)
                     )
 
                 else:
@@ -957,3 +916,50 @@ class HypothesisTree:
             if node1.layer != node2.layer:
                 g.edge(node2.display(), node1.display(), style="invis")
         return g
+
+
+def path_patching_up_to_old(
+    model: EasyTransformer,
+    layer: int,
+    metric,
+    dataset,
+    orig_data,
+    new_data,
+    receiver_hooks,
+    position,
+    orig_cache=None,
+    new_cache=None,
+):
+    model.reset_hooks()
+    attn_results = np.zeros((layer, model.cfg.n_heads))
+    mlp_results = np.zeros((layer, 1))
+    for l in tqdm(range(layer)):
+        for h in range(model.cfg.n_heads):
+            model = path_patching_old(
+                model,
+                orig_data=orig_data,
+                new_data=new_data,
+                senders=[(l, h)],
+                receiver_hooks=receiver_hooks,
+                max_layer=model.cfg.n_layers,
+                position=position,
+                orig_cache=orig_cache,
+                new_cache=new_cache,
+            )
+            attn_results[l, h] = metric(model, dataset)
+            model.reset_hooks()
+        # mlp
+        model = path_patching_old(
+            model,
+            orig_data=orig_data,
+            new_data=new_data,
+            senders=[(l, None)],
+            receiver_hooks=receiver_hooks,
+            max_layer=model.cfg.n_layers,
+            position=position,
+            orig_cache=orig_cache,
+            new_cache=new_cache,
+        )
+        mlp_results[l] = metric(model, dataset)
+        model.reset_hooks()
+    return attn_results, mlp_results
