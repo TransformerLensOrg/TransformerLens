@@ -31,7 +31,7 @@ def get_hook_tuple(layer, head_idx, comp=None):
     else:
         assert comp in ["q", "k", "v"]
         assert head_idx is not None
-        return (f"blocks.{layer}.attn.hook_{comp}", head_idx)
+        return (f"blocks.{layer}.attn.hook_{comp}_input", head_idx)
 
 
 def patch_all(z, source_act, hook):
@@ -206,7 +206,7 @@ def path_patching(
     initial_receivers_to_senders=List[
         Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int]]]
     ],  # these are the only edges where we patch from new_cache
-    receivers_to_senders: Dict[
+    receivers_to_senders: Dict[  # TODO TODO TODO we need to make INPUT to MLPs work
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int]]]
     ] = {},  # TODO support for pushing back to token embeddings?
     position: int = 0,  # TODO extend this ...
@@ -236,6 +236,7 @@ def path_patching(
         orig_cache = {}
         model.cache_all(orig_cache)
         _ = model(orig_data, prepend_bos=False)
+        model.reset_hooks()
     initial_sender_hook_names = [
         get_hook_tuple(*(item[1]))[0] for item in initial_receivers_to_senders
     ]
@@ -250,6 +251,7 @@ def path_patching(
         assert all(
             [x in new_cache for x in initial_sender_hook_names]
         ), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
+    model.reset_hooks()
 
     # don't need, cos do inside the hook?
     # # add the initial sender hooks

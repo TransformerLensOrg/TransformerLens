@@ -116,30 +116,17 @@ show_pp(attn_results, title="attn_results")
 
 model.reset_hooks()
 
-# receivers_to_senders = {
-#     ("blocks.11.hook_resid_post", None): [(9, None)],
-#     ("blocks.9.hook_mlp_out", None): [(9, 2)],
-#     # ("blocks.11.hook_resid_post", None): [(9, 2), (9, 4), (9, None), (11, 2)],
-#     # ("blocks.9.hook_mlp_out", None): [(9, 2), (9, 4)],
-#     # ("blocks.9.attn.hook_q", 2): [(8, None)],
-#     # ("blocks.8.hook_mlp_out", None): [(0, 0)],
-# }
-# initial_receivers_to_senders = [
-#     (
-#         list(receivers_to_senders.keys())[-1],
-#         list(receivers_to_senders.values())[-1][0],
-#     )
-# ]
-# # print(initial_receivers_to_senders)
-
-# this finds 9.2...
+initial_receivers_to_senders = [(("blocks.8.hook_mlp_out", None), (0, 0))]
+initial_receivers_to_senders = [(("blocks.9.attn.hook_q_input", 2), (8, None))]
+# initial_receivers_to_senders = [(("blocks.11.hook_resid_post", None), (9, None))]
 # initial_receivers_to_senders = [(("blocks.9.hook_mlp_out", None), (9, 2))]
-initial_receivers_to_senders = [(("blocks.11.hook_resid_post", None), (9, 4))]
+
+
 receivers_to_senders = {
-    ("blocks.11.hook_resid_post", None): [
-        (9, 4)
-    ],  # [(9, 2), (9, 4), (9, None), (11, 2)],
-    # ("blocks.9.hook_mlp_out", None): [(9, 2)],
+    ("blocks.11.hook_resid_post", None): [(9, 4), (9, None), (11, 2)],
+    ("blocks.9.hook_mlp_out", None): [(9, 2), (9, 4)],
+    ("blocks.9.attn.hook_q_input", 2): [(8, None)],
+    # ("blocks.8.hook_mlp_out", None): [(0, 0)],
 }
 
 model = path_patching(
@@ -154,7 +141,9 @@ model = path_patching(
 )
 ans = logit_diff_io_s(model, dataset_orig)
 model.reset_hooks()
-assert np.abs(h.default_metric - ans) < 1e-6, f"{h.default_metric=}, {ans=}"
+print(f"{ans=}")
+print(f"{h.default_metric=}, {ans=}")
+assert np.abs(h.default_metric - ans) > 1e-5
 
 #%%
 
@@ -174,7 +163,7 @@ h = HypothesisTree(
 
 #%%
 while True:
-    h.eval(show_graphics=False)
+    h.eval(show_graphics=True)
     a = h.show()
     # save digraph object
     with open("hypothesis_tree.dot", "w") as f:
