@@ -214,6 +214,7 @@ def path_patching(
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int], str]]
     ],  # TODO support for pushing back to token embeddings?
     positions,  # TODO extend this ...
+    current_position,
     orig_cache=None,
     new_cache=None,
 ) -> EasyTransformer:
@@ -242,7 +243,8 @@ def path_patching(
         _ = model(orig_data, prepend_bos=False)
         model.reset_hooks()
     initial_sender_hook_names = [
-        get_hook_tuple(*(item[1]))[0] for item in initial_receivers_to_senders
+        get_hook_tuple(item[1][0], item[1][1])[0]
+        for item in initial_receivers_to_senders
     ]
     if new_cache is None:
         # save activations from new for senders
@@ -257,18 +259,6 @@ def path_patching(
         ), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
     model.reset_hooks()
 
-    # don't need, cos do inside the hook?
-    # # add the initial sender hooks
-    # for (receiver_hook_name, receiver_head_idx), (sender_layer_idx, sender_head_idx) in initial_receivers_to_senders.items():
-    #     sender_hook_name, head_idx = get_hook_tuple(layer_idx, head_idx)
-    #     hook = get_act_hook(
-    #         fn=partial(patch_positions, positions=position),
-    #         alt_act=new_cache[hook_name],
-    #         idx=head_idx,
-    #         dim=2 if head_idx is not None else None,
-    #     )
-    #     model.add_hook(hook_name, hook)
-
     # setup a way for model components to dynamically see activations from the same forward pass
     for name, hp in model.hook_dict.items():
         assert (
@@ -281,7 +271,9 @@ def path_patching(
     )  # note this cache is quite different from other caches... it is populated and used on the same forward pass
 
     # for specifically editing the inputs from certain previous parts
-    def input_activation_editor(z, hook, head_idx=None):
+    def input_activation_editor(
+        z, hook, head_idx=None, sender_head_pos_extra: str = ""
+    ):
         """ "Probably too many asserts, ignore them"""
         new_z = z.clone()
         N = z.shape[0]
@@ -289,6 +281,14 @@ def path_patching(
         assert (
             len(receivers_to_senders[(hook_name, head_idx)]) > 0
         ), f"No senders for {hook_name, head_idx}, this shouldn't be attached!"
+
+        # print(hook_name, head_idx, receivers_to_senders)
+
+        assert len(receivers_to_senders[(hook_name, head_idx)]) > 0, (
+            receivers_to_senders,
+            hook_name,
+            head_idx,
+        )
         for sender_layer_idx, sender_head_idx, sender_head_pos in receivers_to_senders[
             (hook_name, head_idx)
         ]:
@@ -302,6 +302,8 @@ def path_patching(
                 (sender_layer_idx, sender_head_idx, sender_head_pos),
             ) in initial_receivers_to_senders:  # hopefully fires > once
                 cache_to_use = new_cache
+            else:
+                pass
 
             # we have to do both things casewise
             if sender_head_idx is None:
@@ -389,6 +391,7 @@ def path_patching_up_to(
     dataset,
     orig_data,
     new_data,
+    current_position: str,
     positions,
     orig_cache=None,
     new_cache=None,
@@ -417,15 +420,18 @@ def path_patching_up_to(
                     qkv_hook = get_hook_tuple(receiver.layer, receiver.head, comp)
                     if qkv_hook not in base_initial_senders:
                         base_receivers_to_senders[qkv_hook] = []
+                    warnings.warn(
+                        "I think we need finer grained position control: this will just be the "
+                    )
                     base_receivers_to_senders[qkv_hook].append(
-                        (sender_child.layer, sender_child.head)
+                        (sender_child.layer, sender_child.head, sender_child.position)
                     )
 
                 else:
                     if hook not in base_receivers_to_senders:
                         base_receivers_to_senders[hook] = []
                     base_receivers_to_senders[hook].append(
-                        (sender_child.layer, sender_child.head)
+                        (sender_child.layer, sender_child.head, sender_child.position)
                     )
 
     receiver_hook_layer = int(receiver_hook[0].split(".")[1])
@@ -439,13 +445,16 @@ def path_patching_up_to(
             senders = deepcopy(base_initial_senders)
             senders.append((l, h))
             receivers_to_senders = deepcopy(base_receivers_to_senders)
-            receivers_to_senders[receiver_hook] = [(l, h)]
+            receivers_to_senders[receiver_hook] = [(l, h, current_position)]
 
             model = path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
-                initial_receivers_to_senders=[(receiver_hook, (l, h))],
+                current_position=current_position,
+                initial_receivers_to_senders=[
+                    (receiver_hook, (l, h, current_position))
+                ],
                 receivers_to_senders=receivers_to_senders,
                 positions=positions,
                 orig_cache=orig_cache,
@@ -458,14 +467,17 @@ def path_patching_up_to(
             senders = deepcopy(base_initial_senders)
             senders.append((l, None))
             receivers_to_senders = deepcopy(base_receivers_to_senders)
-            receivers_to_senders[receiver_hook] = [(l, None)]
+            receivers_to_senders[receiver_hook] = [(l, None, current_position)]
             cur_logits = path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
-                initial_receivers_to_senders=[(receiver_hook, (l, None))],
+                current_position=current_position,
+                initial_receivers_to_senders=[
+                    (receiver_hook, (l, None, current_position))
+                ],
                 receivers_to_senders=receivers_to_senders,
-                position=position,
+                positions=positions,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
             )
@@ -653,6 +665,7 @@ class HypothesisTree:
                     orig_data=self.orig_data,
                     new_data=self.new_data,
                     positions=self.possible_positions,
+                    current_position=pos,
                     orig_cache=self.orig_cache,
                     new_cache=self.new_cache,
                 )

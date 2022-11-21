@@ -115,10 +115,13 @@ show_pp(attn_results, title="attn_results")
 
 model.reset_hooks()
 
-initial_receivers_to_senders = [(("blocks.11.attn.hook_v_input", 2), (0, 0))]
+initial_receivers_to_senders = [(("blocks.6.attn.hook_v_input", 11), (0, 0, "S2"))]
 receivers_to_senders = {
-    ("blocks.11.hook_resid_post", None): [(9, 2), (9, 4), (9, None), (11, 2)],
-    ("blocks.11.attn.hook_v_input", 2): [(0, 0)],
+    ("blocks.11.hook_resid_post", None): [(9, 4, "end"), (9, None, "end")],
+    ("blocks.9.hook_resid_mid", None): [(9, 4, "end")],
+    ("blocks.9.attn.hook_k_input", 4): [(6, None, "S2")],
+    ("blocks.6.hook_resid_mid", None): [(0, 2, "S2"), (2, None, "S2")],
+    ("blocks.6.attn.hook_v_input", 11): [(0, 0, "S2")],
 }
 
 model = path_patching(
@@ -149,7 +152,7 @@ h = HypothesisTree(
     dataset=dataset_orig,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    threshold=0.05,
+    threshold=0.1,
     possible_positions=positions,
     use_caching=True,
     direct_paths_only=True,
