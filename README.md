@@ -33,3 +33,8 @@ When testing type annotations, check out `easy_transformer/tests/test_type_annot
 Another way to test is to open an `ipython` terminal and make sure that you can 
 [import easy_transformer]. If there are import errors, etc., they'll show up here!
 (You can make this tighter with `ipython -c 'import easy_transformer'`.)
+
+#### Pytest
+
+`pytest` from the root of the project. 
+- `pytest --collect-only` will fail if some of the code has type errors

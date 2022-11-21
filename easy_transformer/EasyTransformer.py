@@ -50,7 +50,7 @@ class EasyTransformer(hook_points.HookedRootModule):
     @classmethod
     def __generate_tokenizer__(
         cls, config: EasyTransformerConfig, tokenizer: Optional[PreTrainedTokenizer]
-    ) -> Optional[PreTrainedTokenizer]:
+    ):
         if tokenizer is not None:
             return tokenizer
 
@@ -307,7 +307,7 @@ class EasyTransformer(hook_points.HookedRootModule):
             # residual + block(residual)
             residual = block(
                 residual,
-                past_kv_cache=get_past_kv_cache_entry(i),
+                past_kv_cache_entry=get_past_kv_cache_entry(i),
                 shortformer_pos_embed=shortformer_pos_embed,
             )
         if self.cfg.normalization_type is not None:
