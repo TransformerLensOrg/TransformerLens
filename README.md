@@ -29,3 +29,6 @@ TODO this doesn't seem to work?
 `python3 easy_transformer/tests/test_experiments.py`
 
 When testing type annotations, check out `easy_transformer/tests/test_type_annotations.py`.
+
+Another way to test is to open an [ipython] terminal and make sure that you can 
+[import easy_transformer]. If there are import errors, etc., they'll show up here!
