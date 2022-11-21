@@ -221,6 +221,9 @@ def path_patching(
     NOTE: This relies on several changes to Neel's library (and RR/ET main, too)
     """
 
+    if 0 == initial_receivers_to_senders[0][1][0] and 0 == initial_receivers_to_senders[0][1][1]:
+        print("0.0 spotcheck", initial_receivers_to_senders, "is in", receivers_to_senders)
+
     # caching...
     if orig_cache is None:
         # save activations from orig
@@ -440,8 +443,8 @@ def path_patching_up_to(
             for sender_child, _, comp in receiver.children:
                 if comp in ["v", "k", "q"]:
                     qkv_hook = get_hook_tuple(
-                        sender_child.layer, sender_child.head, comp
-                    )
+                        receiver.layer, receiver.head, comp
+                    )  # TODO this seemed quite broke!!! Check fixed
                     if qkv_hook not in base_initial_senders:
                         base_receivers_to_senders[qkv_hook] = []
                     base_receivers_to_senders[qkv_hook].append(
@@ -457,10 +460,11 @@ def path_patching_up_to(
 
     receiver_hook_layer = int(receiver_hook[0].split(".")[1])
     model.reset_hooks()
-    layer_shape = receiver_hook_layer + (1 if receiver_hook[1] is None else 0)
-    attn_results = torch.zeros((layer_shape, model.cfg.n_heads))
-    mlp_results = torch.zeros((layer_shape, 1))
-    for l in tqdm(range(layer_shape)):
+    attn_layer_shape = receiver_hook_layer + (1 if receiver_hook[1] is None else 0)
+    mlp_layer_shape = receiver_hook_layer
+    attn_results = torch.zeros((attn_layer_shape, model.cfg.n_heads))
+    mlp_results = torch.zeros((mlp_layer_shape), 1)
+    for l in tqdm(range(attn_layer_shape)):
         for h in range(model.cfg.n_heads):
             senders = deepcopy(base_initial_senders)
             senders.append((l, h))
@@ -480,22 +484,23 @@ def path_patching_up_to(
             attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
         # mlp
-        senders = deepcopy(base_initial_senders)
-        senders.append((l, None))
-        receivers_to_senders = deepcopy(base_receivers_to_senders)
-        receivers_to_senders[receiver_hook] = [(l, None)]
-        cur_logits = path_patching(
-            model=model,
-            orig_data=orig_data,
-            new_data=new_data,
-            initial_receivers_to_senders=[(receiver_hook, (l, None))],
-            receivers_to_senders=receivers_to_senders,
-            position=position,
-            orig_cache=orig_cache,
-            new_cache=new_cache,
-        )
-        mlp_results[l] = metric(cur_logits, dataset)
-        model.reset_hooks()
+        if l < mlp_layer_shape:
+            senders = deepcopy(base_initial_senders)
+            senders.append((l, None))
+            receivers_to_senders = deepcopy(base_receivers_to_senders)
+            receivers_to_senders[receiver_hook] = [(l, None)]
+            cur_logits = path_patching(
+                model=model,
+                orig_data=orig_data,
+                new_data=new_data,
+                initial_receivers_to_senders=[(receiver_hook, (l, None))],
+                receivers_to_senders=receivers_to_senders,
+                position=position,
+                orig_cache=orig_cache,
+                new_cache=new_cache,
+            )
+            mlp_results[l] = metric(cur_logits, dataset)
+            model.reset_hooks()
 
     return attn_results.cpu().detach(), mlp_results.cpu().detach()
 
@@ -728,7 +733,9 @@ class HypothesisTree:
                             comp_type = receiver_hook[0].split("_")[
                                 -1
                             ]  # q, k, v, out, post
-                            if comp_type == "input":  # oh rip I edited things
+                            if (
+                                comp_type == "input"
+                            ):  # TODO Arthur does a hacky thing here to make printing nicer... fix
                                 for letter in "qkv":
                                     if f"_{letter}_" in receiver_hook[0]:
                                         comp_type = letter
@@ -743,12 +750,24 @@ class HypothesisTree:
                             node.children.append(
                                 (self.node_stack[(layer, head, pos)], score, comp_type)
                             )
-                    if abs(mlp_results[layer]) > threshold:
+                    if (
+                        layer < mlp_results.shape[0]
+                        and abs(mlp_results[layer]) > threshold
+                    ):
                         print("Found important MLP: layer", layer, "position", pos)
                         score = mlp_results[layer, 0]
                         comp_type = receiver_hook[0].split("_")[
                             -1
                         ]  # q, k, v, out, post
+                        if comp_type == "input":  # oh rip I edited things
+                            for letter in "qkv":
+                                if f"_{letter}_" in receiver_hook[0]:
+                                    comp_type = letter
+                            assert comp_type in [
+                                "q",
+                                "k",
+                                "v",
+                            ], f"{comp_type}, {receiver_hook[0]}"
                         self.node_stack[
                             (layer, None, pos)
                         ].parents.append(  # TODO fix the MLP thing with GPT-NEO
