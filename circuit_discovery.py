@@ -43,6 +43,7 @@ model.set_use_headwise_qkv_input(True)
 
 #%%
 
+
 dataset_new, dataset_orig = get_datasets()
 #%%
 
@@ -115,12 +116,20 @@ show_pp(attn_results, title="attn_results")
 
 model.reset_hooks()
 
+#  [(('blocks.6.attn.hook_v_input', 11), (0, 0, 'end'))]
+
 receivers_to_senders = {
     ("blocks.11.hook_resid_post", None): [(9, 4, "end"), (9, None, "end")],
     ("blocks.9.hook_resid_mid", None): [(9, 4, "end")],
-    ("blocks.9.attn.hook_k_input", 4): [(6, None, "S2")],
+    ("blocks.9.attn.hook_k_input", 4): [
+        (5, None, "S2"),
+        (6, 1, "S2"),
+        (6, 6, "S2"),
+        (6, 11, "S2"),
+        (6, None, "S2"),
+    ],
     ("blocks.6.hook_resid_mid", None): [(0, 2, "S2"), (2, None, "S2")],
-    ("blocks.6.attn.hook_v_input", 11): [(0, 0, "S2")],
+    ("blocks.6.attn.hook_v_input", 11): [(0, 0, "end")],
 }
 
 # initial_receivers_to_senders = [(("blocks.6.attn.hook_v_input", 11), (0, 0, "S2"))]
@@ -165,7 +174,7 @@ h = HypothesisTree(
 
 #%%
 while True:
-    h.eval(show_graphics=False)
+    h.eval(show_graphics=True)
     a = h.show()
     # save digraph object
     with open("hypothesis_tree.dot", "w") as f:

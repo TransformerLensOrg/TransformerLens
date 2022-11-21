@@ -418,7 +418,7 @@ def path_patching_up_to(
             for sender_child, _, comp in receiver.children:
                 if comp in ["v", "k", "q"]:
                     qkv_hook = get_hook_tuple(receiver.layer, receiver.head, comp)
-                    if qkv_hook not in base_initial_senders:
+                    if qkv_hook not in base_receivers_to_senders:
                         base_receivers_to_senders[qkv_hook] = []
                     warnings.warn(
                         "I think we need finer grained position control: this will just be the "
@@ -469,7 +469,9 @@ def path_patching_up_to(
             senders = deepcopy(base_initial_senders)
             senders.append((l, None))
             receivers_to_senders = deepcopy(base_receivers_to_senders)
-            receivers_to_senders[receiver_hook] = [(l, None, current_position)]
+            if receiver_hook not in receivers_to_senders:
+                receivers_to_senders[receiver_hook] = []
+            receivers_to_senders[receiver_hook].append((l, None, current_position))
             cur_logits = path_patching(
                 model=model,
                 orig_data=orig_data,
@@ -761,6 +763,8 @@ class HypothesisTree:
                         node.children.append(
                             (self.node_stack[(layer, None, pos)], score, comp_type)
                         )
+            if current_node_position == pos:
+                break
 
         # update self.current_node
         while (
