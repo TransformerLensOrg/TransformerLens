@@ -1,145 +1,68 @@
-from typing import Dict, List, Optional, Tuple, Union
+import logging
+from typing import Dict
 
 import torch
-from torchtyping import TensorType as TT
+from transformers import (
+    AutoModelForMaskedLM,  # unfortunately the suggestion to import from the non-private location doesn't work; it makes [from_pretrained == None]
+)
+from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 from easy_transformer.hook_points import HookedRootModule
 
-from ..past_key_value_caching import (
-    EasyTransformerKeyValueCache,
-    EasyTransformerKeyValueCacheEntry,
-)
-
-# TODO maybe have an __init__.py in bert/ that imports all the bert stuff
+from .. import loading_from_pretrained as loading
+from . import EasyBERTConfig
 
 
 class EasyBERT(HookedRootModule):
-    """
-    TODO say less / say more about how we dont support this
+    # written in this style because this guarantees that [self] isn't set inside here
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_name: str,
+        **model_kwargs,
+    ):
+        # TODO use these other parameters
+        logging.info(f"Loading model: {model_name}")
+        official_model_name = loading.get_official_model_name(model_name)
+        config = EasyBERTConfig.EasyBERTConfig(
+            n_layers=12,
+            n_heads=12,
+            hidden_size=768,
+            dropout=0.1,
+            model_name=official_model_name,
+            d_vocab=30522,
+        )  # TODO fancier :P
+        assert (
+            AutoModelForMaskedLM.from_pretrained is not None
+        )  # recommended by some github link TODO find it
+        state_dict = AutoModelForMaskedLM.from_pretrained(
+            official_model_name
+        ).state_dict()
+        print(f"{state_dict.keys()=}")
+        model = cls(config, **model_kwargs)
+        model.load_and_process_state_dict(state_dict)
+        logging.info(
+            f"Finished loading pretrained model {model_name} into EasyTransformer!"
+        )
 
-    apologize for duplicated code and or take it out
-    """
+        return model
 
-    # TODO add tensor types
-    # TODO make [return_type] an enum
-    def forward(
-        self,
-        input: Union[str, TT["batch", "pos"]],
-        return_type: Optional[str] = "logits",
-        prepend_bos: bool = True,
-        past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
-        token_types: Optional[torch.Tensor] = None,
-        attention_mask: Optional[
-            TT["batch", "pos", bool]
-        ] = None,  # TODO take these out of [EasyTransformer.py] where appropriate
-    ) -> Union[None, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        # TODO jsmith read this more
+    def __init__(self, config: EasyBERTConfig.EasyBERTConfig, **kwargs):
+        super().__init__()
+        self.config = config
+
+    def load_and_process_state_dict(self, state_dict: Dict[str, torch.Tensor]):
+        # TODO convert the weights gotten from [state_dict]
         """
-        [input] values of type [str] are automatically tokenized to a batch of a single element. [prepend_bos] only applies when inputting a text string.
-        [token_types] is a tensor of the same shape as input, with each element being the token type of the corresponding token in [input]. If None, token types are assumed to be all 0s.
-        In [attention_mask], an element is [True] if and only if the corresponding token in input is NOT a padding token. If [attention_mask == None], all tokens are assumed to be non-padding tokens (i.e. the mask is all [True]). Often formatted as a tensor of ints (False=0, True=1) rather than bools, but it's equivalent
-
-        [return_type] : The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
+        ['bert.embeddings.position_ids', 'bert.embeddings.word_embeddings.weight', 'bert.embeddings.position_embeddings.weight', 'bert.embeddings.token_type_embeddings.weight', 'bert.embeddings.LayerNorm.weight', 'bert.embeddings.LayerNorm.bias', 'bert.encoder.layer.0.attention.self.query.weight', 'bert.encoder.layer.0.attention.self.query.bias', 'bert.encoder.layer.0.attention.self.key.weight', 'bert.encoder.layer.0.attention.self.key.bias', 'bert.encoder.layer.0.attention.self.value.weight', 'bert.encoder.layer.0.attention.self.value.bias', 'bert.encoder.layer.0.attention.output.dense.weight', 'bert.encoder.layer.0.attention.output.dense.bias', 'bert.encoder.layer.0.attention.output.LayerNorm.weight', 'bert.encoder.layer.0.attention.output.LayerNorm.bias', 'bert.encoder.layer.0.intermediate.dense.weight', 'bert.encoder.layer.0.intermediate.dense.bias', 'bert.encoder.layer.0.output.dense.weight', 'bert.encoder.layer.0.output.dense.bias', 'bert.encoder.layer.0.output.LayerNorm.weight', 'bert.encoder.layer.0.output.LayerNorm.bias', 'bert.encoder.layer.1.attention.self.query.weight', 'bert.encoder.layer.1.attention.self.query.bias', 'bert.encoder.layer.1.attention.self.key.weight', 'bert.encoder.layer.1.attention.self.key.bias', 'bert.encoder.layer.1.attention.self.value.weight', 'bert.encoder.layer.1.attention.self.value.bias', 'bert.encoder.layer.1.attention.output.dense.weight', 'bert.encoder.layer.1.attention.output.dense.bias', 'bert.encoder.layer.1.attention.output.LayerNorm.weight', 'bert.encoder.layer.1.attention.output.LayerNorm.bias', 'bert.encoder.layer.1.intermediate.dense.weight', 'bert.encoder.layer.1.intermediate.dense.bias', 'bert.encoder.layer.1.output.dense.weight', 'bert.encoder.layer.1.output.dense.bias', 'bert.encoder.layer.1.output.LayerNorm.weight', 'bert.encoder.layer.1.output.LayerNorm.bias', 'bert.encoder.layer.2.attention.self.query.weight', 'bert.encoder.layer.2.attention.self.query.bias', 'bert.encoder.layer.2.attention.self.key.weight', 'bert.encoder.layer.2.attention.self.key.bias', 'bert.encoder.layer.2.attention.self.value.weight', 'bert.encoder.layer.2.attention.self.value.bias', 'bert.encoder.layer.2.attention.output.dense.weight', 'bert.encoder.layer.2.attention.output.dense.bias', 'bert.encoder.layer.2.attention.output.LayerNorm.weight', 'bert.encoder.layer.2.attention.output.LayerNorm.bias', 'bert.encoder.layer.2.intermediate.dense.weight', 'bert.encoder.layer.2.intermediate.dense.bias', 'bert.encoder.layer.2.output.dense.weight', 'bert.encoder.layer.2.output.dense.bias', 'bert.encoder.layer.2.output.LayerNorm.weight', 'bert.encoder.layer.2.output.LayerNorm.bias', 'bert.encoder.layer.3.attention.self.query.weight', 'bert.encoder.layer.3.attention.self.query.bias', 'bert.encoder.layer.3.attention.self.key.weight', 'bert.encoder.layer.3.attention.self.key.bias', 'bert.encoder.layer.3.attention.self.value.weight', 'bert.encoder.layer.3.attention.self.value.bias', 'bert.encoder.layer.3.attention.output.dense.weight', 'bert.encoder.layer.3.attention.output.dense.bias', 'bert.encoder.layer.3.attention.output.LayerNorm.weight', 'bert.encoder.layer.3.attention.output.LayerNorm.bias', 'bert.encoder.layer.3.intermediate.dense.weight', 'bert.encoder.layer.3.intermediate.dense.bias', 'bert.encoder.layer.3.output.dense.weight', 'bert.encoder.layer.3.output.dense.bias', 'bert.encoder.layer.3.output.LayerNorm.weight', 'bert.encoder.layer.3.output.LayerNorm.bias', 'bert.encoder.layer.4.attention.self.query.weight', 'bert.encoder.layer.4.attention.self.query.bias', 'bert.encoder.layer.4.attention.self.key.weight', 'bert.encoder.layer.4.attention.self.key.bias', 'bert.encoder.layer.4.attention.self.value.weight', 'bert.encoder.layer.4.attention.self.value.bias', 'bert.encoder.layer.4.attention.output.dense.weight', 'bert.encoder.layer.4.attention.output.dense.bias', 'bert.encoder.layer.4.attention.output.LayerNorm.weight', 'bert.encoder.layer.4.attention.output.LayerNorm.bias', 'bert.encoder.layer.4.intermediate.dense.weight', 'bert.encoder.layer.4.intermediate.dense.bias', 'bert.encoder.layer.4.output.dense.weight', 'bert.encoder.layer.4.output.dense.bias', 'bert.encoder.layer.4.output.LayerNorm.weight', 'bert.encoder.layer.4.output.LayerNorm.bias', 'bert.encoder.layer.5.attention.self.query.weight', 'bert.encoder.layer.5.attention.self.query.bias', 'bert.encoder.layer.5.attention.self.key.weight', 'bert.encoder.layer.5.attention.self.key.bias', 'bert.encoder.layer.5.attention.self.value.weight', 'bert.encoder.layer.5.attention.self.value.bias', 'bert.encoder.layer.5.attention.output.dense.weight', 'bert.encoder.layer.5.attention.output.dense.bias', 'bert.encoder.layer.5.attention.output.LayerNorm.weight', 'bert.encoder.layer.5.attention.output.LayerNorm.bias', 'bert.encoder.layer.5.intermediate.dense.weight', 'bert.encoder.layer.5.intermediate.dense.bias', 'bert.encoder.layer.5.output.dense.weight', 'bert.encoder.layer.5.output.dense.bias', 'bert.encoder.layer.5.output.LayerNorm.weight', 'bert.encoder.layer.5.output.LayerNorm.bias', 'bert.encoder.layer.6.attention.self.query.weight', 'bert.encoder.layer.6.attention.self.query.bias', 'bert.encoder.layer.6.attention.self.key.weight', 'bert.encoder.layer.6.attention.self.key.bias', 'bert.encoder.layer.6.attention.self.value.weight', 'bert.encoder.layer.6.attention.self.value.bias', 'bert.encoder.layer.6.attention.output.dense.weight', 'bert.encoder.layer.6.attention.output.dense.bias', 'bert.encoder.layer.6.attention.output.LayerNorm.weight', 'bert.encoder.layer.6.attention.output.LayerNorm.bias', 'bert.encoder.layer.6.intermediate.dense.weight', 'bert.encoder.layer.6.intermediate.dense.bias', 'bert.encoder.layer.6.output.dense.weight', 'bert.encoder.layer.6.output.dense.bias', 'bert.encoder.layer.6.output.LayerNorm.weight', 'bert.encoder.layer.6.output.LayerNorm.bias', 'bert.encoder.layer.7.attention.self.query.weight', 'bert.encoder.layer.7.attention.self.query.bias', 'bert.encoder.layer.7.attention.self.key.weight', 'bert.encoder.layer.7.attention.self.key.bias', 'bert.encoder.layer.7.attention.self.value.weight', 'bert.encoder.layer.7.attention.self.value.bias', 'bert.encoder.layer.7.attention.output.dense.weight', 'bert.encoder.layer.7.attention.output.dense.bias', 'bert.encoder.layer.7.attention.output.LayerNorm.weight', 'bert.encoder.layer.7.attention.output.LayerNorm.bias', 'bert.encoder.layer.7.intermediate.dense.weight', 'bert.encoder.layer.7.intermediate.dense.bias', 'bert.encoder.layer.7.output.dense.weight', 'bert.encoder.layer.7.output.dense.bias', 'bert.encoder.layer.7.output.LayerNorm.weight', 'bert.encoder.layer.7.output.LayerNorm.bias', 'bert.encoder.layer.8.attention.self.query.weight', 'bert.encoder.layer.8.attention.self.query.bias', 'bert.encoder.layer.8.attention.self.key.weight', 'bert.encoder.layer.8.attention.self.key.bias', 'bert.encoder.layer.8.attention.self.value.weight', 'bert.encoder.layer.8.attention.self.value.bias', 'bert.encoder.layer.8.attention.output.dense.weight', 'bert.encoder.layer.8.attention.output.dense.bias', 'bert.encoder.layer.8.attention.output.LayerNorm.weight', 'bert.encoder.layer.8.attention.output.LayerNorm.bias', 'bert.encoder.layer.8.intermediate.dense.weight', 'bert.encoder.layer.8.intermediate.dense.bias', 'bert.encoder.layer.8.output.dense.weight', 'bert.encoder.layer.8.output.dense.bias', 'bert.encoder.layer.8.output.LayerNorm.weight', 'bert.encoder.layer.8.output.LayerNorm.bias', 'bert.encoder.layer.9.attention.self.query.weight', 'bert.encoder.layer.9.attention.self.query.bias', 'bert.encoder.layer.9.attention.self.key.weight', 'bert.encoder.layer.9.attention.self.key.bias', 'bert.encoder.layer.9.attention.self.value.weight', 'bert.encoder.layer.9.attention.self.value.bias', 'bert.encoder.layer.9.attention.output.dense.weight', 'bert.encoder.layer.9.attention.output.dense.bias', 'bert.encoder.layer.9.attention.output.LayerNorm.weight', 'bert.encoder.layer.9.attention.output.LayerNorm.bias', 'bert.encoder.layer.9.intermediate.dense.weight', 'bert.encoder.layer.9.intermediate.dense.bias', 'bert.encoder.layer.9.output.dense.weight', 'bert.encoder.layer.9.output.dense.bias', 'bert.encoder.layer.9.output.LayerNorm.weight', 'bert.encoder.layer.9.output.LayerNorm.bias', 'bert.encoder.layer.10.attention.self.query.weight', 'bert.encoder.layer.10.attention.self.query.bias', 'bert.encoder.layer.10.attention.self.key.weight', 'bert.encoder.layer.10.attention.self.key.bias', 'bert.encoder.layer.10.attention.self.value.weight', 'bert.encoder.layer.10.attention.self.value.bias', 'bert.encoder.layer.10.attention.output.dense.weight', 'bert.encoder.layer.10.attention.output.dense.bias', 'bert.encoder.layer.10.attention.output.LayerNorm.weight', 'bert.encoder.layer.10.attention.output.LayerNorm.bias', 'bert.encoder.layer.10.intermediate.dense.weight', 'bert.encoder.layer.10.intermediate.dense.bias', 'bert.encoder.layer.10.output.dense.weight', 'bert.encoder.layer.10.output.dense.bias', 'bert.encoder.layer.10.output.LayerNorm.weight', 'bert.encoder.layer.10.output.LayerNorm.bias', 'bert.encoder.layer.11.attention.self.query.weight', 'bert.encoder.layer.11.attention.self.query.bias', 'bert.encoder.layer.11.attention.self.key.weight', 'bert.encoder.layer.11.attention.self.key.bias', 'bert.encoder.layer.11.attention.self.value.weight', 'bert.encoder.layer.11.attention.self.value.bias', 'bert.encoder.layer.11.attention.output.dense.weight', 'bert.encoder.layer.11.attention.output.dense.bias', 'bert.encoder.layer.11.attention.output.LayerNorm.weight', 'bert.encoder.layer.11.attention.output.LayerNorm.bias', 'bert.encoder.layer.11.intermediate.dense.weight', 'bert.encoder.layer.11.intermediate.dense.bias', 'bert.encoder.layer.11.output.dense.weight', 'bert.encoder.layer.11.output.dense.bias', 'bert.encoder.layer.11.output.LayerNorm.weight', 'bert.encoder.layer.11.output.LayerNorm.bias', 'cls.predictions.bias', 'cls.predictions.transform.dense.weight', 'cls.predictions.transform.dense.bias', 'cls.predictions.transform.LayerNorm.weight', 'cls.predictions.transform.LayerNorm.bias', 'cls.predictions.decoder.weight', 'cls.predictions.decoder.bias'])
         """
-        if type(input) == str or type(input) == list:
-            # If text, convert to tokens (batch_size=1)
-            assert (
-                self.tokenizer is not None
-            ), "Must provide a tokenizer if passing a string to the model"
-            # TODO "BERT-family models cannot be passed strings"
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
-        else:
-            tokens = input
-        assert isinstance(tokens, torch.Tensor)
-        # If we're doing caching, then we reuse keys and values from previous runs, as that's the only
-        # way that past activations will affect the final logits. The cache contains those so we don't
-        # need to recompute them. This is useful for generating text. As we have absolute positional
-        # encodings, to implement this we have a `pos_offset` variable, defaulting to zero, which says
-        # to offset which positional encodings are used (cached keys and values were calculated with
-        # their own positional encodings).
-        if past_kv_cache is None:
-            pos_offset = 0
-        else:
-            batch_size, ctx_length = tokens.shape
-            (
-                cached_batch_size,
-                cache_ctx_length,
-                num_heads_in_cache,
-                d_head_in_cache,
-            ) = past_kv_cache[0].past_keys.shape
-            assert cached_batch_size == batch_size
-            assert num_heads_in_cache == self.cfg.n_heads
-            assert d_head_in_cache == self.cfg.d_head
-            # If we want to generate from the empty string, we'd pass in an empty cache, so we need to handle that case
-            assert (
-                cache_ctx_length == 0 or ctx_length == 1
-            ), "Pass in one token at a time after loading cache"
-            pos_offset = cache_ctx_length
+        pass
 
-        if self.cfg.bert_family:
-            residual = self.bert_embed(tokens, token_types)
-            shortformer_pos_embed = None
-
-            for i, block in enumerate(self.blocks):
-                # Note that each block includes skip connections, so we don't need residual + block(residual)
-                residual = block(
-                    residual,
-                    past_kv_cache_entry=past_kv_cache[i]
-                    if past_kv_cache is not None
-                    else None,  # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
-                    shortformer_pos_embed=shortformer_pos_embed,
-                    attention_mask=attention_mask,
-                )  # [batch, pos, d_model]
-
-        if self.cfg.bert_family:
-            # BERT has a final linear layer that's different from the rest of the blocks
-            residual = self.bert_final(residual)
-        else:
-            embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
-            pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset)
-            )  # [batch, pos, d_model]
-            if self.cfg.positional_embedding_type != "shortformer":
-                residual = embed + pos_embed  # [batch, pos, d_model]
-                shortformer_pos_embed = None
-            else:
-                # If we're using shortformer style attention, we don't add the positional embedding to the residual stream. See EasyTransformerConfig for details
-                residual = embed
-                shortformer_pos_embed = pos_embed
-
-        for i, block in enumerate(self.blocks):
-            # Note that each block includes skip connections, so we don't need
-            # residual + block(residual)
-            residual = block(
-                residual,
-                past_kv_cache_entry=past_kv_cache[i]
-                if past_kv_cache is not None
-                else None,  # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
-                shortformer_pos_embed=shortformer_pos_embed,
-                attention_mask=attention_mask,
-            )  # [batch, pos, d_model]
-
-        if self.cfg.bert_family:
-            # BERT has a final linear layer that's different from the rest of the blocks
-            residual = self.bert_final(residual)
-
-        if return_type is None:
-            return None
-        else:
-
-            residual = self.ln_final(residual)  # [batch, pos, d_vocab]
-            logits = self.unembed(residual)  # [batch, pos, d_vocab]
-            if return_type == "logits":
-                return logits
-            else:
-                assert (
-                    not self.cfg.bert_family
-                ), "BERT-family models do not have a supported loss function"
-                loss = lm_cross_entropy_loss(logits, tokens)
-                if return_type == "loss":
-                    return loss
-                elif return_type == "both":
-                    return {"logits": logits, "loss": loss}
-                else:
-                    logging.warning(f"Invalid return_type passed in: {return_type}")
-                    return None
+    def forward(self, input: str):
+        # TODO silly goose
+        assert (
+            AutoModelForMaskedLM.from_pretrained is not None
+        )  # recommended by https://github.com/microsoft/pylance-release/issues/333#issuecomment-688522371
+        tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
+        model = AutoModelForMaskedLM.from_pretrained(self.config.model_name)
+        return model(**tokenizer(input, return_tensors="pt"))

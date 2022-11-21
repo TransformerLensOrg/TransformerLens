@@ -36,5 +36,6 @@ Another way to test is to open an `ipython` terminal and make sure that you can
 
 #### Pytest
 
-`pytest` from the root of the project. 
+- `pytest` from the root of the project. 
 - `pytest --collect-only` will fail if some of the code has type errors
+- Test a particular file with e.g. `pytest easy_transformer/tests/test_bert.py`

@@ -77,6 +77,8 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/Attn_Only_3L512W_C4_Code",
     "NeelNanda/Attn_Only_4L512W_C4_Code",
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr",
+    # BERT models
+    "bert-base-uncased",
 ]
 
 # Model Aliases:
@@ -237,6 +239,7 @@ MODEL_ALIASES = {
         "gpt2-medium-small-e",
         "gpt2-stanford-medium-e",
     ],
+    # TODO consider aliases for bert-base-uncased
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
