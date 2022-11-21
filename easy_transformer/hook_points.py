@@ -150,7 +150,7 @@ class HookedRootModule(nn.Module):
 
     See [EasyTransformer_Demo.ipynb] for an example of how to use it.
 
-    WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the start and end by default, and I recommend using reset_hooks liberally in your code.
+    WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the start and end by default, and I recommend using the API of this and run_with_cache. If you want to add hooks into global state, I recommend being intentional about this, and I recommend using reset_hooks liberally in your code to remove any accidentally remaining global state.
 
     The main time this goes wrong is when you want to use backward hooks (to cache or intervene on gradients). In this case, you need to keep the hooks around as global state until you've run loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
     """
@@ -228,8 +228,7 @@ class HookedRootModule(nn.Module):
         forward_hooks: A list of (name, hook), where name is either the name of
         a hook point or a Boolean function on hook names and hook is the
         function to add to that hook point, or the hook whose names evaluate
-        to True respectively. Ditto backward_hooks
-        reset_hooks_start (bool): If True, all prior hooks are removed at the start
+        to True respectively. Ditto bwd_hooks
         reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
         including those added in this run)
         clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
@@ -289,9 +288,9 @@ class HookedRootModule(nn.Module):
 
         def save_hook_back(tensor, hook):
             if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor[0].detach().to(device)[0]
+                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
             else:
-                cache[hook.name + "_grad"] = tensor[0].detach().to(device)
+                cache[hook.name + "_grad"] = tensor.detach().to(device)
 
         for name, hp in self.name_to_hook.items():
             if names_filter.is_included(name):
@@ -308,7 +307,6 @@ class HookedRootModule(nn.Module):
         remove_batch_dim=False,
         include_backward=False,
         reset_hooks_end=True,
-        reset_hooks_start=True,
         clear_contexts=False,
         **model_kwargs,
     ):
@@ -325,8 +323,6 @@ class HookedRootModule(nn.Module):
         including those added in this run)
         clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
         """
-        if reset_hooks_start:
-            self.reset_hooks(clear_contexts)
         cache_dict = self.add_caching_hooks(
             names_filter=names_filter,
             include_backward=include_backward,

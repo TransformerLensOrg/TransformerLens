@@ -1,7 +1,7 @@
 # %%
 import logging
 import re
-from typing import Optional
+from typing import Dict, Optional
 
 import einops
 import torch
@@ -47,10 +47,12 @@ OFFICIAL_MODEL_NAMES = [
     "EleutherAI/pythia-1.3b",
     "EleutherAI/pythia-6.7b",
     "EleutherAI/pythia-13b",
+    "EleutherAI/pythia-19m-deduped",
     "EleutherAI/pythia-125m-deduped",
-    "EleutherAI/pythia-800m-deduped",
+    "EleutherAI/pythia-350m-deduped",
     "EleutherAI/pythia-1.3b-deduped",
     "EleutherAI/pythia-6.7b-deduped",
+    "EleutherAI/pythia-13b-deduped",
     "NeelNanda/SoLU_1L_v9_old",
     "NeelNanda/SoLU_2L_v10_old",
     "NeelNanda/SoLU_4L_v11_old",
@@ -85,7 +87,7 @@ MODEL_ALIASES = {
     "NeelNanda/SoLU_6L_v13_old": ["solu-6l-old", "solu-6l-pile"],
     "NeelNanda/SoLU_8L_v21_old": ["solu-8l-old", "solu-8l-pile"],
     "NeelNanda/SoLU_10L_v22_old": ["solu-10l-old", "solu-10l-pile"],
-    "NeelNanda/SoLU_12L_v22_old": ["solu-12l-old", "solu-12l-pile"],
+    "NeelNanda/SoLU_12L_v23_old": ["solu-12l-old", "solu-12l-pile"],
     "NeelNanda/SoLU_1L512W_C4_Code": ["solu-1l", "solu-1l-new", "solu-1l-c4-code"],
     "NeelNanda/SoLU_2L512W_C4_Code": ["solu-2l", "solu-2l-new", "solu-2l-c4-code"],
     "NeelNanda/SoLU_3L512W_C4_Code": ["solu-3l", "solu-3l-new", "solu-3l-c4-code"],
@@ -143,6 +145,9 @@ MODEL_ALIASES = {
     "EleutherAI/pythia-13b": [
         "pythia-13b",
     ],
+    "EleutherAI/pythia-19m-deduped": [
+        "pythia-19m-deduped",
+    ],
     "EleutherAI/pythia-125m-deduped": [
         "pythia-125m-deduped",
     ],
@@ -154,6 +159,9 @@ MODEL_ALIASES = {
     ],
     "EleutherAI/pythia-6.7b-deduped": [
         "pythia-6.7b-deduped",
+    ],
+    "EleutherAI/pythia-13b-deduped": [
+        "pythia-13b-deduped",
     ],
     "gpt2": ["gpt2-small"],
     "distilgpt2": ["distillgpt2", "distill-gpt2", "distil-gpt2", "gpt2-xs"],
@@ -231,6 +239,8 @@ MODEL_ALIASES = {
     ],
 }
 
+# Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
+DEFAULT_MODEL_ALIASES = [MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES]
 
 def make_model_alias_map():
     """
@@ -523,7 +533,7 @@ def get_pretrained_state_dict(
     official_model_name: str,
     cfg: EasyTransformerConfig,
     hf_model=None,
-):
+) -> Dict[str, torch.Tensor]:
     """
     Loads in the model weights for a pretrained model, and processes them to
     have the EasyTransformer parameter names and shapes. Supports checkpointed
