@@ -84,7 +84,6 @@ print(f"{new_logit_difference=}")
 
 assert torch.allclose(logit_difference.cpu(), new_logit_difference.cpu())
 
-
 #%%
 
 attn_results, mlp_results = path_patching_up_to(
@@ -181,7 +180,12 @@ while True:
             "-Gdpi=600",
         ]
     )
-    #%%
+#%%
+model.reset_hooks()
+dumb_cache = {}
+model.cache_all(dumb_cache)
+model(dataset_orig.toks.long())
+
 # %%
 # the circuit discovery algorithm
 #

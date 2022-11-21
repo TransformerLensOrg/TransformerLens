@@ -28,7 +28,7 @@ def get_hook_tuple(layer, head_idx, comp=None):
         else:
             return (f"blocks.{layer}.attn.hook_result", head_idx)
 
-    else:
+    else:  # I think the QKV case here is quite different because this is INPUT to a component, not output
         assert comp in ["q", "k", "v"]
         assert head_idx is not None
         return (f"blocks.{layer}.attn.hook_{comp}_input", head_idx)
@@ -348,7 +348,7 @@ def path_patching(
                         name=hook_name,
                         hook=partial(input_activation_editor, head_idx=head_idx),
                     )
-        hook_name = f"blocks.{layer_idx}.hook_mlp_out"
+        hook_name = f"blocks.{layer_idx}.hook_resid_mid"
         if (hook_name, None) in receivers_to_senders:
             model.add_hook(name=hook_name, hook=input_activation_editor)
 
@@ -618,7 +618,7 @@ class HypothesisTree:
             if node.layer == self.model.cfg.n_layers:
                 receiver_hooks.append((f"blocks.{node.layer-1}.hook_resid_post", None))
             elif node.head is None:
-                receiver_hooks.append((f"blocks.{node.layer}.hook_mlp_out", None))
+                receiver_hooks.append((f"blocks.{node.layer}.hook_resid_mid", None))
             else:
                 receiver_hooks.append(
                     (f"blocks.{node.layer}.attn.hook_v_input", node.head)
@@ -888,7 +888,7 @@ class HypothesisTree:
             "q": "red",
             "k": "green",
             "v": "blue",
-            "out": "black",
+            "mid": "black",  # new thing for MLPs
             "post": "black",
         }
         # add each layer as a subgraph with rank=same
