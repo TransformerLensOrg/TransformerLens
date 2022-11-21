@@ -157,6 +157,9 @@ assert np.abs(h.default_metric - ans) > 1e-5
 #%%
 
 positions = OrderedDict()
+positions["IO"] = dataset_orig.word_idx["IO"].item()
+positions["S"] = dataset_orig.word_idx["S"].item()
+positions["S+1"] = dataset_orig.word_idx["S+1"].item()
 positions["S2"] = dataset_orig.word_idx["S2"].item()
 positions["end"] = dataset_orig.word_idx["end"].item()
 
