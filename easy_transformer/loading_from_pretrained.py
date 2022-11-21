@@ -240,7 +240,11 @@ MODEL_ALIASES = {
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
-DEFAULT_MODEL_ALIASES = [MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES]
+DEFAULT_MODEL_ALIASES = [
+    MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name
+    for name in OFFICIAL_MODEL_NAMES
+]
+
 
 def make_model_alias_map():
     """

@@ -13,7 +13,6 @@ from ..past_key_value_caching import (
 # TODO maybe have an __init__.py in bert/ that imports all the bert stuff
 
 
-
 class EasyBERT(HookedRootModule):
     """
     TODO say less / say more about how we dont support this

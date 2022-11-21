@@ -10,6 +10,7 @@ import torch.nn as nn
 
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
+
 @dataclass
 class EasyTransformerConfig:
     """
@@ -156,7 +157,7 @@ class EasyTransformerConfig:
     n_params: Optional[int] = None
 
     def __post_init__(self):
-        if self.n_heads==-1:
+        if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head
 
         if not self.d_model == (self.n_heads * self.d_head):
@@ -217,7 +218,7 @@ class EasyTransformerConfig:
 
     def __repr__(self):
         return "EasyTransformerConfig:\n" + pprint.pformat(self.to_dict())
-    
+
     def set_seed_everywhere(self, seed: int):
         torch.manual_seed(seed)
         random.seed(seed)

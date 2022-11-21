@@ -33,12 +33,14 @@ class ConstantNameFilter(NamesFilter):
     def is_included(self, name: str) -> bool:
         return name in self.names
 
+
 class SingleNameFilter(NamesFilter):
     def __init__(self, name: str):
         self.name = name
 
     def is_included(self, name: str) -> bool:
         return self.name == name
+
 
 # %%
 
@@ -173,7 +175,7 @@ class HookedRootModule(nn.Module):
             self.name_to_module[
                 name
             ] = module  # we don't use [self.named_modules()] because that's a generator, not a dictionary
-            # this is actually the cleanest way to do this 
+            # this is actually the cleanest way to do this
             if "HookPoint" in str(type(module)):
                 self.name_to_hook[name] = module
 

@@ -44,6 +44,7 @@ def download_file_from_hf(
         print("File type not supported:", file_path.split(".")[-1])
         return file_path
 
+
 def print_gpu_mem(step_name=""):
     print(
         f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU."
@@ -233,6 +234,7 @@ tokenizer = AutoTokenizer.from_pretrained("NeelNanda/gpt-neox-tokenizer-digits")
 print(data)
 tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
 """
+
 
 def sample_logits(
     final_logits: TT["batch", "d_vocab"],
@@ -497,6 +499,7 @@ def transpose(tensor: TT[..., "a", "b"]) -> TT[..., "b", "a"]:
     Utility to swap the last two dimensions of a tensor, regardless of the number of leading dimensions
     """
     return tensor.transpose(-1, -2)
+
 
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
