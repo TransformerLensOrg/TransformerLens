@@ -124,9 +124,9 @@ receivers_to_senders = {
         (9, None),  # (7, 10)
     ],  # [(9, 2), (9, 4), (9, None), (11, 2)],
     ("blocks.9.hook_resid_mid", None): [(8, 10)],  # [(8, 10), (9, 2), (9, 4)],
-    # ("blocks.9.attn.hook_q_input", 2): [(7, None)],
-    # ("blocks.7.hook_mlp_out", None): [(7, 10)],
-    # ("blocks.7.attn.hook_q_input", 10): [(0, 0)],
+    ("blocks.9.attn.hook_q_input", 2): [(7, None)],
+    ("blocks.7.hook_resid_mid", None): [(7, 10)],
+    ("blocks.7.attn.hook_q_input", 10): [(0, 0)],
 }
 
 last_guy = list(receivers_to_senders.items())[-1]
@@ -161,6 +161,8 @@ assert np.abs(h.default_metric - ans) > 1e-5
 
 positions = OrderedDict()
 positions["end"] = dataset_orig.word_idx["end"].item()
+positions["S2"] = dataset_orig.word_idx["S2"].item()
+
 h = HypothesisTree(
     model,
     metric=logit_diff_io_s,
