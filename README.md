@@ -30,5 +30,6 @@ TODO this doesn't seem to work?
 
 When testing type annotations, check out `easy_transformer/tests/test_type_annotations.py`.
 
-Another way to test is to open an [ipython] terminal and make sure that you can 
+Another way to test is to open an `ipython` terminal and make sure that you can 
 [import easy_transformer]. If there are import errors, etc., they'll show up here!
+(You can make this tighter with `ipython -c 'import easy_transformer'`.)

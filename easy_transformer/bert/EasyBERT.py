@@ -1,10 +1,17 @@
-# TODO sort these inputs / use the input sorting / dropping tool
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from torchtyping import TensorType as TT
 
 from easy_transformer.hook_points import HookedRootModule
+
+from ..past_key_value_caching import (
+    EasyTransformerKeyValueCache,
+    EasyTransformerKeyValueCacheEntry,
+)
+
+# TODO maybe have an __init__.py in bert/ that imports all the bert stuff
+
 
 
 class EasyBERT(HookedRootModule):
