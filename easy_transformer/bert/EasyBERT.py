@@ -85,21 +85,21 @@ class EasyBERT(HookedRootModule):
 
         assert isinstance(attention, encoder.MultiHeadAttention)
 
-        attention.query.load_state_dict(
+        attention.linear_layers[0].load_state_dict(
             {
                 "weight": state_dict[base_name + "attention.self.query.weight"],
                 "bias": state_dict[base_name + "attention.self.query.bias"],
             }
         )
 
-        attention.key.load_state_dict(
+        attention.linear_layers[1].load_state_dict(
             {
                 "weight": state_dict[base_name + "attention.self.key.weight"],
                 "bias": state_dict[base_name + "attention.self.key.bias"],
             }
         )
 
-        attention.value.load_state_dict(
+        attention.linear_layers[2].load_state_dict(
             {
                 "weight": state_dict[base_name + "attention.self.value.weight"],
                 "bias": state_dict[base_name + "attention.self.value.bias"],
@@ -117,11 +117,10 @@ class EasyBERT(HookedRootModule):
         self.__load_encoder_state_dict__(state_dict)
         self.__load_cls_state_dict__(state_dict)
 
-    def forward(self, input: str):
-        # TODO silly goose
-        assert (
-            AutoModelForMaskedLM.from_pretrained is not None
-        )  # recommended by https://github.com/microsoft/pylance-release/issues/333#issuecomment-688522371
-        tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
-        model = AutoModelForMaskedLM.from_pretrained(self.config.model_name)
-        return model(**tokenizer(input, return_tensors="pt"))
+    def forward(self, x, segment_info):
+        # attention masking for padded token
+        # torch.ByteTensor([batch_size, 1, seq_len, seq_len)
+        mask = (x > 0).unsqueeze(1).repeat(1, x.size(1), 1).unsqueeze(1)
+        embedded = self.embeddings(input, segment_info)
+        encoded = self.encoder(embedded, mask)
+        return encoded

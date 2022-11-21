@@ -25,16 +25,16 @@ class Attention(nn.Module):
 class MultiHeadAttention(nn.Module):
     def __init__(self, config: EasyBERTConfig):
         super().__init__()
-        assert config.d_model % config.n_heads == 0
+        assert config.hidden_size % config.n_heads == 0
 
         # We assume d_v always equals d_k
-        self.d_k = config.d_model // config.n_heads
+        self.d_k = config.hidden_size // config.n_heads
         self.h = config.n_heads
 
         self.linear_layers = nn.ModuleList(
-            [nn.Linear(config.d_model, config.d_model) for _ in range(3)]
+            [nn.Linear(config.hidden_size, config.hidden_size) for _ in range(3)]
         )
-        self.output_linear = nn.Linear(config.d_model, config.d_model)
+        self.output_linear = nn.Linear(config.hidden_size, config.hidden_size)
         self.attention = Attention()
 
         self.dropout = nn.Dropout(p=config.dropout)
