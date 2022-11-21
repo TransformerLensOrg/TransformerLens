@@ -1,9 +1,10 @@
 # TODO sort these inputs / use the input sorting / dropping tool
-import torch
-from easy_transformer.hook_points import HookedRootModule
-from typing import List, Dict, Tuple, Union, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
+import torch
 from torchtyping import TensorType as TT
+
+from easy_transformer.hook_points import HookedRootModule
 
 
 class EasyBERT(HookedRootModule):

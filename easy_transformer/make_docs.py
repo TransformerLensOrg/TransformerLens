@@ -1,7 +1,8 @@
 # %%
-from easy_transformer import loading
-from easy_transformer import utils
 from functools import lru_cache
+
+from easy_transformer import loading, utils
+
 # %%
 cfg = (loading.get_pretrained_model_config("solu-1l"))
 print(cfg)
@@ -15,8 +16,9 @@ act_fn includes attn_only
 architecture
 Architecture should list weird shit to be aware of.
 """
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 df = pd.DataFrame(np.random.randn(2, 2))
 print(df.to_markdown(open("test.md", "w")))
 # %%

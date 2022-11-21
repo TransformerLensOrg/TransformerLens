@@ -2,7 +2,7 @@ import logging
 import re
 from collections import namedtuple
 from functools import lru_cache, partial
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -23,6 +23,8 @@ from easy_transformer.FactoredMatrix import FactoredMatrix
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from easy_transformer.past_key_value_caching import EasyTransformerKeyValueCache
 
+from . import hook_points
+
 # Type alias for a single element tensor
 Loss = TT[()]
 # Named tuple object for if we want to output both logits and loss
@@ -36,7 +38,7 @@ InputForForwardLayer = Union[str, List[str], TokensTensor]
 Internal = TT["batch", "pos", "d_model"]
 
 
-class EasyTransformer(HookedRootModule):
+class EasyTransformer(hook_points.HookedRootModule):
     """
     This class implements a full Transformer using the components in ./components.py, with
     HookPoints on every interesting activation. It inherits from HookedRootModule.

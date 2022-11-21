@@ -1,9 +1,13 @@
 from __future__ import annotations
-import torch
-from typing import Optional, Union, Tuple, List, Dict
-from torchtyping import TensorType as TT
+
 from functools import lru_cache
+from typing import Dict, List, Optional, Tuple, Union
+
+import torch
+from torchtyping import TensorType as TT
+
 import easy_transformer.utils as utils
+
 
 class FactoredMatrix:
     """

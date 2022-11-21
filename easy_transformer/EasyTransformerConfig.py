@@ -8,8 +8,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from easy_transformer.utils import set_seed_everywhere
-
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
 @dataclass
