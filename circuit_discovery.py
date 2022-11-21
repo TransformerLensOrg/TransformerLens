@@ -115,15 +115,31 @@ show_pp(attn_results, title="attn_results")
 
 model.reset_hooks()
 
-initial_receivers_to_senders = [(("blocks.8.attn.hook_v_input", 10), (0, 0))]
+# initial_receivers_to_senders = [(("blocks.7.attn.hook_v_input", 10), (0, 0))]
 # initial_receivers_to_senders = [(("blocks.9.attn.hook_q_input", 2), (7, None))]
+# initial_receivers_to_senders = [(("blocks.11.hook_resid_post", None), (9, 9))]
 
 receivers_to_senders = {
-    ("blocks.11.hook_resid_post", None): [(9, 2), (9, 4), (9, None), (11, 2)],
-    ("blocks.9.hook_mlp_out", None): [(8, 10), (9, 2), (9, 4)],
-    ("blocks.9.attn.hook_q_input", 2): [(7, None)],
-    ("blocks.8.attn.hook_v_input", 10): [(0, 0)],
+    ("blocks.11.hook_resid_post", None): [
+        (9, None),  # (7, 10)
+    ],  # [(9, 2), (9, 4), (9, None), (11, 2)],
+    ("blocks.9.hook_resid_mid", None): [(8, 10)],  # [(8, 10), (9, 2), (9, 4)],
+    # ("blocks.9.attn.hook_q_input", 2): [(7, None)],
+    # ("blocks.7.hook_mlp_out", None): [(7, 10)],
+    # ("blocks.7.attn.hook_q_input", 10): [(0, 0)],
 }
+
+last_guy = list(receivers_to_senders.items())[-1]
+assert len(last_guy[1]) == 1
+initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
+
+# {
+#     ("blocks.11.hook_resid_post", None): [(9, 2), (9, 4), (9, None), (11, 2)],
+#     ("blocks.9.hook_mlp_out", None): [(8, 10), (9, 2), (9, 4)],
+#     ("blocks.9.attn.hook_q_input", 2): [(7, None)],
+#     ("blocks.7.hook_mlp_out", None): [(7, 10)],
+#     ("blocks.7.attn.hook_k_input", 10): [(0, 0)],
+# }
 
 model = path_patching(
     model=model,

@@ -17,12 +17,16 @@ from easy_transformer.ioi_utils import show_pp
 import graphviz  # need both pip install graphviz and sudo apt-get install graphviz
 
 
-def get_hook_tuple(layer, head_idx, comp=None):
+def get_hook_tuple(layer, head_idx, comp=None, input=False):
+    """Very cursed"""
     """warning, only built for 12 layer models"""
     if comp is None:
         if head_idx is None:
             if layer < 12:
-                return (f"blocks.{layer}.hook_mlp_out", None)
+                if input:
+                    return (f"blocks.{layer}.hook_resid_mid", None)
+                else:
+                    return (f"blocks.{layer}.hook_mlp_out", None)
             else:
                 return (f"blocks.{layer-1}.hook_resid_post", None)
         else:
@@ -383,14 +387,14 @@ def path_patching_up_to(
     new_cache=None,
 ):
     """New version of path_patching_up_to
-    we are going to convert important_nodes into the receivers_to_senders_format"""
+    we are going to convert important_nodes into the receivers_to_senders format"""
 
     # now construct the arguments (in each path patching run, we will edit these a bit)
     base_initial_senders = []
     base_receivers_to_senders = {}
 
     for receiver in important_nodes:
-        hook = get_hook_tuple(receiver.layer, receiver.head)
+        hook = get_hook_tuple(receiver.layer, receiver.head, input=True)
 
         if hook == receiver_hook:
             assert (
