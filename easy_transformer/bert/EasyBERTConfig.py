@@ -13,6 +13,8 @@ class EasyBERTConfig:
     hidden_size: int  # TODO aka d_model?
     d_vocab: int
 
+    max_len: int
+
     dropout: float = 0.1
 
     # TODO add _post_init

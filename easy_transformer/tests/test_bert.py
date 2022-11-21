@@ -1,21 +1,14 @@
 # %%
 
 import torch
-from torchtyping import TensorType as patch_typeguard  # TODO is this right?
 
 # trying to import [AutoModelForMaskedLM] from the non-private location fucks up, not sure why; it makes
 # [from_pretrained == None]
 from transformers import AutoModelForMaskedLM
 from transformers.modeling_outputs import MaskedLMOutput
 from transformers.models.auto.tokenization_auto import AutoTokenizer
-from typeguard.importhook import install_import_hook
 
 from easy_transformer import EasyBERT
-
-# install_import_hook("easy_transformer")
-
-
-# patch_typeguard()
 
 
 def test_bert():
@@ -38,7 +31,6 @@ def test_bert():
 
 def test_embeddings():
     hf = AutoModelForMaskedLM.from_pretrained("bert-base-uncased")
-    print(hf.bert.embeddings.word_embeddings.weight.shape)
     model = EasyBERT.EasyBERT.from_pretrained("bert-base-uncased")
     assert torch.allclose(
         hf.bert.embeddings.word_embeddings.weight,
@@ -49,14 +41,21 @@ def test_embeddings():
 
 # %%
 
-# TODO make an anki about this
+# TODO make an anki about this workflow
 
+import torch
 from transformers import AutoModelForMaskedLM
 from transformers.modeling_outputs import MaskedLMOutput
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
-hf = AutoModelForMaskedLM.from_pretrained("bert-base-uncased")
-# %%
+from easy_transformer import EasyBERT
 
-hf.bert.embeddings.word_embeddings.weight.shape
+hf = AutoModelForMaskedLM.from_pretrained("bert-base-uncased")
+model = EasyBERT.EasyBERT.from_pretrained("bert-base-uncased")
+
+assert torch.allclose(
+    hf.bert.embeddings.word_embeddings.weight,
+    model.embeddings.word_embeddings.weight,
+    atol=1e-4,
+)
 # %%
