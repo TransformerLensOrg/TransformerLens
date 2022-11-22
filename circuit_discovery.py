@@ -14,14 +14,14 @@ from easy_transformer.ioi_dataset import (
     IOIDataset,
 )
 from easy_transformer.utils_circuit_discovery import (
-    direct_path_patching,
     path_patching,
+    path_patching_old,
     logit_diff_io_s,
     HypothesisTree,
     logit_diff_from_logits,
     get_datasets,
-    direct_path_patching_up_to,
     path_patching_up_to,
+    path_patching_up_to_old,
 )
 
 from easy_transformer.ioi_utils import (
@@ -47,7 +47,7 @@ model.set_use_headwise_qkv_input(True)
 dataset_new, dataset_orig = get_datasets()
 #%%
 
-model = path_patching(
+model = path_patching_old(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
@@ -65,7 +65,7 @@ print(f"{logit_difference=}")
 
 #%%
 
-model = direct_path_patching(
+model = path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
@@ -87,7 +87,7 @@ assert torch.allclose(logit_difference.cpu(), new_logit_difference.cpu())
 
 #%%
 
-attn_results, mlp_results = direct_path_patching_up_to(
+attn_results, mlp_results = path_patching_up_to(
     model=model,
     receiver_hook=("blocks.11.hook_resid_post", None),
     important_nodes=[],
@@ -139,7 +139,7 @@ for init_receivers_to_senders in [
         # assert len(last_guy[1]) == 1
         initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
 
-        model = direct_path_patching(
+        model = path_patching(
             model=model,
             orig_data=dataset_orig.toks.long(),
             new_data=dataset_new.toks.long(),
