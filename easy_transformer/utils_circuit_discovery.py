@@ -214,7 +214,6 @@ def path_patching(
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int], str]]
     ],  # TODO support for pushing back to token embeddings?
     positions,  # TODO extend this ...
-    current_position,
     orig_cache=None,
     new_cache=None,
 ) -> EasyTransformer:
@@ -390,8 +389,8 @@ def path_patching_up_to(
     metric: Callable[[torch.Tensor, IOIDataset], float],  # NOTE: different to before
     dataset,
     orig_data,
+    cur_position,
     new_data,
-    current_position: str,
     positions,
     orig_cache=None,
     new_cache=None,
@@ -447,16 +446,13 @@ def path_patching_up_to(
             receivers_to_senders = deepcopy(base_receivers_to_senders)
             if receiver_hook not in receivers_to_senders:
                 receivers_to_senders[receiver_hook] = []
-            receivers_to_senders[receiver_hook].append((l, h, current_position))
+            receivers_to_senders[receiver_hook].append((l, h, cur_position))
 
             model = path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
-                current_position=current_position,
-                initial_receivers_to_senders=[
-                    (receiver_hook, (l, h, current_position))
-                ],
+                initial_receivers_to_senders=[(receiver_hook, (l, h, cur_position))],
                 receivers_to_senders=receivers_to_senders,
                 positions=positions,
                 orig_cache=orig_cache,
@@ -471,15 +467,12 @@ def path_patching_up_to(
             receivers_to_senders = deepcopy(base_receivers_to_senders)
             if receiver_hook not in receivers_to_senders:
                 receivers_to_senders[receiver_hook] = []
-            receivers_to_senders[receiver_hook].append((l, None, current_position))
+            receivers_to_senders[receiver_hook].append((l, None, cur_position))
             cur_logits = path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
-                current_position=current_position,
-                initial_receivers_to_senders=[
-                    (receiver_hook, (l, None, current_position))
-                ],
+                initial_receivers_to_senders=[(receiver_hook, (l, None, cur_position))],
                 receivers_to_senders=receivers_to_senders,
                 positions=positions,
                 orig_cache=orig_cache,
@@ -669,7 +662,7 @@ class HypothesisTree:
                     orig_data=self.orig_data,
                     new_data=self.new_data,
                     positions=self.possible_positions,
-                    current_position=pos,
+                    cur_position=pos,
                     orig_cache=self.orig_cache,
                     new_cache=self.new_cache,
                 )

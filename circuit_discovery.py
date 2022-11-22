@@ -116,43 +116,45 @@ show_pp(attn_results, title="attn_results")
 
 model.reset_hooks()
 
-#  [(('blocks.6.attn.hook_v_input', 11), (0, 0, 'end'))]
+for init_receivers_to_senders in [
+    {
+        ("blocks.11.hook_resid_post", None): [(9, 4, "end"), (9, None, "end")],
+        ("blocks.9.hook_resid_mid", None): [(9, 4, "end")],
+        ("blocks.9.attn.hook_v_input", 4): [(0, 0, "IO")],
+    },
+    {
+        ("blocks.11.hook_resid_post", None): [(9, 4, "end"), (9, None, "end")],
+        ("blocks.9.hook_resid_mid", None): [(9, 4, "end")],
+        ("blocks.9.attn.hook_v_input", 4): [(0, 0, "S2")],
+    },
+]:
+    for remove_mid in [True, False]:
 
-receivers_to_senders = {
-    ("blocks.11.hook_resid_post", None): [(9, 4, "end"), (9, None, "end")],
-    ("blocks.9.hook_resid_mid", None): [(9, 4, "end")],
-    ("blocks.9.attn.hook_k_input", 4): [
-        (5, None, "S2"),
-        (6, 1, "S2"),
-        (6, 6, "S2"),
-        (6, 11, "S2"),
-        (6, None, "S2"),
-    ],
-    ("blocks.6.hook_resid_mid", None): [(0, 2, "S2"), (2, None, "S2")],
-    ("blocks.6.attn.hook_v_input", 11): [(0, 0, "end")],
-}
+        receivers_to_senders = deepcopy(init_receivers_to_senders)
+        if remove_mid:
+            receivers_to_senders.pop(("blocks.9.hook_resid_mid", None))
 
-# initial_receivers_to_senders = [(("blocks.6.attn.hook_v_input", 11), (0, 0, "S2"))]
-last_guy = list(receivers_to_senders.items())[-1]
-# assert len(last_guy[1]) == 1
-initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
+        # initial_receivers_to_senders = [(("blocks.6.attn.hook_v_input", 11), (0, 0, "S2"))]
+        last_guy = list(receivers_to_senders.items())[-1]
+        # assert len(last_guy[1]) == 1
+        initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
 
-model = path_patching(
-    model=model,
-    orig_data=dataset_orig.toks.long(),
-    new_data=dataset_new.toks.long(),
-    initial_receivers_to_senders=initial_receivers_to_senders,
-    receivers_to_senders=receivers_to_senders,
-    positions=positions,  #  dataset_orig.word_idx["end"].item(),
-    current_position="end",
-    orig_cache=None,
-    new_cache=None,
-)
-ans = logit_diff_io_s(model, dataset_orig)
-model.reset_hooks()
-print(f"{ans=}")
-print(f"{h.default_metric=}, {ans=}")
-assert np.abs(h.default_metric - ans) > 1e-5
+        model = path_patching(
+            model=model,
+            orig_data=dataset_orig.toks.long(),
+            new_data=dataset_new.toks.long(),
+            initial_receivers_to_senders=initial_receivers_to_senders,
+            receivers_to_senders=receivers_to_senders,
+            positions=positions,  #  dataset_orig.word_idx["end"].item(),
+            # current_position="end",
+            orig_cache=None,
+            new_cache=None,
+        )
+        ans = logit_diff_io_s(model, dataset_orig)
+        model.reset_hooks()
+        print(f"{ans=}")
+        print(f"{h.default_metric=}, {ans=}")
+        print(np.abs(h.default_metric - ans) > 1e-5, "!!!")
 
 #%%
 
