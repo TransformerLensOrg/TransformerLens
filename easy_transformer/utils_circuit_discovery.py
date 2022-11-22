@@ -271,7 +271,9 @@ def path_patching(
 
     # for specifically editing the inputs from certain previous parts
     def input_activation_editor(
-        z, hook, head_idx=None, sender_head_pos_extra: str = ""
+        z,
+        hook,
+        head_idx=None,
     ):
         """ "Probably too many asserts, ignore them"""
         new_z = z.clone()
