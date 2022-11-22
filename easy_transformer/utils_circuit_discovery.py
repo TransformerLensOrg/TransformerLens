@@ -218,7 +218,8 @@ def path_patching(
     receivers_to_senders: Dict[  # TODO TODO TODO we need to make INPUT to MLPs work
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int], str]]
     ],  # TODO support for pushing back to token embeddings?
-    positions,  # TODO extend this ...
+    orig_positions,
+    new_positions,
     orig_cache=None,
     new_cache=None,
 ) -> EasyTransformer:
@@ -302,47 +303,55 @@ def path_patching(
                 sender_layer_idx, sender_head_idx
             )
 
-            cache_to_use = hook.ctx["model"].cache
             if (
                 (hook_name, head_idx),
                 (sender_layer_idx, sender_head_idx, sender_head_pos),
             ) in initial_receivers_to_senders:  # hopefully fires > once
                 cache_to_use = new_cache
+                positions_to_use = new_positions
             else:
-                pass
+                cache_to_use = hook.ctx["model"].cache
+                positions_to_use = orig_positions
 
             # we have to do both things casewise
             if sender_head_idx is None:
                 sender_value = (
                     cache_to_use[sender_hook_name][
-                        torch.arange(N), positions[sender_head_pos]
+                        torch.arange(N), positions_to_use[sender_head_pos]
                     ]
                     - orig_cache[sender_hook_name][
-                        torch.arange(N), positions[sender_head_pos]
+                        torch.arange(N), positions_to_use[sender_head_pos]
                     ]
                 )
             else:
                 sender_value = (
                     cache_to_use[sender_hook_name][
-                        torch.arange(N), positions[sender_head_pos], sender_head_idx
+                        torch.arange(N),
+                        positions_to_use[sender_head_pos],
+                        sender_head_idx,
                     ]
                     - orig_cache[sender_hook_name][
-                        torch.arange(N), positions[sender_head_pos], sender_head_idx
+                        torch.arange(N),
+                        positions_to_use[sender_head_pos],
+                        sender_head_idx,
                     ]
                 )
 
             if head_idx is None:
                 assert (
-                    new_z[:, positions[sender_head_pos], :].shape == sender_value.shape
+                    new_z[:, positions_to_use[sender_head_pos], :].shape
+                    == sender_value.shape
                 ), f"{new_z.shape} != {sender_value.shape}"
-                new_z[torch.arange(N), positions[sender_head_pos]] += sender_value
+                new_z[
+                    torch.arange(N), positions_to_use[sender_head_pos]
+                ] += sender_value
             else:
                 assert (
-                    new_z[:, positions[sender_head_pos], head_idx].shape
+                    new_z[:, positions_to_use[sender_head_pos], head_idx].shape
                     == sender_value.shape
-                ), f"{new_z[:, positions[sender_head_pos], head_idx].shape} != {sender_value.shape}, {positions[sender_head_pos].shape}"
+                ), f"{new_z[:, positions_to_use[sender_head_pos], head_idx].shape} != {sender_value.shape}, {positions_to_use[sender_head_pos].shape}"
                 new_z[
-                    torch.arange(N), positions[sender_head_pos], head_idx
+                    torch.arange(N), positions_to_use[sender_head_pos], head_idx
                 ] += sender_value
 
         return new_z
@@ -398,7 +407,8 @@ def path_patching_up_to(
     orig_data,
     cur_position,
     new_data,
-    positions,
+    orig_positions,
+    new_positions,
     orig_cache=None,
     new_cache=None,
 ):
@@ -461,7 +471,8 @@ def path_patching_up_to(
                 new_data=new_data,
                 initial_receivers_to_senders=[(receiver_hook, (l, h, cur_position))],
                 receivers_to_senders=receivers_to_senders,
-                positions=positions,
+                orig_positions=orig_positions,
+                new_positions=new_positions,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
             )
@@ -481,7 +492,8 @@ def path_patching_up_to(
                 new_data=new_data,
                 initial_receivers_to_senders=[(receiver_hook, (l, None, cur_position))],
                 receivers_to_senders=receivers_to_senders,
-                positions=positions,
+                orig_positions=orig_positions,
+                new_positions=new_positions,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
             )
@@ -557,13 +569,18 @@ class HypothesisTree:
         orig_data,
         new_data,
         threshold: int,
-        possible_positions: OrderedDict,
+        orig_positions: OrderedDict,
+        new_positions: OrderedDict,
         use_caching: bool = True,
         direct_paths_only: bool = False,
     ):
         model.reset_hooks()
         self.model = model
-        self.possible_positions = possible_positions
+        self.orig_positions = orig_positions
+        self.new_positions = new_positions
+        assert list(orig_positions.keys()) == list(
+            new_positions.keys()
+        ), "Number and order of keys should be the same ... for now"
         self.node_stack = OrderedDict()
         self.populate_node_stack()
         self.current_node = self.node_stack[
@@ -588,12 +605,12 @@ class HypothesisTree:
             for head in list(range(self.model.cfg.n_heads)) + [
                 None
             ]:  # includes None for mlp
-                for pos in self.possible_positions:
+                for pos in self.orig_positions:
                     node = Node(layer, head, pos)
                     self.node_stack[(layer, head, pos)] = node
         layer = self.model.cfg.n_layers
         pos = next(
-            reversed(self.possible_positions)
+            reversed(self.orig_positions)
         )  # assume the last position specified is the one that we care about in the residual stream
         resid_post = Node(layer, None, pos)
         self.node_stack[
@@ -633,7 +650,7 @@ class HypothesisTree:
         print("Currently evaluating", node)
 
         current_node_position = node.position
-        for pos in self.possible_positions:
+        for pos in self.orig_positions:
             if (
                 current_node_position != pos and node.head is None
             ):  # MLPs and the end state of the residual stream only care about the last position
@@ -668,7 +685,8 @@ class HypothesisTree:
                     dataset=self.dataset,
                     orig_data=self.orig_data,
                     new_data=self.new_data,
-                    positions=self.possible_positions,
+                    orig_positions=self.orig_positions,
+                    new_positions=self.new_positions,
                     cur_position=pos,
                     orig_cache=self.orig_cache,
                     new_cache=self.new_cache,

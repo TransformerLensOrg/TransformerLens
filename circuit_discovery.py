@@ -34,6 +34,7 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
+
 # %%
 model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 
@@ -157,12 +158,13 @@ for init_receivers_to_senders in [
 
 #%%
 
-positions = OrderedDict()
-positions["IO"] = dataset_orig.word_idx["IO"].item()
-positions["S"] = dataset_orig.word_idx["S"].item()
-positions["S+1"] = dataset_orig.word_idx["S+1"].item()
-positions["S2"] = dataset_orig.word_idx["S2"].item()
-positions["end"] = dataset_orig.word_idx["end"].item()
+orig_positions = OrderedDict()
+new_positions = OrderedDict()
+
+keys = ["IO", "S+1", "S", "S2", "end"]
+for key in keys:
+    orig_positions[key] = dataset_orig.word_idx[key].item()
+    new_positions[key] = dataset_new.word_idx[key].item()
 
 h = HypothesisTree(
     model,
@@ -171,7 +173,8 @@ h = HypothesisTree(
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
     threshold=0.25,
-    possible_positions=positions,
+    orig_positions=orig_positions,
+    new_positions=new_positions,
     use_caching=True,
     direct_paths_only=True,
 )
