@@ -63,7 +63,7 @@ def get_datasets():
     """from unity"""
     batch_size = 1
     orig = "When John and Mary went to the store, John gave a bottle of milk to Mary"
-    new = "When John and Mary went to the store, Charlie gave a bottle of milk to Mary"
+    new = "When later John and Mary went to the store, Charlie gave a bottle of milk to Mary"
     prompts_orig = [
         {"S": "John", "IO": "Mary", "TEMPLATE_IDX": -42, "text": orig}
     ]  # TODO make ET dataset construction not need TEMPLATE_IDX
