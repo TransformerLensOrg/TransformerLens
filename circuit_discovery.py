@@ -43,7 +43,6 @@ model.set_use_headwise_qkv_input(True)
 
 #%%
 
-
 dataset_new, dataset_orig = get_datasets()
 #%%
 
@@ -171,7 +170,7 @@ h = HypothesisTree(
     dataset=dataset_orig,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    threshold=0.1,
+    threshold=0.25,
     possible_positions=positions,
     use_caching=True,
     direct_paths_only=True,
@@ -179,7 +178,7 @@ h = HypothesisTree(
 
 #%%
 while True:
-    h.eval(show_graphics=True)
+    h.eval(show_graphics=False)
     a = h.show()
     # save digraph object
     with open("hypothesis_tree.dot", "w") as f:

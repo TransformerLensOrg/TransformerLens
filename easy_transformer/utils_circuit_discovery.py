@@ -63,16 +63,21 @@ def get_datasets():
     """from unity"""
     batch_size = 1
     orig = "When John and Mary went to the store, John gave a bottle of milk to Mary"
-    new = "When later John and Mary went to the store, Charlie gave a bottle of milk to Mary"
+    new = "When Alice and Bob went to the store, Charlie gave a bottle of milk to Mary"
     prompts_orig = [
         {"S": "John", "IO": "Mary", "TEMPLATE_IDX": -42, "text": orig}
     ]  # TODO make ET dataset construction not need TEMPLATE_IDX
-    prompts_new = [dict(**prompts_orig[0])]
+    prompts_new = [{"S": "Alice", "IO": "Bob", "TEMPLATE_IDX": -42, "text": new}]
     prompts_new[0]["text"] = new
     dataset_orig = IOIDataset(
         N=batch_size, prompts=prompts_orig, prompt_type="mixed"
     )  # TODO make ET dataset construction not need prompt_type
-    dataset_new = IOIDataset(N=batch_size, prompts=prompts_new, prompt_type="mixed")
+    dataset_new = IOIDataset(
+        N=batch_size,
+        prompts=prompts_new,
+        prompt_type="mixed",
+        manual_word_idx=dataset_orig.word_idx,
+    )
     return dataset_new, dataset_orig
 
 
