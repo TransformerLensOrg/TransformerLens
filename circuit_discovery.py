@@ -14,14 +14,14 @@ from easy_transformer.ioi_dataset import (
     IOIDataset,
 )
 from easy_transformer.utils_circuit_discovery import (
+    direct_path_patching,
     path_patching,
-    path_patching_old,
     logit_diff_io_s,
     HypothesisTree,
     logit_diff_from_logits,
     get_datasets,
+    direct_path_patching_up_to,
     path_patching_up_to,
-    path_patching_up_to_old,
 )
 
 from easy_transformer.ioi_utils import (
@@ -47,7 +47,7 @@ model.set_use_headwise_qkv_input(True)
 dataset_new, dataset_orig = get_datasets()
 #%%
 
-model = path_patching_old(
+model = path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
@@ -65,7 +65,7 @@ print(f"{logit_difference=}")
 
 #%%
 
-model = path_patching(
+model = direct_path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
@@ -87,7 +87,7 @@ assert torch.allclose(logit_difference.cpu(), new_logit_difference.cpu())
 
 #%%
 
-attn_results, mlp_results = path_patching_up_to(
+attn_results, mlp_results = direct_path_patching_up_to(
     model=model,
     receiver_hook=("blocks.11.hook_resid_post", None),
     important_nodes=[],
@@ -139,7 +139,7 @@ for init_receivers_to_senders in [
         # assert len(last_guy[1]) == 1
         initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
 
-        model = path_patching(
+        model = direct_path_patching(
             model=model,
             orig_data=dataset_orig.toks.long(),
             new_data=dataset_new.toks.long(),
@@ -163,16 +163,16 @@ new_positions = OrderedDict()
 
 keys = ["IO", "S+1", "S", "S2", "end"]
 for key in keys:
-    orig_positions[key] = dataset_orig.word_idx[key]
-    new_positions[key] = dataset_new.word_idx[key]
+    orig_positions[key] = ioi_dataset.word_idx[key]
+    new_positions[key] = abc_dataset.word_idx[key]
 
 h = HypothesisTree(
     model,
     metric=logit_diff_io_s,
-    dataset=dataset_orig,
-    orig_data=dataset_orig.toks.long(),
-    new_data=dataset_new.toks.long(),
-    threshold=0.25,
+    dataset=ioi_dataset,
+    orig_data=ioi_dataset.toks.long(),
+    new_data=abc_dataset.toks.long(),
+    threshold=0.1,
     orig_positions=orig_positions,
     new_positions=new_positions,
     # untested...
@@ -182,7 +182,7 @@ h = HypothesisTree(
 
 #%%
 while True:
-    h.eval(show_graphics=False)
+    h.eval(show_graphics=True)
     a = h.show()
     # save digraph object
     with open("hypothesis_tree.dot", "w") as f:
@@ -200,6 +200,24 @@ while True:
             "-Gdpi=600",
         ]
     )
+#%%
+
+N = 100
+ioi_dataset = IOIDataset(
+    prompt_type="mixed",
+    N=N,
+    tokenizer=model.tokenizer,
+    prepend_bos=False,
+)  # TODO make this a seeded dataset
+
+print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
+
+abc_dataset = (
+    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"))
+)
+
 #%%
 model.reset_hooks()
 dumb_cache = {}

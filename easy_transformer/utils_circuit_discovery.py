@@ -81,7 +81,7 @@ def get_datasets():
     return dataset_new, dataset_orig
 
 
-def path_patching_old(
+def path_patching(
     model: EasyTransformer,
     orig_data,
     new_data,
@@ -208,7 +208,7 @@ def path_patching_old(
         return model
 
 
-def path_patching(
+def direct_path_patching(
     model: EasyTransformer,
     orig_data,
     new_data,
@@ -400,7 +400,7 @@ def path_patching(
     return model
 
 
-def path_patching_up_to(
+def direct_path_patching_up_to(
     model: EasyTransformer,
     receiver_hook,  # this is a tuple of (hook_name, head_idx)
     important_nodes,
@@ -467,7 +467,7 @@ def path_patching_up_to(
                 receivers_to_senders[receiver_hook] = []
             receivers_to_senders[receiver_hook].append((l, h, cur_position))
 
-            model = path_patching(
+            model = direct_path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
@@ -488,7 +488,7 @@ def path_patching_up_to(
             if receiver_hook not in receivers_to_senders:
                 receivers_to_senders[receiver_hook] = []
             receivers_to_senders[receiver_hook].append((l, None, cur_position))
-            cur_logits = path_patching(
+            cur_logits = direct_path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
@@ -679,7 +679,7 @@ class HypothesisTree:
                 # if verbose:
                 print(f"Working on pos {pos}, receiver hook {receiver_hook}")
 
-                attn_results, mlp_results = path_patching_up_to(
+                attn_results, mlp_results = direct_path_patching_up_to(
                     model=self.model,
                     receiver_hook=receiver_hook,
                     important_nodes=self.important_nodes,
@@ -840,7 +840,7 @@ class HypothesisTree:
                 (
                     attn_results,
                     mlp_results,
-                ) = path_patching_up_to_old(  # change to new soon...
+                ) = path_patching_up_to(  # change to new soon...
                     model=self.model,
                     layer=node.layer,
                     metric=self.metric,
@@ -968,7 +968,7 @@ class HypothesisTree:
         return g
 
 
-def path_patching_up_to_old(
+def path_patching_up_to(
     model: EasyTransformer,
     layer: int,
     metric,
@@ -985,7 +985,7 @@ def path_patching_up_to_old(
     mlp_results = np.zeros((layer, 1))
     for l in tqdm(range(layer)):
         for h in range(model.cfg.n_heads):
-            model = path_patching_old(
+            model = path_patching(
                 model,
                 orig_data=orig_data,
                 new_data=new_data,
@@ -999,7 +999,7 @@ def path_patching_up_to_old(
             attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
         # mlp
-        model = path_patching_old(
+        model = path_patching(
             model,
             orig_data=orig_data,
             new_data=new_data,
