@@ -163,8 +163,8 @@ new_positions = OrderedDict()
 
 keys = ["IO", "S+1", "S", "S2", "end"]
 for key in keys:
-    orig_positions[key] = dataset_orig.word_idx[key].item()
-    new_positions[key] = dataset_new.word_idx[key].item()
+    orig_positions[key] = dataset_orig.word_idx[key]
+    new_positions[key] = dataset_new.word_idx[key]
 
 h = HypothesisTree(
     model,
@@ -175,6 +175,7 @@ h = HypothesisTree(
     threshold=0.25,
     orig_positions=orig_positions,
     new_positions=new_positions,
+    # untested...
     use_caching=True,
     direct_paths_only=True,
 )

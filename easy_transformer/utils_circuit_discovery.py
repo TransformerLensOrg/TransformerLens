@@ -339,7 +339,7 @@ def path_patching(
 
             if head_idx is None:
                 assert (
-                    new_z[:, positions_to_use[sender_head_pos], :].shape
+                    new_z[torch.arange(N), positions_to_use[sender_head_pos], :].shape
                     == sender_value.shape
                 ), f"{new_z.shape} != {sender_value.shape}"
                 new_z[
@@ -347,7 +347,9 @@ def path_patching(
                 ] += sender_value
             else:
                 assert (
-                    new_z[:, positions_to_use[sender_head_pos], head_idx].shape
+                    new_z[
+                        torch.arange(N), positions_to_use[sender_head_pos], head_idx
+                    ].shape
                     == sender_value.shape
                 ), f"{new_z[:, positions_to_use[sender_head_pos], head_idx].shape} != {sender_value.shape}, {positions_to_use[sender_head_pos].shape}"
                 new_z[
