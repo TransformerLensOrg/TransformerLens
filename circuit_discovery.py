@@ -14,14 +14,11 @@ from easy_transformer.ioi_dataset import (
     IOIDataset,
 )
 from easy_transformer.utils_circuit_discovery import (
-    path_patching,
-    path_patching_old,
+    direct_path_patching,
     logit_diff_io_s,
     HypothesisTree,
     logit_diff_from_logits,
     get_datasets,
-    path_patching_up_to,
-    path_patching_up_to_old,
 )
 
 from easy_transformer.ioi_utils import (
@@ -34,127 +31,63 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
-
-# %%
 model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 
 model = EasyTransformer.from_pretrained(model_name)
 model.set_use_attn_result(True)
 model.set_use_headwise_qkv_input(True)
 
-#%%
+#%% [markdown]
+# # Load data
 
 dataset_new, dataset_orig = get_datasets()
-#%%
 
-model = path_patching_old(
+#%% [markdown]
+# Get the initial logit difference
+
+model.reset_hooks()
+logit_diff_initial = logit_diff_io_s(model, dataset_orig)
+
+#%% [markdown]
+# Do a direct path patching run
+
+receivers_to_senders = {
+    ("blocks.11.hook_resid_post", None): [
+        (9, 4, "end"),
+        (9, None, "end"),
+    ],  # path the edge (head 9.4 -> logits) at the END position
+    ("blocks.9.hook_resid_mid", None): [
+        (9, 4, "end")
+    ],  # path the edge (head 9.4 -> MLP 9) at END (hook_resid_mid is the input to this MLP)
+    ("blocks.9.attn.hook_v_input", 4): [
+        (5, 9, "S2")
+    ],  # path the edge (head 0.0 -> 9.4 value) at the END position (hook_v_input is the input to the attention layer)
+}
+
+# let's choose the (0.0 -> 9.4) edge as the edge to path the new distribution from
+last_guy = list(receivers_to_senders.items())[-1]
+initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
+
+#%% [markdown]
+# Now do the direct path patching
+
+model = direct_path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    senders=[(9, 9)],
-    # receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
-    receiver_hooks=[(f"blocks.{model.cfg.n_layers-1}.hook_resid_post", None)],
-    position=dataset_orig.word_idx["end"],
-)
-
-logits_old = model(dataset_orig.toks.long()).cpu()
-#%%
-
-logit_difference = logit_diff_from_logits(logits_old, dataset_orig)
-print(f"{logit_difference=}")
-
-#%%
-
-model = path_patching(
-    model=model,
-    orig_data=dataset_orig.toks.long(),
-    new_data=dataset_new.toks.long(),
-    initial_senders=[(9, 9)],
-    receiver_to_senders={
-        ("blocks.11.hook_resid_post", None): [(11, None)],
-        ("blocks.11.hook_mlp_out", None): [(9, 9)],
-    },
-    position=dataset_orig.word_idx["end"].item(),
-)
-
-logits_new = model(dataset_orig.toks.long()).cpu()
-new_logit_difference = logit_diff_from_logits(logits_new, dataset_orig)
-print(f"{new_logit_difference=}")
-
-#%%
-
-assert torch.allclose(logit_difference.cpu(), new_logit_difference.cpu())
-
-#%%
-
-attn_results, mlp_results = path_patching_up_to(
-    model=model,
-    receiver_hook=("blocks.11.hook_resid_post", None),
-    important_nodes=[],
-    metric=logit_diff_from_logits,
-    dataset=dataset_orig,
-    orig_data=dataset_orig.toks.long(),
-    new_data=dataset_new.toks.long(),
-    position=dataset_orig.word_idx["end"].item(),
+    initial_receivers_to_senders=initial_receivers_to_senders,
+    receivers_to_senders=receivers_to_senders,
+    orig_positions=dataset_orig.word_idx,
+    new_positions=dataset_new.word_idx,
     orig_cache=None,
     new_cache=None,
 )
-
+ans = logit_diff_io_s(model, dataset_orig)
 model.reset_hooks()
-logits = model(dataset_orig.toks.long())
-initial_logit_difference = logit_diff_from_logits(logits, dataset_orig).cpu().detach()
-
-#%%
-attn_results -= initial_logit_difference
-attn_results /= initial_logit_difference
-mlp_results -= initial_logit_difference
-mlp_results /= initial_logit_difference
-
-show_pp(attn_results, title="attn_results")
-
-#%%
-
-model.reset_hooks()
-
-for init_receivers_to_senders in [
-    {
-        ("blocks.11.hook_resid_post", None): [(9, 4, "end"), (9, None, "end")],
-        ("blocks.9.hook_resid_mid", None): [(9, 4, "end")],
-        ("blocks.9.attn.hook_v_input", 4): [(0, 0, "IO")],
-    },
-    {
-        ("blocks.11.hook_resid_post", None): [(9, 4, "end"), (9, None, "end")],
-        ("blocks.9.hook_resid_mid", None): [(9, 4, "end")],
-        ("blocks.9.attn.hook_v_input", 4): [(0, 0, "S2")],
-    },
-]:
-    for remove_mid in [True, False]:
-
-        receivers_to_senders = deepcopy(init_receivers_to_senders)
-        if remove_mid:
-            receivers_to_senders.pop(("blocks.9.hook_resid_mid", None))
-
-        # initial_receivers_to_senders = [(("blocks.6.attn.hook_v_input", 11), (0, 0, "S2"))]
-        last_guy = list(receivers_to_senders.items())[-1]
-        # assert len(last_guy[1]) == 1
-        initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
-
-        model = path_patching(
-            model=model,
-            orig_data=dataset_orig.toks.long(),
-            new_data=dataset_new.toks.long(),
-            initial_receivers_to_senders=initial_receivers_to_senders,
-            receivers_to_senders=receivers_to_senders,
-            positions=positions,  #  dataset_orig.word_idx["end"].item(),
-            # current_position="end",
-            orig_cache=None,
-            new_cache=None,
-        )
-        ans = logit_diff_io_s(model, dataset_orig)
-        model.reset_hooks()
-        print(f"{ans=}")
-        print(f"{h.default_metric=}, {ans=}")
-        print(np.abs(h.default_metric - ans) > 1e-5, "!!!")
+print(f"{ans=}")
+print(f"{logit_diff_initial=}, {ans=}")
+assert np.abs(logit_diff_initial - ans) > 1e-5, "!!!"
+# should be a fairly small effect
 
 #%%
 
@@ -163,15 +96,15 @@ new_positions = OrderedDict()
 
 keys = ["IO", "S+1", "S", "S2", "end"]
 for key in keys:
-    orig_positions[key] = ioi_dataset.word_idx[key]
-    new_positions[key] = abc_dataset.word_idx[key]
+    orig_positions[key] = dataset_orig.word_idx[key]
+    new_positions[key] = dataset_new.word_idx[key]
 
 h = HypothesisTree(
     model,
     metric=logit_diff_io_s,
-    dataset=ioi_dataset,
-    orig_data=ioi_dataset.toks.long(),
-    new_data=abc_dataset.toks.long(),
+    dataset=dataset_orig,
+    orig_data=dataset_orig.toks.long(),
+    new_data=dataset_new.toks.long(),
     threshold=0.1,
     orig_positions=orig_positions,
     new_positions=new_positions,
@@ -200,80 +133,3 @@ while True:
             "-Gdpi=600",
         ]
     )
-#%%
-
-N = 100
-ioi_dataset = IOIDataset(
-    prompt_type="mixed",
-    N=N,
-    tokenizer=model.tokenizer,
-    prepend_bos=False,
-)  # TODO make this a seeded dataset
-
-print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
-
-abc_dataset = (
-    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
-    .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"))
-)
-
-#%%
-model.reset_hooks()
-dumb_cache = {}
-model.cache_all(dumb_cache)
-model(dataset_orig.toks.long())
-
-# %%
-# the circuit discovery algorithm
-#
-# we want to write down the process of discovery the IOI circuit as an algorithm
-# 1. start at the logits at the token position 'end', run path patching on each head and mlp.
-# 2. pick threshold (probably in terms of percentage change in metric we care about?), identify components that have effect sizes above threshold
-# 3. for comp in identified components:
-## a. run path patching on all components upstream to it, with the q, k, or v part of comp as receiver
-#%% [markdown]
-# Main part of the automatic circuit discovery algorithm
-
-positions = OrderedDict()
-positions["IO"] = dataset_orig.word_idx["IO"]
-positions["S"] = dataset_orig.word_idx["S"]
-positions["S+1"] = dataset_orig.word_idx["S+1"]
-positions["S2"] = dataset_orig.word_idx["S2"]
-positions["end"] = dataset_orig.word_idx["end"]
-
-h = HypothesisTree(
-    model,
-    metric=logit_diff_io_s,
-    dataset=dataset_orig,
-    orig_data=dataset_orig.toks.long(),
-    new_data=dataset_new.toks.long(),
-    threshold=0.2,
-    possible_positions=positions,
-    use_caching=True,
-    direct_paths_only=True,
-)
-
-#%%
-
-h.eval()
-
-#%%
-
-assert torch.allclose(
-    torch.tensor(h.attn_results).float(),
-    torch.tensor(attn_results).float(),
-    atol=1e-4,
-    rtol=1e-4,
-)
-
-# %%
-h.eval(auto_threshold=3, verbose=True, show_graphics=True)
-while h.current_node is not None:
-    h.eval(auto_threshold=3, verbose=True, show_graphics=True)
-    with open("ioi_small.pkl", "wb") as f:
-        pickle.dump(h, f, pickle.HIGHEST_PROTOCOL)
-
-# %%
-with open("ioi_small.pkl", "rb") as f:
-    h = pickle.load(f)

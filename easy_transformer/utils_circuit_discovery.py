@@ -81,7 +81,7 @@ def get_datasets():
     return dataset_new, dataset_orig
 
 
-def path_patching(
+def old_path_patching(
     model: EasyTransformer,
     orig_data,
     new_data,
@@ -95,6 +95,7 @@ def path_patching(
     new_cache=None,
     prepend_bos=False,  # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
 ):
+    """TODO: synchronize"""
     """MLPs are by default considered as just another component and so are
     by default frozen when collecting acts on receivers.
     orig_data: string, torch.Tensor, or list of strings - any format that can be passed to the model directly
@@ -224,11 +225,16 @@ def direct_path_patching(
     new_cache=None,
 ) -> EasyTransformer:
     """
-    `intial_receiver_to_sender` is a list of pairs representing the edges we patch the new_cache connectiion on
+    Generalisation of the path_patching from the paper, where we only consider direct effects, and never indirect follow through effects.
+
+    `intial_receivers_to_sender` is a list of pairs representing the edges we patch the new_cache connection on.
+
     `receiver_to_senders`: dict of (hook_name, idx, pos) -> [(layer_idx, head_idx, pos), ...]
     these define all of the edges in the graph
 
     NOTE: This relies on several changes to Neel's library (and RR/ET main, too)
+
+    WARNING: this implementation is fairly cursed, mostly because it is in general hard to do these sorts of things with hooks
     """
 
     if (
@@ -814,7 +820,7 @@ class HypothesisTree:
         print("Currently evaluating", node)
 
         current_node_position = node.position
-        for pos in self.possible_positions:
+        for pos in self.orig_positions:
             if (
                 current_node_position != pos and node.head is None
             ):  # MLPs and the end state of the residual stream only care about the last position
@@ -837,10 +843,7 @@ class HypothesisTree:
                 if verbose:
                     print(f"Working on pos {pos}, receiver hook {receiver_hook}")
 
-                (
-                    attn_results,
-                    mlp_results,
-                ) = path_patching_up_to(  # change to new soon...
+                (attn_results, mlp_results,) = old_path_patching_up_to(
                     model=self.model,
                     layer=node.layer,
                     metric=self.metric,
@@ -848,7 +851,7 @@ class HypothesisTree:
                     orig_data=self.orig_data,
                     new_data=self.new_data,
                     receiver_hooks=[receiver_hook],
-                    position=self.possible_positions[
+                    position=self.orig_positions[
                         pos
                     ],  # TODO TODO TODO I think we might need to have an "in position" (pos) as well as an "out position" (node.position)
                     orig_cache=self.orig_cache,
@@ -968,7 +971,7 @@ class HypothesisTree:
         return g
 
 
-def path_patching_up_to(
+def old_path_patching_up_to(
     model: EasyTransformer,
     layer: int,
     metric,
@@ -985,7 +988,7 @@ def path_patching_up_to(
     mlp_results = np.zeros((layer, 1))
     for l in tqdm(range(layer)):
         for h in range(model.cfg.n_heads):
-            model = path_patching(
+            model = old_path_patching(
                 model,
                 orig_data=orig_data,
                 new_data=new_data,
@@ -999,7 +1002,7 @@ def path_patching_up_to(
             attn_results[l, h] = metric(model, dataset)
             model.reset_hooks()
         # mlp
-        model = path_patching(
+        model = old_path_patching(
             model,
             orig_data=orig_data,
             new_data=new_data,
