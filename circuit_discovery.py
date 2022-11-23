@@ -110,7 +110,7 @@ h = HypothesisTree(
     new_positions=new_positions,
     # untested...
     use_caching=True,
-    direct_paths_only=True,
+    direct_paths_only=False,
 )
 
 #%%

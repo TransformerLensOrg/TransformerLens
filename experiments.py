@@ -165,7 +165,7 @@ def plot_path_patching(
 
                 # show attention head results
                 fig = show_pp(
-                    results.T,
+                    results,
                     title=f"Effect of patching (Heads->Final Residual Stream State) path",
                     return_fig=True,
                     show_fig=False,
@@ -631,3 +631,5 @@ for mode, offset in [
     )
     fig.update_layout(title=f"Attention pattern for {mode} mode")
     fig.show()
+
+# %%

@@ -573,12 +573,12 @@ class HypothesisTree:
         self,
         model: EasyTransformer,
         metric: Callable,
-        dataset,
         orig_data,
         new_data,
         threshold: int,
         orig_positions: OrderedDict,
         new_positions: OrderedDict,
+        dataset=None,
         use_caching: bool = True,
         direct_paths_only: bool = False,
     ):
@@ -642,6 +642,31 @@ class HypothesisTree:
         _ = self.model(self.new_data, prepend_bos=False)
 
     def eval(
+        self,
+        threshold: Union[float, None] = None,
+        verbose: bool = False,
+        show_graphics: bool = True,
+        auto_threshold: float = 0.0,
+    ):
+        """A handler."""
+        if self.direct_paths_only:
+            print("1")
+            self.eval_new(
+                threshold=threshold,
+                verbose=verbose,
+                show_graphics=show_graphics,
+                auto_threshold=auto_threshold,
+            )
+        else:
+            print("2")
+            self.eval_old(
+                threshold=threshold,
+                verbose=verbose,
+                show_graphics=show_graphics,
+                auto_threshold=auto_threshold,
+            )
+
+    def eval_new(
         self,
         threshold: Union[float, None] = None,
         verbose: bool = False,
