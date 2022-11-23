@@ -71,6 +71,7 @@ if ipython is not None:
 #%% [markdown]
 # Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
 model = EasyTransformer.from_pretrained("gpt2").cuda()
+model.set_use_headwise_qkv_input(True)
 model.set_use_attn_result(True)
 #%% [markdown]
 # Initialise dataset
@@ -165,7 +166,7 @@ def plot_path_patching(
 
                 # show attention head results
                 fig = show_pp(
-                    results.T,
+                    results,
                     title=f"Effect of patching (Heads->Final Residual Stream State) path",
                     return_fig=True,
                     show_fig=False,
@@ -202,7 +203,7 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False
         sign = -1
     else:
         sign = 1
-    z_0 = model.blocks[1].ln1(cache["blocks.0.hook_resid_post"])
+    z_0 = model.blocks[1].attn.ln1(cache["blocks.0.hook_resid_post"])
 
     v = torch.einsum("eab,bc->eac", z_0, model.blocks[layer].attn.W_V[head])
     v += model.blocks[layer].attn.b_V[head].unsqueeze(0).unsqueeze(0)
@@ -491,6 +492,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
                 model=model,
                 D_new=abc_dataset,
                 D_orig=ioi_dataset,
+                ioi_dataset=ioi_dataset,  # remove this argument if wrong
                 sender_heads=[(source_layer, source_head_idx)],
                 receiver_hooks=receiver_hooks,
                 positions=[pos],
@@ -509,7 +511,7 @@ for idx, extra_hooks in enumerate([[], the_extra_hooks]):
             if source_layer == 11 and source_head_idx == 11:
                 fname = f"svgs/patch_and_freeze_{pos}_{ctime()}_{ri(2134, 123759)}"
                 fig = show_pp(
-                    results.T,
+                    results,
                     title=f"Direct effect of removing heads on logit diff"
                     + ("" if idx == 0 else " (with top 3 name movers knocked out)"),
                     return_fig=True,
@@ -630,3 +632,5 @@ for mode, offset in [
     )
     fig.update_layout(title=f"Attention pattern for {mode} mode")
     fig.show()
+
+# %%

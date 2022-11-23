@@ -130,6 +130,11 @@ class HookedRootModule(nn.Module):
             self.mod_dict[name] = module
             if "HookPoint" in str(type(module)):
                 self.hook_dict[name] = module
+                # ARTHUR TRIED A SOL BUT IT DONT WORK
+                # print("adding i think")
+                # self.hook_dict[name].ctx[
+                #     "name"
+                # ] = name  # added by Arthur, gives HPs access to their name # doesn't work
 
     def hook_points(self):
         return self.hook_dict.values()

@@ -260,7 +260,7 @@ class EasyTransformer(HookedRootModule):
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-    def to_tokens(self, input, prepend_bos=False):
+    def to_tokens(self, input, prepend_bos=True):
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
         if prepend_bos:
             if isinstance(input, str):
@@ -980,6 +980,12 @@ class EasyTransformer(HookedRootModule):
         Toggles whether to explicitly calculate and expose the result for each attention head - useful for interpretability but can easily burn through GPU memory.
         """
         self.cfg.use_attn_result = use_attn_result
+
+    def set_use_headwise_qkv_input(self, use_headwise_qkv_input):
+        """
+        Use Arthur's cursed input head thing
+        """
+        self.cfg.use_headwise_qkv_input = use_headwise_qkv_input
 
     @torch.inference_mode()
     def generate(

@@ -22,3 +22,5 @@ _modidx.py
 *.pt
 *.pth
 *.pkl
+*.gv
+*.dot
