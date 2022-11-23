@@ -237,14 +237,6 @@ def direct_path_patching(
     WARNING: this implementation is fairly cursed, mostly because it is in general hard to do these sorts of things with hooks
     """
 
-    if (
-        0 == initial_receivers_to_senders[0][1][0]
-        and 0 == initial_receivers_to_senders[0][1][1]
-    ) or orig_cache is None:
-        print(
-            "0.0 spotcheck", initial_receivers_to_senders, "is in", receivers_to_senders
-        )
-
     # caching...
     if orig_cache is None:
         # save activations from orig
