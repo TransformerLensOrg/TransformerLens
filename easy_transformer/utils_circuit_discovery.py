@@ -215,7 +215,7 @@ def direct_path_patching(
     initial_receivers_to_senders: List[
         Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int], str]]
     ],  # these are the only edges where we patch from new_cache
-    receivers_to_senders: Dict[  # TODO TODO TODO we need to make INPUT to MLPs work
+    receivers_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int], str]]
     ],  # TODO support for pushing back to token embeddings?
     orig_positions,
