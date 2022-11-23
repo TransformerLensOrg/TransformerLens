@@ -71,6 +71,7 @@ if ipython is not None:
 #%% [markdown]
 # Initialise model (use larger N or fewer templates for no warnings about in-template ablation)
 model = EasyTransformer.from_pretrained("gpt2").cuda()
+model.set_use_headwise_qkv_input(True)
 model.set_use_attn_result(True)
 #%% [markdown]
 # Initialise dataset
@@ -202,7 +203,7 @@ def check_copy_circuit(model, layer, head, ioi_dataset, verbose=False, neg=False
         sign = -1
     else:
         sign = 1
-    z_0 = model.blocks[1].ln1(cache["blocks.0.hook_resid_post"])
+    z_0 = model.blocks[1].attn.ln1(cache["blocks.0.hook_resid_post"])
 
     v = torch.einsum("eab,bc->eac", z_0, model.blocks[layer].attn.W_V[head])
     v += model.blocks[layer].attn.b_V[head].unsqueeze(0).unsqueeze(0)

@@ -353,7 +353,7 @@ class Attention(nn.Module):
                     einsum(
                         "batch pos d_model, head_index d_model d_head \
                         -> batch pos head_index d_head",
-                        resid_pre,
+                        self.ln1(resid_pre),
                         self.W_Q,
                     )
                     + self.b_Q
@@ -362,7 +362,7 @@ class Attention(nn.Module):
                     einsum(
                         "batch pos d_model, head_index d_model d_head \
                         -> batch pos head_index d_head",
-                        resid_pre,
+                        self.ln1(resid_pre),
                         self.W_K,
                     )
                     + self.b_K
@@ -374,7 +374,7 @@ class Attention(nn.Module):
                 einsum(
                     "batch pos d_model, head_index d_model d_head \
                     -> batch pos head_index d_head",
-                    resid_pre,
+                    self.ln1(resid_pre),
                     self.W_V,
                 )
                 + self.b_V
