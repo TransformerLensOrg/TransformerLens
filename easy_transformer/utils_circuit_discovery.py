@@ -642,7 +642,6 @@ class HypothesisTree:
     ):
         """A handler."""
         if self.direct_paths_only:
-            print("1")
             self.eval_new(
                 threshold=threshold,
                 verbose=verbose,
@@ -650,7 +649,6 @@ class HypothesisTree:
                 auto_threshold=auto_threshold,
             )
         else:
-            print("2")
             self.eval_old(
                 threshold=threshold,
                 verbose=verbose,

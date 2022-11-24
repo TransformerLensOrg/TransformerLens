@@ -40,7 +40,22 @@ model.set_use_headwise_qkv_input(True)
 #%% [markdown]
 # # Load data
 
-dataset_new, dataset_orig = get_datasets()
+N = 50
+
+dataset_orig = IOIDataset(
+    prompt_type="mixed",
+    N=N,
+    tokenizer=model.tokenizer,
+    prepend_bos=False,
+)  # TODO make this a seeded dataset
+
+# we make the ABC dataset in order to knockout other model components
+
+dataset_new = (  # TODO seeded
+    dataset_orig.gen_flipped_prompts(("IO", "RAND"))
+    .gen_flipped_prompts(("S", "RAND"))
+    .gen_flipped_prompts(("S1", "RAND"))
+)
 
 #%% [markdown]
 # Get the initial logit difference
@@ -110,12 +125,12 @@ h = HypothesisTree(
     new_positions=new_positions,
     # untested...
     use_caching=True,
-    direct_paths_only=False,
+    direct_paths_only=True,
 )
 
 #%%
 while True:
-    h.eval(show_graphics=True)
+    h.eval(show_graphics=False)
     a = h.show()
     # save digraph object
     with open("hypothesis_tree.dot", "w") as f:
@@ -133,3 +148,5 @@ while True:
             "-Gdpi=600",
         ]
     )
+
+# %%
