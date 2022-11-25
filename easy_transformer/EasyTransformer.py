@@ -249,7 +249,10 @@ class EasyTransformer(HookedRootModule):
             )
 
     def __handle_return_for_forward__(
-        self, residual: Internal, tokens: TokensTensor, return_type: Optional[str]
+        self,
+        residual: Internal,
+        tokens: TokensTensor,
+        return_type: Optional[Literal["logits", "loss", "both"]],
     ):
         if return_type is None:
             return None
@@ -262,7 +265,7 @@ class EasyTransformer(HookedRootModule):
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
-                    return (logits, loss)
+                    return Output(logits, loss)
                 else:
                     logging.warning(f"Invalid return_type passed in: {return_type}")
                     return None
