@@ -29,3 +29,5 @@ TODO this doesn't seem to work?
 `python3 easy_transformer/tests/test_experiments.py`
 
 When testing type annotations, check out `easy_transformer/tests/test_type_annotations.py`.
+
+You might also like `pytest -q` for a quieter life. :) 

@@ -2,7 +2,7 @@ import logging
 import re
 from collections import namedtuple
 from functools import lru_cache, partial
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -23,12 +23,15 @@ from easy_transformer.FactoredMatrix import FactoredMatrix
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from easy_transformer.past_key_value_caching import EasyTransformerKeyValueCache
 
+from .hook_points import *
+
 # Type alias for a single element tensor
 Loss = TT[()]
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
     logits: TT["batch", "pos", "d_vocab"]
     loss: Loss
+
 
 TokensTensor = TT["batch", "pos"]
 InputForForwardLayer = Union[str, List[str], TokensTensor]
@@ -45,16 +48,26 @@ class EasyTransformer(HookedRootModule):
     """
 
     @classmethod
-    def __generate_tokenizer__(cls, config: EasyTransformerConfig, tokenizer: Optional[PreTrainedTokenizer])-> Optional[PreTrainedTokenizer]:
+    def __generate_tokenizer__(
+        cls, config: EasyTransformerConfig, tokenizer: Optional[PreTrainedTokenizer]
+    ):
         if tokenizer is not None:
             return tokenizer
 
         if config.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            result: PreTrainedTokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
-            result.eos_token = result.eos_token if result.eos_token is not None else "<|endoftext|>"
-            result.pad_token = result.pad_token if result.pad_token is not None else result.eos_token
-            result.bos_token = result.bos_token if result.bos_token is not None else result.eos_token
+            result: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
+                config.tokenizer_name
+            )
+            result.eos_token = (
+                result.eos_token if result.eos_token is not None else "<|endoftext|>"
+            )
+            result.pad_token = (
+                result.pad_token if result.pad_token is not None else result.eos_token
+            )
+            result.bos_token = (
+                result.bos_token if result.bos_token is not None else result.eos_token
+            )
             return result
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
@@ -70,12 +83,14 @@ class EasyTransformer(HookedRootModule):
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
     @classmethod
-    def __generate_config__(cls, config: Union[EasyTransformerConfig, Dict])-> EasyTransformerConfig:
+    def __generate_config__(
+        cls, config: Union[EasyTransformerConfig, Dict]
+    ) -> EasyTransformerConfig:
         if isinstance(config, Dict):
             config = EasyTransformerConfig(**config)
             return config
         elif isinstance(config, EasyTransformerConfig):
-            return config 
+            return config
         else:
             raise ValueError(
                 "Please pass in a config dictionary or EasyTransformerConfig object. If you want to load a pretrained model, use EasyTransformer.from_pretrained() instead."
@@ -276,9 +291,7 @@ class EasyTransformer(HookedRootModule):
         pos_offset = self.__get_pos_offset_for_forward__(
             tokens=tokens, past_kv_cache=past_kv_cache
         )
-        embedding = self.__get_embedding__(
-            tokens=tokens, pos_offset=pos_offset
-        )
+        embedding = self.__get_embedding__(tokens=tokens, pos_offset=pos_offset)
 
         # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
         get_past_kv_cache_entry = (
@@ -291,7 +304,7 @@ class EasyTransformer(HookedRootModule):
             # residual + block(residual)
             residual = block(
                 residual,
-                past_kv_cache=get_past_kv_cache_entry(i),
+                past_kv_cache_entry=get_past_kv_cache_entry(i),
                 shortformer_pos_embed=shortformer_pos_embed,
             )
         if self.cfg.normalization_type is not None:
@@ -350,9 +363,9 @@ class EasyTransformer(HookedRootModule):
         input: Union[str, List[str]],
         prepend_bos: bool = True,
         move_to_device: bool = True,
-    ) -> TT["batch", "pos"]: # TODO change this type
+    ) -> TT["batch", "pos"]:  # TODO change this type
         """
-        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. 
+        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model.
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
         (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
@@ -469,8 +482,8 @@ class EasyTransformer(HookedRootModule):
                 search in. Can be a string or a rank 1 tensor or a rank 2 tensor
                 with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
-            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to 
-                the function, otherwise ignored. 
+            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to
+                the function, otherwise ignored.
         """
         if isinstance(tokens, str):
             # If the tokens are a string, convert to tensor
@@ -490,7 +503,7 @@ class EasyTransformer(HookedRootModule):
             single_token = single_token.item()
 
         indices = torch.arange(len(tokens))[tokens == single_token]
-        assert len(indices)>0, f"The token does not occur in the prompt"
+        assert len(indices) > 0, f"The token does not occur in the prompt"
         if mode == "first":
             return indices[0].item()
         elif mode == "last":
@@ -498,11 +511,15 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def tokens_to_residual_directions(self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]) -> Union[TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]]:
+    def tokens_to_residual_directions(
+        self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]
+    ) -> Union[
+        TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]
+    ]:
         """Maps tokens to a tensor with the unembedding vector for those tokens, ie the vector in the residual stream that we dot with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map. This is done automatically with the fold_ln flag on from_pretrained
-        
+
         WARNING 2: LayerNorm scaling will scale up or down the effective direction in the residual stream for each output token on any given input token position. ActivationCache.apply_ln_to_stack will apply the appropriate scaling to these directions.
 
         Args:
@@ -512,10 +529,12 @@ class EasyTransformer(HookedRootModule):
         Returns:
             residual_direction torch.Tensor: The unembedding vector for the token(s), a stack of [d_model] tensor.
         """
-        if isinstance(tokens, torch.Tensor) and tokens.numel()>1:
+        if isinstance(tokens, torch.Tensor) and tokens.numel() > 1:
             # If the tokens are a tensor, and have more than one element, assume they are a batch of tokens
             residual_directions = self.W_U[:, tokens]
-            residual_directions = einops.rearrange(residual_directions, "d_model ... -> ... d_model")
+            residual_directions = einops.rearrange(
+                residual_directions, "d_model ... -> ... d_model"
+            )
             return residual_directions
         else:
             # Otherwise there is a single token
@@ -523,13 +542,12 @@ class EasyTransformer(HookedRootModule):
                 token = self.to_single_token(tokens)
             elif isinstance(tokens, int):
                 token = tokens
-            elif isinstance(tokens, torch.Tensor) and tokens.numel()==1:
+            elif isinstance(tokens, torch.Tensor) and tokens.numel() == 1:
                 token = tokens.item()
             else:
                 raise ValueError(f"Invalid token type: {type(tokens)}")
             residual_direction = self.W_U[:, token]
             return residual_direction
-
 
     def to(self, device_or_dtype):
         """
@@ -553,7 +571,7 @@ class EasyTransformer(HookedRootModule):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cpu")
 
-    # written in this style because this guarantees that [self] isn't set inside here 
+    # written in this style because this guarantees that [self] isn't set inside here
     @classmethod
     def from_pretrained(
         cls,
