@@ -30,4 +30,5 @@ TODO this doesn't seem to work?
 
 When testing type annotations, check out `easy_transformer/tests/test_type_annotations.py`.
 
-You might also like `pytest -q` for a quieter life. :) 
+You might also like `pytest -q` for a quieter life. :) Or e.g. to just run one `test_model`, `pytest -k "test_model[gpt2-small-5.331855773925781]"`.
+Or to report progress as you go: `pytest --verbose`.

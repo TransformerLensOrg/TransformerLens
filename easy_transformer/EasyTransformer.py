@@ -258,7 +258,7 @@ class EasyTransformer(HookedRootModule):
             if return_type == "logits":
                 return logits
             else:
-                loss = lm_cross_entropy_loss(logits, tokens)
+                loss = utils.lm_cross_entropy_loss(logits, tokens)
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
