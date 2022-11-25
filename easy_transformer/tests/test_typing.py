@@ -24,4 +24,4 @@ def test_typing():
     logits_tokens = model(tokens)
     logits_text: TT[1, "n_tokens", "d_vocab"] = model(prompt, prepend_bos=False)
 
-    assert logits_text.shape == t.tensor([1, 2, 3])
+    assert logits_text.shape == t.Size([1, 3, 50257])
