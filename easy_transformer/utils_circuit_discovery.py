@@ -219,7 +219,7 @@ def direct_path_patching(
     receivers_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int], str]]
     ],  # TODO support for pushing back to token embeddings?
-    orig_positions,
+    orig_positions, # tensor of shape (batch_size,)
     new_positions,
     orig_cache=None,
     new_cache=None,
@@ -866,9 +866,7 @@ class HypothesisTree:
                     orig_data=self.orig_data,
                     new_data=self.new_data,
                     receiver_hooks=[receiver_hook],
-                    position=self.orig_positions[
-                        pos
-                    ],  # TODO TODO TODO I think we might need to have an "in position" (pos) as well as an "out position" (node.position)
+                    position=self.orig_positions[pos],
                     orig_cache=self.orig_cache,
                     new_cache=self.new_cache,
                 )
@@ -994,7 +992,7 @@ def old_path_patching_up_to(
     orig_data,
     new_data,
     receiver_hooks,
-    position,
+    position, # tensor of dimension (batch_size,)
     orig_cache=None,
     new_cache=None,
 ):
@@ -1010,7 +1008,7 @@ def old_path_patching_up_to(
                 senders=[(l, h)],
                 receiver_hooks=receiver_hooks,
                 max_layer=model.cfg.n_layers,
-                position=position,
+                position=position.item(),
                 orig_cache=orig_cache,
                 new_cache=new_cache,
             )

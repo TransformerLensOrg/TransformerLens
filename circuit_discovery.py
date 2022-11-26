@@ -31,7 +31,14 @@ ipython = get_ipython()
 if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
+
 model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
+
+short_model_names = {
+    "gpt2": "gpt2",
+    "EleutherAI/gpt_neo_125M": "gpt_neo_125M",
+    "facebook/opt-125m": "opt_125m",
+}
 
 model = EasyTransformer.from_pretrained(model_name)
 model.set_use_attn_result(True)
@@ -40,7 +47,7 @@ model.set_use_headwise_qkv_input(True)
 #%% [markdown]
 # # Load data
 
-N = 50
+N = 1
 
 dataset_orig = IOIDataset(
     prompt_type="mixed",
@@ -106,47 +113,51 @@ assert np.abs(logit_diff_initial - ans) > 1e-5, "!!!"
 
 #%%
 
-orig_positions = OrderedDict()
-new_positions = OrderedDict()
+for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
+    model = EasyTransformer.from_pretrained(model_name)
+    model.set_use_attn_result(True)
+    model.set_use_headwise_qkv_input(True)
 
-keys = ["IO", "S+1", "S", "S2", "end"]
-for key in keys:
-    orig_positions[key] = dataset_orig.word_idx[key]
-    new_positions[key] = dataset_new.word_idx[key]
+    for thresh in [0.1, 0.05, 0.02, 0.01]:
+        model.reset_hooks()
+        orig_positions = OrderedDict()
+        new_positions = OrderedDict()
+        keys = ["IO", "S+1", "S", "S2", "end"]
+        for key in keys:
+            orig_positions[key] = dataset_orig.word_idx[key]
+            new_positions[key] = dataset_new.word_idx[key]
 
-h = HypothesisTree(
-    model,
-    metric=logit_diff_io_s,
-    dataset=dataset_orig,
-    orig_data=dataset_orig.toks.long(),
-    new_data=dataset_new.toks.long(),
-    threshold=0.1,
-    orig_positions=orig_positions,
-    new_positions=new_positions,
-    # untested...
-    use_caching=True,
-    direct_paths_only=True,
-)
+        h = HypothesisTree(
+            model,
+            metric=logit_diff_io_s,
+            dataset=dataset_orig[:1],
+            orig_data=dataset_orig.toks.long(),
+            new_data=dataset_new.toks.long(),
+            threshold=thresh,
+            orig_positions=orig_positions,
+            new_positions=new_positions,
+            use_caching=True,
+            direct_paths_only=True,
+        )
+        while True:
+            h.eval(show_graphics=True, verbose=True)
+            a = h.show()
+            # save digraph object
+            with open("hypothesis_tree.dot", "w") as f:
+                f.write(a.source)
+            # convert to png
+            from subprocess import call
 
-#%%
-while True:
-    h.eval(show_graphics=False)
-    a = h.show()
-    # save digraph object
-    with open("hypothesis_tree.dot", "w") as f:
-        f.write(a.source)
-    # convert to png
-    from subprocess import call
-
-    call(
-        [
-            "dot",
-            "-Tpng",
-            "hypothesis_tree.dot",
-            "-o",
-            f"pngs/hypothesis_tree_{ctime()}.png",
-            "-Gdpi=600",
-        ]
-    )
+            call(
+                [
+                    "dot",
+                    "-Tpng",
+                    "hypothesis_tree.dot",
+                    "-o",
+                    f"pngs/{short_model_names[model.cfg.model_name]}_hypothesis_tree_{ctime()}_{thresh}.png",
+                    "-Gdpi=600",
+                ]
+            )
 
 # %%
+# evaluate the circuit, when we KO everything else
