@@ -47,7 +47,7 @@ model.set_use_headwise_qkv_input(True)
 #%% [markdown]
 # # Load data
 
-N = 1
+N = 50
 
 dataset_orig = IOIDataset(
     prompt_type="mixed",
@@ -130,7 +130,7 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
         h = HypothesisTree(
             model,
             metric=logit_diff_io_s,
-            dataset=dataset_orig[:1],
+            dataset=dataset_orig,
             orig_data=dataset_orig.toks.long(),
             new_data=dataset_new.toks.long(),
             threshold=thresh,

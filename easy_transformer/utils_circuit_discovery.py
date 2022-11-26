@@ -44,19 +44,16 @@ def patch_all(z, source_act, hook):
 
 
 def patch_positions(z, source_act, hook, positions):
-    if positions is None:  # same as patch_all
-        raise NotImplementedError(
-            "haven't implemented not specifying positions to patch"
-        )
-        # return source_act
-    else:
-        batch = z.shape[0]
-        cur_positions = torch.tensor(positions)
-        if len(cur_positions.shape) == 0:
-            cur_positions = cur_positions.unsqueeze(0)
-        for pos in cur_positions:
-            z[torch.arange(batch), pos] = source_act[torch.arange(batch), pos]
-        return z
+    assert isinstance(
+        positions, torch.Tensor
+    ), "Dropped support for everything that isn't a tensor of shape (batchsize,)"
+    assert (
+        source_act.shape[0] == positions.shape[0] == z.shape[0]
+    ), f"Batch size mismatch {source_act.shape} {positions.shape} {z.shape}"
+    batch_size = source_act.shape[0]
+
+    z[torch.arange(batch_size), positions] = source_act[torch.arange(batch_size), positions]
+    return z
 
 
 def get_datasets():
@@ -87,8 +84,8 @@ def old_path_patching(
     new_data,
     senders: List[Tuple],
     receiver_hooks: List[Tuple],
+    positions: torch.Tensor,
     max_layer: Union[int, None] = None,
-    position: int = 0,
     return_hooks: bool = False,
     freeze_mlps: bool = True,
     orig_cache=None,
@@ -103,7 +100,7 @@ def old_path_patching(
     senders: list of tuples (layer, head) for attention heads and (layer, None) for mlps
     receiver_hooks: list of tuples (hook_name, head) for attn heads and (hook_name, None) for mlps
     max_layer: layers beyond max_layer are not frozen when collecting receiver activations
-    positions: default None and patch at all positions, or a tensor specifying the positions at which to patch
+    positions: tensor of shape (batch_size,) that specifies which positions to patch
     NOTE: This relies on a change to the cache_some() function in EasyTransformer/hook_points.py [we .clone() activations, unlike in neelnanda-io/EasyTransformer]
     """
     if max_layer is None:
@@ -177,7 +174,7 @@ def old_path_patching(
     for hook_name, head in sender_hooks:
         # assert not torch.allclose(orig_cache[hook_name], new_cache[hook_name]), (hook_name, head)
         hook = get_act_hook(
-            partial(patch_positions, positions=[position]),
+            partial(patch_positions, positions=positions),
             alt_act=new_cache[hook_name],
             idx=head,
             dim=2 if head is not None else None,
@@ -194,7 +191,7 @@ def old_path_patching(
     for hook_name, head in receiver_hooks:
         # assert not torch.allclose(orig_cache[hook_name], receiver_cache[hook_name])
         hook = get_act_hook(
-            partial(patch_positions, positions=[position]),
+            partial(patch_positions, positions=positions),
             alt_act=receiver_cache[hook_name],
             idx=head,
             dim=2 if head is not None else None,
@@ -219,7 +216,7 @@ def direct_path_patching(
     receivers_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[int, Optional[int], str]]
     ],  # TODO support for pushing back to token embeddings?
-    orig_positions, # tensor of shape (batch_size,)
+    orig_positions,  # tensor of shape (batch_size,)
     new_positions,
     orig_cache=None,
     new_cache=None,
@@ -866,7 +863,7 @@ class HypothesisTree:
                     orig_data=self.orig_data,
                     new_data=self.new_data,
                     receiver_hooks=[receiver_hook],
-                    position=self.orig_positions[pos],
+                    positions=self.orig_positions[pos],
                     orig_cache=self.orig_cache,
                     new_cache=self.new_cache,
                 )
@@ -992,7 +989,7 @@ def old_path_patching_up_to(
     orig_data,
     new_data,
     receiver_hooks,
-    position, # tensor of dimension (batch_size,)
+    positions,  # tensor of dimension (batch_size,)
     orig_cache=None,
     new_cache=None,
 ):
@@ -1008,7 +1005,7 @@ def old_path_patching_up_to(
                 senders=[(l, h)],
                 receiver_hooks=receiver_hooks,
                 max_layer=model.cfg.n_layers,
-                position=position.item(),
+                positions=positions,
                 orig_cache=orig_cache,
                 new_cache=new_cache,
             )
@@ -1022,7 +1019,7 @@ def old_path_patching_up_to(
             senders=[(l, None)],
             receiver_hooks=receiver_hooks,
             max_layer=model.cfg.n_layers,
-            position=position,
+            positions=positions,
             orig_cache=orig_cache,
             new_cache=new_cache,
         )
