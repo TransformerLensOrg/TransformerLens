@@ -367,6 +367,10 @@ def direct_path_patching(
         assert (
             z.shape == orig_cache[hook_name].shape
         ), f"Shape mismatch: {z.shape} vs {orig_cache[hook_name].shape}"
+        if hook_name == "blocks.0.hook_resid_pre" and not torch.allclose(
+            z, orig_cache["blocks.0.hook_resid_pre"]
+        ):
+            a = 1
         z[:] = orig_cache[hook_name]
         return z
 
@@ -526,6 +530,7 @@ def direct_path_patching_up_to(
     initial_receivers_to_senders = [
         (receiver_hook, (sender_hook[0], sender_hook[1], cur_position))
     ]
+    model.reset_hooks()
     cur_logits = direct_path_patching(
         model=model,
         orig_data=orig_data,
@@ -537,10 +542,14 @@ def direct_path_patching_up_to(
         orig_cache=orig_cache,
         new_cache=new_cache,
     )
-    embed_results = metric(cur_logits, dataset)
+    embed_results = torch.tensor(metric(cur_logits, dataset))
     model.reset_hooks()
 
-    return attn_results.cpu().detach(), mlp_results.cpu().detach(), embed_results
+    return (
+        attn_results.cpu().detach(),
+        mlp_results.cpu().detach(),
+        embed_results.cpu().detach(),
+    )
 
 
 def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
@@ -768,11 +777,14 @@ class HypothesisTree:
 
                 self.attn_results = attn_results.clone()
                 self.mlp_results = mlp_results.clone()
+                self.embed_results = torch.tensor(embed_results).clone()
                 # convert to percentage
                 attn_results -= self.default_metric
                 attn_results /= self.default_metric
                 mlp_results -= self.default_metric
                 mlp_results /= self.default_metric
+                embed_results -= self.default_metric
+                embed_results /= self.default_metric
 
                 if show_graphics:
                     show_pp(

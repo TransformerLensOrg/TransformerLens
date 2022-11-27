@@ -160,3 +160,7 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
 
 # %%
 # evaluate the circuit, when we KO everything else
+
+# run on dataset_new
+# patch in the embeds from dataset_orig !!!
+# for all other heads, yah
