@@ -1,7 +1,9 @@
 import logging
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
 
-import torch
+import torch as t
+import torch.nn as nn
 from torchtyping import TensorType as TT
 from transformers import (
     AutoModelForMaskedLM,  # unfortunately the suggestion to import from the non-private location doesn't work; it makes [from_pretrained == None]
@@ -20,6 +22,12 @@ from .EasyBERTConfig import EasyBERTConfig  # TODO can we simplify this import?
 # TODO share this type declaration with [EasyTransformer.py]
 TokensTensor = TT["batch", "pos"]
 InputForForwardLayer = Union[str, List[str], TokensTensor]
+
+
+@dataclass
+class Output:
+    logits: TT["batch", "seq", "vocab"]
+    last_hidden_state: TT["batch", "seq", "hidden"]
 
 
 class EasyBERT(HookedRootModule):
@@ -89,8 +97,12 @@ class EasyBERT(HookedRootModule):
         self.tokenizer = EasyBERT.__generate_tokenizer__(self.config, tokenizer)
         self.embeddings = embeddings.Embeddings(config)
         self.encoder = encoder.Encoder(config)
+        self.encoding_to_vocab = nn.Linear(config.hidden_size, config.d_vocab)
+        self.softmax = nn.LogSoftmax(
+            dim=-1
+        )  # TODO why is this with [nn] instead of just [F.softmax]?
 
-    def __load_embedding_state_dict__(self, state_dict: Dict[str, torch.Tensor]):
+    def __load_embedding_state_dict__(self, state_dict: Dict[str, t.Tensor]):
         self.embeddings.word_embeddings.load_state_dict(
             {"weight": state_dict["bert.embeddings.word_embeddings.weight"]}
         )
@@ -107,13 +119,19 @@ class EasyBERT(HookedRootModule):
             }
         )
 
-    def __load_cls_state_dict__(self, state_dict: Dict[str, torch.Tensor]):
+    def __load_cls_state_dict__(self, state_dict: Dict[str, t.Tensor]):
         """
-        'cls.predictions.bias', 'cls.predictions.transform.dense.weight', 'cls.predictions.transform.dense.bias', 'cls.predictions.transform.LayerNorm.weight', 'cls.predictions.transform.LayerNorm.bias', 'cls.predictions.decoder.weight', 'cls.predictions.decoder.bias'])"""
-        pass  # TODO do we need to do this? I think we do
+        'cls.predictions.bias', 'cls.predictions.transform.dense.weight', 'cls.predictions.transform.dense.bias', 'cls.predictions.transform.LayerNorm.weight', 'cls.predictions.transform.LayerNorm.bias', ])"""
+        # TODO what about layer norm?
+        self.encoding_to_vocab.load_state_dict(
+            {
+                "weight": state_dict["cls.predictions.decoder.weight"],
+                "bias": state_dict["cls.predictions.decoder.bias"],
+            }
+        )
 
     def __load_layer_state_dict__(
-        self, layer_index: int, state_dict: Dict[str, torch.Tensor]
+        self, layer_index: int, state_dict: Dict[str, t.Tensor]
     ):
         # TODO
         base_name = f"bert.encoder.layer.{layer_index}."
@@ -145,11 +163,11 @@ class EasyBERT(HookedRootModule):
 
         # TODO add layer norm weights
 
-    def __load_encoder_state_dict__(self, state_dict: Dict[str, torch.Tensor]):
+    def __load_encoder_state_dict__(self, state_dict: Dict[str, t.Tensor]):
         for layer_index in range(self.config.n_layers):
             self.__load_layer_state_dict__(layer_index, state_dict)
 
-    def load_and_process_state_dict(self, state_dict: Dict[str, torch.Tensor]):
+    def load_and_process_state_dict(self, state_dict: Dict[str, t.Tensor]):
         self.__load_embedding_state_dict__(state_dict)
         self.__load_encoder_state_dict__(state_dict)
         self.__load_cls_state_dict__(state_dict)
@@ -158,7 +176,7 @@ class EasyBERT(HookedRootModule):
     def __make_tokens_for_forward__(
         self, x: InputForForwardLayer, prepend_bos: bool
     ) -> TokensTensor:
-        tokens: torch.Tensor  # set inside the function body
+        tokens: t.Tensor  # set inside the function body
         if type(x) == str or type(x) == list:
             # If text, convert to tokens (batch_size=1)
             assert (
@@ -170,7 +188,7 @@ class EasyBERT(HookedRootModule):
             tokens = self.to_tokens(x, prepend_bos=prepend_bos)
         else:
             assert isinstance(
-                x, torch.Tensor
+                x, t.Tensor
             )  # typecast; we know that this is ok because of the above logic
             tokens = x
         if len(tokens.shape) == 1:
@@ -178,10 +196,10 @@ class EasyBERT(HookedRootModule):
             tokens = tokens[None]
         if tokens.device.type != self.config.device:
             tokens = tokens.to(self.config.device)
-        assert isinstance(tokens, torch.Tensor)
+        assert isinstance(tokens, t.Tensor)
         return tokens
 
-    def __to_segment_ids__(self, tokens: TokensTensor) -> torch.Tensor:
+    def __to_segment_ids__(self, tokens: TokensTensor) -> t.Tensor:
         # TODO this is a bit hacky, but it works. We should probably make a proper segment id tensor
         # lol thanks copilot, which suggested zeros_like
         return self.tokenizer(tokens, return_tensors="pt", padding=True)[
@@ -202,16 +220,18 @@ class EasyBERT(HookedRootModule):
                 # This is only intended to support passing in a single string
                 result = self.__to_segment_ids__(x)
             else:
-                assert isinstance(x, torch.Tensor)
+                assert isinstance(x, t.Tensor)
         else:
             result = passed_segment_ids
         return result
 
-    # TODO do we want [segment_info]? what is it used for?
     # TODO add [return_type] and maybe [prepend_bos] and maybe [past_kv_cache] and maybe [append_eos]
-    def forward(self, x: InputForForwardLayer, segment_ids: TT["batch", "seq"] = None):
+    def forward(
+        self, x: InputForForwardLayer, segment_ids: TT["batch", "seq"] = None
+    ) -> Output:
+        # TODO document [segment_ids]
         # attention masking for padded token
-        # torch.ByteTensor([batch_size, 1, seq_len, seq_len)
+        # t.ByteTensor([batch_size, 1, seq_len, seq_len)
         tokens = self.__make_tokens_for_forward__(
             x, prepend_bos=False
         )  # TODO really, always False?
@@ -223,8 +243,10 @@ class EasyBERT(HookedRootModule):
             tokens,
             actual_segment_ids,
         )  # TODO is there a way to make python complain about the variable named [input]?
-        encoded = self.encoder(embedded, mask)
-        return encoded
+        last_hidden_state = self.encoder(embedded, mask)
+        # TODO return both NSP and MLM logits
+        logits = self.softmax(self.encoding_to_vocab(last_hidden_state))
+        return Output(logits=logits, last_hidden_state=last_hidden_state)
 
     # TODO maybe change the order?
     def to_tokens(

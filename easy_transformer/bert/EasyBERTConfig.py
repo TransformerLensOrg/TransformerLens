@@ -6,7 +6,7 @@ import torch as t
 
 @dataclass
 class EasyBERTConfig:
-    """TODO"""
+    # TODO make all of these naming schemes the same
 
     model_name: str  # TODO use types to encode the officialness of this model name
 
