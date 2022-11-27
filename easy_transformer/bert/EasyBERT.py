@@ -48,7 +48,7 @@ class EasyBERT(HookedRootModule):
             n_layers=12,
             n_heads=12,
             hidden_size=768,
-            dropout=0.1,
+            dropout=0.0,
             model_name=official_model_name,
             d_vocab=30522,
             max_len=512,

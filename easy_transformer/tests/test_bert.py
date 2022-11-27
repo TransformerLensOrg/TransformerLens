@@ -164,6 +164,7 @@ def test_that_im_awesome():
         # TODO i bet the mask is part of the story
         # in hugging face, the hidden states change slowly from embedding to the output of the first layer
         # in ours..., wait, is that true?
+        # TODO also check that we have used all the weights- im sure we missed some
         assert t.allclose(our_hidden_state, hf_hidden_state, atol=atol)
 
     assert our_output.logits.shape == hf_output.logits.shape
