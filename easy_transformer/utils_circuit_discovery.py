@@ -289,7 +289,7 @@ def direct_path_patching(
         hook,
         head_idx=None,
     ):
-        """ "Probably too many asserts, ignore them"""
+        """Probably too many asserts, ignore them"""
         new_z = z.clone()
         N = z.shape[0]
         hook_name = hook.ctx["hook_name"]
@@ -447,9 +447,6 @@ def direct_path_patching_up_to(
                     qkv_hook = get_hook_tuple(receiver.layer, receiver.head, comp)
                     if qkv_hook not in base_receivers_to_senders:
                         base_receivers_to_senders[qkv_hook] = []
-                    warnings.warn(
-                        "I think we need finer grained position control: this will just be the "
-                    )
                     sender_hook = get_hook_tuple(sender_child.layer, sender_child.head)
                     base_receivers_to_senders[qkv_hook].append(
                         (sender_hook[0], sender_hook[1], sender_child.position)
@@ -1036,6 +1033,36 @@ class HypothesisTree:
             raise RuntimeError(
                 "Cannot extract model while there are still nodes to explore"
             )
+
+    def evalute_circuit(self):
+        if not (self.current_node is None and self.direct_paths_only):
+            raise NotImplementedError("Make circuit full")
+        initial_receivers_to_senders = []
+        receivers_to_senders = {}
+
+        for node in self.important_nodes:
+            for child in node.children:
+                # add an edge
+                pass
+            # if node is an embedder, add it to the initial_ shit
+
+        for pos in self.orig_positions:
+            assert torch.allclose(
+                self.orig_data[pos], self.new_data[pos]
+            ), "Data must be the same for all positions"
+
+        model = direct_path_patching(
+            model=self.model,
+            orig_data=self.new_data,  # NOTE these are different
+            new_data=self.orig_data,
+            initial_receivers_to_senders=initial_receivers_to_senders,
+            receivers_to_senders=receivers_to_senders,
+            orig_positions=self.orig_positions,  # tensor of shape (batch_size,)
+            new_positions=self.new_positions,
+            orig_cache=None,
+            new_cache=None,
+        )
+        ld = logit_diff_io_s(model, self.dataset)
 
 
 def old_path_patching_up_to(

@@ -117,7 +117,7 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
     model.set_use_attn_result(True)
     model.set_use_headwise_qkv_input(True)
 
-    for thresh in [0.1, 0.05, 0.02, 0.01]:
+    for thresh in [0.1]:  # , 0.05, 0.02, 0.01]:
         model.reset_hooks()
         orig_positions = OrderedDict()
         new_positions = OrderedDict()
@@ -139,7 +139,7 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
             direct_paths_only=True,
         )
         while h.current_node is not None:
-            h.eval(show_graphics=True, verbose=True)
+            h.eval(show_graphics=False, verbose=True)
             a = h.show()
             # save digraph object
             with open("hypothesis_tree.dot", "w") as f:
@@ -157,6 +157,7 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
                     "-Gdpi=600",
                 ]
             )
+    break
 
 # %%
 # evaluate the circuit, when we KO everything else
