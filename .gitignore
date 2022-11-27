@@ -25,3 +25,4 @@ _modidx.py
 *.gv
 *.dot
 acronyms.py
+archive/*

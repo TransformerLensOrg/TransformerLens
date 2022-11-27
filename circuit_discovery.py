@@ -36,6 +36,8 @@ if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 
+file_prefix = "pngs/" if os.path.exists("pngs") else ""
+
 #%% [markdown]
 # Load in the model
 
@@ -162,7 +164,7 @@ h = HypothesisTree(
     dataset=dataset_orig,  # metric is a function of the hooked model and the dataset, so keep context about dataset_orig inside the dataset object
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    threshold=0.1,
+    threshold=0.05,
     orig_positions=orig_positions,
     new_positions=new_positions,
     use_caching=True,
@@ -247,7 +249,7 @@ tokens[:, 1] = model.to_tokens("Earlier", prepend_bos=False).item()
 tokens[:, 4] = model.to_tokens(" hot", prepend_bos=False).item()
 tokens[:, 5] = model.to_tokens(" but", prepend_bos=False).item()
 tokens[:, 6] = model.to_tokens(" now", prepend_bos=False).item()
-# Earlier it was hot but now it is
+# "Earlier it was hot but now it is"
 
 h = HypothesisTree(
     model,
