@@ -175,40 +175,23 @@ h = HypothesisTree(
 while h.current_node is not None:
     h.eval(show_graphics=False, verbose=True)
     a = h.show()
+
     # save digraph object
     with open("hypothesis_tree.dot", "w") as f:
         f.write(a.source)
-    # convert to png
 
+    # convert to png
     call(
         [
             "dot",
             "-Tpng",
             "hypothesis_tree.dot",
             "-o",
-            f"pngs/{short_model_names[model.cfg.model_name]}_hypothesis_tree_{ctime()}_{thresh}.png",
+            f"gpt2_hypothesis_tree_{ctime()}.png",
             "-Gdpi=600",
         ]
     )
+#%% [markdown]
+# What about if we run the circuit on the original data ONLY at the nodes in the graph?
 
-#%%
-
-# save this object
-import pickle
-
-with open("hypothesis_tree_massive.pkl", "wb") as f:
-    pickle.dump(h.important_nodes, f)
-
-#%%
-# load this object
-with open("hypothesis_tree.pkl", "rb") as f:
-    important_nodes2 = pickle.load(f)
-
-# %%
-# evaluate the circuit, when we KO everything else
-# run on dataset_new
-# patch in the embeds from dataset_orig !!!
-# for all other heads, yah
-
-h.current_node = None
-evaluate_circuit(h, dataset_new)
+evaluate_circuit(h, dataset_new)  # close to 3, but still missing some parts
