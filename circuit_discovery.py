@@ -1,4 +1,6 @@
-# %%
+# %% [markdown]
+# Imports
+
 from typing import List, Tuple, Dict, Union, Optional, Callable, Any
 from time import ctime
 import torch
@@ -33,17 +35,16 @@ if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 
-model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
+#%% [markdown]
+# Load in the model
 
-short_model_names = {
-    "gpt2": "gpt2",
-    "EleutherAI/gpt_neo_125M": "gpt_neo_125M",
-    "facebook/opt-125m": "opt_125m",
-}
+model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 
 model = EasyTransformer.from_pretrained(model_name)
 model.set_use_attn_result(True)
-model.set_use_headwise_qkv_input(True)
+model.set_use_headwise_qkv_input(
+    True
+)  # this is an extra option, that allows us to control the Q, K and V inputs to the attention heads
 
 #%% [markdown]
 # # Load data
@@ -55,21 +56,50 @@ dataset_orig = IOIDataset(
     N=N,
     tokenizer=model.tokenizer,
     prepend_bos=False,
-)  # TODO make this a seeded dataset
+)
 
-# we make the ABC dataset in order to knockout other model components
-
-dataset_new = (  # TODO seeded
+# baseline dataset
+dataset_new = (
     dataset_orig.gen_flipped_prompts(("IO", "RAND"))
     .gen_flipped_prompts(("S", "RAND"))
     .gen_flipped_prompts(("S1", "RAND"))
 )
+
+print(f"These dataset objects hold labels to all the relevant words in the sentences: {dataset_orig.word_idx.keys()}")
 
 #%% [markdown]
 # Get the initial logit difference
 
 model.reset_hooks()
 logit_diff_initial = logit_diff_io_s(model, dataset_orig)
+print(f"Initial logit difference: {logit_diff_initial:.3f}")
+
+#%% [markdown]
+# Simplest path patching run
+
+receivers_to_senders = {
+    ("blocks.11.hook_resid_post", None): [
+        ("blocks.9.attn.hook_result", 9, "end"),
+        ("blocks.10.attn.hook_result", 0, "end"),
+        ("blocks.9.attn.hook_result", 6, "end"),
+    ]
+}
+
+# the IOI paper claims that heads 9.9, 10.0, 9.6 are the most important heads for writing to the residual stream
+# the above object specifies that we should patch the three edges from these heads to the end state of the residual stream
+# the string literals will become familiar after learning https://github.com/neelnanda-io/Easy-Transformer/blob/main/EasyTransformer_Demo.ipynb
+
+#%%
+
+# Now do the direct path patching
+model = direct_path_patching(
+    model=model,
+    orig_data=dataset_orig.toks.long(),
+    new_data=dataset_new.toks.long(),
+    receivers_to_senders=receivers_to_senders,
+    orig_positions=dataset_orig.word_idx,
+    new_positions=dataset_new.word_idx,
+)
 
 #%% [markdown]
 # Do a direct path patching run
@@ -77,10 +107,8 @@ logit_diff_initial = logit_diff_io_s(model, dataset_orig)
 receivers_to_senders = {
     ("blocks.11.hook_resid_post", None): [
         ("blocks.9.attn.hook_result", 9, "end"),
-        # ("blocks.9.hook_mlp_out", None, "end"),
     ],  # patch the edges (head 9.4 -> logits) and (MLP9 -> logits) at the END position
     ("blocks.9.attn.hook_k_input", 9): [
-        # ("blocks.0.hook_resid_pre", None, "end"),
         ("blocks.0.hook_mlp_out", None, "IO"),
     ],
     ("blocks.0.hook_resid_mid", None): [
@@ -88,9 +116,7 @@ receivers_to_senders = {
     ],
 }
 
-# let's choose the (0.0 -> 9.4) edge as the edge to path the new distribution from
-last_guy = list(receivers_to_senders.items())[-1]
-initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
+#%%
 
 # Now do the direct path patching
 model = direct_path_patching(
@@ -113,52 +139,45 @@ assert np.abs(logit_diff_initial - ans) > 1e-9, "!!!"
 
 #%%
 
-for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
-    model = EasyTransformer.from_pretrained(model_name)
-    model.set_use_attn_result(True)
-    model.set_use_headwise_qkv_input(True)
+model.reset_hooks()
+orig_positions = OrderedDict()
+new_positions = OrderedDict()
+keys = ["IO", "S+1", "S", "S2", "end"]
+for key in keys:
+    orig_positions[key] = dataset_orig.word_idx[key]
+    new_positions[key] = dataset_new.word_idx[key]
 
-    for thresh in [0.02]:  # , 0.05, 0.02, 0.01]:
-        model.reset_hooks()
-        orig_positions = OrderedDict()
-        new_positions = OrderedDict()
-        keys = ["IO", "S+1", "S", "S2", "end"]
-        for key in keys:
-            orig_positions[key] = dataset_orig.word_idx[key]
-            new_positions[key] = dataset_new.word_idx[key]
+h = HypothesisTree(
+    model,
+    metric=logit_diff_io_s,
+    dataset=dataset_orig,
+    orig_data=dataset_orig.toks.long(),
+    new_data=dataset_new.toks.long(),
+    threshold=0.1,
+    orig_positions=orig_positions,
+    new_positions=new_positions,
+    use_caching=True,
+    direct_paths_only=True,
+)
+while h.current_node is not None:
+    h.eval(show_graphics=False, verbose=True)
+    a = h.show()
+    # save digraph object
+    with open("hypothesis_tree.dot", "w") as f:
+        f.write(a.source)
+    # convert to png
+    from subprocess import call
 
-        h = HypothesisTree(
-            model,
-            metric=logit_diff_io_s,
-            dataset=dataset_orig,
-            orig_data=dataset_orig.toks.long(),
-            new_data=dataset_new.toks.long(),
-            threshold=thresh,
-            orig_positions=orig_positions,
-            new_positions=new_positions,
-            use_caching=True,
-            direct_paths_only=True,
-        )
-        while h.current_node is not None:
-            h.eval(show_graphics=False, verbose=True)
-            a = h.show()
-            # save digraph object
-            with open("hypothesis_tree.dot", "w") as f:
-                f.write(a.source)
-            # convert to png
-            from subprocess import call
-
-            call(
-                [
-                    "dot",
-                    "-Tpng",
-                    "hypothesis_tree.dot",
-                    "-o",
-                    f"pngs/{short_model_names[model.cfg.model_name]}_hypothesis_tree_{ctime()}_{thresh}.png",
-                    "-Gdpi=600",
-                ]
-            )
-    break
+    call(
+        [
+            "dot",
+            "-Tpng",
+            "hypothesis_tree.dot",
+            "-o",
+            f"pngs/{short_model_names[model.cfg.model_name]}_hypothesis_tree_{ctime()}_{thresh}.png",
+            "-Gdpi=600",
+        ]
+    )
 
 #%%
 
@@ -175,7 +194,6 @@ with open("hypothesis_tree.pkl", "rb") as f:
 
 # %%
 # evaluate the circuit, when we KO everything else
-
 # run on dataset_new
 # patch in the embeds from dataset_orig !!!
 # for all other heads, yah

@@ -224,8 +224,8 @@ def direct_path_patching(
     model: EasyTransformer,
     orig_data,
     new_data,
-    initial_receivers_to_senders: List[
-        Tuple[Tuple[str, Optional[int]], Tuple[str, Optional[int], str]]
+    initial_receivers_to_senders: Optional[
+        List[Tuple[Tuple[str, Optional[int]], Tuple[str, Optional[int], str]]]
     ],  # these are the only edges where we patch from new_cache
     receivers_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[str, Optional[int], str]]
@@ -270,6 +270,13 @@ def direct_path_patching(
             [x in new_cache for x in initial_sender_hook_names]
         ), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
     model.reset_hooks()
+
+    if initial_receivers_to_senders is None:
+        initial_receivers_to_senders = []
+        for receiver_hook, senders in receivers_to_senders.items():
+            for sender_hook in senders:
+                if (sender_hook[0], sender_hook[1]) not in receivers_to_senders:
+                    initial_receivers_to_senders.append((receiver_hook, sender_hook))
 
     # setup a way for model components to dynamically see activations from the same forward pass
     for name, hp in model.hook_dict.items():
