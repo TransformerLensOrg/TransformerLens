@@ -134,7 +134,7 @@ class HookPoint(nn.Module):
         try:
             layer = int(self.name.split(".")[1])
             return int(layer)
-        except ValueError:
+        except (IndexError, ValueError):
             # TODO maybe return [None] instead of raising an error? but test it first, might
             # break in subtle ways
             raise ValueError(

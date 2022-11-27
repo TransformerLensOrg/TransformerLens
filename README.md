@@ -39,3 +39,8 @@ Another way to test is to open an `ipython` terminal and make sure that you can
 - `pytest` from the root of the project. 
 - `pytest --collect-only` will fail if some of the code has type errors
 - Test a particular file with e.g. `pytest easy_transformer/tests/test_bert.py`
+- You might also like `pytest -q` for a quieter life. :)
+- To run fewer tests, e.g. to just run one `test_model`, `pytest -k "test_model[gpt2-small-5.331855773925781]"`.
+- To report progress as you go: `pytest --verbose`.
+- If you're running the tests in `test_easy_transformer.py`, you might wanna run them on a `colab`.
+  E.g.: https://colab.research.google.com/drive/1MKJ6nkRTNWXqXQYK524Ojjxvn7NkuDfI?usp=sharing
