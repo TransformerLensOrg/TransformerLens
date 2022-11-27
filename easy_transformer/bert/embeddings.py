@@ -26,4 +26,5 @@ class Embeddings(nn.Module):
         )
         p_e = self.position_embeddings(index_ids)
         t_e = self.token_type_embeddings(segment_ids)
-        return w_e + p_e + t_e
+        # TODO what about dropout?
+        return self.ln(w_e + p_e + t_e)

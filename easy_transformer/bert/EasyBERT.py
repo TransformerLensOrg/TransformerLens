@@ -27,7 +27,10 @@ InputForForwardLayer = Union[str, List[str], TokensTensor]
 @dataclass
 class Output:
     logits: TT["batch", "seq", "vocab"]
-    last_hidden_state: TT["batch", "seq", "hidden"]
+    hidden_states: TT[
+        "n_layers", "batch", "seq", "hidden"
+    ]  # slightly different than HF which stacks embeddings and hidden states
+    embedding: TT["batch", "seq", "hidden"]
 
 
 class EasyBERT(HookedRootModule):
@@ -243,10 +246,11 @@ class EasyBERT(HookedRootModule):
             tokens,
             actual_segment_ids,
         )  # TODO is there a way to make python complain about the variable named [input]?
-        last_hidden_state = self.encoder(embedded, mask)
+        hidden_states = self.encoder(embedded, mask)
+        last_hidden_state = hidden_states[-1]
         # TODO return both NSP and MLM logits
         logits = self.softmax(self.encoding_to_vocab(last_hidden_state))
-        return Output(logits=logits, last_hidden_state=last_hidden_state)
+        return Output(logits=logits, embedding=embedded, hidden_states=hidden_states)
 
     # TODO maybe change the order?
     def to_tokens(

@@ -3,6 +3,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchtyping import TensorType as TT
 
 from .EasyBERTConfig import EasyBERTConfig
 
@@ -88,10 +89,16 @@ class Encoder(nn.Module):
     def __init__(self, config: EasyBERTConfig):
         super().__init__()
         self.config = config
-        self.layers = nn.Sequential(
-            *[EncoderLayer(config) for _ in range(config.n_layers)]
+        self.layers = nn.ModuleList(
+            [EncoderLayer(config) for _ in range(config.n_layers)]
         )
 
-    def forward(self, x, mask=None):
+    def forward(self, x, mask=None) -> TT["n_layers", "batch", "seq", "hidden"]:
         # TODO use mask
-        return self.layers(x)
+        # TODO document that this returns all layers
+        intermediate = []
+        for layer in self.layers:
+            # TODO does this kill performance? vs. nn.sequential (and with using a list)
+            input_ = x if len(intermediate) == 0 else intermediate[-1]
+            intermediate.append(layer(input_))
+        return torch.stack(intermediate)
