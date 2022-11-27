@@ -136,7 +136,7 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
             orig_positions=orig_positions,
             new_positions=new_positions,
             use_caching=True,
-            direct_paths_only=False,
+            direct_paths_only=True,
         )
         while True:
             h.eval(show_graphics=True, verbose=True)

@@ -27,6 +27,13 @@ def get_comp_type(comp):
 def get_hook_tuple(layer, head_idx, comp=None, input=False):
     """Very cursed"""
     """warning, only built for 12 layer models"""
+
+    if layer == -1:
+        assert head_idx is None, head_idx
+        assert comp is None, comp
+        assert input is False, input
+        return ("blocks.0.hook_resid_pre", None)
+
     if comp is None:
         if head_idx is None:
             if layer < 12:
@@ -363,6 +370,9 @@ def direct_path_patching(
         z[:] = orig_cache[hook_name]
         return z
 
+    # save the embeddings! they will be useful
+    model.add_hook(name="blocks.0.hook_resid_pre", hook=layer_output_hook)
+
     for layer_idx in range(model.cfg.n_layers):
         for head_idx in range(model.cfg.n_heads):
             # if this is a receiver, then compute the input activations carefully
@@ -506,10 +516,12 @@ def direct_path_patching_up_to(
             model.reset_hooks()
 
     # finally see the patch from embeds
-    receivers_to_senders = deepcopy(base_initial_senders)
+    receivers_to_senders = deepcopy(base_receivers_to_senders)
     sender_hook = ("blocks.0.hook_resid_pre", None)
-    receivers_to_senders.append(
-        (receiver_hook, (sender_hook[0], sender_hook[1], cur_position))
+    if receiver_hook not in receivers_to_senders:
+        receivers_to_senders[receiver_hook] = []
+    receivers_to_senders[receiver_hook].append(
+        (sender_hook[0], sender_hook[1], cur_position)
     )
     initial_receivers_to_senders = [
         (receiver_hook, (sender_hook[0], sender_hook[1], cur_position))
@@ -584,6 +596,8 @@ class Node:
             return "resid out"
         elif self.head is None:
             return f"mlp{self.layer}\n{self.position}"
+        elif self.layer == -1:
+            return f"Embed\n{self.position}"
         else:
             return f"{self.layer}.{self.head}\n{self.position}"
 
@@ -630,6 +644,10 @@ class HypothesisTree:
         self.finished = False
 
     def populate_node_stack(self):
+        for pos in self.orig_positions:
+            node = Node(-1, None, pos)  # represents the embedding
+            self.node_stack[(-1, None, pos)] = node
+
         for layer in range(self.model.cfg.n_layers):
             for head in list(range(self.model.cfg.n_heads)) + [
                 None
@@ -709,7 +727,9 @@ class HypothesisTree:
                 continue
 
             receiver_hooks = []
-            if node.layer == self.model.cfg.n_layers:
+            if node.layer == -1:
+                continue  # nothing before this
+            elif node.layer == self.model.cfg.n_layers:
                 receiver_hooks.append((f"blocks.{node.layer-1}.hook_resid_post", None))
             elif node.head is None:
                 receiver_hooks.append((f"blocks.{node.layer}.hook_resid_mid", None))
@@ -814,6 +834,14 @@ class HypothesisTree:
                     print("Found important embedding layer at position", pos)
                     score = embed_results
                     comp_type = get_comp_type(receiver_hook[0])
+                    self.node_stack[
+                        (-1, None, pos)
+                    ].parents.append(  # TODO fix the MLP thing with GPT-NEO
+                        (node, score, comp_type)
+                    )
+                    node.children.append(
+                        (self.node_stack[(-1, None, pos)], score, comp_type)
+                    )
             if current_node_position == pos:
                 break
 
@@ -929,14 +957,15 @@ class HypothesisTree:
                             node.children.append(
                                 (self.node_stack[(layer, head, pos)], score, comp_type)
                             )
-                    if abs(mlp_results[layer]) > threshold:
+                    mlp_score = mlp_results[layer]
+                    if abs(mlp_score) > threshold:
                         print("Found important MLP: layer", layer, "position", pos)
                         comp_type = get_comp_type(receiver_hook[0])
                         self.node_stack[(layer, None, pos)].parents.append(
-                            (node, score, comp_type)
+                            (node, mlp_score, comp_type)
                         )
                         node.children.append(
-                            (self.node_stack[(layer, None, pos)], score, comp_type)
+                            (self.node_stack[(layer, None, pos)], mlp_score, comp_type)
                         )
 
         # update self.current_node
@@ -1040,6 +1069,3 @@ def old_path_patching_up_to(
         mlp_results[l] = metric(model, dataset)
         model.reset_hooks()
     return attn_results, mlp_results
-
-
-# def
