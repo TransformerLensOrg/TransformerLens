@@ -75,15 +75,12 @@ logit_diff_initial = logit_diff_io_s(model, dataset_orig)
 
 receivers_to_senders = {
     ("blocks.11.hook_resid_post", None): [
-        ("blocks.9.attn.hook_result", 4, "end"),
-        ("blocks.9.hook_mlp_out", None, "end"),
+        ("blocks.9.attn.hook_result", 9, "end"),
+        # ("blocks.9.hook_mlp_out", None, "end"),
     ],  # patch the edges (head 9.4 -> logits) and (MLP9 -> logits) at the END position
-    ("blocks.9.hook_resid_mid", None): [
-        ("blocks.9.attn.hook_result", 4, "end"),
-    ],  # path the edge (head 9.4 -> MLP 9) at END (hook_resid_mid is the input to this MLP)
-    ("blocks.9.attn.hook_v_input", 4): [
-        ("blocks.0.hook_resid_pre", None, "end"),
-        # ("blocks.0.hook_mlp_out", None, "end"),
+    ("blocks.9.attn.hook_q_input", 9): [
+        # ("blocks.0.hook_resid_pre", None, "end"),
+        ("blocks.0.hook_mlp_out", None, "end"),
     ],
     # ("blocks.0.attn.hook_resid_mid", None): [
     #     ("blocks.0.hook_resid_pre", None, "end"),
@@ -94,11 +91,7 @@ receivers_to_senders = {
 last_guy = list(receivers_to_senders.items())[-1]
 initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
 
-
-#%%
-# [markdown]
 # Now do the direct path patching
-
 model = direct_path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
