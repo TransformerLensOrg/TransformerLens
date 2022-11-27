@@ -143,6 +143,8 @@ class EasyBERT(HookedRootModule):
 
         assert isinstance(attention, encoder.MultiHeadAttention)
 
+        # TODO i think we need to do something with the layer norm parameters
+
         attention.linear_layers[0].load_state_dict(
             {
                 "weight": state_dict[base_name + "attention.self.query.weight"],
@@ -164,8 +166,22 @@ class EasyBERT(HookedRootModule):
             }
         )
 
-        # TODO add layer norm weights
+        # TODO add an assert for pylance
+        self.encoder.layers[layer_index].input_sublayer.norm.load_state_dict(
+            {
+                "weight": state_dict[base_name + "attention.output.LayerNorm.weight"],
+                "bias": state_dict[base_name + "attention.output.LayerNorm.bias"],
+            }
+        )
 
+        self.encoder.layers[layer_index].output_sublayer.norm.load_state_dict(
+            {
+                "weight": state_dict[base_name + "output.LayerNorm.weight"],
+                "bias": state_dict[base_name + "output.LayerNorm.bias"],
+            }
+        )
+
+    # TODO is one difference that we don't have dropout?
     def __load_encoder_state_dict__(self, state_dict: Dict[str, t.Tensor]):
         for layer_index in range(self.config.n_layers):
             self.__load_layer_state_dict__(layer_index, state_dict)
@@ -241,7 +257,9 @@ class EasyBERT(HookedRootModule):
         actual_segment_ids: TT["batch", "seq"] = self.__make_segment_ids__(
             x=x, passed_segment_ids=segment_ids
         )  # TODO prepend_bos=False?
-        mask = (tokens > 0).unsqueeze(1).repeat(1, tokens.size(1), 1).unsqueeze(1)
+        mask = (
+            (tokens > 0).unsqueeze(1).repeat(1, tokens.size(1), 1).unsqueeze(1)
+        )  # TODO is this right..?
         embedded = self.embeddings(
             tokens,
             actual_segment_ids,

@@ -58,6 +58,7 @@ class SublayerConnection(nn.Module):
         super().__init__()
         self.config = config
         self.norm = nn.LayerNorm(config.hidden_size)
+        # TODO turn off dropout during inference
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x, sublayer):
@@ -79,8 +80,9 @@ class EncoderLayer(nn.Module):
         self.input_sublayer = SublayerConnection(config)
         self.output_sublayer = SublayerConnection(config)
 
-    def forward(self, x):  # TODO add mask
-        x = self.input_sublayer(x, lambda x: self.attention(x, x, x))
+    def forward(self, x, mask):  # TODO should mask be optional?
+        # TODO i think we're just not loading the input sublayer shit
+        x = self.input_sublayer(x, lambda _x: self.attention(_x, _x, _x, mask=mask))
         x = self.output_sublayer(x, self.feed_forward)
         return self.dropout(x)
 
@@ -94,11 +96,11 @@ class Encoder(nn.Module):
         )
 
     def forward(self, x, mask=None) -> TT["n_layers", "batch", "seq", "hidden"]:
-        # TODO use mask
         # TODO document that this returns all layers
+        # TODO maybe make this a list so that some grad fns are simpler
         intermediate = []
         for layer in self.layers:
             # TODO does this kill performance? vs. nn.sequential (and with using a list)
             input_ = x if len(intermediate) == 0 else intermediate[-1]
-            intermediate.append(layer(input_))
+            intermediate.append(layer(input_, mask=mask))
         return torch.stack(intermediate)
