@@ -31,7 +31,6 @@ def get_hook_tuple(layer, head_idx, comp=None, input=False):
     if layer == -1:
         assert head_idx is None, head_idx
         assert comp is None, comp
-        assert input is False, input
         return ("blocks.0.hook_resid_pre", None)
 
     if comp is None:
@@ -409,6 +408,36 @@ def direct_path_patching(
     return model
 
 
+def make_base_receiver_sender_objects(
+    important_nodes,
+):
+    base_initial_senders = []
+    base_receivers_to_senders = {}
+
+    for receiver in important_nodes:
+        hook = get_hook_tuple(receiver.layer, receiver.head, input=True)
+
+        for sender_child, _, comp in receiver.children:
+            if comp in ["v", "k", "q"]:
+                qkv_hook = get_hook_tuple(receiver.layer, receiver.head, comp)
+                if qkv_hook not in base_receivers_to_senders:
+                    base_receivers_to_senders[qkv_hook] = []
+                sender_hook = get_hook_tuple(sender_child.layer, sender_child.head)
+                base_receivers_to_senders[qkv_hook].append(
+                    (sender_hook[0], sender_hook[1], sender_child.position)
+                )
+
+            else:
+                if hook not in base_receivers_to_senders:
+                    base_receivers_to_senders[hook] = []
+                sender_hook = get_hook_tuple(sender_child.layer, sender_child.head)
+                base_receivers_to_senders[hook].append(
+                    (sender_hook[0], sender_hook[1], sender_child.position)
+                )
+
+    return base_receivers_to_senders
+
+
 def direct_path_patching_up_to(
     model: EasyTransformer,
     receiver_hook,  # this is a tuple of (hook_name, head_idx)
@@ -427,38 +456,10 @@ def direct_path_patching_up_to(
     we are going to convert important_nodes into the receivers_to_senders format"""
 
     # now construct the arguments (in each path patching run, we will edit these a bit)
-    base_initial_senders = []
-    base_receivers_to_senders = {}
 
-    for receiver in important_nodes:
-        hook = get_hook_tuple(receiver.layer, receiver.head, input=True)
-
-        if hook == receiver_hook:
-            assert (
-                len(receiver.children) == 0
-            ), "Receiver_hook should not have children; we're going to find them here"
-
-        elif len(receiver.children) == 0:
-            continue
-
-        else:  # patch, through the paths
-            for sender_child, _, comp in receiver.children:
-                if comp in ["v", "k", "q"]:
-                    qkv_hook = get_hook_tuple(receiver.layer, receiver.head, comp)
-                    if qkv_hook not in base_receivers_to_senders:
-                        base_receivers_to_senders[qkv_hook] = []
-                    sender_hook = get_hook_tuple(sender_child.layer, sender_child.head)
-                    base_receivers_to_senders[qkv_hook].append(
-                        (sender_hook[0], sender_hook[1], sender_child.position)
-                    )
-
-                else:
-                    if hook not in base_receivers_to_senders:
-                        base_receivers_to_senders[hook] = []
-                    sender_hook = get_hook_tuple(sender_child.layer, sender_child.head)
-                    base_receivers_to_senders[hook].append(
-                        (sender_hook[0], sender_hook[1], sender_child.position)
-                    )
+    base_receivers_to_senders = make_base_receiver_sender_objects(
+        important_nodes,
+    )
 
     receiver_hook_layer = int(receiver_hook[0].split(".")[1])
     model.reset_hooks()
@@ -1034,36 +1035,6 @@ class HypothesisTree:
                 "Cannot extract model while there are still nodes to explore"
             )
 
-    def evalute_circuit(self):
-        if not (self.current_node is None and self.direct_paths_only):
-            raise NotImplementedError("Make circuit full")
-        initial_receivers_to_senders = []
-        receivers_to_senders = {}
-
-        for node in self.important_nodes:
-            for child in node.children:
-                # add an edge
-                pass
-            # if node is an embedder, add it to the initial_ shit
-
-        for pos in self.orig_positions:
-            assert torch.allclose(
-                self.orig_data[pos], self.new_data[pos]
-            ), "Data must be the same for all positions"
-
-        model = direct_path_patching(
-            model=self.model,
-            orig_data=self.new_data,  # NOTE these are different
-            new_data=self.orig_data,
-            initial_receivers_to_senders=initial_receivers_to_senders,
-            receivers_to_senders=receivers_to_senders,
-            orig_positions=self.orig_positions,  # tensor of shape (batch_size,)
-            new_positions=self.new_positions,
-            orig_cache=None,
-            new_cache=None,
-        )
-        ld = logit_diff_io_s(model, self.dataset)
-
 
 def old_path_patching_up_to(
     model: EasyTransformer,
@@ -1110,3 +1081,43 @@ def old_path_patching_up_to(
         mlp_results[l] = metric(model, dataset)
         model.reset_hooks()
     return attn_results, mlp_results
+
+
+def evaluate_circuit(h, dataset):
+    if not (h.current_node is None and h.direct_paths_only):
+        raise NotImplementedError("Make circuit full")
+
+    receivers_to_senders = make_base_receiver_sender_objects(h.important_nodes)
+
+    initial_receivers_to_senders: List[
+        Tuple[Tuple[str, Optional[int]], Tuple[str, Optional[int], str]]
+    ] = []
+    for node in h.important_nodes:
+        if node.layer == -1:
+            initial_receivers_to_senders.append(
+                (
+                    ("blocks.0.hook_resid_pre", None),
+                    ("blocks.0.hook_resid_pre", None, node.position),
+                )
+            )
+    assert (
+        len(initial_receivers_to_senders) > 0
+    ), "Need at least one embedding present!!!"
+
+    for pos in h.orig_positions:
+        assert torch.allclose(
+            h.orig_positions[pos], h.new_positions[pos]
+        ), "Data must be the same for all positions"
+
+    model = direct_path_patching(
+        model=h.model,
+        orig_data=h.new_data,  # NOTE these are different
+        new_data=h.orig_data,
+        initial_receivers_to_senders=initial_receivers_to_senders,
+        receivers_to_senders=receivers_to_senders,
+        orig_positions=h.orig_positions,  # tensor of shape (batch_size,)
+        new_positions=h.new_positions,
+        orig_cache=None,
+        new_cache=None,
+    )
+    return logit_diff_io_s(model, dataset)

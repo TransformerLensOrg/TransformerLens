@@ -14,6 +14,7 @@ from easy_transformer.ioi_dataset import (
     IOIDataset,
 )
 from easy_transformer.utils_circuit_discovery import (
+    evaluate_circuit,
     direct_path_patching,
     logit_diff_io_s,
     HypothesisTree,
@@ -117,7 +118,7 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
     model.set_use_attn_result(True)
     model.set_use_headwise_qkv_input(True)
 
-    for thresh in [0.1]:  # , 0.05, 0.02, 0.01]:
+    for thresh in [0.02]:  # , 0.05, 0.02, 0.01]:
         model.reset_hooks()
         orig_positions = OrderedDict()
         new_positions = OrderedDict()
@@ -159,9 +160,24 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
             )
     break
 
+#%%
+
+# save this object
+import pickle
+
+with open("hypothesis_tree.pkl", "wb") as f:
+    pickle.dump(h.important_nodes, f)
+
+#%%
+# load this object
+with open("hypothesis_tree.pkl", "rb") as f:
+    important_nodes2 = pickle.load(f)
+
 # %%
 # evaluate the circuit, when we KO everything else
 
 # run on dataset_new
 # patch in the embeds from dataset_orig !!!
 # for all other heads, yah
+
+evaluate_circuit(h)
