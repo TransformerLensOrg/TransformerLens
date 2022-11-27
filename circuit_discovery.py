@@ -9,6 +9,7 @@ from copy import deepcopy
 from collections import OrderedDict
 from easy_transformer.ioi_dataset import IOIDataset
 import pickle
+from subprocess import call
 
 from easy_transformer import EasyTransformer
 
@@ -65,7 +66,9 @@ dataset_new = (
     .gen_flipped_prompts(("S1", "RAND"))
 )
 
-print(f"These dataset objects hold labels to all the relevant words in the sentences: {dataset_orig.word_idx.keys()}")
+print(
+    f"These dataset objects hold labels to all the relevant words in the sentences: {dataset_orig.word_idx.keys()}"
+)
 
 #%% [markdown]
 # Get the initial logit difference
@@ -90,24 +93,31 @@ receivers_to_senders = {
 # the string literals will become familiar after learning https://github.com/neelnanda-io/Easy-Transformer/blob/main/EasyTransformer_Demo.ipynb
 
 #%%
-
 # Now do the direct path patching
-model = direct_path_patching(
+
+model = direct_path_patching(  # direct path patching returns a model with attached hooks that are relevant for the patch
     model=model,
     orig_data=dataset_orig.toks.long(),
-    new_data=dataset_new.toks.long(),
+    new_data=dataset_new.toks.long(),  # all hooks that aren't senders will be patched to new_data
     receivers_to_senders=receivers_to_senders,
     orig_positions=dataset_orig.word_idx,
     new_positions=dataset_new.word_idx,
 )
 
+new_logit_diff = logit_diff_io_s(model, dataset_orig)
+print(f"New logit difference: {new_logit_diff:.3f}")  # this should be lower
+
 #%% [markdown]
-# Do a direct path patching run
+# Do the most complex run
+
+# the hooks ...hook_k_input (and q_input, v_input) allow editing of the Q, K and V inputs to the attention heads
+# the hooks ...hook_resid_mid allow editing of the input to MLPs
+# the hook blocks.0.hook_resid_pre allows editing from the embeddings
 
 receivers_to_senders = {
     ("blocks.11.hook_resid_post", None): [
         ("blocks.9.attn.hook_result", 9, "end"),
-    ],  # patch the edges (head 9.4 -> logits) and (MLP9 -> logits) at the END position
+    ],
     ("blocks.9.attn.hook_k_input", 9): [
         ("blocks.0.hook_mlp_out", None, "IO"),
     ],
@@ -116,30 +126,28 @@ receivers_to_senders = {
     ],
 }
 
-#%%
-
 # Now do the direct path patching
 model = direct_path_patching(
     model=model,
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    initial_receivers_to_senders=initial_receivers_to_senders,
     receivers_to_senders=receivers_to_senders,
     orig_positions=dataset_orig.word_idx,
     new_positions=dataset_new.word_idx,
-    orig_cache=None,
-    new_cache=None,
 )
+
 ans = logit_diff_io_s(model, dataset_orig)
 model.reset_hooks()
 print(f"{ans=}")
 print(f"{logit_diff_initial=}, {ans=} (this difference should be small but not 0")
 assert np.abs(logit_diff_initial - ans) > 1e-9, "!!!"
-# should be a fairly small effect
 
-#%%
+#%% [markdown]
+# Patch patching
 
 model.reset_hooks()
+
+# construct the position labels
 orig_positions = OrderedDict()
 new_positions = OrderedDict()
 keys = ["IO", "S+1", "S", "S2", "end"]
@@ -147,6 +155,7 @@ for key in keys:
     orig_positions[key] = dataset_orig.word_idx[key]
     new_positions[key] = dataset_new.word_idx[key]
 
+# make the tree object
 h = HypothesisTree(
     model,
     metric=logit_diff_io_s,
@@ -159,6 +168,10 @@ h = HypothesisTree(
     use_caching=True,
     direct_paths_only=True,
 )
+
+#%% [markdown]
+# Run path patching
+
 while h.current_node is not None:
     h.eval(show_graphics=False, verbose=True)
     a = h.show()
@@ -166,7 +179,6 @@ while h.current_node is not None:
     with open("hypothesis_tree.dot", "w") as f:
         f.write(a.source)
     # convert to png
-    from subprocess import call
 
     call(
         [
