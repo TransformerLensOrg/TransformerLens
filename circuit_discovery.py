@@ -78,13 +78,13 @@ receivers_to_senders = {
         ("blocks.9.attn.hook_result", 9, "end"),
         # ("blocks.9.hook_mlp_out", None, "end"),
     ],  # patch the edges (head 9.4 -> logits) and (MLP9 -> logits) at the END position
-    ("blocks.9.attn.hook_q_input", 9): [
+    ("blocks.9.attn.hook_k_input", 9): [
         # ("blocks.0.hook_resid_pre", None, "end"),
-        ("blocks.0.hook_mlp_out", None, "end"),
+        ("blocks.0.hook_mlp_out", None, "IO"),
     ],
-    # ("blocks.0.attn.hook_resid_mid", None): [
-    #     ("blocks.0.hook_resid_pre", None, "end"),
-    # ],
+    ("blocks.0.hook_resid_mid", None): [
+        ("blocks.0.hook_resid_pre", None, "IO"),
+    ],
 }
 
 # let's choose the (0.0 -> 9.4) edge as the edge to path the new distribution from
@@ -107,7 +107,7 @@ ans = logit_diff_io_s(model, dataset_orig)
 model.reset_hooks()
 print(f"{ans=}")
 print(f"{logit_diff_initial=}, {ans=} (this difference should be small but not 0")
-assert np.abs(logit_diff_initial - ans) > 1e-5, "!!!"
+assert np.abs(logit_diff_initial - ans) > 1e-9, "!!!"
 # should be a fairly small effect
 
 #%%
