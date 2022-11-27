@@ -94,7 +94,6 @@ def old_path_patching(
     new_cache=None,
     prepend_bos=False,  # we did IOI with prepend_bos = False, but in general we think True is less sketchy. Currently EasyTransformer sometimes does one and sometimes does the other : (
 ):
-    """TODO: synchronize"""
     """MLPs are by default considered as just another component and so are
     by default frozen when collecting acts on receivers.
     orig_data: string, torch.Tensor, or list of strings - any format that can be passed to the model directly
@@ -105,6 +104,7 @@ def old_path_patching(
     positions: tensor of shape (batch_size,) that specifies which positions to patch
     NOTE: This relies on a change to the cache_some() function in EasyTransformer/hook_points.py [we .clone() activations, unlike in neelnanda-io/EasyTransformer]
     """
+    raise NotImplementedError("Yet to implement new senders format")
     if max_layer is None:
         max_layer = model.cfg.n_layers
     assert max_layer <= model.cfg.n_layers
@@ -213,10 +213,10 @@ def direct_path_patching(
     orig_data,
     new_data,
     initial_receivers_to_senders: List[
-        Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int], str]]
+        Tuple[Tuple[str, Optional[int]], Tuple[str, Optional[int], str]]
     ],  # these are the only edges where we patch from new_cache
     receivers_to_senders: Dict[
-        Tuple[str, Optional[int]], List[Tuple[int, Optional[int], str]]
+        Tuple[str, Optional[int]], List[Tuple[str, Optional[int], str]]
     ],  # TODO support for pushing back to token embeddings?
     orig_positions,  # tensor of shape (batch_size,)
     new_positions,
@@ -228,11 +228,10 @@ def direct_path_patching(
 
     `intial_receivers_to_sender` is a list of pairs representing the edges we patch the new_cache connection on.
 
-    `receiver_to_senders`: dict of (hook_name, idx, pos) -> [(layer_idx, head_idx, pos), ...]
+    `receiver_to_senders`: dict of (hook_name, idx, pos) -> [(hook_name, head_idx, pos), ...]
     these define all of the edges in the graph
 
     NOTE: This relies on several changes to Neel's library (and RR/ET main, too)
-
     WARNING: this implementation is fairly cursed, mostly because it is in general hard to do these sorts of things with hooks
     """
 
@@ -245,8 +244,7 @@ def direct_path_patching(
         _ = model(orig_data, prepend_bos=False)
         model.reset_hooks()
     initial_sender_hook_names = [
-        get_hook_tuple(item[1][0], item[1][1])[0]
-        for item in initial_receivers_to_senders
+        sender_hook[0] for _, sender_hook in initial_receivers_to_senders
     ]
     if new_cache is None:
         # save activations from new for senders
@@ -293,16 +291,12 @@ def direct_path_patching(
             hook_name,
             head_idx,
         )
-        for sender_layer_idx, sender_head_idx, sender_head_pos in receivers_to_senders[
+        for sender_hook_name, sender_hook_idx, sender_head_pos in receivers_to_senders[
             (hook_name, head_idx)
         ]:
-            sender_hook_name, sender_head_idx = get_hook_tuple(
-                sender_layer_idx, sender_head_idx
-            )
-
             if (
                 (hook_name, head_idx),
-                (sender_layer_idx, sender_head_idx, sender_head_pos),
+                (sender_hook_name, sender_hook_idx, sender_head_pos),
             ) in initial_receivers_to_senders:  # hopefully fires > once
                 cache_to_use = new_cache
                 positions_to_use = new_positions
@@ -311,7 +305,7 @@ def direct_path_patching(
                 positions_to_use = orig_positions
 
             # we have to do both things casewise
-            if sender_head_idx is None:
+            if sender_hook_idx is None:
                 sender_value = (
                     cache_to_use[sender_hook_name][
                         torch.arange(N), positions_to_use[sender_head_pos]
@@ -325,12 +319,12 @@ def direct_path_patching(
                     cache_to_use[sender_hook_name][
                         torch.arange(N),
                         positions_to_use[sender_head_pos],
-                        sender_head_idx,
+                        sender_hook_idx,
                     ]
                     - orig_cache[sender_hook_name][
                         torch.arange(N),
                         positions_to_use[sender_head_pos],
-                        sender_head_idx,
+                        sender_hook_idx,
                     ]
                 )
 
@@ -438,15 +432,16 @@ def direct_path_patching_up_to(
                     warnings.warn(
                         "I think we need finer grained position control: this will just be the "
                     )
+                    sender_hook = get_hook_tuple(sender_child.layer, sender_child.head)
                     base_receivers_to_senders[qkv_hook].append(
-                        (sender_child.layer, sender_child.head, sender_child.position)
+                        (sender_hook[0], sender_hook[1], sender_child.position)
                     )
 
                 else:
                     if hook not in base_receivers_to_senders:
                         base_receivers_to_senders[hook] = []
                     base_receivers_to_senders[hook].append(
-                        (sender_child.layer, sender_child.head, sender_child.position)
+                        (sender_hook[0], sender_hook[1], sender_child.position)
                     )
 
     receiver_hook_layer = int(receiver_hook[0].split(".")[1])
@@ -462,13 +457,18 @@ def direct_path_patching_up_to(
             receivers_to_senders = deepcopy(base_receivers_to_senders)
             if receiver_hook not in receivers_to_senders:
                 receivers_to_senders[receiver_hook] = []
-            receivers_to_senders[receiver_hook].append((l, h, cur_position))
+            sender_hook = get_hook_tuple(l, h)
+            receivers_to_senders[receiver_hook].append(
+                (sender_hook[0], sender_hook[1], cur_position)
+            )
 
             model = direct_path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
-                initial_receivers_to_senders=[(receiver_hook, (l, h, cur_position))],
+                initial_receivers_to_senders=[
+                    (receiver_hook, (sender_hook[0], sender_hook[1], cur_position))
+                ],
                 receivers_to_senders=receivers_to_senders,
                 orig_positions=orig_positions,
                 new_positions=new_positions,
@@ -484,12 +484,17 @@ def direct_path_patching_up_to(
             receivers_to_senders = deepcopy(base_receivers_to_senders)
             if receiver_hook not in receivers_to_senders:
                 receivers_to_senders[receiver_hook] = []
-            receivers_to_senders[receiver_hook].append((l, None, cur_position))
+            sender_hook = get_hook_tuple(l, None)
+            receivers_to_senders[receiver_hook].append(
+                (sender_hook[0], sender_hook[1], cur_position)
+            )
             cur_logits = direct_path_patching(
                 model=model,
                 orig_data=orig_data,
                 new_data=new_data,
-                initial_receivers_to_senders=[(receiver_hook, (l, None, cur_position))],
+                initial_receivers_to_senders=[
+                    (receiver_hook, (sender_hook[0], sender_hook[1], cur_position))
+                ],
                 receivers_to_senders=receivers_to_senders,
                 orig_positions=orig_positions,
                 new_positions=new_positions,
@@ -827,6 +832,8 @@ class HypothesisTree:
     ):
         """Process current_node, then move to next current_node"""
 
+        raise NotImplementedError("Yet to implement new senders format")
+
         if threshold is None:
             threshold = self.threshold
 
@@ -1003,6 +1010,7 @@ def old_path_patching_up_to(
     orig_cache=None,
     new_cache=None,
 ):
+    raise NotImplementedError("Yet to implement new senders format")
     model.reset_hooks()
     attn_results = np.zeros((layer, model.cfg.n_heads))
     mlp_results = np.zeros((layer, 1))

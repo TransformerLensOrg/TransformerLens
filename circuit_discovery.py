@@ -75,15 +75,15 @@ logit_diff_initial = logit_diff_io_s(model, dataset_orig)
 
 receivers_to_senders = {
     ("blocks.11.hook_resid_post", None): [
-        (9, 4, "end"),
-        (9, None, "end"),
-    ],  # path the edge (head 9.4 -> logits) at the END position
+        ("blocks.9.attn.hook_result", 4, "end"),
+        ("blocks.9.hook_mlp_out", None, "end"),
+    ],  # patch the edges (head 9.4 -> logits) and (MLP9 -> logits) at the END position
     ("blocks.9.hook_resid_mid", None): [
-        (9, 4, "end")
+        ("blocks.9.attn.hook_result", 4, "end"),
     ],  # path the edge (head 9.4 -> MLP 9) at END (hook_resid_mid is the input to this MLP)
     ("blocks.9.attn.hook_v_input", 4): [
-        (5, 9, "S2")
-    ],  # path the edge (head 0.0 -> 9.4 value) at the END position (hook_v_input is the input to the attention layer)
+        ("blocks.5.attn.hook_result", 9, "end"),
+    ],  # path the edge (head 5.9 -> 9.4 value) at the END position (hook_v_input is the input to the attention layer)
 }
 
 # let's choose the (0.0 -> 9.4) edge as the edge to path the new distribution from
@@ -107,7 +107,7 @@ model = direct_path_patching(
 ans = logit_diff_io_s(model, dataset_orig)
 model.reset_hooks()
 print(f"{ans=}")
-print(f"{logit_diff_initial=}, {ans=}")
+print(f"{logit_diff_initial=}, {ans=} (this difference should be small but not 0")
 assert np.abs(logit_diff_initial - ans) > 1e-5, "!!!"
 # should be a fairly small effect
 
