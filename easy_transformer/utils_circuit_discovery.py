@@ -104,7 +104,6 @@ def old_path_patching(
     positions: tensor of shape (batch_size,) that specifies which positions to patch
     NOTE: This relies on a change to the cache_some() function in EasyTransformer/hook_points.py [we .clone() activations, unlike in neelnanda-io/EasyTransformer]
     """
-    raise NotImplementedError("Yet to implement new senders format")
     if max_layer is None:
         max_layer = model.cfg.n_layers
     assert max_layer <= model.cfg.n_layers
@@ -284,8 +283,6 @@ def direct_path_patching(
             len(receivers_to_senders[(hook_name, head_idx)]) > 0
         ), f"No senders for {hook_name, head_idx}, this shouldn't be attached!"
 
-        # print(hook_name, head_idx, receivers_to_senders)
-
         assert len(receivers_to_senders[(hook_name, head_idx)]) > 0, (
             receivers_to_senders,
             hook_name,
@@ -440,6 +437,7 @@ def direct_path_patching_up_to(
                 else:
                     if hook not in base_receivers_to_senders:
                         base_receivers_to_senders[hook] = []
+                    sender_hook = get_hook_tuple(sender_child.layer, sender_child.head)
                     base_receivers_to_senders[hook].append(
                         (sender_hook[0], sender_hook[1], sender_child.position)
                     )
@@ -832,8 +830,6 @@ class HypothesisTree:
     ):
         """Process current_node, then move to next current_node"""
 
-        raise NotImplementedError("Yet to implement new senders format")
-
         if threshold is None:
             threshold = self.threshold
 
@@ -1010,7 +1006,6 @@ def old_path_patching_up_to(
     orig_cache=None,
     new_cache=None,
 ):
-    raise NotImplementedError("Yet to implement new senders format")
     model.reset_hooks()
     attn_results = np.zeros((layer, model.cfg.n_heads))
     mlp_results = np.zeros((layer, 1))
