@@ -82,18 +82,21 @@ receivers_to_senders = {
         ("blocks.9.attn.hook_result", 4, "end"),
     ],  # path the edge (head 9.4 -> MLP 9) at END (hook_resid_mid is the input to this MLP)
     ("blocks.9.attn.hook_v_input", 4): [
-        ("blocks.0.attn.hook_mlp_out", None, "end"),
-    ],
-    ("blocks.5.attn.hook_resid_mid", None): [
         ("blocks.0.hook_resid_pre", None, "end"),
+        # ("blocks.0.hook_mlp_out", None, "end"),
     ],
+    # ("blocks.0.attn.hook_resid_mid", None): [
+    #     ("blocks.0.hook_resid_pre", None, "end"),
+    # ],
 }
 
 # let's choose the (0.0 -> 9.4) edge as the edge to path the new distribution from
 last_guy = list(receivers_to_senders.items())[-1]
 initial_receivers_to_senders = [(last_guy[0], last_guy[1][0])]
 
-#%% [markdown]
+
+#%%
+# [markdown]
 # Now do the direct path patching
 
 model = direct_path_patching(

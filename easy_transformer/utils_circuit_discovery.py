@@ -17,6 +17,13 @@ from easy_transformer.ioi_utils import show_pp
 import graphviz  # need both pip install graphviz and sudo apt-get install graphviz
 
 
+def get_comp_type(comp):
+    if comp.endswith("_input"):
+        return comp[-7]
+    else:
+        return "other"
+
+
 def get_hook_tuple(layer, head_idx, comp=None, input=False):
     """Very cursed"""
     """warning, only built for 12 layer models"""
@@ -450,8 +457,6 @@ def direct_path_patching_up_to(
     mlp_results = torch.zeros((mlp_layer_shape), 1)
     for l in tqdm(range(attn_layer_shape)):
         for h in range(model.cfg.n_heads):
-            senders = deepcopy(base_initial_senders)
-            senders.append((l, h))
             receivers_to_senders = deepcopy(base_receivers_to_senders)
             if receiver_hook not in receivers_to_senders:
                 receivers_to_senders[receiver_hook] = []
@@ -477,8 +482,6 @@ def direct_path_patching_up_to(
             model.reset_hooks()
         # mlp
         if l < mlp_layer_shape:
-            senders = deepcopy(base_initial_senders)
-            senders.append((l, None))
             receivers_to_senders = deepcopy(base_receivers_to_senders)
             if receiver_hook not in receivers_to_senders:
                 receivers_to_senders[receiver_hook] = []
@@ -502,7 +505,30 @@ def direct_path_patching_up_to(
             mlp_results[l] = metric(cur_logits, dataset)
             model.reset_hooks()
 
-    return attn_results.cpu().detach(), mlp_results.cpu().detach()
+    # finally see the patch from embeds
+    receivers_to_senders = deepcopy(base_initial_senders)
+    sender_hook = ("blocks.0.hook_resid_pre", None)
+    receivers_to_senders.append(
+        (receiver_hook, (sender_hook[0], sender_hook[1], cur_position))
+    )
+    initial_receivers_to_senders = [
+        (receiver_hook, (sender_hook[0], sender_hook[1], cur_position))
+    ]
+    cur_logits = direct_path_patching(
+        model=model,
+        orig_data=orig_data,
+        new_data=new_data,
+        initial_receivers_to_senders=initial_receivers_to_senders,
+        receivers_to_senders=receivers_to_senders,
+        orig_positions=orig_positions,
+        new_positions=new_positions,
+        orig_cache=orig_cache,
+        new_cache=new_cache,
+    )
+    embed_results = metric(cur_logits, dataset)
+    model.reset_hooks()
+
+    return attn_results.cpu().detach(), mlp_results.cpu().detach(), embed_results
 
 
 def logit_diff_io_s(model: EasyTransformer, dataset: IOIDataset):
@@ -703,7 +729,7 @@ class HypothesisTree:
                 # if verbose:
                 print(f"Working on pos {pos}, receiver hook {receiver_hook}")
 
-                attn_results, mlp_results = direct_path_patching_up_to(
+                attn_results, mlp_results, embed_results = direct_path_patching_up_to(
                     model=self.model,
                     receiver_hook=receiver_hook,
                     important_nodes=self.important_nodes,
@@ -761,20 +787,7 @@ class HypothesisTree:
                                 pos,
                             )
                             score = attn_results[layer, head]
-                            comp_type = receiver_hook[0].split("_")[
-                                -1
-                            ]  # q, k, v, out, post
-                            if (
-                                comp_type == "input"
-                            ):  # TODO Arthur does a hacky thing here to make printing nicer... fix
-                                for letter in "qkv":
-                                    if f"_{letter}_" in receiver_hook[0]:
-                                        comp_type = letter
-                                assert comp_type in [
-                                    "q",
-                                    "k",
-                                    "v",
-                                ], f"{comp_type}, {receiver_hook[0]}"
+                            comp_type = get_comp_type(receiver_hook[0])
                             self.node_stack[(layer, head, pos)].parents.append(
                                 (node, score, comp_type)
                             )
@@ -787,18 +800,7 @@ class HypothesisTree:
                     ):
                         print("Found important MLP: layer", layer, "position", pos)
                         score = mlp_results[layer, 0]
-                        comp_type = receiver_hook[0].split("_")[
-                            -1
-                        ]  # q, k, v, out, post
-                        if comp_type == "input":  # oh rip I edited things
-                            for letter in "qkv":
-                                if f"_{letter}_" in receiver_hook[0]:
-                                    comp_type = letter
-                            assert comp_type in [
-                                "q",
-                                "k",
-                                "v",
-                            ], f"{comp_type}, {receiver_hook[0]}"
+                        comp_type = get_comp_type(receiver_hook[0])
                         self.node_stack[
                             (layer, None, pos)
                         ].parents.append(  # TODO fix the MLP thing with GPT-NEO
@@ -807,6 +809,11 @@ class HypothesisTree:
                         node.children.append(
                             (self.node_stack[(layer, None, pos)], score, comp_type)
                         )
+                # deal with the embedding layer too
+                if abs(embed_results) > threshold:
+                    print("Found important embedding layer at position", pos)
+                    score = embed_results
+                    comp_type = get_comp_type(receiver_hook[0])
             if current_node_position == pos:
                 break
 
@@ -915,9 +922,7 @@ class HypothesisTree:
                                 pos,
                             )
                             score = attn_results[layer, head]
-                            comp_type = receiver_hook[0].split("_")[
-                                -1  # TODO sort out this scrappy code
-                            ]  # q, k, v, out, post
+                            comp_type = get_comp_type(receiver_hook[0])
                             self.node_stack[(layer, head, pos)].parents.append(
                                 (node, score, comp_type)
                             )
@@ -926,10 +931,7 @@ class HypothesisTree:
                             )
                     if abs(mlp_results[layer]) > threshold:
                         print("Found important MLP: layer", layer, "position", pos)
-                        score = mlp_results[layer, 0]
-                        comp_type = receiver_hook[0].split("_")[
-                            -1
-                        ]  # q, k, v, out, post
+                        comp_type = get_comp_type(receiver_hook[0])
                         self.node_stack[(layer, None, pos)].parents.append(
                             (node, score, comp_type)
                         )
@@ -955,8 +957,7 @@ class HypothesisTree:
             "q": "red",
             "k": "green",
             "v": "blue",
-            "mid": "black",  # new thing for MLPs
-            "post": "black",
+            "other": "black",
         }
         # add each layer as a subgraph with rank=same
         for layer in range(12):
