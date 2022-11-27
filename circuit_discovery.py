@@ -159,7 +159,7 @@ for key in keys:
 h = HypothesisTree(
     model,
     metric=logit_diff_io_s,
-    dataset=dataset_orig,
+    dataset=dataset_orig,  # metric is a function of the hooked model and the dataset, so keep context about dataset_orig inside the dataset object
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
     threshold=0.1,
@@ -195,3 +195,69 @@ while h.current_node is not None:
 # What about if we run the circuit on the original data ONLY at the nodes in the graph?
 
 evaluate_circuit(h, dataset_new)  # close to 3, but still missing some parts
+
+#%% [markdown]
+# Try this on a new dataset
+
+template = "Yesterday it was{day} so today it is"
+all_days = [
+    " Monday",
+    " Tuesday",
+    " Wednesday",
+    " Thursday",
+    " Friday",
+    " Saturday",
+    " Sunday",
+]
+sentences = []
+answers = []
+wrongs = []
+
+for day_idx in range(7):
+    cur_sentence = template.format(day=all_days[(day_idx + 1) % 7])
+    cur_ans = all_days[day_idx]
+    cur_correct_index = model.tokenizer
+    sentences.append(cur_sentence)
+    answers.append(cur_ans)
+    wrongs.append(all_days[day_idx])
+
+tokens = model.to_tokens(sentences, prepend_bos=True)
+answers = torch.tensor(model.tokenizer(answers)["input_ids"]).unsqueeze(
+    -1
+)  # , prepend_bos=True)
+wrongs = torch.tensor(model.tokenizer(wrongs)["input_ids"]).unsqueeze(
+    -1
+)  # , prepend_bos=True)
+
+positions = OrderedDict()
+positions["Yesterday"] = torch.ones(size=(7,))
+positions["Day"] = torch.ones(size=(7,)) * 4
+positions["Today"] = torch.ones(size=(7,)) * 6
+
+
+def day_metric(model, dataset):
+    logits = model(tokens)
+    logits_on_correct = logits[torch.arange(7), answers]
+    logits_on_wrong = logits[torch.arange(7), wrongs]
+    return (logits_on_correct - logits_on_wrong).mean()
+
+
+fake_data = tokens.clone()
+tokens[:, 1] = model.to_tokens("Earlier", prepend_bos=False).item()
+tokens[:, 4] = model.to_tokens(" hot", prepend_bos=False).item()
+tokens[:, 5] = model.to_tokens(" but", prepend_bos=False).item()
+tokens[:, 6] = model.to_tokens(" now", prepend_bos=False).item()
+# Earlier it was hot but now it is
+
+h = HypothesisTree(
+    model,
+    metric=day_metric,
+    dataset=None,  # metric is a function of the hooked model and the dataset, so keep context about dataset_orig inside the dataset object
+    orig_data=tokens,
+    new_data=fake_data,
+    threshold=0.05,
+    orig_positions=positions,
+    new_positions=positions,
+    use_caching=True,
+    direct_paths_only=True,
+)
