@@ -1100,16 +1100,19 @@ def evaluate_circuit(h, dataset):
         Tuple[Tuple[str, Optional[int]], Tuple[str, Optional[int], str]]
     ] = []
     for node in h.important_nodes:
-        if node.layer == -1:
-            initial_receivers_to_senders.append(
-                (
-                    ("blocks.0.hook_resid_pre", None),
-                    ("blocks.0.hook_resid_pre", None, node.position),
+        for child, _, _2 in node.children:
+            if child.layer == -1:
+                initial_receivers_to_senders.append(
+                    (
+                        ("blocks.0.hook_resid_pre", None),
+                        ("blocks.0.hook_resid_pre", None, node.position),
+                    )
                 )
-            )
     assert (
         len(initial_receivers_to_senders) > 0
     ), "Need at least one embedding present!!!"
+
+    initial_receivers_to_senders = list(set(initial_receivers_to_senders))
 
     for pos in h.orig_positions:
         assert torch.allclose(

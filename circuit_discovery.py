@@ -196,7 +196,7 @@ while h.current_node is not None:
 # save this object
 import pickle
 
-with open("hypothesis_tree.pkl", "wb") as f:
+with open("hypothesis_tree_massive.pkl", "wb") as f:
     pickle.dump(h.important_nodes, f)
 
 #%%
@@ -210,4 +210,5 @@ with open("hypothesis_tree.pkl", "rb") as f:
 # patch in the embeds from dataset_orig !!!
 # for all other heads, yah
 
-evaluate_circuit(h)
+h.current_node = None
+evaluate_circuit(h, dataset_new)
