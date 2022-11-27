@@ -52,7 +52,9 @@ def patch_positions(z, source_act, hook, positions):
     ), f"Batch size mismatch {source_act.shape} {positions.shape} {z.shape}"
     batch_size = source_act.shape[0]
 
-    z[torch.arange(batch_size), positions] = source_act[torch.arange(batch_size), positions]
+    z[torch.arange(batch_size), positions] = source_act[
+        torch.arange(batch_size), positions
+    ]
     return z
 
 
@@ -582,7 +584,7 @@ class HypothesisTree:
         self.populate_node_stack()
         self.current_node = self.node_stack[
             next(reversed(self.node_stack))
-        ]  # last element
+        ]  # last element TODO make a method or something for this
         self.root_node = self.current_node
         self.metric = metric
         self.dataset = dataset
@@ -596,6 +598,7 @@ class HypothesisTree:
             self.get_caches()
         self.important_nodes = []
         self.direct_paths_only = direct_paths_only
+        self.finished = False
 
     def populate_node_stack(self):
         for layer in range(self.model.cfg.n_layers):
@@ -910,7 +913,7 @@ class HypothesisTree:
                             )
                             score = attn_results[layer, head]
                             comp_type = receiver_hook[0].split("_")[
-                                -1
+                                -1  # TODO sort out this scrappy code
                             ]  # q, k, v, out, post
                             self.node_stack[(layer, head, pos)].parents.append(
                                 (node, score, comp_type)
@@ -980,6 +983,13 @@ class HypothesisTree:
                 g.edge(node2.display(), node1.display(), style="invis")
         return g
 
+    def get_extracted_model(self, safe: bool = True) -> EasyTransformer:
+        """Return the EasyTransformer model with the extracted subgraph"""
+        if safe and self.current_node is not None:
+            raise RuntimeError(
+                "Cannot extract model while there are still nodes to explore"
+            )
+
 
 def old_path_patching_up_to(
     model: EasyTransformer,
@@ -1026,3 +1036,6 @@ def old_path_patching_up_to(
         mlp_results[l] = metric(model, dataset)
         model.reset_hooks()
     return attn_results, mlp_results
+
+
+# def
