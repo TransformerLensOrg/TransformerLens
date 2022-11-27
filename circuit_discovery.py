@@ -138,7 +138,7 @@ for model_name in ["gpt2", "EleutherAI/gpt-neo-125M", "facebook/opt-125m"]:
             use_caching=True,
             direct_paths_only=True,
         )
-        while True:
+        while h.current_node is not None:
             h.eval(show_graphics=True, verbose=True)
             a = h.show()
             # save digraph object

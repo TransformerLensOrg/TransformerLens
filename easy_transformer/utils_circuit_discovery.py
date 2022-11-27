@@ -594,10 +594,10 @@ class Node:
     def display(self):
         if self.layer == 12:
             return "resid out"
-        elif self.head is None:
-            return f"mlp{self.layer}\n{self.position}"
         elif self.layer == -1:
             return f"Embed\n{self.position}"
+        elif self.head is None:
+            return f"mlp{self.layer}\n{self.position}"
         else:
             return f"{self.layer}.{self.head}\n{self.position}"
 
@@ -623,6 +623,7 @@ class HypothesisTree:
         assert list(orig_positions.keys()) == list(
             new_positions.keys()
         ), "Number and order of keys should be the same ... for now"
+        self.direct_paths_only = direct_paths_only
         self.node_stack = OrderedDict()
         self.populate_node_stack()
         self.current_node = self.node_stack[
@@ -640,13 +641,14 @@ class HypothesisTree:
         if use_caching:
             self.get_caches()
         self.important_nodes = []
-        self.direct_paths_only = direct_paths_only
         self.finished = False
 
     def populate_node_stack(self):
-        for pos in self.orig_positions:
-            node = Node(-1, None, pos)  # represents the embedding
-            self.node_stack[(-1, None, pos)] = node
+        if self.direct_paths_only:
+            # no support for embeds yet, in indirect_paths_only
+            for pos in self.orig_positions:
+                node = Node(-1, None, pos)  # represents the embedding
+                self.node_stack[(-1, None, pos)] = node
 
         for layer in range(self.model.cfg.n_layers):
             for head in list(range(self.model.cfg.n_heads)) + [
@@ -989,7 +991,7 @@ class HypothesisTree:
             "other": "black",
         }
         # add each layer as a subgraph with rank=same
-        for layer in range(12):
+        for layer in range(-1, 12):
             with g.subgraph() as s:
                 s.attr(rank="same")
                 for node in self.important_nodes:
