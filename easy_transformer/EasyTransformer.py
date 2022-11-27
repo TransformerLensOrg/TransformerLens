@@ -2,7 +2,7 @@ import logging
 import re
 from collections import namedtuple
 from functools import lru_cache, partial
-from typing import Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import Dict, List, Literal, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import torch

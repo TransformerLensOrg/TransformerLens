@@ -142,7 +142,7 @@ class EasyTransformerConfig:
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
     normalization_type: Optional[str] = "LN"
-    device: Optional[str] = None
+    device: Optional[str] = None  # TODO perhaps maybe this [t.device]
     attention_dir: str = "causal"
     attn_only: bool = False
     seed: int = 42

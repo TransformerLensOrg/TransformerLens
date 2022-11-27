@@ -28,6 +28,7 @@ class MultiHeadAttention(nn.Module):
         assert config.hidden_size % config.n_heads == 0
 
         # We assume d_v always equals d_k
+        self.n_heads = config.n_heads
         self.d_k = config.hidden_size // config.n_heads
         self.h = config.n_heads
 
@@ -77,14 +78,20 @@ class EncoderLayer(nn.Module):
         self.input_sublayer = SublayerConnection(config)
         self.output_sublayer = SublayerConnection(config)
 
+    def forward(self, x):  # TODO add mask
+        x = self.input_sublayer(x, lambda x: self.attention(x, x, x))
+        x = self.output_sublayer(x, self.feed_forward)
+        return self.dropout(x)
+
 
 class Encoder(nn.Module):
     def __init__(self, config: EasyBERTConfig):
         super().__init__()
         self.config = config
-        self.layers = nn.ModuleList(
-            [EncoderLayer(config) for _ in range(config.n_layers)]
+        self.layers = nn.Sequential(
+            *[EncoderLayer(config) for _ in range(config.n_layers)]
         )
 
     def forward(self, x, mask=None):
+        # TODO use mask
         return self.layers(x)
