@@ -7,15 +7,15 @@ import torch
 import numpy as np
 from copy import deepcopy
 from collections import OrderedDict
-from easy_transformer.ioi_dataset import IOIDataset
 import pickle
 from subprocess import call
+from IPython import get_ipython
 
+ipython = get_ipython()
+if ipython is not None:
+    ipython.magic("load_ext autoreload")
+    ipython.magic("autoreload 2")
 from easy_transformer import EasyTransformer
-
-from easy_transformer.ioi_dataset import (
-    IOIDataset,
-)
 from easy_transformer.utils_circuit_discovery import (
     evaluate_circuit,
     direct_path_patching,
@@ -24,18 +24,10 @@ from easy_transformer.utils_circuit_discovery import (
     logit_diff_from_logits,
     get_datasets,
 )
-
 from easy_transformer.ioi_utils import (
     show_pp,
 )
-
-from IPython import get_ipython
-
-ipython = get_ipython()
-if ipython is not None:
-    ipython.magic("load_ext autoreload")
-    ipython.magic("autoreload 2")
-
+from easy_transformer.ioi_dataset import IOIDataset
 import os
 
 file_prefix = "archive/" if os.path.exists("archive") else ""
@@ -58,7 +50,7 @@ N = 50
 
 dataset_orig = IOIDataset(
     prompt_type="mixed",
-    N=N,
+    N=N, 
     tokenizer=model.tokenizer,
     prepend_bos=False,
 )

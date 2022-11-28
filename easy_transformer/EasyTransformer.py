@@ -94,6 +94,8 @@ class EasyTransformer(HookedRootModule):
             # If we have a tokenizer name, we can load it from HuggingFace
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
             self.tokenizer.pad_token = self.tokenizer.eos_token
+            if isinstance(self.tokenizer, PreTrainedTokenizer):
+                self.tokenizer.add_bos_token = False
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
