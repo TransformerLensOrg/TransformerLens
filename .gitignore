@@ -24,5 +24,3 @@ _modidx.py
 *.pkl
 *.gv
 *.dot
-acronyms.py
-archive/*

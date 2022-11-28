@@ -94,8 +94,6 @@ class EasyTransformer(HookedRootModule):
             # If we have a tokenizer name, we can load it from HuggingFace
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
             self.tokenizer.pad_token = self.tokenizer.eos_token
-            if isinstance(self.tokenizer, PreTrainedTokenizer):
-                self.tokenizer.add_bos_token = False
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
@@ -151,11 +149,6 @@ class EasyTransformer(HookedRootModule):
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
         self.setup()
-
-        # setup the model in our way to give a lot of input control
-        self.set_use_attn_result(True)
-        self.set_use_headwise_qkv_input(True)
-
 
     def forward(
         self,
