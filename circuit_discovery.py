@@ -114,7 +114,7 @@ h = Circuit(
 )
 #%%
 while h.current_node is not None:
-    h.eval(show_graphics=True, verbose=True)
+    h.eval(show_graphics=False, verbose=True)
 
     a = h.show()
     # save digraph object
