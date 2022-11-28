@@ -314,7 +314,6 @@ class Attention(nn.Module):
 
         if self.cfg.use_headwise_qkv_input:
             assert self.cfg.positional_embedding_type in ["standard", "rotary"]
-            warnings.warn("Using the new way of doing qkv input")
             head_input = einops.repeat(
                 resid_pre, "a b c -> a b x c", x=self.cfg.n_heads
             )
@@ -675,7 +674,9 @@ class TransformerBlock(nn.Module):
                 self.mlp(normalized_resid_mid)
             )  # [batch, pos, d_model]
             resid_post = self.hook_resid_post(
-                resid_mid + mlp_out
+                resid_pre
+                + attn_out
+                + mlp_out  # BREAKING: allows just the input to MLP to be edited
             )  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
