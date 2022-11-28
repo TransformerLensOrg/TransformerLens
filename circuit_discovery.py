@@ -19,11 +19,16 @@ if ipython is not None:
 from easy_transformer import EasyTransformer
 from easy_transformer.utils_circuit_discovery import (
     evaluate_circuit,
+    patch_all,
     direct_path_patching,
     logit_diff_io_s,
     Circuit,
+    path_patching,
     logit_diff_from_logits,
     get_datasets,
+)
+from easy_transformer.experiments import (
+    get_act_hook,
 )
 from easy_transformer.ioi_utils import (
     show_pp,
@@ -36,7 +41,7 @@ file_prefix = "archive/" if os.path.exists("archive") else ""
 #%% [markdown]
 # Load in the model
 
-model_name = "facebook/opt-125m" # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
+model_name = "gpt2" # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 model = EasyTransformer.from_pretrained(model_name)
 
 #%% [markdown]
@@ -108,7 +113,7 @@ h = Circuit(
     metric=day_metric,
     orig_data=tokens,
     new_data=baseline_data,
-    threshold=0.1,
+    threshold=0.25,
     orig_positions=positions,
     new_positions=positions, # in some datasets we might want to patch from different positions; not here
 )
@@ -176,6 +181,7 @@ receivers_to_senders = {
         ("blocks.9.attn.hook_result", 9, "end"),
         ("blocks.10.attn.hook_result", 0, "end"),
         ("blocks.9.attn.hook_result", 6, "end"),
+        # ("blocks.11.attn.hook_result", 10, "end"),
     ]
 }
 
@@ -196,7 +202,7 @@ model = direct_path_patching(  # direct path patching returns a model with attac
 )
 
 new_logit_diff = logit_diff_io_s(model, dataset_orig)
-print(f"New logit difference: {new_logit_diff:.3f}")  # this should be lower
+print(f"New logit difference: {new_logit_diff:.3f}")  # this should be negative: without these heads, the model can't distinguish between IO and S!
 
 #%% [markdown]
 # Do the most complex run
@@ -230,7 +236,7 @@ model = direct_path_patching(
 ans = logit_diff_io_s(model, dataset_orig)
 model.reset_hooks()
 print(f"{ans=}")
-print(f"{logit_diff_initial=}, {ans=} (this difference should be small but not 0")
+print(f"{logit_diff_initial=}, {ans=} (this difference should be small but not 0)")
 assert np.abs(logit_diff_initial - ans) > 1e-9, "!!!"
 
 #%% [markdown]
@@ -257,7 +263,6 @@ h = Circuit(
     orig_positions=orig_positions,
     new_positions=new_positions,
     use_caching=True,
-    direct_paths_only=True,
 )
 
 #%% [markdown]

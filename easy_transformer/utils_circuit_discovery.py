@@ -98,14 +98,14 @@ def direct_path_patching(
     model: EasyTransformer,
     orig_data,
     new_data,
-    initial_receivers_to_senders: Optional[
-        List[Tuple[Tuple[str, Optional[int]], Tuple[str, Optional[int], str]]]
-    ],  # these are the only edges where we patch from new_cache
     receivers_to_senders: Dict[
         Tuple[str, Optional[int]], List[Tuple[str, Optional[int], str]]
     ],  # TODO support for pushing back to token embeddings?
     orig_positions,  # tensor of shape (batch_size,)
     new_positions,
+    initial_receivers_to_senders: Optional[
+        List[Tuple[Tuple[str, Optional[int]], Tuple[str, Optional[int], str]]]
+    ] = None,  # these are the only edges where we patch from new_cache
     orig_cache=None,
     new_cache=None,
 ) -> EasyTransformer:
@@ -120,6 +120,13 @@ def direct_path_patching(
     NOTE: This relies on several changes to Neel's library (and RR/ET main, too)
     WARNING: this implementation is fairly cursed, mostly because it is in general hard to do these sorts of things with hooks
     """
+
+    if initial_receivers_to_senders is None:
+        initial_receivers_to_senders = []
+        for receiver_hook, senders in receivers_to_senders.items():
+            for sender_hook in senders:
+                if (sender_hook[0], sender_hook[1]) not in receivers_to_senders:
+                    initial_receivers_to_senders.append((receiver_hook, sender_hook))
 
     # caching...
     if orig_cache is None:
@@ -144,13 +151,6 @@ def direct_path_patching(
             [x in new_cache for x in initial_sender_hook_names]
         ), f"Incomplete new_cache. Missing {set(initial_sender_hook_names) - set(new_cache.keys())}"
     model.reset_hooks()
-
-    if initial_receivers_to_senders is None:
-        initial_receivers_to_senders = []
-        for receiver_hook, senders in receivers_to_senders.items():
-            for sender_hook in senders:
-                if (sender_hook[0], sender_hook[1]) not in receivers_to_senders:
-                    initial_receivers_to_senders.append((receiver_hook, sender_hook))
 
     # setup a way for model components to dynamically see activations from the same forward pass
     for name, hp in model.hook_dict.items():
@@ -813,3 +813,153 @@ def evaluate_circuit(h, dataset):
         new_cache=None,
     )
     return h.metric(model, dataset)
+
+
+def path_patching(
+    model,
+    D_new,
+    D_orig,
+    sender_heads,
+    receiver_hooks,
+    positions=["end"],
+    return_hooks=False,
+    extra_hooks=[],  # when we call reset hooks, we may want to add some extra hooks after this, add these here
+    freeze_mlps=False,  # recall in IOI paper we consider these "vital model components"
+    have_internal_interactions=False,
+):
+    """
+    TODO probably scrap later - very old path patching!!!
+    Patch in the effect of `sender_heads` on `receiver_hooks` only
+    (though MLPs are "ignored" if `freeze_mlps` is False so are slight confounders in this case - see Appendix B of https://arxiv.org/pdf/2211.00593.pdf)
+    """
+
+    def patch_positions(z, source_act, hook, positions=["end"], verbose=False):
+        for pos in positions:
+            z[torch.arange(D_orig.N), D_orig.word_idx[pos]] = source_act[
+                torch.arange(D_new.N), D_new.word_idx[pos]
+            ]
+        return z
+
+    # process arguments
+    sender_hooks = []
+    for layer, head_idx in sender_heads:
+        if head_idx is None:
+            sender_hooks.append((f"blocks.{layer}.hook_mlp_out", None))
+
+        else:
+            sender_hooks.append((f"blocks.{layer}.attn.hook_result", head_idx))
+
+    sender_hook_names = [x[0] for x in sender_hooks]
+    receiver_hook_names = [x[0] for x in receiver_hooks]
+
+    # Forward pass A (in https://arxiv.org/pdf/2211.00593.pdf)
+    sender_cache = {}
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    model.cache_some(
+        sender_cache, lambda x: x in sender_hook_names, suppress_warning=True
+    )
+    source_logits = model(D_new.toks.long())
+
+    # Forward pass B
+    target_cache = {}
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+    model.cache_all(target_cache, suppress_warning=True)
+    target_logits = model(D_orig.toks.long())
+
+    # Forward pass C
+    # Cache the receiver hooks
+    # (adding these hooks first means we save values BEFORE they are overwritten)
+    receiver_cache = {}
+    model.reset_hooks()
+    model.cache_some(
+        receiver_cache,
+        lambda x: x in receiver_hook_names,
+        suppress_warning=True,
+        verbose=False,
+    )
+
+    # "Freeze" intermediate heads to their D_orig values
+    for layer in range(model.cfg.n_layers):
+        for head_idx in range(model.cfg.n_heads):
+            for hook_template in [
+                "blocks.{}.attn.hook_q",
+                "blocks.{}.attn.hook_k",
+                "blocks.{}.attn.hook_v",
+            ]:
+                hook_name = hook_template.format(layer)
+
+                if have_internal_interactions and hook_name in receiver_hook_names:
+                    continue
+
+                hook = get_act_hook(
+                    patch_all,
+                    alt_act=target_cache[hook_name],
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                    name=hook_name,
+                )
+                model.add_hook(hook_name, hook)
+
+        if freeze_mlps:
+            hook_name = f"blocks.{layer}.hook_mlp_out"
+            hook = get_act_hook(
+                patch_all,
+                alt_act=target_cache[hook_name],
+                idx=None,
+                dim=None,
+                name=hook_name,
+            )
+            model.add_hook(hook_name, hook)
+
+    for hook in extra_hooks:
+        model.add_hook(*hook)
+
+    # These hooks will overwrite the freezing, for the sender heads
+    for hook_name, head_idx in sender_hooks:
+        assert not torch.allclose(sender_cache[hook_name], target_cache[hook_name]), (
+            hook_name,
+            head_idx,
+        )
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions),
+            alt_act=sender_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        model.add_hook(hook_name, hook)
+    receiver_logits = model(D_orig.toks.long())
+
+    # Add (or return) all the hooks needed for forward pass D
+    model.reset_hooks()
+    hooks = []
+    for hook in extra_hooks:
+        hooks.append(hook)
+
+    for hook_name, head_idx in receiver_hooks:
+        for pos in positions:
+            if torch.allclose(
+                receiver_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],
+                target_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],
+            ):
+                warnings.warn("Torch all close for {}".format(hook_name))
+        hook = get_act_hook(
+            partial(patch_positions, positions=positions),
+            alt_act=receiver_cache[hook_name],
+            idx=head_idx,
+            dim=2 if head_idx is not None else None,
+            name=hook_name,
+        )
+        hooks.append((hook_name, hook))
+
+    model.reset_hooks()
+    if return_hooks:
+        return hooks
+    else:
+        for hook_name, hook in hooks:
+            model.add_hook(hook_name, hook)
+        return model
