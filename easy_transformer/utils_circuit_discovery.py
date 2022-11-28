@@ -24,9 +24,9 @@ def get_comp_type(comp):
         return "other"
 
 
-def get_hook_tuple(layer, head_idx, comp=None, input=False):
+def get_hook_tuple(layer, head_idx, comp=None, input=False, model_layers=12):
     """Very cursed"""
-    """warning, only built for 12 layer models"""
+    """warning, built for 12 layer models"""
 
     if layer == -1:
         assert head_idx is None, head_idx
@@ -35,12 +35,13 @@ def get_hook_tuple(layer, head_idx, comp=None, input=False):
 
     if comp is None:
         if head_idx is None:
-            if layer < 12:
+            if layer < model_layers:
                 if input:
                     return (f"blocks.{layer}.hook_resid_mid", None)
                 else:
                     return (f"blocks.{layer}.hook_mlp_out", None)
             else:
+                assert layer == model_layers
                 return (f"blocks.{layer-1}.hook_resid_post", None)
         else:
             return (f"blocks.{layer}.attn.hook_result", head_idx)
@@ -649,7 +650,7 @@ class HypothesisTree:
         self.orig_data = orig_data
         self.new_data = new_data
         self.threshold = threshold
-        self.default_metric = self.metric(model, dataset)
+        self.default_metric = self.metric(model, dataset).detach().cpu()
         self.orig_cache = None
         self.new_cache = None
         if use_caching:
@@ -1008,7 +1009,7 @@ class HypothesisTree:
             "other": "black",
         }
         # add each layer as a subgraph with rank=same
-        for layer in range(-1, 12):
+        for layer in range(-1, self.model.cfg.n_layers):
             with g.subgraph() as s:
                 s.attr(rank="same")
                 for node in self.important_nodes:

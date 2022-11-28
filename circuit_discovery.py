@@ -36,12 +36,14 @@ if ipython is not None:
     ipython.magic("load_ext autoreload")
     ipython.magic("autoreload 2")
 
-file_prefix = "pngs/" if os.path.exists("pngs") else ""
+import os
+
+file_prefix = "archive/" if os.path.exists("archive") else ""
 
 #%% [markdown]
 # Load in the model
 
-model_name = "gpt2"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
+model_name = "EleutherAI/gpt-neo-125M"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 
 model = EasyTransformer.from_pretrained(model_name)
 model.set_use_attn_result(True)
@@ -164,7 +166,7 @@ h = HypothesisTree(
     dataset=dataset_orig,  # metric is a function of the hooked model and the dataset, so keep context about dataset_orig inside the dataset object
     orig_data=dataset_orig.toks.long(),
     new_data=dataset_new.toks.long(),
-    threshold=0.05,
+    threshold=0.1,
     orig_positions=orig_positions,
     new_positions=new_positions,
     use_caching=True,
@@ -175,24 +177,32 @@ h = HypothesisTree(
 # Run path patching
 
 while h.current_node is not None:
-    h.eval(show_graphics=False, verbose=True)
+    h.eval(show_graphics=True, verbose=True)
     a = h.show()
 
-    # save digraph object
-    with open("hypothesis_tree.dot", "w") as f:
-        f.write(a.source)
+#%%
+a = h.show()
+# save digraph object
+with open(file_prefix + "hypothesis_tree.dot", "w") as f:
+    f.write(a.source)
 
-    # convert to png
-    call(
-        [
-            "dot",
-            "-Tpng",
-            "hypothesis_tree.dot",
-            "-o",
-            f"gpt2_hypothesis_tree_{ctime()}.png",
-            "-Gdpi=600",
-        ]
-    )
+# convert to png
+call(
+    [
+        "dot",
+        "-Tpng",
+        "hypothesis_tree.dot",
+        "-o",
+        file_prefix + f"gpt2_hypothesis_tree_{ctime()}.png",
+        "-Gdpi=600",
+    ]
+)
+
+#%%
+
+# save the final model with pickle
+with open(file_prefix + f"{ctime()}_final_nodes.pkl", "wb") as f:
+    pickle.dump(h.important_nodes, f)
 #%% [markdown]
 # What about if we run the circuit on the original data ONLY at the nodes in the graph?
 
@@ -232,15 +242,15 @@ wrongs = torch.tensor(model.tokenizer(wrongs)["input_ids"]).unsqueeze(
 )  # , prepend_bos=True)
 
 positions = OrderedDict()
-positions["Yesterday"] = torch.ones(size=(7,))
-positions["Day"] = torch.ones(size=(7,)) * 4
-positions["Today"] = torch.ones(size=(7,)) * 6
+positions["Yesterday"] = torch.ones(size=(7,)).long()
+positions["Day"] = torch.ones(size=(7,)).long() * 4
+positions["Today"] = torch.ones(size=(7,)).long() * 6
 
 
 def day_metric(model, dataset):
     logits = model(tokens)
-    logits_on_correct = logits[torch.arange(7), answers]
-    logits_on_wrong = logits[torch.arange(7), wrongs]
+    logits_on_correct = logits[torch.arange(7), -1, answers]
+    logits_on_wrong = logits[torch.arange(7), -1, wrongs]
     return (logits_on_correct - logits_on_wrong).mean()
 
 
@@ -263,3 +273,6 @@ h = HypothesisTree(
     use_caching=True,
     direct_paths_only=True,
 )
+
+#%%
+h.eval(show_graphics=True, verbose=True)
