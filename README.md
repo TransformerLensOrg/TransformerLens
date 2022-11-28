@@ -5,3 +5,5 @@ This repository contains the code for direct path patching experiments as descri
 An example of a circuit that can be automatically found.
 
 This is different from the <a href="https://github.com/redwoodresearch/Easy-Transformer">code from the IOI paper</a> and from the <a href="https://github.com/neelnanda-io/Easy-Transformer">base EasyTransformer</a> (which should be referred to for learning).
+
+See the notebook at https://colab.research.google.com/github/ArthurConmy/Easy-Transformer/blob/main/AutomaticCircuitDiscovery.ipynb to demo this code, and produce a plot like the one above.

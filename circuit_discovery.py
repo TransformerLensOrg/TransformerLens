@@ -41,7 +41,6 @@ from easy_transformer.utils_circuit_discovery import (
     direct_path_patching,
     logit_diff_io_s,
     Circuit,
-    path_patching,
     logit_diff_from_logits,
     get_datasets,
 )
@@ -139,7 +138,7 @@ h = Circuit(
 # <h2> Run path patching! </h2>
 # <p> Only the first two lines of this cell matter; the rest are for saving images. This cell takes several minutes to run. If you cancel and then call h.show(), you can see intermediate representations of the circuit. </p>
 
-while h.current_node is not None:
+while h.current_node is not None and IN_COLAB: # skip this for faster development in development
     h.eval(show_graphics=False, verbose=True)
 
     a = h.show()
@@ -164,7 +163,8 @@ h.show()
 
 #%% [markdown]
 # <h2>What about if we run the circuit on the original data ONLY at the nodes in the graph?</h2>
-evaluate_circuit(h, None) # positive, but very small - we've likely missed some indices. Project: find which ones!
+if IN_COLAB:
+    evaluate_circuit(h) # positive, but very small - we've likely missed some indices. Project: find which ones!
 
 #%% [markdown]
 # <h1>IOI Patching</h1>
@@ -291,7 +291,7 @@ h = Circuit(
 #%% [markdown]
 # <h2>Run circuit discovery</h2>
 
-while h.current_node is not None:
+while h.current_node is not None and IN_COLAB:
     h.eval(show_graphics=True, verbose=True)
 
     a = h.show()
