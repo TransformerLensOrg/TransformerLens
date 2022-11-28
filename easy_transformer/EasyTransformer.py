@@ -82,7 +82,8 @@ class EasyTransformer(HookedRootModule):
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             if self.tokenizer.bos_token is None:
                 self.tokenizer.bos_token = self.tokenizer.eos_token
-            if isinstance(self.tokenizer, PreTrainedTokenizer):
+            if self.cfg.original_architecture == "OPTForCausalLM":
+                # OPT tokenizer automatically adds BOS token
                 self.tokenizer.add_bos_token = False
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
