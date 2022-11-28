@@ -3,6 +3,7 @@
 
 from typing import List, Tuple, Dict, Union, Optional, Callable, Any
 from time import ctime
+import einops
 import torch
 import numpy as np
 from copy import deepcopy
@@ -170,25 +171,23 @@ h = HypothesisTree(
 
 while h.current_node is not None:
     h.eval(show_graphics=True, verbose=True)
+
     a = h.show()
+    # save digraph object
+    with open(file_prefix + "hypothesis_tree.dot", "w") as f:
+        f.write(a.source)
 
-#%%
-a = h.show()
-# save digraph object
-with open(file_prefix + "hypothesis_tree.dot", "w") as f:
-    f.write(a.source)
-
-# convert to png
-call(
-    [
-        "dot",
-        "-Tpng",
-        "hypothesis_tree.dot",
-        "-o",
-        file_prefix + f"gpt2_hypothesis_tree_{ctime()}.png",
-        "-Gdpi=600",
-    ]
-)
+    # convert to png
+    call(
+        [
+            "dot",
+            "-Tpng",
+            "hypothesis_tree.dot",
+            "-o",
+            file_prefix + f"gpt2_hypothesis_tree_{ctime()}.png",
+            "-Gdpi=600",
+        ]
+    )
 
 #%%
 
@@ -203,51 +202,56 @@ evaluate_circuit(h, dataset_new)  # close to 3, but still missing some parts
 #%%
 # Try this on a new dataset
 
-template = "Yesterday it was{day} so today it is"
-all_days = [
-    " Monday",
-    " Tuesday",
-    " Wednesday",
-    " Thursday",
-    " Friday",
-    " Saturday",
-    " Sunday",
+template = "Last month it was {month} so this month it is"
+all_months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ]
 sentences = []
 answers = []
 wrongs = []
+batch_size = 12
 
-for day_idx in range(7):
-    cur_sentence = template.format(day=all_days[day_idx])
-    cur_ans = all_days[(day_idx + 1) % 7]
+for month_idx in range(batch_size):
+    cur_sentence = template.format(month=all_months[month_idx])
+    cur_ans = all_months[(month_idx + 1) % batch_size]
     sentences.append(cur_sentence)
     answers.append(cur_ans)
-    wrongs.append(all_days[day_idx])
+    wrongs.append(all_months[month_idx])
 
 tokens = model.to_tokens(sentences, prepend_bos=True)
 answers = torch.tensor(model.tokenizer(answers)["input_ids"]).squeeze()
 wrongs = torch.tensor(model.tokenizer(wrongs)["input_ids"]).squeeze()
 positions = OrderedDict()
-positions["Yesterday"] = torch.ones(size=(7,)).long()
-positions["Day"] = torch.ones(size=(7,)).long() * 4
-positions["Today"] = torch.ones(size=(7,)).long() * 6
-positions["END"] = torch.ones(size=(7,)).long() * 8
+positions["Last"] = torch.ones(size=(batch_size,)).long()
+positions["word month"] = torch.ones(size=(batch_size,)).long() * 2
+positions["month"] = torch.ones(size=(batch_size,)).long() * 5
+positions["word month 2"] = torch.ones(size=(batch_size,)).long() * 8
+
+positions["END"] = torch.ones(size=(batch_size,)).long() * 10
 
 
 def day_metric(model, dataset):
     logits = model(tokens)
-    logits_on_correct = logits[torch.arange(7), -1, answers]
-    logits_on_wrong = logits[torch.arange(7), -1, wrongs]
+    logits_on_correct = logits[torch.arange(batch_size), -1, answers]
+    logits_on_wrong = logits[torch.arange(batch_size), -1, wrongs]
     ans = torch.mean(logits_on_correct - logits_on_wrong)
     return ans.item()
 
 
 fake_data = tokens.clone()
-fake_data[:, 1] = model.to_tokens("Earlier", prepend_bos=False).item()
-fake_data[:, 4] = model.to_tokens(" hot", prepend_bos=False).item()
-fake_data[:, 5] = model.to_tokens(" but", prepend_bos=False).item()
-fake_data[:, 6] = model.to_tokens(" now", prepend_bos=False).item()
-# "Earlier it was hot but now it is"
+fake_data[0] = model.to_tokens("This time it is here and last time it was", prepend_bos=True)
+fake_data = einops.repeat(fake_data[0], "s -> b s", b=fake_data.shape[0])
 
 h = HypothesisTree(
     model,
@@ -255,7 +259,7 @@ h = HypothesisTree(
     dataset=None,  # metric is a function of the hooked model and the dataset, so keep context about dataset_orig inside the dataset object
     orig_data=tokens,
     new_data=fake_data,
-    threshold=0.05,
+    threshold=0.1,
     orig_positions=positions,
     new_positions=positions,
     use_caching=True,
@@ -263,4 +267,22 @@ h = HypothesisTree(
 )
 
 #%%
-h.eval(show_graphics=True, verbose=True)
+while h.current_node is not None:
+    h.eval(show_graphics=True, verbose=True)
+
+    a = h.show()
+    # save digraph object
+    with open(file_prefix + "hypothesis_tree.dot", "w") as f:
+        f.write(a.source)
+
+    # convert to png
+    call(
+        [
+            "dot",
+            "-Tpng",
+            "hypothesis_tree.dot",
+            "-o",
+            file_prefix + f"gpt2_hypothesis_tree_{ctime()}.png",
+            "-Gdpi=600",
+        ]
+    )
