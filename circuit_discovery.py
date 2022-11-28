@@ -134,12 +134,12 @@ while h.current_node is not None:
     )
 #%% [markdown]
 # What about if we run the circuit on the original data ONLY at the nodes in the graph?
-evaluate_circuit(h, None)
 
-#%%
+evaluate_circuit(h, None) # positive, but very small - we've likely missed some indices. Project: find which ones!
 
 #%% [markdown]
-# # Load data
+# <h1>IOI Patching</h1>
+# <p>The rest of this notebook covers how the direct_path_patching function works internally, using the IOI dataset as an example</p>
 
 N = 50
 

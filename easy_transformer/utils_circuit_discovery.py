@@ -812,4 +812,4 @@ def evaluate_circuit(h, dataset):
         orig_cache=None,
         new_cache=None,
     )
-    return logit_diff_io_s(model, dataset)
+    return h.metric(model, dataset)
