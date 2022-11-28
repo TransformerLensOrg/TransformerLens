@@ -152,6 +152,11 @@ class EasyTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
+        # setup the model in our way to give a lot of input control
+        self.set_use_attn_result(True)
+        self.set_use_headwise_qkv_input(True)
+
+
     def forward(
         self,
         input: Union[str, torch.Tensor],

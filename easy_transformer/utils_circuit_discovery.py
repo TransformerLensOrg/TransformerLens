@@ -463,7 +463,7 @@ def logit_diff_from_logits(
 
 
 class Node:
-    def __init__(self, layer: int, head: int, position: str):
+    def __init__(self, layer: int, head: int, position: str, resid_out: bool = False):
         self.layer = layer
         self.head = head
         assert isinstance(
@@ -472,6 +472,7 @@ class Node:
         self.position = position
         self.children = []
         self.parents = []
+        self.resid_out = resid_out
 
     def __repr__(self):
         return f"Node({self.layer}, {self.head}, {self.position})"
@@ -480,7 +481,7 @@ class Node:
         return f"Node({self.layer}, {self.head}, {self.position}) with children {[child.__repr__() for child in self.children]}"
 
     def display(self):
-        if self.layer == 12:
+        if self.resid_out:
             return "resid out"
         elif self.layer == -1:
             return f"Embed\n{self.position}"
@@ -490,7 +491,7 @@ class Node:
             return f"{self.layer}.{self.head}\n{self.position}"
 
 
-class HypothesisTree:
+class Circuit:
     def __init__(
         self,
         model: EasyTransformer,
@@ -500,9 +501,8 @@ class HypothesisTree:
         threshold: int,
         orig_positions: OrderedDict,
         new_positions: OrderedDict,
-        dataset=None,
         use_caching: bool = True,
-        direct_paths_only: bool = False,
+        dataset=None,
     ):
         model.reset_hooks()
         self.model = model
@@ -511,7 +511,6 @@ class HypothesisTree:
         assert list(orig_positions.keys()) == list(
             new_positions.keys()
         ), "Number and order of keys should be the same ... for now"
-        self.direct_paths_only = direct_paths_only
         self.node_stack = OrderedDict()
         self.populate_node_stack()
         self.current_node = self.node_stack[
@@ -536,11 +535,9 @@ class HypothesisTree:
         self.finished = False
 
     def populate_node_stack(self):
-        if self.direct_paths_only:
-            # no support for embeds yet, in indirect_paths_only
-            for pos in self.orig_positions:
-                node = Node(-1, None, pos)  # represents the embedding
-                self.node_stack[(-1, None, pos)] = node
+        for pos in self.orig_positions:
+            node = Node(-1, None, pos)  # represents the embedding
+            self.node_stack[(-1, None, pos)] = node
 
         for layer in range(self.model.cfg.n_layers):
             for head in list(range(self.model.cfg.n_heads)) + [
@@ -553,7 +550,7 @@ class HypothesisTree:
         pos = next(
             reversed(self.orig_positions)
         )  # assume the last position specified is the one that we care about in the residual stream
-        resid_post = Node(layer, None, pos)
+        resid_post = Node(layer, None, pos, resid_out=True)
         self.node_stack[
             (layer, None, pos)
         ] = resid_post  # this represents blocks.{last}.hook_resid_post
@@ -776,7 +773,7 @@ class HypothesisTree:
 
 
 def evaluate_circuit(h, dataset):
-    if not (h.current_node is None and h.direct_paths_only):
+    if h.current_node is not None:
         raise NotImplementedError("Make circuit full")
 
     receivers_to_senders = make_base_receiver_sender_objects(h.important_nodes)
