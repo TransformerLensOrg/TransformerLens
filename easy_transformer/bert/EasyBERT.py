@@ -16,7 +16,7 @@ from transformers.models.auto.tokenization_auto import AutoTokenizer
 from easy_transformer.hook_points import HookedRootModule
 
 from .. import loading_from_pretrained as loading
-from . import embeddings, encoder
+from . import embeddings, encoder, encoder_layer
 from .EasyBERTConfig import EasyBERTConfig  # TODO can we simplify this import?
 
 # TODO share this type declaration with [EasyTransformer.py]
@@ -105,86 +105,67 @@ class EasyBERT(HookedRootModule):
             dim=-1
         )  # TODO why is this with [nn] instead of just [F.softmax]?
 
-    def __load_embedding_state_dict__(self, state_dict: Dict[str, t.Tensor]):
-        self.embeddings.word_embeddings.load_state_dict(
-            {"weight": state_dict["bert.embeddings.word_embeddings.weight"]}
-        )
-        self.embeddings.position_embeddings.load_state_dict(
-            {"weight": state_dict["bert.embeddings.position_embeddings.weight"]}
-        )
-        self.embeddings.token_type_embeddings.load_state_dict(
-            {"weight": state_dict["bert.embeddings.token_type_embeddings.weight"]}
-        )
-        self.embeddings.ln.load_state_dict(
+    # TODO utils?
+    def __copy__(self, mine, state_dict, base_name):
+        mine.load_state_dict(
             {
-                "weight": state_dict["bert.embeddings.LayerNorm.weight"],
-                "bias": state_dict["bert.embeddings.LayerNorm.bias"],
+                "weight": state_dict[base_name + ".weight"],
+                "bias": state_dict[base_name + ".bias"],
             }
         )
+
+    def __load_embedding_state_dict__(self, state_dict: Dict[str, t.Tensor]):
+        _copy_ = lambda mine, base_name: self.__copy__(mine, state_dict, base_name)
+        _copy_(self.embeddings.word_embeddings, "bert.embeddings.word_embeddings")
+        _copy_(
+            self.embeddings.position_embeddings, "bert.embeddings.position_embeddings"
+        )
+        _copy_(
+            self.embeddings.token_type_embeddings,
+            "bert.embeddings.token_type_embeddings",
+        )
+        _copy_(self.embeddings.ln, "bert.embeddings.LayerNorm")
 
     def __load_cls_state_dict__(self, state_dict: Dict[str, t.Tensor]):
         """
         'cls.predictions.bias', 'cls.predictions.transform.dense.weight', 'cls.predictions.transform.dense.bias', 'cls.predictions.transform.LayerNorm.weight', 'cls.predictions.transform.LayerNorm.bias', ])"""
-        # TODO what about layer norm?
-        self.encoding_to_vocab.load_state_dict(
-            {
-                "weight": state_dict["cls.predictions.decoder.weight"],
-                "bias": state_dict["cls.predictions.decoder.bias"],
-            }
-        )
+        _copy_ = lambda mine, base_name: self.__copy__(mine, state_dict, base_name)
+        _copy_(self.encoding_to_vocab, "cls.predictions.transform.dense")
+        # TODO what about the last layernorm here?
+        # _copy_(self.encoding_to_vocab.ln, "cls.predictions.transform.LayerNorm")
 
     def __load_layer_state_dict__(
-        self, layer_index: int, state_dict: Dict[str, t.Tensor]
+        self,
+        layer_index: int,
+        state_dict: Dict[str, t.Tensor],
     ):
-        # TODO
-        base_name = f"bert.encoder.layer.{layer_index}."
+        base_name = f"bert.encoder.layer.{layer_index}"
+        _copy_ = lambda mine, name: self.__copy__(
+            mine, state_dict, base_name + "." + name
+        )
 
+        # copy attention stuff
         attention = self.encoder.layers[layer_index].attention
+        assert isinstance(attention, encoder_layer.Attention)
+        self_attention = attention.self_attention
+        _copy_(mine=self_attention.w_q, name="self.query")
+        _copy_(mine=self_attention.w_k, name="self.key")
+        _copy_(mine=self_attention.w_v, name="self.value")
+        _copy_(mine=self_attention.w_o, name="output.dense")
+        _copy_(mine=self_attention.ln, name="output.LayerNorm")
 
-        assert isinstance(attention, encoder.MultiHeadAttention)
+        # copy mlp stuff
+        mlp = self.encoder.layers[layer_index].mlp
+        assert isinstance(mlp, encoder_layer.MLP)
+        _copy_(mine=mlp.w_1, name="intermediate.dense")
+        _copy_(mine=mlp.w_2, name="output.dense")
+        _copy_(mine=mlp.ln, name="output.LayerNorm")
 
-        # TODO i think we need to do something with the layer norm parameters
-
-        attention.linear_layers[0].load_state_dict(
-            {
-                "weight": state_dict[base_name + "attention.self.query.weight"],
-                "bias": state_dict[base_name + "attention.self.query.bias"],
-            }
-        )
-
-        attention.linear_layers[1].load_state_dict(
-            {
-                "weight": state_dict[base_name + "attention.self.key.weight"],
-                "bias": state_dict[base_name + "attention.self.key.bias"],
-            }
-        )
-
-        attention.linear_layers[2].load_state_dict(
-            {
-                "weight": state_dict[base_name + "attention.self.value.weight"],
-                "bias": state_dict[base_name + "attention.self.value.bias"],
-            }
-        )
-
-        # TODO add an assert for pylance
-        self.encoder.layers[layer_index].input_sublayer.norm.load_state_dict(
-            {
-                "weight": state_dict[base_name + "attention.output.LayerNorm.weight"],
-                "bias": state_dict[base_name + "attention.output.LayerNorm.bias"],
-            }
-        )
-
-        self.encoder.layers[layer_index].output_sublayer.norm.load_state_dict(
-            {
-                "weight": state_dict[base_name + "output.LayerNorm.weight"],
-                "bias": state_dict[base_name + "output.LayerNorm.bias"],
-            }
-        )
-
-    # TODO is one difference that we don't have dropout?
-    def __load_encoder_state_dict__(self, state_dict: Dict[str, t.Tensor]):
-        for layer_index in range(self.config.n_layers):
-            self.__load_layer_state_dict__(layer_index, state_dict)
+    def __load_encoder_state_dict__(self, hf_bert):
+        for layer_index, hf_layer in zip(
+            range(self.config.n_layers), hf_bert.encoder.layer
+        ):
+            self.__load_layer_state_dict__(layer_index, hf_layer)
 
     def load_and_process_state_dict(self, state_dict: Dict[str, t.Tensor]):
         self.__load_embedding_state_dict__(state_dict)

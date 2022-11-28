@@ -16,6 +16,7 @@ class Embeddings(nn.Module):
             2, config.hidden_size
         )  # aka segment embedding
         self.ln = nn.LayerNorm(config.hidden_size)  # TODO use layer norm
+        self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, input_ids: TT["batch", "seq"], segment_ids: TT["batch", "seq"]):
         w_e = self.word_embeddings(input_ids)
@@ -26,5 +27,5 @@ class Embeddings(nn.Module):
         )
         p_e = self.position_embeddings(index_ids)
         t_e = self.token_type_embeddings(segment_ids)
-        # TODO what about dropout?
-        return self.ln(w_e + p_e + t_e)
+        # useful reference: https://github.com/maknotavailable/pytorch-pretrained-BERT/blob/8d5d1aa631480e395cdeed85ebb6cc19e89e84ab/pytorch_pretrained_bert/modeling.py#L198
+        return self.dropout(self.ln(w_e + p_e + t_e))
