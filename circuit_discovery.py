@@ -43,7 +43,7 @@ file_prefix = "archive/" if os.path.exists("archive") else ""
 #%% [markdown]
 # Load in the model
 
-model_name = "EleutherAI/gpt-neo-125M"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
+model_name = "facebook/opt-125m"  # "EleutherAI/gpt-neo-125M"  # @param ['gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl', 'facebook/opt-125m', 'facebook/opt-1.3b', 'facebook/opt-2.7b', 'facebook/opt-6.7b', 'facebook/opt-13b', 'facebook/opt-30b', 'facebook/opt-66b', 'EleutherAI/gpt-neo-125M', 'EleutherAI/gpt-neo-1.3B', 'EleutherAI/gpt-neo-2.7B', 'EleutherAI/gpt-j-6B', 'EleutherAI/gpt-neox-20b']
 
 model = EasyTransformer.from_pretrained(model_name)
 model.set_use_attn_result(True)
@@ -208,7 +208,7 @@ with open(file_prefix + f"{ctime()}_final_nodes.pkl", "wb") as f:
 
 evaluate_circuit(h, dataset_new)  # close to 3, but still missing some parts
 
-#%% [markdown]
+#%%
 # Try this on a new dataset
 
 template = "Yesterday it was{day} so today it is"
@@ -226,39 +226,35 @@ answers = []
 wrongs = []
 
 for day_idx in range(7):
-    cur_sentence = template.format(day=all_days[(day_idx + 1) % 7])
-    cur_ans = all_days[day_idx]
-    cur_correct_index = model.tokenizer
+    cur_sentence = template.format(day=all_days[day_idx])
+    cur_ans = all_days[(day_idx + 1) % 7]
     sentences.append(cur_sentence)
     answers.append(cur_ans)
     wrongs.append(all_days[day_idx])
 
 tokens = model.to_tokens(sentences, prepend_bos=True)
-answers = torch.tensor(model.tokenizer(answers)["input_ids"]).unsqueeze(
-    -1
-)  # , prepend_bos=True)
-wrongs = torch.tensor(model.tokenizer(wrongs)["input_ids"]).unsqueeze(
-    -1
-)  # , prepend_bos=True)
-
+answers = torch.tensor(model.tokenizer(answers)["input_ids"]).squeeze()
+wrongs = torch.tensor(model.tokenizer(wrongs)["input_ids"]).squeeze()
 positions = OrderedDict()
 positions["Yesterday"] = torch.ones(size=(7,)).long()
 positions["Day"] = torch.ones(size=(7,)).long() * 4
 positions["Today"] = torch.ones(size=(7,)).long() * 6
+positions["END"] = torch.ones(size=(7,)).long() * 8
 
 
 def day_metric(model, dataset):
     logits = model(tokens)
     logits_on_correct = logits[torch.arange(7), -1, answers]
     logits_on_wrong = logits[torch.arange(7), -1, wrongs]
-    return (logits_on_correct - logits_on_wrong).mean()
+    ans = torch.mean(logits_on_correct - logits_on_wrong)
+    return ans.item()
 
 
 fake_data = tokens.clone()
-tokens[:, 1] = model.to_tokens("Earlier", prepend_bos=False).item()
-tokens[:, 4] = model.to_tokens(" hot", prepend_bos=False).item()
-tokens[:, 5] = model.to_tokens(" but", prepend_bos=False).item()
-tokens[:, 6] = model.to_tokens(" now", prepend_bos=False).item()
+fake_data[:, 1] = model.to_tokens("Earlier", prepend_bos=False).item()
+fake_data[:, 4] = model.to_tokens(" hot", prepend_bos=False).item()
+fake_data[:, 5] = model.to_tokens(" but", prepend_bos=False).item()
+fake_data[:, 6] = model.to_tokens(" now", prepend_bos=False).item()
 # "Earlier it was hot but now it is"
 
 h = HypothesisTree(

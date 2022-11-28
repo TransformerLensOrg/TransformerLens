@@ -323,7 +323,7 @@ def direct_path_patching_up_to(
     model: EasyTransformer,
     receiver_hook,  # this is a tuple of (hook_name, head_idx)
     important_nodes,
-    metric: Callable[[torch.Tensor, IOIDataset], float],  # NOTE: different to before
+    metric: Callable[[EasyTransformer, Any], float],
     dataset,
     orig_data,
     cur_position,
@@ -494,7 +494,7 @@ class HypothesisTree:
     def __init__(
         self,
         model: EasyTransformer,
-        metric: Callable,
+        metric: Callable[[EasyTransformer, Any], float],
         orig_data,
         new_data,
         threshold: int,
@@ -523,7 +523,11 @@ class HypothesisTree:
         self.orig_data = orig_data
         self.new_data = new_data
         self.threshold = threshold
-        self.default_metric = self.metric(model, dataset).detach().cpu()
+        self.default_metric = self.metric(model, dataset)
+        assert not torch.allclose(
+            torch.tensor(self.default_metric),
+            torch.zeros_like(torch.tensor(self.default_metric)),
+        ), "Default metric should not be zero"
         self.orig_cache = None
         self.new_cache = None
         if use_caching:
