@@ -17,7 +17,7 @@ from transformers.models.auto.tokenization_auto import AutoTokenizer
 from easy_transformer.hook_points import HookedRootModule
 
 from .. import loading_from_pretrained as loading
-from . import embeddings, encoder, encoder_layer
+from . import attention, embeddings, encoder, encoder_layer
 from .EasyBERTConfig import EasyBERTConfig  # TODO can we simplify this import?
 
 # TODO share this type declaration with [EasyTransformer.py]
@@ -32,6 +32,9 @@ class Output:
         "n_layers", "batch", "seq", "hidden"
     ]  # slightly different than HF which stacks embeddings and hidden states
     embedding: TT["batch", "seq", "hidden"]
+    attentions_post_softmax: TT[
+        "n_layers", "batch", "head", "seq", "seq"
+    ]  # similar to HF:  https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertForMaskedLM.forward.output_attentions
 
 
 class EasyBERT(HookedRootModule):
@@ -143,16 +146,16 @@ class EasyBERT(HookedRootModule):
         )
 
         # copy attention stuff
-        attention = self.encoder.layers[layer_index].attention
-        assert isinstance(attention, encoder_layer.Attention)
-        self_attention = attention.self_attention
+        attention_output = self.encoder.layers[layer_index].attention
+        assert isinstance(attention_output, attention.Attention)
+        self_attention = attention_output.self_attention
         _copy_(mine=self_attention.w_q, name="attention.self.query")
         _copy_(mine=self_attention.w_k, name="attention.self.key")
         _copy_(mine=self_attention.w_v, name="attention.self.value")
         _copy_(mine=self_attention.w_o, name="attention.output.dense")
 
         # copy intermediate layer norm
-        _copy_(mine=attention.ln, name="output.LayerNorm")
+        _copy_(mine=attention_output.ln, name="attention.output.LayerNorm")
 
         # copy mlp stuff
         mlp = self.encoder.layers[layer_index].mlp
@@ -259,7 +262,9 @@ class EasyBERT(HookedRootModule):
             tokens,
             actual_segment_ids,
         )  # TODO is there a way to make python complain about the variable named [input]?
-        hidden_states = self.encoder(embedded, mask)
+        encoder_output: encoder.Output = self.encoder(embedded, mask=mask)
+        hidden_states = encoder_output.hidden_states
+        attentions_post_softmax = encoder_output.attentions_post_softmax
         last_hidden_state = hidden_states[-1]
         # TODO return both NSP and MLM logits
         output = self.out_linear(last_hidden_state)
@@ -267,7 +272,12 @@ class EasyBERT(HookedRootModule):
         output = self.out_ln(output)
         output = t.einsum("vh,bsh->bsv", self.embeddings.word_embeddings.weight, output)
         logits = output + self.unembed
-        return Output(logits=logits, embedding=embedded, hidden_states=hidden_states)
+        return Output(
+            logits=logits,
+            embedding=embedded,
+            hidden_states=hidden_states,
+            attentions_post_softmax=attentions_post_softmax,
+        )
 
     # TODO maybe change the order?
     def to_tokens(
