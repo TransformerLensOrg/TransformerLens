@@ -25,7 +25,7 @@ class EasyTransformerTrainConfig:
         max_grad_norm (float, *optional*): Maximum gradient norm to use for
         weight_decay (float, *optional*): Weight decay to use for training
             training
-        optimizer_name (str): The name of the optimizer to use
+        optimizer_name (str, default='AdamW'): The name of the optimizer to use
         device (str, *optional*): Device to use for training
         warmup_steps (int, *optional*): Number of warmup steps to use for training
         save_every (int, *optional*): After how many batches should a checkpoint be saved
@@ -43,7 +43,7 @@ class EasyTransformerTrainConfig:
     momentum: float = 0.0
     max_grad_norm: Optional[float] = None
     weight_decay: Optional[float] = None
-    optimizer_name: str = "Adam"
+    optimizer_name: str = "AdamW"
     device: Optional[str] = None
     warmup_steps: int = 0
     save_every: Optional[int] = None
