@@ -1,11 +1,10 @@
 import einops
 import torch.nn as nn
+import torch.nn.functional as F
 from fancy_einsum import einsum
 from torchtyping import TensorType as TT
 
 from .EasyBERTConfig import EasyBERTConfig
-
-# TODO delete unused files
 
 
 class SelfAttention(nn.Module):
@@ -39,7 +38,8 @@ class SelfAttention(nn.Module):
             q,
             k,
         )
-        return result / (self.config.hidden_size**0.5)
+        head_size = self.config.hidden_size // self.config.n_heads
+        return result / (head_size**0.5)
 
     def forward(
         self, x: TT["batch", "seq", "hidden"], mask=None
@@ -74,7 +74,7 @@ class Attention(nn.Module):
         super().__init__()
         self.self_attention = SelfAttention(config)
         self.dropout = nn.Dropout(config.dropout)
-        self.ln = nn.LayerNorm(config.hidden_size)  # TODO double check the epsilon
+        self.ln = nn.LayerNorm(config.hidden_size, eps=1e-12, elementwise_affine=True)
 
     def forward(
         self, x: TT["batch", "seq", "hidden"], mask=None
@@ -90,15 +90,14 @@ class MLP(nn.Module):
         super().__init__()
         self.mlp_size = 4 * config.hidden_size  # TODO double check this
         self.w_1 = nn.Linear(config.hidden_size, self.mlp_size)  # aka 'up' layer
-        self.gelu = nn.GELU()
         self.w_2 = nn.Linear(self.mlp_size, config.hidden_size)  # aka 'down' layer
         self.dropout = nn.Dropout(config.dropout)
-        self.ln = nn.LayerNorm(config.hidden_size)  # TODO double check the epsilon
+        self.ln = nn.LayerNorm(config.hidden_size, eps=1e-12, elementwise_affine=True)
 
     def forward(self, x: TT["batch", "seq", "hidden"]) -> TT["batch", "seq", "hidden"]:
         original_x = x  # for a residual connection
         x = self.w_1(x)
-        x = self.gelu(x)
+        x = F.gelu(x)
         x = self.w_2(x)
         x = self.dropout(x)
         return self.ln(x + original_x)

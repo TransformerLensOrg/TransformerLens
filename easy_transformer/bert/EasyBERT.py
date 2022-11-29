@@ -42,22 +42,19 @@ class EasyBERT(HookedRootModule):
         model_name: str,
         **model_kwargs,
     ):
-        # TODO use these other parameters
         logging.info(f"Loading model: {model_name}")
         official_model_name = loading.get_official_model_name(model_name)
         config = EasyBERTConfig(
             n_layers=12,
             n_heads=12,
             hidden_size=768,
-            dropout=0.0,
+            dropout=0.0,  # TODO change
             model_name=official_model_name,
             d_vocab=30522,
             max_len=512,
-            tokenizer_name=official_model_name,  # TODO change
+            tokenizer_name=official_model_name,
         )  # TODO fancier :P
-        assert (
-            AutoModelForMaskedLM.from_pretrained is not None
-        )  # recommended by some github link TODO find it
+        assert AutoModelForMaskedLM.from_pretrained is not None
         state_dict = AutoModelForMaskedLM.from_pretrained(
             official_model_name
         ).state_dict()
@@ -102,7 +99,9 @@ class EasyBERT(HookedRootModule):
         self.embeddings = embeddings.Embeddings(config)
         self.encoder = encoder.Encoder(config)
         self.out_linear = nn.Linear(config.hidden_size, config.hidden_size)
-        self.out_ln = nn.LayerNorm(config.hidden_size)
+        self.out_ln = nn.LayerNorm(
+            config.hidden_size, eps=1e-12, elementwise_affine=True
+        )
         self.unembed = nn.parameter.Parameter(t.zeros(config.d_vocab))
 
     # TODO utils?
@@ -264,7 +263,7 @@ class EasyBERT(HookedRootModule):
         last_hidden_state = hidden_states[-1]
         # TODO return both NSP and MLM logits
         output = self.out_linear(last_hidden_state)
-        output = F.gelu(last_hidden_state)
+        output = F.gelu(output)
         output = self.out_ln(output)
         output = t.einsum("vh,bsh->bsv", self.embeddings.word_embeddings.weight, output)
         logits = output + self.unembed

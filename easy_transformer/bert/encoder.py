@@ -20,7 +20,6 @@ class Encoder(nn.Module):
         intermediate = []
         for layer in self.layers:
             # TODO does this kill performance? vs. nn.sequential (and with using a list)
-            # TODO ensure that the mask is correct
             input_ = x if len(intermediate) == 0 else intermediate[-1]
             intermediate.append(layer(input_, mask=mask))
         return t.stack(intermediate)

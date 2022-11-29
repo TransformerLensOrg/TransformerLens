@@ -15,7 +15,7 @@ class Embeddings(nn.Module):
         self.token_type_embeddings = nn.Embedding(
             2, config.hidden_size
         )  # aka segment embedding
-        self.ln = nn.LayerNorm(config.hidden_size)  # TODO use layer norm
+        self.ln = nn.LayerNorm(config.hidden_size, eps=1e-12, elementwise_affine=True)
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, input_ids: TT["batch", "seq"], segment_ids: TT["batch", "seq"]):
