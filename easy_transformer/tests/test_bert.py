@@ -10,6 +10,8 @@ from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 from easy_transformer import EasyBERT
 
+# TODO does HF have API to get the subparts of the hidden states? yes- check out https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertForMaskedLM.forward.output_attentions
+
 
 def test_bert():
     model_name = "bert-base-uncased"
@@ -151,7 +153,7 @@ def test_that_im_awesome():
     # TODO i think it's because of a limitation in the size of the floats? not sure!
 
     # let's check if the hidden states are the same
-    '''
+    """
     for i in range(our_model.config.n_layers):
         our_hidden_state = our_output.hidden_states[i]
         hf_hidden_state = hf_output.hidden_states[
@@ -159,7 +161,7 @@ def test_that_im_awesome():
         ]  # +1 because of the embedding layer
         # TODO also check that we have used all the weights- im sure we missed some
         assert t.allclose(our_hidden_state, hf_hidden_state, atol=atol)
-    '''
+    """
 
     assert our_output.logits.shape == hf_output.logits.shape
     assert t.allclose(our_output.logits, hf_output.logits, atol=atol)
