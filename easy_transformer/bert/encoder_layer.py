@@ -20,7 +20,6 @@ class SelfAttention(nn.Module):
     def attention_pattern(
         self, x: TT["batch", "seq", "hidden"]
     ) -> TT["batch", "head", "seq", "seq"]:
-        # TODO double check that this is correct
         q = self.w_q(x)
         k = self.w_k(x)
         q = einops.rearrange(
@@ -88,7 +87,7 @@ class Attention(nn.Module):
 class MLP(nn.Module):
     def __init__(self, config: EasyBERTConfig):
         super().__init__()
-        self.mlp_size = 4 * config.hidden_size  # TODO double check this
+        self.mlp_size = 4 * config.hidden_size  # TODO someday config
         self.w_1 = nn.Linear(config.hidden_size, self.mlp_size)  # aka 'up' layer
         self.w_2 = nn.Linear(self.mlp_size, config.hidden_size)  # aka 'down' layer
         self.dropout = nn.Dropout(config.dropout)
@@ -107,10 +106,9 @@ class EncoderLayer(nn.Module):
     def __init__(self, config: EasyBERTConfig):
         super().__init__()
         self.config = config
-        self.attention = Attention(config)  # TODO rename
+        self.attention = Attention(config)
         self.mlp = MLP(config)
 
-    # TODO confirm that's the right size
     def forward(
         self, x: TT["batch", "seq", "hidden"], mask=None
     ) -> TT["batch", "seq", "hidden"]:
