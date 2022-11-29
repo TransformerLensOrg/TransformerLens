@@ -1,9 +1,10 @@
 import logging
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import torch as t
 import torch.nn as nn
+import torch.nn.functional as F
 from torchtyping import TensorType as TT
 from transformers import (
     AutoModelForMaskedLM,  # unfortunately the suggestion to import from the non-private location doesn't work; it makes [from_pretrained == None]
@@ -100,23 +101,22 @@ class EasyBERT(HookedRootModule):
         self.tokenizer = EasyBERT.__generate_tokenizer__(self.config, tokenizer)
         self.embeddings = embeddings.Embeddings(config)
         self.encoder = encoder.Encoder(config)
-        self.encoding_to_vocab = nn.Linear(config.hidden_size, config.d_vocab)
-        self.softmax = nn.LogSoftmax(
-            dim=-1
-        )  # TODO why is this with [nn] instead of just [F.softmax]?
+        self.out_linear = nn.Linear(config.hidden_size, config.hidden_size)
+        self.out_ln = nn.LayerNorm(config.hidden_size)
+        self.unembed = nn.parameter.Parameter(t.zeros(config.d_vocab))
 
     # TODO utils?
     def __copy__(self, mine, state_dict, base_name):
-        mine.load_state_dict(
-            {
-                "weight": state_dict[base_name + ".weight"],
-                "bias": state_dict[base_name + ".bias"],
-            }
-        )
+        mine.weight.detach().copy_(state_dict[base_name + ".weight"])
+        if base_name + ".bias" in state_dict:
+            mine.bias.detach().copy_(state_dict[base_name + ".bias"])
 
     def __load_embedding_state_dict__(self, state_dict: Dict[str, t.Tensor]):
         _copy_ = lambda mine, base_name: self.__copy__(mine, state_dict, base_name)
-        _copy_(self.embeddings.word_embeddings, "bert.embeddings.word_embeddings")
+        _copy_(
+            self.embeddings.word_embeddings,
+            "bert.embeddings.word_embeddings",
+        )
         _copy_(
             self.embeddings.position_embeddings, "bert.embeddings.position_embeddings"
         )
@@ -130,9 +130,8 @@ class EasyBERT(HookedRootModule):
         """
         'cls.predictions.bias', 'cls.predictions.transform.dense.weight', 'cls.predictions.transform.dense.bias', 'cls.predictions.transform.LayerNorm.weight', 'cls.predictions.transform.LayerNorm.bias', ])"""
         _copy_ = lambda mine, base_name: self.__copy__(mine, state_dict, base_name)
-        _copy_(self.encoding_to_vocab, "cls.predictions.transform.dense")
-        # TODO what about the last layernorm here?
-        # _copy_(self.encoding_to_vocab.ln, "cls.predictions.transform.LayerNorm")
+        _copy_(self.out_linear, "cls.predictions.transform.dense")
+        _copy_(self.out_ln, "cls.predictions.transform.LayerNorm")
 
     def __load_layer_state_dict__(
         self,
@@ -148,11 +147,13 @@ class EasyBERT(HookedRootModule):
         attention = self.encoder.layers[layer_index].attention
         assert isinstance(attention, encoder_layer.Attention)
         self_attention = attention.self_attention
-        _copy_(mine=self_attention.w_q, name="self.query")
-        _copy_(mine=self_attention.w_k, name="self.key")
-        _copy_(mine=self_attention.w_v, name="self.value")
-        _copy_(mine=self_attention.w_o, name="output.dense")
-        _copy_(mine=self_attention.ln, name="output.LayerNorm")
+        _copy_(mine=self_attention.w_q, name="attention.self.query")
+        _copy_(mine=self_attention.w_k, name="attention.self.key")
+        _copy_(mine=self_attention.w_v, name="attention.self.value")
+        _copy_(mine=self_attention.w_o, name="attention.output.dense")
+
+        # copy intermediate layer norm
+        _copy_(mine=attention.ln, name="output.LayerNorm")
 
         # copy mlp stuff
         mlp = self.encoder.layers[layer_index].mlp
@@ -161,16 +162,25 @@ class EasyBERT(HookedRootModule):
         _copy_(mine=mlp.w_2, name="output.dense")
         _copy_(mine=mlp.ln, name="output.LayerNorm")
 
-    def __load_encoder_state_dict__(self, hf_bert):
-        for layer_index, hf_layer in zip(
-            range(self.config.n_layers), hf_bert.encoder.layer
-        ):
-            self.__load_layer_state_dict__(layer_index, hf_layer)
+    def __load_encoder_state_dict__(self, state_dict):
+        for layer_index in range(self.config.n_layers):
+            self.__load_layer_state_dict__(layer_index, state_dict=state_dict)
 
     def load_and_process_state_dict(self, state_dict: Dict[str, t.Tensor]):
         self.__load_embedding_state_dict__(state_dict)
         self.__load_encoder_state_dict__(state_dict)
+        # TODO probably rename this
         self.__load_cls_state_dict__(state_dict)
+        self.unembed.detach().copy_(state_dict["cls.predictions.bias"])
+
+        fail = False
+        for name, p in self.named_parameters():
+            if t.isnan(p).any():
+                print(f"Forgot to initialize: {name}")
+                fail = True
+            else:
+                p.requires_grad_(True)
+        assert not fail
 
     # TODO duplicated code, share it
     def __make_tokens_for_forward__(
@@ -240,9 +250,12 @@ class EasyBERT(HookedRootModule):
         actual_segment_ids: TT["batch", "seq"] = self.__make_segment_ids__(
             x=x, passed_segment_ids=segment_ids
         )  # TODO prepend_bos=False?
+        """
         mask = (
             (tokens > 0).unsqueeze(1).repeat(1, tokens.size(1), 1).unsqueeze(1)
         )  # TODO is this right..?
+        """
+        mask = None  # TODO put mask back in
         embedded = self.embeddings(
             tokens,
             actual_segment_ids,
@@ -250,7 +263,11 @@ class EasyBERT(HookedRootModule):
         hidden_states = self.encoder(embedded, mask)
         last_hidden_state = hidden_states[-1]
         # TODO return both NSP and MLM logits
-        logits = self.softmax(self.encoding_to_vocab(last_hidden_state))
+        output = self.out_linear(last_hidden_state)
+        output = F.gelu(last_hidden_state)
+        output = self.out_ln(output)
+        output = t.einsum("vh,bsh->bsv", self.embeddings.word_embeddings.weight, output)
+        logits = output + self.unembed
         return Output(logits=logits, embedding=embedded, hidden_states=hidden_states)
 
     # TODO maybe change the order?
