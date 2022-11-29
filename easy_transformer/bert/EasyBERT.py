@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import torch as t
 import torch.nn as nn
@@ -202,9 +202,11 @@ class EasyBERT(HookedRootModule):
     def __to_segment_ids__(self, tokens: TokensTensor) -> t.Tensor:
         # TODO this is a bit hacky, but it works. We should probably make a proper segment id tensor
         # lol thanks copilot, which suggested zeros_like
-        return self.tokenizer(tokens, return_tensors="pt", padding=True)[
-            "token_type_ids"
-        ]
+        assert self.tokenizer is not None
+        tokenizer: PreTrainedTokenizer = self.tokenizer  # for pylance
+        result = tokenizer(tokens, return_tensors="pt", padding=True)["token_type_ids"]
+        assert isinstance(result, t.Tensor)  # TODO is this ok? done for pylance
+        return result
 
     def __make_segment_ids__(
         self, x: InputForForwardLayer, passed_segment_ids: Optional[TT["batch", "seq"]]
@@ -275,5 +277,6 @@ class EasyBERT(HookedRootModule):
         tokens = self.tokenizer(x, return_tensors="pt", padding=True)["input_ids"]
         if move_to_device:
             # TODO why did pylance not complain about [self.cfg]
+            assert isinstance(tokens, t.Tensor)
             tokens = tokens.to(self.config.device)
         return tokens
