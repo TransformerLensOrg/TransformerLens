@@ -948,7 +948,6 @@ class EasyTransformer(HookedRootModule):
         top_p: Optional[float] = None,
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
-        num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
         prepend_bos=True,
         return_type: Optional[str] = "input",
