@@ -437,6 +437,7 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
+    print_tokenized: bool = True,
     prepend_bos: bool = True,
     top_k: int = 10,
 ):
@@ -455,7 +456,7 @@ def test_prompt(
     answer_str_tokens = model.to_str_tokens(answer, prepend_bos=False)
     prompt_length = len(prompt_str_tokens)
     answer_length = len(answer_str_tokens)
-    if print_details:
+    if print_details and print_tokenized:
         print("Tokenized prompt:", prompt_str_tokens)
         print("Tokenized answer:", answer_str_tokens)
     logits = remove_batch_dim(model(tokens))
