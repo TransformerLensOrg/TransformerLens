@@ -449,8 +449,11 @@ def test_prompt(
     """
     if prepend_space_to_answer and not answer.startswith(" "):
         answer = " " + answer
-    # GPT-2 often treats the first token weirdly, so lets give it a resting position
-    tokens = model.to_tokens(prompt + answer, prepend_bos=prepend_bos)
+    tokens = torch.cat([
+        # GPT-2 often treats the first token weirdly, so lets give it a resting position
+        model.to_tokens(prompt, prepend_bos=prepend_bos),
+        model.to_tokens(answer, prepend_bos=False)
+    ], dim=1)  # position dimension
     prompt_str_tokens = model.to_str_tokens(prompt, prepend_bos=prepend_bos)
     answer_str_tokens = model.to_str_tokens(answer, prepend_bos=False)
     prompt_length = len(prompt_str_tokens)
