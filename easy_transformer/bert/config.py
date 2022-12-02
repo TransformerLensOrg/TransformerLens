@@ -9,12 +9,22 @@ TokenizerName = Literal["bert-base-uncased"]
 
 @dataclass
 class Config:
+    """
+    Config for a BERT model. For applicable values of [model] and [tokenizer],
+    see [bert/config.py].
+    """
+
     model: ModelName
 
     layers: int
     heads: int
     hidden_size: int
-    head_size: int  # TODO add documentation
+
+    """
+    used in [attention.py]. can be equal to [hidden_size // heads] or can be smaller to make the model work in parallel.
+    """
+    head_size: int
+
     vocab_size: int
     mlp_size: int
 
@@ -26,4 +36,11 @@ class Config:
 
     tokenizer: Optional[TokenizerName] = None
 
-    # TODO add _post_init
+    def __post_init__(self):
+        if self.device is None:
+            self.device = t.device("cuda" if t.cuda.is_available() else "cpu")
+
+        if self.tokenizer is None:
+            self.tokenizer = self.model
+
+        # TODO what about random seed?

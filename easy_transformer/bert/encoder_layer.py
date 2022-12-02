@@ -1,17 +1,9 @@
-from dataclasses import dataclass
-
 import torch.nn as nn
 import torch.nn.functional as F
 from torchtyping import TensorType as TT
 
 from . import attention
 from .config import Config
-
-
-@dataclass
-class Output:
-    hidden_state: TT["batch", "seq", "hidden"]
-    attention_post_softmax: TT["batch", "head", "seq", "seq"]
 
 
 class MLP(nn.Module):
@@ -38,10 +30,6 @@ class EncoderLayer(nn.Module):
         self.attention = attention.Attention(config)
         self.mlp = MLP(config)
 
-    def forward(self, x: TT["batch", "seq", "hidden"], mask=None) -> Output:
+    def forward(self, x: TT["batch", "seq", "hidden"], mask=None):
         attention_output: attention.Output = self.attention(x, mask)
-        hidden = self.mlp(attention_output.final_output)
-        return Output(
-            hidden_state=hidden,
-            attention_post_softmax=attention_output.attention_post_softmax,
-        )
+        return self.mlp(attention_output.final_output)

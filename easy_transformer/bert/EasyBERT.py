@@ -20,7 +20,7 @@ from .. import loading_from_pretrained as loading
 from . import attention, embeddings, encoder, encoder_layer
 from .config import Config
 
-# TODO share this type declaration with [EasyTransformer.py]
+# TODO maybe-someday share this type declaration with [EasyTransformer.py]
 TokensTensor = TT["batch", "pos"]
 InputForForwardLayer = Union[str, List[str], TokensTensor]
 
@@ -28,13 +28,7 @@ InputForForwardLayer = Union[str, List[str], TokensTensor]
 @dataclass
 class Output:
     logits: TT["batch", "seq", "vocab"]
-    hidden_states: TT[
-        "n_layers", "batch", "seq", "hidden"
-    ]  # slightly different than HF which stacks embeddings and hidden states
     embedding: TT["batch", "seq", "hidden"]
-    attentions_post_softmax: TT[
-        "n_layers", "batch", "head", "seq", "seq"
-    ]  # similar to HF:  https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertForMaskedLM.forward.output_attentions
 
 
 class EasyBERT(HookedRootModule):
@@ -47,18 +41,17 @@ class EasyBERT(HookedRootModule):
     ):
         logging.info(f"Loading model: {model_name}")
         official_model_name = loading.get_official_model_name(model_name)
-        # TODO the fact that pylance / w.e. doesn't show the members of the literal is a little gros :(
         hidden_size = 768
+        heads = 12
         config = Config(
             layers=12,
-            heads=12,
+            heads=heads,
             hidden_size=hidden_size,
-            head_size=hidden_size,
+            head_size=hidden_size // heads,
             dropout=0.0,  # TODO change
             model=official_model_name,
             vocab_size=30522,
             max_length=512,
-            tokenizer=official_model_name,
             mlp_size=4 * hidden_size,
         )  # TODO fancier :P
         assert AutoModelForMaskedLM.from_pretrained is not None
@@ -112,7 +105,6 @@ class EasyBERT(HookedRootModule):
         )
         self.unembed = nn.parameter.Parameter(t.zeros(config.vocab_size))
 
-    # TODO utils?
     def __copy__(self, mine, state_dict, base_name):
         mine.weight.detach().copy_(state_dict[base_name + ".weight"])
         if base_name + ".bias" in state_dict:
@@ -176,20 +168,10 @@ class EasyBERT(HookedRootModule):
     def load_and_process_state_dict(self, state_dict: Dict[str, t.Tensor]):
         self.__load_embedding_state_dict__(state_dict)
         self.__load_encoder_state_dict__(state_dict)
-        # TODO probably rename this
         self.__load_cls_state_dict__(state_dict)
-        self.unembed.detach().copy_(state_dict["cls.predictions.bias"])
+        self.unembed.detach().copy_(state_dict["cls.predictions.bias"])  # TODO why?
 
-        fail = False
-        for name, p in self.named_parameters():
-            if t.isnan(p).any():
-                print(f"Forgot to initialize: {name}")
-                fail = True
-            else:
-                p.requires_grad_(True)
-        assert not fail
-
-    # TODO duplicated code, share it
+    # TODO-maybe-someday duplicated code, share it
     def __make_tokens_for_forward__(
         self, x: InputForForwardLayer, prepend_bos: bool
     ) -> TokensTensor:
@@ -200,8 +182,6 @@ class EasyBERT(HookedRootModule):
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
             # This is only intended to support passing in a single string
-            # TODO why does this have type errors ! ! ! ! !: (?
-            # TODO can we solve it in the other place too?
             tokens = self.to_tokens(x, prepend_bos=prepend_bos)
         else:
             assert isinstance(
@@ -220,9 +200,10 @@ class EasyBERT(HookedRootModule):
         # TODO this is a bit hacky, but it works. We should probably make a proper segment id tensor
         # lol thanks copilot, which suggested zeros_like
         assert self.tokenizer is not None
-        tokenizer: PreTrainedTokenizer = self.tokenizer  # for pylance
-        result = tokenizer(tokens, return_tensors="pt", padding=True)["token_type_ids"]
-        assert isinstance(result, t.Tensor)  # TODO is this ok? done for pylance
+        result = self.tokenizer(tokens, return_tensors="pt", padding=True)[
+            "token_type_ids"
+        ]
+        assert isinstance(result, t.Tensor)
         return result
 
     def __make_segment_ids__(
@@ -266,11 +247,10 @@ class EasyBERT(HookedRootModule):
         embedded = self.embeddings(
             tokens,
             actual_segment_ids,
-        )  # TODO is there a way to make python complain about the variable named [input]?
-        encoder_output: encoder.Output = self.encoder(embedded, mask=mask)
-        hidden_states = encoder_output.hidden_states
-        attentions_post_softmax = encoder_output.attentions_post_softmax
-        last_hidden_state = hidden_states[-1]
+        )
+        last_hidden_state: TT["batch", "seq", "hidden"] = self.encoder(
+            embedded, mask=mask
+        )
         # TODO return both NSP and MLM logits
         output = self.out_linear(last_hidden_state)
         output = F.gelu(output)
@@ -280,8 +260,6 @@ class EasyBERT(HookedRootModule):
         return Output(
             logits=logits,
             embedding=embedded,
-            hidden_states=hidden_states,
-            attentions_post_softmax=attentions_post_softmax,
         )
 
     # TODO maybe change the order?
@@ -290,7 +268,7 @@ class EasyBERT(HookedRootModule):
         x: Union[str, List[str]],
         prepend_bos: bool = True,
         move_to_device: bool = True,
-    ) -> TT["batch", "pos"]:  # TODO change this type
+    ) -> TokensTensor:
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model.
 
@@ -307,7 +285,7 @@ class EasyBERT(HookedRootModule):
                 x = [self.tokenizer.bos_token + string for string in x]
         tokens = self.tokenizer(x, return_tensors="pt", padding=True)["input_ids"]
         if move_to_device:
-            # TODO why did pylance not complain about [self.cfg]
+            # TODO-someday why did pylance not complain about [self.cfg] (but using self.cfg fails at runtime)
             assert isinstance(tokens, t.Tensor)
             tokens = tokens.to(self.config.device)
         return tokens
