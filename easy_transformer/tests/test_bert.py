@@ -16,11 +16,11 @@ def test_that_im_awesome():
 
     from easy_transformer import EasyBERT
 
-    atol = 1e-1
+    atol = 1e-4
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     our_model = EasyBERT.from_pretrained(model_name)
-    # TODO figure out what's up with [using eos_token] and [using bos_token]
+    # TODO figure out what's up with [using eos_token] and [using bos_token] (the debug messages)
     our_output = our_model(text)
 
     n_tokens_in_input = tokenizer(text, return_tensors="pt")["input_ids"].shape[1]
@@ -47,11 +47,7 @@ def test_that_im_awesome():
 
     assert hf_output.hidden_states is not None
 
-    # let's check the embeddings
-
-    assert t.allclose(
-        our_output.embedding, hf_output.hidden_states[0], atol=atol
-    )  # TODO higher precision (lower atol)?  i think it's because of a limitation in the size of the floats? not sure! otherwise i got floating point rouding errors, i think
+    assert t.allclose(our_output.embedding, hf_output.hidden_states[0], atol=atol)
 
     assert our_output.logits.shape == hf_output.logits.shape
     assert t.allclose(our_output.logits, hf_output.logits, atol=atol)

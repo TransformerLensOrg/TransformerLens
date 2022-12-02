@@ -48,7 +48,7 @@ class EasyBERT(HookedRootModule):
             heads=heads,
             hidden_size=hidden_size,
             head_size=hidden_size // heads,
-            dropout=0.0,  # TODO change
+            dropout=0.0,  # TODO figure out why nonzero dropout (even with inference mode) makes shit fail!
             model=official_model_name,
             vocab_size=30522,
             max_length=512,
