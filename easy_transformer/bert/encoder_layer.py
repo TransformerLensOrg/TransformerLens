@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torchtyping import TensorType as TT
 
 from . import attention
-from .EasyBERTConfig import EasyBERTConfig
+from .config import Config
 
 
 @dataclass
@@ -15,7 +15,7 @@ class Output:
 
 
 class MLP(nn.Module):
-    def __init__(self, config: EasyBERTConfig):
+    def __init__(self, config: Config):
         super().__init__()
         self.mlp_size = 4 * config.hidden_size  # TODO someday config
         self.w_1 = nn.Linear(config.hidden_size, self.mlp_size)  # aka 'up' layer
@@ -33,7 +33,7 @@ class MLP(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, config: EasyBERTConfig):
+    def __init__(self, config: Config):
         super().__init__()
         self.config = config
         self.attention = attention.Attention(config)

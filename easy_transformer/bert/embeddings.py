@@ -3,15 +3,15 @@ import torch as t
 import torch.nn as nn
 from torchtyping import TensorType as TT
 
-from .EasyBERTConfig import EasyBERTConfig
+from .config import Config
 
 
 class Embeddings(nn.Module):
-    def __init__(self, config: EasyBERTConfig):
+    def __init__(self, config: Config):
         super().__init__()
         self.config = config
-        self.word_embeddings = nn.Embedding(config.d_vocab, config.hidden_size)
-        self.position_embeddings = nn.Embedding(config.max_len, config.hidden_size)
+        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
+        self.position_embeddings = nn.Embedding(config.max_length, config.hidden_size)
         self.token_type_embeddings = nn.Embedding(
             2, config.hidden_size
         )  # aka segment embedding

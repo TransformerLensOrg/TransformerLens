@@ -5,7 +5,7 @@ import torch.nn as nn
 from torchtyping import TensorType as TT
 
 from . import encoder_layer
-from .EasyBERTConfig import EasyBERTConfig
+from .config import Config
 
 
 @dataclass
@@ -19,11 +19,11 @@ class Output:
 
 
 class Encoder(nn.Module):
-    def __init__(self, config: EasyBERTConfig):
+    def __init__(self, config: Config):
         super().__init__()
         self.config = config
         self.layers = nn.ModuleList(
-            [encoder_layer.EncoderLayer(config) for _ in range(config.n_layers)]
+            [encoder_layer.EncoderLayer(config) for _ in range(config.layers)]
         )
 
     def forward(self, x, mask=None) -> Output:

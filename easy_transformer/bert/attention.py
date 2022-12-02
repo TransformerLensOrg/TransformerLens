@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from fancy_einsum import einsum
 from torchtyping import TensorType as TT
 
-from .EasyBERTConfig import EasyBERTConfig
+from .config import Config
 
 
 @dataclass
@@ -16,14 +16,14 @@ class Output:
 
 
 class SelfAttention(nn.Module):
-    def __init__(self, config: EasyBERTConfig):
+    def __init__(self, config: Config):
         super().__init__()
         self.config = config
-        # TODO someday make head_size distinct so that this module can be parallel
-        self.w_q = nn.Linear(config.hidden_size, config.hidden_size)
-        self.w_k = nn.Linear(config.hidden_size, config.hidden_size)
-        self.w_v = nn.Linear(config.hidden_size, config.hidden_size)
-        self.w_o = nn.Linear(config.hidden_size, config.hidden_size)
+        size_of_all_heads = config.heads * config.head_size
+        self.w_q = nn.Linear(config.hidden_size, size_of_all_heads)
+        self.w_k = nn.Linear(config.hidden_size, size_of_all_heads)
+        self.w_v = nn.Linear(config.hidden_size, size_of_all_heads)
+        self.w_o = nn.Linear(size_of_all_heads, config.hidden_size)
 
     def attention_pattern(
         self, x: TT["batch", "seq", "hidden"]
@@ -33,19 +33,19 @@ class SelfAttention(nn.Module):
         q = einops.rearrange(
             q,
             "batch seq (head head_size) -> batch head seq head_size",
-            head=self.config.n_heads,
+            head=self.config.heads,
         )
         k = einops.rearrange(
             k,
             "batch seq (head head_size) -> batch head seq head_size",
-            head=self.config.n_heads,
+            head=self.config.heads,
         )
         result = einsum(
             "batch head seq_q head_size, batch head seq_k head_size -> batch head seq_q seq_k",
             q,
             k,
         )
-        head_size = self.config.hidden_size // self.config.n_heads
+        head_size = self.config.hidden_size // self.config.heads
         return result / (head_size**0.5)
 
     @dataclass
@@ -65,7 +65,7 @@ class SelfAttention(nn.Module):
         v = einops.rearrange(
             v,
             "b seq (head head_size) -> b head seq head_size",
-            head=self.config.n_heads,
+            head=self.config.heads,
         )
         combined_values = einsum(
             "b head seq_k head_size, b head seq_q seq_k -> b head seq_q head_size",
@@ -83,7 +83,7 @@ class SelfAttention(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, config: EasyBERTConfig):
+    def __init__(self, config: Config):
         super().__init__()
         self.self_attention = SelfAttention(config)
         self.dropout = nn.Dropout(config.dropout)

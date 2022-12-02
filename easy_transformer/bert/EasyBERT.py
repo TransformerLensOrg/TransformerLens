@@ -18,7 +18,7 @@ from easy_transformer.hook_points import HookedRootModule
 
 from .. import loading_from_pretrained as loading
 from . import attention, embeddings, encoder, encoder_layer
-from .EasyBERTConfig import EasyBERTConfig  # TODO can we simplify this import?
+from .config import Config
 
 # TODO share this type declaration with [EasyTransformer.py]
 TokensTensor = TT["batch", "pos"]
@@ -47,15 +47,18 @@ class EasyBERT(HookedRootModule):
     ):
         logging.info(f"Loading model: {model_name}")
         official_model_name = loading.get_official_model_name(model_name)
-        config = EasyBERTConfig(
-            n_layers=12,
-            n_heads=12,
-            hidden_size=768,
+        # TODO the fact that pylance / w.e. doesn't show the members of the literal is a little gros :(
+        hidden_size = 768
+        config = Config(
+            layers=12,
+            heads=12,
+            hidden_size=hidden_size,
+            head_size=hidden_size,
             dropout=0.0,  # TODO change
-            model_name=official_model_name,
-            d_vocab=30522,
-            max_len=512,
-            tokenizer_name=official_model_name,
+            model=official_model_name,
+            vocab_size=30522,
+            max_length=512,
+            tokenizer=official_model_name,
         )  # TODO fancier :P
         assert AutoModelForMaskedLM.from_pretrained is not None
         state_dict = AutoModelForMaskedLM.from_pretrained(
@@ -71,15 +74,15 @@ class EasyBERT(HookedRootModule):
 
     @classmethod
     def __generate_tokenizer__(
-        cls, config: EasyBERTConfig, tokenizer: Optional[PreTrainedTokenizer]
+        cls, config: Config, tokenizer: Optional[PreTrainedTokenizer]
     ):
         if tokenizer is not None:
             return tokenizer
 
-        if config.tokenizer_name is not None:
+        if config.tokenizer is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             result: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
-                config.tokenizer_name
+                config.tokenizer
             )
             result.eos_token = (
                 result.eos_token if result.eos_token is not None else "<|endoftext|>"
@@ -95,7 +98,8 @@ class EasyBERT(HookedRootModule):
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             return None
 
-    def __init__(self, config: EasyBERTConfig, tokenizer=None, **kwargs):
+    def __init__(self, config: Config, tokenizer=None, **kwargs):
+        # TODO what are the kwargs used for?
         super().__init__()
         self.config = config
         self.tokenizer = EasyBERT.__generate_tokenizer__(self.config, tokenizer)
@@ -105,7 +109,7 @@ class EasyBERT(HookedRootModule):
         self.out_ln = nn.LayerNorm(
             config.hidden_size, eps=1e-12, elementwise_affine=True
         )
-        self.unembed = nn.parameter.Parameter(t.zeros(config.d_vocab))
+        self.unembed = nn.parameter.Parameter(t.zeros(config.vocab_size))
 
     # TODO utils?
     def __copy__(self, mine, state_dict, base_name):
@@ -165,7 +169,7 @@ class EasyBERT(HookedRootModule):
         _copy_(mine=mlp.ln, name="output.LayerNorm")
 
     def __load_encoder_state_dict__(self, state_dict):
-        for layer_index in range(self.config.n_layers):
+        for layer_index in range(self.config.layers):
             self.__load_layer_state_dict__(layer_index, state_dict=state_dict)
 
     def load_and_process_state_dict(self, state_dict: Dict[str, t.Tensor]):
