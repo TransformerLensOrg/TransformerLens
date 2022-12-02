@@ -11,7 +11,7 @@ packages = [{include = "easy_transformer"}]
 python = "^3.8"
 einops = "^0.6.0"
 numpy = "^1.21"
-torch = "^1.12"
+torch = "^1.10"
 datasets = "^2.7.1"
 transformers = "^4.25.1"
 tqdm = "^4.64.1"
