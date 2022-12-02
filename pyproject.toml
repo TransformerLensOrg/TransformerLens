@@ -2,7 +2,7 @@
 name = "easy-transformer"
 version = "0.2.0"
 description = "An implementation of transformers tailored for mechanistic interpretability."
-authors = ["Neel Nanda <00000000+neel-nanda@users.noreply.github.com>"]
+authors = ["Neel Nanda <77788841+neelnanda-io@users.noreply.github.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [{include = "easy_transformer"}]
