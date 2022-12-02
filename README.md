@@ -16,7 +16,14 @@ A demo notebook can be found [here](https://colab.research.google.com/github/nee
 
 ### Setup
 
-From the root directory of this repository: `pip install -e .`
+This project uses [Poetry](https://python-poetry.org/docs/#installation) for package management. Install as follows (this will also setup your virtual environment):
+
+```bash
+poetry config virtualenvs.in-project true
+poetry install --with dev
+```
+
+Optionally, if you want Jupyter Lab you can run `poetry run pip install jupyterlab` (to install in the same virtual environment), and then run with `poetry run jupyter lab`.
 
 Then the library can be imported as `import easy_transformer`.
 
