@@ -17,9 +17,8 @@ class Output:
 class MLP(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
-        self.mlp_size = 4 * config.hidden_size  # TODO someday config
-        self.w_1 = nn.Linear(config.hidden_size, self.mlp_size)  # aka 'up' layer
-        self.w_2 = nn.Linear(self.mlp_size, config.hidden_size)  # aka 'down' layer
+        self.w_1 = nn.Linear(config.hidden_size, config.mlp_size)  # aka 'up' layer
+        self.w_2 = nn.Linear(config.mlp_size, config.hidden_size)  # aka 'down' layer
         self.dropout = nn.Dropout(config.dropout)
         self.ln = nn.LayerNorm(config.hidden_size, eps=1e-12, elementwise_affine=True)
 

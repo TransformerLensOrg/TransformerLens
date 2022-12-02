@@ -16,6 +16,7 @@ class Config:
     hidden_size: int
     head_size: int  # TODO add documentation
     vocab_size: int
+    mlp_size: int
 
     max_length: int
 

@@ -59,6 +59,7 @@ class EasyBERT(HookedRootModule):
             vocab_size=30522,
             max_length=512,
             tokenizer=official_model_name,
+            mlp_size=4 * hidden_size,
         )  # TODO fancier :P
         assert AutoModelForMaskedLM.from_pretrained is not None
         state_dict = AutoModelForMaskedLM.from_pretrained(
