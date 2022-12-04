@@ -222,20 +222,14 @@ class EasyBERT(HookedRootModule):
     def forward(
         self, x: InputForForwardLayer, segment_ids: TT["batch", "seq"] = None
     ) -> Output:
-        # TODO document [segment_ids]
         # attention masking for padded token
         tokens = self.__make_tokens_for_forward__(
             x, prepend_bos=False
         )  # TODO really, always False?
         actual_segment_ids: TT["batch", "seq"] = self.__make_segment_ids__(
             x=x, passed_segment_ids=segment_ids
-        )  # TODO prepend_bos=False?
-        """
-        mask = (
-            (tokens > 0).unsqueeze(1).repeat(1, tokens.size(1), 1).unsqueeze(1)
-        )  # TODO is this right..?
-        """
-        mask = None  # TODO put mask back in
+        )
+        mask = None  # no need for the mask because we're not doing any padding
         embedded = self.embeddings(
             tokens,
             actual_segment_ids,
