@@ -47,3 +47,10 @@ def test_that_token_output_is_the_same():
 
     assert our_output.logits.shape == hf_output.logits.shape
     assert t.allclose(our_output.logits, hf_output.logits, atol=atol)
+
+
+def test_understand_hf_config():
+    from transformers import AutoConfig
+
+    c = AutoConfig.from_pretrained("bert-base-uncased")
+    assert True

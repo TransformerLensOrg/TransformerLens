@@ -373,6 +373,21 @@ def convert_hf_model_config(official_model_name: str):
         }
         rotary_pct = hf_config.rotary_pct
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
+    elif architecture == "BertForMaskedLM":
+        assert (
+            hf_config.attention_probs_dropout_prob == hf_config.hidden_dropout_prob
+        ), "We don't support different dropout rates"
+        cfg_dict = {
+            "dropout": hf_config.hidden_dropout_prob,
+            "hidden_size": hf_config.hidden_size,
+            "head_size": hf_config.hidden_size // hf_config.num_attention_heads,
+            "heads": hf_config.num_attention_heads,
+            "layers": hf_config.num_hidden_layers,
+            "model": official_model_name,
+            "vocab_size": hf_config.vocab_size,
+            "max_length": hf_config.max_position_embeddings,
+            "mlp_size": hf_config.intermediate_size,
+        }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm

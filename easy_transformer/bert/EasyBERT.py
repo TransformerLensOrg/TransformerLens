@@ -38,19 +38,16 @@ class EasyBERT(HookedRootModule):
     ):
         logging.info(f"Loading model: {model_name}")
         official_model_name = loading.get_official_model_name(model_name)
-        hidden_size = 768
-        heads = 12
-        config = Config(
-            layers=12,
-            heads=heads,
-            hidden_size=hidden_size,
-            head_size=hidden_size // heads,
-            dropout=0.1,
-            model=official_model_name,
-            vocab_size=30522,
-            max_length=512,
-            mlp_size=4 * hidden_size,
-        )  # TODO fancier :P
+        config_dictionary = loading.convert_hf_model_config(official_model_name)
+        # There are some keys we don't care about. TODO maybe-someday clean the out of [loading.convert_hf_model_config]
+        keys_to_delete = [
+            "normalization_type",
+            "original_architecture",
+        ]
+        for key in keys_to_delete:
+            if key in config_dictionary:
+                del config_dictionary[key]
+        config = Config(**config_dictionary)
         assert AutoModelForMaskedLM.from_pretrained is not None
         state_dict = AutoModelForMaskedLM.from_pretrained(
             official_model_name
@@ -70,10 +67,10 @@ class EasyBERT(HookedRootModule):
         if tokenizer is not None:
             return tokenizer
 
-        if config.tokenizer is not None:
+        if config.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             result: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
-                config.tokenizer
+                config.tokenizer_name
             )
             return result
         else:
