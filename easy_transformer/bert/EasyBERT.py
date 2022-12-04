@@ -75,15 +75,6 @@ class EasyBERT(HookedRootModule):
             result: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
                 config.tokenizer
             )
-            result.eos_token = (
-                result.eos_token if result.eos_token is not None else "<|endoftext|>"
-            )
-            result.pad_token = (
-                result.pad_token if result.pad_token is not None else result.eos_token
-            )
-            result.bos_token = (
-                result.bos_token if result.bos_token is not None else result.eos_token
-            )
             return result
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
@@ -168,7 +159,8 @@ class EasyBERT(HookedRootModule):
         self.unembed.detach().copy_(state_dict["cls.predictions.bias"])
 
     def __make_tokens_for_forward__(
-        self, x: InputForForwardLayer, prepend_bos: bool
+        self,
+        x: InputForForwardLayer,
     ) -> TokensTensor:
         tokens: t.Tensor  # set inside the function body
         if type(x) == str or type(x) == list:
@@ -177,7 +169,7 @@ class EasyBERT(HookedRootModule):
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
             # This is only intended to support passing in a single string
-            tokens = self.to_tokens(x, prepend_bos=prepend_bos)
+            tokens = self.to_tokens(x)
         else:
             assert isinstance(
                 x, t.Tensor
@@ -191,43 +183,21 @@ class EasyBERT(HookedRootModule):
         assert isinstance(tokens, t.Tensor)
         return tokens
 
-    def __to_segment_ids__(self, tokens: TokensTensor) -> t.Tensor:
-        assert self.tokenizer is not None
-        result = self.tokenizer(tokens, return_tensors="pt", padding=True)[
-            "token_type_ids"
-        ]
-        assert isinstance(result, t.Tensor)
-        return result
+    def __make_segment_ids__(self, x: InputForForwardLayer) -> TT["batch", "seq"]:
+        assert (
+            self.tokenizer is not None
+        ), "Must provide a tokenizer if passing a string to the model"
+        return self.tokenizer(x, return_tensors="pt", padding=True)["token_type_ids"]
 
-    def __make_segment_ids__(
-        self, x: InputForForwardLayer, passed_segment_ids: Optional[TT["batch", "seq"]]
-    ) -> TT["batch", "seq"]:
-        # TODO is this right? :) copilot did it
-        result: TT["batch", "seq"] = None
-        if passed_segment_ids is None:
-            if type(x) == str or type(x) == list:
-                # If text, convert to tokens (batch_size=1)
-                assert (
-                    self.tokenizer is not None
-                ), "Must provide a tokenizer if passing a string to the model"
-                # This is only intended to support passing in a single string
-                result = self.__to_segment_ids__(x)
-            else:
-                assert isinstance(x, t.Tensor)
-        else:
-            result = passed_segment_ids
-        return result
-
-    # TODO add [return_type] and maybe [prepend_bos] and maybe [past_kv_cache] and maybe [append_eos]
     def forward(
-        self, x: InputForForwardLayer, segment_ids: TT["batch", "seq"] = None
+        self,
+        x: InputForForwardLayer,
+        segment_ids: TT["batch", "seq"] = None,
     ) -> Output:
         # attention masking for padded token
-        tokens = self.__make_tokens_for_forward__(
-            x, prepend_bos=False
-        )  # TODO really, always False?
-        actual_segment_ids: TT["batch", "seq"] = self.__make_segment_ids__(
-            x=x, passed_segment_ids=segment_ids
+        tokens = self.__make_tokens_for_forward__(x)
+        actual_segment_ids: TT["batch", "seq"] = (
+            self.__make_segment_ids__(x=x) if segment_ids is None else segment_ids
         )
         mask = None  # no need for the mask because we're not doing any padding
         embedded = self.embeddings(
@@ -250,23 +220,14 @@ class EasyBERT(HookedRootModule):
     def to_tokens(
         self,
         x: Union[str, List[str]],
-        prepend_bos: bool = True,
         move_to_device: bool = True,
     ) -> TokensTensor:
         """
-        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model.
-
-        Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
-        (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
+        Converts a string to a tensor of tokens.
 
         Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is capitalized. It's easy to shoot yourself in the foot here if you're not careful!
         """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
-        if prepend_bos:
-            if isinstance(x, str):
-                x = self.tokenizer.bos_token + x
-            else:
-                x = [self.tokenizer.bos_token + string for string in x]
         tokens = self.tokenizer(x, return_tensors="pt", padding=True)["input_ids"]
         if move_to_device:
             assert isinstance(tokens, t.Tensor)
