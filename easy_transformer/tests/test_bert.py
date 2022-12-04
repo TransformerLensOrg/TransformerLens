@@ -17,6 +17,8 @@ def test_that_im_awesome():
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     our_model = EasyBERT.from_pretrained(model_name)
     # TODO figure out what's up with [using eos_token] and [using bos_token] (the debug messages)
+    # TODO maybe turn this off in general? i think ET does
+    our_model.eval()  # To turn off dropout
     our_output = our_model(text)
 
     n_tokens_in_input = tokenizer(text, return_tensors="pt")["input_ids"].shape[1]
