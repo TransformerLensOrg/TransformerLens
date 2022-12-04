@@ -35,7 +35,6 @@ class Output(NamedTuple):
 
 TokensTensor = TT["batch", "pos"]
 InputForForwardLayer = Union[str, List[str], TokensTensor]
-# TODO make this better
 Internal = TT["batch", "pos", "d_model"]
 
 

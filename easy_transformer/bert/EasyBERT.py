@@ -12,6 +12,7 @@ from transformers import AutoModelForMaskedLM  # type: ignore
 from transformers import PreTrainedTokenizer  # type: ignore
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
+import easy_transformer.utils as utils
 from easy_transformer.hook_points import HookedRootModule
 
 from .. import loading_from_pretrained as loading
@@ -20,12 +21,14 @@ from .config import Config
 
 TokensTensor = TT["batch", "pos"]
 InputForForwardLayer = Union[str, List[str], TokensTensor]
+Loss = TT[()]
 
 
 @dataclass
 class Output:
     logits: TT["batch", "seq", "vocab"]
     embedding: TT["batch", "seq", "hidden"]
+    loss: Loss
 
 
 class EasyBERT(HookedRootModule):
@@ -192,7 +195,7 @@ class EasyBERT(HookedRootModule):
         segment_ids: TT["batch", "seq"] = None,
     ) -> Output:
         # attention masking for padded token
-        tokens = self.__make_tokens_for_forward__(x)
+        tokens: TokensTensor = self.__make_tokens_for_forward__(x)
         actual_segment_ids: TT["batch", "seq"] = (
             self.__make_segment_ids__(x=x) if segment_ids is None else segment_ids
         )
@@ -209,9 +212,11 @@ class EasyBERT(HookedRootModule):
         output = self.out_ln(output)
         output = t.einsum("vh,bsh->bsv", self.embeddings.word_embeddings.weight, output)
         logits = output + self.unembed
+        loss = utils.lm_cross_entropy_loss(logits=logits, tokens=tokens)
         return Output(
-            logits=logits,
             embedding=embedded,
+            logits=logits,
+            loss=loss,
         )
 
     def to_tokens(
