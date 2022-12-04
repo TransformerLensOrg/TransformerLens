@@ -18,7 +18,6 @@ from .. import loading_from_pretrained as loading
 from . import attention, embeddings, encoder, encoder_layer
 from .config import Config
 
-# TODO maybe-someday share this type declaration with [EasyTransformer.py]
 TokensTensor = TT["batch", "pos"]
 InputForForwardLayer = Union[str, List[str], TokensTensor]
 
@@ -90,8 +89,7 @@ class EasyBERT(HookedRootModule):
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             return None
 
-    def __init__(self, config: Config, tokenizer=None, **kwargs):
-        # TODO what are the kwargs used for?
+    def __init__(self, config: Config, tokenizer=None):
         super().__init__()
         self.config = config
         self.tokenizer = EasyBERT.__generate_tokenizer__(self.config, tokenizer)
@@ -167,9 +165,8 @@ class EasyBERT(HookedRootModule):
         self.__load_embedding_state_dict__(state_dict)
         self.__load_encoder_state_dict__(state_dict)
         self.__load_cls_state_dict__(state_dict)
-        self.unembed.detach().copy_(state_dict["cls.predictions.bias"])  # TODO why?
+        self.unembed.detach().copy_(state_dict["cls.predictions.bias"])
 
-    # TODO-maybe-someday duplicated code, share it
     def __make_tokens_for_forward__(
         self, x: InputForForwardLayer, prepend_bos: bool
     ) -> TokensTensor:
@@ -195,8 +192,6 @@ class EasyBERT(HookedRootModule):
         return tokens
 
     def __to_segment_ids__(self, tokens: TokensTensor) -> t.Tensor:
-        # TODO this is a bit hacky, but it works. We should probably make a proper segment id tensor
-        # lol thanks copilot, which suggested zeros_like
         assert self.tokenizer is not None
         result = self.tokenizer(tokens, return_tensors="pt", padding=True)[
             "token_type_ids"
@@ -229,7 +224,6 @@ class EasyBERT(HookedRootModule):
     ) -> Output:
         # TODO document [segment_ids]
         # attention masking for padded token
-        # t.ByteTensor([batch_size, 1, seq_len, seq_len)
         tokens = self.__make_tokens_for_forward__(
             x, prepend_bos=False
         )  # TODO really, always False?
@@ -249,7 +243,6 @@ class EasyBERT(HookedRootModule):
         last_hidden_state: TT["batch", "seq", "hidden"] = self.encoder(
             embedded, mask=mask
         )
-        # TODO return both NSP and MLM logits
         output = self.out_linear(last_hidden_state)
         output = F.gelu(output)
         output = self.out_ln(output)
@@ -260,7 +253,6 @@ class EasyBERT(HookedRootModule):
             embedding=embedded,
         )
 
-    # TODO maybe change the order?
     def to_tokens(
         self,
         x: Union[str, List[str]],
@@ -283,7 +275,6 @@ class EasyBERT(HookedRootModule):
                 x = [self.tokenizer.bos_token + string for string in x]
         tokens = self.tokenizer(x, return_tensors="pt", padding=True)["input_ids"]
         if move_to_device:
-            # TODO-someday why did pylance not complain about [self.cfg] (but using self.cfg fails at runtime)
             assert isinstance(tokens, t.Tensor)
             tokens = tokens.to(self.config.device)
         return tokens

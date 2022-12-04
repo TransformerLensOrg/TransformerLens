@@ -7,7 +7,7 @@ from transformers.modeling_outputs import MaskedLMOutput
 from easy_transformer import EasyBERT
 
 
-def test_that_im_awesome():
+def test_that_token_output_is_the_same():
     model_name = "bert-base-uncased"
     text = "Hello world!"
     from transformers.models.auto.tokenization_auto import AutoTokenizer

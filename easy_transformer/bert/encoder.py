@@ -17,7 +17,6 @@ class Encoder(nn.Module):
     def forward(
         self, x: TT["batch", "seq", "hidden"], mask=None
     ) -> TT["batch", "seq", "hidden"]:
-        # TODO someday write a demo with hooks that show how to gather hidden states
         for layer in self.layers:
             x = layer(x, mask=mask)
         return x
