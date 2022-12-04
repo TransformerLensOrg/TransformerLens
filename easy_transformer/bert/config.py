@@ -1,6 +1,8 @@
+import random
 from dataclasses import dataclass
 from typing import Literal, Optional
 
+import numpy as np
 import torch as t
 
 ModelName = Literal["bert-base-uncased"]
@@ -36,6 +38,14 @@ class Config:
 
     tokenizer: Optional[TokenizerName] = None
 
+    seed: int = 42
+
+    @classmethod
+    def __set_seed_everywhere__(cls, seed: int):
+        t.manual_seed(seed)
+        random.seed(seed)
+        np.random.seed(seed)
+
     def __post_init__(self):
         if self.device is None:
             self.device = t.device("cuda" if t.cuda.is_available() else "cpu")
@@ -43,4 +53,4 @@ class Config:
         if self.tokenizer is None:
             self.tokenizer = self.model
 
-        # TODO what about random seed?
+        Config.__set_seed_everywhere__(self.seed)

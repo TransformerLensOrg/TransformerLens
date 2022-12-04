@@ -166,7 +166,7 @@ class EasyTransformerConfig:
             )
 
         if self.seed is not None:
-            self.set_seed_everywhere(self.seed)
+            self.__set_seed_everywhere__(self.seed)
         if self.use_local_attn:
             assert (
                 self.window_size is not None
@@ -219,7 +219,7 @@ class EasyTransformerConfig:
     def __repr__(self):
         return "EasyTransformerConfig:\n" + pprint.pformat(self.to_dict())
 
-    def set_seed_everywhere(self, seed: int):
+    def __set_seed_everywhere__(self, seed: int):
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
