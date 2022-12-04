@@ -6,12 +6,10 @@ import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
 from torchtyping import TensorType as TT
-from transformers import (
-    AutoModelForMaskedLM,  # unfortunately the suggestion to import from the non-private location doesn't work; it makes [from_pretrained == None]
-)
-from transformers import (
-    PreTrainedTokenizer,  # TODO why is this split up- move the comment around?
-)
+
+# to understand the reason for the [type: ignore] directive, see stuff like https://github.com/huggingface/transformers/issues/18464
+from transformers import AutoModelForMaskedLM  # type: ignore
+from transformers import PreTrainedTokenizer  # type: ignore
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 from easy_transformer.hook_points import HookedRootModule

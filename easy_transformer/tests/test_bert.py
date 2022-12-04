@@ -1,10 +1,8 @@
 import torch as t
 
-# trying to import [AutoModelForMaskedLM] from the non-private location fucks up, not sure why; it makes
-# [from_pretrained == None]
-from transformers import AutoModelForMaskedLM
+# to understand the reason for the [type: ignore] directive, see stuff like https://github.com/huggingface/transformers/issues/18464
+from transformers import AutoModelForMaskedLM  # type: ignore
 from transformers.modeling_outputs import MaskedLMOutput
-from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 from easy_transformer import EasyBERT
 
@@ -13,8 +11,6 @@ def test_that_im_awesome():
     model_name = "bert-base-uncased"
     text = "Hello world!"
     from transformers.models.auto.tokenization_auto import AutoTokenizer
-
-    from easy_transformer import EasyBERT
 
     atol = 1e-4
 
