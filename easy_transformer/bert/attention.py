@@ -89,7 +89,8 @@ class Attention(nn.Module):
         self.config = config
         self.self_attention = SelfAttention(config)
         self.dropout = nn.Dropout(config.dropout)
-        # TODO document type ignore
+        # type: ignore is used because [components.LayerNorm] takes in a EasyTransformerConfig,
+        # but a EasyBERTConfig will work too :)
         self.ln = LayerNorm(cfg=config)  # type: ignore
 
     def forward(self, x: TT["batch", "seq", "hidden"], mask=None) -> Output:

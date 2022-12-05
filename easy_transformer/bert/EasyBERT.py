@@ -96,16 +96,12 @@ class EasyBERT(HookedRootModule):
         self.setup()
 
     def __copy__(self, mine, state_dict, base_name):
-        # TODO cleanup- duplicated code
-        if hasattr(mine, "weight"):
-            mine.weight.detach().copy_(state_dict[base_name + ".weight"])
-            if base_name + ".bias" in state_dict:
-                mine.bias.detach().copy_(state_dict[base_name + ".bias"])
-        else:
-            # TODO hack because layer norm uses w/b instead of weight/bias
-            mine.w.detach().copy_(state_dict[base_name + ".weight"])
-            if base_name + ".bias" in state_dict:
-                mine.b.detach().copy_(state_dict[base_name + ".bias"])
+        # hack because layer norm uses w/b instead of weight/bias
+        my_weight = mine.weight if hasattr(mine, "weight") else mine.w
+        my_weight.detach().copy_(state_dict[base_name + ".weight"])
+        if base_name + ".bias" in state_dict:
+            my_bias = mine.bias if hasattr(mine, "bias") else mine.b
+            my_bias.detach().copy_(state_dict[base_name + ".bias"])
 
     def __load_embedding_state_dict__(self, state_dict: Dict[str, t.Tensor]):
         _copy_ = lambda mine, base_name: self.__copy__(mine, state_dict, base_name)
