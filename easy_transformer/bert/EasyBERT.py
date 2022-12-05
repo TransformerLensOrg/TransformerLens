@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
 
+import numpy as np
 import torch as t
 import torch.nn as nn
 import torch.nn.functional as F
@@ -86,16 +87,24 @@ class EasyBERT(HookedRootModule):
         self.tokenizer = EasyBERT.__generate_tokenizer__(self.config, tokenizer)
         self.embeddings = embeddings.Embeddings(config)
         self.encoder = encoder.Encoder(config)
-        self.out_linear = nn.Linear(config.hidden_size, config.hidden_size)
-        self.out_ln = nn.LayerNorm(
-            config.hidden_size, eps=1e-12, elementwise_affine=True
-        )
+        self.out_linear = nn.Linear(config.d_model, config.d_model)
+        self.out_ln = nn.LayerNorm(config.d_model, eps=1e-12, elementwise_affine=True)
         self.unembed = nn.parameter.Parameter(t.zeros(config.vocab_size))
+        # Gives each module a parameter with its name (relative to this root module)
+        # Needed for HookPoints to work
+        self.setup()
 
     def __copy__(self, mine, state_dict, base_name):
-        mine.weight.detach().copy_(state_dict[base_name + ".weight"])
-        if base_name + ".bias" in state_dict:
-            mine.bias.detach().copy_(state_dict[base_name + ".bias"])
+        # TODO cleanup- duplicated code
+        if hasattr(mine, "weight"):
+            mine.weight.detach().copy_(state_dict[base_name + ".weight"])
+            if base_name + ".bias" in state_dict:
+                mine.bias.detach().copy_(state_dict[base_name + ".bias"])
+        else:
+            # TODO hack because layer norm uses w/b instead of weight/bias
+            mine.w.detach().copy_(state_dict[base_name + ".weight"])
+            if base_name + ".bias" in state_dict:
+                mine.b.detach().copy_(state_dict[base_name + ".bias"])
 
     def __load_embedding_state_dict__(self, state_dict: Dict[str, t.Tensor]):
         _copy_ = lambda mine, base_name: self.__copy__(mine, state_dict, base_name)
@@ -235,3 +244,50 @@ class EasyBERT(HookedRootModule):
             assert isinstance(tokens, t.Tensor)
             tokens = tokens.to(self.config.device)
         return tokens
+
+    def to_str_tokens(
+        self,
+        input: Union[str, Union[TT["pos"], TT[1, "pos"]], list],
+        prepend_bos: bool = True,
+    ) -> List[str]:
+        """Method to map text, a list of text or tokens to a list of tokens as strings
+
+        Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
+        (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
+
+        Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is capitalized. It's easy to shoot yourself in the foot here if you're not careful!
+
+        Args:
+            input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should be a tensor of shape [pos] or [1, pos]
+            prepend_bos (bool, optional): Whether to prepend a BOS token. Only applies if input is a string. Defaults to True.
+
+        Returns:
+            str_tokens: List of individual tokens as strings
+        """
+        if isinstance(input, list):
+            return list(
+                map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input)
+            )  # type: ignore
+        elif isinstance(input, str):
+            tokens = self.to_tokens(input)[0]
+        elif isinstance(input, t.Tensor):
+            tokens = input
+            tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            assert (
+                tokens.dim() == 1
+            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+        elif isinstance(input, np.ndarray):
+            tokens = input
+            tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            assert (
+                tokens.ndim == 1
+            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+        else:
+            raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
+        assert (
+            self.tokenizer is not None
+        ), "Cannot use to_str_tokens without a tokenizer"
+        str_tokens = self.tokenizer.batch_decode(
+            tokens, clean_up_tokenization_spaces=False
+        )
+        return str_tokens

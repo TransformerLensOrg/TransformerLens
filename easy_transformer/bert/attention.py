@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from fancy_einsum import einsum
 from torchtyping import TensorType as TT
 
+from ..components import LayerNorm
 from .config import Config
 
 
@@ -20,10 +21,10 @@ class SelfAttention(nn.Module):
         super().__init__()
         self.config = config
         size_of_all_heads = config.heads * config.head_size
-        self.w_q = nn.Linear(config.hidden_size, size_of_all_heads)
-        self.w_k = nn.Linear(config.hidden_size, size_of_all_heads)
-        self.w_v = nn.Linear(config.hidden_size, size_of_all_heads)
-        self.w_o = nn.Linear(size_of_all_heads, config.hidden_size)
+        self.w_q = nn.Linear(config.d_model, size_of_all_heads)
+        self.w_k = nn.Linear(config.d_model, size_of_all_heads)
+        self.w_v = nn.Linear(config.d_model, size_of_all_heads)
+        self.w_o = nn.Linear(size_of_all_heads, config.d_model)
 
     def attention_pattern(
         self, x: TT["batch", "seq", "hidden"]
@@ -45,7 +46,7 @@ class SelfAttention(nn.Module):
             q,
             k,
         )
-        head_size = self.config.hidden_size // self.config.heads
+        head_size = self.config.d_model // self.config.heads
         return result / (head_size**0.5)
 
     @dataclass
@@ -85,9 +86,11 @@ class SelfAttention(nn.Module):
 class Attention(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
+        self.config = config
         self.self_attention = SelfAttention(config)
         self.dropout = nn.Dropout(config.dropout)
-        self.ln = nn.LayerNorm(config.hidden_size, eps=1e-12, elementwise_affine=True)
+        # TODO document type ignore
+        self.ln = LayerNorm(cfg=config)  # type: ignore
 
     def forward(self, x: TT["batch", "seq", "hidden"], mask=None) -> Output:
         original_x = x  # for a residual connection

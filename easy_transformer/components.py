@@ -103,6 +103,7 @@ class LayerNormPre(nn.Module):
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
+        # TODO someday change this type to handle BERT
         self.eps = self.cfg.eps
 
         # Adds a hook point for the normalisation scale factor

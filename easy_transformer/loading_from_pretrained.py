@@ -379,7 +379,7 @@ def convert_hf_model_config(official_model_name: str):
         ), "We don't support different dropout rates"
         cfg_dict = {
             "dropout": hf_config.hidden_dropout_prob,
-            "hidden_size": hf_config.hidden_size,
+            "d_model": hf_config.hidden_size,
             "head_size": hf_config.hidden_size // hf_config.num_attention_heads,
             "heads": hf_config.num_attention_heads,
             "layers": hf_config.num_hidden_layers,

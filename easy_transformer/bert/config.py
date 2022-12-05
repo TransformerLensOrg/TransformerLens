@@ -20,10 +20,10 @@ class Config:
 
     layers: int
     heads: int
-    hidden_size: int
+    d_model: int  # aka hidden size
 
     """
-    used in [attention.py]. can be equal to [hidden_size // heads] or can be smaller to make the model work in parallel.
+    used in [attention.py]. can be equal to [d_model // heads] or can be smaller to make the model work in parallel.
     """
     head_size: int
 
@@ -33,6 +33,8 @@ class Config:
     max_length: int
 
     dropout: float = 0.1
+
+    eps: float = 1e-12
 
     device: Optional[t.device] = None
 

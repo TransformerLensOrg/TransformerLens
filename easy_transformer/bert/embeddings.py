@@ -10,12 +10,12 @@ class Embeddings(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
-        self.position_embeddings = nn.Embedding(config.max_length, config.hidden_size)
+        self.word_embeddings = nn.Embedding(config.vocab_size, config.d_model)
+        self.position_embeddings = nn.Embedding(config.max_length, config.d_model)
         self.token_type_embeddings = nn.Embedding(
-            2, config.hidden_size
+            2, config.d_model
         )  # aka segment embedding
-        self.ln = nn.LayerNorm(config.hidden_size, eps=1e-12, elementwise_affine=True)
+        self.ln = nn.LayerNorm(config.d_model, eps=1e-12, elementwise_affine=True)
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, input_ids: TT["batch", "seq"], segment_ids: TT["batch", "seq"]):
