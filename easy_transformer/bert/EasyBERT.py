@@ -17,6 +17,7 @@ import easy_transformer.utils as utils
 from easy_transformer.hook_points import HookedRootModule
 
 from .. import loading_from_pretrained as loading
+from ..components import LayerNorm
 from . import attention, embeddings, encoder, encoder_layer
 from .config import Config
 
@@ -88,7 +89,7 @@ class EasyBERT(HookedRootModule):
         self.embeddings = embeddings.Embeddings(config)
         self.encoder = encoder.Encoder(config)
         self.out_linear = nn.Linear(config.d_model, config.d_model)
-        self.out_ln = nn.LayerNorm(config.d_model, eps=1e-12, elementwise_affine=True)
+        self.out_ln = LayerNorm(cfg=config)  # type: ignore
         self.unembed = nn.parameter.Parameter(t.zeros(config.vocab_size))
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work

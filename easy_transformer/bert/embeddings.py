@@ -3,6 +3,7 @@ import torch as t
 import torch.nn as nn
 from torchtyping import TensorType as TT
 
+from ..components import LayerNorm
 from .config import Config
 
 
@@ -15,7 +16,7 @@ class Embeddings(nn.Module):
         self.token_type_embeddings = nn.Embedding(
             2, config.d_model
         )  # aka segment embedding
-        self.ln = nn.LayerNorm(config.d_model, eps=1e-12, elementwise_affine=True)
+        self.ln = LayerNorm(cfg=config)  # type: ignore
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, input_ids: TT["batch", "seq"], segment_ids: TT["batch", "seq"]):
