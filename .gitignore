@@ -13,3 +13,4 @@ nbs
 _modidx.py
 .ipynb_checkpoints
 env
+dist/

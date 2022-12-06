@@ -437,6 +437,7 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
+    print_tokenized: bool = True,
     prepend_bos: bool = True,
     top_k: int = 10,
 ):
@@ -449,13 +450,16 @@ def test_prompt(
     """
     if prepend_space_to_answer and not answer.startswith(" "):
         answer = " " + answer
-    # GPT-2 often treats the first token weirdly, so lets give it a resting position
-    tokens = model.to_tokens(prompt + answer, prepend_bos=prepend_bos)
+    tokens = torch.cat([
+        # GPT-2 often treats the first token weirdly, so lets give it a resting position
+        model.to_tokens(prompt, prepend_bos=prepend_bos),
+        model.to_tokens(answer, prepend_bos=False)
+    ], dim=1)  # position dimension
     prompt_str_tokens = model.to_str_tokens(prompt, prepend_bos=prepend_bos)
     answer_str_tokens = model.to_str_tokens(answer, prepend_bos=False)
     prompt_length = len(prompt_str_tokens)
     answer_length = len(answer_str_tokens)
-    if print_details:
+    if print_details and print_tokenized:
         print("Tokenized prompt:", prompt_str_tokens)
         print("Tokenized answer:", answer_str_tokens)
     logits = remove_batch_dim(model(tokens))
