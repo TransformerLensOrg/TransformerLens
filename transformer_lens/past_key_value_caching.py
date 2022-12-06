@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
-from TransformerLens.transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from torchtyping import TensorType as TT
 
 

@@ -1,5 +1,5 @@
 # %%
-from TransformerLens.transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 import einops
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM

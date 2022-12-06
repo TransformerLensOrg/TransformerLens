@@ -10,7 +10,7 @@ from functools import *
 
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import gelu_new, solu, gelu_fast
-from TransformerLens.transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 from fancy_einsum import einsum
 
