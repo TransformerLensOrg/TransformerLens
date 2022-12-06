@@ -8,14 +8,14 @@ import logging
 
 from functools import *
 
-from easy_transformer.hook_points import HookPoint
-from easy_transformer.utils import gelu_new, solu, gelu_fast
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.utils import gelu_new, solu, gelu_fast
+from TransformerLens.transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 from fancy_einsum import einsum
 
-from easy_transformer.past_key_value_caching import (
-    EasyTransformerKeyValueCacheEntry,
+from transformer_lens.past_key_value_caching import (
+    HookedTransformerKeyValueCacheEntry,
 )
 
 # See tests/should_fail.py for an example of how to enforce type annotations at runtime
@@ -23,10 +23,10 @@ from torchtyping import TensorType as TT
 
 # Embed & Unembed
 class Embed(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_E: TT["d_vocab, d_model"] = nn.Parameter(
             torch.empty(self.cfg.d_vocab, self.cfg.d_model)
@@ -41,10 +41,10 @@ class Embed(nn.Module):
 
 
 class Unembed(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         # Note that there's a separate variable for d_vocab_out and d_vocab (the input vocab size). For language tasks these are always the same, but for algorithmic tasks we may want them to be different.
         self.W_U: TT["d_model", "d_vocab_out"] = nn.Parameter(
@@ -67,10 +67,10 @@ class Unembed(nn.Module):
 
 # Positional Embeddings
 class PosEmbed(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model))
 
@@ -98,13 +98,13 @@ class PosEmbed(nn.Module):
 # and is equivalent to centering the weight matrices of everything writing to the residual stream
 # Normalising is a funkier non-linear operation, that projects the residual stream onto the unit hypersphere
 class LayerNormPre(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """LayerNormPre - the 'center and normalise' part of LayerNorm. Length is
         normally d_model, but is d_mlp for softmax. Not needed as a parameter. This
         should only be used in inference mode after folding in LayerNorm weights"""
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.eps = self.cfg.eps
 
@@ -125,7 +125,7 @@ class LayerNormPre(nn.Module):
 
 class LayerNorm(nn.Module):
     def __init__(
-        self, cfg: Union[Dict, EasyTransformerConfig], length: Optional[int] = None
+        self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None
     ):
 
         """
@@ -135,7 +135,7 @@ class LayerNorm(nn.Module):
         """
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.eps = self.cfg.eps
         if length is None:
@@ -163,11 +163,11 @@ class LayerNorm(nn.Module):
 
 
 class RMSNormPre(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """RMSNormPre - LayerNormPre without the centering and bias (RMS = Root Mean Square)"""
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.eps = self.cfg.eps
 
@@ -186,7 +186,7 @@ class RMSNormPre(nn.Module):
 
 class RMSNorm(nn.Module):
     def __init__(
-        self, cfg: Union[Dict, EasyTransformerConfig], length: Optional[int] = None
+        self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None
     ):
 
         """
@@ -196,7 +196,7 @@ class RMSNorm(nn.Module):
         """
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.eps = self.cfg.eps
         if length is None:
@@ -224,7 +224,7 @@ class RMSNorm(nn.Module):
 class Attention(nn.Module):
     def __init__(
         self,
-        cfg: Union[Dict, EasyTransformerConfig],
+        cfg: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
         layer_id: Optional[int] = None,
     ):
@@ -233,13 +233,13 @@ class Attention(nn.Module):
         Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
 
         Args:
-            cfg (Union[Dict, EasyTransformerConfig]): Config
+            cfg (Union[Dict, HookedTransformerConfig]): Config
             attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
             layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_Q = nn.Parameter(
             torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
@@ -294,12 +294,12 @@ class Attention(nn.Module):
         self.hook_attn = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
 
-        # See EasyTransformerConfig for more details.
+        # See HookedTransformerConfig for more details.
         if self.cfg.positional_embedding_type == "shortformer":
             # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
             self.hook_attn_input = HookPoint()  # [batch, pos, d_model]
         elif self.cfg.positional_embedding_type == "rotary":
-            # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See EasyTransformerConfig for details
+            # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See HookedTransformerConfig for details
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
             sin, cos = self.calculate_sin_cos_rotary(
@@ -312,10 +312,10 @@ class Attention(nn.Module):
         self,
         resid_pre: TT["batch", "pos", "d_model"],
         shortformer_pos_embed: Optional[TT["batch", "pos", "d_model"]] = None,
-        past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
     ) -> TT["batch", "pos", "d_model"]:
         """
-        shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See EasyTransformerConfig for more details
+        shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
 
         """
@@ -340,7 +340,7 @@ class Attention(nn.Module):
                 + self.b_K
             )  # [batch, pos, head_index, d_head]
         elif self.cfg.positional_embedding_type == "shortformer":
-            # Weird shortformer attention see EasyTransformerConfig for details
+            # Weird shortformer attention see HookedTransformerConfig for details
             q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
         v = self.hook_v(
             einsum(
@@ -552,10 +552,10 @@ class Attention(nn.Module):
 
 # MLP Layers
 class MLP(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp))
@@ -612,10 +612,10 @@ class MLP(nn.Module):
 
 # Transformer Block
 class TransformerBlock(nn.Module):
-    def __init__(self, cfg: Union[Dict, EasyTransformerConfig], block_index):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig.from_dict(cfg)
+            cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         if self.cfg.normalization_type == "LN":
             self.ln1 = LayerNorm(cfg)
@@ -655,14 +655,14 @@ class TransformerBlock(nn.Module):
         self,
         resid_pre: TT["batch", "position", "d_model"],
         shortformer_pos_embed: Optional[TT["batch", "position", "d_model"]] = None,
-        past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
+        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
     ) -> TT["batch", "position", "d_model"]:
         """A single Transformer block.
 
         Args:
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
-            cache (EasyTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
-            shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See EasyTransformerConfig for details. Defaults to None.
+            cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
+            shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See HookedTransformerConfig for details. Defaults to None.
 
         Returns:
             _type_: _description_

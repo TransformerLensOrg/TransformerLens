@@ -1,9 +1,9 @@
 # %%
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from TransformerLens.transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 import einops
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM
-import easy_transformer.utils as utils
+import transformer_lens.utils as utils
 from typing import Optional, Dict
 import logging
 from huggingface_hub import HfApi
@@ -271,7 +271,7 @@ def get_official_model_name(model_name: str):
 def convert_hf_model_config(official_model_name: str):
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
-    in the EasyTransformerConfig format.
+    in the HookedTransformerConfig format.
 
     Takes the official_model_name as an input.
     """
@@ -377,9 +377,9 @@ def convert_hf_model_config(official_model_name: str):
 def convert_neel_model_config(official_model_name: str):
     """
     Loads the config for a model trained by me (NeelNanda), converted to a dictionary
-    in the EasyTransformerConfig format.
+    in the HookedTransformerConfig format.
 
-    AutoConfig is not supported, because these models are in the EasyTransformer format, so we directly download and load the json.
+    AutoConfig is not supported, because these models are in the HookedTransformer format, so we directly download and load the json.
     """
     official_model_name = get_official_model_name(official_model_name)
     cfg_json = utils.download_file_from_hf(official_model_name, "config.json")
@@ -419,7 +419,7 @@ def get_pretrained_model_config(
     fold_ln: bool = False,
     device: Optional[str] = None,
 ):
-    """Returns the pretrained model config as an EasyTransformerConfig object.
+    """Returns the pretrained model config as an HookedTransformerConfig object.
 
     There are two types of pretrained models: HuggingFace models (where
     AutoModel and AutoConfig work), and models trained by me (NeelNanda) which
@@ -436,7 +436,7 @@ def get_pretrained_model_config(
             the checkpoint to load, ie the step or token number (each model has
             checkpoints labelled with exactly one of these). Defaults to None.
         fold_ln (bool, optional): Whether to fold the layer norm into the
-            subsequent linear layers (see EasyTransformer.fold_layer_norm for
+            subsequent linear layers (see HookedTransformer.fold_layer_norm for
             details). Defaults to False.
         device (str, optional): The device to load the model onto. By
             default will load to CUDA if available, else CPU.
@@ -479,7 +479,7 @@ def get_pretrained_model_config(
 
     cfg_dict["device"] = device
 
-    cfg = EasyTransformerConfig.from_dict(cfg_dict)
+    cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
 
 
@@ -529,12 +529,12 @@ def get_checkpoint_labels(model_name: str):
 
 def get_pretrained_state_dict(
     official_model_name: str,
-    cfg: EasyTransformerConfig,
+    cfg: HookedTransformerConfig,
     hf_model=None,
 ) -> Dict[str, torch.Tensor]:
     """
     Loads in the model weights for a pretrained model, and processes them to
-    have the EasyTransformer parameter names and shapes. Supports checkpointed
+    have the HookedTransformer parameter names and shapes. Supports checkpointed
     models (and expects the checkpoint info to be stored in the config object)
 
     hf_model: Optionally, a HuggingFace model object. If provided, we will use
@@ -584,10 +584,10 @@ def get_pretrained_state_dict(
 # %%
 def convert_state_dict(
     state_dict: dict,
-    cfg: EasyTransformerConfig,
+    cfg: HookedTransformerConfig,
 ):
     """Converts a state_dict from a HuggingFace model to a state_dict
-    compatible with EasyTransformer."""
+    compatible with HookedTransformer."""
     official_model_name = get_official_model_name(official_model_name)
 
     if cfg["original_architecture"] == "gpt2":
@@ -609,7 +609,7 @@ def convert_state_dict(
 
 
 # Convert state dicts
-def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
+def convert_gpt2_weights(gpt2, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = gpt2.transformer.wte.weight
@@ -665,7 +665,7 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neo_weights(neo, cfg: EasyTransformerConfig):
+def convert_neo_weights(neo, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neo.transformer.wte.weight
@@ -712,7 +712,7 @@ def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
+def convert_gptj_weights(gptj, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = gptj.transformer.wte.weight
@@ -758,7 +758,7 @@ def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neox_weights(neox, cfg: EasyTransformerConfig):
+def convert_neox_weights(neox, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neox.gpt_neox.embed_in.weight
@@ -827,7 +827,7 @@ def convert_neox_weights(neox, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_opt_weights(opt, cfg: EasyTransformerConfig):
+def convert_opt_weights(opt, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = opt.model.decoder.embed_tokens.weight
@@ -917,15 +917,15 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neel_solu_old_weights(state_dict: dict, cfg: EasyTransformerConfig):
+def convert_neel_solu_old_weights(state_dict: dict, cfg: HookedTransformerConfig):
     """
-    Converts the weights of my old SoLU models to the EasyTransformer format.
+    Converts the weights of my old SoLU models to the HookedTransformer format.
     Takes as input a state dict, *not* a model object.
 
     There are a bunch of dumb bugs in the original code, sorry!
 
     Models 1L, 2L, 4L and 6L have left facing weights (ie, weights have shape
-    [dim_out, dim_in]) while EasyTransformer does right facing (ie [dim_in,
+    [dim_out, dim_in]) while HookedTransformer does right facing (ie [dim_in,
     dim_out]).
 
     8L has *just* a left facing W_pos, the rest right facing.

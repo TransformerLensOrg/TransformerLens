@@ -1,7 +1,7 @@
 # %%
 from __future__ import annotations
-import easy_transformer.utils as utils
-from easy_transformer.utils import Slice, SliceInput
+import transformer_lens.utils as utils
+from transformer_lens.utils import Slice, SliceInput
 import torch
 import einops
 from fancy_einsum import einsum
@@ -15,9 +15,9 @@ import logging
 
 class ActivationCache:
     """
-    A wrapper around a dictionary of cached activations from a model run, with a variety of helper functions. In general, any utility which is specifically about editing/processing activations should be a method here, while any utility which is more general should be a function in utils.py, and any utility which is specifically about model weights should be in EasyTransformer.py or components.py.
+    A wrapper around a dictionary of cached activations from a model run, with a variety of helper functions. In general, any utility which is specifically about editing/processing activations should be a method here, while any utility which is more general should be a function in utils.py, and any utility which is specifically about model weights should be in HookedTransformer.py or components.py.
 
-    NOTE: This is designed to be used with the EasyTransformer class, and will not work with other models. It's also designed to be used with all activations of EasyTransformer being cached, and some internal methods will break without that.
+    NOTE: This is designed to be used with the HookedTransformer class, and will not work with other models. It's also designed to be used with all activations of HookedTransformer being cached, and some internal methods will break without that.
 
     WARNING: The biggest footgun and source of bugs in this code will be keeping track of indexes, dimensions, and the numbers of each. There are several kinds of activations:
 

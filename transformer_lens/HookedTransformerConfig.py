@@ -11,9 +11,9 @@ import pprint
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
 @dataclass
-class EasyTransformerConfig:
+class HookedTransformerConfig:
     """
-    Configuration class to store the configuration of a EasyTransformer model.
+    Configuration class to store the configuration of a HookedTransformer model.
 
     See further_comments.md for more details on the more complex arguments.
 
@@ -207,7 +207,7 @@ class EasyTransformerConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
         """
-        Instantiates a `EasyTransformerConfig` from a Python dictionary of
+        Instantiates a `HookedTransformerConfig` from a Python dictionary of
         parameters.
         """
         return cls(**config_dict)
@@ -216,7 +216,7 @@ class EasyTransformerConfig:
         return self.__dict__
 
     def __repr__(self):
-        return "EasyTransformerConfig:\n" + pprint.pformat(self.to_dict())
+        return "HookedTransformerConfig:\n" + pprint.pformat(self.to_dict())
     
     def set_seed_everywhere(self, seed: int):
         torch.manual_seed(seed)

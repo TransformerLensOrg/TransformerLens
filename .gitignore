@@ -1,9 +1,9 @@
 __pycache__
 Testing_Notebook.ipynb
-easy_transformer/scratch.py
+transformer_lens/scratch.py
 .vscode/
 wandb*
-easy_transformer\.egg*
+transformer_lens\.egg*
 MANIFEST.in
 settings.ini
 _proc
