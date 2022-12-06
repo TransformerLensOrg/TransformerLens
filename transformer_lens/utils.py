@@ -369,7 +369,7 @@ class Slice:
 # %%
 
 
-def act_name(
+def get_act_name(
     name: str,
     layer: Optional[int] = None,
     layer_type: Optional[str] = None,
@@ -378,13 +378,13 @@ def act_name(
     Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback loop hacking stuff together, more so than writing good, readable code. But it is deterministic!
 
     eg:
-    act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
-    act_name('pre', 2)=='blocks.2.mlp.hook_pre'
-    act_name('embed')=='hook_embed'
-    act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
-    act_name('k6')=='blocks.6.attn.hook_k'
-    act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
-    act_name('pre5')=='blocks.5.mlp.hook_pre'
+    get_act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
+    get_act_name('pre', 2)=='blocks.2.mlp.hook_pre'
+    get_act_name('embed')=='hook_embed'
+    get_act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
+    get_act_name('k6')=='blocks.6.attn.hook_k'
+    get_act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
+    get_act_name('pre5')=='blocks.5.mlp.hook_pre'
     """
     if (
         ("." in name or name.startswith("hook_"))
@@ -397,7 +397,7 @@ def act_name(
     if match is not None:
         name, layer, layer_type = match.groups(0)
 
-    layer_type_dict = {
+    layer_type_alias = {
         "a": "attn",
         "m": "mlp",
         "b": "",
@@ -405,20 +405,35 @@ def act_name(
         "blocks": "",
         "attention": "attn",
     }
-    act_name = ""
+
+    act_name_alias = {
+        "attn":"pattern",
+        "attn_logits":"attn_scores",
+        "key":"k",
+        "query":"q",
+        "value":"v",
+        "mlp_pre":"pre",
+        "mlp_mid":"mid",
+        "mlp_post":"post",
+    }
+
+    if name in act_name_alias:
+        name = act_name_alias[name]
+
+    full_act_name = ""
     if layer is not None:
-        act_name += f"blocks.{layer}."
-    if name in ["k", "v", "q", "z", "rot_k", "rot_q", "result", "attn", "attn_scores"]:
+        full_act_name += f"blocks.{layer}."
+    if name in ["k", "v", "q", "z", "rot_k", "rot_q", "result", "pattern", "attn_scores"]:
         layer_type = "attn"
     elif name in ["pre", "post", "mid"]:
         layer_type = "mlp"
-    elif layer_type in layer_type_dict:
-        layer_type = layer_type_dict[layer_type]
+    elif layer_type in layer_type_alias:
+        layer_type = layer_type_alias[layer_type]
 
     if layer_type:
-        act_name += f"{layer_type}."
-    act_name += f"hook_{name}"
-    return act_name
+        full_act_name += f"{layer_type}."
+    full_act_name += f"hook_{name}"
+    return full_act_name
 
 
 def remove_batch_dim(tensor: TT[1, ...]) -> TT[...]:
