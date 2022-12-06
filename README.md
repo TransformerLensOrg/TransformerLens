@@ -10,7 +10,7 @@ A demo notebook can be found [here](https://colab.research.google.com/github/nee
 
 ## Installation
 
-`pip install git+https://github.com/neelnanda-io/Hooked-Transformer`
+`pip install git+https://github.com/neelnanda-io/TransformerLens`
 
 ## Local Development
 
