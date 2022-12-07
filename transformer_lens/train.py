@@ -1,5 +1,5 @@
-from transformer_lens import EasyTransformer
-from transformer_lens import EasyTransformerConfig
+from transformer_lens import TransformerLens
+from transformer_lens import TransformerLensConfig
 from dataclasses import dataclass
 from typing import Optional, Callable
 from torch.utils.data import Dataset, DataLoader
@@ -12,10 +12,10 @@ from einops import rearrange
 
 
 @dataclass
-class EasyTransformerTrainConfig:
+class TransformerLensTrainConfig:
     """
     Configuration class to store training hyperparameters for a training run of
-    an EasyTransformer model.
+    an TransformerLens model.
     Args:
         num_epochs (int): Number of epochs to train for
         batch_size (int): Size of batches to use for training
@@ -55,12 +55,12 @@ class EasyTransformerTrainConfig:
 
 
 def train(
-    model: EasyTransformer,
-    config: EasyTransformerTrainConfig,
+    model: TransformerLens,
+    config: TransformerLensTrainConfig,
     dataset: Dataset,
-) -> EasyTransformer:
+) -> TransformerLens:
     """
-    Trains an EasyTransformer model on an autoregressive language modeling task.
+    Trains an TransformerLens model on an autoregressive language modeling task.
     Args:
         model: The model to train
         config: The training configuration

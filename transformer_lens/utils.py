@@ -502,7 +502,7 @@ def composition_scores(
     TT["leading_dims":...], TT["leading_dims_left":..., "leading_dims_right":...]
 ]:
     """
-    See `EasyTransformer.all_composition_scores` for documentation.
+    See `TransformerLens.all_composition_scores` for documentation.
     """
     if broadcast_dims:
         r_leading = right.ndim - 2

@@ -4,12 +4,12 @@ from typeguard.importhook import install_import_hook
 
 install_import_hook("easy_transformer")
 
-from transformer_lens import EasyTransformer
+from transformer_lens import TransformerLens
 from torchtyping import TensorType as patch_typeguard
 
 patch_typeguard()
 
-from transformer_lens import EasyTransformer
+from transformer_lens import TransformerLens
 import pytest
 
 model_names = [
@@ -29,7 +29,7 @@ text = "Hello world!"
 # Code to regenerate loss store
 store = {}
 for name in model_names:
-    model = EasyTransformer.from_pretrained(name, device='cuda')
+    model = TransformerLens.from_pretrained(name, device='cuda')
     loss = model(text,return_type="loss")
     store[name] = loss.item()
 print(store)
@@ -50,7 +50,7 @@ loss_store = {
 @pytest.mark.parametrize("name,expected_loss", list(loss_store.items()))
 def test_model(name, expected_loss):
     # Runs the model on short text and checks if the loss is as expected
-    model = EasyTransformer.from_pretrained(name)
+    model = TransformerLens.from_pretrained(name)
     loss = model(text, return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
 

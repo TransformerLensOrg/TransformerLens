@@ -2,13 +2,13 @@ from typeguard.importhook import install_import_hook
 
 install_import_hook("easy_transformer")
 
-from transformer_lens import EasyTransformer
+from transformer_lens import TransformerLens
 from torchtyping import TensorType as TT, patch_typeguard
 
 patch_typeguard()
 
 MODEL = "gpt2"
-model = EasyTransformer.from_pretrained(MODEL)
+model = TransformerLens.from_pretrained(MODEL)
 
 prompt = "Hello World!"
 tokens = model.to_tokens(prompt, prepend_bos=False)

@@ -1,10 +1,10 @@
-# Adapted from [EasyTransformer_Demo.ipynb]. Useful for testing that all the typing mechanisms work
+# Adapted from [TransformerLens_Demo.ipynb]. Useful for testing that all the typing mechanisms work
 # out.
 
 # %%
 
 import torch as t
-from transformer_lens import EasyTransformer, EasyTransformerConfig
+from transformer_lens import TransformerLens, TransformerLensConfig
 from torchtyping import TensorType as TT, patch_typeguard
 
 patch_typeguard()
@@ -13,7 +13,7 @@ DEVICE = "cuda" if t.cuda.is_available() else "cpu"
 MODEL = "gpt2"
 
 # %%
-model = EasyTransformer.from_pretrained(MODEL)
+model = TransformerLens.from_pretrained(MODEL)
 model.to(DEVICE)
 
 # %%
