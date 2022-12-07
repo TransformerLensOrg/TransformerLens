@@ -9,7 +9,7 @@ from . import components
 from .TransformerLensConfig import TransformerLensConfig
 from .FactoredMatrix import FactoredMatrix
 from .ActivationCache import ActivationCache
-from .TransformerLens import TransformerLens
+from .EasyTransformer import EasyTransformer
 from .TransformerLens import TransformerLens
 from . import loading_from_pretrained as loading
 from . import train
