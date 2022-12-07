@@ -291,7 +291,7 @@ class Attention(nn.Module):
         self.hook_v = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_z = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_attn_scores = HookPoint()  # [batch, head_index, query_pos, key_pos]
-        self.hook_attn = HookPoint()  # [batch, head_index, query_pos, key_pos]
+        self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
 
         # See HookedTransformerConfig for more details.
@@ -379,7 +379,7 @@ class Attention(nn.Module):
                 attn_scores, kv_cache_pos_offset
             )  # [batch, head_index, query_pos, key_pos]
         attn_scores = self.hook_attn_scores(attn_scores)
-        attn_matrix = self.hook_attn(
+        pattern = self.hook_pattern(
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]
         z = self.hook_z(
@@ -388,7 +388,7 @@ class Attention(nn.Module):
                 batch head_index query_pos key_pos -> \
                 batch query_pos head_index d_head",
                 v,
-                attn_matrix,
+                pattern,
             )
         )  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
