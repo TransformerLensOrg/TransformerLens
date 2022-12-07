@@ -1,11 +1,14 @@
 [tool.poetry]
-name = "easy-transformer"
+name = "tansformer-lens"
 version = "0.2.0"
 description = "An implementation of transformers tailored for mechanistic interpretability."
 authors = ["Neel Nanda <77788841+neelnanda-io@users.noreply.github.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "easy_transformer"}]
+packages = [
+    {include = "easy_transformer", from = "transformer_lens"},
+    {include = "transformer_lens"}
+    ]
 
 [tool.poetry.dependencies]
 python = "^3.7"
