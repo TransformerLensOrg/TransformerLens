@@ -6,7 +6,7 @@ authors = ["Neel Nanda <77788841+neelnanda-io@users.noreply.github.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [
-    {include = "easy_transformer", from="legacy"},
+    {include = "easy_transformer"},
     {include = "transformer_lens"}
     ]
 
