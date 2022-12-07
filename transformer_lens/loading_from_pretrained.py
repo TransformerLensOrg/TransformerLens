@@ -79,13 +79,13 @@ OFFICIAL_MODEL_NAMES = [
 
 # Model Aliases:
 MODEL_ALIASES = {
-    "NeelNanda/SoLU_1L_v9_old": ["solu-1l-old", "solu-1l-pile"],
-    "NeelNanda/SoLU_2L_v10_old": ["solu-2l-old", "solu-2l-pile"],
-    "NeelNanda/SoLU_4L_v11_old": ["solu-4l-old", "solu-4l-pile"],
-    "NeelNanda/SoLU_6L_v13_old": ["solu-6l-old", "solu-6l-pile"],
-    "NeelNanda/SoLU_8L_v21_old": ["solu-8l-old", "solu-8l-pile"],
-    "NeelNanda/SoLU_10L_v22_old": ["solu-10l-old", "solu-10l-pile"],
-    "NeelNanda/SoLU_12L_v23_old": ["solu-12l-old", "solu-12l-pile"],
+    "NeelNanda/SoLU_1L_v9_old": ["solu-1l-pile", "solu-1l-old"],
+    "NeelNanda/SoLU_2L_v10_old": ["solu-2l-pile", "solu-2l-old"],
+    "NeelNanda/SoLU_4L_v11_old": ["solu-4l-pile", "solu-4l-old"],
+    "NeelNanda/SoLU_6L_v13_old": ["solu-6l-pile", "solu-6l-old"],
+    "NeelNanda/SoLU_8L_v21_old": ["solu-8l-pile", "solu-8l-old"],
+    "NeelNanda/SoLU_10L_v22_old": ["solu-10l-pile", "solu-10l-old"],
+    "NeelNanda/SoLU_12L_v23_old": ["solu-12l-pile", "solu-12l-old"],
     "NeelNanda/SoLU_1L512W_C4_Code": ["solu-1l", "solu-1l-new", "solu-1l-c4-code"],
     "NeelNanda/SoLU_2L512W_C4_Code": ["solu-2l", "solu-2l-new", "solu-2l-c4-code"],
     "NeelNanda/SoLU_3L512W_C4_Code": ["solu-3l", "solu-3l-new", "solu-3l-c4-code"],
