@@ -1,9 +1,9 @@
 # %%
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from transformer_lens.EasyTransformerConfig import EasyTransformerConfig
 import einops
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM
-import easy_transformer.utils as utils
+import transformer_lens.utils as utils
 from typing import Optional, Dict
 import logging
 from huggingface_hub import HfApi

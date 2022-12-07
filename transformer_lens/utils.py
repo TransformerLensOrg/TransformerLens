@@ -12,7 +12,7 @@ from huggingface_hub import hf_hub_download
 import re
 from rich import print as rprint
 
-from easy_transformer import FactoredMatrix
+from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json

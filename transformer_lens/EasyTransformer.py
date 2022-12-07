@@ -17,18 +17,18 @@ from transformers import (
     PreTrainedTokenizer,
 )
 
-from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer import EasyTransformerConfig
-from easy_transformer.ActivationCache import ActivationCache
-from easy_transformer.FactoredMatrix import FactoredMatrix
+from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens import EasyTransformerConfig
+from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.FactoredMatrix import FactoredMatrix
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
-from easy_transformer.past_key_value_caching import (
+from transformer_lens.past_key_value_caching import (
     EasyTransformerKeyValueCache,
 )
 
-from easy_transformer.components import *
-import easy_transformer.loading_from_pretrained as loading
-import easy_transformer.utils as utils
+from transformer_lens.components import *
+import transformer_lens.loading_from_pretrained as loading
+import transformer_lens.utils as utils
 
 # Type alias for a single element tensor
 Loss = TT[()]

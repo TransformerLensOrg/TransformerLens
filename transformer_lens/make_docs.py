@@ -1,6 +1,6 @@
 # %%
-from easy_transformer import loading
-from easy_transformer import utils
+from transformer_lens import loading
+from transformer_lens import utils
 from functools import lru_cache
 # %%
 cfg = (loading.get_pretrained_model_config("solu-1l"))

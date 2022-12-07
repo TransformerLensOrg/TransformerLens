@@ -8,13 +8,13 @@ import logging
 
 from functools import *
 
-from easy_transformer.hook_points import HookPoint
-from easy_transformer.utils import gelu_new, solu, gelu_fast
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.utils import gelu_new, solu, gelu_fast
+from transformer_lens.EasyTransformerConfig import EasyTransformerConfig
 
 from fancy_einsum import einsum
 
-from easy_transformer.past_key_value_caching import (
+from transformer_lens.past_key_value_caching import (
     EasyTransformerKeyValueCacheEntry,
 )
 

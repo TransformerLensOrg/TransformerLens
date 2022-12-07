@@ -4,12 +4,12 @@ from typeguard.importhook import install_import_hook
 
 install_import_hook("easy_transformer")
 
-from easy_transformer import EasyTransformer
+from transformer_lens import EasyTransformer
 from torchtyping import TensorType as patch_typeguard
 
 patch_typeguard()
 
-from easy_transformer import EasyTransformer
+from transformer_lens import EasyTransformer
 import pytest
 
 model_names = [

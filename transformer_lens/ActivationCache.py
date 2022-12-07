@@ -1,7 +1,7 @@
 # %%
 from __future__ import annotations
-import easy_transformer.utils as utils
-from easy_transformer.utils import Slice, SliceInput
+import transformer_lens.utils as utils
+from transformer_lens.utils import Slice, SliceInput
 import torch
 import einops
 from fancy_einsum import einsum
