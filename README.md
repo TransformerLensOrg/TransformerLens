@@ -37,4 +37,4 @@ When testing type annotations, check out `easy_transformer/tests/test_type_annot
 
 ### Documentation
 
-We <3 documentation! Check out [pydocstyle](https://github.com/PyCQA/pydocstyle) to easily find things that need to be documented.
+We ❤️ documentation! Check out [pydocstyle](https://github.com/PyCQA/pydocstyle) to easily find things that need to be documented. To learn more about documentation, check out `pydocstyle -e`.
