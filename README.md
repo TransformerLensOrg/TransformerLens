@@ -34,3 +34,7 @@ TODO this doesn't seem to work?
 `python3 easy_transformer/tests/test_experiments.py`
 
 When testing type annotations, check out `easy_transformer/tests/test_type_annotations.py`.
+
+### Documentation
+
+We <3 documentation! Check out [pydocstyle](https://github.com/PyCQA/pydocstyle) to easily find things that need to be documented.
