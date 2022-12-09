@@ -1,9 +1,12 @@
-# %%
-from easy_transformer import loading
-from easy_transformer import utils
+"""Generates a markdown table with one entry per supported model showing its  n_params, n_layers, etc."""
+
 from functools import lru_cache
+
 # %%
-cfg = (loading.get_pretrained_model_config("solu-1l"))
+from easy_transformer import loading, utils
+
+# %%
+cfg = loading.get_pretrained_model_config("solu-1l")
 print(cfg)
 # %%
 """ 
@@ -15,27 +18,29 @@ act_fn includes attn_only
 architecture
 Architecture should list weird shit to be aware of.
 """
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 df = pd.DataFrame(np.random.randn(2, 2))
 print(df.to_markdown(open("test.md", "w")))
 # %%
 @lru_cache(maxsize=None)
-def get_config(model_name):
+def _get_config(model_name):
     return loading.get_pretrained_model_config(model_name)
 
-def get_property(name, model_name):
-    cfg = get_config(model_name)
-    if name=="act_fn":
+
+def _get_property(name, model_name):
+    cfg = _get_config(model_name)
+    if name == "act_fn":
         if cfg.attn_only:
             return "attn_only"
-        elif cfg.act_fn=="gelu_new":
+        elif cfg.act_fn == "gelu_new":
             return "gelu"
-        elif cfg.act_fn=="solu_ln":
+        elif cfg.act_fn == "solu_ln":
             return "solu"
         else:
             return cfg.act_fn
-    if name=="n_params":
+    if name == "n_params":
         n_params = cfg.n_params
         if n_params < 1e4:
             return f"{n_params/1e3:.1f}K"
@@ -54,10 +59,23 @@ def get_property(name, model_name):
     else:
         return cfg.to_dict()[name]
 
-column_names = "n_params, n_layers, d_model, n_heads, act_fn, n_ctx, d_vocab, d_head, d_mlp".split(", ")
+
+column_names = (
+    "n_params, n_layers, d_model, n_heads, act_fn, n_ctx, d_vocab, d_head, d_mlp".split(
+        ", "
+    )
+)
 print(column_names)
-df = pd.DataFrame({name:[get_property(name, model_name) for model_name in loading.DEFAULT_MODEL_ALIASES] for name in column_names}, index=loading.DEFAULT_MODEL_ALIASES)
+df = pd.DataFrame(
+    {
+        name: [
+            _get_property(name, model_name)
+            for model_name in loading.DEFAULT_MODEL_ALIASES
+        ]
+        for name in column_names
+    },
+    index=loading.DEFAULT_MODEL_ALIASES,
+)
 display(df)
 df.to_markdown(open("model_properties_table.md", "w"))
 # %%
-

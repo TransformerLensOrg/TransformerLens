@@ -1,36 +1,46 @@
-# Import stuff
+"""A module for hooking into PyTorch models and getting access to intermediate activations."""
+
 import logging
-from typing import Callable, Union, Optional, Sequence
+from functools import *
+from typing import Callable, Optional, Sequence, Union
+
 import torch
 import torch.nn as nn
-
-from functools import *
 
 # %%
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
 
 # %%
-# A helper class to get access to intermediate activations (inspired by Garcon)
-# It's a dummy module that is the identity function by default
-# I can wrap any intermediate activation in a HookPoint and get a convenient
-# way to add PyTorch hooks
 class HookPoint(nn.Module):
+    """
+    A helper class to get access to intermediate activations (inspired by Garcon).
+
+    It's a dummy module that is the identity function by default
+    I can wrap any intermediate activation in a HookPoint and get a convenient
+    way to add PyTorch hooks.
+    """
+
     def __init__(self):
+        """Trivial constructor. Creates an empty HookPoint.
+
+        self.name is a  variable giving the hook's name (from the perspective of the root
+        module) - this is set by the root module at setup.
+        """
         super().__init__()
         self.fwd_hooks = []
         self.bwd_hooks = []
         self.ctx = {}
 
-        # A variable giving the hook's name (from the perspective of the root
-        # module) - this is set by the root module at setup.
         self.name = None
 
     def add_hook(self, hook, dir="fwd"):
-        # Hook format is fn(activation, hook_name)
-        # Change it into PyTorch hook format (this includes input and output,
-        # which are the same for a HookPoint)
+        """Add a hook.
 
+        Hook format is fn(activation, hook)
+        Change it into PyTorch hook format (this includes input and output,
+        which are the same for a HookPoint)
+        """
         if dir == "fwd":
 
             def full_hook(module, module_input, module_output):
@@ -49,6 +59,7 @@ class HookPoint(nn.Module):
             raise ValueError(f"Invalid direction {dir}")
 
     def remove_hooks(self, dir="fwd"):
+        """Remove all hooks in the given direction."""
         if (dir == "fwd") or (dir == "both"):
             for hook in self.fwd_hooks:
                 hook.remove()
@@ -61,16 +72,21 @@ class HookPoint(nn.Module):
             raise ValueError(f"Invalid direction {dir}")
 
     def clear_context(self):
+        """Reset the context dictionary that's shared between invocations of the hook."""
         del self.ctx
         self.ctx = {}
 
     def forward(self, x):
+        """Compute the identity function."""
         return x
 
     def layer(self):
-        # Returns the layer index if the name has the form 'blocks.{layer}.{...}'
-        # Helper function that's mainly useful on EasyTransformer
-        # If it doesn't have this form, raises an error -
+        """
+        Return the layer index if the name has the form 'blocks.{layer}.{...}'.
+
+        Helper function that's mainly useful on EasyTransformer
+        If it doesn't have this form, raises an error.
+        """
         split_name = self.name.split(".")
         return int(split_name[1])
 
@@ -78,7 +94,8 @@ class HookPoint(nn.Module):
 # %%
 class HookedRootModule(nn.Module):
     """
-    A class building on nn.Module to interface nicely with HookPoints
+    A class building on nn.Module to interface nicely with HookPoints.
+
     Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks, and run_with_cache to run the model on some input and return a cache of all activations
 
     WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the end by default, and I recommend using the API of this and run_with_cache. If you want to add hooks into global state, I recommend being intentional about this, and I recommend using reset_hooks liberally in your code to remove any accidentally remaining global state.
@@ -87,12 +104,16 @@ class HookedRootModule(nn.Module):
     """
 
     def __init__(self, *args):
+        """Trivial constructor. Turns off caching by default."""
         super().__init__()
         self.is_caching = False
 
     def setup(self):
-        # Setup function - this needs to be run in __init__ AFTER defining all
-        # layers
+        """
+        Set up internals.
+
+        This needs to be run in __init__ AFTER defining all layers.
+        """
         # Add a parameter to each module giving its name
         # Build a dictionary mapping a module name to the module
         self.mod_dict = {}
@@ -103,24 +124,26 @@ class HookedRootModule(nn.Module):
             if "HookPoint" in str(type(module)):
                 self.hook_dict[name] = module
 
-    def hook_points(self):
+    def _hook_points(self):
         return self.hook_dict.values()
 
-    def remove_all_hook_fns(self, direction="both"):
-        for hp in self.hook_points():
+    def _remove_all_hook_fns(self, direction="both"):
+        for hp in self._hook_points():
             hp.remove_hooks(direction)
 
-    def clear_contexts(self):
-        for hp in self.hook_points():
+    def _clear_contexts(self):
+        for hp in self._hook_points():
             hp.clear_context()
 
     def reset_hooks(self, clear_contexts=True, direction="both"):
+        """Reset hooks, clearing the contexts if appropriate."""
         if clear_contexts:
-            self.clear_contexts()
-        self.remove_all_hook_fns(direction)
+            self._clear_contexts()
+        self._remove_all_hook_fns(direction)
         self.is_caching = False
 
     def add_hook(self, name, hook, dir="fwd"):
+        """Add a hook with the given name. Overwrites if already present."""
         if type(name) == str:
             self.mod_dict[name].add_hook(hook, dir=dir)
         else:
@@ -139,6 +162,8 @@ class HookedRootModule(nn.Module):
         **model_kwargs,
     ):
         """
+        Run the model with the given hooks.
+
         fwd_hooks: A list of (name, hook), where name is either the name of
         a hook point or a Boolean function on hook names and hook is the
         function to add to that hook point, or the hook whose names evaluate
@@ -182,7 +207,7 @@ class HookedRootModule(nn.Module):
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
     ) -> dict:
-        """Adds hooks to the model to cache activations. Note: It does NOT actually run the model to get activations, that must be done separately.
+        """Add hooks to the model to cache activations. Note: It does NOT actually run the model to get activations, that must be done separately.
 
         Args:
             names_filter (NamesFilter, optional): Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.
@@ -239,7 +264,7 @@ class HookedRootModule(nn.Module):
         **model_kwargs,
     ):
         """
-        Runs the model and returns model output and a Cache object
+        Run the model and returns model output and a Cache object.
 
         model_args and model_kwargs - all positional arguments and keyword arguments not otherwise captured are input to the model
         names_filter (None or str or [str] or fn:str->bool): a filter for which activations to cache. Defaults to None, which means cache everything.
@@ -260,38 +285,3 @@ class HookedRootModule(nn.Module):
         if reset_hooks_end:
             self.reset_hooks(clear_contexts)
         return model_out, cache_dict
-
-    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
-        logging.warning(
-            "cache_all is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache"
-        )
-        self.add_caching_hooks(
-            names_filter=lambda name: True,
-            cache=cache,
-            incl_bwd=incl_bwd,
-            device=device,
-            remove_batch_dim=remove_batch_dim,
-        )
-
-    def cache_some(
-        self,
-        cache,
-        names: Callable[[str], bool],
-        incl_bwd=False,
-        device=None,
-        remove_batch_dim=False,
-    ):
-        """Cache a list of hook provided by names, Boolean function on names"""
-        logging.warning(
-            "cache_some is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache"
-        )
-        self.add_caching_hooks(
-            names_filter=names,
-            cache=cache,
-            incl_bwd=incl_bwd,
-            device=device,
-            remove_batch_dim=remove_batch_dim,
-        )
-
-
-# %%

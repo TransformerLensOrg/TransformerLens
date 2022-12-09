@@ -1,9 +1,12 @@
+"""Demonstrates the use of torchtyping with typeguard."""
+
 # %%
 
-import torch as t
-from torchtyping import TT as TT, patch_typeguard
-from typeguard import typechecked
 import einops
+import torch as t
+from torchtyping import TT as TT
+from torchtyping import patch_typeguard
+from typeguard import typechecked
 
 patch_typeguard()
 
@@ -11,19 +14,19 @@ ZimZam = TT["batch", "feature", float]
 
 
 @typechecked
-def test(x: ZimZam) -> ZimZam:
+def _test(x: ZimZam) -> ZimZam:
     return einops.rearrange(x, "f b -> f b")
 
 
 x = t.rand((10000, 1), dtype=t.float32)
 
-test(x)
+_test(x)
 
 # what if "batch" and "feature" now take on different values?
 
 x = t.rand((20000, 2), dtype=t.float32)
 
-test(x)
+_test(x)
 
 # ah so indeed batch and feature must only be consistent across a single function call
 
@@ -33,17 +36,17 @@ ZimZam2 = TT["batch", "feature", float]
 
 
 @typechecked
-def test2(x: ZimZam2) -> ZimZam:
+def _test2(x: ZimZam2) -> ZimZam:
     return einops.rearrange(x, "f b -> f b")
 
 
 @typechecked
-def test3(x: ZimZam) -> ZimZam2:
+def _test3(x: ZimZam) -> ZimZam2:
     return einops.rearrange(x, "f b -> f b")
 
 
-test2(x)
-test3(x)
+_test2(x)
+_test3(x)
 
 # so the right mental model is that the decorators register
 # a dictionary whose keys are the dimension names and
@@ -54,7 +57,7 @@ test3(x)
 
 
 @typechecked
-def test4(x: ZimZam) -> ZimZam:
+def _test4(x: ZimZam) -> ZimZam:
     return einops.rearrange(x, "f b -> b f")
 
 
