@@ -1,14 +1,18 @@
+"""Generalized config class for models."""
+
+import json
+import logging
+import pprint
+import random
 from dataclasses import dataclass
-from typing import Union, Tuple, List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import numpy as np
 import torch
 import torch.nn as nn
-import random
-import numpy as np
-import logging
-import json
-import pprint
 
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
+
 
 @dataclass
 class EasyTransformerConfig:
@@ -156,7 +160,8 @@ class EasyTransformerConfig:
     n_params: Optional[int] = None
 
     def __post_init__(self):
-        if self.n_heads==-1:
+        """Post init function to set some defaults and check for errors"""
+        if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head
 
         if not self.d_model == (self.n_heads * self.d_head):
@@ -213,12 +218,15 @@ class EasyTransformerConfig:
         return cls(**config_dict)
 
     def to_dict(self):
+        """Returns the config as a Python dictionary."""
         return self.__dict__
 
     def __repr__(self):
+        """Returns the config as a string."""
         return "EasyTransformerConfig:\n" + pprint.pformat(self.to_dict())
-    
+
     def set_seed_everywhere(self, seed: int):
+        """Sets the seed for all random number generators in the model. (Torch, Python's random, and Numpy)"""
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)

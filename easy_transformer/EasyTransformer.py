@@ -1,39 +1,39 @@
-from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple
-from torchtyping import TensorType as TT
+"""This file contains the EasyTransformer class, which is the main class for the library. It contains the forward pass, and can be initialized with pretrained weights via the from_pretrained() class method."""
+
+import logging
+import re
+from collections import namedtuple
+from functools import lru_cache, partial
+from typing import Callable, Dict, List, NamedTuple, Optional, Tuple, Union
+
+import einops
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import einops
-import logging
 import tqdm.auto as tqdm
-import re
 from huggingface_hub import HfApi
-from functools import partial, lru_cache
-from collections import namedtuple
+from torchtyping import TensorType as TT
+from transformers import AutoTokenizer, PreTrainedTokenizer
 
-from transformers import (
-    AutoTokenizer,
-    PreTrainedTokenizer,
-)
-
-from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer import EasyTransformerConfig
-from easy_transformer.ActivationCache import ActivationCache
-from easy_transformer.FactoredMatrix import FactoredMatrix
-# Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
-from easy_transformer.past_key_value_caching import (
-    EasyTransformerKeyValueCache,
-)
-
-from easy_transformer.components import *
 import easy_transformer.loading_from_pretrained as loading
 import easy_transformer.utils as utils
+from easy_transformer import EasyTransformerConfig
+from easy_transformer.ActivationCache import ActivationCache
+from easy_transformer.components import *
+from easy_transformer.FactoredMatrix import FactoredMatrix
+from easy_transformer.hook_points import HookedRootModule, HookPoint
+
+# Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
+from easy_transformer.past_key_value_caching import EasyTransformerKeyValueCache
 
 # Type alias for a single element tensor
 Loss = TT[()]
-# Named tuple object for if we want to output both logits and loss
+
+
 class Output(NamedTuple):
+    """Named tuple object for if we want to output both logits and loss"""
+
     logits: TT["batch", "pos", "d_vocab"]
     loss: Loss
 
@@ -303,7 +303,7 @@ class EasyTransformer(HookedRootModule):
         move_to_device: bool = True,
     ) -> TT["batch", "pos"]:
         """
-        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. 
+        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model.
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
         (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
@@ -393,7 +393,6 @@ class EasyTransformer(HookedRootModule):
 
     def to_single_token(self, string):
         """Maps a string that makes up a single token to the id for that token. Raises an error for strings that are not a single token! If uncertain use to_tokens"""
-
         # We use the to_tokens method, do not append a BOS token
         token = self.to_tokens(string, prepend_bos=False).squeeze()
         # If token shape is non-empty, raise error
@@ -420,8 +419,8 @@ class EasyTransformer(HookedRootModule):
                 search in. Can be a string or a rank 1 tensor or a rank 2 tensor
                 with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
-            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to 
-                the function, otherwise ignored. 
+            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to
+                the function, otherwise ignored.
         """
         if isinstance(tokens, str):
             # If the tokens are a string, convert to tensor
@@ -441,7 +440,7 @@ class EasyTransformer(HookedRootModule):
             single_token = single_token.item()
 
         indices = torch.arange(len(tokens))[tokens == single_token]
-        assert len(indices)>0, f"The token does not occur in the prompt"
+        assert len(indices) > 0, f"The token does not occur in the prompt"
         if mode == "first":
             return indices[0].item()
         elif mode == "last":
@@ -449,11 +448,15 @@ class EasyTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def tokens_to_residual_directions(self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]) -> Union[TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]]:
+    def tokens_to_residual_directions(
+        self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]
+    ) -> Union[
+        TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]
+    ]:
         """Maps tokens to a tensor with the unembedding vector for those tokens, ie the vector in the residual stream that we dot with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map. This is done automatically with the fold_ln flag on from_pretrained
-        
+
         WARNING 2: LayerNorm scaling will scale up or down the effective direction in the residual stream for each output token on any given input token position. ActivationCache.apply_ln_to_stack will apply the appropriate scaling to these directions.
 
         Args:
@@ -463,10 +466,12 @@ class EasyTransformer(HookedRootModule):
         Returns:
             residual_direction torch.Tensor: The unembedding vector for the token(s), a stack of [d_model] tensor.
         """
-        if isinstance(tokens, torch.Tensor) and tokens.numel()>1:
+        if isinstance(tokens, torch.Tensor) and tokens.numel() > 1:
             # If the tokens are a tensor, and have more than one element, assume they are a batch of tokens
             residual_directions = self.W_U[:, tokens]
-            residual_directions = einops.rearrange(residual_directions, "d_model ... -> ... d_model")
+            residual_directions = einops.rearrange(
+                residual_directions, "d_model ... -> ... d_model"
+            )
             return residual_directions
         else:
             # Otherwise there is a single token
@@ -474,13 +479,12 @@ class EasyTransformer(HookedRootModule):
                 token = self.to_single_token(tokens)
             elif isinstance(tokens, int):
                 token = tokens
-            elif isinstance(tokens, torch.Tensor) and tokens.numel()==1:
+            elif isinstance(tokens, torch.Tensor) and tokens.numel() == 1:
                 token = tokens.item()
             else:
                 raise ValueError(f"Invalid token type: {type(tokens)}")
             residual_direction = self.W_U[:, token]
             return residual_direction
-
 
     def to(self, device_or_dtype):
         """
@@ -497,11 +501,11 @@ class EasyTransformer(HookedRootModule):
         return nn.Module.to(self, device_or_dtype)
 
     def cuda(self):
-        # Wrapper around cuda that also changes self.cfg.device
+        """Wrapper around cuda that also changes self.cfg.device"""
         return self.to("cuda")
 
     def cpu(self):
-        # Wrapper around cuda that also changes self.cfg.device
+        """Wrapper around cpu that also changes self.cfg.device"""
         return self.to("cpu")
 
     @classmethod
@@ -611,7 +615,6 @@ class EasyTransformer(HookedRootModule):
 
         The best paper I've found on transformer initialization is the muP paper, but haven't integrated those ideas yet: https://arxiv.org/abs/2203.03466
         """
-
         if self.cfg.seed is not None:
             torch.manual_seed(self.cfg.seed)
 
@@ -644,7 +647,6 @@ class EasyTransformer(HookedRootModule):
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
         """
-
         if move_state_dict_to_device:
             state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
         state_dict = self.fill_missing_keys(state_dict)
@@ -1074,6 +1076,7 @@ class EasyTransformer(HookedRootModule):
 
     @property
     def b_U(self) -> TT["d_vocab"]:
+        """The unembedding bias"""
         return self.unembed.b_U
 
     @property
@@ -1173,10 +1176,12 @@ class EasyTransformer(HookedRootModule):
 
     @property
     def QK(self):
+        """Returns a FactoredMatrix object representing the QK circuit"""
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
     def OV(self):
+        """Returns a FactoredMatrix object representing the OV circuit"""
         return FactoredMatrix(self.W_V, self.W_O)
 
     # Various utility functions
@@ -1236,6 +1241,7 @@ class EasyTransformer(HookedRootModule):
         return scores
 
     def all_head_labels(self):
+        """Returns a list of strings of the form "L{l}H{h}" for all heads, in order of layer, then head."""
         return [
             f"L{l}H{h}"
             for l in range(self.cfg.n_layers)
