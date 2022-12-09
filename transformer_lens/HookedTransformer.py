@@ -400,12 +400,12 @@ class HookedTransformer(HookedRootModule):
     def get_token_position(
         self,
         single_token: Union[str, int],
-        tokens: Union[str, Union[TT["pos"], TT[1, "pos"]]],
+        input: Union[str, Union[TT["pos"], TT[1, "pos"]]],
         mode="first",
         prepend_bos=True,
     ):
         """
-        Get the position of a single_token in a sequence of tokens.
+        Get the position of a single_token in a string or sequence of tokens. Raises an error if the token is not present.
 
         Gotcha: If you're inputting a string, it'll automatically be tokenized. Be careful about prepend_bos is true or false! When a string is input to the model, a BOS (beginning of sequence) token is prepended by default when the string is tokenized. But this should only be done at the START of the input, not when inputting part of the prompt. If you're getting weird off-by-one errors, check carefully for what the setting should be!
 
@@ -413,16 +413,18 @@ class HookedTransformer(HookedRootModule):
             single_token (Union[str, int]): The token to search for. Can
                 be a token index, or a string (but the string must correspond to a
                 single token)
-            tokens (Union[str, torch.Tensor]): The sequence of tokens to
-                search in. Can be a string or a rank 1 tensor or a rank 2 tensor
-                with a dummy batch dimension.
+            input (Union[str, torch.Tensor]): The sequence to
+                search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of tokens with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
             prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to 
                 the function, otherwise ignored. 
         """
-        if isinstance(tokens, str):
-            # If the tokens are a string, convert to tensor
-            tokens = self.to_tokens(tokens, prepend_bos=prepend_bos)
+        if isinstance(input, str):
+            # If the input is a string, convert to tensor
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+        else:
+            tokens = input
+        
 
         if len(tokens.shape) == 2:
             # If the tokens have shape [1, seq_len], flatten to [seq_len]
