@@ -38,3 +38,7 @@ When testing type annotations, check out `easy_transformer/tests/test_type_annot
 ### Documentation
 
 We ❤️ documentation! Check out [pydocstyle](https://github.com/PyCQA/pydocstyle) to easily find things that need to be documented. To learn more about documentation, check out `pydocstyle -e`.
+
+You can also turn off documentation rules that you don't really care about, such as D400 (line has to end with a period).
+
+When documenting this library, smithjessk turned off D400,D203,D212,D213,D413,D407,D406,D404,D415,D401,D205,D403,D200

@@ -1,23 +1,26 @@
-# %%
-""" 
-A file with some rough evals for models - I expect you to be likely better off using the HuggingFace evaluate library if you want to do anything properly, but this is here if you want it and want to eg cheaply and roughly compare models you've trained to baselines.
+"""A file with some rough evals for models.
+
+I expect you to be likely better off using the HuggingFace evaluate library if you want to do anything properly, but this is here if you want it and want to eg cheaply and roughly compare models you've trained to baselines.
 """
 
+# %%
+import einops
 import torch
 import tqdm.auto as tqdm
 from datasets import load_dataset
-from easy_transformer import EasyTransformer, EasyTransformerConfig, utils
 from torch.utils.data import DataLoader
-import einops
+
+from easy_transformer import EasyTransformer, EasyTransformerConfig, utils
+
 
 # %%
 def sanity_check(model):
-    """
-    Very basic eval - just feeds a string into the model (in this case, the first paragraph of Circuits: Zoom In), and returns the loss. It's a rough and quick sanity check - if the loss is <5 the model is probably OK, if the loss is >7 something's gone wrong.
+    """Very basic eval - just feeds a string into the model (in this case, the first paragraph of Circuits: Zoom In), and returns the loss.
+
+    It's a rough and quick sanity check - if the loss is <5 the model is probably OK, if the loss is >7 something's gone wrong.
 
     Note that this is a very basic eval, and doesn't really tell you much about the model's performance.
     """
-
     text = "Many important transition points in the history of science have been moments when science 'zoomed in.' At these points, we develop a visualization or tool that allows us to see the world in a new level of detail, and a new field of science develops to study the world through this lens."
 
     return model(text, return_type="loss")
@@ -25,8 +28,9 @@ def sanity_check(model):
 
 # %%
 def make_wiki_data_loader(tokenizer, batch_size=8):
-    """
-    Evaluate on Wikitext 2, a dump of Wikipedia articles. (Using the train set because it's larger, I don't really expect anyone to bother with quarantining the validation set nowadays.)
+    """Evaluate on Wikitext 2, a dump of Wikipedia articles.
+
+    (Using the train set because it's larger, I don't really expect anyone to bother with quarantining the validation set nowadays).
 
     Note there's likely to be dataset leakage into training data (though I believe GPT-2 was explicitly trained on non-Wikipedia data)
     """
@@ -41,7 +45,7 @@ def make_wiki_data_loader(tokenizer, batch_size=8):
 
 def make_owt_data_loader(tokenizer, batch_size=8):
     """
-    Evaluate on OpenWebText an open source replication of the GPT-2 training corpus (Reddit links with >3 karma)
+    Evaluate on OpenWebText an open source replication of the GPT-2 training corpus (Reddit links with >3 karma).
 
     I think the Mistral models were trained on this dataset, so they get very good performance.
     """
@@ -71,7 +75,9 @@ def make_pile_data_loader(tokenizer, batch_size=8):
 
 def make_code_data_loader(tokenizer, batch_size=8):
     """
-    Evaluate on the CodeParrot dataset, a dump of Python code. All models seem to get significantly lower loss here (even non-code trained models like GPT-2), presumably code is much easier to predict than natural language?
+    Evaluate on the CodeParrot dataset, a dump of Python code.
+
+    All models seem to get significantly lower loss here (even non-code trained models like GPT-2), presumably code is much easier to predict than natural language?
     """
     code_data = load_dataset("codeparrot/codeparrot-valid-v2-near-dedup", split="train")
     print(len(code_data))
@@ -95,6 +101,7 @@ DATASET_LOADERS = [
 # %%
 @torch.inference_mode()
 def evaluate_on_dataset(model, data_loader, truncate=100):
+    """Evaluate a model on a dataset, returning the average loss."""
     running_loss = 0
     total = 0
     for batch in tqdm.tqdm(data_loader):
@@ -137,6 +144,7 @@ def induction_loss(
 # %%
 @torch.inference_mode()
 def evaluate(model, truncate=100, batch_size=8, tokenizer=None):
+    """Evaluate a model on a variety of datasets, returning a dictionary of losses."""
     if tokenizer is None:
         tokenizer = model.tokenizer
     losses = {}

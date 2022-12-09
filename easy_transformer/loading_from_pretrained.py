@@ -1,13 +1,17 @@
+"""This module contains functions for loading models from the HuggingFace Hub."""
+
 # %%
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+import logging
+import re
+from typing import Dict, Optional
+
 import einops
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM
-import easy_transformer.utils as utils
-from typing import Optional, Dict
-import logging
 from huggingface_hub import HfApi
-import re
+from transformers import AutoConfig, AutoModelForCausalLM
+
+import easy_transformer.utils as utils
+from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
 
 # %% The model names used to access the models on the HuggingFace Hub.
 OFFICIAL_MODEL_NAMES = [
@@ -238,13 +242,19 @@ MODEL_ALIASES = {
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
-DEFAULT_MODEL_ALIASES = [MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES]
+DEFAULT_MODEL_ALIASES = [
+    MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name
+    for name in OFFICIAL_MODEL_NAMES
+]
 
-def make_model_alias_map():
+
+def _make_model_alias_map():
     """
-    Converts OFFICIAL_MODEL_NAMES (the list of actual model names on
-    HuggingFace) and MODEL_ALIASES (a dictionary mapping official model names to
-    aliases) into a dictionary mapping all aliases to the official model name.
+    Convert OFFICIAL_MODEL_NAMES to MODEL_ALIASES.
+
+    OFFICIAL_MODEL_NAMES is the list of actual model names on
+    HuggingFace and MODEL_ALIASES a dictionary mapping official model names to
+    aliases into a dictionary mapping all aliases to the official model name.
     """
     model_alias_map = {}
     for official_model_name in OFFICIAL_MODEL_NAMES:
@@ -256,10 +266,8 @@ def make_model_alias_map():
 
 
 def get_official_model_name(model_name: str):
-    """
-    Returns the official model name for a given model name (or alias).
-    """
-    model_alias_map = make_model_alias_map()
+    """Return the official model name for a given model name (or alias)."""
+    model_alias_map = _make_model_alias_map()
     official_model_name = model_alias_map.get(model_name.lower(), None)
     if official_model_name is None:
         raise ValueError(
@@ -270,10 +278,9 @@ def get_official_model_name(model_name: str):
 
 def convert_hf_model_config(official_model_name: str):
     """
-    Returns the model config for a HuggingFace model, converted to a dictionary
-    in the EasyTransformerConfig format.
+    Return the model config for a HuggingFace model.
 
-    Takes the official_model_name as an input.
+    Converted to a dictionary in the EasyTransformerConfig format.
     """
     # In case the user passed in an alias
     official_model_name = get_official_model_name(official_model_name)
@@ -374,10 +381,11 @@ def convert_hf_model_config(official_model_name: str):
     return cfg_dict
 
 
-def convert_neel_model_config(official_model_name: str):
+def _convert_neel_model_config(official_model_name: str):
     """
-    Loads the config for a model trained by me (NeelNanda), converted to a dictionary
-    in the EasyTransformerConfig format.
+    Load the config for a model trained by me (NeelNanda).
+
+    Converted to a dictionary in the EasyTransformerConfig format.
 
     AutoConfig is not supported, because these models are in the EasyTransformer format, so we directly download and load the json.
     """
@@ -419,7 +427,7 @@ def get_pretrained_model_config(
     fold_ln: bool = False,
     device: Optional[str] = None,
 ):
-    """Returns the pretrained model config as an EasyTransformerConfig object.
+    """Return the pretrained model config as an EasyTransformerConfig object.
 
     There are two types of pretrained models: HuggingFace models (where
     AutoModel and AutoConfig work), and models trained by me (NeelNanda) which
@@ -444,7 +452,7 @@ def get_pretrained_model_config(
     """
     official_model_name = get_official_model_name(model_name)
     if official_model_name.startswith("NeelNanda"):
-        cfg_dict = convert_neel_model_config(official_model_name)
+        cfg_dict = _convert_neel_model_config(official_model_name)
     else:
         cfg_dict = convert_hf_model_config(official_model_name)
     # Processing common to both model types
@@ -484,8 +492,9 @@ def get_pretrained_model_config(
 
 
 def get_num_params_of_pretrained(model_name):
-    """
-    Returns the number of parameters of a pretrained model, used to filter to only run code for sufficiently small models.
+    """Return the number of parameters of a pretrained model.
+
+    Used to filter to only run code for sufficiently small models.
     """
     cfg = get_pretrained_model_config(model_name)
     return cfg.n_params
@@ -502,8 +511,10 @@ STANFORD_CRFM_CHECKPOINTS = (
 
 
 def get_checkpoint_labels(model_name: str):
-    """Returns the checkpoint labels for a given model, and the label_type
-    (step or token). Raises an error for models that are not checkpointed."""
+    """Return the checkpoint labels for a given model and the label_type (step or token).
+
+    Raises an error for models that are not checkpointed.
+    """
     official_model_name = get_official_model_name(model_name)
     if official_model_name.startswith("stanford-crfm/"):
         return STANFORD_CRFM_CHECKPOINTS, "step"
@@ -533,8 +544,9 @@ def get_pretrained_state_dict(
     hf_model=None,
 ) -> Dict[str, torch.Tensor]:
     """
-    Loads in the model weights for a pretrained model, and processes them to
-    have the EasyTransformer parameter names and shapes. Supports checkpointed
+    Load and process the model weights for a pretrained model.
+
+    Processes them to have the EasyTransformer parameter names and shapes. Supports checkpointed
     models (and expects the checkpoint info to be stored in the config object)
 
     hf_model: Optionally, a HuggingFace model object. If provided, we will use
@@ -552,7 +564,7 @@ def get_pretrained_state_dict(
             file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
         state_dict = utils.download_file_from_hf(official_model_name, file_name)
         if cfg.original_architecture == "neel-solu-old":
-            state_dict = convert_neel_solu_old_weights(state_dict, cfg)
+            state_dict = _convert_neel_solu_old_weights(state_dict, cfg)
         return state_dict
     else:
         if cfg.from_checkpoint:
@@ -586,22 +598,21 @@ def convert_state_dict(
     state_dict: dict,
     cfg: EasyTransformerConfig,
 ):
-    """Converts a state_dict from a HuggingFace model to a state_dict
-    compatible with EasyTransformer."""
+    """Convert a state_dict from a HuggingFace model to a state_dict compatible with EasyTransformer."""
     official_model_name = get_official_model_name(official_model_name)
 
     if cfg["original_architecture"] == "gpt2":
-        return convert_gpt2_weights(state_dict, cfg)
+        return _convert_gpt2_weights(state_dict, cfg)
     elif cfg["original_architecture"] == "neo":
-        return convert_neo_weights(state_dict, cfg)
+        return _convert_neo_weights(state_dict, cfg)
     elif cfg["original_architecture"] == "gptj":
-        return convert_gptj_weights(state_dict, cfg)
+        return _convert_gptj_weights(state_dict, cfg)
     elif cfg["original_architecture"] == "neox":
-        return convert_neox_weights(state_dict, cfg)
+        return _convert_neox_weights(state_dict, cfg)
     elif cfg["original_architecture"] == "opt":
-        return convert_opt_weights(state_dict, cfg)
+        return _convert_opt_weights(state_dict, cfg)
     elif cfg["original_architecture"] == "neel-solu-old":
-        return convert_neel_solu_old_weights(state_dict, cfg)
+        return _convert_neel_solu_old_weights(state_dict, cfg)
     elif cfg["original_architecture"] == "neel":
         return state_dict
     else:
@@ -609,7 +620,7 @@ def convert_state_dict(
 
 
 # Convert state dicts
-def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
+def _convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = gpt2.transformer.wte.weight
@@ -665,7 +676,7 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neo_weights(neo, cfg: EasyTransformerConfig):
+def _convert_neo_weights(neo, cfg: EasyTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neo.transformer.wte.weight
@@ -712,7 +723,7 @@ def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
+def _convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = gptj.transformer.wte.weight
@@ -758,7 +769,7 @@ def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neox_weights(neox, cfg: EasyTransformerConfig):
+def _convert_neox_weights(neox, cfg: EasyTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neox.gpt_neox.embed_in.weight
@@ -827,7 +838,7 @@ def convert_neox_weights(neox, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_opt_weights(opt, cfg: EasyTransformerConfig):
+def _convert_opt_weights(opt, cfg: EasyTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = opt.model.decoder.embed_tokens.weight
@@ -917,9 +928,10 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neel_solu_old_weights(state_dict: dict, cfg: EasyTransformerConfig):
+def _convert_neel_solu_old_weights(state_dict: dict, cfg: EasyTransformerConfig):
     """
-    Converts the weights of my old SoLU models to the EasyTransformer format.
+    Convert the weights of my old SoLU models to the EasyTransformer format.
+
     Takes as input a state dict, *not* a model object.
 
     There are a bunch of dumb bugs in the original code, sorry!
@@ -929,8 +941,6 @@ def convert_neel_solu_old_weights(state_dict: dict, cfg: EasyTransformerConfig):
     dim_out]).
 
     8L has *just* a left facing W_pos, the rest right facing.
-
-    And some models were trained with
     """
     # Early models have left facing W_pos
     reverse_pos = cfg.n_layers <= 8
