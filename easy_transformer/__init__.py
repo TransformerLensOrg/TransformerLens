@@ -1,4 +1,4 @@
-"""EasyTransformer is a library for interpreting transformer models.''' 
+"""EasyTransformer is a library for interpreting transformer models."""
 
 from . import components, evals, hook_points
 from . import loading_from_pretrained as loading

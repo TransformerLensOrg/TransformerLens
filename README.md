@@ -41,4 +41,8 @@ We ❤️ documentation! Check out [pydocstyle](https://github.com/PyCQA/pydocst
 
 You can also turn off documentation rules that you don't really care about, such as D400 (line has to end with a period).
 
-When documenting this library, smithjessk turned off D400,D203,D212,D213,D413,D407,D406,D404,D415,D401,D205,D403,D200
+When documenting this library, smithjessk turned off D400,D203,D212,D213,D413,D407,D406,D404,D415,D200,D401,D205,D403,D201,D411.
+
+E.g. you can see how many errors you have left to correct with:
+
+`pydocstyle --ignore D400,D203,D212,D213,D413,D407,D406,D404,D415,D200,D401,D205,D403,D201,D411 --count`
