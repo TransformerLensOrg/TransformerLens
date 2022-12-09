@@ -1,9 +1,15 @@
+"""For low rank factored matrices. Useful for efficient calculation of eigenvalues, norm and SVD."""
+
 from __future__ import annotations
-import torch
-from typing import Optional, Union, Tuple, List, Dict
-from torchtyping import TensorType as TT
+
 from functools import lru_cache
+from typing import Dict, List, Optional, Tuple, Union
+
+import torch
+from torchtyping import TensorType as TT
+
 import easy_transformer.utils as utils
+
 
 class FactoredMatrix:
     """
@@ -11,6 +17,7 @@ class FactoredMatrix:
     """
 
     def __init__(self, A: TT[..., "ldim", "mdim"], B: TT[..., "mdim", "rdim"]):
+        """Builds a factored matrix from two matrices."""
         self.A = A
         self.B = B
         assert self.A.size(-1) == self.B.size(
@@ -30,6 +37,7 @@ class FactoredMatrix:
     def __matmul__(
         self, other: Union[TT[..., "rdim", "new_rdim"], TT["rdim"], FactoredMatrix]
     ) -> Union[FactoredMatrix, TT[..., "ldim"]]:
+        """Matrix multiplication in an efficient way."""
         if isinstance(other, torch.Tensor):
             if other.ndim < 2:
                 # It's a vector, so we collapse the factorisation and just return a vector
@@ -49,6 +57,7 @@ class FactoredMatrix:
     def __rmatmul__(
         self, other: Union[TT[..., "new_ldim", "ldim"], TT["ldim"], FactoredMatrix]
     ) -> Union[FactoredMatrix, TT[..., "rdim"]]:
+        """Right side matrix multiplication in an efficient way."""
         if isinstance(other, torch.Tensor):
             assert (
                 other.size(-1) == self.ldim
@@ -63,13 +72,17 @@ class FactoredMatrix:
         elif isinstance(other, FactoredMatrix):
             return other.A @ (other.B @ self)
 
+    ABOutput = TT["leading_dims":..., "ldim", "rdim"]  # to make pydocstyle happy
+
     @property
-    def AB(self) -> TT["leading_dims":..., "ldim", "rdim"]:
+    def AB(self) -> ABOutput:
         """The product matrix - expensive to compute, and can consume a lot of GPU memory"""
         return self.A @ self.B
 
+    BAOutput = TT["leading_dims":..., "rdim", "ldim"]
+
     @property
-    def BA(self) -> TT["leading_dims":..., "rdim", "ldim"]:
+    def BA(self) -> BAOutput:
         """The reverse product. Only makes sense when ldim==rdim"""
         assert (
             self.rdim == self.ldim
@@ -78,16 +91,19 @@ class FactoredMatrix:
 
     @property
     def T(self) -> FactoredMatrix:
+        """Transpose."""
         return FactoredMatrix(self.B.transpose(-2, -1), self.A.transpose(-2, -1))
+
+    SVDOutput = Tuple[
+        TT["leading_dims":..., "ldim", "mdim"],
+        TT["leading_dims":..., "mdim"],
+        TT["leading_dims":..., "rdim", "mdim"],
+    ]
 
     @lru_cache(maxsize=None)
     def svd(
         self,
-    ) -> Tuple[
-        TT["leading_dims":..., "ldim", "mdim"],
-        TT["leading_dims":..., "mdim"],
-        TT["leading_dims":..., "rdim", "mdim"],
-    ]:
+    ) -> SVDOutput:
         """
         Efficient algorithm for finding Singular Value Decomposition, a tuple (U, S, Vh) for matrix M st S is a vector and U, Vh are orthogonal matrices, and U @ S.diag() @ Vh.T == M
 
@@ -102,20 +118,31 @@ class FactoredMatrix:
         S = Sm
         return U, S, Vh
 
+    UOutput = TT["leading_dims":..., "ldim", "mdim"]
+
     @property
-    def U(self) -> TT["leading_dims":..., "ldim", "mdim"]:
+    def U(self) -> UOutput:
+        """The U part of the SVD"""
         return self.svd()[0]
 
+    SOutput = TT["leading_dims":..., "mdim"]
+
     @property
-    def S(self) -> TT["leading_dims":..., "mdim"]:
+    def S(self) -> SOutput:
+        """The S part of the SVD"""
         return self.svd()[1]
 
-    @property
-    def Vh(self) -> TT["leading_dims":..., "rdim", "mdim"]:
-        return self.svd()[2]
+    VhOutput = TT["leading_dims":..., "rdim", "mdim"]
 
     @property
-    def eigenvalues(self) -> TT["leading_dims":..., "mdim"]:
+    def Vh(self) -> VhOutput:
+        """The Vh part of the SVD"""
+        return self.svd()[2]
+
+    Eigenvalues = TT["leading_dims":..., "mdim"]
+
+    @property
+    def eigenvalues(self) -> Eigenvalues:
         """Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k."""
         return torch.linalg.eig(self.BA).eigenvalues
 
@@ -137,13 +164,16 @@ class FactoredMatrix:
                 f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"
             )
 
-    def norm(self) -> TT["leading_dims":...]:
+    NormOutput = TT["leading_dims":...]
+
+    def norm(self) -> NormOutput:
         """
         Frobenius norm is sqrt(sum of squared singular values)
         """
         return self.S.pow(2).sum(-1).sqrt()
 
     def __repr__(self):
+        """String representation of the matrix. Contais shape and hidden dimension."""
         return f"FactoredMatrix: Shape({self.shape}), Hidden Dim({self.mdim})"
 
     def make_even(self) -> FactoredMatrix:
@@ -156,31 +186,41 @@ class FactoredMatrix:
         )
 
     def get_corner(self, k=3):
+        """Returns the kxk corner of the matrix"""
         return utils.get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
 
     @property
     def ndim(self) -> int:
+        """Number of dimensions of the matrix"""
         return len(self.shape)
 
-    def collapse_l(self) -> TT["leading_dims":..., "mdim", "rdim"]:
+    CollapseLOutput = TT["leading_dims":..., "mdim", "rdim"]
+
+    def collapse_l(self) -> CollapseLOutput:
         """
         Collapses the left side of the factorization by removing the orthogonal factor (given by self.U). Returns a (..., mdim, rdim) tensor
         """
         return self.S[..., :, None] * utils.transpose(self.Vh)
 
-    def collapse_r(self) -> TT["leading_dims":..., "ldim", "mdim"]:
+    CollapseROutput = TT["leading_dims":..., "ldim", "mdim"]
+
+    def collapse_r(self) -> CollapseROutput:
         """
         Analogous to collapse_l, returns a (..., ldim, mdim) tensor
         """
         return self.U * self.S[..., None, :]
 
     def unsqueeze(self, k: int) -> FactoredMatrix:
+        """Returns a new FactoredMatrix with an extra leading dimension, with the same factorization"""
         return FactoredMatrix(self.A.unsqueeze(k), self.B.unsqueeze(k))
+
+    PairOutput = Tuple[
+        TT["leading_dims":..., "ldim", "mdim"], TT["leading_dims":..., "mdim", "rdim"]
+    ]
 
     @property
     def pair(
         self,
-    ) -> Tuple[
-        TT["leading_dims":..., "ldim", "mdim"], TT["leading_dims":..., "mdim", "rdim"]
-    ]:
+    ) -> PairOutput:
+        """Returns the pair of tensors that make up the factorization"""
         return (self.A, self.B)

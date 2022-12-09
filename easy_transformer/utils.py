@@ -330,6 +330,7 @@ class Slice:
         self,
         input_slice: SliceInput = None,
     ):
+        """Builds a slice object from a variety of inputs."""
         if type(input_slice) == tuple:
             input_slice = slice(*input_slice)
             self.slice = input_slice
@@ -372,6 +373,7 @@ class Slice:
             return np.arange(max_ctx)[self.slice]
 
     def __repr__(self):
+        """Returns a string representation of the slice with the mode."""
         return f"Slice: {self.slice} Mode: {self.mode} "
 
 
@@ -509,14 +511,15 @@ def transpose(tensor: TT[..., "a", "b"]) -> TT[..., "b", "a"]:
     return tensor.transpose(-1, -2)
 
 
+CompositionScores = Union[
+    TT["leading_dims":...], TT["leading_dims_left":..., "leading_dims_right":...]
+]
+
+
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
-) -> Union[
-    TT["leading_dims":...], TT["leading_dims_left":..., "leading_dims_right":...]
-]:
-    """
-    See `EasyTransformer.all_composition_scores` for documentation.
-    """
+) -> CompositionScores:
+    """See `EasyTransformer.all_composition_scores` for documentation."""
     if broadcast_dims:
         r_leading = right.ndim - 2
         l_leading = left.ndim - 2

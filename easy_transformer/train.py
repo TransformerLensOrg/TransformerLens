@@ -1,14 +1,17 @@
-from easy_transformer import EasyTransformer
-from easy_transformer import EasyTransformerConfig
+"""Trains an EasyTransformer model on an autoregressive language modeling task."""
+
 from dataclasses import dataclass
-from typing import Optional, Callable
-from torch.utils.data import Dataset, DataLoader
-import torch.optim as optim
-import wandb
+from typing import Callable, Optional
+
 import torch
 import torch.nn as nn
-from tqdm.auto import tqdm
+import torch.optim as optim
+import wandb
 from einops import rearrange
+from torch.utils.data import DataLoader, Dataset
+from tqdm.auto import tqdm
+
+from easy_transformer import EasyTransformer, EasyTransformerConfig
 
 
 @dataclass

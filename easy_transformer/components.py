@@ -1,29 +1,31 @@
-from typing import Union, Dict, Optional, Tuple
+"""Components built to be more interpretable."""
+
+import logging
+from functools import *
+from typing import Dict, Optional, Tuple, Union
+
+import einops
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import einops
-import logging
-
-from functools import *
-
-from easy_transformer.hook_points import HookPoint
-from easy_transformer.utils import gelu_new, solu, gelu_fast
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
-
 from fancy_einsum import einsum
-
-from easy_transformer.past_key_value_caching import (
-    EasyTransformerKeyValueCacheEntry,
-)
 
 # See tests/should_fail.py for an example of how to enforce type annotations at runtime
 from torchtyping import TensorType as TT
 
+from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from easy_transformer.hook_points import HookPoint
+from easy_transformer.past_key_value_caching import EasyTransformerKeyValueCacheEntry
+from easy_transformer.utils import gelu_fast, gelu_new, solu
+
+
 # Embed & Unembed
 class Embed(nn.Module):
+    """Embeds tokens into a vector space."""
+
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+        """Embeds tokens into a vector space."""
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -32,16 +34,20 @@ class Embed(nn.Module):
             torch.empty(self.cfg.d_vocab, self.cfg.d_model)
         )
 
-    def forward(
-        self, tokens: TT["batch", "position"]
-    ) -> TT["batch", "position", "d_model"]:
+    ForwardOutput = TT["batch", "position", "d_model"]
+
+    def forward(self, tokens: TT["batch", "position"]) -> ForwardOutput:
+        """Looks up tokens in the embedding space."""
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
         return self.W_E[tokens, :]
 
 
 class Unembed(nn.Module):
+    """Unembeds a vector space into tokens."""
+
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+        """Builds an unembedding layer."""
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -52,9 +58,10 @@ class Unembed(nn.Module):
         )
         self.b_U: TT["d_vocab_out"] = nn.Parameter(torch.zeros(self.cfg.d_vocab_out))
 
-    def forward(
-        self, residual: TT["batch", "position", "d_model"]
-    ) -> TT["batch", "position", "d_vocab_out"]:
+    ForwardOutput = TT["batch", "position", "d_vocab_out"]
+
+    def forward(self, residual: TT["batch", "position", "d_model"]) -> ForwardOutput:
+        """Unembeds a vector space into tokens."""
         return (
             einsum(
                 "batch pos d_model, d_model vocab -> batch pos vocab",
@@ -67,20 +74,25 @@ class Unembed(nn.Module):
 
 # Positional Embeddings
 class PosEmbed(nn.Module):
+    """Positional Embeddings"""
+
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+        """Builds a positional embedding layer."""
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model))
 
-    def forward(
-        self, tokens: TT["batch", "position"], past_kv_pos_offset: int = 0
-    ) -> TT["batch", "position", "d_model"]:
-        """Tokens have shape [batch, pos]
-        past_kv_pos_offset is the length of tokens in the past_kv_cache (if used, defaults to zero if unused)
-        Output shape [pos, d_model] - will be broadcast along batch dim"""
+    ForwardOutput = TT["batch", "position", "d_model"]
 
+    def forward(self, tokens: TT["batch", "position"], past_kv_pos_offset: int = 0):
+        """Embeds position.
+
+        Tokens have shape [batch, pos]
+        past_kv_pos_offset is the length of tokens in the past_kv_cache (if used, defaults to zero if unused)
+        Output shape [pos, d_model] - will be broadcast along batch dim
+        """
         tokens_length = tokens.size(-1)
         pos_embed = self.W_pos[
             past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
@@ -91,17 +103,21 @@ class PosEmbed(nn.Module):
         return broadcast_pos_embed
 
 
-# LayerNormPre
-# I fold the LayerNorm weights and biases into later weights and biases.
-# This is just the 'center and normalise' part of LayerNorm
-# Centering is equivalent to just deleting one direction of residual space,
-# and is equivalent to centering the weight matrices of everything writing to the residual stream
-# Normalising is a funkier non-linear operation, that projects the residual stream onto the unit hypersphere
 class LayerNormPre(nn.Module):
+    """LayerNormPre
+
+    I fold the LayerNorm weights and biases into later weights and biases.
+    This is just the 'center and normalise' part of LayerNorm
+    Centering is equivalent to just deleting one direction of residual space,
+    and is equivalent to centering the weight matrices of everything writing to the residual stream
+    Normalising is a funkier non-linear operation, that projects the residual stream onto the unit hypersphere
+    """
+
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
         """LayerNormPre - the 'center and normalise' part of LayerNorm. Length is
         normally d_model, but is d_mlp for softmax. Not needed as a parameter. This
-        should only be used in inference mode after folding in LayerNorm weights"""
+        should only be used in inference mode after folding in LayerNorm weights
+        """
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -113,9 +129,10 @@ class LayerNormPre(nn.Module):
         # Hook Normalized captures LN output - here it's a vector with std 1 and mean 0
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
-    def forward(
-        self, x: TT["batch", "position", "length"]
-    ) -> TT["batch", "position", "length"]:
+    ForwardOutput = TT["batch", "position", "length"]
+
+    def forward(self, x: TT["batch", "position", "length"]) -> ForwardOutput:
+        """Center and normalise"""
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: TT["batch", "position", 1] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
@@ -124,12 +141,12 @@ class LayerNormPre(nn.Module):
 
 
 class LayerNorm(nn.Module):
+    """LayerNorm with optional length parameter. Built for interpretability."""
+
     def __init__(
         self, cfg: Union[Dict, EasyTransformerConfig], length: Optional[int] = None
     ):
-
-        """
-        LayerNorm with optional length parameter
+        """Build a LayerNorm.
 
         length (Optional[int]): If the dimension of the LayerNorm. If not provided, assumed to be d_model
         """
@@ -151,9 +168,10 @@ class LayerNorm(nn.Module):
         # Hook_normalized is on the LN output
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
-    def forward(
-        self, x: TT["batch", "position", "length"]
-    ) -> TT["batch", "position", "length"]:
+    Input = TT["batch", "position", "length"]
+
+    def forward(self, x: Input) -> Input:
+        """Center and normalise"""
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: TT["batch", "position", 1] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
@@ -163,8 +181,10 @@ class LayerNorm(nn.Module):
 
 
 class RMSNormPre(nn.Module):
+    """RMSNormPre - LayerNormPre without the centering and bias (RMS = Root Mean Square)"""
+
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
-        """RMSNormPre - LayerNormPre without the centering and bias (RMS = Root Mean Square)"""
+        """See class docstring"""
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -175,9 +195,10 @@ class RMSNormPre(nn.Module):
         self.hook_scale = HookPoint()  # [batch, pos]
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
-    def forward(
-        self, x: TT["batch", "position", "length"]
-    ) -> TT["batch", "position", "length"]:
+    ForwardOutput = TT["batch", "position", "length"]
+
+    def forward(self, x: TT["batch", "position", "length"]) -> ForwardOutput:
+        """Computes RMSNorm without centering and bias"""
         scale: TT["batch", "position", 1] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
@@ -185,12 +206,13 @@ class RMSNormPre(nn.Module):
 
 
 class RMSNorm(nn.Module):
+    """RMSNorm - LayerNorm without the centering and bias (RMS = Root Mean Square)"""
+
     def __init__(
         self, cfg: Union[Dict, EasyTransformerConfig], length: Optional[int] = None
     ):
 
-        """
-        RMSNorm - LayerNorm without the centering and bias (RMS = Root Mean Square)
+        """Build a RMSNorm.
 
         length (Optional[int]): If the dimension of the RMSNorm. If not provided, assumed to be d_model
         """
@@ -210,9 +232,10 @@ class RMSNorm(nn.Module):
         self.hook_scale = HookPoint()  # [batch, pos, 1]
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
-    def forward(
-        self, x: TT["batch", "position", "length"]
-    ) -> TT["batch", "position", "length"]:
+    Input = TT["batch", "position", "length"]
+
+    def forward(self, x: Input) -> Input:
+        """Computes RMSNorm without centering and bias"""
         scale: TT["batch", "position", 1] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
@@ -220,23 +243,24 @@ class RMSNorm(nn.Module):
         return x * self.w
 
 
-# Attention
 class Attention(nn.Module):
+    """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
+
+    Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+
+    Args:
+        cfg (Union[Dict, EasyTransformerConfig]): Config
+        attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
+        layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
+    """
+
     def __init__(
         self,
         cfg: Union[Dict, EasyTransformerConfig],
         attn_type: str = "global",
         layer_id: Optional[int] = None,
     ):
-        """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
-
-        Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
-
-        Args:
-            cfg (Union[Dict, EasyTransformerConfig]): Config
-            attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
-            layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
-        """
+        """Build an Attention block."""
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -308,12 +332,14 @@ class Attention(nn.Module):
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
 
+    Internal = TT["batch", "pos", "d_model"]
+
     def forward(
         self,
-        resid_pre: TT["batch", "pos", "d_model"],
+        resid_pre: Internal,
         shortformer_pos_embed: Optional[TT["batch", "pos", "d_model"]] = None,
         past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
-    ) -> TT["batch", "pos", "d_model"]:
+    ) -> Internal:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See EasyTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
@@ -341,7 +367,7 @@ class Attention(nn.Module):
             )  # [batch, pos, head_index, d_head]
         elif self.cfg.positional_embedding_type == "shortformer":
             # Weird shortformer attention see EasyTransformerConfig for details
-            q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
+            q, k = self._shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
         v = self.hook_v(
             einsum(
                 "batch pos d_model, head_index d_model d_head \
@@ -361,7 +387,7 @@ class Attention(nn.Module):
             kv_cache_pos_offset = 0
 
         if self.cfg.positional_embedding_type == "rotary":
-            q, k = self.rotary_rotate_qk(q, k, kv_cache_pos_offset)
+            q, k = self._rotary_rotate_qk(q, k, kv_cache_pos_offset)
 
         attn_scores = (
             einsum(
@@ -375,7 +401,7 @@ class Attention(nn.Module):
         )  # [batch, head_index, query_pos, key_pos]
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
-            attn_scores = self.apply_causal_mask(
+            attn_scores = self._apply_causal_mask(
                 attn_scores, kv_cache_pos_offset
             )  # [batch, head_index, query_pos, key_pos]
         attn_scores = self.hook_attn_scores(attn_scores)
@@ -424,7 +450,7 @@ class Attention(nn.Module):
             )  # [batch, pos, d_model]
         return out
 
-    def apply_causal_mask(
+    def _apply_causal_mask(
         self,
         attn_scores: TT["batch", "head_index", "pos", "pos + past_kv_pos_offset"],
         past_kv_pos_offset: int = 0,
@@ -447,7 +473,7 @@ class Attention(nn.Module):
             self.IGNORE,
         )
 
-    def shortformer_calculate_qk(
+    def _shortformer_calculate_qk(
         self,
         x: TT["batch", "pos", "d_model"],
         shortformer_pos_embed: TT["batch", "pos", "d_model"],
@@ -479,7 +505,7 @@ class Attention(nn.Module):
         )  # [batch, pos, head_index, d_head]
         return (q, k)
 
-    def rotary_rotate_qk(
+    def _rotary_rotate_qk(
         self,
         q: TT["batch", "pos", "head_index", "d_head"],
         k: TT["batch", "pos", "head_index", "d_head"],
@@ -489,8 +515,8 @@ class Attention(nn.Module):
         TT["batch", "pos", "head_index", "d_head"],
     ]:
         # We first apply standard q and k calculation
-        q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
-        k = self.hook_rot_k(self.apply_rotary(k))
+        q = self.hook_rot_q(self._apply_rotary(q, past_kv_pos_offset))
+        k = self.hook_rot_k(self._apply_rotary(k))
         return q, k
 
     def calculate_sin_cos_rotary(
@@ -533,7 +559,7 @@ class Attention(nn.Module):
 
         return rot_x
 
-    def apply_rotary(
+    def _apply_rotary(
         self, x: TT["batch", "pos", "head_index", "d_head"], past_kv_pos_offset=0
     ) -> TT["batch", "pos", "head_index", "d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
@@ -550,9 +576,11 @@ class Attention(nn.Module):
         return torch.cat([x_rotated, x_pass], dim=-1)
 
 
-# MLP Layers
 class MLP(nn.Module):
+    """Multi-layer perceptron."""
+
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig]):
+        """Initialize the MLP."""
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -587,9 +615,13 @@ class MLP(nn.Module):
         else:
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 
+    Internal = TT["batch", "pos", "d_model"]
+
     def forward(
-        self, x: TT["batch", "pos", "d_model"]
-    ) -> TT["batch", "pos", "d_model"]:
+        self,
+        x: Internal,
+    ) -> Internal:
+        """Forward pass of the MLP."""
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
             einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
@@ -610,9 +642,11 @@ class MLP(nn.Module):
         )
 
 
-# Transformer Block
 class TransformerBlock(nn.Module):
+    """A block in a GPT transformer."""
+
     def __init__(self, cfg: Union[Dict, EasyTransformerConfig], block_index):
+        """Initialize the transformer block."""
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = EasyTransformerConfig.from_dict(cfg)
@@ -651,12 +685,13 @@ class TransformerBlock(nn.Module):
             self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
 
+    Internal = TT["batch", "position", "d_model"]
     def forward(
         self,
-        resid_pre: TT["batch", "position", "d_model"],
+        resid_pre: Internal,
         shortformer_pos_embed: Optional[TT["batch", "position", "d_model"]] = None,
         past_kv_cache_entry: Optional[EasyTransformerKeyValueCacheEntry] = None,
-    ) -> TT["batch", "position", "d_model"]:
+    ) -> Internal:
         """A single Transformer block.
 
         Args:
