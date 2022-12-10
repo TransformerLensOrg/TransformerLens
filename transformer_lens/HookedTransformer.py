@@ -132,7 +132,8 @@ class HookedTransformer(HookedRootModule):
             self.init_weights()
 
         if move_to_device:
-            self.to(self.cfg.device)
+            # Move the model to the relevant device, suppress the logging message
+            self.to(self.cfg.device, print_details=False)
 
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
@@ -481,18 +482,21 @@ class HookedTransformer(HookedRootModule):
             return residual_direction
 
 
-    def to(self, device_or_dtype):
+    def to(self, device_or_dtype, print_details=True):
         """
         Wrapper around to that also changes self.cfg.device if it's a torch.device or string. If torch.dtype, just passes through
         """
         if isinstance(device_or_dtype, torch.device):
             self.cfg.device = device_or_dtype.type
-            print("Moving model to device: ", self.cfg.device)
+            if print_details: 
+                print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, str):
             self.cfg.device = device_or_dtype
-            print("Moving model to device: ", self.cfg.device)
+            if print_details: 
+                print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, torch.dtype):
-            print("Changing model dtype to", device_or_dtype)
+            if print_details: 
+                print("Changing model dtype to", device_or_dtype)
         return nn.Module.to(self, device_or_dtype)
 
     def cuda(self):
@@ -556,8 +560,6 @@ class HookedTransformer(HookedRootModule):
             model_kwargs (dict, optional): Any additional kwargs to pass to the
                 HookedTransformer initialization.
         """
-        print(f"Loading model: {model_name}")
-
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
@@ -589,7 +591,7 @@ class HookedTransformer(HookedRootModule):
             move_state_dict_to_device=move_state_dict_to_device,
         )
 
-        print(f"Finished loading pretrained model {model_name} into HookedTransformer!")
+        print(f"Loaded pretrained model {model_name} into HookedTransformer")
 
         return model
 
