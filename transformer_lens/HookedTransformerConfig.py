@@ -77,9 +77,9 @@ class HookedTransformerConfig:
             'bidirectional'. Defaults to 'causal'
         attn_only (bool): Whether to only use attention layers, no feedforward
             layers. Defaults to False
-        seed (int, *optional*): The seed to use for the model. Defaults to 42.
+        seed (int, *optional*): The seed to use for the model. 
             Used to set sources of randomness (Python, PyTorch and
-            NumPy) and to initialize weights. If set to None, does nothing.
+            NumPy) and to initialize weights. Defaults to None. We recommend setting a seed, so your experiments are reproducible.
         initializer_range (float): The standard deviation of the normal used to
             initialise the weights, initialized to 0.8 / sqrt(d_model) .
         init_weights (bool): Whether to initialize the weights. Defaults to
@@ -144,7 +144,7 @@ class HookedTransformerConfig:
     device: Optional[str] = None
     attention_dir: str = "causal"
     attn_only: bool = False
-    seed: int = 42
+    seed: Optional[int] = None
     initializer_range: float = -1.0
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
