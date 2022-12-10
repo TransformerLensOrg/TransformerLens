@@ -48,16 +48,21 @@ def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
     return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
 
-
-def to_numpy(tensor, flat=False):
-    if (type(tensor) != torch.Tensor) and (
-        type(tensor) != torch.nn.parameter.Parameter
-    ):
+def to_numpy(tensor):
+    """ 
+    Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
+    """
+    if isinstance(tensor, np.ndarray):
         return tensor
-    if flat:
-        return tensor.flatten().detach().cpu().numpy()
-    else:
+    elif isinstance(tensor, (list, tuple)):
+        array = np.array(tensor)
+        return array
+    elif isinstance(tensor, (torch.Tensor, torch.nn.parameter.Parameter)):
         return tensor.detach().cpu().numpy()
+    elif isinstance(tensor, (int, float, bool, str)):
+        return np.array(tensor)
+    else:
+        raise ValueError(f"Input to to_numpy has invalid type: {type(tensor)}")
 
 
 def lm_cross_entropy_loss(
