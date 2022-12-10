@@ -546,7 +546,7 @@ def get_pretrained_state_dict(
         repo_files = api.list_repo_files(official_model_name)
         if cfg.from_checkpoint:
             file_name = list(
-                filter(lambda x: x.endswith(f"_{cfg.checkpoint_value}.pth"), repo_files)
+                filter(lambda x: x.endswith(f"{cfg.checkpoint_value}.pth"), repo_files)
             )[0]
         else:
             file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
