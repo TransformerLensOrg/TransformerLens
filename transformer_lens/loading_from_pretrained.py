@@ -43,12 +43,15 @@ OFFICIAL_MODEL_NAMES = [
     "EleutherAI/pythia-350m",
     "EleutherAI/pythia-800m",
     "EleutherAI/pythia-1.3b",
+    "EleutherAI/pythia-2.7b",
     "EleutherAI/pythia-6.7b",
     "EleutherAI/pythia-13b",
     "EleutherAI/pythia-19m-deduped",
     "EleutherAI/pythia-125m-deduped",
     "EleutherAI/pythia-350m-deduped",
+    "EleutherAI/pythia-800m-deduped",
     "EleutherAI/pythia-1.3b-deduped",
+    "EleutherAI/pythia-2.7b-deduped",
     "EleutherAI/pythia-6.7b-deduped",
     "EleutherAI/pythia-13b-deduped",
     "NeelNanda/SoLU_1L_v9_old",
@@ -137,6 +140,9 @@ MODEL_ALIASES = {
     "EleutherAI/pythia-1.3b": [
         "pythia-1.3b",
     ],
+    "EleutherAI/pythia-2.7b": [
+        "pythia-2.7b",
+    ],
     "EleutherAI/pythia-6.7b": [
         "pythia-6.7b",
     ],
@@ -149,11 +155,17 @@ MODEL_ALIASES = {
     "EleutherAI/pythia-125m-deduped": [
         "pythia-125m-deduped",
     ],
+    "EleutherAI/pythia-350m-deduped": [
+        "pythia-350m-deduped",
+    ],
     "EleutherAI/pythia-800m-deduped": [
         "pythia-800m-deduped",
     ],
     "EleutherAI/pythia-1.3b-deduped": [
         "pythia-1.3b-deduped",
+    ],
+    "EleutherAI/pythia-2.7b-deduped": [
+        "pythia-2.7b-deduped",
     ],
     "EleutherAI/pythia-6.7b-deduped": [
         "pythia-6.7b-deduped",
@@ -472,6 +484,7 @@ def get_pretrained_model_config(
             cfg_dict["checkpoint_index"] = checkpoint_index
             cfg_dict["checkpoint_value"] = checkpoint_labels[checkpoint_index]
         elif checkpoint_value is not None:
+            assert checkpoint_value in checkpoint_labels, f"Checkpoint value {checkpoint_value} is not in list of available checkpoints"
             cfg_dict["checkpoint_value"] = checkpoint_value
             cfg_dict["checkpoint_index"] = checkpoint_labels.index(checkpoint_value)
     else:
@@ -500,6 +513,10 @@ STANFORD_CRFM_CHECKPOINTS = (
     + list(range(20000, 400000 + 1, 1000))
 )
 
+# Linearly spaced checkpoints for Pythia models, taken every 1000 steps. 
+# Batch size 2,097,152 tokens, so checkpoints every 2.1B tokens
+PYTHIA_CHECKPOINTS = list(range(1000, 143000+1, 1000))
+
 
 def get_checkpoint_labels(model_name: str):
     """Returns the checkpoint labels for a given model, and the label_type
@@ -507,6 +524,8 @@ def get_checkpoint_labels(model_name: str):
     official_model_name = get_official_model_name(model_name)
     if official_model_name.startswith("stanford-crfm/"):
         return STANFORD_CRFM_CHECKPOINTS, "step"
+    elif official_model_name.startswith("EleutherAI/pythia"):
+        return PYTHIA_CHECKPOINTS, "step"
     elif official_model_name.startswith("NeelNanda/"):
         api = HfApi()
         files_list = api.list_repo_files(official_model_name)
@@ -556,9 +575,16 @@ def get_pretrained_state_dict(
         return state_dict
     else:
         if cfg.from_checkpoint:
-            hf_model = AutoModelForCausalLM.from_pretrained(
-                official_model_name, revision=f"checkpoint-{cfg.checkpoint_value}"
-            )
+            if official_model_name.startswith("stanford-crfm"):
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    official_model_name, revision=f"checkpoint-{cfg.checkpoint_value}"
+                )
+            elif official_model_name.startswith("EleutherAI/pythia"):
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    official_model_name, revision=f"step{cfg.checkpoint_value}"
+                )
+            else:
+                raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
             hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 
