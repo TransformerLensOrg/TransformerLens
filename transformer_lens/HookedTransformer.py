@@ -1097,7 +1097,7 @@ class HookedTransformer(HookedRootModule):
         """
         Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
         """
-        return torch.cat([self.W_E, self.W_pos], dim=1)
+        return torch.cat([self.W_E, self.W_pos], dim=0)
 
     # Layer-specific weights are stacked into one massive tensor and given as properties for convenience and a cache is used to avoid repeated computation. Often a useful convenience when we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use these properties!
 
