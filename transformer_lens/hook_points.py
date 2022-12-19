@@ -3,8 +3,14 @@ import logging
 from typing import Callable, Union, Optional, Sequence
 import torch
 import torch.nn as nn
+import torch.utils.hooks as hooks
 
 from functools import *
+
+from dataclasses import dataclass
+class LensHandle:
+    group_id: Optional[str] = None
+    hook: hooks.RemovableHandle
 
 # %%
 # Define type aliases
@@ -22,11 +28,14 @@ class HookPoint(nn.Module):
         self.bwd_hooks = []
         self.ctx = {}
 
-        # A variable giving the hook's name (from the perspective of the root
+        # A var`iable giving the hook's name (from the perspective of the root
         # module) - this is set by the root module at setup.
         self.name = None
 
-    def add_hook(self, hook, dir="fwd"):
+    def add_perma_hook(self, hook, dir="fwd") -> None:
+        self.add_hook(hook, dir=dir, perma=True)
+
+    def add_hook(self, hook, dir="fwd", perma=False) -> None:
         # Hook format is fn(activation, hook_name)
         # Change it into PyTorch hook format (this includes input and output,
         # which are the same for a HookPoint)
@@ -37,25 +46,31 @@ class HookPoint(nn.Module):
                 return hook(module_output, hook=self)
 
             handle = self.register_forward_hook(full_hook)
+            name = "_perma" if perma else None
+            handle = LensHandle(name, handle)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
 
+            name = "_perma" if perma else None
             handle = self.register_full_backward_hook(full_hook)
+            handle = LensHandle(name, handle)
             self.bwd_hooks.append(handle)
         else:
             raise ValueError(f"Invalid direction {dir}")
 
-    def remove_hooks(self, dir="fwd"):
+    def remove_hooks(self, dir="fwd", id_to_remove=None) -> None:
         if (dir == "fwd") or (dir == "both"):
-            for hook in self.fwd_hooks:
-                hook.remove()
+            for (group_id, hook) in self.fwd_hooks:
+                if group_id == id_to_remove:
+                    hook.remove()
             self.fwd_hooks = []
         if (dir == "bwd") or (dir == "both"):
-            for hook in self.bwd_hooks:
-                hook.remove()
+            for (group_id, hook) in self.bwd_hooks:
+                if group_id == id_to_remove:
+                    hook.remove()
             self.bwd_hooks = []
         if dir not in ["fwd", "bwd", "both"]:
             raise ValueError(f"Invalid direction {dir}")
