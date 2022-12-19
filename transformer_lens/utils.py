@@ -12,7 +12,7 @@ from huggingface_hub import hf_hub_download
 import re
 from rich import print as rprint
 
-from easy_transformer import FactoredMatrix
+from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
@@ -46,18 +46,25 @@ def print_gpu_mem(step_name=""):
 
 def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
-    return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
-
-
-def to_numpy(tensor, flat=False):
-    if (type(tensor) != torch.Tensor) and (
-        type(tensor) != torch.nn.parameter.Parameter
-    ):
+    if isinstance(tensor, torch.Tensor):
+        return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
+    elif isinstance(tensor, FactoredMatrix):
+        return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
+def to_numpy(tensor):
+    """ 
+    Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
+    """
+    if isinstance(tensor, np.ndarray):
         return tensor
-    if flat:
-        return tensor.flatten().detach().cpu().numpy()
-    else:
+    elif isinstance(tensor, (list, tuple)):
+        array = np.array(tensor)
+        return array
+    elif isinstance(tensor, (torch.Tensor, torch.nn.parameter.Parameter)):
         return tensor.detach().cpu().numpy()
+    elif isinstance(tensor, (int, float, bool, str)):
+        return np.array(tensor)
+    else:
+        raise ValueError(f"Input to to_numpy has invalid type: {type(tensor)}")
 
 
 def lm_cross_entropy_loss(
@@ -369,7 +376,7 @@ class Slice:
 # %%
 
 
-def act_name(
+def get_act_name(
     name: str,
     layer: Optional[int] = None,
     layer_type: Optional[str] = None,
@@ -378,13 +385,13 @@ def act_name(
     Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback loop hacking stuff together, more so than writing good, readable code. But it is deterministic!
 
     eg:
-    act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
-    act_name('pre', 2)=='blocks.2.mlp.hook_pre'
-    act_name('embed')=='hook_embed'
-    act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
-    act_name('k6')=='blocks.6.attn.hook_k'
-    act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
-    act_name('pre5')=='blocks.5.mlp.hook_pre'
+    get_act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
+    get_act_name('pre', 2)=='blocks.2.mlp.hook_pre'
+    get_act_name('embed')=='hook_embed'
+    get_act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
+    get_act_name('k6')=='blocks.6.attn.hook_k'
+    get_act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
+    get_act_name('pre5')=='blocks.5.mlp.hook_pre'
     """
     if (
         ("." in name or name.startswith("hook_"))
@@ -397,7 +404,7 @@ def act_name(
     if match is not None:
         name, layer, layer_type = match.groups(0)
 
-    layer_type_dict = {
+    layer_type_alias = {
         "a": "attn",
         "m": "mlp",
         "b": "",
@@ -405,20 +412,35 @@ def act_name(
         "blocks": "",
         "attention": "attn",
     }
-    act_name = ""
+
+    act_name_alias = {
+        "attn":"pattern",
+        "attn_logits":"attn_scores",
+        "key":"k",
+        "query":"q",
+        "value":"v",
+        "mlp_pre":"pre",
+        "mlp_mid":"mid",
+        "mlp_post":"post",
+    }
+
+    if name in act_name_alias:
+        name = act_name_alias[name]
+
+    full_act_name = ""
     if layer is not None:
-        act_name += f"blocks.{layer}."
-    if name in ["k", "v", "q", "z", "rot_k", "rot_q", "result", "attn", "attn_scores"]:
+        full_act_name += f"blocks.{layer}."
+    if name in ["k", "v", "q", "z", "rot_k", "rot_q", "result", "pattern", "attn_scores"]:
         layer_type = "attn"
     elif name in ["pre", "post", "mid"]:
         layer_type = "mlp"
-    elif layer_type in layer_type_dict:
-        layer_type = layer_type_dict[layer_type]
+    elif layer_type in layer_type_alias:
+        layer_type = layer_type_alias[layer_type]
 
     if layer_type:
-        act_name += f"{layer_type}."
-    act_name += f"hook_{name}"
-    return act_name
+        full_act_name += f"{layer_type}."
+    full_act_name += f"hook_{name}"
+    return full_act_name
 
 
 def remove_batch_dim(tensor: TT[1, ...]) -> TT[...]:
@@ -437,7 +459,6 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    print_tokenized: bool = True,
     prepend_bos: bool = True,
     top_k: int = 10,
 ):
@@ -450,16 +471,13 @@ def test_prompt(
     """
     if prepend_space_to_answer and not answer.startswith(" "):
         answer = " " + answer
-    tokens = torch.cat([
-        # GPT-2 often treats the first token weirdly, so lets give it a resting position
-        model.to_tokens(prompt, prepend_bos=prepend_bos),
-        model.to_tokens(answer, prepend_bos=False)
-    ], dim=1)  # position dimension
+    # GPT-2 often treats the first token weirdly, so lets give it a resting position
+    tokens = model.to_tokens(prompt + answer, prepend_bos=prepend_bos)
     prompt_str_tokens = model.to_str_tokens(prompt, prepend_bos=prepend_bos)
     answer_str_tokens = model.to_str_tokens(answer, prepend_bos=False)
     prompt_length = len(prompt_str_tokens)
     answer_length = len(answer_str_tokens)
-    if print_details and print_tokenized:
+    if print_details:
         print("Tokenized prompt:", prompt_str_tokens)
         print("Tokenized answer:", answer_str_tokens)
     logits = remove_batch_dim(model(tokens))
@@ -502,7 +520,7 @@ def composition_scores(
     TT["leading_dims":...], TT["leading_dims_left":..., "leading_dims_right":...]
 ]:
     """
-    See `EasyTransformer.all_composition_scores` for documentation.
+    See `HookedTransformer.all_composition_scores` for documentation.
     """
     if broadcast_dims:
         r_leading = right.ndim - 2

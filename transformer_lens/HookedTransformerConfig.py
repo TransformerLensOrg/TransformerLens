@@ -11,9 +11,9 @@ import pprint
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
 @dataclass
-class EasyTransformerConfig:
+class HookedTransformerConfig:
     """
-    Configuration class to store the configuration of a EasyTransformer model.
+    Configuration class to store the configuration of a HookedTransformer model.
 
     See further_comments.md for more details on the more complex arguments.
 
@@ -77,9 +77,9 @@ class EasyTransformerConfig:
             'bidirectional'. Defaults to 'causal'
         attn_only (bool): Whether to only use attention layers, no feedforward
             layers. Defaults to False
-        seed (int, *optional*): The seed to use for the model. Defaults to 42.
+        seed (int, *optional*): The seed to use for the model. 
             Used to set sources of randomness (Python, PyTorch and
-            NumPy) and to initialize weights. If set to None, does nothing.
+            NumPy) and to initialize weights. Defaults to None. We recommend setting a seed, so your experiments are reproducible.
         initializer_range (float): The standard deviation of the normal used to
             initialise the weights, initialized to 0.8 / sqrt(d_model) .
         init_weights (bool): Whether to initialize the weights. Defaults to
@@ -144,7 +144,7 @@ class EasyTransformerConfig:
     device: Optional[str] = None
     attention_dir: str = "causal"
     attn_only: bool = False
-    seed: int = 42
+    seed: Optional[int] = None
     initializer_range: float = -1.0
     init_weights: bool = True
     scale_attn_by_inverse_layer_idx: bool = False
@@ -207,7 +207,7 @@ class EasyTransformerConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):
         """
-        Instantiates a `EasyTransformerConfig` from a Python dictionary of
+        Instantiates a `HookedTransformerConfig` from a Python dictionary of
         parameters.
         """
         return cls(**config_dict)
@@ -216,7 +216,7 @@ class EasyTransformerConfig:
         return self.__dict__
 
     def __repr__(self):
-        return "EasyTransformerConfig:\n" + pprint.pformat(self.to_dict())
+        return "HookedTransformerConfig:\n" + pprint.pformat(self.to_dict())
     
     def set_seed_everywhere(self, seed: int):
         torch.manual_seed(seed)

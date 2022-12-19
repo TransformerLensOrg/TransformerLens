@@ -3,7 +3,7 @@ import torch
 from typing import Optional, Union, Tuple, List, Dict
 from torchtyping import TensorType as TT
 from functools import lru_cache
-import easy_transformer.utils as utils
+import transformer_lens.utils as utils
 
 class FactoredMatrix:
     """

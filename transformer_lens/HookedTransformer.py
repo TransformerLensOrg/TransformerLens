@@ -17,18 +17,18 @@ from transformers import (
     PreTrainedTokenizer,
 )
 
-from easy_transformer.hook_points import HookedRootModule, HookPoint
-from easy_transformer import EasyTransformerConfig
-from easy_transformer.ActivationCache import ActivationCache
-from easy_transformer.FactoredMatrix import FactoredMatrix
+from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens import HookedTransformerConfig
+from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.FactoredMatrix import FactoredMatrix
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
-from easy_transformer.past_key_value_caching import (
-    EasyTransformerKeyValueCache,
+from transformer_lens.past_key_value_caching import (
+    HookedTransformerKeyValueCache,
 )
 
-from easy_transformer.components import *
-import easy_transformer.loading_from_pretrained as loading
-import easy_transformer.utils as utils
+from transformer_lens.components import *
+import transformer_lens.loading_from_pretrained as loading
+import transformer_lens.utils as utils
 
 # Type alias for a single element tensor
 Loss = TT[()]
@@ -38,12 +38,12 @@ class Output(NamedTuple):
     loss: Loss
 
 
-class EasyTransformer(HookedRootModule):
+class HookedTransformer(HookedRootModule):
     """
     This class implements a full Transformer using the components in ./components.py, with
     HookPoints on every interesting activation. It inherits from HookedRootModule.
 
-    It can have a pretrained Transformer's weights automatically loaded in via the EasyTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or EasyTransformerConfig object.
+    It can have a pretrained Transformer's weights automatically loaded in via the HookedTransformer.from_pretrained class method. It can also be instantiated with randomly initialized weights via __init__ and being passed a dict or HookedTransformerConfig object.
     """
 
     def __init__(
@@ -53,9 +53,9 @@ class EasyTransformer(HookedRootModule):
         move_to_device=True,
     ):
         """
-        Model initialization. Note that if you want to load the model from pretrained weights, you should use the EasyTransformer.from_pretrained() class method instead of this one.
+        Model initialization. Note that if you want to load the model from pretrained weights, you should use the HookedTransformer.from_pretrained() class method instead of this one.
 
-        cfg Union[EasyTransformerConfig, Dict]: The config to use for the
+        cfg Union[HookedTransformerConfig, Dict]: The config to use for the
             model.
         tokenizer (*optional): The tokenizer to use for the model. If not
             provided, it is inferred from cfg.tokenizer_name or initialized to None.
@@ -65,10 +65,10 @@ class EasyTransformer(HookedRootModule):
         """
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = EasyTransformerConfig(**cfg)
+            cfg = HookedTransformerConfig(**cfg)
         elif isinstance(cfg, str):
             raise ValueError(
-                "Please pass in a config dictionary or EasyTransformerConfig object. If you want to load a pretrained model, use EasyTransformer.from_pretrained() instead."
+                "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedTransformer.from_pretrained() instead."
             )
         self.cfg = cfg
         if tokenizer is not None:
@@ -82,9 +82,6 @@ class EasyTransformer(HookedRootModule):
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             if self.tokenizer.bos_token is None:
                 self.tokenizer.bos_token = self.tokenizer.eos_token
-            if self.cfg.original_architecture == "OPTForCausalLM":
-                # OPT tokenizer automatically adds BOS token
-                self.tokenizer.add_bos_token = False
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
@@ -135,7 +132,8 @@ class EasyTransformer(HookedRootModule):
             self.init_weights()
 
         if move_to_device:
-            self.to(self.cfg.device)
+            # Move the model to the relevant device, suppress the logging message
+            self.to(self.cfg.device, print_details=False)
 
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
@@ -147,7 +145,7 @@ class EasyTransformer(HookedRootModule):
         input: Union[str, List[str], TT["batch", "pos"]],
         return_type: Optional[str] = "logits",
         prepend_bos: bool = True,
-        past_kv_cache: Optional[EasyTransformerKeyValueCache] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Union[
         None,
         TT["batch", "pos", "d_vocab"],
@@ -208,14 +206,14 @@ class EasyTransformer(HookedRootModule):
             residual = embed + pos_embed  # [batch, pos, d_model]
             shortformer_pos_embed = None
         elif self.cfg.positional_embedding_type == "shortformer":
-            # If we're using shortformer style attention, we don't add the positional embedding to the residual stream. See EasyTransformerConfig for details
+            # If we're using shortformer style attention, we don't add the positional embedding to the residual stream. See HookedTransformerConfig for details
             pos_embed = self.hook_pos_embed(
                 self.pos_embed(tokens, pos_offset)
             )  # [batch, pos, d_model]
             residual = embed
             shortformer_pos_embed = pos_embed
         elif self.cfg.positional_embedding_type == "rotary":
-            # Rotary doesn't use positional embeddings, instead they're applied when dot producting keys and queries. See EasyTransformerConfig for details
+            # Rotary doesn't use positional embeddings, instead they're applied when dot producting keys and queries. See HookedTransformerConfig for details
             residual = embed
             shortformer_pos_embed = None
         else:
@@ -230,7 +228,7 @@ class EasyTransformer(HookedRootModule):
                 residual,
                 past_kv_cache_entry=past_kv_cache[i]
                 if past_kv_cache is not None
-                else None,  # Cache is contains a list of EasyTransformerKeyValueCache objects, one for each block
+                else None,  # Cache is contains a list of HookedTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed=shortformer_pos_embed,
             )  # [batch, pos, d_model]
         if self.cfg.normalization_type is not None:
@@ -274,7 +272,7 @@ class EasyTransformer(HookedRootModule):
         Union[ActivationCache, Dict[str, torch.Tensor]],
     ]:
         """
-        Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful EasyTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule.
+        Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful HookedTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule.
         """
         out, cache_dict = super().run_with_cache(
             *model_args, remove_batch_dim=remove_batch_dim, **kwargs
@@ -403,12 +401,12 @@ class EasyTransformer(HookedRootModule):
     def get_token_position(
         self,
         single_token: Union[str, int],
-        tokens: Union[str, Union[TT["pos"], TT[1, "pos"]]],
+        input: Union[str, Union[TT["pos"], TT[1, "pos"]]],
         mode="first",
         prepend_bos=True,
     ):
         """
-        Get the position of a single_token in a sequence of tokens.
+        Get the position of a single_token in a string or sequence of tokens. Raises an error if the token is not present.
 
         Gotcha: If you're inputting a string, it'll automatically be tokenized. Be careful about prepend_bos is true or false! When a string is input to the model, a BOS (beginning of sequence) token is prepended by default when the string is tokenized. But this should only be done at the START of the input, not when inputting part of the prompt. If you're getting weird off-by-one errors, check carefully for what the setting should be!
 
@@ -416,16 +414,18 @@ class EasyTransformer(HookedRootModule):
             single_token (Union[str, int]): The token to search for. Can
                 be a token index, or a string (but the string must correspond to a
                 single token)
-            tokens (Union[str, torch.Tensor]): The sequence of tokens to
-                search in. Can be a string or a rank 1 tensor or a rank 2 tensor
-                with a dummy batch dimension.
+            input (Union[str, torch.Tensor]): The sequence to
+                search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of tokens with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
             prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to 
                 the function, otherwise ignored. 
         """
-        if isinstance(tokens, str):
-            # If the tokens are a string, convert to tensor
-            tokens = self.to_tokens(tokens, prepend_bos=prepend_bos)
+        if isinstance(input, str):
+            # If the input is a string, convert to tensor
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+        else:
+            tokens = input
+        
 
         if len(tokens.shape) == 2:
             # If the tokens have shape [1, seq_len], flatten to [seq_len]
@@ -482,18 +482,21 @@ class EasyTransformer(HookedRootModule):
             return residual_direction
 
 
-    def to(self, device_or_dtype):
+    def to(self, device_or_dtype, print_details=True):
         """
         Wrapper around to that also changes self.cfg.device if it's a torch.device or string. If torch.dtype, just passes through
         """
         if isinstance(device_or_dtype, torch.device):
             self.cfg.device = device_or_dtype.type
-            print("Moving model to device: ", self.cfg.device)
+            if print_details: 
+                print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, str):
             self.cfg.device = device_or_dtype
-            print("Moving model to device: ", self.cfg.device)
+            if print_details: 
+                print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, torch.dtype):
-            print("Changing model dtype to", device_or_dtype)
+            if print_details: 
+                print("Changing model dtype to", device_or_dtype)
         return nn.Module.to(self, device_or_dtype)
 
     def cuda(self):
@@ -519,7 +522,7 @@ class EasyTransformer(HookedRootModule):
         move_state_dict_to_device=True,
         **model_kwargs,
     ):
-        """Class method to load in a pretrained model weights to the EasyTransformer format and optionally to do some processing to make the model easier to interpret. Currently supports loading from most autoregressive HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models and SoLU models trained by me (Neel Nanda).
+        """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some processing to make the model easier to interpret. Currently supports loading from most autoregressive HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models and SoLU models trained by me (Neel Nanda).
 
         Also supports loading from a checkpoint for checkpointed models (currently, models trained by me (NeelNanda) and the stanford-crfm models). These can either be determined by the checkpoint index (the index of the checkpoint in the checkpoint list) or by the checkpoint value (the value of the checkpoint, eg 1000 for a checkpoint taken at step 1000 or after 1000 tokens. Each model has checkpoints labelled with exactly one of labels and steps). If neither is specified the final model is loaded. If both are specified, the checkpoint index is used.
 
@@ -555,14 +558,12 @@ class EasyTransformer(HookedRootModule):
                 relevant device before processing and loading in the weights.
                 Defaults to True.
             model_kwargs (dict, optional): Any additional kwargs to pass to the
-                EasyTransformer initialization.
+                HookedTransformer initialization.
         """
-        print(f"Loading model: {model_name}")
-
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
-        # Load the config into an EasyTransformerConfig object If loading from a
+        # Load the config into an HookedTransformerConfig object If loading from a
         # checkpoint, the config object will contain the information about the
         # checkpoint
         cfg = loading.get_pretrained_model_config(
@@ -573,12 +574,12 @@ class EasyTransformer(HookedRootModule):
             device=device,
         )
 
-        # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the EasyTransformer parameter names.
+        # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
             official_model_name, cfg, hf_model
         )
 
-        # Create the EasyTransformer object
+        # Create the HookedTransformer object
         model = cls(cfg, **model_kwargs)
 
         model.load_and_process_state_dict(
@@ -590,7 +591,7 @@ class EasyTransformer(HookedRootModule):
             move_state_dict_to_device=move_state_dict_to_device,
         )
 
-        print(f"Finished loading pretrained model {model_name} into EasyTransformer!")
+        print(f"Loaded pretrained model {model_name} into HookedTransformer")
 
         return model
 
@@ -628,12 +629,12 @@ class EasyTransformer(HookedRootModule):
         refactor_factored_attn_matrices: bool = False,
         move_state_dict_to_device: bool = True,
     ):
-        """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the EasyTransformer format.
+        """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the HookedTransformer format.
 
         See the relevant method (same name as the flag) for more details on the folding, centering and processing flags.
 
         Args:
-            state_dict (dict): The state dict of the model, in EasyTransformer format
+            state_dict (dict): The state dict of the model, in HookedTransformer format
             fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the
                 subsequent linear layer. This does not change the computation. Defaults to True.
             center_writing_weights (bool, optional): Whether to center weights writing to the
@@ -703,7 +704,7 @@ class EasyTransformer(HookedRootModule):
         return state_dict
 
     def fold_layer_norm(self, state_dict: Dict[str, torch.Tensor]):
-        """Takes in a state dict from a pretrained model, formatted to be consistent with EasyTransformer but with LayerNorm weights and biases. Folds these into the neighbouring weights. See EasyTransformerConfig for more details
+        """Takes in a state dict from a pretrained model, formatted to be consistent with HookedTransformer but with LayerNorm weights and biases. Folds these into the neighbouring weights. See HookedTransformerConfig for more details
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of pretrained model
@@ -913,7 +914,7 @@ class EasyTransformer(HookedRootModule):
         move_state_dict_to_device: bool = True,
     ):
         """
-        Wrapper around load_and_process_state_dict to allow for in-place processing of the weights. This is useful if using EasyTransformer for training, if we then want to analyse a cleaner version of the same model.
+        Wrapper around load_and_process_state_dict to allow for in-place processing of the weights. This is useful if using HookedTransformer for training, if we then want to analyse a cleaner version of the same model.
         """
         state_dict = self.state_dict()
         if fold_ln and self.cfg.normalization_type == "LN":
@@ -948,6 +949,7 @@ class EasyTransformer(HookedRootModule):
         top_p: Optional[float] = None,
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
+        num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
         prepend_bos=True,
         return_type: Optional[str] = "input",
@@ -994,7 +996,7 @@ class EasyTransformer(HookedRootModule):
         batch_size, ctx_length = tokens.shape
         tokens = tokens.to(self.cfg.device)
         if use_past_kv_cache:
-            past_kv_cache = EasyTransformerKeyValueCache.init_cache(
+            past_kv_cache = HookedTransformerKeyValueCache.init_cache(
                 self.cfg, self.cfg.device, batch_size
             )
         else:
@@ -1012,7 +1014,7 @@ class EasyTransformer(HookedRootModule):
             batch_size, dtype=torch.bool, device=self.cfg.device
         )
 
-        # Currently nothing in EasyTransformer changes with eval, but this is here in case that changes in the future
+        # Currently nothing in HookedTransformer changes with eval, but this is here in case that changes in the future
         self.eval()
         for index in tqdm.tqdm(range(max_new_tokens)):
             # While generating, we keep generating logits, throw away all but the final logits, and then use those logits to sample from the distribution
@@ -1095,7 +1097,7 @@ class EasyTransformer(HookedRootModule):
         """
         Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
         """
-        return torch.cat([self.W_E, self.W_pos], dim=1)
+        return torch.cat([self.W_E, self.W_pos], dim=0)
 
     # Layer-specific weights are stacked into one massive tensor and given as properties for convenience and a cache is used to avoid repeated computation. Often a useful convenience when we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use these properties!
 

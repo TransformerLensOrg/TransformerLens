@@ -1,9 +1,9 @@
 # %%
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 import einops
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM
-import easy_transformer.utils as utils
+import transformer_lens.utils as utils
 from typing import Optional, Dict
 import logging
 from huggingface_hub import HfApi
@@ -43,12 +43,15 @@ OFFICIAL_MODEL_NAMES = [
     "EleutherAI/pythia-350m",
     "EleutherAI/pythia-800m",
     "EleutherAI/pythia-1.3b",
+    "EleutherAI/pythia-2.7b",
     "EleutherAI/pythia-6.7b",
     "EleutherAI/pythia-13b",
     "EleutherAI/pythia-19m-deduped",
     "EleutherAI/pythia-125m-deduped",
     "EleutherAI/pythia-350m-deduped",
+    "EleutherAI/pythia-800m-deduped",
     "EleutherAI/pythia-1.3b-deduped",
+    "EleutherAI/pythia-2.7b-deduped",
     "EleutherAI/pythia-6.7b-deduped",
     "EleutherAI/pythia-13b-deduped",
     "NeelNanda/SoLU_1L_v9_old",
@@ -79,13 +82,13 @@ OFFICIAL_MODEL_NAMES = [
 
 # Model Aliases:
 MODEL_ALIASES = {
-    "NeelNanda/SoLU_1L_v9_old": ["solu-1l-old", "solu-1l-pile"],
-    "NeelNanda/SoLU_2L_v10_old": ["solu-2l-old", "solu-2l-pile"],
-    "NeelNanda/SoLU_4L_v11_old": ["solu-4l-old", "solu-4l-pile"],
-    "NeelNanda/SoLU_6L_v13_old": ["solu-6l-old", "solu-6l-pile"],
-    "NeelNanda/SoLU_8L_v21_old": ["solu-8l-old", "solu-8l-pile"],
-    "NeelNanda/SoLU_10L_v22_old": ["solu-10l-old", "solu-10l-pile"],
-    "NeelNanda/SoLU_12L_v23_old": ["solu-12l-old", "solu-12l-pile"],
+    "NeelNanda/SoLU_1L_v9_old": ["solu-1l-pile", "solu-1l-old"],
+    "NeelNanda/SoLU_2L_v10_old": ["solu-2l-pile", "solu-2l-old"],
+    "NeelNanda/SoLU_4L_v11_old": ["solu-4l-pile", "solu-4l-old"],
+    "NeelNanda/SoLU_6L_v13_old": ["solu-6l-pile", "solu-6l-old"],
+    "NeelNanda/SoLU_8L_v21_old": ["solu-8l-pile", "solu-8l-old"],
+    "NeelNanda/SoLU_10L_v22_old": ["solu-10l-pile", "solu-10l-old"],
+    "NeelNanda/SoLU_12L_v23_old": ["solu-12l-pile", "solu-12l-old"],
     "NeelNanda/SoLU_1L512W_C4_Code": ["solu-1l", "solu-1l-new", "solu-1l-c4-code"],
     "NeelNanda/SoLU_2L512W_C4_Code": ["solu-2l", "solu-2l-new", "solu-2l-c4-code"],
     "NeelNanda/SoLU_3L512W_C4_Code": ["solu-3l", "solu-3l-new", "solu-3l-c4-code"],
@@ -137,6 +140,9 @@ MODEL_ALIASES = {
     "EleutherAI/pythia-1.3b": [
         "pythia-1.3b",
     ],
+    "EleutherAI/pythia-2.7b": [
+        "pythia-2.7b",
+    ],
     "EleutherAI/pythia-6.7b": [
         "pythia-6.7b",
     ],
@@ -149,11 +155,17 @@ MODEL_ALIASES = {
     "EleutherAI/pythia-125m-deduped": [
         "pythia-125m-deduped",
     ],
+    "EleutherAI/pythia-350m-deduped": [
+        "pythia-350m-deduped",
+    ],
     "EleutherAI/pythia-800m-deduped": [
         "pythia-800m-deduped",
     ],
     "EleutherAI/pythia-1.3b-deduped": [
         "pythia-1.3b-deduped",
+    ],
+    "EleutherAI/pythia-2.7b-deduped": [
+        "pythia-2.7b-deduped",
     ],
     "EleutherAI/pythia-6.7b-deduped": [
         "pythia-6.7b-deduped",
@@ -271,7 +283,7 @@ def get_official_model_name(model_name: str):
 def convert_hf_model_config(official_model_name: str):
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
-    in the EasyTransformerConfig format.
+    in the HookedTransformerConfig format.
 
     Takes the official_model_name as an input.
     """
@@ -377,9 +389,9 @@ def convert_hf_model_config(official_model_name: str):
 def convert_neel_model_config(official_model_name: str):
     """
     Loads the config for a model trained by me (NeelNanda), converted to a dictionary
-    in the EasyTransformerConfig format.
+    in the HookedTransformerConfig format.
 
-    AutoConfig is not supported, because these models are in the EasyTransformer format, so we directly download and load the json.
+    AutoConfig is not supported, because these models are in the HookedTransformer format, so we directly download and load the json.
     """
     official_model_name = get_official_model_name(official_model_name)
     cfg_json = utils.download_file_from_hf(official_model_name, "config.json")
@@ -419,7 +431,7 @@ def get_pretrained_model_config(
     fold_ln: bool = False,
     device: Optional[str] = None,
 ):
-    """Returns the pretrained model config as an EasyTransformerConfig object.
+    """Returns the pretrained model config as an HookedTransformerConfig object.
 
     There are two types of pretrained models: HuggingFace models (where
     AutoModel and AutoConfig work), and models trained by me (NeelNanda) which
@@ -436,7 +448,7 @@ def get_pretrained_model_config(
             the checkpoint to load, ie the step or token number (each model has
             checkpoints labelled with exactly one of these). Defaults to None.
         fold_ln (bool, optional): Whether to fold the layer norm into the
-            subsequent linear layers (see EasyTransformer.fold_layer_norm for
+            subsequent linear layers (see HookedTransformer.fold_layer_norm for
             details). Defaults to False.
         device (str, optional): The device to load the model onto. By
             default will load to CUDA if available, else CPU.
@@ -472,6 +484,7 @@ def get_pretrained_model_config(
             cfg_dict["checkpoint_index"] = checkpoint_index
             cfg_dict["checkpoint_value"] = checkpoint_labels[checkpoint_index]
         elif checkpoint_value is not None:
+            assert checkpoint_value in checkpoint_labels, f"Checkpoint value {checkpoint_value} is not in list of available checkpoints"
             cfg_dict["checkpoint_value"] = checkpoint_value
             cfg_dict["checkpoint_index"] = checkpoint_labels.index(checkpoint_value)
     else:
@@ -479,7 +492,7 @@ def get_pretrained_model_config(
 
     cfg_dict["device"] = device
 
-    cfg = EasyTransformerConfig.from_dict(cfg_dict)
+    cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
 
 
@@ -500,6 +513,10 @@ STANFORD_CRFM_CHECKPOINTS = (
     + list(range(20000, 400000 + 1, 1000))
 )
 
+# Linearly spaced checkpoints for Pythia models, taken every 1000 steps. 
+# Batch size 2,097,152 tokens, so checkpoints every 2.1B tokens
+PYTHIA_CHECKPOINTS = list(range(1000, 143000+1, 1000))
+
 
 def get_checkpoint_labels(model_name: str):
     """Returns the checkpoint labels for a given model, and the label_type
@@ -507,6 +524,8 @@ def get_checkpoint_labels(model_name: str):
     official_model_name = get_official_model_name(model_name)
     if official_model_name.startswith("stanford-crfm/"):
         return STANFORD_CRFM_CHECKPOINTS, "step"
+    elif official_model_name.startswith("EleutherAI/pythia"):
+        return PYTHIA_CHECKPOINTS, "step"
     elif official_model_name.startswith("NeelNanda/"):
         api = HfApi()
         files_list = api.list_repo_files(official_model_name)
@@ -529,12 +548,12 @@ def get_checkpoint_labels(model_name: str):
 
 def get_pretrained_state_dict(
     official_model_name: str,
-    cfg: EasyTransformerConfig,
+    cfg: HookedTransformerConfig,
     hf_model=None,
 ) -> Dict[str, torch.Tensor]:
     """
     Loads in the model weights for a pretrained model, and processes them to
-    have the EasyTransformer parameter names and shapes. Supports checkpointed
+    have the HookedTransformer parameter names and shapes. Supports checkpointed
     models (and expects the checkpoint info to be stored in the config object)
 
     hf_model: Optionally, a HuggingFace model object. If provided, we will use
@@ -546,7 +565,7 @@ def get_pretrained_state_dict(
         repo_files = api.list_repo_files(official_model_name)
         if cfg.from_checkpoint:
             file_name = list(
-                filter(lambda x: x.endswith(f"_{cfg.checkpoint_value}.pth"), repo_files)
+                filter(lambda x: x.endswith(f"{cfg.checkpoint_value}.pth"), repo_files)
             )[0]
         else:
             file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
@@ -556,9 +575,16 @@ def get_pretrained_state_dict(
         return state_dict
     else:
         if cfg.from_checkpoint:
-            hf_model = AutoModelForCausalLM.from_pretrained(
-                official_model_name, revision=f"checkpoint-{cfg.checkpoint_value}"
-            )
+            if official_model_name.startswith("stanford-crfm"):
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    official_model_name, revision=f"checkpoint-{cfg.checkpoint_value}"
+                )
+            elif official_model_name.startswith("EleutherAI/pythia"):
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    official_model_name, revision=f"step{cfg.checkpoint_value}"
+                )
+            else:
+                raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
             hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 
@@ -584,10 +610,10 @@ def get_pretrained_state_dict(
 # %%
 def convert_state_dict(
     state_dict: dict,
-    cfg: EasyTransformerConfig,
+    cfg: HookedTransformerConfig,
 ):
     """Converts a state_dict from a HuggingFace model to a state_dict
-    compatible with EasyTransformer."""
+    compatible with HookedTransformer."""
     official_model_name = get_official_model_name(official_model_name)
 
     if cfg["original_architecture"] == "gpt2":
@@ -609,7 +635,7 @@ def convert_state_dict(
 
 
 # Convert state dicts
-def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
+def convert_gpt2_weights(gpt2, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = gpt2.transformer.wte.weight
@@ -665,7 +691,7 @@ def convert_gpt2_weights(gpt2, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neo_weights(neo, cfg: EasyTransformerConfig):
+def convert_neo_weights(neo, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neo.transformer.wte.weight
@@ -712,7 +738,7 @@ def convert_neo_weights(neo, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
+def convert_gptj_weights(gptj, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = gptj.transformer.wte.weight
@@ -758,7 +784,7 @@ def convert_gptj_weights(gptj, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neox_weights(neox, cfg: EasyTransformerConfig):
+def convert_neox_weights(neox, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = neox.gpt_neox.embed_in.weight
@@ -827,7 +853,7 @@ def convert_neox_weights(neox, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_opt_weights(opt, cfg: EasyTransformerConfig):
+def convert_opt_weights(opt, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = opt.model.decoder.embed_tokens.weight
@@ -917,15 +943,15 @@ def convert_opt_weights(opt, cfg: EasyTransformerConfig):
     return state_dict
 
 
-def convert_neel_solu_old_weights(state_dict: dict, cfg: EasyTransformerConfig):
+def convert_neel_solu_old_weights(state_dict: dict, cfg: HookedTransformerConfig):
     """
-    Converts the weights of my old SoLU models to the EasyTransformer format.
+    Converts the weights of my old SoLU models to the HookedTransformer format.
     Takes as input a state dict, *not* a model object.
 
     There are a bunch of dumb bugs in the original code, sorry!
 
     Models 1L, 2L, 4L and 6L have left facing weights (ie, weights have shape
-    [dim_out, dim_in]) while EasyTransformer does right facing (ie [dim_in,
+    [dim_out, dim_in]) while HookedTransformer does right facing (ie [dim_in,
     dim_out]).
 
     8L has *just* a left facing W_pos, the rest right facing.

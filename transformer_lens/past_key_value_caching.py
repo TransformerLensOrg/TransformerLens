@@ -2,19 +2,19 @@ import torch
 import torch.nn as nn
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
-from easy_transformer.EasyTransformerConfig import EasyTransformerConfig
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from torchtyping import TensorType as TT
 
 
 @dataclass
-class EasyTransformerKeyValueCacheEntry:
+class HookedTransformerKeyValueCacheEntry:
     past_keys: TT["batch", "pos_so_far", "n_heads", "d_head"]
     past_values: TT["batch", "pos_so_far", "n_heads", "d_head"]
 
     @classmethod
     def init_cache_entry(
         cls,
-        cfg: EasyTransformerConfig,
+        cfg: HookedTransformerConfig,
         device: torch.device,
         batch_size: int = 1,
     ):
@@ -44,25 +44,25 @@ class EasyTransformerKeyValueCacheEntry:
 
 
 @dataclass
-class EasyTransformerKeyValueCache:
+class HookedTransformerKeyValueCache:
     """
     A cache for storing past keys and values for the Transformer. This is important for generating text - we can cache a lot of past computation and avoid repeating ourselves!
 
-    This cache is a list of EasyTransformerKeyValueCacheEntry objects, one for each layer in the Transformer. Each object stores a [batch, pos_so_far, n_heads, d_head] tensor for both keys and values, and each entry has an append method to add a single new key and value.
+    This cache is a list of HookedTransformerKeyValueCacheEntry objects, one for each layer in the Transformer. Each object stores a [batch, pos_so_far, n_heads, d_head] tensor for both keys and values, and each entry has an append method to add a single new key and value.
 
     Generation is assumed to be done by initializing with some prompt and then continuing iteratively one token at a time. So append only works for adding a single token's worth of keys and values, and but the cache can be initialized with many.
 
     """
 
-    entries: List[EasyTransformerKeyValueCacheEntry]
+    entries: List[HookedTransformerKeyValueCacheEntry]
 
     @classmethod
     def init_cache(
-        cls, cfg: EasyTransformerConfig, device: torch.device, batch_size: int = 1
+        cls, cfg: HookedTransformerConfig, device: torch.device, batch_size: int = 1
     ):
         return cls(
             entries=[
-                EasyTransformerKeyValueCacheEntry.init_cache_entry(
+                HookedTransformerKeyValueCacheEntry.init_cache_entry(
                     cfg, device, batch_size
                 )
                 for _ in range(cfg.n_layers)
