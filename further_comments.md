@@ -4,6 +4,7 @@ Shortformer style models are a variant on GPT-2 style positional embeddings, whi
 
 The original intention was to use this to do more efficient caching: caching is hard with absolute positional embeddings, since you can't translate the context window without recomputing the entire thing, but easier if the prior values and residual stream terms are the same. I've mostly implemented it because it makes it easier for models to form induction heads. I'm not entirely sure why, though hypothesise that it's because there's two ways for induction heads to form with positional embeddings in the residual stream and only one with shortformer style positional embeddings.
     
+# Weight Processing
 ## What is LayerNorm Folding? (`fold_ln`)
 [LayerNorm](https://wandb.ai/wandb_fc/LayerNorm/reports/Layer-Normalization-in-Pytorch-With-Examples---VmlldzoxMjk5MTk1) is a common regularisation technique used in transformers. Annoyingly, unlike eg BatchNorm, it can't be turned off at inference time, it's a meaningful change to the mathematical function implemented by the transformer. From an interpretability perspective, this is a headache! And it's easy to shoot yourself in the foot by naively ignoring it - eg, making the mistake of saying neuron_pre = resid_mid @ W_in, rather than LayerNorm(resid_mid) @ W_in. This mistake is an OK approximation, but by folding in the LayerNorm we can do much better!
 
@@ -57,7 +58,25 @@ This is really easy to deal with - we're about to be input to a linear layer, an
         
 `x4 = x3 + b` is similarly easy - `x4 @ W + B = x2 @ W_eff + B_eff`, where `W_eff = W_ln @ W` and `B_eff = B + b @ W`
         
-This function is calculating `W_eff` and `B_eff` for each layer reading from the residual stream and replacing W and B with those
-        
+This function is calculating `W_eff` and `B_eff` for each layer reading from the residual stream and replacing W and B with those.
+
+A final optimisation we can make is to **center the reading weights**. x2 has mean 0, which means it's orthogonal to the vector of all ones (`x2 @ ones = x2.sum() = len(x2) * x2.mean()`). This means that the component of `W_eff` that's parallel to `ones` is irrelevant, and we can set that to zero. In code, this means `W_eff -= W_eff.mean(dim=0, keepdim=True)`. This doesn't change the computation but makes things a bit simpler.
         
 See this for more: https://transformer-circuits.pub/2021/framework/index.html#:~:text=Handling%20Layer%20Normalization
+
+## Centering Writing Weights (`center_writing_weight`)
+
+A related idea to folding layernorm - *every* component reading an input from the residual stream is preceded by a LayerNorm, which means that the mean of a residual stream vector (ie the component in the direction of all ones) never matters. This means we can remove the all ones component of weights and biases whose output *writes* to the residual stream. Mathematically, `W_writing -= W_writing.mean(dim=1, keepdim=True)`
+
+## Centering Unembed (`center_unembed`)
+
+The logits are fed into a softmax. Softmax is translation invariant (eg, adding 1 to every logit doesn't change the output), so we can simplify things by setting the mean of the logits to be zero. This is equivalent to setting the mean of every output vector of `W_U` to zero. In code, `W_U -= W_U.mean(dim=-1, keepdim=True)`
+
+## Fold Value Biases (`fold_value_biases`)
+
+Each attention head has a value bias. Values are averaged to create mixed values (`z`), weighted by the attention pattern, but as the bias is constant, its contribution to `z` is exactly the same. The output of a head is `z @ W_O`, and so the value bias just linearly adds to the output of the head. This means that the value bias of a head has *nothing to do with the head*, and is just a constant added to the attention layer outputs. We can take the sum across these and `b_O` to get an "effective bias" for the layer. In code, we set `b_V=0.` and `b_O = (b_V @ W_O).sum(dim=0) + b_O`
+
+<details><summary>Technical derivation</summary>
+
+`v = residual @ W_V[h] + broadcast_b_V[h]` for each head `h` (where `b_V` is broadcast up from shape `d_head` to shape `[position, d_head]`). And `z = pattern[h] @ v = pattern[h] @ residual @ W_V[h] + pattern[h] @ broadcast_b_V[h]`. Because `pattern[h]` is `[destination_position, source_position]` and `broadcast_b_V` is *constant* along the `(source_)position` dimension, we're basically just multiplying it by the sum of the pattern across the `source_position` dimension, which is just 1. So it remains exactly the same, and so is just brodcast across the destination positions. 
+</details>
