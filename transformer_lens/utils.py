@@ -46,8 +46,10 @@ def print_gpu_mem(step_name=""):
 
 def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
-    return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
-
+    if isinstance(tensor, torch.Tensor):
+        return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
+    elif isinstance(tensor, FactoredMatrix):
+        return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
 def to_numpy(tensor):
     """ 
     Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
