@@ -626,6 +626,7 @@ class HookedTransformer(HookedRootModule):
         fold_ln: bool = True,
         center_writing_weights: bool = True,
         center_unembed: bool = True,
+        fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
         move_state_dict_to_device: bool = True,
     ):
@@ -641,6 +642,7 @@ class HookedTransformer(HookedRootModule):
                 residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation. Defaults to True.
             center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero).
                 Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits. Defaults to True.
+            fold_value_biases (bool, optional): Whether to fold the value biases into the output bias. Because attention patterns add up to 1, the value biases always have a constant effect on a layer's output, and it doesn't matter which head a bias is associated with. We can factor this all into a single output bias to the layer, and make it easier to interpret the head's output.
             refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
@@ -670,6 +672,8 @@ class HookedTransformer(HookedRootModule):
                 state_dict = self.center_writing_weights(state_dict)
         if center_unembed:
             state_dict = self.center_unembed(state_dict)
+        if fold_value_biases:
+            state_dict = self.fold_value_biases(state_dict)
         if refactor_factored_attn_matrices:
             state_dict = self.refactor_factored_attn_matrices(state_dict)
         self.load_state_dict(state_dict)
@@ -704,7 +708,7 @@ class HookedTransformer(HookedRootModule):
         return state_dict
 
     def fold_layer_norm(self, state_dict: Dict[str, torch.Tensor]):
-        """Takes in a state dict from a pretrained model, formatted to be consistent with HookedTransformer but with LayerNorm weights and biases. Folds these into the neighbouring weights. See HookedTransformerConfig for more details
+        """Takes in a state dict from a pretrained model, formatted to be consistent with HookedTransformer but with LayerNorm weights and biases. Folds these into the neighbouring weights. See further_comments.md for more details
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of pretrained model
@@ -739,6 +743,25 @@ class HookedTransformer(HookedRootModule):
                 state_dict[f"blocks.{l}.attn.W_V"]
                 * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             )
+
+            # Finally, we center the weights reading from the residual stream. The output of the first 
+            # part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any input vector 
+            # of the matrix doesn't matter and can be set to zero.
+            # Equivalently, the output of LayerNormPre is orthogonal to the vector of all 1s (because 
+            # dotting with that gets the sum), so we can remove the component of the matrix parallel to this.
+            state_dict[f"blocks.{l}.attn.W_Q"] -= einops.reduce(
+                state_dict[f"blocks.{l}.attn.W_Q"], 
+                "head_index d_model d_head -> head_index 1 d_head", 
+                "mean")
+            state_dict[f"blocks.{l}.attn.W_K"] -= einops.reduce(
+                state_dict[f"blocks.{l}.attn.W_K"], 
+                "head_index d_model d_head -> head_index 1 d_head", 
+                "mean")
+            state_dict[f"blocks.{l}.attn.W_V"] -= einops.reduce(
+                state_dict[f"blocks.{l}.attn.W_V"], 
+                "head_index d_model d_head -> head_index 1 d_head", 
+                "mean")
+            
             del (
                 state_dict[f"blocks.{l}.ln1.w"],
                 state_dict[f"blocks.{l}.ln1.b"],
@@ -758,7 +781,15 @@ class HookedTransformer(HookedRootModule):
                     state_dict[f"blocks.{l}.mlp.W_in"]
                     * state_dict[f"blocks.{l}.ln2.w"][:, None]
                 )
+
+                # Center the weights that read in from the LayerNormPre
+                state_dict[f"blocks.{l}.mlp.W_in"] -= einops.reduce(
+                    state_dict[f"blocks.{l}.mlp.W_in"], 
+                    "d_model d_mlp -> 1 d_mlp", 
+                    "mean")
+
                 del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
+
 
                 if self.cfg.act_fn.startswith("solu"):
                     # Fold ln3 into activation
@@ -774,6 +805,12 @@ class HookedTransformer(HookedRootModule):
                         state_dict[f"blocks.{l}.mlp.W_out"]
                         * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
                     )
+
+                    # Center the weights that read in from the LayerNormPre
+                    state_dict[f"blocks.{l}.mlp.W_out"] -= einops.reduce(
+                        state_dict[f"blocks.{l}.mlp.W_out"], 
+                        "d_mlp d_model -> 1 d_model", 
+                        "mean")
                     del (
                         state_dict[f"blocks.{l}.mlp.ln.w"],
                         state_dict[f"blocks.{l}.mlp.ln.b"],
@@ -788,6 +825,13 @@ class HookedTransformer(HookedRootModule):
         state_dict[f"unembed.W_U"] = (
             state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
         )
+
+        # Center the weights that read in from the LayerNormPre
+        state_dict[f"unembed.W_U"] -= einops.reduce(
+            state_dict[f"unembed.W_U"], 
+            "d_model d_vocab -> 1 d_vocab", 
+            "mean")
+
         del state_dict[f"ln_final.w"]
         return state_dict
 
@@ -828,6 +872,26 @@ class HookedTransformer(HookedRootModule):
         state_dict["unembed.b_U"] = (
             state_dict["unembed.b_U"] - state_dict["unembed.b_U"].mean()
         )
+        return state_dict
+    
+    def fold_value_biases(self, state_dict: Dict[str, torch.Tensor]):
+        """Fold the value biases into the output bias. Because attention patterns add up to 1, the value biases always have a constant effect on a head's output
+        Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with. 
+        We can factor this all into a single output bias to the layer, and make it easier to interpret the head's output.
+        Formally, we take b_O_new = b_O_original + \sum_head b_V_head @ W_O_head
+        """
+        for layer in range(self.cfg.n_layers):
+            # shape [head_index, d_head]
+            b_V = state_dict[f'blocks.{layer}.attn.b_V']
+            # [head_index, d_head, d_model]
+            W_O = state_dict[f'blocks.{layer}.attn.W_O']
+            # [d_model]
+            b_O_original = state_dict[f'blocks.{layer}.attn.b_O']
+
+            folded_b_O = b_O_original + einsum("head_index d_head, head_index d_head d_model -> d_model", b_V, W_O)
+            
+            state_dict[f'blocks.{layer}.attn.b_O'] = folded_b_O 
+            state_dict[f'blocks.{layer}.attn.b_V'] = torch.zeros_like(b_V)
         return state_dict
 
     def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
