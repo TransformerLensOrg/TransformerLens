@@ -1,6 +1,6 @@
 # Import stuff
 import logging
-from typing import Callable, Union, Optional, Sequence
+from typing import Callable, Union, Optional, Sequence, Dict, List, Tuple
 import torch
 import torch.nn as nn
 import torch.utils.hooks as hooks
@@ -24,8 +24,8 @@ NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
 class HookPoint(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fwd_hooks = []
-        self.bwd_hooks = []
+        self.fwd_hooks: List[LensHandle] = []
+        self.bwd_hooks: List[LensHandle] = []
         self.ctx = {}
 
         # A var`iable giving the hook's name (from the perspective of the root
@@ -111,7 +111,7 @@ class HookedRootModule(nn.Module):
         # Add a parameter to each module giving its name
         # Build a dictionary mapping a module name to the module
         self.mod_dict = {}
-        self.hook_dict = {}
+        self.hook_dict: Dict[str, HookPoint] = {}
         for name, module in self.named_modules():
             module.name = name
             self.mod_dict[name] = module
@@ -147,8 +147,8 @@ class HookedRootModule(nn.Module):
     def run_with_hooks(
         self,
         *model_args,
-        fwd_hooks=[],
-        bwd_hooks=[],
+        fwd_hooks: List[Tuple[str | Callable, Callable]] = [],
+        bwd_hooks: List[Tuple[str | Callable, Callable]] = [],
         reset_hooks_end=True,
         clear_contexts=False,
         **model_kwargs,
