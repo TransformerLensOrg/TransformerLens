@@ -11,6 +11,7 @@ from functools import *
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import gelu_new, solu, gelu_fast
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.FactoredMatrix import FactoredMatrix
 
 from fancy_einsum import einsum
 
@@ -307,6 +308,36 @@ class Attention(nn.Module):
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def OV(self) -> FactoredMatrix:
+        """ 
+        OV-Circuit, as defined in A Mathematical Framework. Because there's no non-linearity between the value vector and the output of the layer, the output is purely determined by the matrix W_OV = W_V @ W_O, and not W_V or W_O individually. (Mathematically, for a single head, output == pattern @ residual @ W_V @ W_O, see the glossary for more)
+
+        Done in the order W_V, W_O because the paper uses left-multiplying weight matrices, and TransformerLens uses right-multiplying, sorry!
+
+        lru_cache says "compute this the first time a user runs attn.OV, and then cache it". By not defining this in __init__, this means it's only computed and only consumes memory for investigations that need it.
+
+        Returns a FactoredMatrix, with left matrix W_V [head_index, d_model, d_head] and right matrix W_O [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model]. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the OV circuit of a head k, attn.OV[k] works.
+        """
+        return FactoredMatrix(self.W_V, self.W_O)
+    
+    @property
+    @lru_cache(maxsize=None)
+    def QK(self) -> FactoredMatrix:
+        """ 
+        QK-Circuit, as defined in A Mathematical Framework. Because there's no non-linearity in the key-query dot product, the output is purely determined by the matrix W_QK = W_Q.T @ W_K, and not W_Q or W_K individually. (Mathematically, for a single head, pattern = destination_residual.T @ W_Q.T @ W_K @ source-residual, see the glossary for more).
+
+        Done in the order Q on the left, K on the right, because the pattern has dimensions [destination_pos, source_pos]
+
+        lru_cache says "compute this the first time a user runs attn.QK, and then cache it". By not defining this in __init__, this means it's only computed and only consumes memory for investigations that need it.
+
+        Returns a FactoredMatrix, with left matrix W_Q [head_index, d_model, d_head] and right matrix W_K.T [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model] matrix. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the QK circuit of a head k, attn.QK[k] works.
+        """
+        W_K_transpose = einops.rearrange(self.W_K , "head_index d_model d_head -> head_index d_head d_model")
+        return FactoredMatrix(self.W_Q, W_K_transpose)
+
 
     def forward(
         self,
