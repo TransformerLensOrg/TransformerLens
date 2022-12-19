@@ -39,14 +39,14 @@ class HookPoint(nn.Module):
         # Hook format is fn(activation, hook_name)
         # Change it into PyTorch hook format (this includes input and output,
         # which are the same for a HookPoint)
-
+        name = "_perma" if perma else None
         if dir == "fwd":
 
             def full_hook(module, module_input, module_output):
                 return hook(module_output, hook=self)
 
             handle = self.register_forward_hook(full_hook)
-            name = "_perma" if perma else None
+            
             handle = LensHandle(name, handle)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
@@ -54,7 +54,6 @@ class HookPoint(nn.Module):
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
 
-            name = "_perma" if perma else None
             handle = self.register_full_backward_hook(full_hook)
             handle = LensHandle(name, handle)
             self.bwd_hooks.append(handle)
@@ -135,14 +134,17 @@ class HookedRootModule(nn.Module):
         self.remove_all_hook_fns(direction)
         self.is_caching = False
 
-    def add_hook(self, name, hook, dir="fwd"):
+    def add_hook(self, name, hook, dir="fwd", perma=False) -> None:
         if type(name) == str:
-            self.mod_dict[name].add_hook(hook, dir=dir)
+            self.mod_dict[name].add_hook(hook, dir=dir, perma=perma)
         else:
             # Otherwise, name is a Boolean function on names
             for hook_name, hp in self.hook_dict.items():
                 if name(hook_name):
-                    hp.add_hook(hook, dir=dir)
+                    hp.add_hook(hook, dir=dir, perma=perma)
+
+    def add_perma_hook(self, hook, dir="fwd") -> None:
+        self.add_hook(hook, dir=dir, perma=True)
 
     def run_with_hooks(
         self,
