@@ -28,7 +28,7 @@ class HookPoint(nn.Module):
         self.bwd_hooks: List[LensHandle] = []
         self.ctx = {}
 
-        # A var`iable giving the hook's name (from the perspective of the root
+        # A variable giving the hook's name (from the perspective of the root
         # module) - this is set by the root module at setup.
         self.name = None
 
