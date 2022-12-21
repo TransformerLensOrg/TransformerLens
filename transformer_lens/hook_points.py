@@ -149,8 +149,8 @@ class HookedRootModule(nn.Module):
     def run_with_hooks(
         self,
         *model_args,
-        fwd_hooks: List[Tuple[str | Callable, Callable]] = [],
-        bwd_hooks: List[Tuple[str | Callable, Callable]] = [],
+        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         reset_hooks_end=True,
         clear_contexts=False,
         **model_kwargs,
