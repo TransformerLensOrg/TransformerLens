@@ -8,9 +8,12 @@ import torch.utils.hooks as hooks
 from functools import *
 
 from dataclasses import dataclass
+
+@dataclass
 class LensHandle:
-    group_id: Optional[str] = None
     hook: hooks.RemovableHandle
+    group_id: Optional[str] = None
+    
 
 # %%
 # Define type aliases
@@ -47,7 +50,7 @@ class HookPoint(nn.Module):
 
             handle = self.register_forward_hook(full_hook)
             
-            handle = LensHandle(name, handle)
+            handle = LensHandle(handle, name)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
@@ -55,22 +58,22 @@ class HookPoint(nn.Module):
                 return hook(module_output[0], hook=self)
 
             handle = self.register_full_backward_hook(full_hook)
-            handle = LensHandle(name, handle)
+            handle = LensHandle(handle, name)
             self.bwd_hooks.append(handle)
         else:
             raise ValueError(f"Invalid direction {dir}")
 
     def remove_hooks(self, dir="fwd", id_to_remove=None) -> None:
         if (dir == "fwd") or (dir == "both"):
-            for (group_id, hook) in self.fwd_hooks:
-                if group_id == id_to_remove:
-                    hook.remove()
-            self.fwd_hooks = []
+            for handle in self.fwd_hooks:
+                if handle.group_id == id_to_remove:
+                    handle.hook.remove()
+            self.fwd_hooks = list(filter(lambda lenshook: lenshook.group_id != id_to_remove, self.fwd_hooks))
         if (dir == "bwd") or (dir == "both"):
-            for (group_id, hook) in self.bwd_hooks:
-                if group_id == id_to_remove:
-                    hook.remove()
-            self.bwd_hooks = []
+            for handle in self.bwd_hooks:
+                if handle.group_id == id_to_remove:
+                    handle.hook.remove()
+            self.bwd_hooks = list(filter(lambda lenshook: lenshook.group_id != id_to_remove, self.bwd_hooks))
         if dir not in ["fwd", "bwd", "both"]:
             raise ValueError(f"Invalid direction {dir}")
 
@@ -143,8 +146,8 @@ class HookedRootModule(nn.Module):
                 if name(hook_name):
                     hp.add_hook(hook, dir=dir, perma=perma)
 
-    def add_perma_hook(self, hook, dir="fwd") -> None:
-        self.add_hook(hook, dir=dir, perma=True)
+    def add_perma_hook(self, name, hook, dir="fwd") -> None:
+        self.add_hook(name, hook, dir=dir, perma=True)
 
     def run_with_hooks(
         self,
