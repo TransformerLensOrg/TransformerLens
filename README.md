@@ -54,3 +54,16 @@ Then the library can be imported as `import transformer_lens`.
 ### Testing
 
 If adding a feature, please add unit tests for it to the tests folder, and check that it hasn't broken anything major using the existing tests (install pytest and run it in the root TransformerLens/ directory)
+
+## Citation
+
+Please cite this work as:
+```
+@misc{nandatransformerlens2022,
+    title  = {TransformerLens},
+    author = {Nanda, Neel},
+    url    = {https://github.com/neelnanda-io/TransformerLens},
+    year   = {2022}
+}
+```
+(This is my best guess for how citing software works, feel free to send a correction!)
