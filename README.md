@@ -57,7 +57,7 @@ If adding a feature, please add unit tests for it to the tests folder, and check
 
 ## Citation
 
-Please cite this work as:
+Please cite this library as:
 ```
 @misc{nandatransformerlens2022,
     title  = {TransformerLens},
@@ -67,3 +67,4 @@ Please cite this work as:
 }
 ```
 (This is my best guess for how citing software works, feel free to send a correction!)
+Also, if you're actually using this for your research, I'd love to chat! Reach out at neelnanda27@gmail.com
