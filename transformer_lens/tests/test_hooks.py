@@ -9,9 +9,9 @@ import torch
 patch_typeguard()
 
 MODEL = "gpt2"
-model = EasyTransformer.from_pretrained(MODEL)
 
 prompt = "Hello World!"
+model = EasyTransformer.from_pretrained(MODEL)
 embed = lambda name: name == "hook_embed"
 
 class Counter:
@@ -26,6 +26,7 @@ def hook_attaches_normally_test():
     _ = model.run_with_hooks(prompt, fwd_hooks=[(embed, c.inc)])
     assert all([len(hp.fwd_hooks) == 0 for _, hp in model.hook_dict.items()])
     assert c.count == 1
+    model.remove_all_hook_fns(including_permanent=True)
 
 def perma_hook_attaches_normally_test():
     c = Counter()
@@ -34,15 +35,19 @@ def perma_hook_attaches_normally_test():
     model.run_with_hooks(prompt, fwd_hooks=[])
     assert len(model.hook_dict['hook_embed'].fwd_hooks) == 1
     assert c.count == 1
+    model.remove_all_hook_fns(including_permanent=True)
 
 def remove_hook_test():
     c = Counter()
     model.add_perma_hook(embed, c.inc)
-    assert len(model.hook_dict['hook_embed'].fwd_hooks) == 1
-    model.remove_hook(embed)
-    assert len(model.hook_dict['hook_embed'].fwd_hooks) == 0
+    assert len(model.hook_dict['hook_embed'].fwd_hooks) == 1 # 1 after adding
+    model.remove_all_hook_fns()
+    assert len(model.hook_dict['hook_embed'].fwd_hooks) == 1 # permanent not removed without flag
+    model.remove_all_hook_fns(including_permanent=True)
+    assert len(model.hook_dict['hook_embed'].fwd_hooks) == 0 # removed now
     model.run_with_hooks(prompt, fwd_hooks=[])
     assert c.count == 0
+    model.remove_all_hook_fns(including_permanent=True)
 
 hook_attaches_normally_test()
 perma_hook_attaches_normally_test()

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 @dataclass
 class LensHandle:
     hook: hooks.RemovableHandle
-    perma: bool = False
+    is_permanent: bool = False
     
 
 # %%
@@ -63,16 +63,17 @@ class HookPoint(nn.Module):
             raise ValueError(f"Invalid direction {dir}")
 
     def remove_hooks(self, dir="fwd", including_permanent=False) -> None:
-        if (dir == "fwd") or (dir == "both"):
-            for handle in self.fwd_hooks:
-                if handle.perma or including_permanent:
+
+        def _remove_hooks(hooks, including_permanent=False) -> None:
+            for handle in hooks:
+                if handle.is_permanent or including_permanent:
                     handle.hook.remove()
-            self.fwd_hooks = list(filter(lambda hook: hook.perma or not including_permanent, self.fwd_hooks))
-        if (dir == "bwd") or (dir == "both"):
-            for handle in self.bwd_hooks:
-                if handle.perma or including_permanent:
-                    handle.hook.remove()
-            self.bwd_hooks = list(filter(lambda hook: hook.perma or not including_permanent, self.bwd_hooks))
+            return [] if including_permanent else list(filter(lambda hook: hook.is_permanent, hooks))
+
+        if dir == "fwd" or dir == "both":
+            self.fwd_hooks = _remove_hooks(self.fwd_hooks, including_permanent)
+        if dir == "bwd" or dir == "both":
+            self.bwd_hooks = _remove_hooks(self.bwd_hooks, including_permanent)
         if dir not in ["fwd", "bwd", "both"]:
             raise ValueError(f"Invalid direction {dir}")
 
