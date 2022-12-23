@@ -7,8 +7,9 @@ RUN apt-get -yqq install python3
 RUN apt-get -yqq install python3-pip
 RUN apt-get -yqq update
 
+ARG GITHUB_USER=neelnanda-io
+RUN git clone https://github.com/$GITHUB_USER/TransformerLens.git
 
-RUN git clone https://github.com/neelnanda-io/TransformerLens.git
 WORKDIR /TransformerLens
 
 RUN pip install -e . 
