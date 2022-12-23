@@ -35,7 +35,17 @@ def perma_hook_attaches_normally_test():
     assert len(model.hook_dict['hook_embed'].fwd_hooks) == 1
     assert c.count == 1
 
+def remove_hook_test():
+    c = Counter()
+    model.add_perma_hook(embed, c.inc)
+    assert len(model.hook_dict['hook_embed'].fwd_hooks) == 1
+    model.remove_hook(embed)
+    assert len(model.hook_dict['hook_embed'].fwd_hooks) == 0
+    model.run_with_hooks(prompt, fwd_hooks=[])
+    assert c.count == 0
+
 hook_attaches_normally_test()
 perma_hook_attaches_normally_test()
+remove_hook_test()
 
 

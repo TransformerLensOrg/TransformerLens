@@ -12,7 +12,7 @@ from dataclasses import dataclass
 @dataclass
 class LensHandle:
     hook: hooks.RemovableHandle
-    group_id: Optional[str] = None
+    perma: bool = False
     
 
 # %%
@@ -42,7 +42,6 @@ class HookPoint(nn.Module):
         # Hook format is fn(activation, hook_name)
         # Change it into PyTorch hook format (this includes input and output,
         # which are the same for a HookPoint)
-        name = "_perma" if perma else None
         if dir == "fwd":
 
             def full_hook(module, module_input, module_output):
@@ -50,7 +49,7 @@ class HookPoint(nn.Module):
 
             handle = self.register_forward_hook(full_hook)
             
-            handle = LensHandle(handle, name)
+            handle = LensHandle(handle, perma)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
@@ -58,22 +57,22 @@ class HookPoint(nn.Module):
                 return hook(module_output[0], hook=self)
 
             handle = self.register_full_backward_hook(full_hook)
-            handle = LensHandle(handle, name)
+            handle = LensHandle(handle, perma)
             self.bwd_hooks.append(handle)
         else:
             raise ValueError(f"Invalid direction {dir}")
 
-    def remove_hooks(self, dir="fwd", id_to_remove=None) -> None:
+    def remove_hooks(self, dir="fwd", including_permanent=False) -> None:
         if (dir == "fwd") or (dir == "both"):
             for handle in self.fwd_hooks:
-                if handle.group_id == id_to_remove:
+                if handle.perma or including_permanent:
                     handle.hook.remove()
-            self.fwd_hooks = list(filter(lambda lenshook: lenshook.group_id != id_to_remove, self.fwd_hooks))
+            self.fwd_hooks = list(filter(lambda hook: hook.perma or not including_permanent, self.fwd_hooks))
         if (dir == "bwd") or (dir == "both"):
             for handle in self.bwd_hooks:
-                if handle.group_id == id_to_remove:
+                if handle.perma or including_permanent:
                     handle.hook.remove()
-            self.bwd_hooks = list(filter(lambda lenshook: lenshook.group_id != id_to_remove, self.bwd_hooks))
+            self.bwd_hooks = list(filter(lambda hook: hook.perma or not including_permanent, self.bwd_hooks))
         if dir not in ["fwd", "bwd", "both"]:
             raise ValueError(f"Invalid direction {dir}")
 
