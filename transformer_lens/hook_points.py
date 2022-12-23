@@ -38,7 +38,7 @@ class HookPoint(nn.Module):
     def add_perma_hook(self, hook, dir="fwd") -> None:
         self.add_hook(hook, dir=dir, perma=True)
 
-    def add_hook(self, hook, dir="fwd", perma=False) -> None:
+    def add_hook(self, hook, dir="fwd", is_permanent=False) -> None:
         # Hook format is fn(activation, hook_name)
         # Change it into PyTorch hook format (this includes input and output,
         # which are the same for a HookPoint)
@@ -49,7 +49,7 @@ class HookPoint(nn.Module):
 
             handle = self.register_forward_hook(full_hook)
             
-            handle = LensHandle(handle, perma)
+            handle = LensHandle(handle, is_permanent)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
@@ -57,7 +57,7 @@ class HookPoint(nn.Module):
                 return hook(module_output[0], hook=self)
 
             handle = self.register_full_backward_hook(full_hook)
-            handle = LensHandle(handle, perma)
+            handle = LensHandle(handle, is_permanent)
             self.bwd_hooks.append(handle)
         else:
             raise ValueError(f"Invalid direction {dir}")
@@ -122,31 +122,31 @@ class HookedRootModule(nn.Module):
     def hook_points(self):
         return self.hook_dict.values()
 
-    def remove_all_hook_fns(self, direction="both"):
+    def remove_all_hook_fns(self, direction="both", including_permanent=False):
         for hp in self.hook_points():
-            hp.remove_hooks(direction)
+            hp.remove_hooks(direction, including_permanent=including_permanent)
 
     def clear_contexts(self):
         for hp in self.hook_points():
             hp.clear_context()
 
-    def reset_hooks(self, clear_contexts=True, direction="both"):
+    def reset_hooks(self, clear_contexts=True, direction="both", including_permanent=False):
         if clear_contexts:
             self.clear_contexts()
-        self.remove_all_hook_fns(direction)
+        self.remove_all_hook_fns(direction, including_permanent)
         self.is_caching = False
 
-    def add_hook(self, name, hook, dir="fwd", perma=False) -> None:
+    def add_hook(self, name, hook, dir="fwd", is_permanent=False) -> None:
         if type(name) == str:
-            self.mod_dict[name].add_hook(hook, dir=dir, perma=perma)
+            self.mod_dict[name].add_hook(hook, dir=dir, is_permanent=is_permanent)
         else:
             # Otherwise, name is a Boolean function on names
             for hook_name, hp in self.hook_dict.items():
                 if name(hook_name):
-                    hp.add_hook(hook, dir=dir, perma=perma)
+                    hp.add_hook(hook, dir=dir, is_permanent=is_permanent)
 
     def add_perma_hook(self, name, hook, dir="fwd") -> None:
-        self.add_hook(name, hook, dir=dir, perma=True)
+        self.add_hook(name, hook, dir=dir, is_permanent=True)
 
     def run_with_hooks(
         self,
@@ -190,7 +190,7 @@ class HookedRootModule(nn.Module):
                 logging.warning(
                     "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
                 )
-            self.reset_hooks(clear_contexts)
+            self.reset_hooks(clear_contexts, including_permanent=False)
         return out
 
     def add_caching_hooks(
@@ -277,7 +277,7 @@ class HookedRootModule(nn.Module):
             model_out.backward()
 
         if reset_hooks_end:
-            self.reset_hooks(clear_contexts)
+            self.reset_hooks(clear_contexts, including_permanent=False)
         return model_out, cache_dict
 
     def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
