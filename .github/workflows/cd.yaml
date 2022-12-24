@@ -1,0 +1,61 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  checks:
+    name: Test & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+          cache: "poetry"
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Pytest
+        run: poetry run pytest
+      # - name: Type check
+      #   run: poetry run mypy easy_transformer
+      - name: Build check
+        run: poetry build
+
+  # If a commit is tagged with major/minor/patch, this will bump the version
+  # and commit that change to main.
+  bump:
+    name: Bump package version
+    needs:
+      - checks
+    runs-on: ubuntu-latest
+    if: (github.event.label.name == 'major' || github.event.label.name == 'minor' || github.event.label.name == 'patch') && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Bump Python package version (major)
+        run: poetry version major
+        if: github.event.label.name == 'major'
+      - name: Bump Python package version (minor)
+        run: poetry version minor
+        if: github.event.label.name == 'minor'
+      - name: Bump Python package version (patch)
+        run: poetry version patch
+        if: github.event.label.name == 'patch'
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v4.14.1
+        with:
+          commit_message: Bump package version

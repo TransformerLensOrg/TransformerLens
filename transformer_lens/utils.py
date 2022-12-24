@@ -30,8 +30,11 @@ def download_file_from_hf(
         repo_id=repo_name, filename=file_name, subfolder=subfolder, cache_dir=cache_dir
     )
 
+    # Load to the CPU device if CUDA is not available
+    map_location = None if torch.cuda.is_available() else torch.device('cpu')
+
     if file_path.endswith(".pth") or force_is_torch:
-        return torch.load(file_path)
+        return torch.load(file_path, map_location=map_location)
     elif file_path.endswith(".json"):
         return json.load(open(file_path, "r"))
     else:
