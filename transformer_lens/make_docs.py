@@ -31,6 +31,8 @@ def get_property(name, model_name):
             return "attn_only"
         elif cfg.act_fn=="gelu_new":
             return "gelu"
+        elif cfg.act_fn=="gelu_fast":
+            return "gelu"
         elif cfg.act_fn=="solu_ln":
             return "solu"
         else:

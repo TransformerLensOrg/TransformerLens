@@ -69,7 +69,7 @@ class HookPoint(nn.Module):
 
     def layer(self):
         # Returns the layer index if the name has the form 'blocks.{layer}.{...}'
-        # Helper function that's mainly useful on EasyTransformer
+        # Helper function that's mainly useful on HookedTransformer
         # If it doesn't have this form, raises an error -
         split_name = self.name.split(".")
         return int(split_name[1])

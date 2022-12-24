@@ -1,5 +1,5 @@
-from easy_transformer import EasyTransformer
-from easy_transformer import EasyTransformerConfig
+from transformer_lens import HookedTransformer
+from transformer_lens import HookedTransformerConfig
 from dataclasses import dataclass
 from typing import Optional, Callable
 from torch.utils.data import Dataset, DataLoader
@@ -12,10 +12,10 @@ from einops import rearrange
 
 
 @dataclass
-class EasyTransformerTrainConfig:
+class HookedTransformerTrainConfig:
     """
     Configuration class to store training hyperparameters for a training run of
-    an EasyTransformer model.
+    an HookedTransformer model.
     Args:
         num_epochs (int): Number of epochs to train for
         batch_size (int): Size of batches to use for training
@@ -25,7 +25,7 @@ class EasyTransformerTrainConfig:
         max_grad_norm (float, *optional*): Maximum gradient norm to use for
         weight_decay (float, *optional*): Weight decay to use for training
             training
-        optimizer_name (str, default='AdamW'): The name of the optimizer to use
+        optimizer_name (str): The name of the optimizer to use
         device (str, *optional*): Device to use for training
         warmup_steps (int, *optional*): Number of warmup steps to use for training
         save_every (int, *optional*): After how many batches should a checkpoint be saved
@@ -43,7 +43,7 @@ class EasyTransformerTrainConfig:
     momentum: float = 0.0
     max_grad_norm: Optional[float] = None
     weight_decay: Optional[float] = None
-    optimizer_name: str = "AdamW"
+    optimizer_name: str = "Adam"
     device: Optional[str] = None
     warmup_steps: int = 0
     save_every: Optional[int] = None
@@ -55,12 +55,12 @@ class EasyTransformerTrainConfig:
 
 
 def train(
-    model: EasyTransformer,
-    config: EasyTransformerTrainConfig,
+    model: HookedTransformer,
+    config: HookedTransformerTrainConfig,
     dataset: Dataset,
-) -> EasyTransformer:
+) -> HookedTransformer:
     """
-    Trains an EasyTransformer model on an autoregressive language modeling task.
+    Trains an HookedTransformer model on an autoregressive language modeling task.
     Args:
         model: The model to train
         config: The training configuration

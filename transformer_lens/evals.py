@@ -6,7 +6,7 @@ A file with some rough evals for models - I expect you to be likely better off u
 import torch
 import tqdm.auto as tqdm
 from datasets import load_dataset
-from easy_transformer import EasyTransformer, EasyTransformerConfig, utils
+from transformer_lens import HookedTransformer, HookedTransformerConfig, utils
 from torch.utils.data import DataLoader
 import einops
 

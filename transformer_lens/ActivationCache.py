@@ -1,7 +1,7 @@
 # %%
 from __future__ import annotations
-import easy_transformer.utils as utils
-from easy_transformer.utils import Slice, SliceInput
+import transformer_lens.utils as utils
+from transformer_lens.utils import Slice, SliceInput
 import torch
 import einops
 from fancy_einsum import einsum
@@ -15,14 +15,14 @@ import logging
 
 class ActivationCache:
     """
-    A wrapper around a dictionary of cached activations from a model run, with a variety of helper functions. In general, any utility which is specifically about editing/processing activations should be a method here, while any utility which is more general should be a function in utils.py, and any utility which is specifically about model weights should be in EasyTransformer.py or components.py.
+    A wrapper around a dictionary of cached activations from a model run, with a variety of helper functions. In general, any utility which is specifically about editing/processing activations should be a method here, while any utility which is more general should be a function in utils.py, and any utility which is specifically about model weights should be in HookedTransformer.py or components.py.
 
-    NOTE: This is designed to be used with the EasyTransformer class, and will not work with other models. It's also designed to be used with all activations of EasyTransformer being cached, and some internal methods will break without that.
+    NOTE: This is designed to be used with the HookedTransformer class, and will not work with other models. It's also designed to be used with all activations of HookedTransformer being cached, and some internal methods will break without that.
 
     WARNING: The biggest footgun and source of bugs in this code will be keeping track of indexes, dimensions, and the numbers of each. There are several kinds of activations:
 
     Internal attn head vectors: q, k, v, z. Shape [batch, pos, head_index, d_head]
-    Internal attn pattern style results: attn (post softmax), attn_scores (pre-softmax). Shape [batch, head_index, query_pos, key_pos]
+    Internal attn pattern style results: pattern (post softmax), attn_scores (pre-softmax). Shape [batch, head_index, query_pos, key_pos]
     Attn head results: result. Shape [batch, pos, head_index, d_model]
     Internal MLP vectors: pre, post, mid (only used for solu_ln - the part between activation + layernorm). Shape [batch, pos, d_mlp]
     Residual stream vectors: resid_pre, resid_mid, resid_post, attn_out, mlp_out, embed, pos_embed, normalized (output of each LN or LNPre). Shape [batch, pos, d_model]
@@ -62,20 +62,20 @@ class ActivationCache:
 
     def __getitem__(self, key) -> torch.Tensor:
         """
-        This allows us to treat the activation cache as a dictionary, and do cache["key"] to it. We add bonus functionality to take in shorthand names or tuples - see utils.act_name for the full syntax and examples.
+        This allows us to treat the activation cache as a dictionary, and do cache["key"] to it. We add bonus functionality to take in shorthand names or tuples - see utils.get_act_name for the full syntax and examples.
 
-        Dimension order is (act_name, layer_index, layer_type), where layer_type is either "attn" or "mlp" or "ln1" or "ln2" or "ln_final", act_name is the name of the hook (without the hook_ prefix).
+        Dimension order is (get_act_name, layer_index, layer_type), where layer_type is either "attn" or "mlp" or "ln1" or "ln2" or "ln_final", get_act_name is the name of the hook (without the hook_ prefix).
         """
         if key in self.cache_dict:
             return self.cache_dict[key]
         elif type(key) == str:
-            return self.cache_dict[utils.act_name(key)]
+            return self.cache_dict[utils.get_act_name(key)]
         else:
             if len(key) > 1 and key[1] is not None:
                 if key[1] < 0:
                     # Supports negative indexing on the layer dimension
                     key = (key[0], self.model.cfg.n_layers + key[1], *key[2:])
-            return self.cache_dict[utils.act_name(*key)]
+            return self.cache_dict[utils.get_act_name(*key)]
 
     def to(self, device: Union[str, torch.device], move_model=False) -> ActivationCache:
         """
