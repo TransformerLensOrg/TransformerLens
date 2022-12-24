@@ -21,6 +21,7 @@ from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens import HookedTransformerConfig
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
+
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from transformer_lens.past_key_value_caching import (
     HookedTransformerKeyValueCache,
@@ -61,7 +62,8 @@ class HookedTransformer(HookedRootModule):
             provided, it is inferred from cfg.tokenizer_name or initialized to None.
             If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
         move_to_device (bool): Whether to move the model to the device specified in cfg.
-            device.
+            device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
+            will be split across multiple devices.
         """
         super().__init__()
         if isinstance(cfg, Dict):
@@ -71,6 +73,11 @@ class HookedTransformer(HookedRootModule):
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedTransformer.from_pretrained() instead."
             )
         self.cfg = cfg
+
+        assert (
+            self.cfg.n_devices == 1 or move_to_device
+        ), "If n_devices > 1, must move_to_device"
+
         if tokenizer is not None:
             self.tokenizer = tokenizer
         if self.cfg.tokenizer_name is not None:
@@ -132,8 +139,18 @@ class HookedTransformer(HookedRootModule):
             self.init_weights()
 
         if move_to_device:
-            # Move the model to the relevant device, suppress the logging message
-            self.to(self.cfg.device, print_details=False)
+            if self.cfg.n_devices == 1:
+                # Move the model to the relevant device, suppress the logging message
+                self.to(self.cfg.device, print_details=False)
+            else:
+                # We load the devices in a pipeline manner - the first device gets the embed layer and n_layers // n_devices blocks,
+                # the second gets the next n_layers // n_devices blocks ... the last gets the last n_layers // n_devices blocks
+                # and the unembed layer
+                blocks_per_device = self.cfg.n_layers // self.cfg.n_devices
+                self.embed.to(torch.device("cuda", 0))
+                self.unembed.to(torch.device("cuda", self.cfg.n_devices - 1))
+                for i, block in enumerate(self.blocks):
+                    block.to(torch.device("cuda", i % blocks_per_device))
 
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
@@ -301,7 +318,7 @@ class HookedTransformer(HookedRootModule):
         move_to_device: bool = True,
     ) -> TT["batch", "pos"]:
         """
-        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. 
+        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model.
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
         (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
@@ -417,15 +434,14 @@ class HookedTransformer(HookedRootModule):
             input (Union[str, torch.Tensor]): The sequence to
                 search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of tokens with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
-            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to 
-                the function, otherwise ignored. 
+            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to
+                the function, otherwise ignored.
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
-        
 
         if len(tokens.shape) == 2:
             # If the tokens have shape [1, seq_len], flatten to [seq_len]
@@ -441,7 +457,7 @@ class HookedTransformer(HookedRootModule):
             single_token = single_token.item()
 
         indices = torch.arange(len(tokens))[tokens == single_token]
-        assert len(indices)>0, f"The token does not occur in the prompt"
+        assert len(indices) > 0, f"The token does not occur in the prompt"
         if mode == "first":
             return indices[0].item()
         elif mode == "last":
@@ -449,11 +465,15 @@ class HookedTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def tokens_to_residual_directions(self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]) -> Union[TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]]:
+    def tokens_to_residual_directions(
+        self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]
+    ) -> Union[
+        TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]
+    ]:
         """Maps tokens to a tensor with the unembedding vector for those tokens, ie the vector in the residual stream that we dot with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map. This is done automatically with the fold_ln flag on from_pretrained
-        
+
         WARNING 2: LayerNorm scaling will scale up or down the effective direction in the residual stream for each output token on any given input token position. ActivationCache.apply_ln_to_stack will apply the appropriate scaling to these directions.
 
         Args:
@@ -463,10 +483,12 @@ class HookedTransformer(HookedRootModule):
         Returns:
             residual_direction torch.Tensor: The unembedding vector for the token(s), a stack of [d_model] tensor.
         """
-        if isinstance(tokens, torch.Tensor) and tokens.numel()>1:
+        if isinstance(tokens, torch.Tensor) and tokens.numel() > 1:
             # If the tokens are a tensor, and have more than one element, assume they are a batch of tokens
             residual_directions = self.W_U[:, tokens]
-            residual_directions = einops.rearrange(residual_directions, "d_model ... -> ... d_model")
+            residual_directions = einops.rearrange(
+                residual_directions, "d_model ... -> ... d_model"
+            )
             return residual_directions
         else:
             # Otherwise there is a single token
@@ -474,13 +496,12 @@ class HookedTransformer(HookedRootModule):
                 token = self.to_single_token(tokens)
             elif isinstance(tokens, int):
                 token = tokens
-            elif isinstance(tokens, torch.Tensor) and tokens.numel()==1:
+            elif isinstance(tokens, torch.Tensor) and tokens.numel() == 1:
                 token = tokens.item()
             else:
                 raise ValueError(f"Invalid token type: {type(tokens)}")
             residual_direction = self.W_U[:, token]
             return residual_direction
-
 
     def to(self, device_or_dtype, print_details=True):
         """
@@ -488,14 +509,14 @@ class HookedTransformer(HookedRootModule):
         """
         if isinstance(device_or_dtype, torch.device):
             self.cfg.device = device_or_dtype.type
-            if print_details: 
+            if print_details:
                 print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, str):
             self.cfg.device = device_or_dtype
-            if print_details: 
+            if print_details:
                 print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, torch.dtype):
-            if print_details: 
+            if print_details:
                 print("Changing model dtype to", device_or_dtype)
         return nn.Module.to(self, device_or_dtype)
 
@@ -744,24 +765,27 @@ class HookedTransformer(HookedRootModule):
                 * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             )
 
-            # Finally, we center the weights reading from the residual stream. The output of the first 
-            # part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any input vector 
+            # Finally, we center the weights reading from the residual stream. The output of the first
+            # part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any input vector
             # of the matrix doesn't matter and can be set to zero.
-            # Equivalently, the output of LayerNormPre is orthogonal to the vector of all 1s (because 
+            # Equivalently, the output of LayerNormPre is orthogonal to the vector of all 1s (because
             # dotting with that gets the sum), so we can remove the component of the matrix parallel to this.
             state_dict[f"blocks.{l}.attn.W_Q"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_Q"], 
-                "head_index d_model d_head -> head_index 1 d_head", 
-                "mean")
+                state_dict[f"blocks.{l}.attn.W_Q"],
+                "head_index d_model d_head -> head_index 1 d_head",
+                "mean",
+            )
             state_dict[f"blocks.{l}.attn.W_K"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_K"], 
-                "head_index d_model d_head -> head_index 1 d_head", 
-                "mean")
+                state_dict[f"blocks.{l}.attn.W_K"],
+                "head_index d_model d_head -> head_index 1 d_head",
+                "mean",
+            )
             state_dict[f"blocks.{l}.attn.W_V"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_V"], 
-                "head_index d_model d_head -> head_index 1 d_head", 
-                "mean")
-            
+                state_dict[f"blocks.{l}.attn.W_V"],
+                "head_index d_model d_head -> head_index 1 d_head",
+                "mean",
+            )
+
             del (
                 state_dict[f"blocks.{l}.ln1.w"],
                 state_dict[f"blocks.{l}.ln1.b"],
@@ -784,12 +808,12 @@ class HookedTransformer(HookedRootModule):
 
                 # Center the weights that read in from the LayerNormPre
                 state_dict[f"blocks.{l}.mlp.W_in"] -= einops.reduce(
-                    state_dict[f"blocks.{l}.mlp.W_in"], 
-                    "d_model d_mlp -> 1 d_mlp", 
-                    "mean")
+                    state_dict[f"blocks.{l}.mlp.W_in"],
+                    "d_model d_mlp -> 1 d_mlp",
+                    "mean",
+                )
 
                 del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
-
 
                 if self.cfg.act_fn.startswith("solu"):
                     # Fold ln3 into activation
@@ -808,9 +832,10 @@ class HookedTransformer(HookedRootModule):
 
                     # Center the weights that read in from the LayerNormPre
                     state_dict[f"blocks.{l}.mlp.W_out"] -= einops.reduce(
-                        state_dict[f"blocks.{l}.mlp.W_out"], 
-                        "d_mlp d_model -> 1 d_model", 
-                        "mean")
+                        state_dict[f"blocks.{l}.mlp.W_out"],
+                        "d_mlp d_model -> 1 d_model",
+                        "mean",
+                    )
                     del (
                         state_dict[f"blocks.{l}.mlp.ln.w"],
                         state_dict[f"blocks.{l}.mlp.ln.b"],
@@ -828,9 +853,8 @@ class HookedTransformer(HookedRootModule):
 
         # Center the weights that read in from the LayerNormPre
         state_dict[f"unembed.W_U"] -= einops.reduce(
-            state_dict[f"unembed.W_U"], 
-            "d_model d_vocab -> 1 d_vocab", 
-            "mean")
+            state_dict[f"unembed.W_U"], "d_model d_vocab -> 1 d_vocab", "mean"
+        )
 
         del state_dict[f"ln_final.w"]
         return state_dict
@@ -873,25 +897,27 @@ class HookedTransformer(HookedRootModule):
             state_dict["unembed.b_U"] - state_dict["unembed.b_U"].mean()
         )
         return state_dict
-    
+
     def fold_value_biases(self, state_dict: Dict[str, torch.Tensor]):
         """Fold the value biases into the output bias. Because attention patterns add up to 1, the value biases always have a constant effect on a head's output
-        Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with. 
+        Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with.
         We can factor this all into a single output bias to the layer, and make it easier to interpret the head's output.
         Formally, we take b_O_new = b_O_original + \sum_head b_V_head @ W_O_head
         """
         for layer in range(self.cfg.n_layers):
             # shape [head_index, d_head]
-            b_V = state_dict[f'blocks.{layer}.attn.b_V']
+            b_V = state_dict[f"blocks.{layer}.attn.b_V"]
             # [head_index, d_head, d_model]
-            W_O = state_dict[f'blocks.{layer}.attn.W_O']
+            W_O = state_dict[f"blocks.{layer}.attn.W_O"]
             # [d_model]
-            b_O_original = state_dict[f'blocks.{layer}.attn.b_O']
+            b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
 
-            folded_b_O = b_O_original + einsum("head_index d_head, head_index d_head d_model -> d_model", b_V, W_O)
-            
-            state_dict[f'blocks.{layer}.attn.b_O'] = folded_b_O 
-            state_dict[f'blocks.{layer}.attn.b_V'] = torch.zeros_like(b_V)
+            folded_b_O = b_O_original + einsum(
+                "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
+            )
+
+            state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
+            state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
         return state_dict
 
     def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
