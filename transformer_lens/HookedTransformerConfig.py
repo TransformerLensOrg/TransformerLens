@@ -159,10 +159,10 @@ class HookedTransformerConfig:
         if self.n_heads==-1:
             self.n_heads = self.d_model // self.d_head
 
-        if not self.d_model == (self.n_heads * self.d_head):
-            logging.warning(
-                f"d_model={self.d_model} is not divisible by n_heads={self.n_heads} * d_head={self.d_head}"
-            )
+            if not self.d_model % (self.d_head) == 0:
+                logging.warning(
+                    f"d_model {self.d_model} is not divisible by d_head {self.d_head}. n_heads was inferred to be {self.n_heads}, rounding down the ratio."
+                )
 
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
