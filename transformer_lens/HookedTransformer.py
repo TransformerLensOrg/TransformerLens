@@ -143,14 +143,20 @@ class HookedTransformer(HookedRootModule):
                 # Move the model to the relevant device, suppress the logging message
                 self.to(self.cfg.device, print_details=False)
             else:
-                # We load the devices in a pipeline manner - the first device gets the embed layer and n_layers // n_devices blocks,
-                # the second gets the next n_layers // n_devices blocks ... the last gets the last n_layers // n_devices blocks
-                # and the unembed layer
-                blocks_per_device = self.cfg.n_layers // self.cfg.n_devices
+                # We load the devices in a pipeline manner - the first device gets the embed and pos_embed layers and the first n_layers // n_devices blocks,
+                # the second gets the next n_layers // n_devices blocks ... the last gets the last n_layers // n_devices blocks, the final
+                # normalization layer (if it exists) and the unembed layer
                 self.embed.to(torch.device("cuda", 0))
+                self.hook_embed.to(torch.device("cuda", 0))
+                if self.cfg.positional_embedding_type != "rotary":
+                    self.pos_embed.to(torch.device("cuda", 0))
+                    self.hook_pos_embed.to(torch.device("cuda", 0))
+                if hasattr(self, "ln_final"):
+                    self.ln_final.to(torch.device("cuda", self.cfg.n_devices - 1))
                 self.unembed.to(torch.device("cuda", self.cfg.n_devices - 1))
                 for i, block in enumerate(self.blocks):
-                    block.to(torch.device("cuda", i % blocks_per_device))
+                    assert self.cfg.layers_per_device is not None
+                    block.to(torch.device("cuda", i % self.cfg.layers_per_device))
 
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
@@ -185,12 +191,14 @@ class HookedTransformer(HookedRootModule):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
+        assert isinstance(tokens, torch.Tensor)
         if len(tokens.shape) == 1:
             # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
-            tokens = tokens.to(self.cfg.device)
-        assert isinstance(tokens, torch.Tensor)
+            assert self.cfg.device is not None
+            tokens = tokens.to(device=torch.device(self.cfg.device, 0))
+
         # If we're doing caching, then we reuse keys and values from previous runs, as that's the only
         # way that past activations will affect the final logits. The cache contains those so we don't
         # need to recompute them. This is useful for generating text. As we have absolute positional
@@ -241,11 +249,28 @@ class HookedTransformer(HookedRootModule):
         for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
+            if self.cfg.n_devices > 1:
+                # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
+                assert self.cfg.layers_per_device is not None
+                residual = residual.to(
+                    device=torch.device(
+                        "cuda",
+                        i // self.cfg.layers_per_device,
+                    ),
+                )
+                if shortformer_pos_embed is not None:
+                    shortformer_pos_embed = shortformer_pos_embed.to(
+                        device=torch.device(
+                            "cuda",
+                            i // self.cfg.layers_per_device,
+                        ),
+                    )
+
             residual = block(
                 residual,
                 past_kv_cache_entry=past_kv_cache[i]
                 if past_kv_cache is not None
-                else None,  # Cache is contains a list of HookedTransformerKeyValueCache objects, one for each block
+                else None,  # Cache contains a list of HookedTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed=shortformer_pos_embed,
             )  # [batch, pos, d_model]
         if self.cfg.normalization_type is not None:
@@ -275,6 +300,8 @@ class HookedTransformer(HookedRootModule):
         """
         Wrapper around utils.lm_cross_entropy_loss, used in forward() with return_type=="loss" or "both".
         """
+        if tokens.device != logits.device:
+            tokens = tokens.to(logits.device)
         return utils.lm_cross_entropy_loss(logits, tokens, per_token)
 
     def run_with_cache(
@@ -1084,11 +1111,12 @@ class HookedTransformer(HookedRootModule):
 
         assert isinstance(tokens, torch.Tensor)
         batch_size, ctx_length = tokens.shape
-        tokens = tokens.to(self.cfg.device)
+        tokens = tokens.to(torch.device(self.cfg.device, 0))
         if use_past_kv_cache:
             past_kv_cache = HookedTransformerKeyValueCache.init_cache(
                 self.cfg, self.cfg.device, batch_size
             )
+
         else:
             past_kv_cache = None
 
