@@ -48,14 +48,12 @@ class HookPoint(nn.Module):
                 return hook(module_output, hook=self)
 
             handle = self.register_forward_hook(full_hook)
-            
             handle = LensHandle(handle, is_permanent)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
-
             handle = self.register_full_backward_hook(full_hook)
             handle = LensHandle(handle, is_permanent)
             self.bwd_hooks.append(handle)
@@ -64,16 +62,16 @@ class HookPoint(nn.Module):
 
     def remove_hooks(self, dir="fwd", including_permanent=False) -> None:
 
-        def _remove_hooks(hooks, including_permanent=False) -> None:
+        def _remove_hooks(hooks: list[LensHandle]) -> None:
             for handle in hooks:
                 if handle.is_permanent or including_permanent:
                     handle.hook.remove()
-            return [] if including_permanent else list(filter(lambda hook: hook.is_permanent, hooks))
+            return [] if including_permanent else [hook for hook in hooks if hook.is_permanent]
 
         if dir == "fwd" or dir == "both":
-            self.fwd_hooks = _remove_hooks(self.fwd_hooks, including_permanent)
+            self.fwd_hooks = _remove_hooks(self.fwd_hooks)
         if dir == "bwd" or dir == "both":
-            self.bwd_hooks = _remove_hooks(self.bwd_hooks, including_permanent)
+            self.bwd_hooks = _remove_hooks(self.bwd_hooks)
         if dir not in ["fwd", "bwd", "both"]:
             raise ValueError(f"Invalid direction {dir}")
 
