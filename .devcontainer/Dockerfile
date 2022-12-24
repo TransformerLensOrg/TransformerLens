@@ -9,17 +9,21 @@ ARG USER_GID=$USER_UID
 # Create the user
 # https://code.visualstudio.com/remote/advancedcontainers/add-nonroot-user
 RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    && usermod -a -G video user \ 
-    && apt-get update \
-    && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME
+  && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+  && usermod -a -G video user \ 
+  && apt-get update \
+  && apt-get install -y sudo \
+  && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+  && chmod 0440 /etc/sudoers.d/$USERNAME
 
 # Install dependencies
 RUN sudo apt-get update && \
   DEBIAN_FRONTEND=noninteractive apt-get -qq -y install \
   build-essential \
+  python3.9 \
+  python3.9-dev \
+  python3.9-distutils \
+  python3.9-venv \
   curl \
   git
 
