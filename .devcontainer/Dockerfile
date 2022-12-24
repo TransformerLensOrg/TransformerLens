@@ -23,14 +23,6 @@ RUN sudo apt-get update && \
   curl \
   git
 
-# Install pip (we need the latest version not the standard Ubuntu version, to
-# support modern wheels)
-RUN sudo curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3.9 get-pip.py
-
-# Set python aliases
-RUN sudo update-alternatives --install /usr/bin/python python /usr/bin/python3.9 1
-RUN sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
-
 # User the new user
 USER $USERNAME
 
