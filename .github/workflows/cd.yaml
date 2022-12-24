@@ -2,10 +2,10 @@ name: CD
 
 on:
   push:
-    branches: 
+    branches:
       - main
   pull_request:
-    branches: 
+    branches:
       - main
 
 permissions:
@@ -17,22 +17,22 @@ jobs:
     name: Test & Type Check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-        cache: 'poetry'
-    - name: Install dependencies
-      run: poetry install --with dev
-    - name: Pytest
-      run: poetry run pytest
-    # - name: Type check
-    #   run: poetry run mypy easy_transformer
-    - name: Build check
-      run: poetry build
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+          cache: "poetry"
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Pytest
+        run: poetry run pytest
+      # - name: Type check
+      #   run: poetry run mypy easy_transformer
+      - name: Build check
+        run: poetry build
 
   # If a commit is tagged with major/minor/patch, this will bump the version
   # and commit that change to main.
@@ -59,27 +59,3 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v4.14.1
         with:
           commit_message: Bump package version
-
-  # release:
-  #   name: Release to PyPi
-  #   runs-on: ubuntu-latest
-  #   needs:
-  #     - checks
-  #     - bump
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Install Poetry
-  #       uses: snok/install-poetry@v1
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v4
-  #       with:
-  #         python-version: '3.9'
-  #         cache: 'poetry'
-  #     - name: Install dependencies
-  #       run: poetry install --with dev
-  #     - name: Build
-  #       run: poetry build
-  #     - name: Publish
-  #       run: poetry publish
-  #       env:
-  #         POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
