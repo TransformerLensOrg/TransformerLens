@@ -567,6 +567,7 @@ class HookedTransformer(HookedRootModule):
         checkpoint_value=None,
         hf_model=None,
         device=None,
+        n_devices=1,
         move_state_dict_to_device=True,
         **model_kwargs,
     ):
@@ -602,6 +603,8 @@ class HookedTransformer(HookedRootModule):
                 to recreate the object. Defaults to None.
             device (str, optional): The device to load the model onto. By
                 default will load to CUDA if available, else CPU.
+            n_devices (int, optional): The number of devices to split the model
+                across. Defaults to 1. If greater than 1, `device` must be cuda.
             move_state_dict_to_device (bool): Whether to move the state dict to the
                 relevant device before processing and loading in the weights.
                 Defaults to True.
@@ -620,6 +623,7 @@ class HookedTransformer(HookedRootModule):
             checkpoint_value=checkpoint_value,
             fold_ln=fold_ln,
             device=device,
+            n_devices=n_devices,
         )
 
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the HookedTransformer parameter names.
@@ -695,9 +699,45 @@ class HookedTransformer(HookedRootModule):
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
         """
-
+        assert (
+            self.cfg.n_devices == 1 or move_state_dict_to_device
+        ), "If n_devices > 1, move_state_dict_to_device must be True"
         if move_state_dict_to_device:
-            state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
+            if self.cfg.n_devices == 1:
+                state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
+            else:
+                assert self.cfg.layers_per_device is not None
+                for k, v in state_dict.items():
+                    if (
+                        k.startswith("embed")
+                        or k.startswith("pos_embed")
+                        or (
+                            k.startswith("blocks")
+                            and (int(k.split(".")[1]) // self.cfg.layers_per_device)
+                            == 0
+                        )
+                    ):
+                        state_dict[k] = v.to(torch.device("cuda", 0))
+                    if (
+                        k.startswith("ln_final")
+                        or k.startswith("unembed")
+                        or (
+                            k.startswith("blocks")
+                            and (int(k.split(".")[1]) // self.cfg.layers_per_device)
+                            == self.cfg.n_devices - 1
+                        )
+                    ):
+                        state_dict[k] = v.to(
+                            torch.device("cuda", self.cfg.n_devices - 1)
+                        )
+                    if k.startswith("blocks"):
+                        state_dict[k] = v.to(
+                            torch.device(
+                                "cuda",
+                                int(k.split(".")[1]) // self.cfg.layers_per_device,
+                            )
+                        )
+
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
             if self.cfg.normalization_type not in ["LN", "LNPre"]:

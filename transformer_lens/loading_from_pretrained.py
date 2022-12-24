@@ -250,7 +250,11 @@ MODEL_ALIASES = {
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
-DEFAULT_MODEL_ALIASES = [MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES]
+DEFAULT_MODEL_ALIASES = [
+    MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name
+    for name in OFFICIAL_MODEL_NAMES
+]
+
 
 def make_model_alias_map():
     """
@@ -430,6 +434,7 @@ def get_pretrained_model_config(
     checkpoint_value: Optional[int] = None,
     fold_ln: bool = False,
     device: Optional[str] = None,
+    n_devices: int = 1,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
 
@@ -452,6 +457,7 @@ def get_pretrained_model_config(
             details). Defaults to False.
         device (str, optional): The device to load the model onto. By
             default will load to CUDA if available, else CPU.
+        n_devices (int): The number of devices to split the model across. Defaults to 1.
 
     """
     official_model_name = get_official_model_name(model_name)
@@ -484,13 +490,16 @@ def get_pretrained_model_config(
             cfg_dict["checkpoint_index"] = checkpoint_index
             cfg_dict["checkpoint_value"] = checkpoint_labels[checkpoint_index]
         elif checkpoint_value is not None:
-            assert checkpoint_value in checkpoint_labels, f"Checkpoint value {checkpoint_value} is not in list of available checkpoints"
+            assert (
+                checkpoint_value in checkpoint_labels
+            ), f"Checkpoint value {checkpoint_value} is not in list of available checkpoints"
             cfg_dict["checkpoint_value"] = checkpoint_value
             cfg_dict["checkpoint_index"] = checkpoint_labels.index(checkpoint_value)
     else:
         cfg_dict["from_checkpoint"] = False
 
     cfg_dict["device"] = device
+    cfg_dict["n_devices"] = n_devices
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
@@ -513,9 +522,9 @@ STANFORD_CRFM_CHECKPOINTS = (
     + list(range(20000, 400000 + 1, 1000))
 )
 
-# Linearly spaced checkpoints for Pythia models, taken every 1000 steps. 
+# Linearly spaced checkpoints for Pythia models, taken every 1000 steps.
 # Batch size 2,097,152 tokens, so checkpoints every 2.1B tokens
-PYTHIA_CHECKPOINTS = list(range(1000, 143000+1, 1000))
+PYTHIA_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
 
 def get_checkpoint_labels(model_name: str):
@@ -584,7 +593,9 @@ def get_pretrained_state_dict(
                     official_model_name, revision=f"step{cfg.checkpoint_value}"
                 )
             else:
-                raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
+                raise ValueError(
+                    f"Checkpoints for model {official_model_name} are not supported"
+                )
         elif hf_model is None:
             hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 
