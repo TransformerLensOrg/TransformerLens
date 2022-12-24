@@ -156,7 +156,7 @@ class HookedTransformer(HookedRootModule):
                 self.unembed.to(torch.device("cuda", self.cfg.n_devices - 1))
                 for i, block in enumerate(self.blocks):
                     assert self.cfg.layers_per_device is not None
-                    block.to(torch.device("cuda", i % self.cfg.layers_per_device))
+                    block.to(torch.device("cuda", i // self.cfg.layers_per_device))
 
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
@@ -711,21 +711,11 @@ class HookedTransformer(HookedRootModule):
                     if (
                         k.startswith("embed")
                         or k.startswith("pos_embed")
-                        or (
-                            k.startswith("blocks")
-                            and (int(k.split(".")[1]) // self.cfg.layers_per_device)
-                            == 0
-                        )
                     ):
                         state_dict[k] = v.to(torch.device("cuda", 0))
                     if (
                         k.startswith("ln_final")
                         or k.startswith("unembed")
-                        or (
-                            k.startswith("blocks")
-                            and (int(k.split(".")[1]) // self.cfg.layers_per_device)
-                            == self.cfg.n_devices - 1
-                        )
                     ):
                         state_dict[k] = v.to(
                             torch.device("cuda", self.cfg.n_devices - 1)
@@ -1202,7 +1192,7 @@ class HookedTransformer(HookedRootModule):
                 temperature=temperature,
                 freq_penalty=freq_penalty,
                 tokens=tokens,
-            )
+            ).to(torch.device(self.cfg.device, 0))
 
             if stop_at_eos:
                 # For all unfinished sequences, add on the next token. If a sequence finished, we throw away the generated token and instead add an EOS token to pad.
