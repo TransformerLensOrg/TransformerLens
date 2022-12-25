@@ -10,7 +10,8 @@ packages = [{include = "transformer_lens"}]
 [tool.poetry.dependencies]
 python = "^3.7"
 einops = "^0.6.0"
-numpy = "^1.21"
+numpy = [{ version = "^1.21", python = "<3.10" },
+         { version = "^1.23", python = ">=3.10" }]
 torch = "^1.10"
 datasets = "^2.7.1"
 transformers = "^4.25.1"
