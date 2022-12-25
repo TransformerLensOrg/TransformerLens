@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  checks:
+    name: Run checks workflow
+    uses: neelnanda-io/TransformerLens/.github/workflows/checks.yml@main
+
+  semver-parser:
+    name: Parse the semantic version from the release
+    runs-on: ubuntu-latest
+    steps:
+     - name: Parse semver string
+       id: semver_parser 
+       uses: booxmedialtd/ws-action-parse-semver@v1.4.6
+       with:
+         input_string: ${{ github.event.release.tag_name }}
+    outputs:
+      major: "${{ steps.semver_parser.outputs.major }}"
+      minor: "${{ steps.semver_parser.outputs.minor }}"
+      patch: "${{ steps.semver_parser.outputs.patch }}"
+      semver: "${{ steps.semver_parser.outputs.fullversion }}"
+
+  release-python:
+    name: Release Python package to PyPi
+    needs:
+      - checks
+      - semver-parser
+      - release-react
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Poetry config
+        run: poetry self add 'poethepoet[poetry_plugin]'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'poetry'
+      - name: Install dependencies
+        run: poetry install --with dev
+      - name: Set the version
+        run: poetry version ${{needs.semver-parser.outputs.semver}}
+      - name: Build
+        run: poetry build
+      - name: Publish
+        run: poetry publish
+        env:
+          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
+
+  commit-version-updates:
+    name: Bump Python package version
+    needs:
+      - semver-parser
+      - release-react
+      - release-python
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'poetry'
+      - name: Bump Python package version
+        run: poetry version ${{needs.semver-parser.outputs.semver}}
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v4.16.0
+        with:
+          commit_message: Release version ${{needs.semver-parser.outputs.semver}}
+          branch: main

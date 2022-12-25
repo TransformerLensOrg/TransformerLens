@@ -8,7 +8,6 @@ MANIFEST.in
 settings.ini
 _proc
 core.py
-*.yml
 nbs
 _modidx.py
 .ipynb_checkpoints
