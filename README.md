@@ -38,7 +38,11 @@ Import the library with `import transformer_lens`
 
 ## Local Development
 
-### Setup
+### DevContainer
+
+For a one-click setup of your development environment, this project includes a [DevContainer](https://containers.dev/). It can be used locally with [VS Code](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) or with [GitHub Codespaces](https://github.com/features/codespaces).
+
+### Manual Setup
 
 This project uses [Poetry](https://python-poetry.org/docs/#installation) for package management. Install as follows (this will also setup your virtual environment):
 
