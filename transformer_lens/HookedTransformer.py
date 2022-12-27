@@ -16,6 +16,7 @@ from transformers import (
     AutoTokenizer,
     PreTrainedTokenizer,
 )
+from datasets.load import load_dataset
 
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens import HookedTransformerConfig
@@ -134,6 +135,9 @@ class HookedTransformer(HookedRootModule):
         if move_to_device:
             # Move the model to the relevant device, suppress the logging message
             self.to(self.cfg.device, print_details=False)
+        
+        # Helper variable to store a small (10K-20K) dataset of training data. Empty by default, can be loaded with load_sample_training_dataset
+        self.dataset = None
 
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
@@ -299,9 +303,16 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str]],
         prepend_bos: bool = True,
         move_to_device: bool = True,
+        truncate: bool = True
     ) -> TT["batch", "pos"]:
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. 
+
+        Args:
+            input (Union[str, List[str]]). The input to tokenize
+            prepend_bos (bool): Whether to prepend a beginning of sequence token. Defaults to True
+            move_to_device (bool): Whether to move the output tensor of tokens to the device the model lives on. Defaults to True
+            truncate (bool): If the output tokens are too long, whether to truncate the output tokens to the model's max context window. Does nothing for shorter inputs. Defaults to True.
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
         (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
@@ -314,7 +325,13 @@ class HookedTransformer(HookedRootModule):
                 input = self.tokenizer.bos_token + input
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
-        tokens = self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
+        tokens = self.tokenizer(
+            input, 
+            return_tensors = "pt", 
+            padding = True,
+            truncation = truncate,
+            max_length = self.cfg.n_ctx if truncate else None
+            )["input_ids"]
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
         return tokens
@@ -1307,3 +1324,52 @@ class HookedTransformer(HookedRootModule):
             for l in range(self.cfg.n_layers)
             for h in range(self.cfg.n_heads)
         ]
+
+    def load_sample_training_dataset(self):
+        """ 
+        Helper function to load in a 10K-20K dataset of elements from the model's training data distribution. 
+
+        Wrapper around utils.get_dataset, which identifies the appropriate dataset the pretrained models. Each dataset has a 'text' field, which contains the relevant info, some have several meta data fields.
+
+        Notes:
+        * GPT-2's training data is not open source. OpenWebText is a replication (links with >3 karma on Reddit)
+        * OPT's training data is not open source, and is a mess of different things that is hard to replicate. I default to the Pile, which covers some of it, but imperfectly.
+
+        (Some models will have actually been trained on the data supplied here, for some it's from the validation set)
+        """
+        if self.cfg.original_architecture == "neel":
+            self.dataset = utils.get_dataset("c4_code")
+        elif self.cfg.original_architecture == "neel-solu-old":
+            self.dataset = utils.get_dataset("pile")
+        elif self.cfg.original_architecture == "GPT2LMHeadModel":
+            self.dataset = utils.get_dataset("openwebtext")
+        elif self.cfg.original_architecture == "GPTNeoForCausalLM":
+            self.dataset = utils.get_dataset("pile")
+        elif self.cfg.original_architecture == "GPTNeoXForCausalLM":
+            self.dataset = utils.get_dataset("pile")
+        elif self.cfg.original_architecture == "GPTJForCausalLM":
+            self.dataset = utils.get_dataset("pile")
+        elif self.cfg.original_architecture == "OPTForCausalLM":
+            self.dataset = utils.get_dataset("pile")
+        else:
+            raise ValueError(f"We do not have an available dataset for the relevant model: {self.cfg.original_architecture}")
+        return self.dataset
+    
+    def sample_datapoint(self, tokenize=False) -> Union[str, TT[1, "pos"]]:
+        """
+        Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution the model was trained on. 
+
+        Args:
+            tokenize (bool): Whether to return tokens (instead of text). Defaults to False. Note that the returned tokens will be automatically truncated to the model's max context size.
+
+        Implicitly calls self.load_sample_training_dataset if it hasn't already been called. Only works for pretrained models with an associated dataset. But you can manually replace self.dataset with a dataset of your choice if you want.
+        """
+        if self.dataset is None:
+            self.load_sample_training_dataset()
+        sample_dataset_size = len(self.dataset)
+        index = np.random.randint(0, sample_dataset_size)
+        if not tokenize:
+            return self.dataset[index]['text']
+        else:
+            return self.to_tokens(self.dataset[index]['text'], truncate=True)
+

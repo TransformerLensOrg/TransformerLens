@@ -11,6 +11,8 @@ import transformers
 from huggingface_hub import hf_hub_download
 import re
 from rich import print as rprint
+from datasets.arrow_dataset import Dataset
+from datasets.load import load_dataset
 
 from transformer_lens import FactoredMatrix
 
@@ -545,3 +547,33 @@ def composition_scores(
 
 
 # %%
+def get_dataset(dataset_name: str) -> Dataset:
+    """
+    Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader. 
+    
+    Each dataset has a 'text' field, which contains the relevant info, some also have several meta data fields
+
+    Possible inputs:
+    * openwebtext (approx the GPT-2 training data https://huggingface.co/datasets/openwebtext)
+    * pile (The Pile, a big mess of tons of diverse data https://pile.eleuther.ai/)
+    * c4 (Colossal, Cleaned, Common Crawl - basically openwebtext but bigger https://huggingface.co/datasets/c4)
+    * code (Codeparrot Clean, a Python code dataset https://huggingface.co/datasets/codeparrot/codeparrot-clean )
+    * c4_code (c4 + code - the 20K data points from c4-10k and code-10k. This is the mix of datasets used to train my interpretability-friendly models, though note that they are *not* in the correct ratio! There's 10K texts for each, but about 22M tokens of code and 5M tokens of C4)
+    * wiki (Wikipedia, generated from the 20220301.en split of https://huggingface.co/datasets/wikipedia )
+    """
+    if dataset_name in ["openwebtext", "owt"]:
+        dataset = load_dataset("stas/openwebtext-10k", split='train')
+    elif dataset_name == "pile":
+        dataset = load_dataset("NeelNanda/pile-10k", split='train')
+    elif dataset_name == "c4":
+        dataset = load_dataset("NeelNanda/c4-10k", split='train')
+    elif dataset_name in ["code", "python"]:
+        dataset = load_dataset("NeelNanda/code-10k", split='train')
+    elif dataset_name in ["c4_code", "c4-code"]:
+        # Note that this one has 20K 
+        dataset = load_dataset("NeelNanda/c4-code-20k", split='train')
+    elif dataset_name == "wiki":
+        dataset = load_dataset("NeelNanda/wiki-10k", split="train")
+    else:
+        raise ValueError(f"Dataset {dataset_name} not supported")
+    return dataset
