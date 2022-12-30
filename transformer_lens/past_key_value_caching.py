@@ -60,26 +60,17 @@ class HookedTransformerKeyValueCache:
     def init_cache(
         cls, cfg: HookedTransformerConfig, device: torch.device, batch_size: int = 1
     ):
-        if cfg.n_devices == 1:
-            return cls(
-                entries=[
-                    HookedTransformerKeyValueCacheEntry.init_cache_entry(
-                        cfg, device, batch_size
-                    )
-                    for _ in range(cfg.n_layers)
-                ]
-            )
-        else:
-            return cls(
-                entries=[
-                    HookedTransformerKeyValueCacheEntry.init_cache_entry(
-                        cfg,
-                        torch.device("cuda", i // cfg.layers_per_device),
-                        batch_size,
-                    )
-                    for i in range(cfg.n_layers)
-                ]
-            )
+        assert cfg.layers_per_device is not None
+        return cls(
+            entries=[
+                HookedTransformerKeyValueCacheEntry.init_cache_entry(
+                    cfg,
+                    torch.device(device.type, i // cfg.layers_per_device),
+                    batch_size,
+                )
+                for i in range(cfg.n_layers)
+            ]
+        )
 
     def __getitem__(self, idx):
         return self.entries[idx]

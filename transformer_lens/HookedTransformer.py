@@ -139,24 +139,21 @@ class HookedTransformer(HookedRootModule):
             self.init_weights()
 
         if move_to_device:
-            if self.cfg.n_devices == 1:
-                # Move the model to the relevant device, suppress the logging message
-                self.to(self.cfg.device, print_details=False)
-            else:
-                # We load the devices in a pipeline manner - the first device gets the embed and pos_embed layers and the first n_layers // n_devices blocks,
-                # the second gets the next n_layers // n_devices blocks ... the last gets the last n_layers // n_devices blocks, the final
-                # normalization layer (if it exists) and the unembed layer
-                self.embed.to(torch.device("cuda", 0))
-                self.hook_embed.to(torch.device("cuda", 0))
-                if self.cfg.positional_embedding_type != "rotary":
-                    self.pos_embed.to(torch.device("cuda", 0))
-                    self.hook_pos_embed.to(torch.device("cuda", 0))
-                if hasattr(self, "ln_final"):
-                    self.ln_final.to(torch.device("cuda", self.cfg.n_devices - 1))
-                self.unembed.to(torch.device("cuda", self.cfg.n_devices - 1))
-                for i, block in enumerate(self.blocks):
-                    assert self.cfg.layers_per_device is not None
-                    block.to(torch.device("cuda", i // self.cfg.layers_per_device))
+            # We load the devices in a pipeline manner - the first device gets the embed and pos_embed layers and the first n_layers // n_devices blocks,
+            # the second gets the next n_layers // n_devices blocks ... the last gets the last n_layers // n_devices blocks, the final
+            # normalization layer (if it exists) and the unembed layer
+            assert self.cfg.device is not None
+            self.embed.to(torch.device(self.cfg.device, 0))
+            self.hook_embed.to(torch.device(self.cfg.device, 0))
+            if self.cfg.positional_embedding_type != "rotary":
+                self.pos_embed.to(torch.device(self.cfg.device, 0))
+                self.hook_pos_embed.to(torch.device(self.cfg.device, 0))
+            if hasattr(self, "ln_final"):
+                self.ln_final.to(torch.device(self.cfg.device, self.cfg.n_devices - 1))
+            self.unembed.to(torch.device(self.cfg.device, self.cfg.n_devices - 1))
+            for i, block in enumerate(self.blocks):
+                assert self.cfg.layers_per_device is not None
+                block.to(torch.device(self.cfg.device, i // self.cfg.layers_per_device))
 
         # Helper variable to store a small (10K-20K) dataset of training data. Empty by default, can be loaded with load_sample_training_dataset
         self.dataset = None
@@ -251,22 +248,22 @@ class HookedTransformer(HookedRootModule):
         for i, block in enumerate(self.blocks):
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
-            if self.cfg.n_devices > 1:
-                # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
-                assert self.cfg.layers_per_device is not None
-                residual = residual.to(
+            # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
+            assert self.cfg.layers_per_device is not None
+            assert self.cfg.device is not None
+            residual = residual.to(
+                device=torch.device(
+                    self.cfg.device,
+                    i // self.cfg.layers_per_device,
+                ),
+            )
+            if shortformer_pos_embed is not None:
+                shortformer_pos_embed = shortformer_pos_embed.to(
                     device=torch.device(
-                        "cuda",
+                        self.cfg.device,
                         i // self.cfg.layers_per_device,
                     ),
                 )
-                if shortformer_pos_embed is not None:
-                    shortformer_pos_embed = shortformer_pos_embed.to(
-                        device=torch.device(
-                            "cuda",
-                            i // self.cfg.layers_per_device,
-                        ),
-                    )
 
             residual = block(
                 residual,
@@ -713,30 +710,24 @@ class HookedTransformer(HookedRootModule):
             self.cfg.n_devices == 1 or move_state_dict_to_device
         ), "If n_devices > 1, move_state_dict_to_device must be True"
         if move_state_dict_to_device:
-            if self.cfg.n_devices == 1:
-                state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
-            else:
-                assert self.cfg.layers_per_device is not None
-                for k, v in state_dict.items():
-                    if (
-                        k.startswith("embed")
-                        or k.startswith("pos_embed")
-                    ):
-                        state_dict[k] = v.to(torch.device("cuda", 0))
-                    if (
-                        k.startswith("ln_final")
-                        or k.startswith("unembed")
-                    ):
-                        state_dict[k] = v.to(
-                            torch.device("cuda", self.cfg.n_devices - 1)
-                        )
-                    if k.startswith("blocks"):
-                        state_dict[k] = v.to(
-                            torch.device(
-                                "cuda",
-                                int(k.split(".")[1]) // self.cfg.layers_per_device,
-                            )
-                        )
+            assert self.cfg.device is not None
+            assert self.cfg.layers_per_device is not None
+            for k, v in state_dict.items():
+                if (
+                    k.startswith("embed")
+                    or k.startswith("pos_embed")
+                ):
+                    state_dict[k] = v.to(torch.device(self.cfg.device, 0))
+                if (
+                    k.startswith("ln_final")
+                    or k.startswith("unembed")
+                ):
+                    state_dict[k] = v.to(
+                        torch.device(self.cfg.device, self.cfg.n_devices - 1)
+                    )
+                if k.startswith("blocks"):
+                    state_dict[k] = v.to(
+                        torch.device(self.cfg.device, int(k.split(".")[1]) // self.cfg.layers_per_device))
 
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
