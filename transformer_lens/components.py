@@ -335,10 +335,9 @@ class Attention(nn.Module):
 
         Returns a FactoredMatrix, with left matrix W_Q [head_index, d_model, d_head] and right matrix W_K.T [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model] matrix. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the QK circuit of a head k, attn.QK[k] works.
         """
-        W_K_transpose = einops.rearrange(
-            self.W_K, "head_index d_model d_head -> head_index d_head d_model"
-        )
+        W_K_transpose = einops.rearrange(self.W_K , "head_index d_model d_head -> head_index d_head d_model")
         return FactoredMatrix(self.W_Q, W_K_transpose)
+
 
     def forward(
         self,

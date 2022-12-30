@@ -22,7 +22,6 @@ from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens import HookedTransformerConfig
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.FactoredMatrix import FactoredMatrix
-
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from transformer_lens.past_key_value_caching import (
     HookedTransformerKeyValueCache,
@@ -158,7 +157,7 @@ class HookedTransformer(HookedRootModule):
                 for i, block in enumerate(self.blocks):
                     assert self.cfg.layers_per_device is not None
                     block.to(torch.device("cuda", i // self.cfg.layers_per_device))
-        
+
         # Helper variable to store a small (10K-20K) dataset of training data. Empty by default, can be loaded with load_sample_training_dataset
         self.dataset = None
 
@@ -195,7 +194,6 @@ class HookedTransformer(HookedRootModule):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
-        assert isinstance(tokens, torch.Tensor)
         if len(tokens.shape) == 1:
             # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
             tokens = tokens[None]
@@ -370,8 +368,8 @@ class HookedTransformer(HookedRootModule):
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
         tokens = self.tokenizer(
-            input, 
-            return_tensors = "pt", 
+            input,
+            return_tensors = "pt",
             padding = True,
             truncation = truncate,
             max_length = self.cfg.n_ctx if truncate else None
@@ -487,6 +485,7 @@ class HookedTransformer(HookedRootModule):
         else:
             tokens = input
 
+
         if len(tokens.shape) == 2:
             # If the tokens have shape [1, seq_len], flatten to [seq_len]
             assert (
@@ -501,7 +500,7 @@ class HookedTransformer(HookedRootModule):
             single_token = single_token.item()
 
         indices = torch.arange(len(tokens))[tokens == single_token]
-        assert len(indices) > 0, f"The token does not occur in the prompt"
+        assert len(indices)>0, f"The token does not occur in the prompt"
         if mode == "first":
             return indices[0].item()
         elif mode == "last":
@@ -509,11 +508,7 @@ class HookedTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def tokens_to_residual_directions(
-        self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]
-    ) -> Union[
-        TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]
-    ]:
+    def tokens_to_residual_directions(self, tokens: Union[str, int, TT[()], TT["position"], TT["batch", "position"]]) -> Union[TT["d_model"], TT["position", "d_model"], TT["batch", "position", "d_model"]]:
         """Maps tokens to a tensor with the unembedding vector for those tokens, ie the vector in the residual stream that we dot with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map. This is done automatically with the fold_ln flag on from_pretrained
@@ -527,12 +522,10 @@ class HookedTransformer(HookedRootModule):
         Returns:
             residual_direction torch.Tensor: The unembedding vector for the token(s), a stack of [d_model] tensor.
         """
-        if isinstance(tokens, torch.Tensor) and tokens.numel() > 1:
+        if isinstance(tokens, torch.Tensor) and tokens.numel()>1:
             # If the tokens are a tensor, and have more than one element, assume they are a batch of tokens
             residual_directions = self.W_U[:, tokens]
-            residual_directions = einops.rearrange(
-                residual_directions, "d_model ... -> ... d_model"
-            )
+            residual_directions = einops.rearrange(residual_directions, "d_model ... -> ... d_model")
             return residual_directions
         else:
             # Otherwise there is a single token
@@ -540,7 +533,7 @@ class HookedTransformer(HookedRootModule):
                 token = self.to_single_token(tokens)
             elif isinstance(tokens, int):
                 token = tokens
-            elif isinstance(tokens, torch.Tensor) and tokens.numel() == 1:
+            elif isinstance(tokens, torch.Tensor) and tokens.numel()==1:
                 token = tokens.item()
             else:
                 raise ValueError(f"Invalid token type: {type(tokens)}")
@@ -847,18 +840,15 @@ class HookedTransformer(HookedRootModule):
             state_dict[f"blocks.{l}.attn.W_Q"] -= einops.reduce(
                 state_dict[f"blocks.{l}.attn.W_Q"],
                 "head_index d_model d_head -> head_index 1 d_head",
-                "mean",
-            )
+                "mean")
             state_dict[f"blocks.{l}.attn.W_K"] -= einops.reduce(
                 state_dict[f"blocks.{l}.attn.W_K"],
                 "head_index d_model d_head -> head_index 1 d_head",
-                "mean",
-            )
+                "mean")
             state_dict[f"blocks.{l}.attn.W_V"] -= einops.reduce(
                 state_dict[f"blocks.{l}.attn.W_V"],
                 "head_index d_model d_head -> head_index 1 d_head",
-                "mean",
-            )
+                "mean")
 
             del (
                 state_dict[f"blocks.{l}.ln1.w"],
@@ -884,8 +874,7 @@ class HookedTransformer(HookedRootModule):
                 state_dict[f"blocks.{l}.mlp.W_in"] -= einops.reduce(
                     state_dict[f"blocks.{l}.mlp.W_in"],
                     "d_model d_mlp -> 1 d_mlp",
-                    "mean",
-                )
+                    "mean")
 
                 del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
 
@@ -908,8 +897,7 @@ class HookedTransformer(HookedRootModule):
                     state_dict[f"blocks.{l}.mlp.W_out"] -= einops.reduce(
                         state_dict[f"blocks.{l}.mlp.W_out"],
                         "d_mlp d_model -> 1 d_model",
-                        "mean",
-                    )
+                        "mean")
                     del (
                         state_dict[f"blocks.{l}.mlp.ln.w"],
                         state_dict[f"blocks.{l}.mlp.ln.b"],
@@ -927,8 +915,9 @@ class HookedTransformer(HookedRootModule):
 
         # Center the weights that read in from the LayerNormPre
         state_dict[f"unembed.W_U"] -= einops.reduce(
-            state_dict[f"unembed.W_U"], "d_model d_vocab -> 1 d_vocab", "mean"
-        )
+            state_dict[f"unembed.W_U"],
+            "d_model d_vocab -> 1 d_vocab",
+            "mean")
 
         del state_dict[f"ln_final.w"]
         return state_dict
@@ -980,18 +969,16 @@ class HookedTransformer(HookedRootModule):
         """
         for layer in range(self.cfg.n_layers):
             # shape [head_index, d_head]
-            b_V = state_dict[f"blocks.{layer}.attn.b_V"]
+            b_V = state_dict[f'blocks.{layer}.attn.b_V']
             # [head_index, d_head, d_model]
-            W_O = state_dict[f"blocks.{layer}.attn.W_O"]
+            W_O = state_dict[f'blocks.{layer}.attn.W_O']
             # [d_model]
-            b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
+            b_O_original = state_dict[f'blocks.{layer}.attn.b_O']
 
-            folded_b_O = b_O_original + einsum(
-                "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
-            )
+            folded_b_O = b_O_original + einsum("head_index d_head, head_index d_head d_model -> d_model", b_V, W_O)
 
-            state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
-            state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
+            state_dict[f'blocks.{layer}.attn.b_O'] = folded_b_O
+            state_dict[f'blocks.{layer}.attn.b_V'] = torch.zeros_like(b_V)
         return state_dict
 
     def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
@@ -1163,7 +1150,6 @@ class HookedTransformer(HookedRootModule):
             past_kv_cache = HookedTransformerKeyValueCache.init_cache(
                 self.cfg, self.cfg.device, batch_size
             )
-
         else:
             past_kv_cache = None
 
@@ -1410,8 +1396,8 @@ class HookedTransformer(HookedRootModule):
         ]
 
     def load_sample_training_dataset(self):
-        """ 
-        Helper function to load in a 10K-20K dataset of elements from the model's training data distribution. 
+        """
+        Helper function to load in a 10K-20K dataset of elements from the model's training data distribution.
 
         Wrapper around utils.get_dataset, which identifies the appropriate dataset the pretrained models. Each dataset has a 'text' field, which contains the relevant info, some have several meta data fields.
 
@@ -1438,10 +1424,10 @@ class HookedTransformer(HookedRootModule):
         else:
             raise ValueError(f"We do not have an available dataset for the relevant model: {self.cfg.original_architecture}")
         return self.dataset
-    
+
     def sample_datapoint(self, tokenize=False) -> Union[str, TT[1, "pos"]]:
         """
-        Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution the model was trained on. 
+        Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution the model was trained on.
 
         Args:
             tokenize (bool): Whether to return tokens (instead of text). Defaults to False. Note that the returned tokens will be automatically truncated to the model's max context size.

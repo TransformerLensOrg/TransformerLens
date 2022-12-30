@@ -10,7 +10,6 @@ import pprint
 
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
-
 @dataclass
 class HookedTransformerConfig:
     """
@@ -162,7 +161,7 @@ class HookedTransformerConfig:
     n_params: Optional[int] = None
 
     def __post_init__(self):
-        if self.n_heads == -1:
+        if self.n_heads==-1:
             self.n_heads = self.d_model // self.d_head
 
             if not self.d_model % (self.d_head) == 0:
