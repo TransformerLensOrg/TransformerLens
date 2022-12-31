@@ -36,7 +36,7 @@ class HookPoint(nn.Module):
         self.name = None
 
     def add_perma_hook(self, hook, dir="fwd") -> None:
-        self.add_hook(hook, dir=dir, perma=True)
+        self.add_hook(hook, dir=dir, is_permanent=True)
 
     def add_hook(self, hook, dir="fwd", is_permanent=False) -> None:
         # Hook format is fn(activation, hook_name)
@@ -62,11 +62,14 @@ class HookPoint(nn.Module):
 
     def remove_hooks(self, dir="fwd", including_permanent=False) -> None:
 
-        def _remove_hooks(hooks: list[LensHandle]) -> None:
-            for handle in hooks:
-                if handle.is_permanent or including_permanent:
+        def _remove_hooks(handles: list[LensHandle]) -> None:
+            output_handles = []
+            for handle in handles:
+                if not handle.is_permanent or including_permanent:
                     handle.hook.remove()
-            return [] if including_permanent else [hook for hook in hooks if hook.is_permanent]
+                else:
+                    output_handles.append(handle)
+            return output_handles
 
         if dir == "fwd" or dir == "both":
             self.fwd_hooks = _remove_hooks(self.fwd_hooks)
