@@ -334,7 +334,7 @@ class HookedTransformer(HookedRootModule):
         truncate: bool = True
     ) -> TT["batch", "pos"]:
         """
-        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model.
+        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. 
 
         Args:
             input (Union[str, List[str]]). The input to tokenize
@@ -354,8 +354,8 @@ class HookedTransformer(HookedRootModule):
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
         tokens = self.tokenizer(
-            input,
-            return_tensors = "pt",
+            input, 
+            return_tensors = "pt", 
             padding = True,
             truncation = truncate,
             max_length = self.cfg.n_ctx if truncate else None
@@ -462,15 +462,15 @@ class HookedTransformer(HookedRootModule):
             input (Union[str, torch.Tensor]): The sequence to
                 search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of tokens with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
-            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to
-                the function, otherwise ignored.
+            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to 
+                the function, otherwise ignored. 
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
-
+        
 
         if len(tokens.shape) == 2:
             # If the tokens have shape [1, seq_len], flatten to [seq_len]
@@ -498,7 +498,7 @@ class HookedTransformer(HookedRootModule):
         """Maps tokens to a tensor with the unembedding vector for those tokens, ie the vector in the residual stream that we dot with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map. This is done automatically with the fold_ln flag on from_pretrained
-
+        
         WARNING 2: LayerNorm scaling will scale up or down the effective direction in the residual stream for each output token on any given input token position. ActivationCache.apply_ln_to_stack will apply the appropriate scaling to these directions.
 
         Args:
@@ -526,20 +526,21 @@ class HookedTransformer(HookedRootModule):
             residual_direction = self.W_U[:, token]
             return residual_direction
 
+
     def to(self, device_or_dtype, print_details=True):
         """
         Wrapper around to that also changes self.cfg.device if it's a torch.device or string. If torch.dtype, just passes through
         """
         if isinstance(device_or_dtype, torch.device):
             self.cfg.device = device_or_dtype.type
-            if print_details:
+            if print_details: 
                 print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, str):
             self.cfg.device = device_or_dtype
-            if print_details:
+            if print_details: 
                 print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, torch.dtype):
-            if print_details:
+            if print_details: 
                 print("Changing model dtype to", device_or_dtype)
         return nn.Module.to(self, device_or_dtype)
 
@@ -809,24 +810,24 @@ class HookedTransformer(HookedRootModule):
                 * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             )
 
-            # Finally, we center the weights reading from the residual stream. The output of the first
-            # part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any input vector
+            # Finally, we center the weights reading from the residual stream. The output of the first 
+            # part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any input vector 
             # of the matrix doesn't matter and can be set to zero.
-            # Equivalently, the output of LayerNormPre is orthogonal to the vector of all 1s (because
+            # Equivalently, the output of LayerNormPre is orthogonal to the vector of all 1s (because 
             # dotting with that gets the sum), so we can remove the component of the matrix parallel to this.
             state_dict[f"blocks.{l}.attn.W_Q"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_Q"],
-                "head_index d_model d_head -> head_index 1 d_head",
+                state_dict[f"blocks.{l}.attn.W_Q"], 
+                "head_index d_model d_head -> head_index 1 d_head", 
                 "mean")
             state_dict[f"blocks.{l}.attn.W_K"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_K"],
-                "head_index d_model d_head -> head_index 1 d_head",
+                state_dict[f"blocks.{l}.attn.W_K"], 
+                "head_index d_model d_head -> head_index 1 d_head", 
                 "mean")
             state_dict[f"blocks.{l}.attn.W_V"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_V"],
-                "head_index d_model d_head -> head_index 1 d_head",
+                state_dict[f"blocks.{l}.attn.W_V"], 
+                "head_index d_model d_head -> head_index 1 d_head", 
                 "mean")
-
+            
             del (
                 state_dict[f"blocks.{l}.ln1.w"],
                 state_dict[f"blocks.{l}.ln1.b"],
@@ -849,11 +850,12 @@ class HookedTransformer(HookedRootModule):
 
                 # Center the weights that read in from the LayerNormPre
                 state_dict[f"blocks.{l}.mlp.W_in"] -= einops.reduce(
-                    state_dict[f"blocks.{l}.mlp.W_in"],
-                    "d_model d_mlp -> 1 d_mlp",
+                    state_dict[f"blocks.{l}.mlp.W_in"], 
+                    "d_model d_mlp -> 1 d_mlp", 
                     "mean")
 
                 del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
+
 
                 if self.cfg.act_fn.startswith("solu"):
                     # Fold ln3 into activation
@@ -872,8 +874,8 @@ class HookedTransformer(HookedRootModule):
 
                     # Center the weights that read in from the LayerNormPre
                     state_dict[f"blocks.{l}.mlp.W_out"] -= einops.reduce(
-                        state_dict[f"blocks.{l}.mlp.W_out"],
-                        "d_mlp d_model -> 1 d_model",
+                        state_dict[f"blocks.{l}.mlp.W_out"], 
+                        "d_mlp d_model -> 1 d_model", 
                         "mean")
                     del (
                         state_dict[f"blocks.{l}.mlp.ln.w"],
@@ -892,8 +894,8 @@ class HookedTransformer(HookedRootModule):
 
         # Center the weights that read in from the LayerNormPre
         state_dict[f"unembed.W_U"] -= einops.reduce(
-            state_dict[f"unembed.W_U"],
-            "d_model d_vocab -> 1 d_vocab",
+            state_dict[f"unembed.W_U"], 
+            "d_model d_vocab -> 1 d_vocab", 
             "mean")
 
         del state_dict[f"ln_final.w"]
@@ -937,10 +939,10 @@ class HookedTransformer(HookedRootModule):
             state_dict["unembed.b_U"] - state_dict["unembed.b_U"].mean()
         )
         return state_dict
-
+    
     def fold_value_biases(self, state_dict: Dict[str, torch.Tensor]):
         """Fold the value biases into the output bias. Because attention patterns add up to 1, the value biases always have a constant effect on a head's output
-        Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with.
+        Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with. 
         We can factor this all into a single output bias to the layer, and make it easier to interpret the head's output.
         Formally, we take b_O_new = b_O_original + \sum_head b_V_head @ W_O_head
         """
@@ -953,8 +955,8 @@ class HookedTransformer(HookedRootModule):
             b_O_original = state_dict[f'blocks.{layer}.attn.b_O']
 
             folded_b_O = b_O_original + einsum("head_index d_head, head_index d_head d_model -> d_model", b_V, W_O)
-
-            state_dict[f'blocks.{layer}.attn.b_O'] = folded_b_O
+            
+            state_dict[f'blocks.{layer}.attn.b_O'] = folded_b_O 
             state_dict[f'blocks.{layer}.attn.b_V'] = torch.zeros_like(b_V)
         return state_dict
 
@@ -1373,8 +1375,8 @@ class HookedTransformer(HookedRootModule):
         ]
 
     def load_sample_training_dataset(self):
-        """
-        Helper function to load in a 10K-20K dataset of elements from the model's training data distribution.
+        """ 
+        Helper function to load in a 10K-20K dataset of elements from the model's training data distribution. 
 
         Wrapper around utils.get_dataset, which identifies the appropriate dataset the pretrained models. Each dataset has a 'text' field, which contains the relevant info, some have several meta data fields.
 
@@ -1401,10 +1403,10 @@ class HookedTransformer(HookedRootModule):
         else:
             raise ValueError(f"We do not have an available dataset for the relevant model: {self.cfg.original_architecture}")
         return self.dataset
-
+    
     def sample_datapoint(self, tokenize=False) -> Union[str, TT[1, "pos"]]:
         """
-        Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution the model was trained on.
+        Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution the model was trained on. 
 
         Args:
             tokenize (bool): Whether to return tokens (instead of text). Defaults to False. Note that the returned tokens will be automatically truncated to the model's max context size.

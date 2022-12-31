@@ -56,7 +56,7 @@ def get_corner(tensor, n=3):
     elif isinstance(tensor, FactoredMatrix):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
 def to_numpy(tensor):
-    """
+    """ 
     Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
     """
     if isinstance(tensor, np.ndarray):
@@ -231,7 +231,7 @@ def tokenize_and_concatenate(
     return tokenized_dataset
 
 
-"""
+""" 
 Test ^
 
 data = Dataset.from_dict({"text":[str(i) for i in range(1000)]})
@@ -549,8 +549,8 @@ def composition_scores(
 # %%
 def get_dataset(dataset_name: str) -> Dataset:
     """
-    Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader.
-
+    Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader. 
+    
     Each dataset has a 'text' field, which contains the relevant info, some also have several meta data fields
 
     Possible inputs:
@@ -570,7 +570,7 @@ def get_dataset(dataset_name: str) -> Dataset:
     elif dataset_name in ["code", "python"]:
         dataset = load_dataset("NeelNanda/code-10k", split='train')
     elif dataset_name in ["c4_code", "c4-code"]:
-        # Note that this one has 20K
+        # Note that this one has 20K 
         dataset = load_dataset("NeelNanda/c4-code-20k", split='train')
     elif dataset_name == "wiki":
         dataset = load_dataset("NeelNanda/wiki-10k", split="train")

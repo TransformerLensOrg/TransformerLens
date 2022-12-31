@@ -516,7 +516,7 @@ STANFORD_CRFM_CHECKPOINTS = (
     + list(range(20000, 400000 + 1, 1000))
 )
 
-# Linearly spaced checkpoints for Pythia models, taken every 1000 steps.
+# Linearly spaced checkpoints for Pythia models, taken every 1000 steps. 
 # Batch size 2,097,152 tokens, so checkpoints every 2.1B tokens
 PYTHIA_CHECKPOINTS = list(range(1000, 143000+1, 1000))
 
