@@ -74,7 +74,6 @@ class HookedTransformerConfig:
             available, else 'cpu'. Must be 'cuda' if `n_devices` > 1.
         n_devices (int): The number of devices to use for the model. Defaults to 1. Layers are loaded
             to support "pipeline parallelism", where each device is responsible for a subset of the layers.
-        layers_per_device (int, *optional*): The number of layers to load on each device. Defaults to None and is automatically calculated.
         attention_dir (str): Whether to use causal (aka unidirectional aka GPT-2
             style) or bidirectional attention. Options are 'causal' and
             'bidirectional'. Defaults to 'causal'
@@ -146,7 +145,6 @@ class HookedTransformerConfig:
     normalization_type: Optional[str] = "LN"
     device: Optional[str] = None
     n_devices: int = 1
-    layers_per_device: Optional[int] = None
     attention_dir: str = "causal"
     attn_only: bool = False
     seed: Optional[int] = None
@@ -216,12 +214,6 @@ class HookedTransformerConfig:
             assert (
                 torch.cuda.device_count() >= self.n_devices
             ), f"Not enough CUDA devices to support n_devices {self.n_devices}"
-            assert self.n_layers % self.n_devices == 0, (
-                f"n_layers {self.n_layers} must be divisible by n_devices "
-                f"{self.n_devices} for pipeline parallelism"
-            )
-
-        self.layers_per_device = self.n_layers // self.n_devices
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]):

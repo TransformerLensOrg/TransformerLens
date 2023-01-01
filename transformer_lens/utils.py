@@ -14,7 +14,7 @@ from rich import print as rprint
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 
-from transformer_lens import FactoredMatrix, HookedTransformerConfig
+from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
@@ -577,12 +577,3 @@ def get_dataset(dataset_name: str) -> Dataset:
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
-
-def get_device_for_block_index(index: int, cfg: HookedTransformerConfig, device: Optional[Union[torch.device, str]] = None):
-    assert cfg.device is not None
-    assert cfg.layers_per_device is not None
-    if device is None:
-        device = cfg.device
-    if isinstance(device, torch.device):
-        device = device.type
-    return torch.device(device, index // cfg.layers_per_device)
