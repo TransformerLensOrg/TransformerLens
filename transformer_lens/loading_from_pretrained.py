@@ -78,6 +78,8 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/Attn_Only_3L512W_C4_Code",
     "NeelNanda/Attn_Only_4L512W_C4_Code",
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr",
+    "NeelNanda/SoLU_1L512W_Wiki_Finetune",
+    "NeelNanda/SoLU_4L512W_Wiki_Finetune",
 ]
 
 # Model Aliases:
@@ -126,6 +128,16 @@ MODEL_ALIASES = {
         "attn-only-2l-shortformer-6b-big-lr",
         "attn-only-2l-induction-demo",
         "attn-only-demo",
+    ],
+    "NeelNanda/SoLU_1L512W_Wiki_Finetune": [
+        "solu-1l-wiki",
+        "solu-1l-wiki-finetune",
+        "solu-1l-finetune",
+    ],
+    "NeelNanda/SoLU_4L512W_Wiki_Finetune": [
+        "solu-4l-wiki",
+        "solu-4l-wiki-finetune",
+        "solu-4l-finetune",
     ],
     "EleutherAI/pythia-19m": ["pythia-19m", "pythia"],
     "EleutherAI/pythia-125m": [
@@ -394,7 +406,7 @@ def convert_neel_model_config(official_model_name: str):
     AutoConfig is not supported, because these models are in the HookedTransformer format, so we directly download and load the json.
     """
     official_model_name = get_official_model_name(official_model_name)
-    cfg_json = utils.download_file_from_hf(official_model_name, "config.json")
+    cfg_json: dict = utils.download_file_from_hf(official_model_name, "config.json")
     cfg_dict = {
         "d_model": cfg_json["d_model"],
         "n_layers": cfg_json["n_layers"],
@@ -407,9 +419,9 @@ def convert_neel_model_config(official_model_name: str):
         "act_fn": cfg_json["act_fn"],
         "attn_only": cfg_json["attn_only"],
         "final_rms": cfg_json.get("final_rms", False),
-        "original_architecture": "neel"
-        if "_old" not in official_model_name
-        else "neel-solu-old",
+        "original_architecture": (
+            "neel" if "_old" not in official_model_name else "neel-solu-old"
+        ),
     }
     if "normalization" in cfg_json:
         cfg_dict["normalization_type"] = cfg_json["normalization"]
