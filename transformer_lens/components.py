@@ -351,10 +351,13 @@ class Attention(nn.Module):
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
 
         """
+        # If user requests it, make a hookpoint with separate inputs for each head.
+        # This allows the user to change the inputs to different heads independently.
         if self.cfg.use_attn_input:
             resid_pre = self.hook_input(
+                # cloning here is important, otherwise it's just a view
                 resid_pre.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1).clone()
-            )
+            )  # [batch, pos, head_index, d_model]
 
         if self.cfg.positional_embedding_type in ["standard", "rotary"]:
             # Normal attention
@@ -561,7 +564,8 @@ class Attention(nn.Module):
         TT["batch", "pos", "head_index", "d_head"],
         TT["batch", "pos", "head_index", "d_head"],
     ]:
-        # expand the positional embeddings to have a head dimension
+        # Expand the positional embeddings to have a head dimension.
+        # Cloning here is important, otherwise it's just a view.
         shortformer_pos_embed = shortformer_pos_embed.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1).clone()
 
         # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
