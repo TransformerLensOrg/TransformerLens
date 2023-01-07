@@ -351,9 +351,9 @@ class Attention(nn.Module):
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
 
         """
-        if self.cfg.use_attn_inputs:
+        if self.cfg.use_attn_input:
             resid_pre = self.hook_input(
-                resid_pre.unsqueeze(2).expand(1, 1, self.cfg.n_heads, 1)
+                resid_pre.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1).clone()
             )
 
         if self.cfg.positional_embedding_type in ["standard", "rotary"]:
@@ -562,7 +562,7 @@ class Attention(nn.Module):
         TT["batch", "pos", "head_index", "d_head"],
     ]:
         # expand the positional embeddings to have a head dimension
-        shortformer_pos_embed = shortformer_pos_embed.unsqueeze(2).expand(1, 1, self.cfg.n_heads, 1)
+        shortformer_pos_embed = shortformer_pos_embed.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1).clone()
 
         # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
         attn_input = self.hook_attn_input(
