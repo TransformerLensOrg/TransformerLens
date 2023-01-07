@@ -33,6 +33,8 @@ class HookedTransformerConfig:
             'gelu_fast']. Must be set unless using an attn-only model.
         eps (float): The epsilon value to use for layer normalization. Defaults
             to 1e-5
+        use_attn_input (bool): whether to explicitly calculate the input of
+            each head separately, with a hook. Defaults to false to save memory.
         use_attn_result (bool): whether to explicitly calculate the amount
             each head adds to the residual stream (with a hook) and THEN add it
             up, vs just calculating the sum. This can be very memory intensive
@@ -128,6 +130,7 @@ class HookedTransformerConfig:
     act_fn: Optional[str] = None
     d_vocab: Optional[int] = None
     eps: float = 1e-5
+    use_attn_input: bool = False
     use_attn_result: bool = False
     use_attn_scale: bool = True
     use_local_attn: bool = False

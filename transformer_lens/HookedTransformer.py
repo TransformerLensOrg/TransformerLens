@@ -986,6 +986,12 @@ class HookedTransformer(HookedRootModule):
         """
         self.cfg.use_attn_result = use_attn_result
 
+    def set_use_attn_input(self, use_attn_input):
+        """
+        Toggles whether to explicitly calculate and expose the input for each attention head - useful for interpretability but can easily burn through GPU memory.
+        """
+        self.cfg.use_attn_input = use_attn_input
+
     def process_weights_(
         self,
         fold_ln: bool = True,
