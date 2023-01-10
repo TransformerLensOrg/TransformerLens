@@ -287,7 +287,9 @@ class Attention(nn.Module):
         if self.cfg.scale_attn_by_inverse_layer_idx:
             self.attn_scale *= self.layer_id + 1
 
-        self.hook_input = HookPoint()  # [batch, pos, head_index, d_model]
+        self.hook_input_q = HookPoint()  # [batch, pos, head_index, d_model]
+        self.hook_input_k = HookPoint()  # [batch, pos, head_index, d_model]
+        self.hook_input_v = HookPoint()  # [batch, pos, head_index, d_model]
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_v = HookPoint()  # [batch, pos, head_index, d_head]
@@ -299,7 +301,9 @@ class Attention(nn.Module):
         # See HookedTransformerConfig for more details.
         if self.cfg.positional_embedding_type == "shortformer":
             # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
-            self.hook_attn_input = HookPoint()  # [batch, pos, d_model]
+            # The dimension of these depends on whether cfg.use_attn_input is False (1st) or True (2nd)
+            self.hook_attn_input_q = HookPoint()  # [batch, pos, d_model] OR [batch, pos, head_index, d_model]
+            self.hook_attn_input_k = HookPoint()  # [batch, pos, d_model] OR [batch, pos, head_index, d_model]
         elif self.cfg.positional_embedding_type == "rotary":
             # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See HookedTransformerConfig for details
             self.hook_rot_k = HookPoint()
@@ -354,10 +358,19 @@ class Attention(nn.Module):
         # If user requests it, make a hookpoint with separate inputs for each head.
         # This allows the user to change the inputs to different heads independently.
         if self.cfg.use_attn_input:
-            resid_pre = self.hook_input(
-                # cloning here is important, otherwise it's just a view
+            input_to_q = self.hook_input_q(
                 resid_pre.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1).clone()
-            )  # [batch, pos, head_index, d_model]
+            )
+
+            input_to_k = self.hook_input_k(
+                resid_pre.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1).clone()
+            )
+
+            input_to_v = self.hook_input_v(
+                resid_pre.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1).clone()
+            )
+        else:
+            input_to_q = input_to_k = input_to_v = resid_pre
 
         if self.cfg.positional_embedding_type in ["standard", "rotary"]:
             # Normal attention
@@ -366,7 +379,7 @@ class Attention(nn.Module):
                     einsum(
                         "batch pos head_index d_model, head_index d_model d_head \
                         -> batch pos head_index d_head",
-                        resid_pre,
+                        input_to_q,
                         self.W_Q,
                     )
                     + self.b_Q
@@ -376,7 +389,7 @@ class Attention(nn.Module):
                     einsum(
                         "batch pos d_model, head_index d_model d_head \
                         -> batch pos head_index d_head",
-                        resid_pre,
+                        input_to_q,
                         self.W_Q,
                     )
                     + self.b_Q
@@ -387,7 +400,7 @@ class Attention(nn.Module):
                     einsum(
                         "batch pos head_index d_model, head_index d_model d_head \
                         -> batch pos head_index d_head",
-                        resid_pre,
+                        input_to_k,
                         self.W_K,
                     )
                     + self.b_K
@@ -397,7 +410,7 @@ class Attention(nn.Module):
                     einsum(
                         "batch pos d_model, head_index d_model d_head \
                         -> batch pos head_index d_head",
-                        resid_pre,
+                        input_to_k,
                         self.W_K,
                     )
                     + self.b_K
@@ -405,15 +418,18 @@ class Attention(nn.Module):
         elif self.cfg.positional_embedding_type == "shortformer":
             # Weird shortformer attention see HookedTransformerConfig for details
             if self.cfg.use_attn_input:
-                q, k = self.shortformer_calculate_qk_attn_input(resid_pre, shortformer_pos_embed)
+                q, k = self.shortformer_calculate_qk_attn_input(input_to_q=input_to_q, 
+                                                                input_to_k=input_to_k, 
+                                                                shortformer_pos_embed=shortformer_pos_embed)
             else:
-                q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
+                q, k = self.shortformer_calculate_qk(input_to_qk=input_to_q, 
+                                                     shortformer_pos_embed=shortformer_pos_embed)
         if self.cfg.use_attn_input:
             v = self.hook_v(
                 einsum(
                     "batch pos head_index d_model, head_index d_model d_head \
                     -> batch pos head_index d_head",
-                    resid_pre,
+                    input_to_v,
                     self.W_V,
                 )
                 + self.b_V
@@ -423,7 +439,7 @@ class Attention(nn.Module):
                 einsum(
                     "batch pos d_model, head_index d_model d_head \
                     -> batch pos head_index d_head",
-                    resid_pre,
+                    input_to_v,
                     self.W_V,
                 )
                 + self.b_V
@@ -526,21 +542,24 @@ class Attention(nn.Module):
 
     def shortformer_calculate_qk(
         self,
-        x: TT["batch", "pos", "d_model"],
+        input_to_qk: TT["batch", "pos", "d_model"],
         shortformer_pos_embed: TT["batch", "pos", "d_model"],
     ) -> Tuple[
         TT["batch", "pos", "head_index", "d_head"],
         TT["batch", "pos", "head_index", "d_head"],
     ]:
         # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
-        attn_input = self.hook_attn_input(
-            x + shortformer_pos_embed
+        attn_input_q = self.hook_attn_input_q(
+            input_to_qk + shortformer_pos_embed
+        )  # [batch, pos, d_model]
+        attn_input_k = self.hook_attn_input_k(
+            input_to_qk + shortformer_pos_embed
         )  # [batch, pos, d_model]
         q = self.hook_q(
             einsum(
                 "batch pos d_model, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                attn_input,
+                attn_input_q,
                 self.W_Q,
             )
             + self.b_Q
@@ -549,7 +568,7 @@ class Attention(nn.Module):
             einsum(
                 "batch pos d_model, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                attn_input,
+                attn_input_k,
                 self.W_K,
             )
             + self.b_K
@@ -558,7 +577,8 @@ class Attention(nn.Module):
 
     def shortformer_calculate_qk_attn_input(
         self,
-        x: TT["batch", "pos", "d_model"],
+        input_to_q: TT["batch", "pos", "d_model"],
+        input_to_k: TT["batch", "pos", "d_model"],
         shortformer_pos_embed: TT["batch", "pos", "d_model"],
     ) -> Tuple[
         TT["batch", "pos", "head_index", "d_head"],
@@ -569,14 +589,17 @@ class Attention(nn.Module):
         shortformer_pos_embed = shortformer_pos_embed.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1).clone()
 
         # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
-        attn_input = self.hook_attn_input(
-            x + shortformer_pos_embed
+        attn_input_q = self.hook_attn_input_q(
+            input_to_q + shortformer_pos_embed
+        )  # [batch, pos, d_model]
+        attn_input_k = self.hook_attn_input_k(
+            input_to_k + shortformer_pos_embed
         )  # [batch, pos, d_model]
         q = self.hook_q(
             einsum(
                 "batch pos head_index d_model, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                attn_input,
+                attn_input_q,
                 self.W_Q,
             )
             + self.b_Q
@@ -585,7 +608,7 @@ class Attention(nn.Module):
             einsum(
                 "batch pos head_index d_model, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                attn_input,
+                attn_input_k,
                 self.W_K,
             )
             + self.b_K
