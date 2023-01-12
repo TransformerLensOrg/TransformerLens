@@ -174,6 +174,67 @@ class ActivationCache:
         else:
             return components
 
+    def logit_attrs(
+            self,
+            residual_stack: TT["components", "batch", "d_model"],
+            tokens: Union[str, int, TT[()], TT["batch"], TT["batch", "position"]],
+            incorrect_tokens: Optional[Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]],
+            layer: Optional[int] = None,
+            pos_slice: Union[Slice, SliceInput] = None,
+        ) -> Union[TT["components"], TT["components", "position"]]:
+        """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if the `incorrect_tokens` argument is provided.
+
+        Args:
+            residual_stack (TT["components", "batch", "d_model"]): stack of components of residual stream to get logit attributions for.
+            tokens (Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]): tokens to compute logit attributions on.
+            incorrect_tokens (Optional[Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]]): if provided, compute attributions on logit difference between tokens and incorrect_tokens.
+            layer (int): The layer to use as input for layer norm scaling.
+                Defaults to None, which maps to the n_layers case, ie the unembed.
+            pos_slice (Slice): The slice to apply layer norm scaling on.
+                Defaults to None, do nothing.
+
+        Returns:
+            Components: A [num_components] or [num_components, position] tensor of the logit attributions averaged across the batch. 
+        """
+        if not isinstance(pos_slice, Slice):
+            pos_slice = Slice(pos_slice)
+
+        tokens_is_tensor = isinstance(tokens, torch.Tensor) and len(tokens.shape) > 0
+        incorrect_tokens_is_tensor = isinstance(incorrect_tokens, torch.Tensor) and len(tokens.shape) > 0
+
+        batch_size = 1
+        if tokens_is_tensor:
+            batch_size = tokens.shape[0]
+
+        # Check shape compatibility between incorrect_tokens and tokens
+        if incorrect_tokens_is_tensor:
+            # incorrect_tokens is tensor
+
+            if not tokens_is_tensor:
+                # incorrect_tokens is tensor, tokens is scalar
+                raise ValueError(f"tokens and incorrect_tokens have incompatible shapes- check these arguments? (incorrect_tokens.shape={incorrect_tokens.shape}, tokens={tokens})")
+
+            elif tokens.shape != incorrect_tokens.shape:
+                # incorrect_tokens is tensor, tokens is tensor with wrong shape
+                raise ValueError(f"tokens and incorrect_tokens have incompatible shapes- check these arguments? (incorrect_tokens.shape={incorrect_tokens.shape}, tokens.shape={tokens.shape})")
+        
+        elif incorrect_tokens and tokens_is_tensor:
+            # incorrect_tokens is scalar, tokens is tensor
+            raise ValueError(f"tokens and incorrect_tokens have incompatible shapes- check these arguments? (incorrect_tokens={incorrect_tokens}, tokens.shape={tokens.shape})")
+
+        logit_directions = self.model.tokens_to_residual_directions(tokens)
+        if incorrect_tokens is not None:
+            # If incorrect_tokens was provided, take the logit difference
+            logit_directions -= self.model.tokens_to_residual_directions(incorrect_tokens)
+
+        if not tokens_is_tensor:
+            # Add dummy dimension for batch since we expect residual_stack to have a batch dimension
+            logit_directions = logit_directions.unsqueeze(dim=0)
+
+        scaled_residual_stack = self.apply_ln_to_stack(residual_stack, layer=layer, pos_slice=pos_slice)
+        logit_attrs = einsum("... batch d_model, batch d_model -> ...", scaled_residual_stack, logit_directions) / batch_size
+        return logit_attrs
+        
     def decompose_resid(
         self,
         layer: Optional[int] = None,
