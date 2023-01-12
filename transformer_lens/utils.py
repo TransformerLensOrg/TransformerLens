@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from datasets.arrow_dataset import Dataset
 import einops
 from transformers import AutoTokenizer
-from typing import Optional, Union, Tuple, List, Dict
+from typing import Optional, Union, Tuple, List, Dict, Type
 from torchtyping import TensorType as TT
 import transformers
 from huggingface_hub import hf_hub_download
@@ -304,7 +304,7 @@ def sample_logits(
 
 # %%
 # Type alias
-SliceInput = Optional[
+SliceInput: Type = Optional[
     Union[int, Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor]
 ]
 

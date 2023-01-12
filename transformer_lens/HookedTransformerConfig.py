@@ -187,7 +187,7 @@ class HookedTransformerConfig:
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)
 
-        if self.d_vocab_out is None:
+        if self._d_vocab_out is None:
             self.d_vocab_out = self.d_vocab
 
         if self.positional_embedding_type == "rotary" and self.rotary_dim is None:
@@ -222,3 +222,20 @@ class HookedTransformerConfig:
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
+
+    # Functions to make d_vocab return an int (for type checker)
+    @property
+    def d_vocab(self) -> int:
+        return self._d_vocab if self._d_vocab is not None else -1
+    
+    @d_vocab.setter
+    def d_vocab(self, d_vocab):
+        self._d_vocab = None if isinstance(d_vocab, property) else d_vocab
+
+    @property
+    def d_vocab_out(self) -> int:
+        return self._d_vocab_out if self._d_vocab_out is not None else -1
+
+    @d_vocab_out.setter
+    def d_vocab_out(self, d_vocab_out):
+        self._d_vocab_out = None if isinstance(d_vocab_out, property) else d_vocab_out
