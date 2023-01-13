@@ -75,7 +75,7 @@ class HookedTransformer(HookedRootModule):
         self.cfg = cfg
         if tokenizer is not None:
             self.tokenizer = tokenizer
-        if self.cfg.tokenizer_name is not None:
+        elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
             if self.tokenizer.eos_token is None:
@@ -88,14 +88,14 @@ class HookedTransformer(HookedRootModule):
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
 
-        if not self.cfg._d_vocab:
+        if self.cfg.d_vocab == -1:
             # If we have a tokenizer, vocab size can be inferred from it.
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if d_vocab is not provided"
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
-        if not self.cfg._d_vocab_out:
-            self.cfg.d_vocab_out = self.cfg._d_vocab
+        if self.cfg.d_vocab_out == -1:
+            self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
@@ -146,19 +146,39 @@ class HookedTransformer(HookedRootModule):
         self.setup()
 
     @overload
-    def forward(self, input, return_type: Literal["logits"], **kwargs) -> TT["batch", "pos", "d_vocab"]:
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["logits"], 
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
         ...
 
     @overload
-    def forward(self, input, return_type: Literal["loss"], **kwargs) -> Loss:
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["loss"], 
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
+        ...
+    
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["both"], 
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Tuple[TT["batch", "pos", "d_vocab"], Loss]:
         ...
 
     @overload
-    def forward(self, input, return_type: Literal["both"], **kwargs) -> Tuple[TT["batch", "pos", "d_vocab"], Loss]:
-        ...
-
-    @overload
-    def forward(self, input, return_type: Literal[None], **kwargs) -> None:
+    def forward(
+        self, 
+        input, 
+        return_type: Literal[None], 
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> None:
         ...
 
     # TODO make sure type assertions are provided
