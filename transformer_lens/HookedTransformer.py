@@ -1,4 +1,5 @@
-from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple
+from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple, overload
+from typing_extensions import Literal
 from torchtyping import TensorType as TT
 import torch
 import torch.nn as nn
@@ -74,7 +75,7 @@ class HookedTransformer(HookedRootModule):
         self.cfg = cfg
         if tokenizer is not None:
             self.tokenizer = tokenizer
-        if self.cfg.tokenizer_name is not None:
+        elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
             if self.tokenizer.eos_token is None:
@@ -87,12 +88,13 @@ class HookedTransformer(HookedRootModule):
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
 
-        if not self.cfg.d_vocab:
+        if self.cfg.d_vocab == -1:
             # If we have a tokenizer, vocab size can be inferred from it.
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if d_vocab is not provided"
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+        if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = Embed(self.cfg)
@@ -142,6 +144,42 @@ class HookedTransformer(HookedRootModule):
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
         self.setup()
+
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["logits"], 
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
+        ...
+
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["loss"], 
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
+        ...
+    
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["both"], 
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Tuple[TT["batch", "pos", "d_vocab"], Loss]:
+        ...
+
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal[None], 
+        prepend_bos: bool = True,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> None:
+        ...
 
     # TODO make sure type assertions are provided
     def forward(
@@ -263,6 +301,18 @@ class HookedTransformer(HookedRootModule):
         Wrapper around utils.lm_cross_entropy_loss, used in forward() with return_type=="loss" or "both".
         """
         return utils.lm_cross_entropy_loss(logits, tokens, per_token)
+
+    @overload
+    def run_with_cache(
+        self, *model_args, return_cache_object: Literal[True] = True, **kwargs
+    ) -> Tuple[Output, ActivationCache]:
+        ...
+
+    @overload
+    def run_with_cache(
+        self, *model_args, return_cache_object: Literal[False] = False, **kwargs
+    ) -> Tuple[Output, Dict[str, torch.Tensor]]:
+        ...
 
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
