@@ -152,6 +152,7 @@ class HookedTransformer(HookedRootModule):
         self, 
         input, 
         return_type: Literal["logits"], 
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
         ...
@@ -161,6 +162,7 @@ class HookedTransformer(HookedRootModule):
         self, 
         input, 
         return_type: Literal["loss"], 
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
         ...
@@ -170,6 +172,7 @@ class HookedTransformer(HookedRootModule):
         self, 
         input, 
         return_type: Literal["both"], 
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Tuple[TT["batch", "pos", "d_vocab"], Loss]:
         ...
@@ -179,6 +182,7 @@ class HookedTransformer(HookedRootModule):
         self, 
         input, 
         return_type: Literal[None], 
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> None:
         ...
