@@ -32,8 +32,10 @@ from transformer_lens.components import *
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 
-# Type alias for a single element tensor
-Loss = TT[()]
+SingleLoss = TT[()] # Type alias for a single element tensor
+LossPerToken = TT[("batch", "pos")]
+Loss = Union[SingleLoss, LossPerToken]
+
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
     logits: TT["batch", "pos", "d_vocab"]
@@ -186,6 +188,7 @@ class HookedTransformer(HookedRootModule):
         self,
         input: Union[str, List[str], TT["batch", "pos"]],
         return_type: Optional[str] = "logits",
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Union[
@@ -282,7 +285,7 @@ class HookedTransformer(HookedRootModule):
             if return_type == "logits":
                 return logits
             else:
-                loss = self.loss_fn(logits, tokens)
+                loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
