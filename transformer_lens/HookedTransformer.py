@@ -33,7 +33,7 @@ import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 
 SingleLoss = TT[()] # Type alias for a single element tensor
-LossPerToken = TT[("batch", "pos")]
+LossPerToken = TT["batch", "pos"]
 Loss = Union[SingleLoss, LossPerToken]
 
 # Named tuple object for if we want to output both logits and loss
