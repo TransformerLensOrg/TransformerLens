@@ -178,7 +178,7 @@ class ActivationCache:
             self,
             residual_stack: TT["components", "batch_and_pos_dims":..., "d_model"],
             tokens: Union[str, int, TT[()], TT["batch"], TT["batch", "position"]],
-            incorrect_tokens: Optional[Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]],
+            incorrect_tokens: Optional[Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]] = None,
             pos_slice: Union[Slice, SliceInput] = None,
         ) -> TT["components", "batch_and_pos_dims":...]:
         """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
@@ -199,14 +199,15 @@ class ActivationCache:
         if not isinstance(tokens, torch.Tensor):
             tokens = torch.Tensor(tokens)
 
-        if incorrect_tokens is not None and not isinstance(incorrect_tokens, torch.Tensor):
-            incorrect_tokens = torch.Tensor(incorrect_tokens)
-
-        if tokens.shape != incorrect_tokens.shape:
-            raise ValueError(f"tokens and incorrect_tokens must have the same shape! (tokens.shape={tokens.shape}, incorrect_tokens.shape={incorrect_tokens.shape})")
-        
         logit_directions = self.model.tokens_to_residual_directions(tokens)
+
         if incorrect_tokens is not None:
+            if not isinstance(incorrect_tokens, torch.Tensor):
+                incorrect_tokens = torch.Tensor(incorrect_tokens)
+
+            if tokens.shape != incorrect_tokens.shape:
+                raise ValueError(f"tokens and incorrect_tokens must have the same shape! (tokens.shape={tokens.shape}, incorrect_tokens.shape={incorrect_tokens.shape})")
+        
             # If incorrect_tokens was provided, take the logit difference
             logit_directions = logit_directions - self.model.tokens_to_residual_directions(incorrect_tokens)
 
