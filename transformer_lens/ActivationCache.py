@@ -196,13 +196,19 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
-        if not isinstance(tokens, torch.Tensor):
+        if isinstance(tokens, str):
+            tokens = self.model.to_tokens(tokens)
+
+        elif isinstance(tokens, int):
             tokens = torch.Tensor(tokens)
 
         logit_directions = self.model.tokens_to_residual_directions(tokens)
 
         if incorrect_tokens is not None:
-            if not isinstance(incorrect_tokens, torch.Tensor):
+            if isinstance(incorrect_tokens, str):
+                incorrect_tokens = self.model.to_tokens(incorrect_tokens)
+
+            elif isinstance(incorrect_tokens, int):
                 incorrect_tokens = torch.Tensor(incorrect_tokens)
 
             if tokens.shape != incorrect_tokens.shape:
