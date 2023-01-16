@@ -151,6 +151,7 @@ class HookedTransformer(HookedRootModule):
         input, 
         return_type: Literal["logits"], 
         prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
         ...
 
@@ -160,6 +161,7 @@ class HookedTransformer(HookedRootModule):
         input, 
         return_type: Literal["loss"], 
         prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
         ...
     
@@ -169,6 +171,7 @@ class HookedTransformer(HookedRootModule):
         input, 
         return_type: Literal["both"], 
         prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Tuple[TT["batch", "pos", "d_vocab"], Loss]:
         ...
 
@@ -178,6 +181,7 @@ class HookedTransformer(HookedRootModule):
         input, 
         return_type: Literal[None], 
         prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> None:
         ...
 
@@ -187,6 +191,7 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str], TT["batch", "pos"]],
         return_type: Optional[str] = "logits",
         prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Union[
         None,
@@ -198,6 +203,7 @@ class HookedTransformer(HookedRootModule):
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
         prepend_bos bool: Whether to prepend the BOS token to the input. Only applies when input is a string. Defaults to True (unlike to_tokens) - even for models not explicitly trained with this, heads often use the first position as a resting position and accordingly lose information from the first token, so this empirically seems to give better results.
+        stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer. Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer = 1 will run the embedding layer and the first transformer block, etc. Supports negative indexing. Useful for analysis of intermediate layers, eg finding neuron activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
 
         Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models - if you want a custom loss function, the recommended behaviour is returning the logits and then applying your custom loss function.
         """
@@ -262,8 +268,15 @@ class HookedTransformer(HookedRootModule):
             raise ValueError(
                 f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"
             )
-
-        for i, block in enumerate(self.blocks):
+        
+        if stop_at_layer is None:
+            # We iterate through every block by default
+            transformer_block_list = self.blocks
+        else:
+            # If we explicitly want to stop at a layer, we only iterate through the blocks up to that layer. Note that this is exclusive, eg stop_at_layer==0 means to only run the embed, stop_at_layer==-1 means to run every layer *apart* from the final one, etc.
+            transformer_block_list = self.blocks[:stop_at_layer] # type: ignore
+ 
+        for i, block in enumerate(transformer_block_list): # type: ignore
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
             residual = block(
@@ -273,6 +286,11 @@ class HookedTransformer(HookedRootModule):
                 else None,  # Cache is contains a list of HookedTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed=shortformer_pos_embed,
             )  # [batch, pos, d_model]
+        
+        if stop_at_layer is not None:
+            # When we stop at an early layer, we end here rather than doing further computation
+            return None
+
         if self.cfg.normalization_type is not None:
             residual = self.ln_final(residual)  # [batch, pos, d_model]
         if return_type is None:
