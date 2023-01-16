@@ -32,8 +32,10 @@ from transformer_lens.components import *
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 
-# Type alias for a single element tensor
-Loss = TT[()]
+SingleLoss = TT[()] # Type alias for a single element tensor
+LossPerToken = TT["batch", "position - 1"]
+Loss = Union[SingleLoss, LossPerToken]
+
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
     logits: TT["batch", "pos", "d_vocab"]
@@ -150,6 +152,7 @@ class HookedTransformer(HookedRootModule):
         self, 
         input, 
         return_type: Literal["logits"], 
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
@@ -160,6 +163,7 @@ class HookedTransformer(HookedRootModule):
         self, 
         input, 
         return_type: Literal["loss"], 
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
@@ -170,6 +174,7 @@ class HookedTransformer(HookedRootModule):
         self, 
         input, 
         return_type: Literal["both"], 
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Tuple[TT["batch", "pos", "d_vocab"], Loss]:
@@ -180,6 +185,7 @@ class HookedTransformer(HookedRootModule):
         self, 
         input, 
         return_type: Literal[None], 
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> None:
@@ -190,6 +196,7 @@ class HookedTransformer(HookedRootModule):
         self,
         input: Union[str, List[str], TT["batch", "pos"]],
         return_type: Optional[str] = "logits",
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
         stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
@@ -202,6 +209,7 @@ class HookedTransformer(HookedRootModule):
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
+        loss_per_token bool: Whether to return the (next token prediction) loss per token (True) or average (False). Average loss is a scalar (averaged over position *and* batch), per-token loss is a tensor ([batch, position-1]) - position-1 because we're predicting the next token, and there's no specified next token for the final token. Defaults to False.
         prepend_bos bool: Whether to prepend the BOS token to the input. Only applies when input is a string. Defaults to True (unlike to_tokens) - even for models not explicitly trained with this, heads often use the first position as a resting position and accordingly lose information from the first token, so this empirically seems to give better results.
         stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer. Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer = 1 will run the embedding layer and the first transformer block, etc. Supports negative indexing. Useful for analysis of intermediate layers, eg finding neuron activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
 
@@ -300,7 +308,7 @@ class HookedTransformer(HookedRootModule):
             if return_type == "logits":
                 return logits
             else:
-                loss = self.loss_fn(logits, tokens)
+                loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
