@@ -16,7 +16,7 @@ jobs:
     steps:
      - name: Parse semver string
        id: semver_parser 
-       uses: booxmedialtd/ws-action-parse-semver@v1.4.6
+       uses: booxmedialtd/ws-action-parse-semver@v1.4.7
        with:
          input_string: ${{ github.event.release.tag_name }}
     outputs:
