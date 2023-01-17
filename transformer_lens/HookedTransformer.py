@@ -1,4 +1,5 @@
-from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple
+from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple, overload
+from typing_extensions import Literal
 from torchtyping import TensorType as TT
 import torch
 import torch.nn as nn
@@ -16,6 +17,7 @@ from transformers import (
     AutoTokenizer,
     PreTrainedTokenizer,
 )
+from datasets.load import load_dataset
 
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens import HookedTransformerConfig
@@ -30,8 +32,10 @@ from transformer_lens.components import *
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 
-# Type alias for a single element tensor
-Loss = TT[()]
+SingleLoss = TT[()] # Type alias for a single element tensor
+LossPerToken = TT["batch", "position - 1"]
+Loss = Union[SingleLoss, LossPerToken]
+
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
     logits: TT["batch", "pos", "d_vocab"]
@@ -73,7 +77,7 @@ class HookedTransformer(HookedRootModule):
         self.cfg = cfg
         if tokenizer is not None:
             self.tokenizer = tokenizer
-        if self.cfg.tokenizer_name is not None:
+        elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
             if self.tokenizer.eos_token is None:
@@ -86,12 +90,13 @@ class HookedTransformer(HookedRootModule):
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
 
-        if not self.cfg.d_vocab:
+        if self.cfg.d_vocab == -1:
             # If we have a tokenizer, vocab size can be inferred from it.
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if d_vocab is not provided"
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+        if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = Embed(self.cfg)
@@ -134,17 +139,66 @@ class HookedTransformer(HookedRootModule):
         if move_to_device:
             # Move the model to the relevant device, suppress the logging message
             self.to(self.cfg.device, print_details=False)
+        
+        # Helper variable to store a small (10K-20K) dataset of training data. Empty by default, can be loaded with load_sample_training_dataset
+        self.dataset = None
 
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
         self.setup()
+
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["logits"], 
+        loss_per_token: bool = False,
+        prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
+        ...
+
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["loss"], 
+        loss_per_token: bool = False,
+        prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
+        ...
+    
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal["both"], 
+        loss_per_token: bool = False,
+        prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Tuple[TT["batch", "pos", "d_vocab"], Loss]:
+        ...
+
+    @overload
+    def forward(
+        self, 
+        input, 
+        return_type: Literal[None], 
+        loss_per_token: bool = False,
+        prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> None:
+        ...
 
     # TODO make sure type assertions are provided
     def forward(
         self,
         input: Union[str, List[str], TT["batch", "pos"]],
         return_type: Optional[str] = "logits",
+        loss_per_token: bool = False,
         prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None, 
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Union[
         None,
@@ -155,7 +209,9 @@ class HookedTransformer(HookedRootModule):
         """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a text string.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
+        loss_per_token bool: Whether to return the (next token prediction) loss per token (True) or average (False). Average loss is a scalar (averaged over position *and* batch), per-token loss is a tensor ([batch, position-1]) - position-1 because we're predicting the next token, and there's no specified next token for the final token. Defaults to False.
         prepend_bos bool: Whether to prepend the BOS token to the input. Only applies when input is a string. Defaults to True (unlike to_tokens) - even for models not explicitly trained with this, heads often use the first position as a resting position and accordingly lose information from the first token, so this empirically seems to give better results.
+        stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer. Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer = 1 will run the embedding layer and the first transformer block, etc. Supports negative indexing. Useful for analysis of intermediate layers, eg finding neuron activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
 
         Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models - if you want a custom loss function, the recommended behaviour is returning the logits and then applying your custom loss function.
         """
@@ -220,8 +276,15 @@ class HookedTransformer(HookedRootModule):
             raise ValueError(
                 f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"
             )
-
-        for i, block in enumerate(self.blocks):
+        
+        if stop_at_layer is None:
+            # We iterate through every block by default
+            transformer_block_list = self.blocks
+        else:
+            # If we explicitly want to stop at a layer, we only iterate through the blocks up to that layer. Note that this is exclusive, eg stop_at_layer==0 means to only run the embed, stop_at_layer==-1 means to run every layer *apart* from the final one, etc.
+            transformer_block_list = self.blocks[:stop_at_layer] # type: ignore
+ 
+        for i, block in enumerate(transformer_block_list): # type: ignore
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
             residual = block(
@@ -231,6 +294,11 @@ class HookedTransformer(HookedRootModule):
                 else None,  # Cache is contains a list of HookedTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed=shortformer_pos_embed,
             )  # [batch, pos, d_model]
+        
+        if stop_at_layer is not None:
+            # When we stop at an early layer, we end here rather than doing further computation
+            return None
+
         if self.cfg.normalization_type is not None:
             residual = self.ln_final(residual)  # [batch, pos, d_model]
         if return_type is None:
@@ -240,7 +308,7 @@ class HookedTransformer(HookedRootModule):
             if return_type == "logits":
                 return logits
             else:
-                loss = self.loss_fn(logits, tokens)
+                loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
                 if return_type == "loss":
                     return loss
                 elif return_type == "both":
@@ -259,6 +327,18 @@ class HookedTransformer(HookedRootModule):
         Wrapper around utils.lm_cross_entropy_loss, used in forward() with return_type=="loss" or "both".
         """
         return utils.lm_cross_entropy_loss(logits, tokens, per_token)
+
+    @overload
+    def run_with_cache(
+        self, *model_args, return_cache_object: Literal[True] = True, **kwargs
+    ) -> Tuple[Output, ActivationCache]:
+        ...
+
+    @overload
+    def run_with_cache(
+        self, *model_args, return_cache_object: Literal[False] = False, **kwargs
+    ) -> Tuple[Output, Dict[str, torch.Tensor]]:
+        ...
 
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
@@ -299,9 +379,16 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str]],
         prepend_bos: bool = True,
         move_to_device: bool = True,
+        truncate: bool = True
     ) -> TT["batch", "pos"]:
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. 
+
+        Args:
+            input (Union[str, List[str]]). The input to tokenize
+            prepend_bos (bool): Whether to prepend a beginning of sequence token. Defaults to True
+            move_to_device (bool): Whether to move the output tensor of tokens to the device the model lives on. Defaults to True
+            truncate (bool): If the output tokens are too long, whether to truncate the output tokens to the model's max context window. Does nothing for shorter inputs. Defaults to True.
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt to the model as the first token is often treated weirdly, but should only be done at the START of the prompt. Make sure to turn it off if you're looking at the tokenization of part of the prompt!
         (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
@@ -314,7 +401,13 @@ class HookedTransformer(HookedRootModule):
                 input = self.tokenizer.bos_token + input
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
-        tokens = self.tokenizer(input, return_tensors="pt", padding=True)["input_ids"]
+        tokens = self.tokenizer(
+            input, 
+            return_tensors = "pt", 
+            padding = True,
+            truncation = truncate,
+            max_length = self.cfg.n_ctx if truncate else None
+            )["input_ids"]
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
         return tokens
@@ -1307,3 +1400,52 @@ class HookedTransformer(HookedRootModule):
             for l in range(self.cfg.n_layers)
             for h in range(self.cfg.n_heads)
         ]
+
+    def load_sample_training_dataset(self):
+        """ 
+        Helper function to load in a 10K-20K dataset of elements from the model's training data distribution. 
+
+        Wrapper around utils.get_dataset, which identifies the appropriate dataset the pretrained models. Each dataset has a 'text' field, which contains the relevant info, some have several meta data fields.
+
+        Notes:
+        * GPT-2's training data is not open source. OpenWebText is a replication (links with >3 karma on Reddit)
+        * OPT's training data is not open source, and is a mess of different things that is hard to replicate. I default to the Pile, which covers some of it, but imperfectly.
+
+        (Some models will have actually been trained on the data supplied here, for some it's from the validation set)
+        """
+        if self.cfg.original_architecture == "neel":
+            self.dataset = utils.get_dataset("c4_code")
+        elif self.cfg.original_architecture == "neel-solu-old":
+            self.dataset = utils.get_dataset("pile")
+        elif self.cfg.original_architecture == "GPT2LMHeadModel":
+            self.dataset = utils.get_dataset("openwebtext")
+        elif self.cfg.original_architecture == "GPTNeoForCausalLM":
+            self.dataset = utils.get_dataset("pile")
+        elif self.cfg.original_architecture == "GPTNeoXForCausalLM":
+            self.dataset = utils.get_dataset("pile")
+        elif self.cfg.original_architecture == "GPTJForCausalLM":
+            self.dataset = utils.get_dataset("pile")
+        elif self.cfg.original_architecture == "OPTForCausalLM":
+            self.dataset = utils.get_dataset("pile")
+        else:
+            raise ValueError(f"We do not have an available dataset for the relevant model: {self.cfg.original_architecture}")
+        return self.dataset
+    
+    def sample_datapoint(self, tokenize=False) -> Union[str, TT[1, "pos"]]:
+        """
+        Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution the model was trained on. 
+
+        Args:
+            tokenize (bool): Whether to return tokens (instead of text). Defaults to False. Note that the returned tokens will be automatically truncated to the model's max context size.
+
+        Implicitly calls self.load_sample_training_dataset if it hasn't already been called. Only works for pretrained models with an associated dataset. But you can manually replace self.dataset with a dataset of your choice if you want.
+        """
+        if self.dataset is None:
+            self.load_sample_training_dataset()
+        sample_dataset_size = len(self.dataset)
+        index = np.random.randint(0, sample_dataset_size)
+        if not tokenize:
+            return self.dataset[index]['text']
+        else:
+            return self.to_tokens(self.dataset[index]['text'], truncate=True)
+

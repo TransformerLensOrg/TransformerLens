@@ -56,6 +56,7 @@ class ActivationCache:
             logging.warning(
                 "Tried removing batch dimension after already having removed it."
             )
+        return self
 
     def __repr__(self):
         return f"ActivationCache with keys {list(self.cache_dict.keys())}"
@@ -89,6 +90,7 @@ class ActivationCache:
 
         if move_model:
             self.model.to(device)
+        return self
 
     def toggle_autodiff(self, mode: bool = False):
         """
@@ -155,6 +157,7 @@ class ActivationCache:
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
+        assert isinstance(layer, int)
         labels = []
         components = []
         for l in range(layer + 1):
@@ -209,6 +212,7 @@ class ActivationCache:
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
+        assert isinstance(layer, int)
 
         incl_attn = mode != "mlp"
         incl_mlp = mode != "attn" and not self.model.cfg.attn_only
@@ -337,8 +341,10 @@ class ActivationCache:
             Tensor: [batch_size, pos, d_mlp, d_model] tensor of the results (d_mlp is the neuron index axis)
         """
         if type(neuron_slice) is not Slice:
+            assert isinstance(neuron_slice, SliceInput)
             neuron_slice = Slice(neuron_slice)
         if type(pos_slice) is not Slice:
+            assert isinstance(pos_slice, SliceInput)
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
