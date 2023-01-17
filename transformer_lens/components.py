@@ -458,7 +458,7 @@ class Attention(nn.Module):
 
     def apply_causal_mask(
         self,
-        attn_scores: TT[T.batch, T.head_index, T.pos, T.pos + T.past_kv_pos_offset],
+        attn_scores: TT[T.batch, T.head_index, T.pos, T.sum(T.pos, T.past_kv_pos_offset)],
         past_kv_pos_offset: int = 0,
     ):
         # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it's just a single token.

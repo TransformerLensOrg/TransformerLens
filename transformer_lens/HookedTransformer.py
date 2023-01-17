@@ -1035,7 +1035,7 @@ class HookedTransformer(HookedRootModule):
         use_past_kv_cache: bool = True,
         prepend_bos=True,
         return_type: Optional[str] = "input",
-    ) -> TT[T.batch, T.pos + T.new_tokens]:
+    ) -> TT[T.batch, T.sum(T.pos, T.new_tokens)]:
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
 
@@ -1175,7 +1175,7 @@ class HookedTransformer(HookedRootModule):
         return self.pos_embed.W_pos
 
     @property
-    def W_E_pos(self) -> TT[T.d_vocab + T.n_ctx, T.d_model]:
+    def W_E_pos(self) -> TT[T.sum(T.d_vocab, T.n_ctx), T.d_model]:
         """
         Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
         """

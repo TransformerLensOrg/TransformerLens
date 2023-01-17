@@ -1,3 +1,6 @@
+from typing import Tuple
+
+
 class T:
     """Helper class to get mypy to work with TorchTyping and solidify naming conventions as a byproduct.
     
@@ -39,3 +42,8 @@ class T:
 
     a: str = "a"
     b: str = "b"
+
+
+    @staticmethod
+    def sum(*args: Tuple[str]):
+        return ' + '.join(args)
