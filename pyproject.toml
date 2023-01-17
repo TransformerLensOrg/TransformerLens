@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "transformer-lens"
-version = "0.2.0"
+version = "0.0.0" # This is automatically set by the CD pipeline on release
 description = "An implementation of transformers tailored for mechanistic interpretability."
 authors = ["Neel Nanda <77788841+neelnanda-io@users.noreply.github.com>"]
 license = "MIT"
