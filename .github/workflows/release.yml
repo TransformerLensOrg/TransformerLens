@@ -52,31 +52,3 @@ jobs:
         run: poetry publish
         env:
           POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN_PYPI }}
-
-  commit-version-updates:
-    name: Bump Python package version
-    needs:
-      - semver-parser
-      - release-python
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: write
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-          cache: 'poetry'
-      - name: Bump Python package version
-        run: poetry version ${{needs.semver-parser.outputs.semver}}
-      - name: Commit changes
-        uses: stefanzweifel/git-auto-commit-action@v4.16.0
-        with:
-          commit_message: Release version ${{needs.semver-parser.outputs.semver}}
-          branch: main

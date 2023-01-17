@@ -1,5 +1,7 @@
 # TransformerLens
 
+[![Pypi](https://img.shields.io/pypi/v/transformer-lens)](https://pypi.org/project/transformer-lens/)
+
 (Formerly known as EasyTransformer)
 
 ## [Start Here](https://neelnanda.io/transformer-lens-demo)
