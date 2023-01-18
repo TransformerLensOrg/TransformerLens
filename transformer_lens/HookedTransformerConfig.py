@@ -116,6 +116,8 @@ class HookedTransformerConfig:
             the [scaling laws paper](https://arxiv.org/pdf/2001.08361.pdf) found
             that that was a more meaningful number. Ignoring biases and layer
             norms, for convenience)
+        hook_tokens (bool): If true, will add a hook at tokens (useful for implementing
+            BERT-style masking of padding tokens via permanent hooks). Defaults to False.
     """
 
     n_layers: int
@@ -154,6 +156,7 @@ class HookedTransformerConfig:
     parallel_attn_mlp: bool = False
     rotary_dim: Optional[int] = None
     n_params: Optional[int] = None
+    hook_tokens: bool = False
 
     def __post_init__(self):
         if self.n_heads==-1:
