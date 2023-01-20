@@ -1401,11 +1401,13 @@ class HookedTransformer(HookedRootModule):
             for h in range(self.cfg.n_heads)
         ]
 
-    def load_sample_training_dataset(self):
+    def load_sample_training_dataset(self, **kwargs):
         """ 
         Helper function to load in a 10K-20K dataset of elements from the model's training data distribution. 
 
         Wrapper around utils.get_dataset, which identifies the appropriate dataset the pretrained models. Each dataset has a 'text' field, which contains the relevant info, some have several meta data fields.
+
+        Kwargs will be passed to utils.get_dataset (e.g. cache_dir to set download location)
 
         Notes:
         * GPT-2's training data is not open source. OpenWebText is a replication (links with >3 karma on Reddit)
@@ -1413,22 +1415,22 @@ class HookedTransformer(HookedRootModule):
 
         (Some models will have actually been trained on the data supplied here, for some it's from the validation set)
         """
-        if self.cfg.original_architecture == "neel":
-            self.dataset = utils.get_dataset("c4_code")
-        elif self.cfg.original_architecture == "neel-solu-old":
-            self.dataset = utils.get_dataset("pile")
-        elif self.cfg.original_architecture == "GPT2LMHeadModel":
-            self.dataset = utils.get_dataset("openwebtext")
-        elif self.cfg.original_architecture == "GPTNeoForCausalLM":
-            self.dataset = utils.get_dataset("pile")
-        elif self.cfg.original_architecture == "GPTNeoXForCausalLM":
-            self.dataset = utils.get_dataset("pile")
-        elif self.cfg.original_architecture == "GPTJForCausalLM":
-            self.dataset = utils.get_dataset("pile")
-        elif self.cfg.original_architecture == "OPTForCausalLM":
-            self.dataset = utils.get_dataset("pile")
+        model_dataset_map = {
+            'neel': 'c4_code',
+            'neel-solu-old': 'pile',
+            'GPT2LMHeadModel': 'openwebtext',
+            'GPTNeoForCausalLM': 'pile',
+            'GPTNeoXForCausalLM': 'pile',
+            'GPTJForCausalLM': 'pile',
+            'GPTJForCausalLM': 'pile',
+            'OPTForCausalLM': 'pile',
+        }
+        if self.cfg.original_architecture in model_dataset_map:
+            self.dataset = utils.get_dataset(model_dataset_map[self.cfg.original_architecture], **kwargs)
         else:
-            raise ValueError(f"We do not have an available dataset for the relevant model: {self.cfg.original_architecture}")
+            raise ValueError(
+                f"We do not have an available dataset for the relevant model: {self.cfg.original_architecture}"
+            )
         return self.dataset
     
     def sample_datapoint(self, tokenize=False) -> Union[str, TT[1, "pos"]]:
