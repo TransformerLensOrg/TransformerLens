@@ -1,13 +1,9 @@
-from typing import Tuple
-
-
 class T:
     """Helper class to get mypy to work with TorchTyping and solidify naming conventions as a byproduct.
     
     Examples: 
     - `TT[T.batch, T.pos, T.d_model]`
     - `TT[T.num_components, T.batch_and_pos_dims:...]`
-    - `TT[T.d_vocab + T.n_ctx, T.d_model]`
     """
 
     batch: str = "batch"
@@ -43,7 +39,6 @@ class T:
     a: str = "a"
     b: str = "b"
 
-
-    @staticmethod
-    def sum(*args: Tuple[str]):
-        return ' + '.join(args)
+    pos_plus_past_kv_pos_offset = "pos + past_kv_pos_offset"
+    d_vocab_plus_n_ctx = "d_vocab + n_ctx"
+    pos_plus_new_tokens = "pos + new_tokens"
