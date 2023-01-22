@@ -106,7 +106,7 @@ class HookedTransformer(HookedRootModule):
             self.pos_embed = PosEmbed(self.cfg)
             self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
 
-        if self.cfg.hook_tokens:
+        if self.cfg.use_hook_tokens:
             self.hook_tokens = HookPoint() # [batch, pos]
 
         self.blocks = nn.ModuleList(
@@ -257,7 +257,7 @@ class HookedTransformer(HookedRootModule):
                 cache_ctx_length == 0 or ctx_length == 1
             ), "Pass in one token at a time after loading cache"
             pos_offset = cache_ctx_length
-        if self.cfg.hook_tokens:
+        if self.cfg.use_hook_tokens:
             tokens = self.hook_tokens(tokens)
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         if self.cfg.positional_embedding_type == "standard":
