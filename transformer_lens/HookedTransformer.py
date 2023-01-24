@@ -407,7 +407,7 @@ class HookedTransformer(HookedRootModule):
             padding = True,
             truncation = truncate,
             max_length = self.cfg.n_ctx if truncate else None,
-            add_special_tokens=False  # As we manually add the BOS token
+            add_special_tokens = False  # As we manually add the BOS token
             )["input_ids"]
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
