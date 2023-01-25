@@ -26,7 +26,10 @@ Mechanistic interpretability is a very young and small field, and there are a *l
 
 If you're new to transformers, check out my [what is a transformer tutorial](https://neelnanda.io/transformer-tutorial) and [tutorial on coding GPT-2 from scratch](https://neelnanda.io/transformer-tutorial-2) (with [an accompanying template](https://neelnanda.io/transformer-template) to write one yourself!
 
-To see user contributed examples of the library being used, check out the [examples](examples.md) page.
+## Gallery
+
+User contributed examples of the library being used in action:
+* [Induction Heads Phase Change Replication](https://colab.research.google.com/github/ckkissane/induction-heads-transformer-lens/blob/main/Induction_Heads_Phase_Change.ipynb): A partial replication of [In-Context Learning and Induction Heads](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html) from Connor Kissane
 
 ## Advice for Reading the Code
 
