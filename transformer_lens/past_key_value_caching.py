@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from torchtyping import TensorType as TT
+from transformer_lens.torchtyping_helper import T
 
 
 @dataclass
 class HookedTransformerKeyValueCacheEntry:
-    past_keys: TT["batch", "pos_so_far", "n_heads", "d_head"]
-    past_values: TT["batch", "pos_so_far", "n_heads", "d_head"]
+    past_keys: TT[T.batch, T.pos_so_far, T.n_heads, T.d_head]
+    past_values: TT[T.batch, T.pos_so_far, T.n_heads, T.d_head]
 
     @classmethod
     def init_cache_entry(
@@ -29,8 +30,8 @@ class HookedTransformerKeyValueCacheEntry:
 
     def append(
         self,
-        new_keys: TT["batch", "new_tokens", "n_heads", "d_head"],
-        new_values: TT["batch", "new_tokens", "n_heads", "d_head"],
+        new_keys: TT[T.batch, T.new_tokens, T.n_heads, T.d_head],
+        new_values: TT[T.batch, T.new_tokens, T.n_heads, T.d_head],
     ):
         updated_keys: TT[
             "batch", "pos_so_far + new_tokens", "n_heads", "d_head"
