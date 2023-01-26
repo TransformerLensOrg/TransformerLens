@@ -10,7 +10,7 @@ import transformer_lens.loading_from_pretrained as loading
 patch_typeguard()
 
 # Get's tedious typing these out everytime I want to sweep over all the distinct small models
-MODEL_TESTING_LIST = ['gpt2-small', 'gpt-neo-125M', 'opt-125m', 'opt-30b', 'stanford-gpt2-small-a', 'pythia-19m']
+MODEL_TESTING_LIST = ['solu-1l', 'gpt2-small', 'gpt-neo-125M', 'opt-125m', 'opt-30b', 'stanford-gpt2-small-a', 'pythia-19m']
 def test_d_vocab_from_tokenizer():
     cfg = HookedTransformerConfig(
         n_layers=1,
@@ -24,7 +24,10 @@ def test_d_vocab_from_tokenizer():
     test_string = 'a fish.'
     # Test tokenizers for different models
     for model_name in MODEL_TESTING_LIST:
-        tokenizer_name = loading.get_official_model_name(model_name)
+        if model_name == 'solu-1l':
+            tokenizer_name = 'NeelNanda/gpt-neox-tokenizer-digits'
+        else:
+            tokenizer_name = loading.get_official_model_name(model_name)
         
         model = HookedTransformer(
             cfg=cfg,
