@@ -1064,6 +1064,12 @@ class HookedTransformer(HookedRootModule):
         """
         self.cfg.use_attn_result = use_attn_result
 
+    def set_use_split_qkv_input(self, use_split_qkv_input):
+        """
+        Toggles whether to allow editing of inputs to each attention head.
+        """
+        self.cfg.use_split_qkv_input = use_split_qkv_input 
+
     def process_weights_(
         self,
         fold_ln: bool = True,

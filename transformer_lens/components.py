@@ -288,6 +288,14 @@ class Attention(nn.Module):
         if self.cfg.scale_attn_by_inverse_layer_idx:
             self.attn_scale *= self.layer_id + 1
 
+        # input to the attention block
+        # last dimension used for q input, k input, v input in that order
+        self.hook_attn_input = HookPoint()  # [batch, pos, head_index, d_model, qkv]
+        # allow editing of inputs to individual heads
+        self.hook_q_input = HookPoint()  # [batch, pos, head_index, d_model]
+        self.hook_k_input = HookPoint()  # [batch, pos, head_index, d_model]
+        self.hook_v_input = HookPoint()  # [batch, pos, head_index, d_model]
+
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_v = HookPoint()  # [batch, pos, head_index, d_head]
@@ -296,11 +304,7 @@ class Attention(nn.Module):
         self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
 
-        # See HookedTransformerConfig for more details.
-        if self.cfg.positional_embedding_type == "shortformer":
-            # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
-            self.hook_attn_input = HookPoint()  # [batch, pos, d_model]
-        elif self.cfg.positional_embedding_type == "rotary":
+        if self.cfg.positional_embedding_type == "rotary":
             # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See HookedTransformerConfig for details
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
@@ -351,34 +355,71 @@ class Attention(nn.Module):
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
 
         """
-        if self.cfg.positional_embedding_type in ["standard", "rotary"]:
-            # Normal attention
-            q = self.hook_q(
-                einsum(
-                    "batch pos d_model, head_index d_model d_head \
-                    -> batch pos head_index d_head",
+        # first create the input to the q, k and v heads
+        if not self.cfg.positional_embedding_type == "shortformer":
+            qkv_input = einops.repeat(
+                resid_pre, "batch pos d_model -> batch pos d_model qkv", qkv=3
+            )
+        else:
+            # shortformer adds the positional embedding to the input to the Q and K positions
+            qkv_input = torch.stack(
+                (
+                    resid_pre + shortformer_pos_embed,
+                    resid_pre + shortformer_pos_embed,
                     resid_pre,
-                    self.W_Q,
-                )
-                + self.b_Q
-            )  # [batch, pos, head_index, d_head]
-            k = self.hook_k(
-                einsum(
-                    "batch pos d_model, head_index d_model d_head \
-                    -> batch pos head_index d_head",
-                    resid_pre,
-                    self.W_K,
-                )
-                + self.b_K
-            )  # [batch, pos, head_index, d_head]
-        elif self.cfg.positional_embedding_type == "shortformer":
-            # Weird shortformer attention see HookedTransformerConfig for details
-            q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
+                ),
+                dim=-1,
+            )
+        qkv_input = self.hook_attn_input(qkv_input)
+
+        if not self.cfg.use_split_qkv_input:
+            qkv_input_einops_string = "batch pos d_model"
+
+        else:
+            qkv_input_einops_string = "batch pos head_index d_model"
+            # make this headwise
+            #
+            # einops.repeat uses a view into the tensor
+            # (see the stride=0 comment here: https://pytorch.org/docs/stable/generated/torch.Tensor.expand.html)
+            # so if we want to edit inputs to specific heads or Q/K/V, we should clone this tensor first
+            qkv_input = einops.repeat(
+                qkv_input,
+                "batch pos d_model qkv \
+                -> batch pos head_index d_model qkv",
+                head_index=self.cfg.n_heads,
+            ).clone() 
+
+        qkv_input = self.hook_attn_input(qkv_input)
+
+        q = self.hook_q(
+            einsum(
+                f"{qkv_input_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                qkv_input[:, :, :, 0]
+                if not self.cfg.use_split_qkv_input
+                else self.hook_q_input(qkv_input[:, :, :, :, 0]),
+                self.W_Q,
+            )
+            + self.b_Q
+        )  # [batch, pos, head_index, d_head]
+        k = self.hook_k(
+            einsum(
+                f"{qkv_input_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                qkv_input[:, :, :, 1]
+                if not self.cfg.use_split_qkv_input
+                else self.hook_k_input(qkv_input[:, :, :, :, 1]),
+                self.W_K,
+            )
+            + self.b_K
+        )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
             einsum(
-                "batch pos d_model, head_index d_model d_head \
+                f"{qkv_input_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                resid_pre,
+                qkv_input[:, :, :, 2]
+                if not self.cfg.use_split_qkv_input
+                else self.hook_v_input(qkv_input[:, :, :, :, 2]),
                 self.W_V,
             )
             + self.b_V
@@ -478,38 +519,6 @@ class Attention(nn.Module):
             attn_scores,
             self.IGNORE,
         )
-
-    def shortformer_calculate_qk(
-        self,
-        x: TT[T.batch, T.pos, T.d_model],
-        shortformer_pos_embed: TT[T.batch, T.pos, T.d_model],
-    ) -> Tuple[
-        TT[T.batch, T.pos, T.head_index, T.d_head],
-        TT[T.batch, T.pos, T.head_index, T.d_head],
-    ]:
-        # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
-        attn_input = self.hook_attn_input(
-            x + shortformer_pos_embed
-        )  # [batch, pos, d_model]
-        q = self.hook_q(
-            einsum(
-                "batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                attn_input,
-                self.W_Q,
-            )
-            + self.b_Q
-        )  # [batch, pos, head_index, d_head]
-        k = self.hook_k(
-            einsum(
-                "batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                attn_input,
-                self.W_K,
-            )
-            + self.b_K
-        )  # [batch, pos, head_index, d_head]
-        return (q, k)
 
     def rotary_rotate_qk(
         self,
