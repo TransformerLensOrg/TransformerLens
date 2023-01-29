@@ -1,7 +1,7 @@
 import pytest
 from typeguard.importhook import install_import_hook
 
-install_import_hook("easy_transformer")
+install_import_hook("transformer_lens")
 
 from transformer_lens import HookedTransformer
 from torchtyping import TensorType as TT, patch_typeguard
@@ -86,9 +86,11 @@ def test_strided_hooks():
         assert list(z.shape) == [1, 4, 768, 3], list(z.shape) # [batch, pos, d_model, qkv]
         assert list(z.stride())[-1] == 0, z.stride()[-1] # for GPT-2 small (which doesn't use shortformer style attention) Q, K and V inputs are the same
         assert 0 not in z.stride()[:-1], z.stride()[:-1] # no other dimensions should be strided
-        return z
+        raise Exception("Checked not strided hook")
 
-    model.run_with_hooks(prompt, fwd_hooks=[("blocks.0.attn.hook_attn_input", no_split_strided_hook)])
+    with pytest.raises(Exception) as exc_info:   
+        model.run_with_hooks(prompt, fwd_hooks=[("blocks.0.attn.hook_attn_input", no_split_strided_hook)])
+    assert str(exc_info.value) == "Checked not strided hook"
 
     model.reset_hooks()
     model.set_use_split_qkv_input(True)
@@ -96,6 +98,8 @@ def test_strided_hooks():
         print(z.shape, z.stride())
         assert list(z.shape) == [1, 4, 12, 768], list(z.shape) # [batch, pos, head_index, d_model]
         assert 0 not in z.stride(), z.stride() # no dimensions should be strided
-        return z
-    
-    model.run_with_hooks(prompt, fwd_hooks=[("blocks.0.attn.hook_q_input", split_strided_hook)])
+        raise Exception("Checked strided hook")
+
+    with pytest.raises(Exception) as exc_info:
+        model.run_with_hooks(prompt, fwd_hooks=[("blocks.0.attn.hook_q_input", split_strided_hook)])
+    assert str(exc_info.value) == "Checked strided hook"

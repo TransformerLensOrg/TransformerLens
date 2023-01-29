@@ -139,7 +139,7 @@ class HookedRootModule(nn.Module):
         self.is_caching = False
 
     def check_and_add_hook(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
-        """Override this function to add checks on which hooks should be added2"""
+        """Override this function to add checks on which hooks should be added"""
         hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent)
 
     def add_hook(self, name, hook, dir="fwd", is_permanent=False) -> None:
