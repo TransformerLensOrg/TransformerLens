@@ -370,7 +370,6 @@ class Attention(nn.Module):
                 ),
                 dim=-1,
             )
-        qkv_input = self.hook_attn_input(qkv_input)
 
         if not self.cfg.use_split_qkv_input:
             qkv_input_einops_string = "batch pos d_model"
