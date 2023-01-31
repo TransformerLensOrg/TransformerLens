@@ -170,30 +170,31 @@ class HookedRootModule(nn.Module):
         Note that if we want to use backward hooks, we need to set
         reset_hooks_end to be False, so the backward hooks are still there - this function only runs a forward pass.
         """
-        for name, hook in fwd_hooks:
-            if type(name) == str:
-                self.mod_dict[name].add_hook(hook, dir="fwd")
-            else:
-                # Otherwise, name is a Boolean function on names
-                for hook_name, hp in self.hook_dict.items():
-                    if name(hook_name):
-                        hp.add_hook(hook, dir="fwd")
-        for name, hook in bwd_hooks:
-            if type(name) == str:
-                self.mod_dict[name].add_hook(hook, dir="bwd")
-            else:
-                # Otherwise, name is a Boolean function on names
-                for hook_name, hp in self.hook_dict:
-                    if name(hook_name):
-                        hp.add_hook(hook, dir="bwd")
-        out = self.forward(*model_args, **model_kwargs)
-        if reset_hooks_end:
-            if len(bwd_hooks) > 0:
-                logging.warning(
-                    "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
-                )
-            self.reset_hooks(clear_contexts, including_permanent=False)
-        return out
+        try:
+            for name, hook in fwd_hooks:
+                if type(name) == str:
+                    self.mod_dict[name].add_hook(hook, dir="fwd")
+                else:
+                    # Otherwise, name is a Boolean function on names
+                    for hook_name, hp in self.hook_dict.items():
+                        if name(hook_name):
+                            hp.add_hook(hook, dir="fwd")
+            for name, hook in bwd_hooks:
+                if type(name) == str:
+                    self.mod_dict[name].add_hook(hook, dir="bwd")
+                else:
+                    # Otherwise, name is a Boolean function on names
+                    for hook_name, hp in self.hook_dict:
+                        if name(hook_name):
+                            hp.add_hook(hook, dir="bwd")
+            return self.forward(*model_args, **model_kwargs)
+        finally:
+            if reset_hooks_end:
+                if len(bwd_hooks) > 0:
+                    logging.warning(
+                        "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
+                    )
+                self.reset_hooks(clear_contexts, including_permanent=False)
 
     def add_caching_hooks(
         self,
