@@ -181,11 +181,11 @@ class ActivationCache:
 
     def logit_attrs(
             self,
-            residual_stack: TT["num_components", "batch_and_pos_dims":..., "d_model"],
-            tokens: Union[str, int, TT[()], TT["batch"], TT["batch", "position"]],
-            incorrect_tokens: Optional[Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]] = None,
+            residual_stack: TT[T.num_components, T.batch_and_pos_dims:..., T.d_model],
+            tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]],
+            incorrect_tokens: Optional[Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]]] = None,
             pos_slice: Union[Slice, SliceInput] = None,
-        ) -> TT["num_components", "batch_and_pos_dims":...]:
+        ) -> TT[T.num_components, T.batch_and_pos_dims:...]:
         """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
 
         Args:
