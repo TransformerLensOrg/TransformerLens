@@ -26,8 +26,8 @@ class HookedTransformerConfig:
             specified, will be set to d_model // d_head. (This is represented by a default value of -1)
         d_mlp (int, *optional*): The dimensionality of the feedforward mlp
             network. Defaults to 4 * d_model, and in an attn-only model is None.
-        d_vocab (int): The size of the vocabulary. If not set, will be
-            automatically set from the tokenizer's vocab size.
+        d_vocab (int): The size of the vocabulary. Defaults to -1, which means not set. If not set, will be
+            automatically set from the tokenizer's vocab size. 
         act_fn (str, *optional*): The activation function to use. Always
             lowercase. Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln',
             'gelu_fast']. Must be set unless using an attn-only model.
@@ -100,7 +100,7 @@ class HookedTransformerConfig:
             before the unembed) with RMSNorm (ie no centering or bias, just
             scaling + weights). Only included because of a dumb bug in my
             original SoLU code. Defaults to False.
-        d_vocab_out (int, *optional*): The size of the output vocabulary. If not
+        d_vocab_out (int, *optional*): The size of the output vocabulary. Defaults to -1, which means not set. If not
             set, will be equal to d_vocab. Mainly useful for algorithmic tasks
             where the input and output vocabularies may be different.
         parallel_attn_mlp (bool): Whether to parallelize the attention and MLP
@@ -126,7 +126,7 @@ class HookedTransformerConfig:
     n_heads: int = -1
     d_mlp: Optional[int] = None
     act_fn: Optional[str] = None
-    d_vocab: Optional[int] = None
+    d_vocab: int = -1
     eps: float = 1e-5
     use_attn_result: bool = False
     use_attn_scale: bool = True
@@ -150,7 +150,7 @@ class HookedTransformerConfig:
     scale_attn_by_inverse_layer_idx: bool = False
     positional_embedding_type: str = "standard"
     final_rms: bool = False
-    d_vocab_out: Optional[int] = None
+    d_vocab_out: int = -1
     parallel_attn_mlp: bool = False
     rotary_dim: Optional[int] = None
     n_params: Optional[int] = None
@@ -187,7 +187,9 @@ class HookedTransformerConfig:
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)
 
-        if self.d_vocab_out is None:
+        if self.d_vocab_out == -1:
+            # d_vocab_out defaults to d_vocab, unless there's an algorithmic task
+            # If d_vocab is not set, it'll be inferred from tokenizer_name or from a tokenizer explicitly passed to HookedTransformer initialisation.
             self.d_vocab_out = self.d_vocab
 
         if self.positional_embedding_type == "rotary" and self.rotary_dim is None:
