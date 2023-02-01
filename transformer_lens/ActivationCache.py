@@ -185,6 +185,7 @@ class ActivationCache:
             tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]],
             incorrect_tokens: Optional[Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]]] = None,
             pos_slice: Union[Slice, SliceInput] = None,
+            batch_slice: Union[Slice, SliceInput] = None
         ) -> TT[T.num_components, T.batch_and_pos_dims:...]:
         """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
 
@@ -195,11 +196,16 @@ class ActivationCache:
                 Must have the same shape as tokens.
             pos_slice (Slice): The slice to apply layer norm scaling on.
                 Defaults to None, do nothing.
+            batch_slice (Slice): The slice to apply on the batch dimension of the residual stack.  If the residual stack doesn't have a batch dimension, this argument does nothing.
+                Defaults to None, do nothing.
         Returns:
             Components: A [num_components, batch_and_pos_dims:...] tensor of the logit attributions or logit difference attributions if incorrect_tokens was provided.
         """
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
+
+        if not isinstance(batch_slice, Slice):
+            batch_slice = Slice(batch_slice)
 
         if isinstance(tokens, str):
             tokens = self.model.to_tokens(tokens)
@@ -222,7 +228,8 @@ class ActivationCache:
             # If incorrect_tokens was provided, take the logit difference
             logit_directions = logit_directions - self.model.tokens_to_residual_directions(incorrect_tokens)
 
-        scaled_residual_stack = self.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=pos_slice)
+        scaled_residual_stack = self.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=pos_slice, batch_slice=batch_slice)
+
         logit_attrs = einsum("... d_model, ... d_model -> ...", scaled_residual_stack, logit_directions)
         return logit_attrs
         
@@ -480,6 +487,7 @@ class ActivationCache:
         layer: Optional[int] = None,
         mlp_input: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
+        batch_slice: Union[Slice, SliceInput] = None
     ) -> TT[T.num_components, T.batch_and_pos_dims:..., T.d_model]:
         """Takes a stack of components of the residual stream (eg outputs of decompose_resid or accumulated_resid), treats them as the input to a specific layer, and applies the layer norm scaling of that layer to them, using the cached scale factors - simulating what that component of the residual stream contributes to that layer's input.
 
@@ -502,13 +510,18 @@ class ActivationCache:
                 over the full context, None means do nothing. It is assumed that
                 pos_slice has already been applied to residual_stack, and this
                 is only applied to the scale. See utils.Slice for details.
-                Defaults to None.
+                Defaults to None, do nothing.
+            batch_slice: The slice to take on the batch dimension after scaling.
+                If residual_stack does not have a batch dimension, this argument does nothing.
+                Defaults to None, do nothing.
         """
         if self.model.cfg.normalization_type not in ["LN", "LNPre"]:
             # The model does not use LayerNorm, so we don't need to do anything.
             return residual_stack
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
+        if not isinstance(batch_slice, Slice):
+            batch_slice = Slice(batch_slice)
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
@@ -524,7 +537,13 @@ class ActivationCache:
         # The shape of scale is [batch, position, 1] or [position, 1] - final dimension is a dummy thing to get broadcoasting to work nicely.
         scale = pos_slice.apply(scale, dim=-2)
 
-        return residual_stack / scale
+        scaled_residual_stack = residual_stack / scale
+
+        if len(scaled_residual_stack.shape) >= 3:
+            # The shape of scaled_residual_stack is [num_components, batch, d_model] or [num_components, batch, position, d_model]
+            scaled_residual_stack = batch_slice.apply(scaled_residual_stack, dim=1)
+
+        return scaled_residual_stack
 
     def get_full_resid_decomposition(
         self,
