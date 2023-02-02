@@ -1,7 +1,7 @@
 import pytest
 
 from transformer_lens import HookedTransformer
-
+from transformer_lens.utils import delete_model
 
 model_names = [
     "attn-only-demo",
@@ -45,3 +45,29 @@ def test_model(name, expected_loss):
     model = HookedTransformer.from_pretrained(name)
     loss = model(text, return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
+
+
+@pytest.mark.parametrize("name", model_names)
+def test_from_pretrained_no_processing(name):
+    # Checks if manually overriding the boolean flags in from_pretrained
+    # is equivalent to using from_pretrained_no_processing
+
+    # Skip the solu-4l-old model because it can't be loaded with fold_ln=False
+    if name != "solu-4l-old":
+        model_ref = HookedTransformer. from_pretrained_no_processing(name)
+        model_override = HookedTransformer.from_pretrained(name, fold_ln=False, center_writing_weights=False, center_unembed=False, refactor_factored_attn_matrices=False)
+        assert model_ref.cfg == model_override.cfg
+        
+        # Deleting the models helps to avoid CUDA out of memory errors
+        delete_model(model_ref)
+        delete_model(model_override)
+
+    # Do the converse check, i.e. check that overriding boolean flags in
+    # from_pretrained_no_processing is equivalent to using from_pretrained
+    model_ref = HookedTransformer.from_pretrained(name)
+    model_override = HookedTransformer.from_pretrained_no_processing(name, fold_ln=True, center_writing_weights=True, center_unembed=True, refactor_factored_attn_matrices=False)
+    assert model_ref.cfg == model_override.cfg
+    
+    delete_model(model_ref)
+    delete_model(model_override)
+
