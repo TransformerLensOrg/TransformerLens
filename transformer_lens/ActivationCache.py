@@ -185,7 +185,8 @@ class ActivationCache:
             tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]],
             incorrect_tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]] = None,
             pos_slice: Union[Slice, SliceInput] = None,
-            batch_slice: Union[Slice, SliceInput] = None
+            batch_slice: Union[Slice, SliceInput] = None,
+            has_batch_dim: bool = True
         ) -> TT[T.num_components, T.batch_and_pos_dims:...]:
         """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
 
@@ -196,8 +197,10 @@ class ActivationCache:
                 Must have the same shape as tokens.
             pos_slice (Slice, optional): The slice to apply layer norm scaling on.
                 Defaults to None, do nothing.
-            batch_slice (Slice, optional): The slice to take on batch dimension during layer norm scaling.
+            batch_slice (Slice, optional): The slice to take on batch dimension during layer norm scaling. This parameter is ignored if has_batch_dim is not True.
                 Defaults to None, do nothing.
+            has_batch_dim (bool): If True, apply the batch_slice during layer norm scaling.
+                Defaults to True.
         Returns:
             Components: A [num_components, batch_and_pos_dims:...] tensor of the logit attributions or logit difference attributions if incorrect_tokens was provided.
         """
@@ -488,7 +491,8 @@ class ActivationCache:
         layer: Optional[int] = None,
         mlp_input: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
-        batch_slice: Union[Slice, SliceInput] = None
+        batch_slice: Union[Slice, SliceInput] = None,
+        has_batch_dim: bool = True
     ) -> TT[T.num_components, T.batch_and_pos_dims:..., T.d_model]:
         """Takes a stack of components of the residual stream (eg outputs of decompose_resid or accumulated_resid), treats them as the input to a specific layer, and applies the layer norm scaling of that layer to them, using the cached scale factors - simulating what that component of the residual stream contributes to that layer's input.
 
@@ -512,9 +516,11 @@ class ActivationCache:
                 pos_slice has already been applied to residual_stack, and this
                 is only applied to the scale. See utils.Slice for details.
                 Defaults to None, do nothing.
-            batch_slice (Slice, optional): The slice to take on batch dimension. This is applied to
-                the scale and residual stack if they have a batch dimension, otherwise it does nothing.
+            batch_slice (Slice, optional): The slice to take on batch dimension. This parameter is
+                ignored if has_batch_dim is not True.
                 Defaults to None, do nothing.
+            has_batch_dim (bool): If True, apply the batch_slice.
+                Defaults to True.
         """
         if self.model.cfg.normalization_type not in ["LN", "LNPre"]:
             # The model does not use LayerNorm, so we don't need to do anything.
@@ -528,9 +534,8 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        if len(residual_stack.shape) == 4 or (len(residual_stack.shape) == 3 and pos_slice.mode == 'int'):
+        if has_batch_dim:
             # Apply batch slice to the stack
-            # The shape of the stack is [num_components, batch, position, d_model] or [num_components, batch, d_model]
             residual_stack = batch_slice.apply(residual_stack, dim=1)
 
         # Center the stack
@@ -545,9 +550,8 @@ class ActivationCache:
         # The shape of scale is [batch, position, 1] or [position, 1] - final dimension is a dummy thing to get broadcoasting to work nicely.
         scale = pos_slice.apply(scale, dim=-2)
 
-        if len(scale.shape) > 1:
+        if has_batch_dim:
             # Apply batch slice to the scale
-            # The shape of scale is [batch, 1]
             scale = batch_slice.apply(scale)
 
         return residual_stack / scale
