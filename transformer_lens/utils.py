@@ -580,9 +580,3 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
-
-def delete_model(model):
-    """Deletes a model and empties cache to free up GPU memory."""
-    model.cpu()
-    del model
-    torch.cuda.empty_cache()
