@@ -231,9 +231,7 @@ class Attention(nn.Module):
         layer_id: Optional[int] = None,
     ):
         """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
-
         Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
-
         Args:
             cfg (Union[Dict, HookedTransformerConfig]): Config
             attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
@@ -288,14 +286,6 @@ class Attention(nn.Module):
         if self.cfg.scale_attn_by_inverse_layer_idx:
             self.attn_scale *= self.layer_id + 1
 
-        # input to the attention block
-        # last dimension used for q input, k input, v input in that order
-        self.hook_attn_input = HookPoint()  # [batch, pos, head_index, d_model, qkv]
-        # allow editing of inputs to individual heads
-        self.hook_q_input = HookPoint()  # [batch, pos, head_index, d_model]
-        self.hook_k_input = HookPoint()  # [batch, pos, head_index, d_model]
-        self.hook_v_input = HookPoint()  # [batch, pos, head_index, d_model]
-
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_v = HookPoint()  # [batch, pos, head_index, d_head]
@@ -304,7 +294,11 @@ class Attention(nn.Module):
         self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
 
-        if self.cfg.positional_embedding_type == "rotary":
+        # See HookedTransformerConfig for more details.
+        if self.cfg.positional_embedding_type == "shortformer":
+            # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
+            self.hook_attn_input = HookPoint()  # [batch, pos, d_model]
+        elif self.cfg.positional_embedding_type == "rotary":
             # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See HookedTransformerConfig for details
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
@@ -319,11 +313,8 @@ class Attention(nn.Module):
     def OV(self) -> FactoredMatrix:
         """ 
         OV-Circuit, as defined in A Mathematical Framework. Because there's no non-linearity between the value vector and the output of the layer, the output is purely determined by the matrix W_OV = W_V @ W_O, and not W_V or W_O individually. (Mathematically, for a single head, output == pattern @ residual @ W_V @ W_O, see the glossary for more)
-
         Done in the order W_V, W_O because the paper uses left-multiplying weight matrices, and TransformerLens uses right-multiplying, sorry!
-
         lru_cache says "compute this the first time a user runs attn.OV, and then cache it". By not defining this in __init__, this means it's only computed and only consumes memory for investigations that need it.
-
         Returns a FactoredMatrix, with left matrix W_V [head_index, d_model, d_head] and right matrix W_O [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model]. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the OV circuit of a head k, attn.OV[k] works.
         """
         return FactoredMatrix(self.W_V, self.W_O)
@@ -333,11 +324,8 @@ class Attention(nn.Module):
     def QK(self) -> FactoredMatrix:
         """ 
         QK-Circuit, as defined in A Mathematical Framework. Because there's no non-linearity in the key-query dot product, the output is purely determined by the matrix W_QK = W_Q.T @ W_K, and not W_Q or W_K individually. (Mathematically, for a single head, pattern = destination_residual.T @ W_Q.T @ W_K @ source-residual, see the glossary for more).
-
         Done in the order Q on the left, K on the right, because the pattern has dimensions [destination_pos, source_pos]
-
         lru_cache says "compute this the first time a user runs attn.QK, and then cache it". By not defining this in __init__, this means it's only computed and only consumes memory for investigations that need it.
-
         Returns a FactoredMatrix, with left matrix W_Q [head_index, d_model, d_head] and right matrix W_K.T [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model] matrix. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the QK circuit of a head k, attn.QK[k] works.
         """
         W_K_transpose = einops.rearrange(self.W_K , "head_index d_model d_head -> head_index d_head d_model")
@@ -346,79 +334,44 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        resid_pre: TT[T.batch, T.pos, T.d_model],
-        shortformer_pos_embed: Optional[TT[T.batch, T.pos, T.d_model]] = None,
+        query_input: Union[TT[T.batch, T.pos, T.d_model], TT[T.batch, T.pos, T.head_index, T.d_model]],
+        key_input: Union[TT[T.batch, T.pos, T.d_model], TT[T.batch, T.pos, T.head_index, T.d_model]],
+        value_input: Union[TT[T.batch, T.pos, T.d_model], TT[T.batch, T.pos, T.head_index, T.d_model]],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
     ) -> TT[T.batch, T.pos, T.d_model]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
-
         """
-        # first create the input to the q, k and v heads
-        if not self.cfg.positional_embedding_type == "shortformer":
-            qkv_input = einops.repeat(
-                resid_pre, "batch pos d_model -> batch pos d_model qkv", qkv=3
-            )
+
+        if self.cfg.use_split_qkv_input:
+            qkv_einops_string = "batch pos head_index d_model"
         else:
-            # shortformer adds the positional embedding to the input to the Q and K positions
-            qkv_input = torch.stack(
-                (
-                    resid_pre + shortformer_pos_embed,
-                    resid_pre + shortformer_pos_embed,
-                    resid_pre,
-                ),
-                dim=-1,
-            )
-
-        if not self.cfg.use_split_qkv_input:
-            qkv_input_einops_string = "batch pos d_model"
-
-        else:
-            qkv_input_einops_string = "batch pos head_index d_model"
-            # make this headwise
-            #
-            # einops.repeat uses a view into the tensor
-            # (see the stride=0 comment here: https://pytorch.org/docs/stable/generated/torch.Tensor.expand.html)
-            # so if we want to edit inputs to specific heads or Q/K/V, we should clone this tensor first
-            qkv_input = einops.repeat(
-                qkv_input,
-                "batch pos d_model qkv \
-                -> batch pos head_index d_model qkv",
-                head_index=self.cfg.n_heads,
-            ).clone() 
-
-        qkv_input = self.hook_attn_input(qkv_input)
+            qkv_einops_string = "batch pos d_model"
 
         q = self.hook_q(
             einsum(
-                f"{qkv_input_einops_string}, head_index d_model d_head \
+                f"{qkv_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                qkv_input[:, :, :, 0]
-                if not self.cfg.use_split_qkv_input
-                else self.hook_q_input(qkv_input[:, :, :, :, 0]),
+                query_input,
                 self.W_Q,
             )
             + self.b_Q
         )  # [batch, pos, head_index, d_head]
         k = self.hook_k(
             einsum(
-                f"{qkv_input_einops_string}, head_index d_model d_head \
+                f"{qkv_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                qkv_input[:, :, :, 1]
-                if not self.cfg.use_split_qkv_input
-                else self.hook_k_input(qkv_input[:, :, :, :, 1]),
+                key_input,
                 self.W_K,
             )
             + self.b_K
         )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
             einsum(
-                f"{qkv_input_einops_string}, head_index d_model d_head \
+                f"{qkv_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                qkv_input[:, :, :, 2]
-                if not self.cfg.use_split_qkv_input
-                else self.hook_v_input(qkv_input[:, :, :, :, 2]),
+                value_input,
                 self.W_V,
             )
             + self.b_V
@@ -684,6 +637,10 @@ class TransformerBlock(nn.Module):
         if not self.cfg.attn_only:
             self.mlp = MLP(cfg)
 
+        self.hook_q_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_k_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_v_input = HookPoint()  # [batch, pos, d_model]
+
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
@@ -708,11 +665,25 @@ class TransformerBlock(nn.Module):
             _type_: _description_
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
-        normalized_resid_pre = self.ln1(resid_pre)
+
+        query_input = resid_pre
+        key_input = resid_pre
+        value_input = resid_pre
+        
+        if self.cfg.use_split_qkv_input:
+            for qkv_input in [query_input, key_input, value_input]:
+                qkv_input = einops.repeat(qkv_input, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads)
+            if shortformer_pos_embed is not None:
+                shortformer_pos_embed = einops.repeat(shortformer_pos_embed, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads)
+
         attn_out = self.hook_attn_out(
+            # hook the residual stream states that are used to calculate the 
+            # queries, keys and values, independently. 
+            # Then take the layer norm of these inputs, and pass these to the attention module.
             self.attn(
-                normalized_resid_pre,
-                shortformer_pos_embed=shortformer_pos_embed,
+                query_input = self.ln1(self.hook_q_input(query_input)) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                key_input = self.ln1(self.hook_k_input(key_input)) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                value_input = self.ln1(self.hook_v_input(value_input)),
                 past_kv_cache_entry=past_kv_cache_entry,
             )
         )  # [batch, pos, d_model]
