@@ -38,7 +38,7 @@ OFFICIAL_MODEL_NAMES = [
     "stanford-crfm/celebrimbor-gpt2-medium-x81",
     "stanford-crfm/durin-gpt2-medium-x343",
     "stanford-crfm/eowyn-gpt2-medium-x777",
-    "EleutherAI/pythia-19m",
+    "EleutherAI/pythia-70m",
     "EleutherAI/pythia-125m",
     "EleutherAI/pythia-350m",
     "EleutherAI/pythia-800m",
@@ -46,7 +46,7 @@ OFFICIAL_MODEL_NAMES = [
     "EleutherAI/pythia-2.7b",
     "EleutherAI/pythia-6.7b",
     "EleutherAI/pythia-13b",
-    "EleutherAI/pythia-19m-deduped",
+    "EleutherAI/pythia-70m-deduped",
     "EleutherAI/pythia-125m-deduped",
     "EleutherAI/pythia-350m-deduped",
     "EleutherAI/pythia-800m-deduped",
@@ -139,7 +139,7 @@ MODEL_ALIASES = {
         "solu-4l-wiki-finetune",
         "solu-4l-finetune",
     ],
-    "EleutherAI/pythia-19m": ["pythia-19m", "pythia"],
+    "EleutherAI/pythia-70m": ["pythia-70m", "pythia"],
     "EleutherAI/pythia-125m": [
         "pythia-125m",
     ],
@@ -161,8 +161,8 @@ MODEL_ALIASES = {
     "EleutherAI/pythia-13b": [
         "pythia-13b",
     ],
-    "EleutherAI/pythia-19m-deduped": [
-        "pythia-19m-deduped",
+    "EleutherAI/pythia-70m-deduped": [
+        "pythia-70m-deduped",
     ],
     "EleutherAI/pythia-125m-deduped": [
         "pythia-125m-deduped",
