@@ -139,7 +139,12 @@ MODEL_ALIASES = {
         "solu-4l-wiki-finetune",
         "solu-4l-finetune",
     ],
-    "EleutherAI/pythia-70m": ["pythia-70m", "pythia"],
+    "EleutherAI/pythia-70m": [
+        "pythia-70m", 
+        "pythia",
+        "EleutherAI/pythia-19m",
+        "pythia-19m", # EleutherAI renamed this model 
+    ],
     "EleutherAI/pythia-125m": [
         "pythia-125m",
     ],
@@ -163,6 +168,8 @@ MODEL_ALIASES = {
     ],
     "EleutherAI/pythia-70m-deduped": [
         "pythia-70m-deduped",
+        "EleutherAI/pythia-19m-deduped", # EleutherAI renamed this model 
+        "pythia-19m-deduped",
     ],
     "EleutherAI/pythia-125m-deduped": [
         "pythia-125m-deduped",
