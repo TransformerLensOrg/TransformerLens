@@ -231,7 +231,9 @@ class Attention(nn.Module):
         layer_id: Optional[int] = None,
     ):
         """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
+
         Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+
         Args:
             cfg (Union[Dict, HookedTransformerConfig]): Config
             attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
@@ -313,8 +315,11 @@ class Attention(nn.Module):
     def OV(self) -> FactoredMatrix:
         """ 
         OV-Circuit, as defined in A Mathematical Framework. Because there's no non-linearity between the value vector and the output of the layer, the output is purely determined by the matrix W_OV = W_V @ W_O, and not W_V or W_O individually. (Mathematically, for a single head, output == pattern @ residual @ W_V @ W_O, see the glossary for more)
+
         Done in the order W_V, W_O because the paper uses left-multiplying weight matrices, and TransformerLens uses right-multiplying, sorry!
+
         lru_cache says "compute this the first time a user runs attn.OV, and then cache it". By not defining this in __init__, this means it's only computed and only consumes memory for investigations that need it.
+
         Returns a FactoredMatrix, with left matrix W_V [head_index, d_model, d_head] and right matrix W_O [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model]. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the OV circuit of a head k, attn.OV[k] works.
         """
         return FactoredMatrix(self.W_V, self.W_O)
@@ -324,8 +329,11 @@ class Attention(nn.Module):
     def QK(self) -> FactoredMatrix:
         """ 
         QK-Circuit, as defined in A Mathematical Framework. Because there's no non-linearity in the key-query dot product, the output is purely determined by the matrix W_QK = W_Q.T @ W_K, and not W_Q or W_K individually. (Mathematically, for a single head, pattern = destination_residual.T @ W_Q.T @ W_K @ source-residual, see the glossary for more).
+
         Done in the order Q on the left, K on the right, because the pattern has dimensions [destination_pos, source_pos]
+
         lru_cache says "compute this the first time a user runs attn.QK, and then cache it". By not defining this in __init__, this means it's only computed and only consumes memory for investigations that need it.
+
         Returns a FactoredMatrix, with left matrix W_Q [head_index, d_model, d_head] and right matrix W_K.T [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model] matrix. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the QK circuit of a head k, attn.QK[k] works.
         """
         W_K_transpose = einops.rearrange(self.W_K , "head_index d_model d_head -> head_index d_head d_model")
@@ -672,7 +680,7 @@ class TransformerBlock(nn.Module):
         
         if self.cfg.use_split_qkv_input:
             for qkv_input in [query_input, key_input, value_input]:
-                qkv_input = einops.repeat(qkv_input, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads)
+                qkv_input = einops.repeat(qkv_input, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads).clone()
             if shortformer_pos_embed is not None:
                 shortformer_pos_embed = einops.repeat(shortformer_pos_embed, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads)
 
