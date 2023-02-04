@@ -703,59 +703,16 @@ class HookedTransformer(HookedRootModule):
         center_writing_weights=False,
         center_unembed=False,
         refactor_factored_attn_matrices=False,
-        checkpoint_index=None,
-        checkpoint_value=None,
-        hf_model=None,
-        device=None,
-        move_state_dict_to_device=True,
-        **model_kwargs,
+        **from_pretrained_kwargs,
     ):
-        """Wrapper for from_pretrained with all boolean flags related to simplifying the model set to False. These are fold_ln, center_writing_weights, center_unembed and refactor_factored_attn_matrices.
-
-        Args:
-            model_name (str): The model name - must be an element of OFFICIAL_MODEL_NAMES or an alias of one.
-            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the
-                subsequent linear layer. This does not change the computation.
-                Defaults to False.
-            center_writing_weights (bool, optional): Whether to center weights
-            writing to
-                the residual stream (ie set mean to be zero). Due to LayerNorm
-                this doesn't change the computation. Defaults to False.
-            center_unembed (bool, optional): Whether to center W_U (ie set mean
-            to be zero).
-                Softmax is translation invariant so this doesn't affect log
-                probs or loss, but does change logits. Defaults to False.
-            refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
-                matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
-            checkpoint_index (int, optional): If loading from a checkpoint, the index of
-                the checkpoint to load. Defaults to None.
-            checkpoint_value (int, optional): If loading from a checkpoint, the value of
-                the checkpoint to load, ie the step or token number (each model
-                has checkpoints labelled with exactly one of these). Defaults to
-                None.
-            hf_model (AutoModelForCausalLM, optional): If you have already loaded in the
-                HuggingFace model, you can pass it in here rather than needing
-                to recreate the object. Defaults to None.
-            device (str, optional): The device to load the model onto. By
-                default will load to CUDA if available, else CPU.
-            move_state_dict_to_device (bool): Whether to move the state dict to the
-                relevant device before processing and loading in the weights.
-                Defaults to True.
-            model_kwargs (dict, optional): Any additional kwargs to pass to the
-                HookedTransformer initialization.
-        """
+        """Wrapper for from_pretrained with all boolean flags related to simplifying the model set to False. Refer to from_pretrained for details."""
         return cls.from_pretrained(
             model_name,
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
-            checkpoint_index=checkpoint_index,
-            checkpoint_value=checkpoint_value,
-            hf_model=hf_model,
-            device=device,
-            move_state_dict_to_device=move_state_dict_to_device,
-            **model_kwargs,
+            **from_pretrained_kwargs,
         )
 
     def init_weights(self):
