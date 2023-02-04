@@ -351,8 +351,8 @@ def get_act_patch_attn_head_all_pos_every(model, corrupted_tokens, clean_cache, 
     act_patch_results = []
     act_patch_results.append(get_act_patch_attn_head_out_all_pos(model, corrupted_tokens, clean_cache, metric))
     act_patch_results.append(get_act_patch_attn_head_q_all_pos(model, corrupted_tokens, clean_cache, metric))
-    act_patch_results.append(get_act_patch_attn_head_v_all_pos(model, corrupted_tokens, clean_cache, metric))
     act_patch_results.append(get_act_patch_attn_head_k_all_pos(model, corrupted_tokens, clean_cache, metric))
+    act_patch_results.append(get_act_patch_attn_head_v_all_pos(model, corrupted_tokens, clean_cache, metric))
     act_patch_results.append(get_act_patch_attn_head_pattern_all_pos(model, corrupted_tokens, clean_cache, metric))
     return torch.stack(act_patch_results, dim=0)
 
@@ -362,8 +362,8 @@ def get_act_patch_attn_head_by_pos_every(model, corrupted_tokens, clean_cache, m
     act_patch_results = []
     act_patch_results.append(get_act_patch_attn_head_out_by_pos(model, corrupted_tokens, clean_cache, metric))
     act_patch_results.append(get_act_patch_attn_head_q_by_pos(model, corrupted_tokens, clean_cache, metric))
-    act_patch_results.append(get_act_patch_attn_head_v_by_pos(model, corrupted_tokens, clean_cache, metric))
     act_patch_results.append(get_act_patch_attn_head_k_by_pos(model, corrupted_tokens, clean_cache, metric))
+    act_patch_results.append(get_act_patch_attn_head_v_by_pos(model, corrupted_tokens, clean_cache, metric))
     
     # Reshape pattern to be compatible with the rest of the results
     pattern_results = (get_act_patch_attn_head_pattern_by_pos(model, corrupted_tokens, clean_cache, metric))

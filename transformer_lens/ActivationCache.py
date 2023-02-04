@@ -118,6 +118,9 @@ class ActivationCache:
     def __iter__(self):
         return self.cache_dict.__iter__()
 
+    def __len__(self):
+        return len(self.cache_dict)
+
     def apply_slice_to_batch_dim(self, batch_slice: Union[Slice, SliceInput]):
         if not isinstance(batch_slice, Slice):
             batch_slice = Slice(batch_slice)
@@ -269,7 +272,7 @@ class ActivationCache:
         incl_remainder: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
     ) -> TT[T.num_components, T.batch_and_pos_dims:..., T.d_model]:
-        """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads.
+        """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads. Note that the num_components axis has length layer x n_heads ((layer head_index) in einops notation)
 
         Assumes that the model has been run with use_attn_results=True
 
