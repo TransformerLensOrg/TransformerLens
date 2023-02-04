@@ -38,22 +38,22 @@ OFFICIAL_MODEL_NAMES = [
     "stanford-crfm/celebrimbor-gpt2-medium-x81",
     "stanford-crfm/durin-gpt2-medium-x343",
     "stanford-crfm/eowyn-gpt2-medium-x777",
-    "EleutherAI/pythia-19m",
-    "EleutherAI/pythia-125m",
-    "EleutherAI/pythia-350m",
-    "EleutherAI/pythia-800m",
-    "EleutherAI/pythia-1.3b",
-    "EleutherAI/pythia-2.7b",
-    "EleutherAI/pythia-6.7b",
-    "EleutherAI/pythia-13b",
-    "EleutherAI/pythia-19m-deduped",
-    "EleutherAI/pythia-125m-deduped",
-    "EleutherAI/pythia-350m-deduped",
-    "EleutherAI/pythia-800m-deduped",
-    "EleutherAI/pythia-1.3b-deduped",
-    "EleutherAI/pythia-2.7b-deduped",
-    "EleutherAI/pythia-6.7b-deduped",
-    "EleutherAI/pythia-13b-deduped",
+    "EleutherAI/pythia-70m",
+    "EleutherAI/pythia-160m",
+    "EleutherAI/pythia-410m",
+    "EleutherAI/pythia-1b",
+    "EleutherAI/pythia-1.4b",
+    "EleutherAI/pythia-2.8b",
+    "EleutherAI/pythia-6.9b",
+    "EleutherAI/pythia-12b",
+    "EleutherAI/pythia-70m-deduped",
+    "EleutherAI/pythia-160m-deduped",
+    "EleutherAI/pythia-410m-deduped",
+    "EleutherAI/pythia-1b-deduped",
+    "EleutherAI/pythia-1.4b-deduped",
+    "EleutherAI/pythia-2.8b-deduped",
+    "EleutherAI/pythia-6.9b-deduped",
+    "EleutherAI/pythia-12b-deduped",
     "NeelNanda/SoLU_1L_v9_old",
     "NeelNanda/SoLU_2L_v10_old",
     "NeelNanda/SoLU_4L_v11_old",
@@ -139,52 +139,89 @@ MODEL_ALIASES = {
         "solu-4l-wiki-finetune",
         "solu-4l-finetune",
     ],
-    "EleutherAI/pythia-19m": ["pythia-19m", "pythia"],
-    "EleutherAI/pythia-125m": [
-        "pythia-125m",
+
+    "EleutherAI/pythia-70m": [
+        "pythia-70m", 
+        "pythia",
+        "EleutherAI/pythia-19m",
+        "pythia-19m", # EleutherAI renamed this model 
     ],
-    "EleutherAI/pythia-350m": [
-        "pythia-350m",
+    "EleutherAI/pythia-160m": [
+        "pythia-160m",
+        "EleutherAI/pythia-125m",
+        "pythia-125m", # EleutherAI renamed this model"        
     ],
-    "EleutherAI/pythia-800m": [
-        "pythia-800m",
+    "EleutherAI/pythia-410m": [
+        "pythia-410m",
+        "EleutherAI/pythia-350m",
+        "pythia-350m", # EleutherAI renamed this model
     ],
-    "EleutherAI/pythia-1.3b": [
-        "pythia-1.3b",
+    "EleutherAI/pythia-1b": [
+        "pythia-1b",
+        "EleutherAI/pythia-800m",
+        "pythia-800m", # EleutherAI renamed this model
     ],
-    "EleutherAI/pythia-2.7b": [
-        "pythia-2.7b",
+    "EleutherAI/pythia-1.4b": [
+        "pythia-1.4b",
+        "EleutherAI/pythia-1.3b",
+        "pythia-1.3b", # EleutherAI renamed this model
     ],
-    "EleutherAI/pythia-6.7b": [
-        "pythia-6.7b",
+    "EleutherAI/pythia-2.8b": [
+        "pythia-2.8b",
+        "EleutherAI/pythia-2.7b",
+        "pythia-2.7b", # EleutherAI renamed this model
     ],
-    "EleutherAI/pythia-13b": [
-        "pythia-13b",
+    "EleutherAI/pythia-6.9b": [
+        "pythia-6.9b",
+        "EleutherAI/pythia-6.7b",
+        "pythia-6.7b", # EleutherAI renamed this model
     ],
-    "EleutherAI/pythia-19m-deduped": [
+    "EleutherAI/pythia-12b": [
+        "pythia-12b",
+        "EleutherAI/pythia-13b",
+        "pythia-13b", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-70m-deduped": [
+        "pythia-70m-deduped",
+        "EleutherAI/pythia-19m-deduped", # EleutherAI renamed this model 
         "pythia-19m-deduped",
     ],
-    "EleutherAI/pythia-125m-deduped": [
+    "EleutherAI/pythia-160m-deduped": [
+        "pythia-160m-deduped",
+        "EleutherAI/pythia-125m-deduped", # EleutherAI renamed this model
         "pythia-125m-deduped",
     ],
-    "EleutherAI/pythia-350m-deduped": [
+    "EleutherAI/pythia-410m-deduped": [
+        "pythia-410m-deduped",
+        "EleutherAI/pythia-350m-deduped", # EleutherAI renamed this model
         "pythia-350m-deduped",
     ],
-    "EleutherAI/pythia-800m-deduped": [
+    "EleutherAI/pythia-1b-deduped": [
+        "pythia-1b-deduped",
+        "EleutherAI/pythia-800m-deduped", # EleutherAI renamed this model
         "pythia-800m-deduped",
     ],
-    "EleutherAI/pythia-1.3b-deduped": [
+    "EleutherAI/pythia-1.4b-deduped": [
+        "pythia-1.4b-deduped",
+        "EleutherAI/pythia-1.3b-deduped", # EleutherAI renamed this model
         "pythia-1.3b-deduped",
     ],
-    "EleutherAI/pythia-2.7b-deduped": [
+    "EleutherAI/pythia-2.8b-deduped": [
+        "pythia-2.8b-deduped",
+        "EleutherAI/pythia-2.7b-deduped", # EleutherAI renamed this model
         "pythia-2.7b-deduped",
     ],
-    "EleutherAI/pythia-6.7b-deduped": [
+    "EleutherAI/pythia-6.9b-deduped": [
+        "pythia-6.9b-deduped",
+        "EleutherAI/pythia-6.7b-deduped", # EleutherAI renamed this model
         "pythia-6.7b-deduped",
     ],
-    "EleutherAI/pythia-13b-deduped": [
+    "EleutherAI/pythia-12b-deduped": [
+        "pythia-12b-deduped",
+        "EleutherAI/pythia-13b-deduped", # EleutherAI renamed this model
         "pythia-13b-deduped",
     ],
+    
     "gpt2": ["gpt2-small"],
     "distilgpt2": ["distillgpt2", "distill-gpt2", "distil-gpt2", "gpt2-xs"],
     "facebook/opt-125m": ["opt-125m", "opt-small", "opt"],
