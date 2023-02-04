@@ -116,6 +116,9 @@ class HookedTransformerConfig:
             the [scaling laws paper](https://arxiv.org/pdf/2001.08361.pdf) found
             that that was a more meaningful number. Ignoring biases and layer
             norms, for convenience)
+        use_hook_tokens (bool): Will add a hook point on the token input to 
+            HookedTransformer.forward, which lets you cache or intervene on the tokens.
+            Defaults to False.
     """
 
     n_layers: int
@@ -154,6 +157,7 @@ class HookedTransformerConfig:
     parallel_attn_mlp: bool = False
     rotary_dim: Optional[int] = None
     n_params: Optional[int] = None
+    use_hook_tokens: bool = False
 
     def __post_init__(self):
         if self.n_heads==-1:

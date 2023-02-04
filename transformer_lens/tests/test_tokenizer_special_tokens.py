@@ -10,7 +10,7 @@ import transformer_lens.loading_from_pretrained as loading
 patch_typeguard()
 
 # Get's tedious typing these out everytime I want to sweep over all the distinct small models
-MODEL_TESTING_LIST = ['solu-1l', 'gpt2-small', 'gpt-neo-125M', 'opt-125m', 'opt-30b', 'stanford-gpt2-small-a', 'pythia-19m']
+MODEL_TESTING_LIST = ['solu-1l', 'gpt2-small', 'gpt-neo-125M', 'opt-125m', 'opt-30b', 'stanford-gpt2-small-a', 'pythia-70m']
 def test_d_vocab_from_tokenizer():
     cfg = HookedTransformerConfig(
         n_layers=1,
