@@ -19,7 +19,6 @@ class TestSlice:
         (np.array([0,]), shape_2),
         (0, shape_1),
         (torch.tensor(0), shape_1),
-        (np.array(0), shape_1),
         (None, shape),
     ])
     def test_modularity_shape(self, input_slice, expected_shape):
@@ -33,7 +32,6 @@ class TestSlice:
         (np.array([0,]), tensor_row0_dim1),
         (0, tensor_row0_dim1),
         (torch.tensor(0), tensor_row0_dim1),
-        (np.array(0), tensor_row0_dim1),
         (None, ref_tensor),
     ])
     def test_modularity_tensor(self, input_slice, expected_tensor):

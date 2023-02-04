@@ -306,7 +306,7 @@ def sample_logits(
 # %%
 # Type alias
 SliceInput: Type = Optional[
-    Union[int, Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor]
+    Union[int, Tuple[int,], Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor, np.ndarray]
 ]
 
 
@@ -365,7 +365,11 @@ class Slice:
         else:
             raise ValueError(f"Invalid input_slice {input_slice}")
 
-    def apply(self, tensor:torch.Tensor, dim:int=0) -> torch.Tensor:
+    def apply(
+        self, 
+        tensor: torch.Tensor, 
+        dim: int = 0,
+        ) -> torch.Tensor:
         """
         Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor.
 
@@ -381,7 +385,10 @@ class Slice:
         slices[dim] = self.slice
         return tensor[tuple(slices)]
 
-    def indices(self, max_ctx:Optional[int]=None) -> np.ndarray:
+    def indices(
+        self, 
+        max_ctx: Optional[int] = None,
+        ) -> np.ndarray:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
 
@@ -400,7 +407,9 @@ class Slice:
             raise ValueError("max_ctx must be specified if slice is not an integer")
         return np.arange(max_ctx)[self.slice]
 
-    def __repr__(self) -> str:
+    def __repr__(
+        self,
+        ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
 
 
