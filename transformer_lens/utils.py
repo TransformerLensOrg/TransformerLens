@@ -388,7 +388,7 @@ class Slice:
     def indices(
         self, 
         max_ctx: Optional[int] = None,
-        ) -> np.ndarray:
+        ) -> Union[np.ndarray, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
 

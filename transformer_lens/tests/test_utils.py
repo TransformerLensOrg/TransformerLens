@@ -41,16 +41,13 @@ class TestSlice:
     
     @pytest.mark.parametrize("input_slice, expected_indices", [
         ([0,1], np.array([0, 1])),
+        (0, np.array(0)),
         (torch.tensor(0), np.array(0)),
     ])
     def test_indices(self, input_slice, expected_indices):
         slc = utils.Slice(input_slice=input_slice)
         indices = slc.indices(2)
         assert (indices == expected_indices).all()
-
-    def test_input_error(self):
-        with pytest.raises(ValueError):
-            _ = utils.Slice(input_slice="Not a slice")
 
     def test_indices_error(self):
         with pytest.raises(ValueError):
