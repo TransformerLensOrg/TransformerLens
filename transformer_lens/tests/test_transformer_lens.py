@@ -49,8 +49,7 @@ def test_model(name, expected_loss):
 def test_from_pretrained_no_processing():
     # Checks if manually overriding the boolean flags in from_pretrained
     # is equivalent to using from_pretrained_no_processing
-
-    name = "stanford-gpt2-small-a"
+    name = "solu-1l"
 
     model_ref = HookedTransformer. from_pretrained_no_processing(name)
     model_override = HookedTransformer.from_pretrained(name, fold_ln=False, center_writing_weights=False, center_unembed=False, refactor_factored_attn_matrices=False)
