@@ -264,7 +264,7 @@ class ActivationCache:
 
     def stack_head_results(
         self,
-        layer: int,
+        layer: int = -1,
         return_labels: bool = False,
         incl_remainder: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
@@ -274,7 +274,7 @@ class ActivationCache:
         Assumes that the model has been run with use_attn_results=True
 
         Args:
-            layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers]
+            layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer
             return_labels (bool, optional): Whether to also return a list of labels of the form "L0H0" for the heads. Defaults to False.
             incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
             pos_slice (Slice): A slice object to apply to the pos dimension. Defaults to None, do nothing.
@@ -325,6 +325,31 @@ class ActivationCache:
             return components, labels
         else:
             return components
+    
+    def stack_activation(
+        self,
+        activation_name: str,
+        layer: int = -1,
+        sublayer_type: Optional[str] = None,
+    ) -> TT[T.layers_covered, ...]:
+        """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads. The output shape is exactly the same shape as the activations, just with a leading layers dimension.
+
+        Args:
+            activation_name (str): The name of the activation to be stacked
+            layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer
+            sublayer_type (str, *optional*): The sub layer type of the activation, passed to utils.get_act_name. Can normally be inferred
+            incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
+        """
+        
+        if layer is None or layer == -1:
+            # Default to the residual stream immediately pre unembed
+            layer = self.model.cfg.n_layers
+        
+        components = []
+        for l in range(layer):
+            components.append(self[(activation_name, l, sublayer_type)])
+        
+        return torch.stack(components, dim=0)
 
     def get_neuron_results(
         self,
