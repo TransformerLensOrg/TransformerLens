@@ -1,16 +1,16 @@
 from typeguard.importhook import install_import_hook
 
-install_import_hook("easy_transformer")
+install_import_hook("transformer_lens")
 
-from easy_transformer import EasyTransformer
+from transformer_lens import HookedTransformer
 from torchtyping import TensorType as TT, patch_typeguard
 
 patch_typeguard()
 
-MODEL = "gpt2"
+MODEL = "solu-1l"
 
 prompt = "Hello World!"
-model = EasyTransformer.from_pretrained(MODEL)
+model = HookedTransformer.from_pretrained(MODEL)
 embed = lambda name: name == "hook_embed"
 
 class Counter:

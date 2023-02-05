@@ -978,7 +978,7 @@ class HookedTransformer(HookedRootModule):
         """Fold the value biases into the output bias. Because attention patterns add up to 1, the value biases always have a constant effect on a head's output
         Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with. 
         We can factor this all into a single output bias to the layer, and make it easier to interpret the head's output.
-        Formally, we take b_O_new = b_O_original + \sum_head b_V_head @ W_O_head
+        Formally, we take b_O_new = b_O_original + sum_head(b_V_head @ W_O_head)
         """
         for layer in range(self.cfg.n_layers):
             # shape [head_index, d_head]
