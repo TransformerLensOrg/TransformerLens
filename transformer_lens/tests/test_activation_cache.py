@@ -66,12 +66,12 @@ def test_logit_attrs_matches_reference_code():
     # Get ref ave logit diffs (cribbed notebook code)
     answer_residual_directions = model.tokens_to_residual_directions(answer_tokens)
     logit_diff_directions = answer_residual_directions[:, 0] - answer_residual_directions[:, 1]
-    scaled_residual_stack = cache.apply_ln_to_stack(accumulated_residual, layer = -1, pos_slice=-1)
-    ref_ave_logit_diffs = einsum("... batch d_model, batch d_model -> ...", scaled_residual_stack, logit_diff_directions)/len(tokens)
+    scaled_residual_stack = cache.apply_ln_to_stack(accumulated_residual, layer=-1, pos_slice=-1)
+    ref_ave_logit_diffs = einsum("... batch d_model, batch d_model -> ...", scaled_residual_stack, logit_diff_directions) / len(tokens)
 
     # Get our ave logit diffs
     logit_diffs = cache.logit_attrs(accumulated_residual, pos_slice=-1, tokens=answer_tokens[:,0], incorrect_tokens=answer_tokens[:,1])
-    ave_logit_diffs = logit_diffs.mean(dim=-1)
+    ave_logit_diffs = einsum("components batch -> components", logit_diffs) / len(tokens)
 
     assert torch.isclose(ref_ave_logit_diffs, ave_logit_diffs).all()
 
