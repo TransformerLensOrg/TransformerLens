@@ -85,4 +85,4 @@ def test_conditional_hooks():
 
     assert len(cache) == 1, len(cache)
     assert "blocks.0.hook_q_input" in cache.keys(), cache.keys()
-    assert cache["blocks.0.hook_q_input"].shape == (1, 5, 12, 768), cache[0].shape
+    assert cache["blocks.0.hook_q_input"].shape == (1, 4, model.cfg.n_heads, model.cfg.d_model), cache["blocks.0.hook_q_input"].shape
