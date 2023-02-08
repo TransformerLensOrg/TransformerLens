@@ -75,3 +75,14 @@ def test_conditional_hooks():
     model.reset_hooks()
     model.set_use_split_qkv_input(True)
     model.add_hook("blocks.0.hook_q_input", identity_hook)
+
+    # check that things are the right shape
+
+    cache = model.run_with_cache(
+        prompt,
+        names_filter=lambda x: x=="blocks.0.hook_q_input", 
+    )[1]
+
+    assert len(cache) == 1, len(cache)
+    assert "blocks.0.hook_q_input" in cache.keys(), cache.keys()
+    assert cache["blocks.0.hook_q_input"].shape == (1, 5, 12, 768), cache[0].shape

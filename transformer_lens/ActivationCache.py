@@ -80,6 +80,9 @@ class ActivationCache:
                     key = (key[0], self.model.cfg.n_layers + key[1], *key[2:])
             return self.cache_dict[utils.get_act_name(*key)]
 
+    def __len__(self):
+        return len(self.cache_dict)
+
     def to(self, device: Union[str, torch.device], move_model=False) -> ActivationCache:
         """
         Moves the cache to a device - mostly useful for moving it to CPU after model computation finishes to save GPU memory. Matmuls will be much slower on the CPU.

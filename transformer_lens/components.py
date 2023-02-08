@@ -116,8 +116,8 @@ class LayerNormPre(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TT[T.batch, T.pos, T.length]
-    ) -> TT[T.batch, T.pos, T.length]:
+        self, x: Union[TT[T.batch, T.pos, T.d_model], TT[T.batch, T.pos, T.head_index, T.d_model]]
+    ) -> Union[TT[T.batch, T.pos, T.d_model], TT[T.batch, T.pos, T.head_index, T.d_model]]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: TT[T.batch, T.pos, 1] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
@@ -154,8 +154,8 @@ class LayerNorm(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TT[T.batch, T.pos, T.length]
-    ) -> TT[T.batch, T.pos, T.length]:
+        self, x: Union[TT[T.batch, T.pos, T.d_model], TT[T.batch, T.pos, T.head_index, T.d_model]]
+    ) -> Union[TT[T.batch, T.pos, T.d_model], TT[T.batch, T.pos, T.head_index, T.d_model]]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: TT[T.batch, T.pos, 1] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
@@ -679,19 +679,24 @@ class TransformerBlock(nn.Module):
         value_input = resid_pre
         
         if self.cfg.use_split_qkv_input:
-            for qkv_input in [query_input, key_input, value_input]:
-                qkv_input = einops.repeat(qkv_input, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads).clone()
+            def add_head_dimension(tensor):
+                return einops.repeat(tensor, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads).clone()
+
+            query_input = self.hook_q_input(add_head_dimension(query_input))
+            key_input = self.hook_k_input(add_head_dimension(key_input))
+            value_input = self.hook_v_input(add_head_dimension(value_input))
+
             if shortformer_pos_embed is not None:
-                shortformer_pos_embed = einops.repeat(shortformer_pos_embed, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads)
+                shortformer_pos_embed = add_head_dimension(shortformer_pos_embed)
 
         attn_out = self.hook_attn_out(
             # hook the residual stream states that are used to calculate the 
             # queries, keys and values, independently. 
             # Then take the layer norm of these inputs, and pass these to the attention module.
             self.attn(
-                query_input = self.ln1(self.hook_q_input(query_input)) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                key_input = self.ln1(self.hook_k_input(key_input)) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                value_input = self.ln1(self.hook_v_input(value_input)),
+                query_input = self.ln1(query_input) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                key_input = self.ln1(key_input) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                value_input = self.ln1(value_input),
                 past_kv_cache_entry=past_kv_cache_entry,
             )
         )  # [batch, pos, d_model]
