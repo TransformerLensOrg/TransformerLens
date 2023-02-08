@@ -670,7 +670,7 @@ class HookedTransformer(HookedRootModule):
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
-        # Load the config into an HookedTransformerConfig object If loading from a
+        # Load the config into an HookedTransformerConfig object. If loading from a
         # checkpoint, the config object will contain the information about the
         # checkpoint
         cfg = loading.get_pretrained_model_config(
@@ -701,6 +701,26 @@ class HookedTransformer(HookedRootModule):
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
 
         return model
+
+    @classmethod
+    def from_pretrained_no_processing(
+        cls,
+        model_name: str,
+        fold_ln=False,
+        center_writing_weights=False,
+        center_unembed=False,
+        refactor_factored_attn_matrices=False,
+        **from_pretrained_kwargs,
+    ):
+        """Wrapper for from_pretrained with all boolean flags related to simplifying the model set to False. Refer to from_pretrained for details."""
+        return cls.from_pretrained(
+            model_name,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
+            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            **from_pretrained_kwargs,
+        )
 
     def init_weights(self):
         """
@@ -985,7 +1005,7 @@ class HookedTransformer(HookedRootModule):
         """Fold the value biases into the output bias. Because attention patterns add up to 1, the value biases always have a constant effect on a head's output
         Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with. 
         We can factor this all into a single output bias to the layer, and make it easier to interpret the head's output.
-        Formally, we take b_O_new = b_O_original + \sum_head b_V_head @ W_O_head
+        Formally, we take b_O_new = b_O_original + sum_head(b_V_head @ W_O_head)
         """
         for layer in range(self.cfg.n_layers):
             # shape [head_index, d_head]

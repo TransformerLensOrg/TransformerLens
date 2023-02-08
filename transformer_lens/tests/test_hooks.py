@@ -8,7 +8,7 @@ from torchtyping import TensorType as TT, patch_typeguard
 
 patch_typeguard()
 
-MODEL = "gpt2"
+MODEL = "solu-1l"
 
 prompt = "Hello World!"
 model = HookedTransformer.from_pretrained(MODEL)
