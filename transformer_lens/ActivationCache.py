@@ -197,9 +197,9 @@ class ActivationCache:
                 Must have the same shape as tokens.
             pos_slice (Slice, optional): The slice to apply layer norm scaling on.
                 Defaults to None, do nothing.
-            batch_slice (Slice, optional): The slice to take on batch dimension during layer norm scaling. This parameter is ignored if has_batch_dim is not True.
+            batch_slice (Slice, optional): The slice to take on the batch dimension during layer norm scaling.
                 Defaults to None, do nothing.
-            has_batch_dim (bool): If True, apply the batch_slice during layer norm scaling.
+            has_batch_dim (bool, optional): Whether residual_stack has a batch dimension.
                 Defaults to True.
         Returns:
             Components: A [num_components, batch_and_pos_dims:...] tensor of the logit attributions or logit difference attributions if incorrect_tokens was provided.
@@ -211,19 +211,19 @@ class ActivationCache:
             batch_slice = Slice(batch_slice)
 
         if isinstance(tokens, str):
-            tokens = self.model.to_tokens(tokens)
+            tokens = torch.as_tensor(self.model.to_single_token(tokens))
 
         elif isinstance(tokens, int):
-            tokens = torch.Tensor(tokens)
+            tokens = torch.as_tensor(tokens)
 
         logit_directions = self.model.tokens_to_residual_directions(tokens)
 
         if incorrect_tokens is not None:
             if isinstance(incorrect_tokens, str):
-                incorrect_tokens = self.model.to_tokens(incorrect_tokens)
+                incorrect_tokens = torch.as_tensor(self.model.to_single_token(incorrect_tokens))
 
             elif isinstance(incorrect_tokens, int):
-                incorrect_tokens = torch.Tensor(incorrect_tokens)
+                incorrect_tokens = torch.as_tensor(incorrect_tokens)
 
             if tokens.shape != incorrect_tokens.shape:
                 raise ValueError(f"tokens and incorrect_tokens must have the same shape! (tokens.shape={tokens.shape}, incorrect_tokens.shape={incorrect_tokens.shape})")
@@ -231,7 +231,8 @@ class ActivationCache:
             # If incorrect_tokens was provided, take the logit difference
             logit_directions = logit_directions - self.model.tokens_to_residual_directions(incorrect_tokens)
 
-        scaled_residual_stack = self.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=pos_slice, batch_slice=batch_slice)
+
+        scaled_residual_stack = self.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=pos_slice, batch_slice=batch_slice, has_batch_dim=has_batch_dim)
 
         logit_attrs = einsum("... d_model, ... d_model -> ...", scaled_residual_stack, logit_directions)
 
@@ -516,10 +517,9 @@ class ActivationCache:
                 pos_slice has already been applied to residual_stack, and this
                 is only applied to the scale. See utils.Slice for details.
                 Defaults to None, do nothing.
-            batch_slice (Slice, optional): The slice to take on batch dimension. This parameter is
-                ignored if has_batch_dim is not True.
+            batch_slice (Slice, optional): The slice to take on the batch dimension.
                 Defaults to None, do nothing.
-            has_batch_dim (bool): If True, apply the batch_slice.
+            has_batch_dim (bool, optional): Whether residual_stack has a batch dimension.
                 Defaults to True.
         """
         if self.model.cfg.normalization_type not in ["LN", "LNPre"]:
@@ -550,7 +550,7 @@ class ActivationCache:
         # The shape of scale is [batch, position, 1] or [position, 1] - final dimension is a dummy thing to get broadcoasting to work nicely.
         scale = pos_slice.apply(scale, dim=-2)
 
-        if has_batch_dim:
+        if self.has_batch_dim:
             # Apply batch slice to the scale
             scale = batch_slice.apply(scale)
 
