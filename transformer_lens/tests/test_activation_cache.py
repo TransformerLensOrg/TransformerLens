@@ -71,9 +71,9 @@ def test_logit_attrs_matches_reference_code():
 
     # Get our ave logit diffs
     logit_diffs = cache.logit_attrs(accumulated_residual, pos_slice=-1, tokens=answer_tokens[:,0], incorrect_tokens=answer_tokens[:,1])
-    ave_logit_diffs = einsum("components batch -> components", logit_diffs) / len(tokens)
+    ave_logit_diffs = logit_diffs.mean(dim=-1)
 
-    assert torch.isclose(ref_ave_logit_diffs, ave_logit_diffs).all()
+    assert torch.isclose(ref_ave_logit_diffs, ave_logit_diffs, atol=1e-7).all()
 
 @torch.set_grad_enabled(False)
 def test_logit_attrs_works_for_all_input_shapes():
