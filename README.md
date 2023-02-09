@@ -65,7 +65,13 @@ Then the library can be imported as `import transformer_lens`.
 
 ### Testing
 
-If adding a feature, please add unit tests for it to the tests folder, and check that it hasn't broken anything major using the existing tests (install pytest and run it in the root TransformerLens/ directory)
+If adding a feature, please add unit tests for it to the tests folder, and check that it hasn't broken anything major using the existing tests (install pytest and run it in the root TransformerLens/ directory).
+
+To run tests, you can use the following command:
+
+```
+poetry run pytest -v transformer_lens/tests
+```
 
 ## Citation
 
