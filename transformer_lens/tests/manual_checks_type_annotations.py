@@ -5,9 +5,6 @@ hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 import torch
 
 from transformer_lens import HookedTransformer
-from torchtyping import TensorType as TT, patch_typeguard
-
-patch_typeguard()
 
 MODEL = "gpt2"
 model = HookedTransformer.from_pretrained(MODEL)

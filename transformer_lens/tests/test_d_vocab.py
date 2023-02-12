@@ -2,10 +2,7 @@ from jaxtyping import install_import_hook
 hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from torchtyping import TensorType as TT, patch_typeguard
 from transformers import AutoTokenizer
-
-patch_typeguard()
 
 def test_d_vocab_from_tokenizer():
     cfg = HookedTransformerConfig(

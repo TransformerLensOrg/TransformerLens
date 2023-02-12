@@ -3,14 +3,11 @@ from jaxtyping import install_import_hook
 hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from torchtyping import TensorType as TT, patch_typeguard
 from transformer_lens.hook_points import HookPoint
 from jaxtyping import Int
 
 import functools
 import torch as t
-
-patch_typeguard()
 
 def test_patch_tokens():
 

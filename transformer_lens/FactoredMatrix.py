@@ -2,10 +2,8 @@ from __future__ import annotations
 import torch
 from typing import Optional, Union, Tuple, List, Dict
 from jaxtyping import Float
-from torchtyping import TensorType as TT
 from functools import lru_cache
 import transformer_lens.utils as utils
-from transformer_lens.torchtyping_helper import T as TH # Need the import as since FactoredMatrix declares T (for transpose)
 
 class FactoredMatrix:
     """

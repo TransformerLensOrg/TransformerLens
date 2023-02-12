@@ -1,6 +1,5 @@
 from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple, overload
 from typing_extensions import Literal
-from torchtyping import TensorType as TT
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,7 +30,6 @@ from transformer_lens.past_key_value_caching import (
 
 from transformer_lens.components import *
 import transformer_lens.loading_from_pretrained as loading
-from transformer_lens.torchtyping_helper import T
 import transformer_lens.utils as utils
 
 SingleLoss = Float[torch.Tensor, ""] # Type alias for a single element tensor

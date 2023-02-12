@@ -8,9 +8,6 @@ hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 import torch as t
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from torchtyping import TensorType as TT, patch_typeguard
-
-patch_typeguard()
 
 DEVICE = "cuda" if t.cuda.is_available() else "cpu"
 MODEL = "gpt2"

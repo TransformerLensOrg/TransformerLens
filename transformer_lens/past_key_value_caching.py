@@ -3,8 +3,6 @@ import torch.nn as nn
 from dataclasses import dataclass
 from typing import Union, Tuple, List, Dict, Any, Optional
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from torchtyping import TensorType as TT
-from transformer_lens.torchtyping_helper import T
 from jaxtyping import Float 
 
 

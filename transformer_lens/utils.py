@@ -6,7 +6,6 @@ from datasets.arrow_dataset import Dataset
 import einops
 from transformers import AutoTokenizer
 from typing import Optional, Union, Tuple, List, Dict, Type
-from torchtyping import TensorType as TT
 import transformers
 from huggingface_hub import hf_hub_download
 import re
@@ -15,7 +14,6 @@ from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 
 from transformer_lens import FactoredMatrix
-from transformer_lens.torchtyping_helper import T
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json

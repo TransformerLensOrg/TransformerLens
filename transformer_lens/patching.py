@@ -13,9 +13,7 @@ from __future__ import annotations
 import torch
 from typing import Optional, Union, Dict, Callable, Sequence, Optional, Tuple
 from typing_extensions import Literal
-from torchtyping import TensorType as TT
 
-from transformer_lens.torchtyping_helper import T
 from transformer_lens import HookedTransformer, ActivationCache
 import transformer_lens.utils as utils
 import pandas as pd

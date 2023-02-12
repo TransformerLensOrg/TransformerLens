@@ -3,8 +3,6 @@ from jaxtyping import install_import_hook
 hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 from transformer_lens import HookedTransformer
 
-from torchtyping import TensorType as TT 
-
 MODEL = "solu-1l"
 
 prompt = "Hello World!"
