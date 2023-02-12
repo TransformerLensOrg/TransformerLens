@@ -13,3 +13,4 @@ _modidx.py
 .ipynb_checkpoints
 env
 dist/
+.coverage
