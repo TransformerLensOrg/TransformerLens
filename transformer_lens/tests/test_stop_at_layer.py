@@ -1,15 +1,12 @@
 """
 Tests for the stop_at_layer parameter in HookedTransformer
 """
-from typeguard.importhook import install_import_hook
-
-install_import_hook("transformer_lens")
+from jaxtyping import install_import_hook
+hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from torchtyping import TensorType as patch_typeguard
 import torch
 
-patch_typeguard()
 
 def test_stop_at_embed():
     cfg = HookedTransformerConfig(
@@ -216,3 +213,5 @@ def test_no_stop_no_output():
     assert "blocks.2.hook_resid_pre" in cache.keys()
     assert "blocks.2.hook_resid_post" in cache.keys()
     assert "ln_final.hook_normalized" in cache.keys()
+
+hook.uninstall()

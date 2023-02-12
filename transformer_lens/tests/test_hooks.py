@@ -1,6 +1,5 @@
-from typeguard.importhook import install_import_hook
-
-install_import_hook("transformer_lens")
+from jaxtyping import install_import_hook
+hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer
 from torchtyping import TensorType as TT, patch_typeguard
@@ -48,3 +47,4 @@ def test_remove_hook():
     assert c.count == 0
     model.remove_all_hook_fns(including_permanent=True)
 
+hook.uninstall()
