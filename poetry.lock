@@ -1699,7 +1699,6 @@ files = [
 
 [package.dependencies]
 mdurl = ">=0.1,<1.0"
-typing_extensions = {version = ">=3.7.4", markers = "python_version < \"3.8\""}
 
 [package.extras]
 benchmarking = ["psutil", "pytest", "pytest-benchmark (>=3.2,<4.0)"]
@@ -4421,4 +4420,4 @@ docs = ["sphinx", "sphinx-autobuild", "sphinxcontrib-napoleon", "furo", "myst-pa
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "5ad9ea1d8006744367730b2a62c87fc9664d9353ea1718b8aa1c324023137412"
+content-hash = "10a39ab634cb814f30d8c6a42963c0f1e561bf5e55dfc7541e90b36234d0a9d0"
