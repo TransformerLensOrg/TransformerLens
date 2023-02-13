@@ -16,7 +16,8 @@ release = '0.0.0'
 
 extensions = ['sphinx.ext.autodoc',
               'sphinxcontrib.napoleon',
-              'myst_parser']
+              'myst_parser',
+              "sphinx.ext.githubpages"]
 
 source_suffix = {
     ".rst": "restructuredtext",
