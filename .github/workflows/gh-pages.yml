@@ -22,7 +22,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "poetry"
       - name: Install dependencies
-        run: poetry install --extras docs
+        run: poetry lock && poetry install --extras docs
 
 
       - name: Build
