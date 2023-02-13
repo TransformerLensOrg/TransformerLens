@@ -1,3 +1,4 @@
+import pytest
 from typeguard.importhook import install_import_hook
 
 install_import_hook("transformer_lens")
@@ -48,3 +49,40 @@ def test_remove_hook():
     assert c.count == 0
     model.remove_all_hook_fns(including_permanent=True)
 
+def test_conditional_hooks():
+    """Test that it's only possible to add certain hooks when certain conditions are met"""
+
+    def identity_hook(z, hook):
+        return z
+
+    model.reset_hooks()
+    model.set_use_attn_result(False)
+    with pytest.raises(AssertionError):
+        model.add_hook("blocks.0.attn.hook_result", identity_hook)
+
+
+    model.reset_hooks()
+    model.set_use_split_qkv_input(False)
+    with pytest.raises(AssertionError):
+        model.add_hook("blocks.0.hook_q_input", identity_hook)
+
+    # now when we set these conditions to true, should be no errors!
+
+    model.reset_hooks()
+    model.set_use_attn_result(True)
+    model.add_hook("blocks.0.attn.hook_result", identity_hook)
+
+    model.reset_hooks()
+    model.set_use_split_qkv_input(True)
+    model.add_hook("blocks.0.hook_q_input", identity_hook)
+
+    # check that things are the right shape
+
+    cache = model.run_with_cache(
+        prompt,
+        names_filter=lambda x: x=="blocks.0.hook_q_input", 
+    )[1]
+
+    assert len(cache) == 1, len(cache)
+    assert "blocks.0.hook_q_input" in cache.keys(), cache.keys()
+    assert cache["blocks.0.hook_q_input"].shape == (1, 4, model.cfg.n_heads, model.cfg.d_model), cache["blocks.0.hook_q_input"].shape
