@@ -1,0 +1,38 @@
+name: Deploy Docs
+on:
+  push:
+    branches: [sphinx-documentation]
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    name: Generate Website
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "poetry"
+      - name: Install dependencies
+        run: poetry install --extras docs
+
+
+      - name: Build
+        run: poetry run sphinx-build source build
+
+      - name: Remove .doctrees
+        run: rm -r docs/build/.doctrees
+
+      - name: Upload to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: _build
+          clean-exclude: |
+            *.*.*/
