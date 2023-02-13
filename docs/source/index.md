@@ -31,6 +31,15 @@ content/gallery
 :caption: Resources
 
 content/tutorials
+content/citation
+```
+
+```{toctree}
+:hidden:
+:caption: Code
+
+transformer_lens.rst
+easy_transformer.rst
 ```
 
 
