@@ -1,7 +1,8 @@
 name: Deploy Docs
 on:
   push:
-    branches: [sphinx-documentation]
+    branches: 
+      - sphinx-documenation
 
 permissions:
   contents: write
