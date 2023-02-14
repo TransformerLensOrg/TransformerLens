@@ -1057,6 +1057,23 @@ widgetsnbextension = ">=4.0,<5.0"
 test = ["jsonschema", "pytest (>=3.6.0)", "pytest-cov", "pytz"]
 
 [[package]]
+name = "jaxtyping"
+version = "0.2.11"
+description = "Type annotations and runtime checking for shape and dtype of JAX arrays, and PyTrees."
+category = "main"
+optional = false
+python-versions = "~=3.7"
+files = [
+    {file = "jaxtyping-0.2.11-py3-none-any.whl", hash = "sha256:1f418bdf243d96ce6ed285767a2cc6730878f02410e9ab3741d06a659bcbd7e0"},
+    {file = "jaxtyping-0.2.11.tar.gz", hash = "sha256:effef88191b4a0b0d0a7b921f2d315290e77a86f3b2f6d1353dea810ba6c76bd"},
+]
+
+[package.dependencies]
+numpy = ">=1.20.0"
+typeguard = ">=2.13.3"
+typing-extensions = ">=3.7.4.1"
+
+[[package]]
 name = "jedi"
 version = "0.18.2"
 description = "An autocompletion tool for Python that can be used for text editors."
@@ -3640,4 +3657,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "7c1058f9816f79a844f1916159a0a6eb74a0e3ad0b6bce258676f0222ba376bc"
+content-hash = "8b7c647b3e867007c9c41e05269232b8a7a4490dec9a5dd8f5e9f425969c0661"
