@@ -3131,22 +3131,6 @@ typing-extensions = "*"
 opt-einsum = ["opt-einsum (>=3.3)"]
 
 [[package]]
-name = "torchtyping"
-version = "0.1.4"
-description = "Runtime type annotations for the shape, dtype etc. of PyTorch Tensors."
-category = "main"
-optional = false
-python-versions = ">=3.7.0"
-files = [
-    {file = "torchtyping-0.1.4-py3-none-any.whl", hash = "sha256:485fb6ef3965c39b0de15f00d6f49373e0a3a6993e9733942a63c5e207d35390"},
-    {file = "torchtyping-0.1.4.tar.gz", hash = "sha256:4763375d17752641bd1bff0faaddade29be3c125fca6355e3cee7700e975fdb5"},
-]
-
-[package.dependencies]
-torch = ">=1.7.0"
-typeguard = ">=2.11.1"
-
-[[package]]
 name = "tornado"
 version = "6.2"
 description = "Tornado is a Python web framework and asynchronous networking library, originally developed at FriendFeed."
@@ -3657,4 +3641,4 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7"
-content-hash = "8b7c647b3e867007c9c41e05269232b8a7a4490dec9a5dd8f5e9f425969c0661"
+content-hash = "7bb22bc9c055e48f5757afaee542aeffe03db5d9f5d2386d61104c1f58e030e6"

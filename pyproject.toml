@@ -19,7 +19,6 @@ tqdm = "^4.64.1"
 pandas = "^1.1.5"
 wandb = "^0.13.5"
 fancy-einsum = "^0.0.3"
-torchtyping = "^0.1.4"
 rich = "^12.6.0"
 jaxtyping = "^0.2.11"
 
