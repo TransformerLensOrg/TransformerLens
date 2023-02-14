@@ -1,6 +1,7 @@
 from jaxtyping import install_import_hook
 hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
+import pytest
 from transformer_lens import HookedTransformer
 
 MODEL = "solu-1l"
