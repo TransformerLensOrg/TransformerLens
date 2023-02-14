@@ -113,8 +113,8 @@ class LayerNormPre(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: Float[torch.Tensor, "batch pos length"]
-    ) -> Float[torch.Tensor, "batch pos length"]:
+        self, x: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]
+    ) -> Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
@@ -151,8 +151,8 @@ class LayerNorm(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: Float[torch.Tensor, "batch pos length"]
-    ) -> Float[torch.Tensor, "batch pos length"]:
+        self, x: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]
+    ) -> Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
@@ -339,43 +339,44 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        resid_pre: Float[torch.Tensor, "batch pos d_model"],
-        shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
+        query_input: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]],
+        key_input: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]],
+        value_input: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
-
         """
-        if self.cfg.positional_embedding_type in ["standard", "rotary"]:
-            # Normal attention
-            q = self.hook_q(
-                einsum(
-                    "batch pos d_model, head_index d_model d_head \
-                    -> batch pos head_index d_head",
-                    resid_pre,
-                    self.W_Q,
-                )
-                + self.b_Q
-            )  # [batch, pos, head_index, d_head]
-            k = self.hook_k(
-                einsum(
-                    "batch pos d_model, head_index d_model d_head \
-                    -> batch pos head_index d_head",
-                    resid_pre,
-                    self.W_K,
-                )
-                + self.b_K
-            )  # [batch, pos, head_index, d_head]
-        elif self.cfg.positional_embedding_type == "shortformer":
-            # Weird shortformer attention see HookedTransformerConfig for details
-            q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
+
+        if self.cfg.use_split_qkv_input:
+            qkv_einops_string = "batch pos head_index d_model"
+        else:
+            qkv_einops_string = "batch pos d_model"
+
+        q = self.hook_q(
+            einsum(
+                f"{qkv_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                query_input,
+                self.W_Q,
+            )
+            + self.b_Q
+        )  # [batch, pos, head_index, d_head]
+        k = self.hook_k(
+            einsum(
+                f"{qkv_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                key_input,
+                self.W_K,
+            )
+            + self.b_K
+        )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
             einsum(
-                "batch pos d_model, head_index d_model d_head \
+                f"{qkv_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                resid_pre,
+                value_input,
                 self.W_V,
             )
             + self.b_V
@@ -475,38 +476,6 @@ class Attention(nn.Module):
             attn_scores,
             self.IGNORE,
         )
-
-    def shortformer_calculate_qk(
-        self,
-        x: Float[torch.Tensor, "batch pos d_model"],
-        shortformer_pos_embed: Float[torch.Tensor, "batch pos d_model"],
-    ) -> Tuple[
-        Float[torch.Tensor, "batch pos head_index d_head"],
-        Float[torch.Tensor, "batch pos head_index d_head"],
-    ]:
-        # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
-        attn_input = self.hook_attn_input(
-            x + shortformer_pos_embed
-        )  # [batch, pos, d_model]
-        q = self.hook_q(
-            einsum(
-                "batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                attn_input,
-                self.W_Q,
-            )
-            + self.b_Q
-        )  # [batch, pos, head_index, d_head]
-        k = self.hook_k(
-            einsum(
-                "batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                attn_input,
-                self.W_K,
-            )
-            + self.b_K
-        )  # [batch, pos, head_index, d_head]
-        return (q, k)
 
     def rotary_rotate_qk(
         self,
@@ -673,6 +642,10 @@ class TransformerBlock(nn.Module):
         if not self.cfg.attn_only:
             self.mlp = MLP(cfg)
 
+        self.hook_q_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_k_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_v_input = HookPoint()  # [batch, pos, d_model]
+
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
@@ -697,11 +670,30 @@ class TransformerBlock(nn.Module):
             _type_: _description_
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
-        normalized_resid_pre = self.ln1(resid_pre)
+
+        query_input = resid_pre
+        key_input = resid_pre
+        value_input = resid_pre
+        
+        if self.cfg.use_split_qkv_input:
+            def add_head_dimension(tensor):
+                return einops.repeat(tensor, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads).clone()
+
+            query_input = self.hook_q_input(add_head_dimension(query_input))
+            key_input = self.hook_k_input(add_head_dimension(key_input))
+            value_input = self.hook_v_input(add_head_dimension(value_input))
+
+            if shortformer_pos_embed is not None:
+                shortformer_pos_embed = add_head_dimension(shortformer_pos_embed)
+
         attn_out = self.hook_attn_out(
+            # hook the residual stream states that are used to calculate the 
+            # queries, keys and values, independently. 
+            # Then take the layer norm of these inputs, and pass these to the attention module.
             self.attn(
-                normalized_resid_pre,
-                shortformer_pos_embed=shortformer_pos_embed,
+                query_input = self.ln1(query_input) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                key_input = self.ln1(key_input) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                value_input = self.ln1(value_input),
                 past_kv_cache_entry=past_kv_cache_entry,
             )
         )  # [batch, pos, d_model]

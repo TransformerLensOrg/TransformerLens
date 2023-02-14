@@ -37,6 +37,8 @@ class HookedTransformerConfig:
             each head adds to the residual stream (with a hook) and THEN add it
             up, vs just calculating the sum. This can be very memory intensive
             for large models, so defaults to False
+        use_split_qkv_input (bool): whether to explicitly calculate the input of
+            each head separately, with a hook. Defaults to false to save memory.
         use_attn_scale (bool): whether to scale the attention weights by
             1/sqrt(d_head)
         model_name (str): the name of the model, used to load
@@ -133,7 +135,8 @@ class HookedTransformerConfig:
     eps: float = 1e-5
     use_attn_result: bool = False
     use_attn_scale: bool = True
-    use_local_attn: bool = False
+    use_split_qkv_input: bool = False
+    use_local_attn: bool = False 
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
     checkpoint_index: Optional[int] = None
