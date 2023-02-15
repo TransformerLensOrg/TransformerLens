@@ -464,6 +464,8 @@ class HookedTransformer(HookedRootModule):
 
         Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is capitalized. It's easy to shoot yourself in the foot here if you're not careful!
 
+        Gotcha3: If passing a string that exceeds the model's context length (model.cfg.n_ctx), it will be truncated.
+
         Args:
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should be a tensor of shape [pos] or [1, pos]
             prepend_bos (bool, optional): Whether to prepend a BOS token. Only applies if input is a string. Defaults to True.
