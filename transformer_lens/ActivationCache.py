@@ -2,6 +2,7 @@
 from __future__ import annotations
 import transformer_lens.utils as utils
 from transformer_lens.utils import Slice, SliceInput
+from jaxtyping import Float
 import torch
 import einops
 from fancy_einsum import einsum
