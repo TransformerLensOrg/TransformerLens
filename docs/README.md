@@ -18,8 +18,16 @@ poetry install --extras docs
 ```
 
 Using api doc to make the rst files
-```
+
+```bash
 poetry run sphinx-apidoc -f -o docs/source .
+
+# make the model tables file
+poetry run python -m transformer_lens.make_docs
+mv model_properties_table.md docs/source/
+sed -i '' '1s/^/# Model Properties Table\n\n/' docs/source/model_properties_table.md
 cd docs
+
+# build the docs from source
 poetry run  sphinx-autobuild -b dirhtml ./source build/html
 ```
