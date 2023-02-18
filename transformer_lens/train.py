@@ -63,8 +63,7 @@ def train(
     Args:
         model: The model to train
         config: The training configuration
-        dataset: The dataset to train on - this function assumes the dataset is
-            set up for autoregressive language modeling.
+        dataset: The dataset to train on - this function assumes the dataset is set up for autoregressive language modeling.
     Returns:
         The trained model
     """
