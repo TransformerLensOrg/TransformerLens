@@ -39,7 +39,6 @@ content/citation
 :caption: Code
 
 transformer_lens.rst
-easy_transformer.rst
 ```
 
 
