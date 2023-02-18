@@ -30,7 +30,7 @@ jobs:
           poetry run python -m transformer_lens.make_docs
           mv model_properties_table.md docs/source/
           sed -i '' '1s/^/# Model Properties Table\n\n/' docs/source/model_properties_table.md
-        - name: Remove .doctrees
+      - name: Remove .doctrees
         run: rm -r docs/build/.doctrees
 
       - name: Upload to GitHub Pages
