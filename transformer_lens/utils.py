@@ -308,6 +308,21 @@ def sample_logits(
 SliceInput: Type = Optional[
     Union[int, Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor]
 ]
+"""
+An optional type alias for a slice input used in the `ActivationCache` module.
+
+A `SliceInput` can be one of the following types:
+    - `int`: an integer representing a single position
+    - `Tuple[int, int]`: a tuple of two integers representing a range of positions
+    - `Tuple[int, int, int]`: a tuple of three integers representing a range of positions with a step size
+    - `List[int]`: a list of integers representing multiple positions
+    - `torch.Tensor`: a tensor containing a boolean mask or a list of indices to be selected from the input tensor.
+
+`SliceInput` is used in the `apply_ln_to_stack` method in the `ActivationCache` module.
+
+:class:`SliceInput`
+    An object that represents a slice input. It can be a tuple of integers or a slice object.
+"""
 
 
 class Slice:
@@ -328,6 +343,9 @@ class Slice:
     elif input_slice = (1, 5, 2), tensor -> tensor[1:5:2] (ie indexing with [1, 3])
     elif input_slice = [1, 4, 5], tensor -> tensor[[1, 4, 5]] (ie changing the first axis to have length 3, and taking the indices 1, 4, 5 out).
     elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.
+
+    :class: `Slice`
+        An object that represents a slice input. It can be a tuple of integers or a slice object.
     """
 
     def __init__(
