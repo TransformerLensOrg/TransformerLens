@@ -1,0 +1,1052 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Local Development" href="content/development.html" /><link rel="prev" title="transformer_lens package" href="transformer_lens.html" />
+
+    <!-- Generated with Sphinx 5.2.3 and Furo 2022.12.07 -->
+        <title>Model Properties Table - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?digest=91d0f0d1c444bdcb17a68e833c7a53903343c195" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+  
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="model-properties-table">
+<h1>Model Properties Table<a class="headerlink" href="#model-properties-table" title="Permalink to this heading">#</a></h1>
+<div class="table-wrapper colwidths-auto docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head text-left"><p></p></th>
+<th class="head text-left"><p>n_params</p></th>
+<th class="head text-right"><p>n_layers</p></th>
+<th class="head text-right"><p>d_model</p></th>
+<th class="head text-right"><p>n_heads</p></th>
+<th class="head text-left"><p>act_fn</p></th>
+<th class="head text-right"><p>n_ctx</p></th>
+<th class="head text-right"><p>d_vocab</p></th>
+<th class="head text-right"><p>d_head</p></th>
+<th class="head text-right"><p>d_mlp</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-left"><p>gpt2-small</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>gpt2-medium</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>gpt2-large</p></td>
+<td class="text-left"><p>708M</p></td>
+<td class="text-right"><p>36</p></td>
+<td class="text-right"><p>1280</p></td>
+<td class="text-right"><p>20</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>5120</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>gpt2-xl</p></td>
+<td class="text-left"><p>1.5B</p></td>
+<td class="text-right"><p>48</p></td>
+<td class="text-right"><p>1600</p></td>
+<td class="text-right"><p>25</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>6400</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>distillgpt2</p></td>
+<td class="text-left"><p>42M</p></td>
+<td class="text-right"><p>6</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>opt-125m</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50272</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>opt-1.3b</p></td>
+<td class="text-left"><p>1.2B</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50272</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>8192</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>opt-2.7b</p></td>
+<td class="text-left"><p>2.5B</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-right"><p>2560</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50272</p></td>
+<td class="text-right"><p>80</p></td>
+<td class="text-right"><p>10240</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>opt-6.7b</p></td>
+<td class="text-left"><p>6.4B</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-right"><p>4096</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50272</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>16384</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>opt-13b</p></td>
+<td class="text-left"><p>13B</p></td>
+<td class="text-right"><p>40</p></td>
+<td class="text-right"><p>5120</p></td>
+<td class="text-right"><p>40</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50272</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>20480</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>opt-30b</p></td>
+<td class="text-left"><p>30B</p></td>
+<td class="text-right"><p>48</p></td>
+<td class="text-right"><p>7168</p></td>
+<td class="text-right"><p>56</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50272</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>28672</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>opt-66b</p></td>
+<td class="text-left"><p>65B</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>9216</p></td>
+<td class="text-right"><p>72</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50272</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>36864</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>gpt-neo-125M</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>gpt-neo-1.3B</p></td>
+<td class="text-left"><p>1.2B</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>8192</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>gpt-neo-2.7B</p></td>
+<td class="text-left"><p>2.5B</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-right"><p>2560</p></td>
+<td class="text-right"><p>20</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>10240</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>gpt-j-6B</p></td>
+<td class="text-left"><p>5.6B</p></td>
+<td class="text-right"><p>28</p></td>
+<td class="text-right"><p>4096</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50400</p></td>
+<td class="text-right"><p>256</p></td>
+<td class="text-right"><p>16384</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>gpt-neox-20b</p></td>
+<td class="text-left"><p>20B</p></td>
+<td class="text-right"><p>44</p></td>
+<td class="text-right"><p>6144</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50432</p></td>
+<td class="text-right"><p>96</p></td>
+<td class="text-right"><p>24576</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>stanford-gpt2-small-a</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>stanford-gpt2-small-b</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>stanford-gpt2-small-c</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>stanford-gpt2-small-d</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>stanford-gpt2-small-e</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>stanford-gpt2-medium-a</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>stanford-gpt2-medium-b</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>stanford-gpt2-medium-c</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>stanford-gpt2-medium-d</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>stanford-gpt2-medium-e</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50257</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>pythia-70m</p></td>
+<td class="text-left"><p>19M</p></td>
+<td class="text-right"><p>6</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>pythia-160m</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>pythia-410m</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>pythia-1b</p></td>
+<td class="text-left"><p>805M</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>256</p></td>
+<td class="text-right"><p>8192</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>pythia-1.4b</p></td>
+<td class="text-left"><p>1.2B</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>8192</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>pythia-2.8b</p></td>
+<td class="text-left"><p>2.5B</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-right"><p>2560</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>80</p></td>
+<td class="text-right"><p>10240</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>pythia-6.9b</p></td>
+<td class="text-left"><p>6.4B</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-right"><p>4096</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50432</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>16384</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>pythia-12b</p></td>
+<td class="text-left"><p>11B</p></td>
+<td class="text-right"><p>36</p></td>
+<td class="text-right"><p>5120</p></td>
+<td class="text-right"><p>40</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50688</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>20480</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>pythia-70m-deduped</p></td>
+<td class="text-left"><p>19M</p></td>
+<td class="text-right"><p>6</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>pythia-160m-deduped</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>pythia-410m-deduped</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>pythia-1b-deduped</p></td>
+<td class="text-left"><p>805M</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>256</p></td>
+<td class="text-right"><p>8192</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>pythia-1.4b-deduped</p></td>
+<td class="text-left"><p>1.2B</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>8192</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>pythia-2.8b-deduped</p></td>
+<td class="text-left"><p>2.5B</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-right"><p>2560</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50304</p></td>
+<td class="text-right"><p>80</p></td>
+<td class="text-right"><p>10240</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>pythia-6.9b-deduped</p></td>
+<td class="text-left"><p>6.4B</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-right"><p>4096</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50432</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>16384</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>pythia-12b-deduped</p></td>
+<td class="text-left"><p>11B</p></td>
+<td class="text-right"><p>36</p></td>
+<td class="text-right"><p>5120</p></td>
+<td class="text-right"><p>40</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>50688</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>20480</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-1l-pile</p></td>
+<td class="text-left"><p>13M</p></td>
+<td class="text-right"><p>1</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50278</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>solu-2l-pile</p></td>
+<td class="text-left"><p>13M</p></td>
+<td class="text-right"><p>2</p></td>
+<td class="text-right"><p>736</p></td>
+<td class="text-right"><p>11</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50278</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2944</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-4l-pile</p></td>
+<td class="text-left"><p>13M</p></td>
+<td class="text-right"><p>4</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50278</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>solu-6l-pile</p></td>
+<td class="text-left"><p>42M</p></td>
+<td class="text-right"><p>6</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50278</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-8l-pile</p></td>
+<td class="text-left"><p>101M</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50278</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>solu-10l-pile</p></td>
+<td class="text-left"><p>197M</p></td>
+<td class="text-right"><p>10</p></td>
+<td class="text-right"><p>1280</p></td>
+<td class="text-right"><p>20</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50278</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>5120</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-12l-pile</p></td>
+<td class="text-left"><p>340M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>1536</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50278</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>6144</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>solu-1l</p></td>
+<td class="text-left"><p>3.1M</p></td>
+<td class="text-right"><p>1</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-2l</p></td>
+<td class="text-left"><p>6.3M</p></td>
+<td class="text-right"><p>2</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>solu-3l</p></td>
+<td class="text-left"><p>9.4M</p></td>
+<td class="text-right"><p>3</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-4l</p></td>
+<td class="text-left"><p>13M</p></td>
+<td class="text-right"><p>4</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>solu-6l</p></td>
+<td class="text-left"><p>42M</p></td>
+<td class="text-right"><p>6</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-8l</p></td>
+<td class="text-left"><p>101M</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>solu-10l</p></td>
+<td class="text-left"><p>197M</p></td>
+<td class="text-right"><p>10</p></td>
+<td class="text-right"><p>1280</p></td>
+<td class="text-right"><p>20</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>5120</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-12l</p></td>
+<td class="text-left"><p>340M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>1536</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>6144</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>gelu-1l</p></td>
+<td class="text-left"><p>3.1M</p></td>
+<td class="text-right"><p>1</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>gelu-2l</p></td>
+<td class="text-left"><p>6.3M</p></td>
+<td class="text-right"><p>2</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>gelu-3l</p></td>
+<td class="text-left"><p>9.4M</p></td>
+<td class="text-right"><p>3</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>gelu-4l</p></td>
+<td class="text-left"><p>13M</p></td>
+<td class="text-right"><p>4</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>attn-only-1l</p></td>
+<td class="text-left"><p>1.0M</p></td>
+<td class="text-right"><p>1</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>attn_only</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>attn-only-2l</p></td>
+<td class="text-left"><p>2.1M</p></td>
+<td class="text-right"><p>2</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>attn_only</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>attn-only-3l</p></td>
+<td class="text-left"><p>3.1M</p></td>
+<td class="text-right"><p>3</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>attn_only</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>attn-only-4l</p></td>
+<td class="text-left"><p>4.2M</p></td>
+<td class="text-right"><p>4</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>attn_only</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>attn-only-2l-demo</p></td>
+<td class="text-left"><p>2.1M</p></td>
+<td class="text-right"><p>2</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>attn_only</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>50277</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>solu-1l-wiki</p></td>
+<td class="text-left"><p>3.1M</p></td>
+<td class="text-right"><p>1</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>solu-4l-wiki</p></td>
+<td class="text-left"><p>13M</p></td>
+<td class="text-right"><p>4</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>solu</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>48262</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="content/development.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Local Development</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens package</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <script src="_static/scripts/furo.js"></script>
+    </body>
+</html>
