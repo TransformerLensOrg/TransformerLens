@@ -138,14 +138,18 @@ class HookedRootModule(nn.Module):
         self.remove_all_hook_fns(direction, including_permanent)
         self.is_caching = False
 
+    def check_and_add_hook(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
+        """Override this function to add checks on which hooks should be added"""
+        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent)
+
     def add_hook(self, name, hook, dir="fwd", is_permanent=False) -> None:
         if type(name) == str:
-            self.mod_dict[name].add_hook(hook, dir=dir, is_permanent=is_permanent)
+            self.check_and_add_hook(self.mod_dict[name], name, hook, dir=dir, is_permanent=is_permanent)
         else:
             # Otherwise, name is a Boolean function on names
-            for hook_name, hp in self.hook_dict.items():
-                if name(hook_name):
-                    hp.add_hook(hook, dir=dir, is_permanent=is_permanent)
+            for hook_point_name, hp in self.hook_dict.items():
+                if name(hook_point_name):
+                    self.check_and_add_hook(hp, hook_point_name, hook, dir=dir, is_permanent=is_permanent)
 
     def add_perma_hook(self, name, hook, dir="fwd") -> None:
         self.add_hook(name, hook, dir=dir, is_permanent=True)

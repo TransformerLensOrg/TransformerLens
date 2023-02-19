@@ -151,6 +151,13 @@ class HookedTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
+    def check_and_add_hook(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
+        if hook_point_name.endswith("attn.hook_result"):
+            assert self.cfg.use_attn_result, f"Cannot add hook {hook_point_name} if use_attn_result_hook is False"
+        if hook_point_name.endswith(("hook_q_input", "hook_k_input", "hook_v_input")):
+            assert self.cfg.use_split_qkv_input, f"Cannot add hook {hook_point_name} if use_split_qkv_input is False"
+        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent)
+
     @overload
     def forward(
         self, 
@@ -456,6 +463,8 @@ class HookedTransformer(HookedRootModule):
         (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
 
         Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is capitalized. It's easy to shoot yourself in the foot here if you're not careful!
+
+        Gotcha3: If passing a string that exceeds the model's context length (model.cfg.n_ctx), it will be truncated.
 
         Args:
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should be a tensor of shape [pos] or [1, pos]
@@ -1088,6 +1097,12 @@ class HookedTransformer(HookedRootModule):
         Toggles whether to explicitly calculate and expose the result for each attention head - useful for interpretability but can easily burn through GPU memory.
         """
         self.cfg.use_attn_result = use_attn_result
+
+    def set_use_split_qkv_input(self, use_split_qkv_input):
+        """
+        Toggles whether to allow editing of inputs to each attention head.
+        """
+        self.cfg.use_split_qkv_input = use_split_qkv_input 
 
     def process_weights_(
         self,
