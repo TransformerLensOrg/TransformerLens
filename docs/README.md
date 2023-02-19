@@ -25,7 +25,11 @@ poetry run sphinx-apidoc -f -o docs/source .
 # make the model tables file
 poetry run python -m transformer_lens.make_docs
 mv model_properties_table.md docs/source/
-sed -i '' '1s/^/# Model Properties Table\n\n/' docs/source/model_properties_table.md
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' '1s/^/# Model Properties Table\n\n/' docs/source/model_properties_table.md
+else
+    sed -i '1s/^/# Model Properties Table\n\n/' docs/source/model_properties_table.md
+fi
 cd docs
 
 # build the docs from source
