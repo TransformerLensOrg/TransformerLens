@@ -14,3 +14,5 @@ _modidx.py
 env
 dist/
 docs/build
+.coverage
+

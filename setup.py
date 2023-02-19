@@ -21,5 +21,5 @@ setup(
         "torchtyping",
         "rich",
     ],
-    extras_require={"dev": ["pytest", "mypy"]},
+    extras_require={"dev": ["pytest", "mypy", "pytest-cov"]},
 )
