@@ -482,7 +482,7 @@ class ActivationCache:
             mlp_input (bool, optional): Whether the input is to the MLP or attn
                 (ie ln2 vs ln1). Defaults to False, ie ln1. If layer==n_layers,
                 must be False, and we use ln_final
-            pos_slice: The slice to take of positions, if residual_stack is not
+            pos_slice (Slice, optional): The slice to take of positions, if residual_stack is not
                 over the full context, None means do nothing. It is assumed that
                 pos_slice has already been applied to residual_stack, and this
                 is only applied to the scale. See utils.Slice for details.

@@ -54,7 +54,7 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
       - name: Pytest
-        run: poetry run pytest
+        run: poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing transformer_lens/tests/
       # - name: Type check
       #   run: poetry run mypy transformer_lens
       - name: Build check

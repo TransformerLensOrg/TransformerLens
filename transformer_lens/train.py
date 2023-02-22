@@ -24,7 +24,6 @@ class HookedTransformerTrainConfig:
         momentum (float): Momentum to use for training
         max_grad_norm (float, *optional*): Maximum gradient norm to use for
         weight_decay (float, *optional*): Weight decay to use for training
-            training
         optimizer_name (str): The name of the optimizer to use
         device (str, *optional*): Device to use for training
         warmup_steps (int, *optional*): Number of warmup steps to use for training
@@ -64,8 +63,7 @@ def train(
     Args:
         model: The model to train
         config: The training configuration
-        dataset: The dataset to train on - this function assumes the dataset is
-            set up for autoregressive language modeling.
+        dataset: The dataset to train on - this function assumes the dataset is set up for autoregressive language modeling.
     Returns:
         The trained model
     """
