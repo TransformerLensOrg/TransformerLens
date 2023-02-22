@@ -32,12 +32,15 @@
 | pythia-410m                    |      1024 |    4096 |       64 |     50304 | gelu      |        16 |         24 |    2048 | 302M       | rotary        |
 | pythia-1b                    |      2048 |    8192 |      256 |     50304 | gelu      |         8 |         16 |    2048 | 805M       | rotary        |
 | pythia-1.4b                    |      2048 |    8192 |      128 |     50304 | gelu      |        16 |         24 |    2048 | 1.2B       | rotary        |
+| pythia-2.8b                    |      2560 |    10240 |      80 |     50304 | gelu      |        32 |         32 |    2048 | 2.5B       | rotary        |
 | pythia-6.9b                    |      4096 |   16384 |      128 |     50432 | gelu      |        32 |         32 |    2048 | 6.4B       | rotary        |
 | pythia-12b                     |      5120 |   20480 |      128 |     50688 | gelu      |        40 |         36 |    2048 | 11B        | rotary        |
 | pythia-70m-deduped             |       512 |    2048 |       64 |     50304 | gelu      |         8 |          6 |    2048 | 19M        | rotary        |
 | pythia-160m-deduped            |       768 |    3072 |       64 |     50304 | gelu      |        12 |         12 |    2048 | 85M        | rotary        |
-| EleutherAI/pythia-410m-deduped |      1024 |    4096 |       64 |     50304 | gelu      |        16 |         24 |    2048 | 302M       | rotary        |
+| pythia-410m-deduped            |      1024 |    4096 |       64 |     50304 | gelu      |        16 |         24 |    2048 | 302M       | rotary        |
+| pythia-1b-deduped              |      2048 |    8192 |      256 |     50304 | gelu      |        8 |         16 |    2048 | 805M       | rotary   
 | pythia-1.4b-deduped            |      2048 |    8192 |      128 |     50304 | gelu      |        16 |         24 |    2048 | 1.2B       | rotary        |
+| pythia-2.8b-deduped            |      2560 |    10240 |      80 |     50304 | gelu      |        32 |         32 |    2048 | 2.5B       | rotary        |
 | pythia-6.9b-deduped            |      4096 |   16384 |      128 |     50432 | gelu      |        32 |         32 |    2048 | 6.4B       | rotary        |
 | pythia-12b-deduped             |      5120 |   20480 |      128 |     50688 | gelu      |        40 |         36 |    2048 | 11B        | rotary        |
 | solu-1l-old                    |      1024 |    4096 |       64 |     50278 | solu      |        16 |          1 |    1024 | 13M        | standard        |
@@ -64,3 +67,5 @@
 | attn-only-3l                   |       512 |    2048 |       64 |     48262 | attn_only |         8 |          3 |    1024 | 3.1M       | standard        |
 | attn-only-4l                   |       512 |    2048 |       64 |     48262 | attn_only |         8 |          4 |    1024 | 4.2M       | standard        |
 | attn-only-2l-demo              |       512 |    2048 |       64 |     50277 | attn_only |         8 |          2 |    1024 | 2.1M       | shortformer        |
+| solu-1l-wiki                   |       512 |    2048 |       64 |     48262 | solu      |         8 |          1 |    1024 | 3.1M       | standard        |
+| solu-4l-wiki                   |       512 |    2048 |       64 |     48262 | solu      |         8 |          4 |    1024 | 13M       | standard        |
