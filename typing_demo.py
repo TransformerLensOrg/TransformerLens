@@ -1,13 +1,12 @@
 # %%
 
 import torch as t
-from torchtyping import TensorType as TT, patch_typeguard
+from jaxtyping import Float
 from typeguard import typechecked
 import einops
 
-patch_typeguard()
 
-ZimZam = TT["batch", "feature", float]
+ZimZam = Float[t.Tensor, "batch feature"]
 
 
 @typechecked
@@ -29,7 +28,7 @@ test(x)
 
 # now what if we repeat the same strings across type definitions?
 
-ZimZam2 = TT["batch", "feature", float]
+ZimZam2 = Float[t.Tensor, "batch feature"]
 
 
 @typechecked

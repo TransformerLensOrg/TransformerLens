@@ -62,7 +62,7 @@ class HookPoint(nn.Module):
 
     def remove_hooks(self, dir="fwd", including_permanent=False) -> None:
 
-        def _remove_hooks(handles: List[LensHandle]) -> None:
+        def _remove_hooks(handles: List[LensHandle]) -> List[LensHandle]:
             output_handles = []
             for handle in handles:
                 if not handle.is_permanent or including_permanent:

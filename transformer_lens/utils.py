@@ -6,7 +6,6 @@ from datasets.arrow_dataset import Dataset
 import einops
 from transformers import AutoTokenizer
 from typing import Optional, Union, Tuple, List, Dict, Type
-from torchtyping import TensorType as TT
 import transformers
 from huggingface_hub import hf_hub_download
 import re
@@ -15,10 +14,10 @@ from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 
 from transformer_lens import FactoredMatrix
-from transformer_lens.torchtyping_helper import T
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
+from jaxtyping import Float, Int
 
 
 def download_file_from_hf(
@@ -74,10 +73,10 @@ def to_numpy(tensor):
 
 
 def lm_cross_entropy_loss(
-    logits: TT[T.batch, T.pos, T.d_vocab],
-    tokens: TT[T.batch, T.pos],
+    logits: Float[torch.Tensor, "batch pos d_vocab"],
+    tokens: Int[torch.Tensor, "batch pos"],
     per_token: bool = False,
-) -> Union[TT[()], TT[T.batch, T.pos]]:
+) -> Union[Float[torch.Tensor, ""], Float[torch.Tensor, "batch pos"]]:
     """Cross entropy loss for the language model, gives the loss for predicting the NEXT token.
 
     Args:
@@ -99,10 +98,10 @@ def lm_cross_entropy_loss(
 
 
 def lm_accuracy(
-    logits: TT[T.batch, T.pos, T.d_vocab],
-    tokens: TT[T.batch, T.pos],
+    logits: Float[torch.Tensor, "batch pos d_vocab"],
+    tokens: Int[torch.Tensor, "batch pos"],
     per_token: bool = False,
-) -> Union[TT[()], TT[T.batch, T.pos]]:
+) -> Union[Float[torch.Tensor, ""], Float[torch.Tensor, "batch pos"]]:
     """Cross-Entropy Accuracy for Language Modelling. We measure the accuracy on the logits for predicting the NEXT token.
 
     If per_token is True, returns the boolean for top 1 accuracy for each token in the batch. Note that this has size [batch, seq_len-1], as we cannot predict the first token.
@@ -115,7 +114,7 @@ def lm_accuracy(
         return correct_matches.sum() / correct_matches.numel()
 
 
-def gelu_new(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]:
+def gelu_new(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
     return (
         0.5
@@ -129,7 +128,7 @@ def gelu_new(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]:
     )
 
 
-def gelu_fast(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]:
+def gelu_fast(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     return (
         0.5
         * input
@@ -137,7 +136,7 @@ def gelu_fast(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]
     )
 
 
-def solu(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]:
+def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
@@ -242,13 +241,13 @@ tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
 """
 
 def sample_logits(
-    final_logits: TT[T.batch, T.d_vocab],
+    final_logits: Float[torch.Tensor, "batch d_vocab"],
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
     temperature: float = 1.0,
     freq_penalty: float = 0.0,
-    tokens: Optional[TT[T.batch, T.pos]] = None,
-) -> TT[T.batch]:
+    tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
+) -> Float[torch.Tensor, "batch"]:
     """
     Sample from the logits, in order to generate text
 
@@ -467,7 +466,7 @@ def get_act_name(
     return full_act_name
 
 
-def remove_batch_dim(tensor: TT[1, ...]) -> TT[...]:
+def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
     """
     Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
     """
@@ -532,7 +531,7 @@ def test_prompt(
 
 
 # %%
-def transpose(tensor: TT[..., T.a, T.b]) -> TT[..., T.b, T.a]:
+def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "... b a"]:
     """
     Utility to swap the last two dimensions of a tensor, regardless of the number of leading dimensions
     """
@@ -541,7 +540,7 @@ def transpose(tensor: TT[..., T.a, T.b]) -> TT[..., T.b, T.a]:
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
 ) -> Union[
-    TT[T.leading_dims:...], TT[T.leading_dims_left:..., T.leading_dims_right:...]
+    Float[torch.Tensor, "*leading_dims"], Float[torch.Tensor, "*leading_dims_left *T.leading_dims_right"]
 ]:
     """
     See `HookedTransformer.all_composition_scores` for documentation.

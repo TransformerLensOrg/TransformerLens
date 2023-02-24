@@ -1,13 +1,9 @@
-from typeguard.importhook import install_import_hook
-
-install_import_hook("transformer_lens")
+from jaxtyping import install_import_hook
+hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from torchtyping import TensorType as TT, patch_typeguard
 from transformers import AutoTokenizer
 import transformer_lens.loading_from_pretrained as loading
-
-patch_typeguard()
 
 # Get's tedious typing these out everytime I want to sweep over all the distinct small models
 MODEL_TESTING_LIST = ['solu-1l', 'gpt2-small', 'gpt-neo-125M', 'opt-125m', 'opt-30b', 'stanford-gpt2-small-a', 'pythia-70m']
@@ -49,3 +45,5 @@ def test_d_vocab_from_tokenizer():
         assert tokens_with_bos.shape[-1] == tokens_without_bos.shape[-1] + 1, 'BOS Token not added when expected'
         # Check that we don't have BOS when we disable the flag
         assert tokens_without_bos.squeeze()[0] != model.tokenizer.bos_token_id, "BOS token is present when it shouldn't be"
+
+hook.uninstall()

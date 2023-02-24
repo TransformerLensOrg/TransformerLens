@@ -2,18 +2,15 @@
 from __future__ import annotations
 import transformer_lens.utils as utils
 from transformer_lens.utils import Slice, SliceInput
+from jaxtyping import Float
 import torch
 import einops
 from fancy_einsum import einsum
 from typing import Optional, Union, Dict
 from typing_extensions import Literal
-from torchtyping import TensorType as TT
 import re
 import numpy as np
 import logging
-
-from transformer_lens.torchtyping_helper import T
-
 
 class ActivationCache:
     """
@@ -146,7 +143,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         mlp_input: bool = False,
         return_labels: bool = False,
-    ) -> TT[T.layers_covered, T.batch_and_pos_dims:..., T.d_model]:
+    ) -> Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"]:
         """Returns the accumulated residual stream up to a given layer, ie a stack of previous residual streams up to that layer's input. This can be thought of as a series of partial values of the residual stream, where the model gradually accumulates what it wants.
 
         Args:
@@ -193,7 +190,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         incl_embeds: bool = True,
         return_labels: bool = False,
-    ) -> TT[T.layers_covered, T.batch_and_pos_dims:..., T.d_model]:
+    ) -> Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"]:
         """Decomposes the residual stream input to layer L into a stack of the output of previous layers. The sum of these is the input to layer L (plus embedding and pos embedding). This is useful for attributing model behaviour to different components of the residual stream
 
         Args:
@@ -274,7 +271,7 @@ class ActivationCache:
         return_labels: bool = False,
         incl_remainder: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
-    ) -> TT[T.num_components, T.batch_and_pos_dims:..., T.d_model]:
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads. Note that the num_components axis has length layer x n_heads ((layer head_index) in einops notation)
 
         Assumes that the model has been run with use_attn_results=True
@@ -337,7 +334,7 @@ class ActivationCache:
         activation_name: str,
         layer: int = -1,
         sublayer_type: Optional[str] = None,
-    ) -> TT[T.layers_covered, ...]:
+    ) -> Float[torch.Tensor, "layers_covered ..."]:
         """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads. The output shape is exactly the same shape as the activations, just with a leading layers dimension.
 
         Args:
@@ -362,7 +359,7 @@ class ActivationCache:
         layer: int,
         neuron_slice: Union[Slice, SliceInput] = None,
         pos_slice: Union[Slice, SliceInput] = None,
-    ) -> TT[T.batch_and_pos_dims:..., T.num_neurons, T.d_model]:
+    ) -> Float[torch.Tensor, "*batch_and_pos_dims num_neurons d_model"]:
         """Returns the results of for neurons in a specific layer (ie, how much each neuron contributes to the residual stream). Does it for the subset of neurons specified by neuron_slice, defaults to all of them. Does *not* cache these because it's expensive in space and cheap to compute.
 
         Args:
@@ -397,7 +394,7 @@ class ActivationCache:
         neuron_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
         incl_remainder: bool = False,
-    ) -> TT[T.num_components, T.batch_and_pos_dims:..., T.d_model]:
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Returns a stack of all neuron results (ie residual stream contribution) up to layer L - ie the amount each individual neuron contributes to the residual stream. Also returns a list of labels of the form "L0N0" for the neurons. A good way to decompose the outputs of MLP layers into attribution by specific neurons.
 
         Note that doing this for all neurons is SUPER expensive on GPU memory and only works for small models or short inputs.
@@ -460,11 +457,11 @@ class ActivationCache:
 
     def apply_ln_to_stack(
         self,
-        residual_stack: TT[T.num_components, T.batch_and_pos_dims:..., T.d_model],
+        residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
         layer: Optional[int] = None,
         mlp_input: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
-    ) -> TT[T.num_components, T.batch_and_pos_dims:..., T.d_model]:
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Takes a stack of components of the residual stream (eg outputs of decompose_resid or accumulated_resid), treats them as the input to a specific layer, and applies the layer norm scaling of that layer to them, using the cached scale factors - simulating what that component of the residual stream contributes to that layer's input.
 
         The layernorm scale is global across the entire residual stream for each layer, batch element and position, which is why we need to use the cached scale factors rather than just applying a new LayerNorm.
@@ -518,7 +515,7 @@ class ActivationCache:
         apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
-    ) -> TT[T.num_components, T.batch_and_pos_dims:..., T.d_model]:
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Returns the full decomposition of the residual stream into embed, pos_embed, each head result, each neuron result, and the accumulated biases. We break down the residual stream that is input into some layer.
 
         Args:

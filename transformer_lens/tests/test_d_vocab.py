@@ -1,12 +1,8 @@
-from typeguard.importhook import install_import_hook
-
-install_import_hook("transformer_lens")
+from jaxtyping import install_import_hook
+hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
-from torchtyping import TensorType as TT, patch_typeguard
 from transformers import AutoTokenizer
-
-patch_typeguard()
 
 def test_d_vocab_from_tokenizer():
     cfg = HookedTransformerConfig(
@@ -77,3 +73,5 @@ def test_d_vocab_out_set_d_vocab_infer():
     )
     assert model.cfg.d_vocab == 50257
     assert model.cfg.d_vocab_out == 90
+
+hook.uninstall()

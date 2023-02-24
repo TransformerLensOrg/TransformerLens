@@ -1,12 +1,8 @@
+from jaxtyping import install_import_hook
+hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
+
 import pytest
-from typeguard.importhook import install_import_hook
-
-install_import_hook("transformer_lens")
-
 from transformer_lens import HookedTransformer
-from torchtyping import TensorType as TT, patch_typeguard
-
-patch_typeguard()
 
 MODEL = "solu-1l"
 
@@ -86,3 +82,5 @@ def test_conditional_hooks():
     assert len(cache) == 1, len(cache)
     assert "blocks.0.hook_q_input" in cache.keys(), cache.keys()
     assert cache["blocks.0.hook_q_input"].shape == (1, 4, model.cfg.n_heads, model.cfg.d_model), cache["blocks.0.hook_q_input"].shape
+
+hook.uninstall()

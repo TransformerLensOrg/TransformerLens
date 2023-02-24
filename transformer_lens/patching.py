@@ -13,15 +13,14 @@ from __future__ import annotations
 import torch
 from typing import Optional, Union, Dict, Callable, Sequence, Optional, Tuple
 from typing_extensions import Literal
-from torchtyping import TensorType as TT
 
-from transformer_lens.torchtyping_helper import T
 from transformer_lens import HookedTransformer, ActivationCache
 import transformer_lens.utils as utils
 import pandas as pd
 import itertools
 from functools import partial
 from tqdm.auto import tqdm
+from jaxtyping import Float, Int 
 
 import einops
 
@@ -49,9 +48,9 @@ PatchedActivation = torch.Tensor
 
 def generic_activation_patch(
     model: HookedTransformer,
-    corrupted_tokens: TT["batch", "pos"],
+    corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[[TT[T.batch, T.pos, T.d_vocab]], TT[()]],
+    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
     patch_setter: Callable[[CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation],
     activation_name: str,
     index_axis_names: Optional[Sequence[AxisNames]] = None,
@@ -345,7 +344,7 @@ get_act_patch_attn_head_pattern_all_pos = partial(
 
 # %%
 
-def get_act_patch_attn_head_all_pos_every(model, corrupted_tokens, clean_cache, metric) -> TT["patch_type":5, "layer", "head"]:
+def get_act_patch_attn_head_all_pos_every(model, corrupted_tokens, clean_cache, metric) -> Float[torch.Tensor, "patch_type layer head"]:
     """Helper function to get activation patching results for every head (across all positions) for every act type (output, query, key, value, pattern). Wrapper around each's patching function, returns a stacked tensor of shape [5, n_layers, n_heads]
     """
     act_patch_results = []
@@ -356,7 +355,7 @@ def get_act_patch_attn_head_all_pos_every(model, corrupted_tokens, clean_cache, 
     act_patch_results.append(get_act_patch_attn_head_pattern_all_pos(model, corrupted_tokens, clean_cache, metric))
     return torch.stack(act_patch_results, dim=0)
 
-def get_act_patch_attn_head_by_pos_every(model, corrupted_tokens, clean_cache, metric) -> TT["patch_type":5, "layer", "pos", "head"]:
+def get_act_patch_attn_head_by_pos_every(model, corrupted_tokens, clean_cache, metric) -> Float[torch.Tensor, "patch_type layer pos head"]:
     """Helper function to get activation patching results for every head (across all positions) for every act type (output, query, key, value, pattern). Wrapper around each's patching function, returns a stacked tensor of shape [5, n_layers, pos, n_heads]
     """
     act_patch_results = []
@@ -370,7 +369,7 @@ def get_act_patch_attn_head_by_pos_every(model, corrupted_tokens, clean_cache, m
     act_patch_results.append(einops.rearrange(pattern_results, "batch head pos -> batch pos head"))
     return torch.stack(act_patch_results, dim=0)
 
-def get_act_patch_block_every(model, corrupted_tokens, clean_cache, metric) -> TT["patch_type": 3, "layer", "pos"]:
+def get_act_patch_block_every(model, corrupted_tokens, clean_cache, metric) -> Float[torch.Tensor, "patch_type layer pos"]:
     """Helper function to get activation patching results for the residual stream (at the start of each block), output of each Attention layer and output of each MLP layer. Wrapper around each's patching function, returns a stacked tensor of shape [3, n_layers, pos]
     """
     act_patch_results = []

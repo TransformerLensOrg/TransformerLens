@@ -19,8 +19,8 @@ tqdm = "^4.64.1"
 pandas = "^1.1.5"
 wandb = "^0.13.5"
 fancy-einsum = "^0.0.3"
-torchtyping = "^0.1.4"
 rich = "^12.6.0"
+jaxtyping = "^0.2.11"
 sphinx = {version = "5.2.3", optional = true, python = ">=3.8,<3.10"}
 sphinxcontrib-napoleon = {version = "^0.7", optional = true, python = ">=3.8,<3.10"}
 sphinx-autobuild = {version = "^2021.3.14", optional = true, python = ">=3.8,<3.10"}

@@ -1,3 +1,6 @@
+from jaxtyping import install_import_hook
+hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
+
 import pytest
 
 from transformer_lens import HookedTransformer
@@ -60,3 +63,5 @@ def test_from_pretrained_no_processing():
     model_ref = HookedTransformer.from_pretrained(name)
     model_override = HookedTransformer.from_pretrained_no_processing(name, fold_ln=True, center_writing_weights=True, center_unembed=True, refactor_factored_attn_matrices=False)
     assert model_ref.cfg == model_override.cfg
+
+hook.uninstall()
