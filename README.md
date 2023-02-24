@@ -4,7 +4,9 @@
 
 (Formerly known as EasyTransformer)
 
-## [Start Here](https://neelnanda.io/transformer-lens-demo)
+## [Read the Docs Here](https://neelnanda-io.github.io/TransformerLens/)
+
+## [Main Tutorial Here](https://neelnanda.io/transformer-lens-demo)
 
 ## A Library for Mechanistic Interpretability of Generative Language Models
 
