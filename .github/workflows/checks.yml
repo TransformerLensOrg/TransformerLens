@@ -52,6 +52,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "poetry"
       - name: Install dependencies
+        run: poetry lock --check
         run: poetry install --with dev
       - name: Pytest
         run: poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing transformer_lens/tests/
