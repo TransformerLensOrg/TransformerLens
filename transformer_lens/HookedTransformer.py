@@ -33,7 +33,6 @@ import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 
 SingleLoss = Float[torch.Tensor, ""] # Type alias for a single element tensor
-pass
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
 Loss = Union[SingleLoss, LossPerToken]
 
