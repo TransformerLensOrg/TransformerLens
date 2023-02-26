@@ -43,6 +43,39 @@ class ActivationCache:
         self.has_embed = "hook_embed" in self.cache_dict
         self.has_pos_embed = "hook_pos_embed" in self.cache_dict
 
+    @classmethod
+    def from_caches(cls, cache_list: List[ActivationCache], in_place: Bool = True) -> ActivationCache:
+        # Constructor that combines a list of caches into a big one
+        
+        assert len(cache_list) > 0, "Cannot stack an empty list of caches"
+        assert all(
+            cache.has_batch_dim for cache in cache_list
+        ), "Cannot stack caches without batch dimensions"
+
+        # Concat a dict of lists once rather than concatting many times
+        cache_dict = {k:[v] for k,v in cache_list[0].cache_dict.items()}
+
+        if not in_place:
+            cache_dict = deepcopy(cache_dict)
+        model = cache_list[0].model.name
+        has_embed = cache_list[0].has_embed
+        has_pos_embed = cache_list[0].has_pos_embed
+
+        for activation_cache in cache_list[1:]:
+            assert (model == activation_cache.model.name), "Cannot stack caches from different models"
+            assert has_embed == activation_cache.has_embed, "Cannot stack caches with different embed hooks"
+            assert has_pos_embed == activation_cache.has_pos_embed, "Cannot stack caches with different pos_embed hooks"
+            
+            for key in cache_dict:
+                # cache_dict[key] = torch.cat((cache_dict[key], activation_cache.cache_dict[key]), dim=0)
+                cache_dict[key].append(activation_cache.cache_dict[key])
+
+        cache_dict = {k:torch.cat(v, dim=0) for k,v in cache_dict.items()}
+        if in_place:
+            [cache.cache_dict.clear() for cache in cache_list] 
+
+        return cls(cache_dict, model, has_batch_dim=True)
+
     def remove_batch_dim(self) -> ActivationCache:
         if self.has_batch_dim:
             for key in self.cache_dict:
