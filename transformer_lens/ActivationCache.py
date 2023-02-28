@@ -45,8 +45,12 @@ class ActivationCache:
 
     @classmethod
     def from_caches(cls, cache_list: List[ActivationCache], in_place: Bool = True) -> ActivationCache:
-        # Constructor that combines a list of caches into a big one
-        
+        """
+        Alternate Constructor. Takes a list of ActivationCaches and concatenates them along the batch dimension. 
+
+        cache_list (List[ActivationCache]): The list of caches to stack.
+        in_place (Bool): Whether to clear the caches after stacking them, or create copies. Defaults to True => don't copy.
+        """
         assert len(cache_list) > 0, "Cannot stack an empty list of caches"
         assert all(
             cache.has_batch_dim for cache in cache_list
@@ -57,17 +61,17 @@ class ActivationCache:
 
         if not in_place:
             cache_dict = deepcopy(cache_dict)
-        model = cache_list[0].model.name
+        model = cache_list[0].model
+        model_name = cache_list[0].model.cfg.model_name
         has_embed = cache_list[0].has_embed
         has_pos_embed = cache_list[0].has_pos_embed
 
         for activation_cache in cache_list[1:]:
-            assert (model == activation_cache.model.name), "Cannot stack caches from different models"
+            assert (model_name == activation_cache.model.cfg.model_name), "Cannot stack caches from different models"
             assert has_embed == activation_cache.has_embed, "Cannot stack caches with different embed hooks"
             assert has_pos_embed == activation_cache.has_pos_embed, "Cannot stack caches with different pos_embed hooks"
             
             for key in cache_dict:
-                # cache_dict[key] = torch.cat((cache_dict[key], activation_cache.cache_dict[key]), dim=0)
                 cache_dict[key].append(activation_cache.cache_dict[key])
 
         cache_dict = {k:torch.cat(v, dim=0) for k,v in cache_dict.items()}
