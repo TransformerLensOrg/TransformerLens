@@ -1151,6 +1151,7 @@ class HookedTransformer(HookedRootModule):
         use_past_kv_cache: bool = True,
         prepend_bos=True,
         return_type: Optional[str] = "input",
+        verbose: bool = True,
     ) -> Float[torch.Tensor, "batch pos_plus_new_tokens"]:
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -1172,6 +1173,7 @@ class HookedTransformer(HookedRootModule):
             use_past_kv_cache (bool): If True, create and use cache to speed up generation
             prepend_bos (bool): If True, prepend the model's bos_token_id to the input, if it's a string. Irrelevant if input is a tensor.
             return_type (str, *optional*): The type of the output to return - either a string (str), a tensor of tokens (tensor) or whatever the format of the input was (input).
+            verbose (bool): If True, show tqdm progress bars for generation
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens - by default returns same type as input
         """
@@ -1214,7 +1216,7 @@ class HookedTransformer(HookedRootModule):
 
         # Currently nothing in HookedTransformer changes with eval, but this is here in case that changes in the future
         self.eval()
-        for index in tqdm.tqdm(range(max_new_tokens)):
+        for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
             # While generating, we keep generating logits, throw away all but the final logits, and then use those logits to sample from the distribution
             # We keep adding the sampled tokens to the end of tokens.
             if use_past_kv_cache:
