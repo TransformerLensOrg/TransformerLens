@@ -3,7 +3,7 @@ import torch
 from transformer_lens import FactoredMatrix
 
 
-def test_factored_matrix_shape():
+def test_factored_matrix():
     A = torch.randn(5, 3)
     B = torch.randn(3, 7)
     f = FactoredMatrix(A, B)
@@ -29,7 +29,7 @@ def test_factored_matrix_b_leading_dims():
     assert f.shape == (2, 4, 5, 7)
 
 
-def test_factored_matrix_both_leading_dims():
+def test_factored_matrix_a_b_leading_dims():
     A = torch.ones((4, 5, 3))
     B = torch.ones((2, 4, 3, 7))
     f = FactoredMatrix(A, B)
@@ -42,7 +42,7 @@ def test_factored_matrix_both_leading_dims():
     assert f.shape == (2, 4, 5, 7)
 
 
-def test_factored_matrix_shape_mismatch():
+def test_factored_matrix_broadcast_mismatch():
     A = torch.ones((9, 5, 3))
     B = torch.ones((2, 4, 3, 7))
 
@@ -52,7 +52,7 @@ def test_factored_matrix_shape_mismatch():
     assert "Shape mismatch" in str(e.value)
 
 
-def test_dimension_mismatch():
+def test_factored_matrix_inner_mismatch():
     A = torch.ones((2, 3, 4))
     B = torch.ones((2, 3, 5))
     with pytest.raises(AssertionError) as e:
