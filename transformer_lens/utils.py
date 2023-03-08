@@ -305,7 +305,7 @@ def sample_logits(
 # %%
 # Type alias
 SliceInput: Type = Optional[
-    Union[int, Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor]
+    Union[int, Tuple[int,], Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor, np.ndarray]
 ]
 """
 An optional type alias for a slice input used in the `ActivationCache` module.
@@ -351,6 +351,18 @@ class Slice:
         self,
         input_slice: SliceInput = None,
     ):
+        """
+        Modular component for slicing tensors. Can be used to slice a tensor along a given dimension, or to index into a tensor along a given dimension.
+
+        Args:
+            input_slice (SliceInput): The slice to apply. Can be an int, a tuple, a list, a torch.Tensor, or None. If None, do nothing.
+            
+        Returns:
+            Slice: A Slice object that can be applied to a tensor.
+        
+        Raises:
+            ValueError: If the input_slice is not one of the above types.
+        """
         if type(input_slice) == tuple:
             input_slice = slice(*input_slice)
             self.slice = input_slice
@@ -361,11 +373,7 @@ class Slice:
         elif type(input_slice) == slice:
             self.slice = input_slice
             self.mode = "slice"
-        elif (
-            type(input_slice) == list
-            or type(input_slice) == torch.Tensor
-            or type(input_slice) == np.ndarray
-        ):
+        elif type(input_slice) in [list, torch.Tensor, np.ndarray]:
             self.slice = to_numpy(input_slice)
             self.mode = "array"
         elif input_slice is None:
@@ -374,25 +382,51 @@ class Slice:
         else:
             raise ValueError(f"Invalid input_slice {input_slice}")
 
-    def apply(self, tensor, dim=0):
+    def apply(
+        self, 
+        tensor: torch.Tensor, 
+        dim: int = 0,
+        ) -> torch.Tensor:
         """
         Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor.
+
+        Args:
+            tensor (torch.Tensor): The tensor to slice.
+            dim (int, optional): The dimension to slice along. Supports positive and negative dimension syntax.
+
+        Returns:
+            torch.Tensor: The sliced tensor.
         """
         ndim = tensor.ndim
         slices = [slice(None)] * ndim
         slices[dim] = self.slice
         return tensor[tuple(slices)]
 
-    def indices(self, max_ctx=None):
+    def indices(
+        self, 
+        max_ctx: Optional[int] = None,
+        ) -> Union[np.ndarray, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
+
+        Args:
+            max_ctx (int, optional): The size of the axis to slice. Only used if the slice is not an integer.
+
+        Returns:
+            np.ndarray: The indices that this slice will select.
+
+        Raises:
+            ValueError: If the slice is not an integer and max_ctx is not specified.
         """
         if self.mode == "int":
             return np.array([self.slice])
-        else:
-            return np.arange(max_ctx)[self.slice]
+        if max_ctx is None:
+            raise ValueError("max_ctx must be specified if slice is not an integer")
+        return np.arange(max_ctx)[self.slice]
 
-    def __repr__(self):
+    def __repr__(
+        self,
+        ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
 
 
