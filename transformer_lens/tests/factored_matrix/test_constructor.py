@@ -52,6 +52,12 @@ def test_factored_matrix_broadcast_mismatch():
     assert "Shape mismatch" in str(e.value)
 
 
+@pytest.mark.skip("""
+AssertionError will not be reached due to jaxtyping argument consistency
+checks, which are enabled at test time but not run time.
+
+See https://github.com/neelnanda-io/TransformerLens/issues/190
+""")
 def test_factored_matrix_inner_mismatch():
     A = torch.ones((2, 3, 4))
     B = torch.ones((2, 3, 5))

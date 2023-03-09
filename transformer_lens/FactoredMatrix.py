@@ -10,7 +10,7 @@ class FactoredMatrix:
     Class to represent low rank factored matrices, where the matrix is represented as a product of two matrices. Has utilities for efficient calculation of eigenvalues, norm and SVD.
     """
 
-    def __init__(self, A: Float[torch.Tensor, "... ldim mdim_a"], B: Float[torch.Tensor, "... mdim_b rdim"]):
+    def __init__(self, A: Float[torch.Tensor, "... ldim mdim"], B: Float[torch.Tensor, "... mdim rdim"]):
         self.A = A
         self.B = B
         assert self.A.size(-1) == self.B.size(
