@@ -56,9 +56,9 @@ jobs:
           poetry lock --check
           poetry install --with dev
       - name: Unit test
-        run: poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing tests/unit
+        run: poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/unit
       - name: Acceptance test
-        run: poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing tests/acceptance
+        run: poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/acceptance
       # - name: Type check
       #   run: poetry run mypy transformer_lens
       - name: Build check
