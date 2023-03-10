@@ -47,6 +47,7 @@ def test_model(name, expected_loss):
     model = HookedTransformer.from_pretrained(name)
     loss = model(text, return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
+    pass
 
 
 def test_from_pretrained_no_processing():
