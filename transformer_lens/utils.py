@@ -6,7 +6,6 @@ from datasets.arrow_dataset import Dataset
 import einops
 from transformers import AutoTokenizer
 from typing import Optional, Union, Tuple, List, Dict, Type
-from torchtyping import TensorType as TT
 import transformers
 from huggingface_hub import hf_hub_download
 import re
@@ -15,10 +14,10 @@ from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 
 from transformer_lens import FactoredMatrix
-from transformer_lens.torchtyping_helper import T
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
+from jaxtyping import Float, Int
 
 
 def download_file_from_hf(
@@ -74,10 +73,10 @@ def to_numpy(tensor):
 
 
 def lm_cross_entropy_loss(
-    logits: TT[T.batch, T.pos, T.d_vocab],
-    tokens: TT[T.batch, T.pos],
+    logits: Float[torch.Tensor, "batch pos d_vocab"],
+    tokens: Int[torch.Tensor, "batch pos"],
     per_token: bool = False,
-) -> Union[TT[()], TT[T.batch, T.pos]]:
+) -> Union[Float[torch.Tensor, ""], Float[torch.Tensor, "batch pos"]]:
     """Cross entropy loss for the language model, gives the loss for predicting the NEXT token.
 
     Args:
@@ -99,10 +98,10 @@ def lm_cross_entropy_loss(
 
 
 def lm_accuracy(
-    logits: TT[T.batch, T.pos, T.d_vocab],
-    tokens: TT[T.batch, T.pos],
+    logits: Float[torch.Tensor, "batch pos d_vocab"],
+    tokens: Int[torch.Tensor, "batch pos"],
     per_token: bool = False,
-) -> Union[TT[()], TT[T.batch, T.pos]]:
+) -> Union[Float[torch.Tensor, ""], Float[torch.Tensor, "batch pos"]]:
     """Cross-Entropy Accuracy for Language Modelling. We measure the accuracy on the logits for predicting the NEXT token.
 
     If per_token is True, returns the boolean for top 1 accuracy for each token in the batch. Note that this has size [batch, seq_len-1], as we cannot predict the first token.
@@ -115,7 +114,7 @@ def lm_accuracy(
         return correct_matches.sum() / correct_matches.numel()
 
 
-def gelu_new(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]:
+def gelu_new(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
     return (
         0.5
@@ -129,7 +128,7 @@ def gelu_new(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]:
     )
 
 
-def gelu_fast(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]:
+def gelu_fast(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     return (
         0.5
         * input
@@ -137,7 +136,7 @@ def gelu_fast(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]
     )
 
 
-def solu(input: TT[T.batch, T.pos, T.d_mlp]) -> TT[T.batch, T.pos, T.d_mlp]:
+def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
@@ -242,13 +241,13 @@ tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
 """
 
 def sample_logits(
-    final_logits: TT[T.batch, T.d_vocab],
+    final_logits: Float[torch.Tensor, "batch d_vocab"],
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
     temperature: float = 1.0,
     freq_penalty: float = 0.0,
-    tokens: Optional[TT[T.batch, T.pos]] = None,
-) -> TT[T.batch]:
+    tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
+) -> Float[torch.Tensor, "batch"]:
     """
     Sample from the logits, in order to generate text
 
@@ -306,8 +305,23 @@ def sample_logits(
 # %%
 # Type alias
 SliceInput: Type = Optional[
-    Union[int, Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor]
+    Union[int, Tuple[int,], Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor, np.ndarray]
 ]
+"""
+An optional type alias for a slice input used in the `ActivationCache` module.
+
+A `SliceInput` can be one of the following types:
+    - `int`: an integer representing a single position
+    - `Tuple[int, int]`: a tuple of two integers representing a range of positions
+    - `Tuple[int, int, int]`: a tuple of three integers representing a range of positions with a step size
+    - `List[int]`: a list of integers representing multiple positions
+    - `torch.Tensor`: a tensor containing a boolean mask or a list of indices to be selected from the input tensor.
+
+`SliceInput` is used in the `apply_ln_to_stack` method in the `ActivationCache` module.
+
+:class:`SliceInput`
+    An object that represents a slice input. It can be a tuple of integers or a slice object.
+"""
 
 
 class Slice:
@@ -328,12 +342,27 @@ class Slice:
     elif input_slice = (1, 5, 2), tensor -> tensor[1:5:2] (ie indexing with [1, 3])
     elif input_slice = [1, 4, 5], tensor -> tensor[[1, 4, 5]] (ie changing the first axis to have length 3, and taking the indices 1, 4, 5 out).
     elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.
+
+    :class: `Slice`
+        An object that represents a slice input. It can be a tuple of integers or a slice object.
     """
 
     def __init__(
         self,
         input_slice: SliceInput = None,
     ):
+        """
+        Modular component for slicing tensors. Can be used to slice a tensor along a given dimension, or to index into a tensor along a given dimension.
+
+        Args:
+            input_slice (SliceInput): The slice to apply. Can be an int, a tuple, a list, a torch.Tensor, or None. If None, do nothing.
+            
+        Returns:
+            Slice: A Slice object that can be applied to a tensor.
+        
+        Raises:
+            ValueError: If the input_slice is not one of the above types.
+        """
         if type(input_slice) == tuple:
             input_slice = slice(*input_slice)
             self.slice = input_slice
@@ -344,11 +373,7 @@ class Slice:
         elif type(input_slice) == slice:
             self.slice = input_slice
             self.mode = "slice"
-        elif (
-            type(input_slice) == list
-            or type(input_slice) == torch.Tensor
-            or type(input_slice) == np.ndarray
-        ):
+        elif type(input_slice) in [list, torch.Tensor, np.ndarray]:
             self.slice = to_numpy(input_slice)
             self.mode = "array"
         elif input_slice is None:
@@ -357,25 +382,51 @@ class Slice:
         else:
             raise ValueError(f"Invalid input_slice {input_slice}")
 
-    def apply(self, tensor, dim=0):
+    def apply(
+        self, 
+        tensor: torch.Tensor, 
+        dim: int = 0,
+        ) -> torch.Tensor:
         """
         Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor.
+
+        Args:
+            tensor (torch.Tensor): The tensor to slice.
+            dim (int, optional): The dimension to slice along. Supports positive and negative dimension syntax.
+
+        Returns:
+            torch.Tensor: The sliced tensor.
         """
         ndim = tensor.ndim
         slices = [slice(None)] * ndim
         slices[dim] = self.slice
         return tensor[tuple(slices)]
 
-    def indices(self, max_ctx=None):
+    def indices(
+        self, 
+        max_ctx: Optional[int] = None,
+        ) -> Union[np.ndarray, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
+
+        Args:
+            max_ctx (int, optional): The size of the axis to slice. Only used if the slice is not an integer.
+
+        Returns:
+            np.ndarray: The indices that this slice will select.
+
+        Raises:
+            ValueError: If the slice is not an integer and max_ctx is not specified.
         """
         if self.mode == "int":
             return np.array([self.slice])
-        else:
-            return np.arange(max_ctx)[self.slice]
+        if max_ctx is None:
+            raise ValueError("max_ctx must be specified if slice is not an integer")
+        return np.arange(max_ctx)[self.slice]
 
-    def __repr__(self):
+    def __repr__(
+        self,
+        ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
 
 
@@ -449,7 +500,7 @@ def get_act_name(
     return full_act_name
 
 
-def remove_batch_dim(tensor: TT[1, ...]) -> TT[...]:
+def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
     """
     Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
     """
@@ -514,7 +565,7 @@ def test_prompt(
 
 
 # %%
-def transpose(tensor: TT[..., T.a, T.b]) -> TT[..., T.b, T.a]:
+def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "... b a"]:
     """
     Utility to swap the last two dimensions of a tensor, regardless of the number of leading dimensions
     """
@@ -523,7 +574,7 @@ def transpose(tensor: TT[..., T.a, T.b]) -> TT[..., T.b, T.a]:
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
 ) -> Union[
-    TT[T.leading_dims:...], TT[T.leading_dims_left:..., T.leading_dims_right:...]
+    Float[torch.Tensor, "*leading_dims"], Float[torch.Tensor, "*leading_dims_left *T.leading_dims_right"]
 ]:
     """
     See `HookedTransformer.all_composition_scores` for documentation.

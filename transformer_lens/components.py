@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 import einops
 import logging
+from jaxtyping import Float, Int
 
 from functools import *
 
@@ -12,16 +13,12 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import gelu_new, solu, gelu_fast
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
-from transformer_lens.torchtyping_helper import T
 
 from fancy_einsum import einsum
 
 from transformer_lens.past_key_value_caching import (
     HookedTransformerKeyValueCacheEntry,
 )
-
-# See tests/should_fail.py for an example of how to enforce type annotations at runtime
-from torchtyping import TensorType as TT
 
 # Embed & Unembed
 class Embed(nn.Module):
@@ -30,13 +27,13 @@ class Embed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_E: TT[T.d_vocab, T.d_model] = nn.Parameter(
+        self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
             torch.empty(self.cfg.d_vocab, self.cfg.d_model)
         )
 
     def forward(
-        self, tokens: TT[T.batch, T.pos]
-    ) -> TT[T.batch, T.pos, T.d_model]:
+        self, tokens: Int[torch.Tensor, "batch pos"]
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
         return self.W_E[tokens, :]
@@ -49,14 +46,14 @@ class Unembed(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         # Note that there's a separate variable for d_vocab_out and d_vocab (the input vocab size). For language tasks these are always the same, but for algorithmic tasks we may want them to be different.
-        self.W_U: TT[T.d_model, T.d_vocab_out] = nn.Parameter(
+        self.W_U: Float[torch.Tensor, "d_model d_vocab_out"] = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_vocab_out)
         )
-        self.b_U: TT[T.d_vocab_out] = nn.Parameter(torch.zeros(self.cfg.d_vocab_out))
+        self.b_U: Float[torch.Tensor, "d_vocab_out"] = nn.Parameter(torch.zeros(self.cfg.d_vocab_out))
 
     def forward(
-        self, residual: TT[T.batch, T.pos, T.d_model]
-    ) -> TT[T.batch, T.pos, T.d_vocab_out]:
+        self, residual: Float[torch.Tensor, "batch pos d_model"]
+    ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
         return (
             einsum(
                 "batch pos d_model, d_model vocab -> batch pos vocab",
@@ -77,8 +74,8 @@ class PosEmbed(nn.Module):
         self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model))
 
     def forward(
-        self, tokens: TT[T.batch, T.pos], past_kv_pos_offset: int = 0
-    ) -> TT[T.batch, T.pos, T.d_model]:
+        self, tokens: Int[torch.Tensor, "batch pos"], past_kv_pos_offset: int = 0
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
         """Tokens have shape [batch, pos]
         past_kv_pos_offset is the length of tokens in the past_kv_cache (if used, defaults to zero if unused)
         Output shape [pos, d_model] - will be broadcast along batch dim"""
@@ -116,10 +113,10 @@ class LayerNormPre(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TT[T.batch, T.pos, T.length]
-    ) -> TT[T.batch, T.pos, T.length]:
+        self, x: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]
+    ) -> Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: TT[T.batch, T.pos, 1] = self.hook_scale(
+        scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         return self.hook_normalized(x / scale)
@@ -154,10 +151,10 @@ class LayerNorm(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TT[T.batch, T.pos, T.length]
-    ) -> TT[T.batch, T.pos, T.length]:
+        self, x: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]
+    ) -> Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: TT[T.batch, T.pos, 1] = self.hook_scale(
+        scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         x = x / scale  # [batch, pos, length]
@@ -178,9 +175,9 @@ class RMSNormPre(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TT[T.batch, T.pos, T.length]
-    ) -> TT[T.batch, T.pos, T.length]:
-        scale: TT[T.batch, T.pos, 1] = self.hook_scale(
+        self, x: Float[torch.Tensor, "batch pos length"]
+    ) -> Float[torch.Tensor, "batch pos length"]:
+        scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         return self.hook_normalized(x / scale)  # [batch, pos, length]
@@ -213,9 +210,9 @@ class RMSNorm(nn.Module):
         self.hook_normalized = HookPoint()  # [batch, pos, length]
 
     def forward(
-        self, x: TT[T.batch, T.pos, T.length]
-    ) -> TT[T.batch, T.pos, T.length]:
-        scale: TT[T.batch, T.pos, 1] = self.hook_scale(
+        self, x: Float[torch.Tensor, "batch pos length"]
+    ) -> Float[torch.Tensor, "batch pos length"]:
+        scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         x = self.hook_normalized(x / scale)  # [batch, pos, length]
@@ -342,43 +339,44 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        resid_pre: TT[T.batch, T.pos, T.d_model],
-        shortformer_pos_embed: Optional[TT[T.batch, T.pos, T.d_model]] = None,
+        query_input: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]],
+        key_input: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]],
+        value_input: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
-    ) -> TT[T.batch, T.pos, T.d_model]:
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
-
         """
-        if self.cfg.positional_embedding_type in ["standard", "rotary"]:
-            # Normal attention
-            q = self.hook_q(
-                einsum(
-                    "batch pos d_model, head_index d_model d_head \
-                    -> batch pos head_index d_head",
-                    resid_pre,
-                    self.W_Q,
-                )
-                + self.b_Q
-            )  # [batch, pos, head_index, d_head]
-            k = self.hook_k(
-                einsum(
-                    "batch pos d_model, head_index d_model d_head \
-                    -> batch pos head_index d_head",
-                    resid_pre,
-                    self.W_K,
-                )
-                + self.b_K
-            )  # [batch, pos, head_index, d_head]
-        elif self.cfg.positional_embedding_type == "shortformer":
-            # Weird shortformer attention see HookedTransformerConfig for details
-            q, k = self.shortformer_calculate_qk(resid_pre, shortformer_pos_embed)
+
+        if self.cfg.use_split_qkv_input:
+            qkv_einops_string = "batch pos head_index d_model"
+        else:
+            qkv_einops_string = "batch pos d_model"
+
+        q = self.hook_q(
+            einsum(
+                f"{qkv_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                query_input,
+                self.W_Q,
+            )
+            + self.b_Q
+        )  # [batch, pos, head_index, d_head]
+        k = self.hook_k(
+            einsum(
+                f"{qkv_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                key_input,
+                self.W_K,
+            )
+            + self.b_K
+        )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
             einsum(
-                "batch pos d_model, head_index d_model d_head \
+                f"{qkv_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
-                resid_pre,
+                value_input,
                 self.W_V,
             )
             + self.b_V
@@ -458,7 +456,7 @@ class Attention(nn.Module):
 
     def apply_causal_mask(
         self,
-        attn_scores: TT[T.batch, T.head_index, T.pos, T.pos_plus_past_kv_pos_offset],
+        attn_scores: Float[torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"],
         past_kv_pos_offset: int = 0,
     ):
         # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it's just a single token.
@@ -479,46 +477,14 @@ class Attention(nn.Module):
             self.IGNORE,
         )
 
-    def shortformer_calculate_qk(
-        self,
-        x: TT[T.batch, T.pos, T.d_model],
-        shortformer_pos_embed: TT[T.batch, T.pos, T.d_model],
-    ) -> Tuple[
-        TT[T.batch, T.pos, T.head_index, T.d_head],
-        TT[T.batch, T.pos, T.head_index, T.d_head],
-    ]:
-        # We add on the positional encodings to the residual stream JUST for the keys and queries, it's not added to the normal residual stream.
-        attn_input = self.hook_attn_input(
-            x + shortformer_pos_embed
-        )  # [batch, pos, d_model]
-        q = self.hook_q(
-            einsum(
-                "batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                attn_input,
-                self.W_Q,
-            )
-            + self.b_Q
-        )  # [batch, pos, head_index, d_head]
-        k = self.hook_k(
-            einsum(
-                "batch pos d_model, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                attn_input,
-                self.W_K,
-            )
-            + self.b_K
-        )  # [batch, pos, head_index, d_head]
-        return (q, k)
-
     def rotary_rotate_qk(
         self,
-        q: TT[T.batch, T.pos, T.head_index, T.d_head],
-        k: TT[T.batch, T.pos, T.head_index, T.d_head],
+        q: Float[torch.Tensor, "batch pos head_index d_head"],
+        k: Float[torch.Tensor, "batch pos head_index d_head"],
         past_kv_pos_offset,
     ) -> Tuple[
-        TT[T.batch, T.pos, T.head_index, T.d_head],
-        TT[T.batch, T.pos, T.head_index, T.d_head],
+        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch pos head_index d_head"],
     ]:
         # We first apply standard q and k calculation
         q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
@@ -527,7 +493,7 @@ class Attention(nn.Module):
 
     def calculate_sin_cos_rotary(
         self, rotary_dim: int, n_ctx: int, base: int = 10000
-    ) -> Tuple[TT[T.n_ctx, T.rotary_dim], TT[T.n_ctx, T.rotary_dim]]:
+    ) -> Tuple[Float[torch.Tensor, "n_ctx rotary_dim"], Float[torch.Tensor, "n_ctx rotary_dim"]]:
         """
         Calculate the sine and cosine waves to use in a rotary embedding. See https://blog.eleuther.ai/rotary-embeddings/ for details
 
@@ -546,7 +512,7 @@ class Attention(nn.Module):
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles), torch.cos(angles)
 
-    def rotate_every_two(self, x: TT[..., T.rotary_dim]) -> TT[..., T.rotary_dim]:
+    def rotate_every_two(self, x: Float[torch.Tensor, "... rotary_dim"]) -> Float[torch.Tensor, "... rotary_dim"]:
         """
         Rotary helper function, splits x into blocks of size 2 along the final axis and maps [x0, x1] to [-x1, x0]
 
@@ -566,8 +532,8 @@ class Attention(nn.Module):
         return rot_x
 
     def apply_rotary(
-        self, x: TT[T.batch, T.pos, T.head_index, T.d_head], past_kv_pos_offset=0
-    ) -> TT[T.batch, T.pos, T.head_index, T.d_head]:
+        self, x: Float[torch.Tensor, "batch pos head_index d_head"], past_kv_pos_offset=0
+    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
@@ -620,8 +586,8 @@ class MLP(nn.Module):
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 
     def forward(
-        self, x: TT[T.batch, T.pos, T.d_model]
-    ) -> TT[T.batch, T.pos, T.d_model]:
+        self, x: Float[torch.Tensor, "batch pos d_model"]
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
             einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
@@ -676,6 +642,10 @@ class TransformerBlock(nn.Module):
         if not self.cfg.attn_only:
             self.mlp = MLP(cfg)
 
+        self.hook_q_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_k_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_v_input = HookPoint()  # [batch, pos, d_model]
+
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
@@ -685,10 +655,10 @@ class TransformerBlock(nn.Module):
 
     def forward(
         self,
-        resid_pre: TT[T.batch, T.pos, T.d_model],
-        shortformer_pos_embed: Optional[TT[T.batch, T.pos, T.d_model]] = None,
+        resid_pre: Float[torch.Tensor, "batch pos d_model"],
+        shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
-    ) -> TT[T.batch, T.pos, T.d_model]:
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
         Args:
@@ -700,11 +670,30 @@ class TransformerBlock(nn.Module):
             _type_: _description_
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
-        normalized_resid_pre = self.ln1(resid_pre)
+
+        query_input = resid_pre
+        key_input = resid_pre
+        value_input = resid_pre
+        
+        if self.cfg.use_split_qkv_input:
+            def add_head_dimension(tensor):
+                return einops.repeat(tensor, "batch pos d_model -> batch pos n_heads d_model", n_heads=self.cfg.n_heads).clone()
+
+            query_input = self.hook_q_input(add_head_dimension(query_input))
+            key_input = self.hook_k_input(add_head_dimension(key_input))
+            value_input = self.hook_v_input(add_head_dimension(value_input))
+
+            if shortformer_pos_embed is not None:
+                shortformer_pos_embed = add_head_dimension(shortformer_pos_embed)
+
         attn_out = self.hook_attn_out(
+            # hook the residual stream states that are used to calculate the 
+            # queries, keys and values, independently. 
+            # Then take the layer norm of these inputs, and pass these to the attention module.
             self.attn(
-                normalized_resid_pre,
-                shortformer_pos_embed=shortformer_pos_embed,
+                query_input = self.ln1(query_input) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                key_input = self.ln1(key_input) + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                value_input = self.ln1(value_input),
                 past_kv_cache_entry=past_kv_cache_entry,
             )
         )  # [batch, pos, d_model]
