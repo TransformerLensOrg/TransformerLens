@@ -45,3 +45,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.extras]
 docs = ["Sphinx", "sphinx-autobuild", "sphinxcontrib-napoleon", "furo", "myst_parser","tabulate"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    # Ignore numpy.distutils deprecation warning caused by pandas
+    # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
+    "ignore:distutils Version classes are deprecated:DeprecationWarning"
+]
