@@ -3,8 +3,10 @@
 A file with some rough evals for models - I expect you to be likely better off using the HuggingFace evaluate library if you want to do anything properly, but this is here if you want it and want to eg cheaply and roughly compare models you've trained to baselines.
 """
 
+from typing import List, Dict, Optional
 import torch
 import tqdm.auto as tqdm
+import random
 from datasets import load_dataset
 from transformer_lens import HookedTransformer, HookedTransformerConfig, utils
 from torch.utils.data import DataLoader
@@ -132,6 +134,75 @@ def induction_loss(
     )
     # Take the loss over the second half of the sequence
     return correct_log_probs[:, subseq_len + 1 :].mean()
+
+# %%
+class IOI_Dataset(torch.utils.data.Dataset):
+    def __init__(self,
+                 tokenizer,
+                 templates: Optional[List[str]] = None,
+                 names: Optional[List[str]] = None,
+                 nouns: Optional[Dict[str, List[str]]] = None,
+                 num_samples: int = 1000,
+                 ):
+        self.tokenizer = tokenizer
+        self.templates = templates if templates is not None else self.get_default_templates()
+        self.names = names if names is not None else self.get_default_names()
+        self.nouns = nouns if nouns is not None else self.get_default_nouns()
+
+        self.samples = []
+        for _ in range(num_samples):
+            self.samples.extend(self.get_sample())
+    
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        return self.samples[idx]
+        
+    def get_sample(self, symmetric=False) -> List[Dict[str, str]]:
+        template: str = random.choice(self.templates)
+        for noun_type, noun_list in self.nouns.items():
+            template = template.replace(f"[{noun_type}]", random.choice(noun_list))
+        
+        samples: List[Dict[str, str]] = []
+        
+        # sample two names without replacement
+        names = random.sample(self.names, 2, replace=False)
+        sample = template.replace("[A]", names[0])
+        sample = sample.replace("[B]", names[1])
+        samples.append({'text': sample, 'IO': names[0], 'S': names[1]})
+
+        if symmetric:
+            sample_2 = template.replace("[A]", names[1])
+            sample_2 = sample_2.replace("[B]", names[0])
+            samples.append({'text': sample_2, 'IO': names[1], 'S': names[0]})
+
+        return samples
+
+    def get_default_names(self):
+        return ["John", "Mary"]
+
+    def get_default_templates(self):
+        return [
+            "[A] and [B] went to the [LOCATION] to buy [OBJECT]. [B] handed the [OBJECT] to [A]",
+        ]
+    
+    def get_default_nouns(self):
+        return {
+            "LOCATION": ["store", "market"],
+            "OBJECT": ["milk", "eggs", "bread"],
+        }
+
+
+# %%
+@torch.inference_mode()
+def ioi_eval(model, dataset):
+    """
+    Evaluates the model on the Indirect Object Identification task.
+
+    Returns average logit difference and accuracy.
+    """
+    pass
 
 
 # %%
