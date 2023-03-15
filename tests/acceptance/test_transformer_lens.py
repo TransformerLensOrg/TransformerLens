@@ -2,6 +2,7 @@ from jaxtyping import install_import_hook
 hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 import pytest
+import torch
 
 from transformer_lens import HookedTransformer
 
@@ -63,5 +64,40 @@ def test_from_pretrained_no_processing():
     model_ref = HookedTransformer.from_pretrained(name)
     model_override = HookedTransformer.from_pretrained_no_processing(name, fold_ln=True, center_writing_weights=True, center_unembed=True, refactor_factored_attn_matrices=False)
     assert model_ref.cfg == model_override.cfg
+
+
+@torch.no_grad()
+def test_pos_embed_hook():
+    """
+    Checks that pos embed hooks:
+    - do not permanently change the pos embed
+    - can be used to alter the pos embed for a specific batch element
+    """
+    model = HookedTransformer.from_pretrained("gpt2-small")
+    initial_W_pos = model.W_pos.detach().clone()
+
+    def remove_pos_embed(z, hook):
+        z[:] = 0.0
+        return z
+    
+    _ = model.run_with_hooks(
+        "Hello, world",
+        fwd_hooks=[("hook_pos_embed", remove_pos_embed)])
+
+    # Check that pos embed has not been permanently changed
+    assert (model.W_pos == initial_W_pos).all()
+    
+    def edit_pos_embed(z, hook):
+        sequence_length = z.shape[1]
+        z[1, :] = 0.0
+        # Check that the second batch element is zeroed
+        assert (z[1, :] == 0.0).all()
+        # Check that the first batch element is unchanged
+        assert (z[0, :] == initial_W_pos[:sequence_length]).all()
+        return z
+
+    _ = model.run_with_hooks(
+        ["Hello, world", "Goodbye, world"],
+        fwd_hooks=[("hook_pos_embed", edit_pos_embed)])
 
 hook.uninstall()
