@@ -72,7 +72,7 @@ If adding a feature, please add unit tests for it to the tests folder, and check
 To run tests, you can use the following command:
 
 ```
-poetry run pytest -v transformer_lens/tests
+poetry run pytest -v tests
 ```
 
 ## Citation
