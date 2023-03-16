@@ -136,6 +136,20 @@ def induction_loss(
     return correct_log_probs[:, subseq_len + 1 :].mean()
 
 # %%
+@torch.inference_mode()
+def evaluate(model, truncate=100, batch_size=8, tokenizer=None):
+    if tokenizer is None:
+        tokenizer = model.tokenizer
+    losses = {}
+    for data_name, data_loader_fn in zip(DATASET_NAMES, DATASET_LOADERS):
+        data_loader = data_loader_fn(tokenizer=tokenizer, batch_size=batch_size)
+        loss = evaluate_on_dataset(model, data_loader, truncate=truncate)
+        print(f"{data_name}: {loss}")
+        losses[f"{data_name}_loss"] = loss
+    return losses
+
+
+# %%
 class IOI_Dataset(Dataset):
     def __init__(self,
                  tokenizer,
@@ -154,7 +168,7 @@ class IOI_Dataset(Dataset):
         self.nouns = nouns if nouns is not None else self.get_default_nouns()
 
         self.samples = []
-        for _ in range(num_samples):
+        for _ in range(num_samples // 2 if symmetric else num_samples):
             self.samples.extend(self.get_sample(symmetric=symmetric))
     
     def __len__(self):
@@ -200,7 +214,7 @@ class IOI_Dataset(Dataset):
     def get_default_templates():
         return [
             "[A] and [B] went to the [LOCATION] to buy [OBJECT]. [B] handed the [OBJECT] to [A]",
-            "Then, [B] and [A] went to the [LOCATION]. [B] gave the [OBJECT] to [A]"
+            "Then, [B] and [A] went to the [LOCATION]. [B] gave the [OBJECT] to [A]",
         ]
     
     @staticmethod
@@ -213,9 +227,16 @@ class IOI_Dataset(Dataset):
 
 # %%
 @torch.inference_mode()
-def ioi_eval(model, batch_size=8, num_samples=1000, tokenizer=None, dataset=None):
+def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None, symmetric=False):
     """
     Evaluates the model on the Indirect Object Identification task.
+
+    dataset must be a torch Dataset that returns a dict:
+        {
+            'prompt': torch.LongTensor,
+            'IO': torch.LongTensor,
+            'S': torch.LongTensor
+        }
 
     Returns average logit difference and accuracy.
     """
@@ -223,16 +244,13 @@ def ioi_eval(model, batch_size=8, num_samples=1000, tokenizer=None, dataset=None
         tokenizer = model.tokenizer
     
     if dataset is None:
-        dataset = IOI_Dataset(tokenizer,
-                              num_samples=num_samples,
-                              symmetric=False,
-                              prepend_bos=True)
+        dataset = IOI_Dataset(tokenizer, num_samples=num_samples)
 
     def collate(samples):
         prompts = [sample['prompt'] for sample in samples]
-        padded_prompt = torch.nn.utils.rnn.pad_sequence(prompts, batch_first=True)
+        padded_prompts = torch.nn.utils.rnn.pad_sequence(prompts, batch_first=True)
         return {
-            'prompt': padded_prompt,
+            'prompt': padded_prompts,
             'IO': [sample['IO'] for sample in samples],
             'S': [sample['S'] for sample in samples],
             'prompt_length': [p.shape[0] for p in prompts],
@@ -272,23 +290,3 @@ def ioi_eval(model, batch_size=8, num_samples=1000, tokenizer=None, dataset=None
         'Logit Difference': total_logit_diff / len(dataset),
         'Accuracy': total_correct / len(dataset),
         }
-    
-
-# %%
-@torch.inference_mode()
-def evaluate(model, truncate=100, batch_size=8, tokenizer=None):
-    if tokenizer is None:
-        tokenizer = model.tokenizer
-    losses = {}
-    for data_name, data_loader_fn in zip(DATASET_NAMES, DATASET_LOADERS):
-        data_loader = data_loader_fn(tokenizer=tokenizer, batch_size=batch_size)
-        loss = evaluate_on_dataset(model, data_loader, truncate=truncate)
-        print(f"{data_name}: {loss}")
-        losses[f"{data_name}_loss"] = loss
-    return losses
-
-
-# %%
-if __name__ == "__main__":
-    model = HookedTransformer.from_pretrained("gpt2-small")
-    print(ioi_eval(model))
