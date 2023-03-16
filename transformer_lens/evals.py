@@ -150,7 +150,7 @@ def evaluate(model, truncate=100, batch_size=8, tokenizer=None):
 
 
 # %%
-class IOI_Dataset(Dataset):
+class IOIDataset(Dataset):
     """
     Dataset for Indirect Object Identification tasks.
     Paper: https://arxiv.org/pdf/2211.00593.pdf 
@@ -248,7 +248,7 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
         tokenizer = model.tokenizer
     
     if dataset is None:
-        dataset = IOI_Dataset(tokenizer, num_samples=num_samples, symmetric=symmetric)
+        dataset = IOIDataset(tokenizer, num_samples=num_samples, symmetric=symmetric)
 
     def collate(samples):
         prompts = [sample['prompt'] for sample in samples]
@@ -270,24 +270,29 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
         for i in range(batch_logits.shape[0]):
             io = batch['IO'][i]
             s = batch['S'][i]
-            prompt_length = batch['prompt_length'][i]
-            prefix_length = prompt_length - io.shape[0]
+            prefix_length = batch['prompt_length'][i] - io.shape[0]
 
-            # Truncate to the length of the shortest sequence
-            length = min(io.shape[0], s.shape[0])
-            io = io[:length]
-            s = s[:length]
+            # Trim io and s to the same length
+            min_len = min(io.shape[0], s.shape[0])
+            io = io[:min_len]
+            s = s[:min_len]
+
+            # Remove identical prefixes
+            start_idx = torch.where(io != s)[0][0]
+            io = io[start_idx]
+            s = s[start_idx]
+            logit_idx = prefix_length + start_idx - 1
 
             # Get the logits for the tokens we care about
-            logits = batch_logits[i, prefix_length -1 :prefix_length + length - 1]
-            correct_logits = logits[:, io]
-            incorrect_logits = logits[:, s]
+            logits = batch_logits[i, logit_idx]
+            correct_logit = logits[io]
+            incorrect_logit = logits[s]
 
-            # Comute statistics
-            max_logit_diff = (correct_logits - incorrect_logits).max()
-            correct = max_logit_diff > 0
+            # Compute stats
+            logit_diff = correct_logit - incorrect_logit
+            correct = logit_diff > 0
             total_correct += correct.item()
-            total_logit_diff += max_logit_diff.item()
+            total_logit_diff += logit_diff.item()
     
     return {
         'Logit Difference': total_logit_diff / len(dataset),
