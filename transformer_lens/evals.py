@@ -151,6 +151,10 @@ def evaluate(model, truncate=100, batch_size=8, tokenizer=None):
 
 # %%
 class IOI_Dataset(Dataset):
+    """
+    Dataset for Indirect Object Identification tasks.
+    Paper: https://arxiv.org/pdf/2211.00593.pdf 
+    """
     def __init__(self,
                  tokenizer,
                  templates: Optional[List[str]] = None,
@@ -244,7 +248,7 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
         tokenizer = model.tokenizer
     
     if dataset is None:
-        dataset = IOI_Dataset(tokenizer, num_samples=num_samples)
+        dataset = IOI_Dataset(tokenizer, num_samples=num_samples, symmetric=symmetric)
 
     def collate(samples):
         prompts = [sample['prompt'] for sample in samples]
@@ -256,8 +260,7 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
             'prompt_length': [p.shape[0] for p in prompts],
         }
 
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True,
-                             collate_fn=collate)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate)
 
     total_correct = 0
     total_logit_diff = 0
@@ -270,17 +273,17 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
             prompt_length = batch['prompt_length'][i]
             prefix_length = prompt_length - io.shape[0]
 
-            # truncate to the length of the shortest sequence
+            # Truncate to the length of the shortest sequence
             length = min(io.shape[0], s.shape[0])
             io = io[:length]
             s = s[:length]
 
-            # get the logits for the tokens we care about
-            logits = batch_logits[i, prefix_length-1:prefix_length+length-1]
+            # Get the logits for the tokens we care about
+            logits = batch_logits[i, prefix_length -1 :prefix_length + length - 1]
             correct_logits = logits[:, io]
             incorrect_logits = logits[:, s]
 
-            # comute statistics
+            # Comute statistics
             max_logit_diff = (correct_logits - incorrect_logits).max()
             correct = max_logit_diff > 0
             total_correct += correct.item()
