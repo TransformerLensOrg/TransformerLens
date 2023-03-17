@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.utils.hooks as hooks
 
 from functools import *
+from contextlib import contextmanager
 
 from dataclasses import dataclass
 
@@ -153,6 +154,52 @@ class HookedRootModule(nn.Module):
 
     def add_perma_hook(self, name, hook, dir="fwd") -> None:
         self.add_hook(name, hook, dir=dir, is_permanent=True)
+    
+    @contextmanager
+    def hooks(
+        self,
+        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
+        reset_hooks_end=True,
+        clear_contexts=False,
+        ):
+        """
+        Context manager which adds temporary hooks to the model.
+
+        fwd_hooks: A list of (name, hook), where name is either the name of
+        a hook point or a Boolean function on hook names and hook is the
+        function to add to that hook point, or the hook whose names evaluate
+        to True respectively. Ditto bwd_hooks
+        reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
+        including those added in this run)
+        clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
+        """
+        try:
+            for name, hook in fwd_hooks:
+                if type(name) == str:
+                    self.mod_dict[name].add_hook(hook, dir="fwd")
+                else:
+                    # Otherwise, name is a Boolean function on names
+                    for hook_name, hp in self.hook_dict.items():
+                        if name(hook_name):
+                            hp.add_hook(hook, dir="fwd")
+            for name, hook in bwd_hooks:
+                if type(name) == str:
+                    self.mod_dict[name].add_hook(hook, dir="bwd")
+                else:
+                    # Otherwise, name is a Boolean function on names
+                    for hook_name, hp in self.hook_dict:
+                        if name(hook_name):
+                            hp.add_hook(hook, dir="bwd")
+            yield self
+        finally:
+            if reset_hooks_end:
+                if len(bwd_hooks) > 0:
+                    logging.warning(
+                        "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
+                    )
+                self.reset_hooks(clear_contexts, including_permanent=False)
+
 
     def run_with_hooks(
         self,
@@ -174,31 +221,8 @@ class HookedRootModule(nn.Module):
         Note that if we want to use backward hooks, we need to set
         reset_hooks_end to be False, so the backward hooks are still there - this function only runs a forward pass.
         """
-        try:
-            for name, hook in fwd_hooks:
-                if type(name) == str:
-                    self.mod_dict[name].add_hook(hook, dir="fwd")
-                else:
-                    # Otherwise, name is a Boolean function on names
-                    for hook_name, hp in self.hook_dict.items():
-                        if name(hook_name):
-                            hp.add_hook(hook, dir="fwd")
-            for name, hook in bwd_hooks:
-                if type(name) == str:
-                    self.mod_dict[name].add_hook(hook, dir="bwd")
-                else:
-                    # Otherwise, name is a Boolean function on names
-                    for hook_name, hp in self.hook_dict:
-                        if name(hook_name):
-                            hp.add_hook(hook, dir="bwd")
-            return self.forward(*model_args, **model_kwargs)
-        finally:
-            if reset_hooks_end:
-                if len(bwd_hooks) > 0:
-                    logging.warning(
-                        "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
-                    )
-                self.reset_hooks(clear_contexts, including_permanent=False)
+        with self.hooks(fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts) as hooked_model:
+            return hooked_model.forward(*model_args, **model_kwargs)
 
     def add_caching_hooks(
         self,
