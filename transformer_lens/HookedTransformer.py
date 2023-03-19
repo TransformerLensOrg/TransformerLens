@@ -697,7 +697,7 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             move_state_dict_to_device=move_state_dict_to_device,
-            model_name=model_name,
+            official_model_name=official_model_name,
         )
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
@@ -758,7 +758,7 @@ class HookedTransformer(HookedRootModule):
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
         move_state_dict_to_device: bool = True,
-        model_name: Optional[str] = None,
+        official_model_name: Optional[str] = None,
     ):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the HookedTransformer format.
 
@@ -778,8 +778,8 @@ class HookedTransformer(HookedRootModule):
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
             model_name (str, optional): checks the model name for special cases of state dict loading. Only used for Redwood 2L model currently
         """
-
-        if model_name == "ArthurConmy/redwood_attn_2l":
+        
+        if official_model_name == "ArthurConmy/redwood_attn_2l":
             assert not center_writing_weights and not center_unembed, "TODO this model is not compatible with centering weights!"
 
         if move_state_dict_to_device:
