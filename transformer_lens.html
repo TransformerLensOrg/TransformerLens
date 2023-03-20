@@ -2937,9 +2937,27 @@ An object that represents a slice input. It can be a tuple of integers or a slic
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utils.get_act_name">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_act_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_act_name" title="Permalink to this definition">#</a></dt>
-<dd><p>Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback loop hacking stuff together, more so than writing good, readable code. But it is deterministic!</p>
-<p>eg:
-get_act_name(‘k’, 6, ‘a’)==’blocks.6.attn.hook_k’
+<dd><p>Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback
+loop hacking stuff together, more so than writing good, readable code. But it is deterministic!</p>
+<p>Returns a name corresponding to an activation point in a TransformerLens model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – Takes in the name of the activation. This can be used to specify any activation name by itself.</p></li>
+<li><p><strong>it</strong> (<em>The code assumes the first sequence</em><em> of </em><em>digits passed to</em>) – </p></li>
+<li><p><strong>type.</strong> (<em>that is the layer</em>) – </p></li>
+<li><p><strong>is.</strong> (<em>Given only a word</em><em>, </em><em>it leaves layer and layer_type as</em>) – </p></li>
+<li><p><strong>is.</strong> – </p></li>
+<li><p><strong>Examples</strong> – get_act_name(‘embed’) = get_act_name(‘embed’, None, None)
+get_act_name(‘k6’) = get_act_name(‘k’, 6, None)
+get_act_name(‘scale4ln1’) = get_act_name(‘scale’, 4, ‘ln1’)</p></li>
+<li><p><strong>layer</strong> (<em>int</em><em>, </em><em>optional</em>) – Takes in the layer number. Used for activations that appear in every block.</p></li>
+<li><p><strong>layer_type</strong> (<em>string</em><em>, </em><em>optional</em>) – Used to distinguish between activations that appear multiple times in one block.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Full Examples:</p>
+<p>get_act_name(‘k’, 6, ‘a’)==’blocks.6.attn.hook_k’
 get_act_name(‘pre’, 2)==’blocks.2.mlp.hook_pre’
 get_act_name(‘embed’)==’hook_embed’
 get_act_name(‘normalized’, 27, ‘ln2’)==’blocks.27.ln2.hook_normalized’
