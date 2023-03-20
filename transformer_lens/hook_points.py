@@ -14,6 +14,7 @@ from dataclasses import dataclass
 class LensHandle:
     hook: hooks.RemovableHandle
     is_permanent: bool = False
+    context_level: Optional[int] = None
     
 
 # %%
@@ -39,7 +40,7 @@ class HookPoint(nn.Module):
     def add_perma_hook(self, hook, dir="fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
-    def add_hook(self, hook, dir="fwd", is_permanent=False) -> None:
+    def add_hook(self, hook, dir="fwd", is_permanent=False, level=None) -> None:
         # Hook format is fn(activation, hook_name)
         # Change it into PyTorch hook format (this includes input and output,
         # which are the same for a HookPoint)
@@ -49,24 +50,26 @@ class HookPoint(nn.Module):
                 return hook(module_output, hook=self)
 
             handle = self.register_forward_hook(full_hook)
-            handle = LensHandle(handle, is_permanent)
+            handle = LensHandle(handle, is_permanent, level)
             self.fwd_hooks.append(handle)
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
             handle = self.register_full_backward_hook(full_hook)
-            handle = LensHandle(handle, is_permanent)
+            handle = LensHandle(handle, is_permanent, level)
             self.bwd_hooks.append(handle)
         else:
             raise ValueError(f"Invalid direction {dir}")
 
-    def remove_hooks(self, dir="fwd", including_permanent=False) -> None:
+    def remove_hooks(self, dir="fwd", including_permanent=False, level=None) -> None:
 
         def _remove_hooks(handles: List[LensHandle]) -> List[LensHandle]:
             output_handles = []
             for handle in handles:
-                if not handle.is_permanent or including_permanent:
+                if including_permanent:
+                    handle.hook.remove()
+                elif (not handle.is_permanent) and (level is None or handle.context_level == level):
                     handle.hook.remove()
                 else:
                     output_handles.append(handle)
@@ -108,6 +111,7 @@ class HookedRootModule(nn.Module):
     def __init__(self, *args):
         super().__init__()
         self.is_caching = False
+        self.context_level = 0
 
     def setup(self):
         # Setup function - this needs to be run in __init__ AFTER defining all
@@ -125,32 +129,37 @@ class HookedRootModule(nn.Module):
     def hook_points(self):
         return self.hook_dict.values()
 
-    def remove_all_hook_fns(self, direction="both", including_permanent=False):
+    def remove_all_hook_fns(self, direction="both", including_permanent=False, level=None):
         for hp in self.hook_points():
-            hp.remove_hooks(direction, including_permanent=including_permanent)
+            hp.remove_hooks(direction, including_permanent=including_permanent, level=level)
 
     def clear_contexts(self):
         for hp in self.hook_points():
             hp.clear_context()
 
-    def reset_hooks(self, clear_contexts=True, direction="both", including_permanent=False):
+    def reset_hooks(self, clear_contexts=True, direction="both", including_permanent=False, level=None):
         if clear_contexts:
             self.clear_contexts()
-        self.remove_all_hook_fns(direction, including_permanent)
+        self.remove_all_hook_fns(direction, including_permanent, level=level)
         self.is_caching = False
 
-    def check_and_add_hook(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
+    def check_and_add_hook(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False, level=None) -> None:
+        """Runs checks on the hook, and then adds it to the hook point"""
+        self.check_hooks_to_add(hook_point, hook_point_name, hook, dir=dir, is_permanent=is_permanent)
+        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent, level=level)
+    
+    def check_hooks_to_add(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
         """Override this function to add checks on which hooks should be added"""
-        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent)
+        pass
 
-    def add_hook(self, name, hook, dir="fwd", is_permanent=False) -> None:
+    def add_hook(self, name, hook, dir="fwd", is_permanent=False, level=None) -> None:
         if type(name) == str:
-            self.check_and_add_hook(self.mod_dict[name], name, hook, dir=dir, is_permanent=is_permanent)
+            self.check_and_add_hook(self.mod_dict[name], name, hook, dir=dir, is_permanent=is_permanent, level=level)
         else:
             # Otherwise, name is a Boolean function on names
             for hook_point_name, hp in self.hook_dict.items():
                 if name(hook_point_name):
-                    self.check_and_add_hook(hp, hook_point_name, hook, dir=dir, is_permanent=is_permanent)
+                    self.check_and_add_hook(hp, hook_point_name, hook, dir=dir, is_permanent=is_permanent, level=level)
 
     def add_perma_hook(self, name, hook, dir="fwd") -> None:
         self.add_hook(name, hook, dir=dir, is_permanent=True)
@@ -164,42 +173,39 @@ class HookedRootModule(nn.Module):
         clear_contexts=False,
         ):
         """
-        Context manager which adds temporary hooks to the model.
+        A context manager for adding temporary hooks to the model.
 
-        fwd_hooks: A list of (name, hook), where name is either the name of
-        a hook point or a Boolean function on hook names and hook is the
-        function to add to that hook point, or the hook whose names evaluate
-        to True respectively. Ditto bwd_hooks
-        reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
-        including those added in this run)
-        clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
+        Args:
+            fwd_hooks: List[Tuple[name, hook]], where name is either the name of a hook point
+            or a Boolean function on hook names and hook is the function to add to that hook point.
+            bwd_hooks: Same as fwd_hooks, but for the backward pass.
+            reset_hooks_end (bool): If True, removes all hooks added by this context manager when the context manager exits.
+            clear_contexts (bool): If True, clears hook contexts whenever hooks are reset.
         """
         try:
+            self.context_level += 1
+
             for name, hook in fwd_hooks:
                 if type(name) == str:
-                    self.mod_dict[name].add_hook(hook, dir="fwd")
+                    self.mod_dict[name].add_hook(hook, dir="fwd", level=self.context_level)
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict.items():
                         if name(hook_name):
-                            hp.add_hook(hook, dir="fwd")
+                            hp.add_hook(hook, dir="fwd", level=self.context_level)
             for name, hook in bwd_hooks:
                 if type(name) == str:
-                    self.mod_dict[name].add_hook(hook, dir="bwd")
+                    self.mod_dict[name].add_hook(hook, dir="bwd", level=self.context_level)
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict:
                         if name(hook_name):
-                            hp.add_hook(hook, dir="bwd")
+                            hp.add_hook(hook, dir="bwd", level=self.context_level)
             yield self
         finally:
             if reset_hooks_end:
-                if len(bwd_hooks) > 0:
-                    logging.warning(
-                        "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur"
-                    )
-                self.reset_hooks(clear_contexts, including_permanent=False)
-
+                self.reset_hooks(clear_contexts, including_permanent=False, level=self.context_level)
+            self.context_level -= 1
 
     def run_with_hooks(
         self,
@@ -221,6 +227,11 @@ class HookedRootModule(nn.Module):
         Note that if we want to use backward hooks, we need to set
         reset_hooks_end to be False, so the backward hooks are still there - this function only runs a forward pass.
         """
+        if len(bwd_hooks) > 0 and reset_hooks_end:
+            logging.warning(
+                "WARNING: Hooks will be reset at the end of run_with_hooks. This removes the backward hooks before a backward pass can occur."
+            )
+
         with self.hooks(fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts) as hooked_model:
             return hooked_model.forward(*model_args, **model_kwargs)
 
