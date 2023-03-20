@@ -383,8 +383,8 @@ class Slice:
             raise ValueError(f"Invalid input_slice {input_slice}")
 
     def apply(
-        self, 
-        tensor: torch.Tensor, 
+        self,
+        tensor: torch.Tensor,
         dim: int = 0,
         ) -> torch.Tensor:
         """
@@ -403,7 +403,7 @@ class Slice:
         return tensor[tuple(slices)]
 
     def indices(
-        self, 
+        self,
         max_ctx: Optional[int] = None,
         ) -> Union[np.ndarray, np.int64]:
         """
@@ -439,9 +439,30 @@ def get_act_name(
     layer_type: Optional[str] = None,
 ):
     """
-    Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback loop hacking stuff together, more so than writing good, readable code. But it is deterministic!
+    Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback
+    loop hacking stuff together, more so than writing good, readable code. But it is deterministic!
 
-    eg:
+    Returns a name corresponding to an activation point in a TransformerLens model.
+
+    Args:
+         name (str): Takes in the name of the activation. This can be used to specify any activation name by itself.
+         The code assumes the first sequence of digits passed to it (if any) is the layer number, and anything after
+         that is the layer type.
+
+         Given only a word and number, it leaves layer_type as is.
+         Given only a word, it leaves layer and layer_type as is.
+
+         Examples:
+             get_act_name('embed') = get_act_name('embed', None, None)
+             get_act_name('k6') = get_act_name('k', 6, None)
+             get_act_name('scale4ln1') = get_act_name('scale', 4, 'ln1')
+
+         layer (int, optional): Takes in the layer number. Used for activations that appear in every block.
+
+         layer_type (string, optional): Used to distinguish between activations that appear multiple times in one block.
+
+    Full Examples:
+
     get_act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
     get_act_name('pre', 2)=='blocks.2.mlp.hook_pre'
     get_act_name('embed')=='hook_embed'
@@ -481,6 +502,8 @@ def get_act_name(
         "mlp_post":"post",
     }
 
+    layer_norm_names = ["scale", "normalized"]
+
     if name in act_name_alias:
         name = act_name_alias[name]
 
@@ -497,6 +520,9 @@ def get_act_name(
     if layer_type:
         full_act_name += f"{layer_type}."
     full_act_name += f"hook_{name}"
+
+    if name in layer_norm_names and layer is None:
+        full_act_name = f"ln_final.{full_act_name}"
     return full_act_name
 
 
