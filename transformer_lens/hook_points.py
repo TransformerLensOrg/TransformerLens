@@ -231,7 +231,8 @@ class HookedRootModule(nn.Module):
         elif type(names_filter) == str:
             names_filter = lambda name: name == names_filter
         elif type(names_filter) == list:
-            names_filter = lambda name: name in names_filter
+            names_filter_in = names_filter
+            names_filter = lambda name: name in names_filter_in
 
         self.is_caching = True
 
