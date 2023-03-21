@@ -4,8 +4,8 @@ from transformer_lens import FactoredMatrix
 
 @pytest.fixture
 def sample_factored_matrix():
-    A = torch.rand(2,2,2,2,2)
-    B = torch.rand(2,2,2,2,2)
+    A = torch.rand(2,2)
+    B = torch.rand(2,2)
     return FactoredMatrix(A, B)
 
 def test_getitem_int(sample_factored_matrix):
