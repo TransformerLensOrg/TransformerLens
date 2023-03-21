@@ -206,6 +206,7 @@ class HookedRootModule(nn.Module):
         incl_bwd: bool = False,
         device=None,
         remove_batch_dim: bool = False,
+        detach: bool = True,
         cache: Optional[dict] = None,
     ) -> dict:
         """Adds hooks to the model to cache activations. Note: It does NOT actually run the model to get activations, that must be done separately.
@@ -235,16 +236,20 @@ class HookedRootModule(nn.Module):
         self.is_caching = True
 
         def save_hook(tensor, hook):
+            if detach:
+                tensor = tensor.detach()
             if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
+                cache[hook.name] = tensor.to(device)[0]
             else:
-                cache[hook.name] = tensor.detach().to(device)
+                cache[hook.name] = tensor.to(device)
 
         def save_hook_back(tensor, hook):
+            if detach:
+                tensor = tensor.detach()
             if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
+                cache[hook.name + "_grad"] = tensor.to(device)[0]
             else:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)
+                cache[hook.name + "_grad"] = tensor.to(device)
 
         for name, hp in self.hook_dict.items():
             if names_filter(name):
@@ -259,6 +264,7 @@ class HookedRootModule(nn.Module):
         names_filter: NamesFilter = None,
         device=None,
         remove_batch_dim=False,
+        detach=True,
         incl_bwd=False,
         reset_hooks_end=True,
         clear_contexts=False,
@@ -276,7 +282,7 @@ class HookedRootModule(nn.Module):
         clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
         """
         cache_dict = self.add_caching_hooks(
-            names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim
+            names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim, detach=detach,
         )
         model_out = self(*model_args, **model_kwargs)
 
@@ -287,7 +293,7 @@ class HookedRootModule(nn.Module):
             self.reset_hooks(clear_contexts, including_permanent=False)
         return model_out, cache_dict
 
-    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
+    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False, detach=True):
         logging.warning(
             "cache_all is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache"
         )
@@ -297,6 +303,7 @@ class HookedRootModule(nn.Module):
             incl_bwd=incl_bwd,
             device=device,
             remove_batch_dim=remove_batch_dim,
+            detach=detach
         )
 
     def cache_some(
@@ -306,6 +313,7 @@ class HookedRootModule(nn.Module):
         incl_bwd=False,
         device=None,
         remove_batch_dim=False,
+        detach=True,
     ):
         """Cache a list of hook provided by names, Boolean function on names"""
         logging.warning(
@@ -317,6 +325,7 @@ class HookedRootModule(nn.Module):
             incl_bwd=incl_bwd,
             device=device,
             remove_batch_dim=remove_batch_dim,
+            detach=detach,
         )
 
 
