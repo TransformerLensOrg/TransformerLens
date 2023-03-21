@@ -173,6 +173,7 @@ class IOIDataset(Dataset):
 
         self.samples = []
         for _ in range(num_samples // 2 if symmetric else num_samples):
+            # If symmetric, get_sample will return two samples
             self.samples.extend(self.get_sample(symmetric=symmetric))
     
     def __len__(self):
@@ -197,10 +198,11 @@ class IOIDataset(Dataset):
         
         samples: List[Dict[str, str]] = []
         
-        # sample two names without replacement
+        # Sample two names without replacement
         names = random.sample(self.names, 2)
         sample = template.replace("[A]", names[0])
         sample = sample.replace("[B]", names[1])
+        # Prepend spaces to IO and S so that the target is e.g. " Mary" and not "Mary"
         samples.append({'text': sample, 'IO': " " + names[0], 'S': " " + names[1]})
 
         if symmetric:
