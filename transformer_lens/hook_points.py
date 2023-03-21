@@ -310,17 +310,74 @@ class HookedRootModule(nn.Module):
         reset_hooks_end (bool): If True, all hooks are removed at the end (ie, both those added in this run *and* any added before!)
         clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
         """
-        cache_dict = self.add_caching_hooks(
+        cache_dict, fwd, bwd = self.get_caching_hooks(
             names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim
         )
-        model_out = self(*model_args, **model_kwargs)
 
-        if incl_bwd:
-            model_out.backward()
+        with self.hooks(fwd_hooks=fwd, bwd_hooks=bwd, reset_hooks_end=reset_hooks_end, clear_contexts=clear_contexts):
+            model_out = self(*model_args, **model_kwargs)
+            if incl_bwd:
+                model_out.backward()
 
-        if reset_hooks_end:
-            self.reset_hooks(clear_contexts, including_permanent=False)
         return model_out, cache_dict
+    
+    def get_caching_hooks(
+        self,
+        names_filter: NamesFilter = None,
+        incl_bwd: bool = False,
+        device=None,
+        remove_batch_dim: bool = False,
+        cache: Optional[dict] = None,
+    ) -> Tuple[dict, list, list]:
+        """Creates hooks to cache activations. Note: It does not add the hooks to the model.
+
+        Args:
+            names_filter (NamesFilter, optional): Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.
+            incl_bwd (bool, optional): Whether to also do backwards hooks. Defaults to False.
+            device (_type_, optional): The device to store on. Defaults to CUDA if available else CPU.
+            remove_batch_dim (bool, optional): Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.
+            cache (Optional[dict], optional): The cache to store activations in, a new dict is created by default. Defaults to None.
+
+        Returns:
+            cache (dict): The cache where activations will be stored.
+            fwd_hooks (list): The forward hooks.
+            bwd_hooks (list): The backward hooks. Empty if incl_bwd is False.
+        """
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        if cache is None:
+            cache = {}
+
+        if names_filter is None:
+            names_filter = lambda name: True
+        elif type(names_filter) == str:
+            names_filter = lambda name: name == names_filter
+        elif type(names_filter) == list:
+            names_filter = lambda name: name in names_filter
+
+        self.is_caching = True
+
+        def save_hook(tensor, hook):
+            if remove_batch_dim:
+                cache[hook.name] = tensor.detach().to(device)[0]
+            else:
+                cache[hook.name] = tensor.detach().to(device)
+
+        def save_hook_back(tensor, hook):
+            if remove_batch_dim:
+                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
+            else:
+                cache[hook.name + "_grad"] = tensor.detach().to(device)
+        
+        fwd_hooks = []
+        bwd_hooks = []
+        for name, hp in self.hook_dict.items():
+            if names_filter(name):
+                fwd_hooks.append((name, save_hook))
+                if incl_bwd:
+                    bwd_hooks.append((name, save_hook_back))
+
+        return cache, fwd_hooks, bwd_hooks
 
     def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
         logging.warning(

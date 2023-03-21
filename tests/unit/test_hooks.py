@@ -62,6 +62,17 @@ def test_nested_hook_context_manager():
     model.remove_all_hook_fns(including_permanent=True)
 
 
+def test_context_manager_run_with_cache():
+    c = Counter()
+    with model.hooks(fwd_hooks=[(embed, c.inc)]):
+        assert len(model.hook_dict['hook_embed'].fwd_hooks) == 1
+        model.run_with_cache(prompt)
+        assert len(model.hook_dict['hook_embed'].fwd_hooks) == 1
+    assert len(model.hook_dict['hook_embed'].fwd_hooks) == 0
+    assert c.count == 1
+    model.remove_all_hook_fns(including_permanent=True)
+
+
 def test_hook_context_manager_with_permanent_hook():
     c = Counter()
     model.add_perma_hook(embed, c.inc)
