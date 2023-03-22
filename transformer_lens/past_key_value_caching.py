@@ -1,16 +1,15 @@
 import torch
-import torch.nn as nn
 from dataclasses import dataclass
-from typing import Union, Tuple, List, Dict, Any, Optional
+from typing import List
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.devices import get_device_for_block_index
-from torchtyping import TensorType as TT
+from jaxtyping import Float
 
 
 @dataclass
 class HookedTransformerKeyValueCacheEntry:
-    past_keys: TT["batch", "pos_so_far", "n_heads", "d_head"]
-    past_values: TT["batch", "pos_so_far", "n_heads", "d_head"]
+    past_keys: Float[torch.Tensor, "batch pos_so_far n_heads d_head"]
+    past_values: Float[torch.Tensor, "batch pos_so_far n_heads d_head"]
 
     @classmethod
     def init_cache_entry(
@@ -30,14 +29,14 @@ class HookedTransformerKeyValueCacheEntry:
 
     def append(
         self,
-        new_keys: TT["batch", "new_tokens", "n_heads", "d_head"],
-        new_values: TT["batch", "new_tokens", "n_heads", "d_head"],
+        new_keys: Float[torch.Tensor, "batch new_tokens n_heads d_head"],
+        new_values: Float[torch.Tensor, "batch new_tokens n_heads d_head"],
     ):
-        updated_keys: TT[
-            "batch", "pos_so_far + new_tokens", "n_heads", "d_head"
+        updated_keys: Float[
+            torch.Tensor, "batch pos_so_far_plus_new_tokens n_heads d_head"
         ] = torch.cat([self.past_keys, new_keys], dim=1)
-        updated_values: TT[
-            "batch", "pos_so_far + new_tokens", "n_heads", "d_head"
+        updated_values: Float[
+            torch.Tensor, "batch pos_so_far_plus_new_tokens n_heads d_head"
         ] = torch.cat([self.past_values, new_values], dim=1)
         self.past_keys = updated_keys
         self.past_values = updated_values

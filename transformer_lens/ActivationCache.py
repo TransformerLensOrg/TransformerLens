@@ -2,16 +2,15 @@
 from __future__ import annotations
 import transformer_lens.utils as utils
 from transformer_lens.utils import Slice, SliceInput
+from jaxtyping import Float
 import torch
 import einops
 from fancy_einsum import einsum
 from typing import Optional, Union, Dict
 from typing_extensions import Literal
-from torchtyping import TensorType as TT
 import re
 import numpy as np
 import logging
-
 
 class ActivationCache:
     """
@@ -56,6 +55,7 @@ class ActivationCache:
             logging.warning(
                 "Tried removing batch dimension after already having removed it."
             )
+        return self
 
     def __repr__(self):
         return f"ActivationCache with keys {list(self.cache_dict.keys())}"
@@ -77,6 +77,9 @@ class ActivationCache:
                     key = (key[0], self.model.cfg.n_layers + key[1], *key[2:])
             return self.cache_dict[utils.get_act_name(*key)]
 
+    def __len__(self):
+        return len(self.cache_dict)
+
     def to(self, device: Union[str, torch.device], move_model=False) -> ActivationCache:
         """
         Moves the cache to a device - mostly useful for moving it to CPU after model computation finishes to save GPU memory. Matmuls will be much slower on the CPU.
@@ -89,6 +92,7 @@ class ActivationCache:
 
         if move_model:
             self.model.to(device)
+        return self
 
     def toggle_autodiff(self, mode: bool = False):
         """
@@ -114,6 +118,9 @@ class ActivationCache:
     def __iter__(self):
         return self.cache_dict.__iter__()
 
+    def __len__(self):
+        return len(self.cache_dict)
+
     def apply_slice_to_batch_dim(self, batch_slice: Union[Slice, SliceInput]):
         if not isinstance(batch_slice, Slice):
             batch_slice = Slice(batch_slice)
@@ -136,7 +143,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         mlp_input: bool = False,
         return_labels: bool = False,
-    ) -> TT["layers_covered", "batch_and_pos_dims":..., "d_model"]:
+    ) -> Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"]:
         """Returns the accumulated residual stream up to a given layer, ie a stack of previous residual streams up to that layer's input. This can be thought of as a series of partial values of the residual stream, where the model gradually accumulates what it wants.
 
         Args:
@@ -155,6 +162,7 @@ class ActivationCache:
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
+        assert isinstance(layer, int)
         labels = []
         components = []
         for l in range(layer + 1):
@@ -174,6 +182,65 @@ class ActivationCache:
         else:
             return components
 
+    def logit_attrs(
+            self,
+            residual_stack: TT[T.num_components, T.batch_and_pos_dims:..., T.d_model],
+            tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]],
+            incorrect_tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]] = None,
+            pos_slice: Union[Slice, SliceInput] = None,
+            batch_slice: Union[Slice, SliceInput] = None,
+            has_batch_dim: bool = True
+        ) -> TT[T.num_components, T.batch_and_pos_dims:...]:
+        """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
+
+        Args:
+            residual_stack (TT["num_components", "batch_and_pos_dims":..., "d_model"]): stack of components of residual stream to get logit attributions for.
+            tokens (Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]): tokens to compute logit attributions on.
+            incorrect_tokens (Union[str, int, TT[()], TT["batch"], TT["batch", "position"]], optional): if provided, compute attributions on logit difference between tokens and incorrect_tokens.
+                Must have the same shape as tokens.
+            pos_slice (Slice, optional): The slice to apply layer norm scaling on.
+                Defaults to None, do nothing.
+            batch_slice (Slice, optional): The slice to take on the batch dimension during layer norm scaling.
+                Defaults to None, do nothing.
+            has_batch_dim (bool, optional): Whether residual_stack has a batch dimension.
+                Defaults to True.
+        Returns:
+            Components: A [num_components, batch_and_pos_dims:...] tensor of the logit attributions or logit difference attributions if incorrect_tokens was provided.
+        """
+        if not isinstance(pos_slice, Slice):
+            pos_slice = Slice(pos_slice)
+
+        if not isinstance(batch_slice, Slice):
+            batch_slice = Slice(batch_slice)
+
+        if isinstance(tokens, str):
+            tokens = torch.as_tensor(self.model.to_single_token(tokens))
+
+        elif isinstance(tokens, int):
+            tokens = torch.as_tensor(tokens)
+
+        logit_directions = self.model.tokens_to_residual_directions(tokens)
+
+        if incorrect_tokens is not None:
+            if isinstance(incorrect_tokens, str):
+                incorrect_tokens = torch.as_tensor(self.model.to_single_token(incorrect_tokens))
+
+            elif isinstance(incorrect_tokens, int):
+                incorrect_tokens = torch.as_tensor(incorrect_tokens)
+
+            if tokens.shape != incorrect_tokens.shape:
+                raise ValueError(f"tokens and incorrect_tokens must have the same shape! (tokens.shape={tokens.shape}, incorrect_tokens.shape={incorrect_tokens.shape})")
+        
+            # If incorrect_tokens was provided, take the logit difference
+            logit_directions = logit_directions - self.model.tokens_to_residual_directions(incorrect_tokens)
+
+
+        scaled_residual_stack = self.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=pos_slice, batch_slice=batch_slice, has_batch_dim=has_batch_dim)
+
+        logit_attrs = einsum("... d_model, ... d_model -> ...", scaled_residual_stack, logit_directions)
+
+        return logit_attrs
+        
     def decompose_resid(
         self,
         layer: Optional[int] = None,
@@ -182,7 +249,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         incl_embeds: bool = True,
         return_labels: bool = False,
-    ) -> TT["layers_covered", "batch_and_pos_dims":..., "d_model"]:
+    ) -> Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"]:
         """Decomposes the residual stream input to layer L into a stack of the output of previous layers. The sum of these is the input to layer L (plus embedding and pos embedding). This is useful for attributing model behaviour to different components of the residual stream
 
         Args:
@@ -209,6 +276,7 @@ class ActivationCache:
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
+        assert isinstance(layer, int)
 
         incl_attn = mode != "mlp"
         incl_mlp = mode != "attn" and not self.model.cfg.attn_only
@@ -258,17 +326,17 @@ class ActivationCache:
 
     def stack_head_results(
         self,
-        layer: int,
+        layer: int = -1,
         return_labels: bool = False,
         incl_remainder: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
-    ) -> TT["num_components", "batch_and_pos_dims":..., "d_model"]:
-        """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads.
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
+        """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads. Note that the num_components axis has length layer x n_heads ((layer head_index) in einops notation)
 
         Assumes that the model has been run with use_attn_results=True
 
         Args:
-            layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers]
+            layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer
             return_labels (bool, optional): Whether to also return a list of labels of the form "L0H0" for the heads. Defaults to False.
             incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
             pos_slice (Slice): A slice object to apply to the pos dimension. Defaults to None, do nothing.
@@ -319,13 +387,38 @@ class ActivationCache:
             return components, labels
         else:
             return components
+    
+    def stack_activation(
+        self,
+        activation_name: str,
+        layer: int = -1,
+        sublayer_type: Optional[str] = None,
+    ) -> Float[torch.Tensor, "layers_covered ..."]:
+        """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads. The output shape is exactly the same shape as the activations, just with a leading layers dimension.
+
+        Args:
+            activation_name (str): The name of the activation to be stacked
+            layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer
+            sublayer_type (str, *optional*): The sub layer type of the activation, passed to utils.get_act_name. Can normally be inferred
+            incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
+        """
+        
+        if layer is None or layer == -1:
+            # Default to the residual stream immediately pre unembed
+            layer = self.model.cfg.n_layers
+        
+        components = []
+        for l in range(layer):
+            components.append(self[(activation_name, l, sublayer_type)])
+        
+        return torch.stack(components, dim=0)
 
     def get_neuron_results(
         self,
         layer: int,
         neuron_slice: Union[Slice, SliceInput] = None,
         pos_slice: Union[Slice, SliceInput] = None,
-    ) -> TT["batch_and_pos_dims":..., "num_neurons", "d_model"]:
+    ) -> Float[torch.Tensor, "*batch_and_pos_dims num_neurons d_model"]:
         """Returns the results of for neurons in a specific layer (ie, how much each neuron contributes to the residual stream). Does it for the subset of neurons specified by neuron_slice, defaults to all of them. Does *not* cache these because it's expensive in space and cheap to compute.
 
         Args:
@@ -337,8 +430,10 @@ class ActivationCache:
             Tensor: [batch_size, pos, d_mlp, d_model] tensor of the results (d_mlp is the neuron index axis)
         """
         if type(neuron_slice) is not Slice:
+            assert isinstance(neuron_slice, SliceInput)
             neuron_slice = Slice(neuron_slice)
         if type(pos_slice) is not Slice:
+            assert isinstance(pos_slice, SliceInput)
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
@@ -358,7 +453,7 @@ class ActivationCache:
         neuron_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
         incl_remainder: bool = False,
-    ) -> TT["num_components", "batch_and_pos_dims":..., "d_model"]:
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Returns a stack of all neuron results (ie residual stream contribution) up to layer L - ie the amount each individual neuron contributes to the residual stream. Also returns a list of labels of the form "L0N0" for the neurons. A good way to decompose the outputs of MLP layers into attribution by specific neurons.
 
         Note that doing this for all neurons is SUPER expensive on GPU memory and only works for small models or short inputs.
@@ -421,11 +516,13 @@ class ActivationCache:
 
     def apply_ln_to_stack(
         self,
-        residual_stack: TT["num_components", "batch_and_pos_dims":..., "d_model"],
+        residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
         layer: Optional[int] = None,
         mlp_input: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
-    ) -> TT["num_components", "batch_and_pos_dims":..., "d_model"]:
+        batch_slice: Union[Slice, SliceInput] = None,
+        has_batch_dim: bool = True
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Takes a stack of components of the residual stream (eg outputs of decompose_resid or accumulated_resid), treats them as the input to a specific layer, and applies the layer norm scaling of that layer to them, using the cached scale factors - simulating what that component of the residual stream contributes to that layer's input.
 
         The layernorm scale is global across the entire residual stream for each layer, batch element and position, which is why we need to use the cached scale factors rather than just applying a new LayerNorm.
@@ -443,21 +540,33 @@ class ActivationCache:
             mlp_input (bool, optional): Whether the input is to the MLP or attn
                 (ie ln2 vs ln1). Defaults to False, ie ln1. If layer==n_layers,
                 must be False, and we use ln_final
-            pos_slice: The slice to take of positions, if residual_stack is not
+            pos_slice (Slice, optional): The slice to take of positions, if residual_stack is not
                 over the full context, None means do nothing. It is assumed that
                 pos_slice has already been applied to residual_stack, and this
                 is only applied to the scale. See utils.Slice for details.
-                Defaults to None.
+                Defaults to None, do nothing.
+            batch_slice (Slice, optional): The slice to take on the batch dimension.
+                Defaults to None, do nothing.
+            has_batch_dim (bool, optional): Whether residual_stack has a batch dimension.
+                Defaults to True.
         """
         if self.model.cfg.normalization_type not in ["LN", "LNPre"]:
             # The model does not use LayerNorm, so we don't need to do anything.
             return residual_stack
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
+        if not isinstance(batch_slice, Slice):
+            batch_slice = Slice(batch_slice)
+
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
-        # First, center the stack
+
+        if has_batch_dim:
+            # Apply batch slice to the stack
+            residual_stack = batch_slice.apply(residual_stack, dim=1)
+
+        # Center the stack
         residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         if layer == self.model.cfg.n_layers or layer is None:
@@ -469,6 +578,10 @@ class ActivationCache:
         # The shape of scale is [batch, position, 1] or [position, 1] - final dimension is a dummy thing to get broadcoasting to work nicely.
         scale = pos_slice.apply(scale, dim=-2)
 
+        if self.has_batch_dim:
+            # Apply batch slice to the scale
+            scale = batch_slice.apply(scale)
+
         return residual_stack / scale
 
     def get_full_resid_decomposition(
@@ -479,7 +592,7 @@ class ActivationCache:
         apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
-    ) -> TT["num_components", "batch_and_pos_dims":..., "d_model"]:
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Returns the full decomposition of the residual stream into embed, pos_embed, each head result, each neuron result, and the accumulated biases. We break down the residual stream that is input into some layer.
 
         Args:

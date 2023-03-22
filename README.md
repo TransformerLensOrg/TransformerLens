@@ -1,8 +1,14 @@
 # TransformerLens
 
+[![Pypi](https://img.shields.io/pypi/v/transformer-lens)](https://pypi.org/project/transformer-lens/)
+
 (Formerly known as EasyTransformer)
 
-## [Start Here](https://neelnanda.io/transformer-lens-demo)
+## [Read the Docs Here](https://neelnanda-io.github.io/TransformerLens/)
+
+## [Main Tutorial Here](https://neelnanda.io/transformer-lens-demo)
+
+See also this better and more in-depth, but still [work-in-progress tutorial from Callum McDougall](https://transformerlens-intro.streamlit.app/)
 
 ## A Library for Mechanistic Interpretability of Generative Language Models
 
@@ -23,6 +29,12 @@ To see what using it for exploratory analysis in practice looks like, check out 
 Mechanistic interpretability is a very young and small field, and there are a *lot* of open problems - if you would like to help, please try working on one! **Check out my [list of concrete open problems](https://docs.google.com/document/d/1WONBzNqfKIxERejrrPlQMyKqg7jSFW92x5UMXNrMdPo/edit) to figure out where to start.**. It begins with advice on skilling up, and key resources to check out. 
 
 If you're new to transformers, check out my [what is a transformer tutorial](https://neelnanda.io/transformer-tutorial) and [tutorial on coding GPT-2 from scratch](https://neelnanda.io/transformer-tutorial-2) (with [an accompanying template](https://neelnanda.io/transformer-template) to write one yourself!
+
+## Gallery
+
+User contributed examples of the library being used in action:
+* [Induction Heads Phase Change Replication](https://colab.research.google.com/github/ckkissane/induction-heads-transformer-lens/blob/main/Induction_Heads_Phase_Change.ipynb): A partial replication of [In-Context Learning and Induction Heads](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html) from Connor Kissane
+* [Decision Transformer Interpretability](https://github.com/jbloomAus/DecisionTransformerInterpretability): A set of scripts for training decision transformers which uses transformer lens to view intermediate activations, perform attribution and ablations. A write up of the initial work can be found [here](https://www.lesswrong.com/posts/bBuBDJBYHt39Q5zZy/decision-transformer-interpretability).
 
 ## Advice for Reading the Code
 
@@ -57,7 +69,13 @@ Then the library can be imported as `import transformer_lens`.
 
 ### Testing
 
-If adding a feature, please add unit tests for it to the tests folder, and check that it hasn't broken anything major using the existing tests (install pytest and run it in the root TransformerLens/ directory)
+If adding a feature, please add unit tests for it to the tests folder, and check that it hasn't broken anything major using the existing tests (install pytest and run it in the root TransformerLens/ directory).
+
+#### Running the tests
+
+* All tests via `make test`
+* Unit tests only via `make unit-test`
+* Acceptance tests only via `make acceptance-test`
 
 ## Citation
 

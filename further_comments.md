@@ -28,7 +28,7 @@ So let's translate this into linear algebra notation.
 ```
 x1 = x0 - x0.mean()
    = x0 - (x0.mean()) * ones (broadcasting, ones=torch.ones(n))
-   = (x0 @ ones/sqrt(n)) * ones/sqrt(n).
+   = x0 - (x0 @ ones/sqrt(n)) * ones/sqrt(n).
 ```
 
 ones has norm sqrt(n), so ones/sqrt(n) is the unit vector in the diagonal direction. We're just projecting x0 onto this (fixed) vector and subtracting that value off. Alternately, we're projecting onto the n-1 dimensional subspace orthogonal to ones.
