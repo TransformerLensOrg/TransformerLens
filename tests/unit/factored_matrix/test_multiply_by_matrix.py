@@ -78,6 +78,30 @@ class TestLeftMultiplyByMatrix(BaseMultiplyByMatrixTest):
 
 
 @pytest.mark.parametrize(
+    ("a", "b", "matrix"),
+    [
+        pytest.param(randn(6, 3), randn(3, 4), randn(4, 6), id="ldim > mdim"),
+        pytest.param(randn(2, 6), randn(6, 4), randn(4, 2), id="ldim < mdim"),
+        pytest.param(randn(2, 2), randn(2, 4), randn(4, 2), id="ldim == mdim"),
+    ],
+)
+class TestRightMultiplyByMatrix(BaseMultiplyByMatrixTest):
+    @staticmethod
+    def _test_multiply(a, b, matrix):
+        factored_matrix = FactoredMatrix(a, b)
+
+        product = matrix @ factored_matrix
+        expected_product = matrix @ (a @ b)
+        assert_close(product.AB, expected_product)
+
+        assert product.ldim == matrix.shape[-2]
+        assert product.mdim == min(factored_matrix.mdim, matrix.shape[-1])
+        assert product.rdim == factored_matrix.rdim
+
+        return product
+
+
+@pytest.mark.parametrize(
     ("factored_matrix", "matrix", "error"),
     [
         pytest.param(
@@ -109,30 +133,6 @@ class TestLeftMultiplyByMatrix(BaseMultiplyByMatrixTest):
 def test_dimension_mismatch_left_multiply(factored_matrix, matrix, error):
     with pytest.raises(error):
         _ = factored_matrix @ matrix
-
-
-@pytest.mark.parametrize(
-    ("matrix", "a", "b"),
-    [
-        pytest.param(randn(6, 3), randn(3, 4), randn(4, 6), id="ldim > mdim"),
-        pytest.param(randn(2, 6), randn(6, 4), randn(4, 2), id="ldim < mdim"),
-        pytest.param(randn(2, 2), randn(2, 4), randn(4, 2), id="ldim == mdim"),
-    ],
-)
-class TestRightMultiplyByMatrix(BaseMultiplyByMatrixTest):
-    @staticmethod
-    def _test_multiply(a, b, matrix):
-        factored_matrix = FactoredMatrix(a, b)
-
-        product = matrix @ factored_matrix
-        expected_product = matrix @ (a @ b)
-        assert_close(product.AB, expected_product)
-
-        assert product.ldim == matrix.shape[-2]
-        assert product.mdim == min(factored_matrix.mdim, matrix.shape[-1])
-        assert product.rdim == factored_matrix.rdim
-
-        return product
 
 
 @pytest.mark.parametrize(
