@@ -1,7 +1,6 @@
-from einops import repeat
-
 import pytest
 import torch
+from einops import repeat
 from torch import randn
 
 from transformer_lens import FactoredMatrix
@@ -166,4 +165,4 @@ class TestFactoredMatrixMultiplication:
 )
 def test_matmul_dimension_mismatch(a, b, error):
     with pytest.raises(error):
-        a @ b
+        _ = a @ b
