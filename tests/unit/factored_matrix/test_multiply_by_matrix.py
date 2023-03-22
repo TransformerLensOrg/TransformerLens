@@ -8,7 +8,13 @@ from torch.testing import assert_close
 from transformer_lens import FactoredMatrix
 
 
-class MultiplyTestBase(ABC):
+class BaseMultiplyByMatrixTest(ABC):
+    """
+    Base class for tests of multiplication between FactoredMatrix and a regular Matrix.
+
+    Includes for tests where each operand has or does not have leading dims
+    """
+
     @staticmethod
     @abstractmethod
     def _test_multiply(a, b, matrix):
@@ -26,7 +32,7 @@ class MultiplyTestBase(ABC):
         assert product.A.shape[:-2] == (2,)
         assert product.B.shape[:-2] == (2,)
 
-    def test_left_multiply_when_matrix_has_leading_dim(self, a, b, matrix):
+    def test_left_multiply_when_matrix_has_leading_dims(self, a, b, matrix):
         matrix_with_leading = repeat(matrix, "x y -> b1 b2 x y", b1=2, b2=12)
 
         product = self._test_multiply(a, b, matrix_with_leading)
@@ -55,7 +61,7 @@ class MultiplyTestBase(ABC):
         pytest.param(randn(2, 4), randn(4, 4), randn(4, 5), id="rdim == mdim"),
     ],
 )
-class TestLeftMultiplyByMatrix(MultiplyTestBase):
+class TestLeftMultiplyByMatrix(BaseMultiplyByMatrixTest):
     @staticmethod
     def _test_multiply(a, b, matrix):
         fm = FactoredMatrix(a, b)
@@ -72,6 +78,40 @@ class TestLeftMultiplyByMatrix(MultiplyTestBase):
 
 
 @pytest.mark.parametrize(
+    ("factored_matrix", "matrix", "error"),
+    [
+        pytest.param(
+            FactoredMatrix(randn(2, 3, 4), randn(2, 4, 6)),
+            randn(4, 6, 7),
+            RuntimeError,
+            id="Leading dim mismatch where each has one leading dim",
+        ),
+        pytest.param(
+            FactoredMatrix(randn(2, 9, 3, 4), randn(2, 9, 4, 6)),
+            randn(2, 6, 7),
+            RuntimeError,
+            id="Leading dim mismatch where FactoredMatrix has two leading dims and regular matrix has one",
+        ),
+        pytest.param(
+            FactoredMatrix(randn(3, 4), randn(4, 6)),
+            randn(5, 6),
+            AssertionError,
+            id="Inner dimension mismatch",
+        ),
+        pytest.param(
+            FactoredMatrix(randn(3, 4), randn(4, 6)),
+            randn(2, 5, 6),
+            AssertionError,
+            id="Inner dimension mismatch with batch",
+        ),
+    ],
+)
+def test_dimension_mismatch_left_multiply(factored_matrix, matrix, error):
+    with pytest.raises(error):
+        _ = factored_matrix @ matrix
+
+
+@pytest.mark.parametrize(
     ("matrix", "a", "b"),
     [
         pytest.param(randn(6, 3), randn(3, 4), randn(4, 6), id="ldim > mdim"),
@@ -79,7 +119,7 @@ class TestLeftMultiplyByMatrix(MultiplyTestBase):
         pytest.param(randn(2, 2), randn(2, 4), randn(4, 2), id="ldim == mdim"),
     ],
 )
-class TestRightMultiplyByMatrix(MultiplyTestBase):
+class TestRightMultiplyByMatrix(BaseMultiplyByMatrixTest):
     @staticmethod
     def _test_multiply(a, b, matrix):
         fm = FactoredMatrix(a, b)
@@ -93,3 +133,37 @@ class TestRightMultiplyByMatrix(MultiplyTestBase):
         assert product.rdim == fm.rdim
 
         return product
+
+
+@pytest.mark.parametrize(
+    ("factored_matrix", "matrix", "error"),
+    [
+        pytest.param(
+            FactoredMatrix(randn(2, 3, 4), randn(2, 4, 6)),
+            randn(4, 6, 3),
+            RuntimeError,
+            id="Leading dim mismatch where each has one leading dim",
+        ),
+        pytest.param(
+            FactoredMatrix(randn(2, 9, 3, 4), randn(2, 9, 4, 6)),
+            randn(2, 6, 3),
+            RuntimeError,
+            id="Leading dim mismatch where FactoredMatrix has two leading dims and regular matrix has one",
+        ),
+        pytest.param(
+            FactoredMatrix(randn(3, 4), randn(4, 6)),
+            randn(5, 6),
+            AssertionError,
+            id="Inner dimension mismatch",
+        ),
+        pytest.param(
+            FactoredMatrix(randn(3, 4), randn(4, 6)),
+            randn(2, 5, 6),
+            AssertionError,
+            id="Inner dimension mismatch with batch",
+        ),
+    ],
+)
+def test_dimension_mismatch_right_multiply(factored_matrix, matrix, error):
+    with pytest.raises(error):
+        _ = matrix @ factored_matrix
