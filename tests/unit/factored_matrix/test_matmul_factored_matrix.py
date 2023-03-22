@@ -73,7 +73,8 @@ from transformer_lens import FactoredMatrix
     ],
 )
 class TestFactoredMatrixMultiplication:
-    def _test_multiply(self, a_left, a_right, b_left, b_right) -> FactoredMatrix:
+    @staticmethod
+    def _test_multiply(a_left, a_right, b_left, b_right) -> FactoredMatrix:
         factored_a = FactoredMatrix(a_left, a_right)
         factored_b = FactoredMatrix(b_left, b_right)
 
