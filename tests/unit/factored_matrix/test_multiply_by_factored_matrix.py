@@ -1,7 +1,7 @@
 import pytest
-import torch
 from einops import repeat
 from torch import randn
+from torch.testing import assert_close
 
 from transformer_lens import FactoredMatrix
 
@@ -79,7 +79,7 @@ class TestFactoredMatrixMultiplication:
 
         product = factored_a @ factored_b
         expected_product = (a_left @ a_right) @ (b_left @ b_right)
-        assert torch.allclose(product.AB, expected_product, atol=1e-5)
+        assert_close(product.AB, expected_product)
 
         assert product.ldim == factored_a.ldim
         assert product.mdim == min(

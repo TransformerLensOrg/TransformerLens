@@ -1,5 +1,7 @@
 import pytest
 import torch
+from torch.testing import assert_close
+
 from transformer_lens import FactoredMatrix
 
 
@@ -12,20 +14,20 @@ def sample_factored_matrix():
 
 def test_getitem_int(sample_factored_matrix):
     result = sample_factored_matrix[0]
-    torch.testing.assert_allclose(result.A, sample_factored_matrix.A[0])
-    torch.testing.assert_allclose(result.B, sample_factored_matrix.B[0])
+    assert_close(result.A, sample_factored_matrix.A[0])
+    assert_close(result.B, sample_factored_matrix.B[0])
 
 
 def test_getitem_tuple(sample_factored_matrix):
     result = sample_factored_matrix[(0, 1)]
-    torch.testing.assert_allclose(result.A, sample_factored_matrix.A[0, 1])
-    torch.testing.assert_allclose(result.B, sample_factored_matrix.B[0, 1])
+    assert_close(result.A, sample_factored_matrix.A[0, 1])
+    assert_close(result.B, sample_factored_matrix.B[0, 1])
 
 
 def test_getitem_slice(sample_factored_matrix):
     result = sample_factored_matrix[:, 1]
-    torch.testing.assert_allclose(result.A, sample_factored_matrix.A[:, 1])
-    torch.testing.assert_allclose(result.B, sample_factored_matrix.B[:, 1])
+    assert_close(result.A, sample_factored_matrix.A[:, 1])
+    assert_close(result.B, sample_factored_matrix.B[:, 1])
 
 
 def test_getitem_error(sample_factored_matrix):
@@ -35,5 +37,5 @@ def test_getitem_error(sample_factored_matrix):
 
 def test_getitem_multiple_slices(sample_factored_matrix):
     result = sample_factored_matrix[:, :, 1]
-    torch.testing.assert_allclose(result.A, sample_factored_matrix.A[:, :, 1])
-    torch.testing.assert_allclose(result.B, sample_factored_matrix.B[:, :, 1])
+    assert_close(result.A, sample_factored_matrix.A[:, :, 1])
+    assert_close(result.B, sample_factored_matrix.B[:, :, 1])
