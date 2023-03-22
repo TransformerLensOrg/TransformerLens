@@ -1,14 +1,3 @@
-"""
-A module for testing the properties (and calculations) of the FactoredMatrix class, including:
-    - AB
-    - BA
-    - T
-    - svd
-    - eigenvalues
-    - ndim
-    - pair
-"""
-
 import pytest
 import torch
 from torch import randn
@@ -22,6 +11,7 @@ def random_matrices():
         (randn(3, 2), randn(2, 3)),
         (randn(4, 5), randn(5, 4)),
         (randn(6, 7), randn(7, 6)),
+        (randn(6, 7), randn(7, 3)),
     ]
 
 
@@ -83,7 +73,11 @@ class TestFactoredMatrixProperties:
             assert torch.allclose(U.T @ U, torch.eye(U.shape[-1]), atol=1e-5)
             assert torch.allclose(Vh.T @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
 
-    @pytest.mark.skip(reason="test_svd_property_leading_ones fails with leading ones")
+    @pytest.mark.skip(
+        """
+        This test fails if there are leading ones. Talk to Neel about this.
+        """
+    )
     def test_svd_property_leading_ones(self, factored_matrices_leading_ones):
         for factored_matrix in factored_matrices_leading_ones:
             U, S, Vh = factored_matrix.svd()
@@ -94,8 +88,18 @@ class TestFactoredMatrixProperties:
             assert torch.allclose(U.T @ U, torch.eye(U.shape[-1]), atol=1e-5)
             assert torch.allclose(Vh.T @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
 
-            #  TODO: test svd property will fail if there are leading ones. Talk to Neel about this.
+    @pytest.mark.skip(
+        """
+        Jaxtyping throws a TypeError when this test is run.
+        TypeError: type of the return value must be jaxtyping.Float[Tensor, '*leading_dims mdim']; got torch.Tensor instead
 
+        I'm not sure why. The error is not very informative. When debugging the shape was equal to mdim, and *leading_dims should
+        match zero or more leading dims according to the [docs](https://github.com/google/jaxtyping/blob/main/API.md).
+
+        Sort of related to https://github.com/neelnanda-io/TransformerLens/issues/190 because jaxtyping
+        is only enabled at test time and not runtime.
+        """
+    )
     def test_eigenvalues_property(self, factored_matrices):
         for factored_matrix in factored_matrices:
             if factored_matrix.ldim == factored_matrix.rdim:

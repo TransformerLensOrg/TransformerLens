@@ -1,7 +1,3 @@
-"""
-Tests for __matmul__ and __rmatmul__ methods of FactoredMatrix class, where the FactoredMatrix
-is multiplied by a Vector.
-"""
 import pytest
 import torch
 from torch.testing import assert_close
@@ -58,7 +54,7 @@ def test_right_matmul_by_vector():
     This time, error is
     AssertionError: The values for attribute 'shape' do not match: torch.Size([6, 1, 4]) != torch.Size([6, 4]).
 
-    Fix is the same.
+    Fix would be the same.
     """
 )
 def test_right_matmul_by_vector_leading_dim():

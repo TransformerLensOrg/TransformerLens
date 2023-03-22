@@ -12,7 +12,7 @@ class BaseMultiplyByMatrixTest(ABC):
     """
     Base class for tests of multiplication between FactoredMatrix and a regular Matrix.
 
-    Includes for tests where each operand has or does not have leading dims
+    Includes for tests where each operand has or doesn't have leading dimensions.
     """
 
     @staticmethod
@@ -64,14 +64,14 @@ class BaseMultiplyByMatrixTest(ABC):
 class TestLeftMultiplyByMatrix(BaseMultiplyByMatrixTest):
     @staticmethod
     def _test_multiply(a, b, matrix):
-        fm = FactoredMatrix(a, b)
+        factored_matrix = FactoredMatrix(a, b)
 
-        product = fm @ matrix
+        product = factored_matrix @ matrix
         expected_product = (a @ b) @ matrix
         assert_close(product.AB, expected_product)
 
-        assert product.ldim == fm.ldim
-        assert product.mdim == min(fm.mdim, matrix.shape[-2])
+        assert product.ldim == factored_matrix.ldim
+        assert product.mdim == min(factored_matrix.mdim, matrix.shape[-2])
         assert product.rdim == matrix.shape[-1]
 
         return product
@@ -122,15 +122,15 @@ def test_dimension_mismatch_left_multiply(factored_matrix, matrix, error):
 class TestRightMultiplyByMatrix(BaseMultiplyByMatrixTest):
     @staticmethod
     def _test_multiply(a, b, matrix):
-        fm = FactoredMatrix(a, b)
+        factored_matrix = FactoredMatrix(a, b)
 
-        product = matrix @ fm
+        product = matrix @ factored_matrix
         expected_product = matrix @ (a @ b)
         assert_close(product.AB, expected_product)
 
         assert product.ldim == matrix.shape[-2]
-        assert product.mdim == min(fm.mdim, matrix.shape[-1])
-        assert product.rdim == fm.rdim
+        assert product.mdim == min(factored_matrix.mdim, matrix.shape[-1])
+        assert product.rdim == factored_matrix.rdim
 
         return product
 
