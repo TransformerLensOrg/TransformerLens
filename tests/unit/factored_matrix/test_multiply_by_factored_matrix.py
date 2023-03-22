@@ -71,7 +71,7 @@ from transformer_lens import FactoredMatrix
         ),
     ],
 )
-class TestFactoredMatrixMultiplication:
+class TestMultiplyByFactoredMatrix:
     @staticmethod
     def _test_multiply(a_left, a_right, b_left, b_right) -> FactoredMatrix:
         factored_a = FactoredMatrix(a_left, a_right)
@@ -163,6 +163,6 @@ class TestFactoredMatrixMultiplication:
         ),
     ],
 )
-def test_matmul_dimension_mismatch(a, b, error):
+def test_dimension_mismatch(a, b, error):
     with pytest.raises(error):
         _ = a @ b
