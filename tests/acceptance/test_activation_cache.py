@@ -125,7 +125,7 @@ def test_logit_attrs_works_for_all_input_shapes():
     assert torch.isclose(ref_logit_diffs[:,batch],logit_diffs).all()
 
 @torch.set_grad_enabled(False)
-def test_accumulated_resid_apply_ln():
+def test_accumulated_resid_with_apply_ln():
 
     # Load solu-2l
     model = load_model('solu-2l')
@@ -145,7 +145,7 @@ def test_accumulated_resid_apply_ln():
     assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
 
 @torch.set_grad_enabled(False)
-def test_decompose_resid_apply_ln():
+def test_decompose_resid_with_apply_ln():
 
     # Load solu-2l
     model = load_model('solu-2l')

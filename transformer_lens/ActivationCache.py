@@ -255,7 +255,7 @@ class ActivationCache:
         apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         incl_embeds: bool = True,
-        return_labels: bool= False,
+        return_labels: bool = False,
     ) -> Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"]:
         """Decomposes the residual stream input to layer L into a stack of the output of previous layers. The sum of these is the input to layer L (plus embedding and pos embedding). This is useful for attributing model behaviour to different components of the residual stream
 
