@@ -747,6 +747,10 @@ class HookedTransformer(HookedRootModule):
     def cpu(self):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cpu")
+    
+    def mps(self):
+        # Wrapper around mps that also changes self.cfg.device
+        return self.to("mps")
 
     def move_model_modules_to_device(self):
         self.embed.to(devices.get_device_for_block_index(0, self.cfg))

@@ -74,7 +74,7 @@ def train(
         wandb.init(project=config.wandb_project_name, config=vars(config))
 
     if config.device is None:
-        config.device = "cuda" if torch.cuda.is_available() else "cpu"
+        config.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
     if config.optimizer_name in ["Adam", "AdamW"]:
         # Weight decay in Adam is implemented badly, so use AdamW instead (see PyTorch AdamW docs)

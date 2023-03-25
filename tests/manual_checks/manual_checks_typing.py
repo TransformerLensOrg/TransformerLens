@@ -8,7 +8,7 @@ from jaxtyping import Float
 
 from transformer_lens import HookedTransformer
 
-DEVICE = "cuda" if t.cuda.is_available() else "cpu"
+DEVICE = "cuda" if t.cuda.is_available() else "mps" if t.backends.mps.is_available() else "cpu"
 MODEL = "gpt2"
 
 # %%
