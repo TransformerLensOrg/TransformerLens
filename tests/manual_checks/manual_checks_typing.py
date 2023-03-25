@@ -9,7 +9,7 @@ hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 import torch as t
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 
-DEVICE = "cuda" if t.cuda.is_available() else "cpu"
+DEVICE = "cuda" if t.cuda.is_available() else "mps" if t.backends.mps.is_available() else "cpu"
 MODEL = "gpt2"
 
 # %%

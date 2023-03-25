@@ -221,7 +221,7 @@ class HookedRootModule(nn.Module):
             cache (dict): The cache where activations will be stored.
         """
         if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         if cache is None:
             cache = {}
 
