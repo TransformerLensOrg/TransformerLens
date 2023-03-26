@@ -123,3 +123,43 @@ def test_logit_attrs_works_for_all_input_shapes():
     batch = [2,5,7]
     logit_diffs = cache.logit_attrs(accumulated_residual, batch_slice=batch, pos_slice=-1, tokens=answer_tokens[batch,0], incorrect_tokens=answer_tokens[batch,1])
     assert torch.isclose(ref_logit_diffs[:,batch],logit_diffs).all()
+
+@torch.set_grad_enabled(False)
+def test_accumulated_resid_with_apply_ln():
+
+    # Load solu-2l
+    model = load_model('solu-2l')
+
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+
+    # Run the model and cache all activations
+    _, cache = model.run_with_cache(tokens)
+
+    # Get accumulated resid and apply ln seperately (cribbed notebook code)
+    accumulated_residual = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1)
+    ref_scaled_residual_stack = cache.apply_ln_to_stack(accumulated_residual, layer=-1, pos_slice=-1)
+    
+    # Get scaled_residual_stack using apply_ln parameter
+    scaled_residual_stack = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1, apply_ln=True)
+
+    assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
+
+@torch.set_grad_enabled(False)
+def test_decompose_resid_with_apply_ln():
+
+    # Load solu-2l
+    model = load_model('solu-2l')
+
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+
+    # Run the model and cache all activations
+    _, cache = model.run_with_cache(tokens)
+
+    # Get decomposed resid and apply ln seperately (cribbed notebook code)
+    per_layer_residual = cache.decompose_resid(layer=-1, pos_slice=-1)
+    ref_scaled_residual_stack = cache.apply_ln_to_stack(per_layer_residual, layer=-1, pos_slice=-1)
+    
+    # Get scaled_residual_stack using apply_ln parameter
+    scaled_residual_stack = cache.decompose_resid(layer=-1, pos_slice=-1, apply_ln=True)
+
+    assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
