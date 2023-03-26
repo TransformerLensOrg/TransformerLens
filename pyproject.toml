@@ -8,36 +8,36 @@ readme = "README.md"
 packages = [{include = "transformer_lens"}]
 
 [tool.poetry.dependencies]
-python = "^3.7"
-einops = "^0.6.0"
-numpy = [{ version = "^1.21", python = "<3.10" },
-         { version = "^1.23", python = ">=3.10" }]
-torch = "^1.10"
-datasets = "^2.7.1"
-transformers = "^4.25.1"
-tqdm = "^4.64.1"
-pandas = "^1.1.5"
-wandb = "^0.13.5"
-fancy-einsum = "^0.0.3"
-rich = "^12.6.0"
-jaxtyping = "^0.2.11"
+python = ">=3.7,<4.0"
+einops = ">=0.6.0"
+numpy = [{ version = ">=1.21", python = "<3.10" },
+         { version = ">=1.23", python = ">=3.10" }]
+torch = ">=1.10"
+datasets = ">=2.7.1"
+transformers = ">=4.25.1"
+tqdm = ">=4.64.1"
+pandas = ">=1.1.5"
+wandb = ">=0.13.5"
+fancy-einsum = ">=0.0.3"
+rich = ">=12.6.0"
+jaxtyping = ">=0.2.11"
 sphinx = {version = "5.2.3", optional = true, python = ">=3.8,<3.10"}
-sphinxcontrib-napoleon = {version = "^0.7", optional = true, python = ">=3.8,<3.10"}
-sphinx-autobuild = {version = "^2021.3.14", optional = true, python = ">=3.8,<3.10"}
-furo = {version = "^2022.12.7", optional = true, python = ">=3.8,<3.10"}
-myst-parser = {version = "^0.18.1", optional = true, python = ">=3.8,<3.10"}
-tabulate= {version = "^0.9.0", optional = true, python = ">=3.8,<3.10"}
+sphinxcontrib-napoleon = {version = ">=0.7", optional = true, python = ">=3.8,<3.10"}
+sphinx-autobuild = {version = ">=2021.3.14", optional = true, python = ">=3.8,<3.10"}
+furo = {version = ">=2022.12.7", optional = true, python = ">=3.8,<3.10"}
+myst-parser = {version = ">=0.18.1", optional = true, python = ">=3.8,<3.10"}
+tabulate= {version = ">=0.9.0", optional = true, python = ">=3.8,<3.10"}
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.2.0"
-pytest-cov = "^4.0.0"
-mypy = "^0.991"
-jupyter = "^1.0.0"
-circuitsvis = "^1.38.1"
-plotly = "^5.12.0"
+pytest = ">=7.2.0"
+pytest-cov = ">=4.0.0"
+mypy = ">=0.991"
+jupyter = ">=1.0.0"
+circuitsvis = ">=1.38.1"
+plotly = ">=5.12.0"
 
 [tool.poetry.group.jupyter.dependencies]
-jupyterlab = "^3.5.0"
+jupyterlab = ">=3.5.0"
 
 [build-system]
 requires = ["poetry-core"]
