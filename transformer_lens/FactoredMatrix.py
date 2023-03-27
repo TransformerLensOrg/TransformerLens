@@ -1,8 +1,11 @@
 from __future__ import annotations
-import torch
-from typing import Optional, Union, Tuple, List, Dict
-from jaxtyping import Float
+
 from functools import lru_cache
+from typing import Union, Tuple
+
+import torch
+from jaxtyping import Float
+
 import transformer_lens.utils as utils
 
 class FactoredMatrix:
