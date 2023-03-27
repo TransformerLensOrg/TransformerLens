@@ -80,6 +80,7 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr",
     "NeelNanda/SoLU_1L512W_Wiki_Finetune",
     "NeelNanda/SoLU_4L512W_Wiki_Finetune",
+    "ArthurConmy/redwood_attn_2l",
 ]
 
 # Model Aliases:
@@ -296,6 +297,7 @@ MODEL_ALIASES = {
         "gpt2-medium-small-e",
         "gpt2-stanford-medium-e",
     ],
+    "ArthurConmy/redwood_attn_2l": ["redwood_attn_2l"],
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
@@ -504,7 +506,7 @@ def get_pretrained_model_config(
 
     """
     official_model_name = get_official_model_name(model_name)
-    if official_model_name.startswith("NeelNanda"):
+    if official_model_name.startswith("NeelNanda") or official_model_name.startswith("ArthurConmy"):
         cfg_dict = convert_neel_model_config(official_model_name)
     else:
         cfg_dict = convert_hf_model_config(official_model_name)
@@ -609,7 +611,7 @@ def get_pretrained_state_dict(
     these weights rather than reloading the model.
     """
     official_model_name = get_official_model_name(official_model_name)
-    if official_model_name.startswith("NeelNanda"):
+    if official_model_name.startswith("NeelNanda") or official_model_name.startswith("ArthurConmy"):
         api = HfApi()
         repo_files = api.list_repo_files(official_model_name)
         if cfg.from_checkpoint:
