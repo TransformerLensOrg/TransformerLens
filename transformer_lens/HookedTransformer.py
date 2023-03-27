@@ -150,12 +150,11 @@ class HookedTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
-    def check_and_add_hook(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
+    def check_hooks_to_add(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
         if hook_point_name.endswith("attn.hook_result"):
             assert self.cfg.use_attn_result, f"Cannot add hook {hook_point_name} if use_attn_result_hook is False"
         if hook_point_name.endswith(("hook_q_input", "hook_k_input", "hook_v_input")):
             assert self.cfg.use_split_qkv_input, f"Cannot add hook {hook_point_name} if use_split_qkv_input is False"
-        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent)
 
     @overload
     def forward(
@@ -697,7 +696,6 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             move_state_dict_to_device=move_state_dict_to_device,
-            official_model_name=official_model_name,
         )
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
@@ -758,7 +756,6 @@ class HookedTransformer(HookedRootModule):
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
         move_state_dict_to_device: bool = True,
-        official_model_name: Optional[str] = None,
     ):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed to be in the HookedTransformer format.
 
@@ -779,8 +776,10 @@ class HookedTransformer(HookedRootModule):
             model_name (str, optional): checks the model name for special cases of state dict loading. Only used for Redwood 2L model currently
         """
         
-        if official_model_name == "ArthurConmy/redwood_attn_2l":
-            assert not center_writing_weights and not center_unembed, "TODO this model is not compatible with centering weights!"
+        if self.cfg.positional_embedding_type == "shortformer":
+            if fold_ln:
+                logging.warning("You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead.")
+                fold_ln = False
 
         if move_state_dict_to_device:
             state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
