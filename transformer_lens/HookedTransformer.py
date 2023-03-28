@@ -773,7 +773,13 @@ class HookedTransformer(HookedRootModule):
             refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
+            model_name (str, optional): checks the model name for special cases of state dict loading. Only used for Redwood 2L model currently
         """
+        
+        if self.cfg.positional_embedding_type == "shortformer":
+            if fold_ln:
+                logging.warning("You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead.")
+                fold_ln = False
 
         if move_state_dict_to_device:
             state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
