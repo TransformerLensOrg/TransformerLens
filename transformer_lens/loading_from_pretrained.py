@@ -40,6 +40,8 @@ OFFICIAL_MODEL_NAMES = [
     "stanford-crfm/eowyn-gpt2-medium-x777",
     "EleutherAI/pythia-70m",
     "EleutherAI/pythia-160m",
+    "EleutherAI/pythia-160m-seed1",
+    "EleutherAI/pythia-160m-seed2",
     "EleutherAI/pythia-410m",
     "EleutherAI/pythia-1b",
     "EleutherAI/pythia-1.4b",
@@ -78,6 +80,7 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/Attn_Only_3L512W_C4_Code",
     "NeelNanda/Attn_Only_4L512W_C4_Code",
     "NeelNanda/Attn-Only-2L512W-Shortformer-6B-big-lr",
+    "NeelNanda/redwood-attn-only-2l",
     "NeelNanda/SoLU_1L512W_Wiki_Finetune",
     "NeelNanda/SoLU_4L512W_Wiki_Finetune",
 ]
@@ -129,6 +132,10 @@ MODEL_ALIASES = {
         "attn-only-2l-induction-demo",
         "attn-only-demo",
     ],
+    "NeelNanda/redwood-attn-only-2l": [
+        "redwood-attn-only-2l",
+        "redwood-attn-only",
+    ],
     "NeelNanda/SoLU_1L512W_Wiki_Finetune": [
         "solu-1l-wiki",
         "solu-1l-wiki-finetune",
@@ -148,8 +155,21 @@ MODEL_ALIASES = {
     ],
     "EleutherAI/pythia-160m": [
         "pythia-160m",
+        "pythia-160m-0",
         "EleutherAI/pythia-125m",
         "pythia-125m", # EleutherAI renamed this model"        
+    ],
+    "EleutherAI/pythia-160m-seed1": [
+        "pythia-160m-1",
+        "pythia-160m-seed1",
+        "EleutherAI/pythia-125m-1",
+        "pythia-125m-1", # EleutherAI renamed this model"        
+    ],
+    "EleutherAI/pythia-160m-seed2": [
+        "pythia-160m-2",
+        "pythia-160m-seed2",
+        "EleutherAI/pythia-125m-2",
+        "pythia-125m-2", # EleutherAI renamed this model"        
     ],
     "EleutherAI/pythia-410m": [
         "pythia-410m",
@@ -456,6 +476,7 @@ def convert_neel_model_config(official_model_name: str):
         "act_fn": cfg_json["act_fn"],
         "attn_only": cfg_json["attn_only"],
         "final_rms": cfg_json.get("final_rms", False),
+        "positional_embedding_type": cfg_json.get("positional_embedding_type", "standard"),
         "original_architecture": (
             "neel" if "_old" not in official_model_name else "neel-solu-old"
         ),
