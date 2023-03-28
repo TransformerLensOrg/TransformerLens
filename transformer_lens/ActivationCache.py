@@ -1,7 +1,7 @@
 # %%
 from __future__ import annotations
 import transformer_lens.utils as utils
-from transformer_lens.utils import Slice, SliceInput
+from transformer_lens.utils import Slice, SliceInput, List
 from jaxtyping import Float
 import torch
 import einops
@@ -11,6 +11,7 @@ from typing_extensions import Literal
 import re
 import numpy as np
 import logging
+
 
 class ActivationCache:
     """
@@ -77,9 +78,6 @@ class ActivationCache:
                     key = (key[0], self.model.cfg.n_layers + key[1], *key[2:])
             return self.cache_dict[utils.get_act_name(*key)]
 
-    def __len__(self):
-        return len(self.cache_dict)
-
     def to(self, device: Union[str, torch.device], move_model=False) -> ActivationCache:
         """
         Moves the cache to a device - mostly useful for moving it to CPU after model computation finishes to save GPU memory. Matmuls will be much slower on the CPU.
@@ -135,6 +133,14 @@ class ActivationCache:
         return ActivationCache(
             new_cache_dict, self.model, has_batch_dim=still_has_batch_dim
         )
+
+    def get_head_labels(self) -> List[str]:
+        """Returns a list of head labels of the form L0H0, L0H1, ..., L1H0, ..."""
+        return [
+            f"L{l}H{h}"
+            for l in range(self.model.cfg.n_layers)
+            for h in range(self.model.cfg.n_heads)
+        ]
 
     def accumulated_resid(
         self,
@@ -399,7 +405,7 @@ class ActivationCache:
             return components, labels
         else:
             return components
-    
+
     def stack_activation(
         self,
         activation_name: str,
@@ -414,15 +420,15 @@ class ActivationCache:
             sublayer_type (str, *optional*): The sub layer type of the activation, passed to utils.get_act_name. Can normally be inferred
             incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
         """
-        
+
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
-        
+
         components = []
         for l in range(layer):
             components.append(self[(activation_name, l, sublayer_type)])
-        
+
         return torch.stack(components, dim=0)
 
     def get_neuron_results(
@@ -528,7 +534,9 @@ class ActivationCache:
 
     def apply_ln_to_stack(
         self,
-        residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+        residual_stack: Float[
+            torch.Tensor, "num_components *batch_and_pos_dims d_model"
+        ],
         layer: Optional[int] = None,
         mlp_input: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
