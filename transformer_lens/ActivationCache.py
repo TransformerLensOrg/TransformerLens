@@ -146,6 +146,7 @@ class ActivationCache:
         self,
         layer: Optional[int] = None,
         incl_mid: bool = False,
+        apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         mlp_input: bool = False,
         return_labels: bool = False,
@@ -156,6 +157,7 @@ class ActivationCache:
             layer (int, *optional*): The layer to take components up to - by default includes resid_pre for that layer and excludes resid_mid and resid_post for that layer. layer==n_layers, -1 or None means to return all residual streams, including the final one (ie immediately pre logits). The indices are taken such that this gives the accumulated streams up to the input to layer l
             incl_mid (bool, optional): Whether to return resid_mid for all previous layers. Defaults to False.
             mlp_input (bool, optional): Whether to include resid_mid for the current layer - essentially giving MLP input rather than Attn input. Defaults to False.
+            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
             pos_slice (Slice): A slice object to apply to the pos dimension. Defaults to None, do nothing.
             return_labels (bool, optional): Whether to return a list of labels for the residual stream components. Useful for labelling graphs. Defaults to True.
 
@@ -183,16 +185,80 @@ class ActivationCache:
                 labels.append(f"{l}_mid")
         components = [pos_slice.apply(c, dim=-2) for c in components]
         components = torch.stack(components, dim=0)
+        if apply_ln:
+            components = self.apply_ln_to_stack(
+                components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+            )
         if return_labels:
             return components, labels
         else:
             return components
 
+    def logit_attrs(
+            self,
+            residual_stack: TT[T.num_components, T.batch_and_pos_dims:..., T.d_model],
+            tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]],
+            incorrect_tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]] = None,
+            pos_slice: Union[Slice, SliceInput] = None,
+            batch_slice: Union[Slice, SliceInput] = None,
+            has_batch_dim: bool = True
+        ) -> TT[T.num_components, T.batch_and_pos_dims:...]:
+        """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
+
+        Args:
+            residual_stack (TT["num_components", "batch_and_pos_dims":..., "d_model"]): stack of components of residual stream to get logit attributions for.
+            tokens (Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]): tokens to compute logit attributions on.
+            incorrect_tokens (Union[str, int, TT[()], TT["batch"], TT["batch", "position"]], optional): if provided, compute attributions on logit difference between tokens and incorrect_tokens.
+                Must have the same shape as tokens.
+            pos_slice (Slice, optional): The slice to apply layer norm scaling on.
+                Defaults to None, do nothing.
+            batch_slice (Slice, optional): The slice to take on the batch dimension during layer norm scaling.
+                Defaults to None, do nothing.
+            has_batch_dim (bool, optional): Whether residual_stack has a batch dimension.
+                Defaults to True.
+        Returns:
+            Components: A [num_components, batch_and_pos_dims:...] tensor of the logit attributions or logit difference attributions if incorrect_tokens was provided.
+        """
+        if not isinstance(pos_slice, Slice):
+            pos_slice = Slice(pos_slice)
+
+        if not isinstance(batch_slice, Slice):
+            batch_slice = Slice(batch_slice)
+
+        if isinstance(tokens, str):
+            tokens = torch.as_tensor(self.model.to_single_token(tokens))
+
+        elif isinstance(tokens, int):
+            tokens = torch.as_tensor(tokens)
+
+        logit_directions = self.model.tokens_to_residual_directions(tokens)
+
+        if incorrect_tokens is not None:
+            if isinstance(incorrect_tokens, str):
+                incorrect_tokens = torch.as_tensor(self.model.to_single_token(incorrect_tokens))
+
+            elif isinstance(incorrect_tokens, int):
+                incorrect_tokens = torch.as_tensor(incorrect_tokens)
+
+            if tokens.shape != incorrect_tokens.shape:
+                raise ValueError(f"tokens and incorrect_tokens must have the same shape! (tokens.shape={tokens.shape}, incorrect_tokens.shape={incorrect_tokens.shape})")
+        
+            # If incorrect_tokens was provided, take the logit difference
+            logit_directions = logit_directions - self.model.tokens_to_residual_directions(incorrect_tokens)
+
+
+        scaled_residual_stack = self.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=pos_slice, batch_slice=batch_slice, has_batch_dim=has_batch_dim)
+
+        logit_attrs = einsum("... d_model, ... d_model -> ...", scaled_residual_stack, logit_directions)
+
+        return logit_attrs
+        
     def decompose_resid(
         self,
         layer: Optional[int] = None,
         mlp_input: bool = False,
         mode: Literal["all", "mlp", "attn"] = "all",
+        apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         incl_embeds: bool = True,
         return_labels: bool = False,
@@ -208,6 +274,7 @@ class ActivationCache:
                 layer - essentially decomposing the residual stream that's input to the MLP input rather than the Attn input. Defaults to False.
             mode (str): Values are "all", "mlp" or "attn". "all" returns all
                 components, "mlp" returns only the MLP components, and "attn" returns only the attention components. Defaults to "all".
+            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
             pos_slice (Slice): A slice object to apply to the pos dimension.
                 Defaults to None, do nothing.
             incl_embeds (bool): Whether to include embed & pos_embed
@@ -249,6 +316,10 @@ class ActivationCache:
             labels.append(f"{layer}_attn_out")
         components = [pos_slice.apply(c, dim=-2) for c in components]
         components = torch.stack(components, dim=0)
+        if apply_ln:
+            components = self.apply_ln_to_stack(
+                components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+            )
         if return_labels:
             return components, labels
         else:
@@ -469,6 +540,8 @@ class ActivationCache:
         layer: Optional[int] = None,
         mlp_input: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
+        batch_slice: Union[Slice, SliceInput] = None,
+        has_batch_dim: bool = True
     ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Takes a stack of components of the residual stream (eg outputs of decompose_resid or accumulated_resid), treats them as the input to a specific layer, and applies the layer norm scaling of that layer to them, using the cached scale factors - simulating what that component of the residual stream contributes to that layer's input.
 
@@ -491,17 +564,29 @@ class ActivationCache:
                 over the full context, None means do nothing. It is assumed that
                 pos_slice has already been applied to residual_stack, and this
                 is only applied to the scale. See utils.Slice for details.
-                Defaults to None.
+                Defaults to None, do nothing.
+            batch_slice (Slice, optional): The slice to take on the batch dimension.
+                Defaults to None, do nothing.
+            has_batch_dim (bool, optional): Whether residual_stack has a batch dimension.
+                Defaults to True.
         """
         if self.model.cfg.normalization_type not in ["LN", "LNPre"]:
             # The model does not use LayerNorm, so we don't need to do anything.
             return residual_stack
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
+        if not isinstance(batch_slice, Slice):
+            batch_slice = Slice(batch_slice)
+
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
-        # First, center the stack
+
+        if has_batch_dim:
+            # Apply batch slice to the stack
+            residual_stack = batch_slice.apply(residual_stack, dim=1)
+
+        # Center the stack
         residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         if layer == self.model.cfg.n_layers or layer is None:
@@ -512,6 +597,10 @@ class ActivationCache:
 
         # The shape of scale is [batch, position, 1] or [position, 1] - final dimension is a dummy thing to get broadcoasting to work nicely.
         scale = pos_slice.apply(scale, dim=-2)
+
+        if self.has_batch_dim:
+            # Apply batch slice to the scale
+            scale = batch_slice.apply(scale)
 
         return residual_stack / scale
 
@@ -530,7 +619,7 @@ class ActivationCache:
             layer (int): The layer we're inputting into. layer is in [0, n_layers], if layer==n_layers (or None) we're inputting into the unembed (the entire stream), if layer==0 then it's just embed and pos_embed
             mlp_input (bool, optional): Are we inputting to the MLP in that layer or the attn? Must be False for final layer, since that's the unembed. Defaults to False.
             expand_neurons (bool, optional): Whether to expand the MLP outputs to give every neuron's result or just return the MLP layer outputs. Defaults to True.
-            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to True.
+            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
             pos_slice (Slice, optional): Slice of the positions to take. Defaults to None. See utils.Slice for details.
             return_labels (bool): Whether to return the labels. Defaults to False.
         """

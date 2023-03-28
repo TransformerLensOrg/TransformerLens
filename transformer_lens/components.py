@@ -87,7 +87,7 @@ class PosEmbed(nn.Module):
         broadcast_pos_embed = einops.repeat(
             pos_embed, "pos d_model -> batch pos d_model", batch=tokens.size(0)
         )  # [batch, pos, d_model]
-        return broadcast_pos_embed
+        return broadcast_pos_embed.clone()
 
 
 # LayerNormPre

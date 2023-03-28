@@ -305,7 +305,7 @@ def sample_logits(
 # %%
 # Type alias
 SliceInput: Type = Optional[
-    Union[int, Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor]
+    Union[int, Tuple[int,], Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor, np.ndarray]
 ]
 """
 An optional type alias for a slice input used in the `ActivationCache` module.
@@ -351,6 +351,18 @@ class Slice:
         self,
         input_slice: SliceInput = None,
     ):
+        """
+        Modular component for slicing tensors. Can be used to slice a tensor along a given dimension, or to index into a tensor along a given dimension.
+
+        Args:
+            input_slice (SliceInput): The slice to apply. Can be an int, a tuple, a list, a torch.Tensor, or None. If None, do nothing.
+            
+        Returns:
+            Slice: A Slice object that can be applied to a tensor.
+        
+        Raises:
+            ValueError: If the input_slice is not one of the above types.
+        """
         if type(input_slice) == tuple:
             input_slice = slice(*input_slice)
             self.slice = input_slice
@@ -361,11 +373,7 @@ class Slice:
         elif type(input_slice) == slice:
             self.slice = input_slice
             self.mode = "slice"
-        elif (
-            type(input_slice) == list
-            or type(input_slice) == torch.Tensor
-            or type(input_slice) == np.ndarray
-        ):
+        elif type(input_slice) in [list, torch.Tensor, np.ndarray]:
             self.slice = to_numpy(input_slice)
             self.mode = "array"
         elif input_slice is None:
@@ -374,25 +382,51 @@ class Slice:
         else:
             raise ValueError(f"Invalid input_slice {input_slice}")
 
-    def apply(self, tensor, dim=0):
+    def apply(
+        self,
+        tensor: torch.Tensor,
+        dim: int = 0,
+        ) -> torch.Tensor:
         """
         Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor.
+
+        Args:
+            tensor (torch.Tensor): The tensor to slice.
+            dim (int, optional): The dimension to slice along. Supports positive and negative dimension syntax.
+
+        Returns:
+            torch.Tensor: The sliced tensor.
         """
         ndim = tensor.ndim
         slices = [slice(None)] * ndim
         slices[dim] = self.slice
         return tensor[tuple(slices)]
 
-    def indices(self, max_ctx=None):
+    def indices(
+        self,
+        max_ctx: Optional[int] = None,
+        ) -> Union[np.ndarray, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
+
+        Args:
+            max_ctx (int, optional): The size of the axis to slice. Only used if the slice is not an integer.
+
+        Returns:
+            np.ndarray: The indices that this slice will select.
+
+        Raises:
+            ValueError: If the slice is not an integer and max_ctx is not specified.
         """
         if self.mode == "int":
             return np.array([self.slice])
-        else:
-            return np.arange(max_ctx)[self.slice]
+        if max_ctx is None:
+            raise ValueError("max_ctx must be specified if slice is not an integer")
+        return np.arange(max_ctx)[self.slice]
 
-    def __repr__(self):
+    def __repr__(
+        self,
+        ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
 
 
@@ -405,9 +439,30 @@ def get_act_name(
     layer_type: Optional[str] = None,
 ):
     """
-    Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback loop hacking stuff together, more so than writing good, readable code. But it is deterministic!
+    Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback
+    loop hacking stuff together, more so than writing good, readable code. But it is deterministic!
 
-    eg:
+    Returns a name corresponding to an activation point in a TransformerLens model.
+
+    Args:
+         name (str): Takes in the name of the activation. This can be used to specify any activation name by itself.
+         The code assumes the first sequence of digits passed to it (if any) is the layer number, and anything after
+         that is the layer type.
+
+         Given only a word and number, it leaves layer_type as is.
+         Given only a word, it leaves layer and layer_type as is.
+
+         Examples:
+             get_act_name('embed') = get_act_name('embed', None, None)
+             get_act_name('k6') = get_act_name('k', 6, None)
+             get_act_name('scale4ln1') = get_act_name('scale', 4, 'ln1')
+
+         layer (int, optional): Takes in the layer number. Used for activations that appear in every block.
+
+         layer_type (string, optional): Used to distinguish between activations that appear multiple times in one block.
+
+    Full Examples:
+
     get_act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
     get_act_name('pre', 2)=='blocks.2.mlp.hook_pre'
     get_act_name('embed')=='hook_embed'
@@ -447,6 +502,8 @@ def get_act_name(
         "mlp_post":"post",
     }
 
+    layer_norm_names = ["scale", "normalized"]
+
     if name in act_name_alias:
         name = act_name_alias[name]
 
@@ -463,6 +520,9 @@ def get_act_name(
     if layer_type:
         full_act_name += f"{layer_type}."
     full_act_name += f"hook_{name}"
+
+    if name in layer_norm_names and layer is None:
+        full_act_name = f"ln_final.{full_act_name}"
     return full_act_name
 
 

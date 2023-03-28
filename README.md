@@ -8,6 +8,8 @@
 
 ## [Main Tutorial Here](https://neelnanda.io/transformer-lens-demo)
 
+See also this better and more in-depth, but still [work-in-progress tutorial from Callum McDougall](https://transformerlens-intro.streamlit.app/)
+
 ## A Library for Mechanistic Interpretability of Generative Language Models
 
 This is a library for doing [mechanistic interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style language models. The goal of mechanistic interpretability is to take a trained model and reverse engineer the algorithms the model learned during training from its weights. It is a fact about the world today that we have computer programs that can essentially speak English at a human level (GPT-3, PaLM, etc), yet we have no idea how they work nor how to write one ourselves. This offends me greatly, and I would like to solve this! 
@@ -69,11 +71,11 @@ Then the library can be imported as `import transformer_lens`.
 
 If adding a feature, please add unit tests for it to the tests folder, and check that it hasn't broken anything major using the existing tests (install pytest and run it in the root TransformerLens/ directory).
 
-To run tests, you can use the following command:
+#### Running the tests
 
-```
-poetry run pytest -v transformer_lens/tests
-```
+* All tests via `make test`
+* Unit tests only via `make unit-test`
+* Acceptance tests only via `make acceptance-test`
 
 ## Citation
 
