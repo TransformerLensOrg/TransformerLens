@@ -996,6 +996,7 @@ Softmax is translation invariant so this doesn’t affect log probs or loss, but
 <li><p><strong>refactor_factored_attn_matrices</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to convert the factored
 matrices (W_Q &amp; W_K, and W_O &amp; W_V) to be “even”. Defaults to False</p></li>
 <li><p><strong>move_state_dict_to_device</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to move the state dict to the device of the model. Defaults to True.</p></li>
+<li><p><strong>model_name</strong> (<em>str</em><em>, </em><em>optional</em>) – checks the model name for special cases of state dict loading. Only used for Redwood 2L model currently</p></li>
 </ul>
 </dd>
 </dl>
