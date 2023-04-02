@@ -176,11 +176,18 @@ class HookedRootModule(nn.Module):
         A context manager for adding temporary hooks to the model.
 
         Args:
-            fwd_hooks: List[Tuple[name, hook]], where name is either the name of a hook point
-            or a Boolean function on hook names and hook is the function to add to that hook point.
+            fwd_hooks: List[Tuple[name, hook]], where name is either the name of a hook point or a
+                Boolean function on hook names and hook is the function to add to that hook point.
             bwd_hooks: Same as fwd_hooks, but for the backward pass.
             reset_hooks_end (bool): If True, removes all hooks added by this context manager when the context manager exits.
             clear_contexts (bool): If True, clears hook contexts whenever hooks are reset.
+        
+        Example:
+        --------
+        .. code-block:: python
+
+            >>> with model.hooks(fwd_hooks=my_hooks):
+            >>>     hooked_loss = model(text, return_type="loss")
         """
         try:
             self.context_level += 1
