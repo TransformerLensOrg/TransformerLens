@@ -12,6 +12,15 @@ from dataclasses import dataclass
 
 @dataclass
 class LensHandle:
+    """
+    A dataclass that holds information about a PyTorch hook.
+
+    Attributes:
+        hook (hooks.RemovableHandle): Reference to the hook's RemovableHandle.
+        is_permanent (bool, optional): Indicates if the hook is permanent. Defaults to False.
+        context_level (Optional[int], optional): Context level associated with the hooks context
+            manager for the given hook. Defaults to None.
+    """
     hook: hooks.RemovableHandle
     is_permanent: bool = False
     context_level: Optional[int] = None
@@ -22,11 +31,13 @@ class LensHandle:
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
 
 # %%
-# A helper class to get access to intermediate activations (inspired by Garcon)
-# It's a dummy module that is the identity function by default
-# I can wrap any intermediate activation in a HookPoint and get a convenient
-# way to add PyTorch hooks
 class HookPoint(nn.Module):
+    """
+    A helper class to access intermediate activations in a PyTorch model (inspired by Garcon).
+
+    HookPoint is a dummy module that acts as an identity function by default. By wrapping any
+    intermediate activation in a HookPoint, it provides a convenient way to add PyTorch hooks.
+    """
     def __init__(self):
         super().__init__()
         self.fwd_hooks: List[LensHandle] = []
@@ -114,10 +125,14 @@ class HookedRootModule(nn.Module):
         self.context_level = 0
 
     def setup(self):
-        # Setup function - this needs to be run in __init__ AFTER defining all
-        # layers
-        # Add a parameter to each module giving its name
-        # Build a dictionary mapping a module name to the module
+        """
+        Sets up model.
+
+        This function must be called in the model's `__init__` method AFTER defining all layers. It
+        adds a parameter to each module containing its name, and builds a dictionary mapping module
+        names to the module instances. It also initializes a hook dictionary for modules of type
+        "HookPoint".
+        """
         self.mod_dict = {}
         self.hook_dict: Dict[str, HookPoint] = {}
         for name, module in self.named_modules():
@@ -169,18 +184,25 @@ class HookedRootModule(nn.Module):
         self,
         fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
-        reset_hooks_end=True,
-        clear_contexts=False,
+        reset_hooks_end: bool = True,
+        clear_contexts: bool = False,
         ):
         """
         A context manager for adding temporary hooks to the model.
 
         Args:
-            fwd_hooks: List[Tuple[name, hook]], where name is either the name of a hook point
-            or a Boolean function on hook names and hook is the function to add to that hook point.
+            fwd_hooks: List[Tuple[name, hook]], where name is either the name of a hook point or a
+                Boolean function on hook names and hook is the function to add to that hook point.
             bwd_hooks: Same as fwd_hooks, but for the backward pass.
             reset_hooks_end (bool): If True, removes all hooks added by this context manager when the context manager exits.
             clear_contexts (bool): If True, clears hook contexts whenever hooks are reset.
+        
+        Example:
+        --------
+        .. code-block:: python
+
+            >>> with model.hooks(fwd_hooks=my_hooks):
+            >>>     hooked_loss = model(text, return_type="loss")
         """
         try:
             self.context_level += 1
@@ -217,15 +239,25 @@ class HookedRootModule(nn.Module):
         **model_kwargs,
     ):
         """
-        fwd_hooks: A list of (name, hook), where name is either the name of
-        a hook point or a Boolean function on hook names and hook is the
-        function to add to that hook point, or the hook whose names evaluate
-        to True respectively. Ditto bwd_hooks
-        reset_hooks_end (bool): If True, all hooks are removed at the end (ie,
-        including those added in this run)
-        clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
-        Note that if we want to use backward hooks, we need to set
-        reset_hooks_end to be False, so the backward hooks are still there - this function only runs a forward pass.
+        Runs the model with specified forward and backward hooks.
+
+        Args:
+            fwd_hooks (List[Tuple[Union[str, Callable], Callable]]): A list of (name, hook), where name is
+                either the name of a hook point or a boolean function on hook names, and hook is the
+                function to add to that hook point. Hooks with names that evaluate to True are added
+                respectively.
+            bwd_hooks (List[Tuple[Union[str, Callable], Callable]]): Same as fwd_hooks, but for the
+                backward pass.
+            reset_hooks_end (bool): If True, all hooks are removed at the end, including those added
+                during this run. Default is True.
+            clear_contexts (bool): If True, clears hook contexts whenever hooks are reset. Default is
+                False.
+            *model_args: Positional arguments for the model.
+            **model_kwargs: Keyword arguments for the model.
+
+        Note:
+            If you want to use backward hooks, set `reset_hooks_end` to False, so the backward hooks
+            remain active. This function only runs a forward pass.
         """
         if len(bwd_hooks) > 0 and reset_hooks_end:
             logging.warning(
@@ -300,15 +332,31 @@ class HookedRootModule(nn.Module):
         **model_kwargs,
     ):
         """
-        Runs the model and returns model output and a Cache object
+        Runs the model and returns the model output and a Cache object.
 
-        model_args and model_kwargs - all positional arguments and keyword arguments not otherwise captured are input to the model
-        names_filter (None or str or [str] or fn:str->bool): a filter for which activations to cache. Defaults to None, which means cache everything.
-        device (str or torch.Device): The device to cache activations on, defaults to model device. Note that this must be set if the model does not have a model.cfg.device attribute. WARNING: Setting a different device than the one used by the model leads to significant performance degradation.
-        remove_batch_dim (bool): If True, will remove the batch dimension when caching. Only makes sense with batch_size=1 inputs.
-        incl_bwd (bool): If True, will call backward on the model output and also cache gradients. It is assumed that the model outputs a scalar, ie. return_type="loss", for predict the next token loss. Custom loss functions are not supported
-        reset_hooks_end (bool): If True, all hooks are removed at the end (ie, both those added in this run *and* any added before!)
-        clear_contexts (bool): If True, clears hook contexts whenever hooks are reset
+        Args:
+            *model_args: Positional arguments for the model.
+            names_filter (NamesFilter, optional): A filter for which activations to cache. Accepts None, str,
+                list of str, or a function that takes a string and returns a bool. Defaults to None, which
+                means cache everything.
+            device (str or torch.Device, optional): The device to cache activations on. Defaults to the
+                model device. Note that this must be set if the model does not have a model.cfg.device
+                attribute. WARNING: Setting a different device than the one used by the model leads to
+                significant performance degradation.
+            remove_batch_dim (bool, optional): If True, removes the batch dimension when caching. Only
+                makes sense with batch_size=1 inputs. Defaults to False.
+            incl_bwd (bool, optional): If True, calls backward on the model output and caches gradients
+                as well. Assumes that the model outputs a scalar (e.g., return_type="loss"). Custom loss
+                functions are not supported. Defaults to False.
+            reset_hooks_end (bool, optional): If True, removes all hooks added by this function at the 
+                end of the run. Defaults to True.
+            clear_contexts (bool, optional): If True, clears hook contexts whenever hooks are reset.
+                Defaults to False.
+            **model_kwargs: Keyword arguments for the model.
+
+        Returns:
+            tuple: A tuple containing the model output and a Cache object.
+
         """
         cache_dict, fwd, bwd = self.get_caching_hooks(
             names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim
