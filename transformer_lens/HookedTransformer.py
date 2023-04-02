@@ -159,12 +159,11 @@ class HookedTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
-    def check_and_add_hook(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
+    def check_hooks_to_add(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
         if hook_point_name.endswith("attn.hook_result"):
             assert self.cfg.use_attn_result, f"Cannot add hook {hook_point_name} if use_attn_result_hook is False"
         if hook_point_name.endswith(("hook_q_input", "hook_k_input", "hook_v_input")):
             assert self.cfg.use_split_qkv_input, f"Cannot add hook {hook_point_name} if use_split_qkv_input is False"
-        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent)
 
     @overload
     def forward(
@@ -813,10 +812,19 @@ class HookedTransformer(HookedRootModule):
             refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
+            model_name (str, optional): checks the model name for special cases of state dict loading. Only used for Redwood 2L model currently
         """
+
         assert (
             self.cfg.n_devices == 1 or move_state_dict_to_device
         ), "If n_devices > 1, move_state_dict_to_device must be True"
+
+        
+        if self.cfg.positional_embedding_type == "shortformer":
+            if fold_ln:
+                logging.warning("You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead.")
+                fold_ln = False
+
         if move_state_dict_to_device:
             for k, v in state_dict.items():
                 if k.startswith("embed") or k.startswith("pos_embed"):

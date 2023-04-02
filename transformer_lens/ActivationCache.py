@@ -140,6 +140,7 @@ class ActivationCache:
         self,
         layer: Optional[int] = None,
         incl_mid: bool = False,
+        apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         mlp_input: bool = False,
         return_labels: bool = False,
@@ -150,6 +151,7 @@ class ActivationCache:
             layer (int, *optional*): The layer to take components up to - by default includes resid_pre for that layer and excludes resid_mid and resid_post for that layer. layer==n_layers, -1 or None means to return all residual streams, including the final one (ie immediately pre logits). The indices are taken such that this gives the accumulated streams up to the input to layer l
             incl_mid (bool, optional): Whether to return resid_mid for all previous layers. Defaults to False.
             mlp_input (bool, optional): Whether to include resid_mid for the current layer - essentially giving MLP input rather than Attn input. Defaults to False.
+            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
             pos_slice (Slice): A slice object to apply to the pos dimension. Defaults to None, do nothing.
             return_labels (bool, optional): Whether to return a list of labels for the residual stream components. Useful for labelling graphs. Defaults to True.
 
@@ -177,6 +179,10 @@ class ActivationCache:
                 labels.append(f"{l}_mid")
         components = [pos_slice.apply(c, dim=-2) for c in components]
         components = torch.stack(components, dim=0)
+        if apply_ln:
+            components = self.apply_ln_to_stack(
+                components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+            )
         if return_labels:
             return components, labels
         else:
@@ -246,6 +252,7 @@ class ActivationCache:
         layer: Optional[int] = None,
         mlp_input: bool = False,
         mode: Literal["all", "mlp", "attn"] = "all",
+        apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         incl_embeds: bool = True,
         return_labels: bool = False,
@@ -261,6 +268,7 @@ class ActivationCache:
                 layer - essentially decomposing the residual stream that's input to the MLP input rather than the Attn input. Defaults to False.
             mode (str): Values are "all", "mlp" or "attn". "all" returns all
                 components, "mlp" returns only the MLP components, and "attn" returns only the attention components. Defaults to "all".
+            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
             pos_slice (Slice): A slice object to apply to the pos dimension.
                 Defaults to None, do nothing.
             incl_embeds (bool): Whether to include embed & pos_embed
@@ -302,6 +310,10 @@ class ActivationCache:
             labels.append(f"{layer}_attn_out")
         components = [pos_slice.apply(c, dim=-2) for c in components]
         components = torch.stack(components, dim=0)
+        if apply_ln:
+            components = self.apply_ln_to_stack(
+                components, layer, pos_slice=pos_slice, mlp_input=mlp_input
+            )
         if return_labels:
             return components, labels
         else:
@@ -599,7 +611,7 @@ class ActivationCache:
             layer (int): The layer we're inputting into. layer is in [0, n_layers], if layer==n_layers (or None) we're inputting into the unembed (the entire stream), if layer==0 then it's just embed and pos_embed
             mlp_input (bool, optional): Are we inputting to the MLP in that layer or the attn? Must be False for final layer, since that's the unembed. Defaults to False.
             expand_neurons (bool, optional): Whether to expand the MLP outputs to give every neuron's result or just return the MLP layer outputs. Defaults to True.
-            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to True.
+            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
             pos_slice (Slice, optional): Slice of the positions to take. Defaults to None. See utils.Slice for details.
             return_labels (bool): Whether to return the labels. Defaults to False.
         """
