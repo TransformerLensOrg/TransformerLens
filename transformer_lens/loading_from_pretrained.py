@@ -941,6 +941,9 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
     state_dict["embed.W_E"] = llama.model.embed_tokens.weight
 
+    # llama has no biases anywhere and deals with everything else roughly like
+    # GPTNeoX with different names
+    
     for l in range(cfg.n_layers):
 
         state_dict[f"blocks.{l}.ln1.w"] = llama.model.layers[l].input_layernorm.weight
@@ -965,7 +968,6 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model)
 
-        # Layer Norm 1 and 2 are tied.
         state_dict[f"blocks.{l}.ln2.w"] = llama.model.layers[l].post_attention_layernorm.weight
 
         state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T

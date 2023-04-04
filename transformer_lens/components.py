@@ -208,7 +208,6 @@ class RMSNorm(nn.Module):
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos, 1]
         self.hook_normalized = HookPoint()  # [batch, pos, length]
-        self.hook_out = HookPoint()  # [batch, pos, length]
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos length"]
@@ -217,7 +216,7 @@ class RMSNorm(nn.Module):
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         x = self.hook_normalized(x / scale)  # [batch, pos, length]
-        return self.hook_out(x * self.w)
+        return x * self.w
 
 
 # Attention
@@ -608,6 +607,8 @@ class MLP(nn.Module):
             + self.b_out
         )
 
+# TODO
+# not sure whether to fold this into MLP or not
 class GatedMLP(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
