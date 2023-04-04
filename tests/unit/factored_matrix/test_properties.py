@@ -73,20 +73,15 @@ class TestFactoredMatrixProperties:
             assert torch.allclose(U.T @ U, torch.eye(U.shape[-1]), atol=1e-5)
             assert torch.allclose(Vh.T @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
 
-    @pytest.mark.skip(
-        """
-        This test fails if there are leading ones. Talk to Neel about this.
-        """
-    )
     def test_svd_property_leading_ones(self, factored_matrices_leading_ones):
         for factored_matrix in factored_matrices_leading_ones:
             U, S, Vh = factored_matrix.svd()
             assert torch.allclose(
-                factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.T, atol=1e-5
+                factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.mT, atol=1e-5
             )
             # test that U and Vh are unitary
-            assert torch.allclose(U.T @ U, torch.eye(U.shape[-1]), atol=1e-5)
-            assert torch.allclose(Vh.T @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
+            assert torch.allclose(U.mT @ U, torch.eye(U.shape[-1]), atol=1e-5)
+            assert torch.allclose(Vh.mT @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
 
     @pytest.mark.skip(
         """

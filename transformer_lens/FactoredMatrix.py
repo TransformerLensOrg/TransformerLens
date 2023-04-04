@@ -58,7 +58,7 @@ class FactoredMatrix:
             ), f"Left matrix must match on inner dimension, shapes were self: {self.shape}, other:{other.shape}"
             if other.ndim < 2:
                 # It's a vector, so we collapse the factorisation and just return a vector
-                return ((other.unsqueeze(-2) @ self.A) @ self.B).squeeze(-1)
+                return ((other.unsqueeze(-2) @ self.A) @ self.B).squeeze(-2)
             elif self.ldim > self.mdim:
                 return FactoredMatrix(other @ self.A, self.B)
             else:
