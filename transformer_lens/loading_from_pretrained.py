@@ -400,6 +400,7 @@ def convert_hf_model_config(official_model_name: str):
             "use_attn_scale": True,
             "use_local_attn": False,
             "scale_attn_by_inverse_layer_idx": hf_config.scale_attn_by_inverse_layer_idx,
+            "normalization_type": "LN", 
         }
     elif architecture == "OPTForCausalLM":
         cfg_dict = {
