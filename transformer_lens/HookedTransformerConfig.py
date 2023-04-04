@@ -161,6 +161,7 @@ class HookedTransformerConfig:
     rotary_dim: Optional[int] = None
     n_params: Optional[int] = None
     use_hook_tokens: bool = False
+    gated_mlp: bool = False
 
     def __post_init__(self):
         if self.n_heads==-1:

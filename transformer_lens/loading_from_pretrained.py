@@ -81,6 +81,10 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/SoLU_1L512W_Wiki_Finetune",
     "NeelNanda/SoLU_4L512W_Wiki_Finetune",
     "ArthurConmy/redwood_attn_2l",
+    "decapoda-research/llama-7b-hf",
+    "decapoda-research/llama-13b-hf",
+    "decapoda-research/llama-30b-hf", 
+    "decapoda-research/llama-65b-hf",
 ]
 
 # Model Aliases:
@@ -298,6 +302,10 @@ MODEL_ALIASES = {
         "gpt2-stanford-medium-e",
     ],
     "ArthurConmy/redwood_attn_2l": ["redwood_attn_2l"],
+    "decapoda-research/llama-7b-hf": ["llama-7b"], 
+    "decapoda-research/llama-13b-hf": ["llama-13b"],
+    "decapoda-research/llama-30b-hf": ["llama-30b"],
+    "decapoda-research/llama-65b-hf": ["llama-65b"],
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
@@ -343,7 +351,24 @@ def convert_hf_model_config(official_model_name: str):
     # Load HuggingFace model config
     hf_config = AutoConfig.from_pretrained(official_model_name)
     architecture = hf_config.architectures[0]
-    if architecture == "GPTNeoForCausalLM":
+    if architecture == "LLaMAForCausalLM": 
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps, 
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": "silu", 
+            "normalization_type": "RMS", 
+            "positional_embedding_type": "rotary",
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads, 
+            "final_rms": True, 
+            "gated_mlp": True, 
+        }
+    elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_heads,
@@ -359,6 +384,7 @@ def convert_hf_model_config(official_model_name: str):
             "use_local_attn": True,
             "window_size": hf_config.window_size,
             "scale_attn_by_inverse_layer_idx": False,
+            "normalization_type": "LN", 
         }
     elif architecture == "GPT2LMHeadModel":
         cfg_dict = {
@@ -389,6 +415,7 @@ def convert_hf_model_config(official_model_name: str):
             "use_attn_scale": True,
             "use_local_attn": False,
             "scale_attn_by_inverse_layer_idx": False,
+            "normalization_type": "LN", 
         }
     elif architecture == "GPTJForCausalLM":
         cfg_dict = {
@@ -407,6 +434,7 @@ def convert_hf_model_config(official_model_name: str):
             "parallel_attn_mlp": True,
             "positional_embedding_type": "rotary",
             "rotary_dim": hf_config.rotary_dim,
+            "normalization_type": "LN", 
         }
     elif architecture == "GPTNeoXForCausalLM":
         cfg_dict = {
@@ -424,13 +452,13 @@ def convert_hf_model_config(official_model_name: str):
             "scale_attn_by_inverse_layer_idx": False,
             "parallel_attn_mlp": True,
             "positional_embedding_type": "rotary",
+            "normalization_type": "LN", 
         }
         rotary_pct = hf_config.rotary_pct
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
-    cfg_dict["normalization_type"] = "LN"
     cfg_dict["original_architecture"] = architecture
     # The name such that AutoTokenizer.from_pretrained works
     cfg_dict["tokenizer_name"] = official_model_name
@@ -637,7 +665,10 @@ def get_pretrained_state_dict(
             else:
                 raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
-            hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
+            if "llama" in official_model_name:
+                hf_model = AutoModelForCausalLM.from_pretrained(official_model_name, low_cpu_mem_usage=True)
+            else: 
+                hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 
             # Load model weights, and fold in layer norm weights
         if cfg.original_architecture == "GPT2LMHeadModel":
@@ -650,6 +681,8 @@ def get_pretrained_state_dict(
             state_dict = convert_gptj_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoXForCausalLM":
             state_dict = convert_neox_weights(hf_model, cfg)
+        elif cfg.original_architecture == "LLaMAForCausalLM": 
+            state_dict = convert_llama_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -903,6 +936,51 @@ def convert_neox_weights(neox, cfg: HookedTransformerConfig):
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
 
+def convert_llama_weights(llama, cfg: HookedTransformerConfig): 
+    state_dict = {}
+
+    state_dict["embed.W_E"] = llama.model.embed_tokens.weight
+
+    for l in range(cfg.n_layers):
+
+        state_dict[f"blocks.{l}.ln1.w"] = llama.model.layers[l].input_layernorm.weight
+
+        W_Q = llama.model.layers[l].self_attn.q_proj.weight
+        W_K = llama.model.layers[l].self_attn.k_proj.weight
+        W_V = llama.model.layers[l].self_attn.v_proj.weight
+        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head)
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(cfg.n_heads, cfg.d_head)
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(cfg.n_heads, cfg.d_head)
+
+        W_O = llama.model.layers[l].self_attn.o_proj.weight
+        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model)
+
+        # Layer Norm 1 and 2 are tied.
+        state_dict[f"blocks.{l}.ln2.w"] = llama.model.layers[l].post_attention_layernorm.weight
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp)
+
+        state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model)
+    
+    state_dict["ln_final.w"] = llama.model.norm.weight
+
+    state_dict["unembed.W_U"] = llama.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
+
+    return state_dict
 
 def convert_opt_weights(opt, cfg: HookedTransformerConfig):
     state_dict = {}
@@ -1029,3 +1107,5 @@ def convert_neel_solu_old_weights(state_dict: dict, cfg: HookedTransformerConfig
             if "W_" in k and "W_pos" not in k:
                 new_state_dict[k] = v.transpose(-2, -1)
     return new_state_dict
+
+# %%
