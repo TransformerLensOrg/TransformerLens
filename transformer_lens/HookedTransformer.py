@@ -16,7 +16,6 @@ from jaxtyping import Float, Int
 from transformers import (
     AutoTokenizer,
     PreTrainedTokenizer,
-    LlamaTokenizer,
 )
 from datasets.load import load_dataset
 
@@ -82,8 +81,7 @@ class HookedTransformer(HookedRootModule):
             # If we have a tokenizer name, we can load it from HuggingFace
             if 'llama' in self.cfg.tokenizer_name: 
                 # llama tokenizer requires special handling
-                self.tokenizer = LlamaTokenizer.from_pretrained(self.cfg.tokenizer_name)
-                self.tokenizer.pad_token = self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+                print("Warning: LLaMA tokenizer not loaded. Please load manually.")
             else: 
                 self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
                 if self.tokenizer.eos_token is None:

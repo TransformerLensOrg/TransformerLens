@@ -81,10 +81,10 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/SoLU_1L512W_Wiki_Finetune",
     "NeelNanda/SoLU_4L512W_Wiki_Finetune",
     "ArthurConmy/redwood_attn_2l",
-    "decapoda-research/llama-7b-hf",
-    "decapoda-research/llama-13b-hf",
-    "decapoda-research/llama-30b-hf", 
-    "decapoda-research/llama-65b-hf",
+    "llama-7b-hf",
+    "llama-13b-hf",
+    "llama-30b-hf", 
+    "llama-65b-hf",
 ]
 
 # Model Aliases:
@@ -302,10 +302,10 @@ MODEL_ALIASES = {
         "gpt2-stanford-medium-e",
     ],
     "ArthurConmy/redwood_attn_2l": ["redwood_attn_2l"],
-    "decapoda-research/llama-7b-hf": ["llama-7b"], 
-    "decapoda-research/llama-13b-hf": ["llama-13b"],
-    "decapoda-research/llama-30b-hf": ["llama-30b"],
-    "decapoda-research/llama-65b-hf": ["llama-65b"],
+    "llama-7b-hf": ["llama-7b"], 
+    "llama-13b-hf": ["llama-13b"],
+    "llama-30b-hf": ["llama-30b"],
+    "llama-65b-hf": ["llama-65b"],
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
@@ -349,22 +349,76 @@ def convert_hf_model_config(official_model_name: str):
     # In case the user passed in an alias
     official_model_name = get_official_model_name(official_model_name)
     # Load HuggingFace model config
-    hf_config = AutoConfig.from_pretrained(official_model_name)
-    architecture = hf_config.architectures[0]
-    if architecture == "LLaMAForCausalLM": 
+    if 'llama' not in official_model_name:
+        hf_config = AutoConfig.from_pretrained(official_model_name)
+        architecture = hf_config.architectures[0]
+    else: 
+        architecture = "LLaMAForCausalLM"
+    if 'llama-7b' in official_model_name:
         cfg_dict = {
-            "d_model": hf_config.hidden_size,
-            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
-            "n_heads": hf_config.num_attention_heads,
-            "d_mlp": hf_config.intermediate_size,
-            "n_layers": hf_config.num_hidden_layers,
-            "n_ctx": hf_config.max_position_embeddings,
-            "eps": hf_config.rms_norm_eps, 
-            "d_vocab": hf_config.vocab_size,
+            "d_model": 4096,
+            "d_head": 4096 // 32,
+            "n_heads": 32,
+            "d_mlp": 11008,
+            "n_layers": 32,
+            "n_ctx": 2048,
+            "eps": 1e-6, 
+            "d_vocab": 32000,
             "act_fn": "silu", 
             "normalization_type": "RMS", 
             "positional_embedding_type": "rotary",
-            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads, 
+            "rotary_dim": 4096 // 32, 
+            "final_rms": True, 
+            "gated_mlp": True, 
+        }
+    elif 'llama-13b' in official_model_name:
+        cfg_dict = {
+            "d_model": 5120,
+            "d_head": 5120 // 40,
+            "n_heads": 40,
+            "d_mlp": 13824,
+            "n_layers": 40,
+            "n_ctx": 2048,
+            "eps": 1e-6, 
+            "d_vocab": 32000,
+            "act_fn": "silu", 
+            "normalization_type": "RMS", 
+            "positional_embedding_type": "rotary",
+            "rotary_dim": 5120 // 40, 
+            "final_rms": True, 
+            "gated_mlp": True, 
+        }
+    elif 'llama-30b' in official_model_name:
+        cfg_dict = {
+            "d_model": 6656,
+            "d_head": 6656 // 52,
+            "n_heads": 52,
+            "d_mlp": 17920,
+            "n_layers": 60,
+            "n_ctx": 2048,
+            "eps": 1e-6, 
+            "d_vocab": 32000,
+            "act_fn": "silu", 
+            "normalization_type": "RMS", 
+            "positional_embedding_type": "rotary",
+            "rotary_dim": 6656 // 52, 
+            "final_rms": True, 
+            "gated_mlp": True, 
+        }
+    elif 'llama-65b' in official_model_name:
+        cfg_dict = {
+            "d_model": 8192,
+            "d_head": 8192 // 64,
+            "n_heads": 64,
+            "d_mlp": 22016,
+            "n_layers": 80,
+            "n_ctx": 2048,
+            "eps": 1e-6, 
+            "d_vocab": 32000,
+            "act_fn": "silu", 
+            "normalization_type": "RMS", 
+            "positional_embedding_type": "rotary",
+            "rotary_dim": 8192 // 64, 
             "final_rms": True, 
             "gated_mlp": True, 
         }
@@ -667,7 +721,7 @@ def get_pretrained_state_dict(
                 raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
             if "llama" in official_model_name:
-                hf_model = AutoModelForCausalLM.from_pretrained(official_model_name, low_cpu_mem_usage=True)
+                raise NotImplementedError("Must pass in hf_model for LLaMA models")
             else: 
                 hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 
