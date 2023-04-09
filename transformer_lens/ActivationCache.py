@@ -349,7 +349,7 @@ class ActivationCache:
         Args:
             layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer
             return_labels (bool, optional): Whether to also return a list of labels of the form "L0H0" for the heads. Defaults to False.
-            # incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
+            incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
             pos_slice (Slice): A slice object to apply to the pos dimension. Defaults to None, do nothing.
             apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
         """
@@ -394,10 +394,12 @@ class ActivationCache:
                 *pos_slice.apply(self["hook_embed"], dim=-2).shape,
                 device=self.model.cfg.device,
             )
+
         if apply_ln:
             components = self.apply_ln_to_stack(
                 components, layer, pos_slice=pos_slice
             )
+            
         if return_labels:
             return components, labels
         else:
