@@ -20,5 +20,5 @@ setup(
         "fancy_einsum",
         "rich",
     ],
-    extras_require={"dev": ["pytest", "mypy", "pytest-cov"]},
+    extras_require={"dev": ["pytest", "mypy", "pytest-ipynb", "pytest-cov"]},
 )
