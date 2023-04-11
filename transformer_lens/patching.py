@@ -253,6 +253,21 @@ get_act_patch_resid_pre = partial(
     activation_name = "resid_pre",
     index_axis_names = ("layer", "pos")
 )
+"""
+Applies activation patching for every resid_pre activation
+
+See generic_activation_patch doc for a more detailed explaination of activation patching 
+
+Params
+model: The relevant model
+corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape (batch, pos)
+clean_cache (ActivationCache): The cached activations from the clean run
+patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+Returns
+patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape (layer, pos)
+"""
+
 get_act_patch_resid_mid = partial(
     generic_activation_patch,
     patch_setter = layer_pos_patch_setter,
