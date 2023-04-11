@@ -54,6 +54,22 @@ OFFICIAL_MODEL_NAMES = [
     "EleutherAI/pythia-2.8b-deduped",
     "EleutherAI/pythia-6.9b-deduped",
     "EleutherAI/pythia-12b-deduped",
+    "EleutherAI/pythia-70m-v0",
+    "EleutherAI/pythia-160m-v0",
+    "EleutherAI/pythia-410m-v0",
+    "EleutherAI/pythia-1b-v0",
+    "EleutherAI/pythia-1.4b-v0",
+    "EleutherAI/pythia-2.8b-v0",
+    "EleutherAI/pythia-6.9b-v0",
+    "EleutherAI/pythia-12b-v0",
+    "EleutherAI/pythia-70m-deduped-v0",
+    "EleutherAI/pythia-160m-deduped-v0",
+    "EleutherAI/pythia-410m-deduped-v0",
+    "EleutherAI/pythia-1b-deduped-v0",
+    "EleutherAI/pythia-1.4b-deduped-v0",
+    "EleutherAI/pythia-2.8b-deduped-v0",
+    "EleutherAI/pythia-6.9b-deduped-v0",
+    "EleutherAI/pythia-12b-deduped-v0",
     "NeelNanda/SoLU_1L_v9_old",
     "NeelNanda/SoLU_2L_v10_old",
     "NeelNanda/SoLU_4L_v11_old",
@@ -566,7 +582,12 @@ STANFORD_CRFM_CHECKPOINTS = (
 
 # Linearly spaced checkpoints for Pythia models, taken every 1000 steps. 
 # Batch size 2,097,152 tokens, so checkpoints every 2.1B tokens
-PYTHIA_CHECKPOINTS = list(range(1000, 143000+1, 1000))
+PYTHIA_CHECKPOINTS = (
+    [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
+    + list(range(1000, 143000+1, 1000))
+)
+# Pythia V1 has log-spaced early checkpoints (see line above), but V0 doesn't
+PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000+1, 1000))
 
 
 def get_checkpoint_labels(model_name: str):
@@ -576,7 +597,10 @@ def get_checkpoint_labels(model_name: str):
     if official_model_name.startswith("stanford-crfm/"):
         return STANFORD_CRFM_CHECKPOINTS, "step"
     elif official_model_name.startswith("EleutherAI/pythia"):
-        return PYTHIA_CHECKPOINTS, "step"
+        if "v0" in official_model_name:
+            return PYTHIA_V0_CHECKPOINTS, "step"
+        else:
+            return PYTHIA_CHECKPOINTS, "step"
     elif official_model_name.startswith("NeelNanda/"):
         api = HfApi()
         files_list = api.list_repo_files(official_model_name)
