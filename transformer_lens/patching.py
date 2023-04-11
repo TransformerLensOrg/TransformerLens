@@ -253,6 +253,21 @@ get_act_patch_resid_pre = partial(
     activation_name = "resid_pre",
     index_axis_names = ("layer", "pos")
 )
+get_act_patch_resid_pre.__doc__ = """
+    Function to get activation patching results for the residual stream (at the start of each block) (by position). Returns a tensor of shape [n_layers, pos]
+
+    See generic_activation_patch for a more detailed explanation of activation patching 
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each resid_pre patch. Has shape [n_layers, pos]
+    """
+
 get_act_patch_resid_mid = partial(
     generic_activation_patch,
     patch_setter = layer_pos_patch_setter,
@@ -265,12 +280,41 @@ get_act_patch_attn_out = partial(
     activation_name = "attn_out",
     index_axis_names = ("layer", "pos")
 )
+get_act_patch_attn_out.__doc__ = """
+    Function to get activation patching results for the output of each Attention layer (by position). Returns a tensor of shape [n_layers, pos]
+
+    See generic_activation_patch for a more detailed explanation of activation patching 
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, pos]
+    """
+
 get_act_patch_mlp_out = partial(
     generic_activation_patch,
     patch_setter = layer_pos_patch_setter,
     activation_name = "mlp_out",
     index_axis_names = ("layer", "pos")
 )
+get_act_patch_mlp_out.__doc__ = """
+    Function to get activation patching results for the output of each MLP layer (by position). Returns a tensor of shape [n_layers, pos]
+
+    See generic_activation_patch for a more detailed explanation of activation patching 
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, pos]
+    """
 # %%
 get_act_patch_attn_head_out_by_pos = partial(
     generic_activation_patch,
@@ -317,35 +361,118 @@ get_act_patch_attn_head_out_all_pos = partial(
     activation_name = "z",
     index_axis_names = ("layer", "head")
 )
+get_act_patch_attn_head_out_all_pos.__doc__ = """
+    Function to get activation patching results for the outputs of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]
+
+    See generic_activation_patch for a more detailed explanation of activation patching 
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]
+    """
+
 get_act_patch_attn_head_q_all_pos = partial(
     generic_activation_patch,
     patch_setter = layer_head_vector_patch_setter,
     activation_name = "q",
     index_axis_names = ("layer", "head")
 )
+get_act_patch_attn_head_q_all_pos.__doc__ = """
+    Function to get activation patching results for the queries of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]
+
+    See generic_activation_patch for a more detailed explanation of activation patching 
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]
+    """
+
 get_act_patch_attn_head_k_all_pos = partial(
     generic_activation_patch,
     patch_setter = layer_head_vector_patch_setter,
     activation_name = "k",
     index_axis_names = ("layer", "head")
 )
+get_act_patch_attn_head_k_all_pos.__doc__ = """
+    Function to get activation patching results for the keys of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]
+
+    See generic_activation_patch for a more detailed explanation of activation patching 
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]
+    """
+
 get_act_patch_attn_head_v_all_pos = partial(
     generic_activation_patch,
     patch_setter = layer_head_vector_patch_setter,
     activation_name = "v",
     index_axis_names = ("layer", "head")
 )
+get_act_patch_attn_head_v_all_pos.__doc__ = """
+    Function to get activation patching results for the values of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]
+
+    See generic_activation_patch for a more detailed explanation of activation patching 
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]
+    """
+
 get_act_patch_attn_head_pattern_all_pos = partial(
     generic_activation_patch,
     patch_setter = layer_head_pattern_patch_setter,
     activation_name = "pattern",
     index_axis_names = ("layer", "head_index")
 )
+get_act_patch_attn_head_pattern_all_pos.__doc__ = """
+    Function to get activation patching results for the attention pattern of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]
+
+    See generic_activation_patch for a more detailed explanation of activation patching 
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        patching_metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]
+    """
 
 # %%
 
 def get_act_patch_attn_head_all_pos_every(model, corrupted_tokens, clean_cache, metric) -> Float[torch.Tensor, "patch_type layer head"]:
     """Helper function to get activation patching results for every head (across all positions) for every act type (output, query, key, value, pattern). Wrapper around each's patching function, returns a stacked tensor of shape [5, n_layers, n_heads]
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [5, n_layers, n_heads]
     """
     act_patch_results = []
     act_patch_results.append(get_act_patch_attn_head_out_all_pos(model, corrupted_tokens, clean_cache, metric))
@@ -371,6 +498,15 @@ def get_act_patch_attn_head_by_pos_every(model, corrupted_tokens, clean_cache, m
 
 def get_act_patch_block_every(model, corrupted_tokens, clean_cache, metric) -> Float[torch.Tensor, "patch_type layer pos"]:
     """Helper function to get activation patching results for the residual stream (at the start of each block), output of each Attention layer and output of each MLP layer. Wrapper around each's patching function, returns a stacked tensor of shape [3, n_layers, pos]
+
+    Args:
+        model: The relevant model
+        corrupted_tokens (torch.Tensor): The input tokens for the corrupted run. Has shape [batch, pos]
+        clean_cache (ActivationCache): The cached activations from the clean run
+        metric: A function from the model's output logits to some metric (eg loss, logit diff, etc)
+
+    Returns:
+        patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [3, n_layers, pos]
     """
     act_patch_results = []
     act_patch_results.append(get_act_patch_resid_pre(model, corrupted_tokens, clean_cache, metric))
