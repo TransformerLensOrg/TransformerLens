@@ -10,6 +10,7 @@ from .HookedTransformerConfig import HookedTransformerConfig
 from .FactoredMatrix import FactoredMatrix
 from .ActivationCache import ActivationCache
 from .HookedTransformer import HookedTransformer
+from . import head_detector
 from . import loading_from_pretrained as loading
 from . import patching
 from . import train
