@@ -19,6 +19,7 @@ setup(
         "wandb",
         "fancy_einsum",
         "rich",
+        "accelerate",
     ],
     extras_require={"dev": ["pytest", "mypy", "pytest-cov"]},
 )
