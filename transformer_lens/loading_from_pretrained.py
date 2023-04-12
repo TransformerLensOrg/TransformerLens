@@ -682,6 +682,7 @@ def get_checkpoint_labels(model_name: str):
         if "v0" in official_model_name:
             return PYTHIA_V0_CHECKPOINTS, "step"
         else:
+            logging.warning("Pythia models on HF were updated on 4/3/23! add '-v0' to model name to access the old models.")
             return PYTHIA_CHECKPOINTS, "step"
     elif official_model_name.startswith("NeelNanda/"):
         api = HfApi()
