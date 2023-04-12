@@ -238,6 +238,88 @@ MODEL_ALIASES = {
         "EleutherAI/pythia-13b-deduped", # EleutherAI renamed this model
         "pythia-13b-deduped",
     ],
+
+    "EleutherAI/pythia-70m-v0": [
+        "pythia-70m-v0", 
+        "pythia-v0",
+        "EleutherAI/pythia-19m-v0",
+        "pythia-19m-v0", # EleutherAI renamed this model 
+    ],
+    "EleutherAI/pythia-160m-v0": [
+        "pythia-160m-v0",
+        "EleutherAI/pythia-125m-v0",
+        "pythia-125m-v0", # EleutherAI renamed this model"        
+    ],
+    "EleutherAI/pythia-410m-v0": [
+        "pythia-410m-v0",
+        "EleutherAI/pythia-350m-v0",
+        "pythia-350m-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-1b-v0": [
+        "pythia-1b-v0",
+        "EleutherAI/pythia-800m-v0",
+        "pythia-800m-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-1.4b-v0": [
+        "pythia-1.4b-v0",
+        "EleutherAI/pythia-1.3b-v0",
+        "pythia-1.3b-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-2.8b-v0": [
+        "pythia-2.8b-v0",
+        "EleutherAI/pythia-2.7b-v0",
+        "pythia-2.7b-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-6.9b-v0": [
+        "pythia-6.9b-v0",
+        "EleutherAI/pythia-6.7b-v0",
+        "pythia-6.7b-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-12b-v0": [
+        "pythia-12b-v0",
+        "EleutherAI/pythia-13b-v0",
+        "pythia-13b-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-70m-deduped-v0": [
+        "pythia-70m-deduped-v0",
+        "EleutherAI/pythia-19m-deduped-v0", # EleutherAI renamed this model 
+        "pythia-19m-deduped-v0",
+    ],
+    "EleutherAI/pythia-160m-deduped-v0": [
+        "pythia-160m-deduped-v0",
+        "EleutherAI/pythia-125m-deduped-v0", # EleutherAI renamed this model
+        "pythia-125m-deduped-v0",
+    ],
+    "EleutherAI/pythia-410m-deduped-v0": [
+        "pythia-410m-deduped-v0",
+        "EleutherAI/pythia-350m-deduped-v0", # EleutherAI renamed this model
+        "pythia-350m-deduped-v0",
+    ],
+    "EleutherAI/pythia-1b-deduped-v0": [
+        "pythia-1b-deduped-v0",
+        "EleutherAI/pythia-800m-deduped-v0", # EleutherAI renamed this model
+        "pythia-800m-deduped-v0",
+    ],
+    "EleutherAI/pythia-1.4b-deduped-v0": [
+        "pythia-1.4b-deduped-v0",
+        "EleutherAI/pythia-1.3b-deduped-v0", # EleutherAI renamed this model
+        "pythia-1.3b-deduped-v0",
+    ],
+    "EleutherAI/pythia-2.8b-deduped-v0": [
+        "pythia-2.8b-deduped-v0",
+        "EleutherAI/pythia-2.7b-deduped-v0", # EleutherAI renamed this model
+        "pythia-2.7b-deduped-v0",
+    ],
+    "EleutherAI/pythia-6.9b-deduped-v0": [
+        "pythia-6.9b-deduped-v0",
+        "EleutherAI/pythia-6.7b-deduped-v0", # EleutherAI renamed this model
+        "pythia-6.7b-deduped-v0",
+    ],
+    "EleutherAI/pythia-12b-deduped-v0": [
+        "pythia-12b-deduped-v0",
+        "EleutherAI/pythia-13b-deduped-v0", # EleutherAI renamed this model
+        "pythia-13b-deduped-v0",
+    ],
     
     "gpt2": ["gpt2-small"],
     "distilgpt2": ["distillgpt2", "distill-gpt2", "distil-gpt2", "gpt2-xs"],
