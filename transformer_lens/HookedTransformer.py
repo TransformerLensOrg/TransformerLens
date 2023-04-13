@@ -79,13 +79,17 @@ class HookedTransformer(HookedRootModule):
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
-            if self.tokenizer.eos_token is None:
-                self.tokenizer.eos_token = "<|endoftext|>"
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            if self.tokenizer.bos_token is None:
-                self.tokenizer.bos_token = self.tokenizer.eos_token
+            if 'llama' in self.cfg.tokenizer_name: 
+                # llama tokenizer requires special handling
+                print("Warning: LLaMA tokenizer not loaded. Please load manually.")
+            else: 
+                self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+                if self.tokenizer.eos_token is None:
+                    self.tokenizer.eos_token = "<|endoftext|>"
+                if self.tokenizer.pad_token is None:
+                    self.tokenizer.pad_token = self.tokenizer.eos_token
+                if self.tokenizer.bos_token is None:
+                    self.tokenizer.bos_token = self.tokenizer.eos_token
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens directly. In this case, we don't need a tokenizer.
             self.tokenizer = None
@@ -116,7 +120,11 @@ class HookedTransformer(HookedRootModule):
             ]
         )
 
-        if self.cfg.normalization_type == "LN":
+        if self.cfg.normalization_type == "RMS": 
+            self.ln_final = RMSNorm(self.cfg)
+        elif self.cfg.normalization_type == "RMSPre":
+            self.ln_final = RMSNormPre(self.cfg)
+        elif self.cfg.normalization_type == "LN":
             if self.cfg.final_rms:
                 self.ln_final = RMSNorm(self.cfg)
             else:
@@ -604,6 +612,9 @@ class HookedTransformer(HookedRootModule):
         elif isinstance(device_or_dtype, torch.dtype):
             if print_details: 
                 print("Changing model dtype to", device_or_dtype)
+            # change state_dict dtypes
+            for k, v in self.state_dict().items():
+                self.state_dict()[k] = v.to(device_or_dtype)
         return nn.Module.to(self, device_or_dtype)
 
     def cuda(self):
