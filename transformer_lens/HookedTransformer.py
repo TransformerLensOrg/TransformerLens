@@ -487,13 +487,15 @@ class HookedTransformer(HookedRootModule):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
         elif isinstance(input, torch.Tensor):
             tokens = input
-            tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            if tokens.dim() > 1:
+                tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
             assert (
                 tokens.dim() == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         elif isinstance(input, np.ndarray):
             tokens = input
-            tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            if tokens.ndim > 1:
+                tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
             assert (
                 tokens.ndim == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
@@ -512,6 +514,12 @@ class HookedTransformer(HookedRootModule):
         # If token shape is non-empty, raise error
         assert not token.shape, f"Input string: {string} is not a single token!"
         return token.item()
+
+    def to_single_str_token(self, int_token: int) -> str:
+        # Gives the single token corresponding to an int, in string form
+        assert isinstance(int_token, int)
+        token = self.to_str_tokens(torch.tensor([int_token]))
+        return token[0]
 
     def get_token_position(
         self,
