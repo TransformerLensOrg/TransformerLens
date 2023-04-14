@@ -66,10 +66,20 @@ def test_to_str_tokens():
     assert len(tensor_1x1_to_str_tokens) == 1
     assert isinstance(tensor_1x1_to_str_tokens[0], str)
 
+    tensor_1x1x1x1_to_str_tokens = model.to_str_tokens(torch.tensor([[[[6]]]]))
+    assert isinstance(tensor_1x1x1x1_to_str_tokens, list)
+    assert len(tensor_1x1x1x1_to_str_tokens) == 1
+    assert isinstance(tensor_1x1x1x1_to_str_tokens[0], str)
+
     ndarray_1x1_to_str_tokens = model.to_str_tokens(np.array([2]))
     assert isinstance(ndarray_1x1_to_str_tokens, list)
     assert len(ndarray_1x1_to_str_tokens) == 1
     assert isinstance(ndarray_1x1_to_str_tokens[0], str)
+
+    ndarray_1x1x1x1_to_str_tokens = model.to_str_tokens(np.array([[[[3]]]]))
+    assert isinstance(ndarray_1x1x1x1_to_str_tokens, list)
+    assert len(ndarray_1x1x1x1_to_str_tokens) == 1
+    assert isinstance(ndarray_1x1x1x1_to_str_tokens[0], str)
 
     single_int_to_single_str_token = model.to_single_str_token(3)
     assert isinstance(single_int_to_single_str_token, str)
