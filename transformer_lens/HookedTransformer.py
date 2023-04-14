@@ -460,7 +460,7 @@ class HookedTransformer(HookedRootModule):
 
     def to_str_tokens(
         self,
-        input: Union[str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]], list],
+        input: Union[str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]], list, torch.Tensor, np.ndarray],
         prepend_bos: bool = True,
     ) -> List[str]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
