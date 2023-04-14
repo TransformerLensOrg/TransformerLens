@@ -54,6 +54,22 @@ OFFICIAL_MODEL_NAMES = [
     "EleutherAI/pythia-2.8b-deduped",
     "EleutherAI/pythia-6.9b-deduped",
     "EleutherAI/pythia-12b-deduped",
+    "EleutherAI/pythia-70m-v0",
+    "EleutherAI/pythia-160m-v0",
+    "EleutherAI/pythia-410m-v0",
+    "EleutherAI/pythia-1b-v0",
+    "EleutherAI/pythia-1.4b-v0",
+    "EleutherAI/pythia-2.8b-v0",
+    "EleutherAI/pythia-6.9b-v0",
+    "EleutherAI/pythia-12b-v0",
+    "EleutherAI/pythia-70m-deduped-v0",
+    "EleutherAI/pythia-160m-deduped-v0",
+    "EleutherAI/pythia-410m-deduped-v0",
+    "EleutherAI/pythia-1b-deduped-v0",
+    "EleutherAI/pythia-1.4b-deduped-v0",
+    "EleutherAI/pythia-2.8b-deduped-v0",
+    "EleutherAI/pythia-6.9b-deduped-v0",
+    "EleutherAI/pythia-12b-deduped-v0",
     "NeelNanda/SoLU_1L_v9_old",
     "NeelNanda/SoLU_2L_v10_old",
     "NeelNanda/SoLU_4L_v11_old",
@@ -225,6 +241,88 @@ MODEL_ALIASES = {
         "pythia-12b-deduped",
         "EleutherAI/pythia-13b-deduped", # EleutherAI renamed this model
         "pythia-13b-deduped",
+    ],
+
+    "EleutherAI/pythia-70m-v0": [
+        "pythia-70m-v0", 
+        "pythia-v0",
+        "EleutherAI/pythia-19m-v0",
+        "pythia-19m-v0", # EleutherAI renamed this model 
+    ],
+    "EleutherAI/pythia-160m-v0": [
+        "pythia-160m-v0",
+        "EleutherAI/pythia-125m-v0",
+        "pythia-125m-v0", # EleutherAI renamed this model"        
+    ],
+    "EleutherAI/pythia-410m-v0": [
+        "pythia-410m-v0",
+        "EleutherAI/pythia-350m-v0",
+        "pythia-350m-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-1b-v0": [
+        "pythia-1b-v0",
+        "EleutherAI/pythia-800m-v0",
+        "pythia-800m-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-1.4b-v0": [
+        "pythia-1.4b-v0",
+        "EleutherAI/pythia-1.3b-v0",
+        "pythia-1.3b-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-2.8b-v0": [
+        "pythia-2.8b-v0",
+        "EleutherAI/pythia-2.7b-v0",
+        "pythia-2.7b-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-6.9b-v0": [
+        "pythia-6.9b-v0",
+        "EleutherAI/pythia-6.7b-v0",
+        "pythia-6.7b-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-12b-v0": [
+        "pythia-12b-v0",
+        "EleutherAI/pythia-13b-v0",
+        "pythia-13b-v0", # EleutherAI renamed this model
+    ],
+    "EleutherAI/pythia-70m-deduped-v0": [
+        "pythia-70m-deduped-v0",
+        "EleutherAI/pythia-19m-deduped-v0", # EleutherAI renamed this model 
+        "pythia-19m-deduped-v0",
+    ],
+    "EleutherAI/pythia-160m-deduped-v0": [
+        "pythia-160m-deduped-v0",
+        "EleutherAI/pythia-125m-deduped-v0", # EleutherAI renamed this model
+        "pythia-125m-deduped-v0",
+    ],
+    "EleutherAI/pythia-410m-deduped-v0": [
+        "pythia-410m-deduped-v0",
+        "EleutherAI/pythia-350m-deduped-v0", # EleutherAI renamed this model
+        "pythia-350m-deduped-v0",
+    ],
+    "EleutherAI/pythia-1b-deduped-v0": [
+        "pythia-1b-deduped-v0",
+        "EleutherAI/pythia-800m-deduped-v0", # EleutherAI renamed this model
+        "pythia-800m-deduped-v0",
+    ],
+    "EleutherAI/pythia-1.4b-deduped-v0": [
+        "pythia-1.4b-deduped-v0",
+        "EleutherAI/pythia-1.3b-deduped-v0", # EleutherAI renamed this model
+        "pythia-1.3b-deduped-v0",
+    ],
+    "EleutherAI/pythia-2.8b-deduped-v0": [
+        "pythia-2.8b-deduped-v0",
+        "EleutherAI/pythia-2.7b-deduped-v0", # EleutherAI renamed this model
+        "pythia-2.7b-deduped-v0",
+    ],
+    "EleutherAI/pythia-6.9b-deduped-v0": [
+        "pythia-6.9b-deduped-v0",
+        "EleutherAI/pythia-6.7b-deduped-v0", # EleutherAI renamed this model
+        "pythia-6.7b-deduped-v0",
+    ],
+    "EleutherAI/pythia-12b-deduped-v0": [
+        "pythia-12b-deduped-v0",
+        "EleutherAI/pythia-13b-deduped-v0", # EleutherAI renamed this model
+        "pythia-13b-deduped-v0",
     ],
     
     "gpt2": ["gpt2-small"],
@@ -649,7 +747,12 @@ STANFORD_CRFM_CHECKPOINTS = (
 
 # Linearly spaced checkpoints for Pythia models, taken every 1000 steps. 
 # Batch size 2,097,152 tokens, so checkpoints every 2.1B tokens
-PYTHIA_CHECKPOINTS = list(range(1000, 143000+1, 1000))
+PYTHIA_CHECKPOINTS = (
+    [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
+    + list(range(1000, 143000+1, 1000))
+)
+# Pythia V1 has log-spaced early checkpoints (see line above), but V0 doesn't
+PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000+1, 1000))
 
 
 def get_checkpoint_labels(model_name: str):
@@ -659,7 +762,11 @@ def get_checkpoint_labels(model_name: str):
     if official_model_name.startswith("stanford-crfm/"):
         return STANFORD_CRFM_CHECKPOINTS, "step"
     elif official_model_name.startswith("EleutherAI/pythia"):
-        return PYTHIA_CHECKPOINTS, "step"
+        if "v0" in official_model_name:
+            return PYTHIA_V0_CHECKPOINTS, "step"
+        else:
+            logging.warning("Pythia models on HF were updated on 4/3/23! add '-v0' to model name to access the old models.")
+            return PYTHIA_CHECKPOINTS, "step"
     elif official_model_name.startswith("NeelNanda/"):
         api = HfApi()
         files_list = api.list_repo_files(official_model_name)
