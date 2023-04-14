@@ -487,15 +487,13 @@ class HookedTransformer(HookedRootModule):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
         elif isinstance(input, torch.Tensor):
             tokens = input
-            if tokens.dim() > 1:
-                tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            tokens = tokens.squeeze(dim=1)  # Get rid of a trivial batch dimension
             assert (
                 tokens.dim() == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         elif isinstance(input, np.ndarray):
             tokens = input
-            if tokens.ndim > 1:
-                tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            tokens = tokens.squeeze(dim=1)  # Get rid of a trivial batch dimension
             assert (
                 tokens.ndim == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
