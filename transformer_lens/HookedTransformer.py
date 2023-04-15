@@ -525,7 +525,7 @@ class HookedTransformer(HookedRootModule):
         return token.item()
 
     def to_single_str_token(self, int_token: int) -> str:
-        # Gives the single token corresponding to an int, in string form
+        # Gives the single token corresponding to an int in string form
         assert isinstance(int_token, int)
         token = self.to_str_tokens(torch.tensor([int_token]))
         assert len(token) == 1
