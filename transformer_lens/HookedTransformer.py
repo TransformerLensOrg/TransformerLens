@@ -461,8 +461,8 @@ class HookedTransformer(HookedRootModule):
     def to_str_tokens(
         self,
         input: Union[str,
-                     Float[torch.Tensor, "pos"],
-                     Float[torch.Tensor, "1 pos"],
+                     Int[torch.tensor, "pos"],
+                     Int[torch.tensor, "1 pos"],
                      Float[np.ndarray, "pos"],
                      Float[np.ndarray, "1 pos"],
                      list],
