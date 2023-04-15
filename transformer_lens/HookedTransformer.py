@@ -31,6 +31,7 @@ from transformer_lens.past_key_value_caching import (
 from transformer_lens.components import *
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
+from transformer_lens.utilities import devices
 
 SingleLoss = Float[torch.Tensor, ""] # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
@@ -65,7 +66,8 @@ class HookedTransformer(HookedRootModule):
             provided, it is inferred from cfg.tokenizer_name or initialized to None.
             If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
         move_to_device (bool): Whether to move the model to the device specified in cfg.
-            device.
+            device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
+            will be split across multiple devices.
         """
         super().__init__()
         if isinstance(cfg, Dict):
@@ -75,6 +77,11 @@ class HookedTransformer(HookedRootModule):
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedTransformer.from_pretrained() instead."
             )
         self.cfg = cfg
+
+        assert (
+            self.cfg.n_devices == 1 or move_to_device
+        ), "If n_devices > 1, must move_to_device"
+
         if tokenizer is not None:
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
@@ -148,9 +155,11 @@ class HookedTransformer(HookedRootModule):
             self.init_weights()
 
         if move_to_device:
-            # Move the model to the relevant device, suppress the logging message
-            self.to(self.cfg.device, print_details=False)
-        
+            # We load the devices in a pipeline manner - the first device gets the embed and pos_embed layers and the first n_layers // n_devices blocks,
+            # the second gets the next n_layers // n_devices blocks ... the last gets the last n_layers // n_devices blocks, the final
+            # normalization layer (if it exists) and the unembed layer
+            HookedTransformer.move_model_modules_to_device(self)
+
         # Helper variable to store a small (10K-20K) dataset of training data. Empty by default, can be loaded with load_sample_training_dataset
         self.dataset = None
 
@@ -245,8 +254,8 @@ class HookedTransformer(HookedRootModule):
             # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
-            tokens = tokens.to(self.cfg.device)
-        assert isinstance(tokens, torch.Tensor)
+            tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
+
         # If we're doing caching, then we reuse keys and values from previous runs, as that's the only
         # way that past activations will affect the final logits. The cache contains those so we don't
         # need to recompute them. This is useful for generating text. As we have absolute positional
@@ -306,11 +315,18 @@ class HookedTransformer(HookedRootModule):
         for i, block in enumerate(transformer_block_list): # type: ignore
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
+            # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
+            residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
+            if shortformer_pos_embed is not None:
+                shortformer_pos_embed = shortformer_pos_embed.to(
+                    devices.get_device_for_block_index(i, self.cfg)
+                )
+
             residual = block(
                 residual,
                 past_kv_cache_entry=past_kv_cache[i]
                 if past_kv_cache is not None
-                else None,  # Cache is contains a list of HookedTransformerKeyValueCache objects, one for each block
+                else None,  # Cache contains a list of HookedTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed=shortformer_pos_embed,
             )  # [batch, pos, d_model]
         
@@ -345,6 +361,8 @@ class HookedTransformer(HookedRootModule):
         """
         Wrapper around utils.lm_cross_entropy_loss, used in forward() with return_type=="loss" or "both".
         """
+        if tokens.device != logits.device:
+            tokens = tokens.to(logits.device)
         return utils.lm_cross_entropy_loss(logits, tokens, per_token)
 
     @overload
@@ -626,6 +644,23 @@ class HookedTransformer(HookedRootModule):
         return self.to("cpu")
 
     @classmethod
+    def move_model_modules_to_device(cls, model: "HookedTransformer"):
+        model.embed.to(devices.get_device_for_block_index(0, model.cfg))
+        model.hook_embed.to(devices.get_device_for_block_index(0, model.cfg))
+        if model.cfg.positional_embedding_type != "rotary":
+            model.pos_embed.to(devices.get_device_for_block_index(0, model.cfg))
+            model.hook_pos_embed.to(devices.get_device_for_block_index(0, model.cfg))
+        if hasattr(model, "ln_final"):
+            model.ln_final.to(
+                devices.get_device_for_block_index(model.cfg.n_layers - 1, model.cfg)
+            )
+        model.unembed.to(
+            devices.get_device_for_block_index(model.cfg.n_layers - 1, model.cfg)
+        )
+        for i, block in enumerate(model.blocks):
+            block.to(devices.get_device_for_block_index(i, model.cfg))
+
+    @classmethod
     def from_pretrained(
         cls,
         model_name: str,
@@ -637,6 +672,7 @@ class HookedTransformer(HookedRootModule):
         checkpoint_value=None,
         hf_model=None,
         device=None,
+        n_devices=1,
         move_state_dict_to_device=True,
         **model_kwargs,
     ):
@@ -672,6 +708,8 @@ class HookedTransformer(HookedRootModule):
                 to recreate the object. Defaults to None.
             device (str, optional): The device to load the model onto. By
                 default will load to CUDA if available, else CPU.
+            n_devices (int, optional): The number of devices to split the model
+                across. Defaults to 1. If greater than 1, `device` must be cuda.
             move_state_dict_to_device (bool): Whether to move the state dict to the
                 relevant device before processing and loading in the weights.
                 Defaults to True.
@@ -690,6 +728,7 @@ class HookedTransformer(HookedRootModule):
             checkpoint_value=checkpoint_value,
             fold_ln=fold_ln,
             device=device,
+            n_devices=n_devices,
         )
 
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the HookedTransformer parameter names.
@@ -786,6 +825,11 @@ class HookedTransformer(HookedRootModule):
             move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model. Defaults to True.
             model_name (str, optional): checks the model name for special cases of state dict loading. Only used for Redwood 2L model currently
         """
+
+        assert (
+            self.cfg.n_devices == 1 or move_state_dict_to_device
+        ), "If n_devices > 1, move_state_dict_to_device must be True"
+
         
         if self.cfg.positional_embedding_type == "shortformer":
             if fold_ln:
@@ -793,7 +837,28 @@ class HookedTransformer(HookedRootModule):
                 fold_ln = False
 
         if move_state_dict_to_device:
-            state_dict = {k: v.to(self.cfg.device) for k, v in state_dict.items()}
+            for k, v in state_dict.items():
+                if k.startswith("embed") or k.startswith("pos_embed"):
+                    state_dict[k] = v.to(
+                        devices.get_device_for_block_index(0, self.cfg)
+                    )
+                elif k.startswith("ln_final") or k.startswith("unembed"):
+                    state_dict[k] = v.to(
+                        devices.get_device_for_block_index(
+                            self.cfg.n_layers - 1, self.cfg
+                        )
+                    )
+                elif k.startswith("blocks"):
+                    state_dict[k] = v.to(
+                        devices.get_device_for_block_index(
+                            int(k.split(".")[1]), self.cfg
+                        )
+                    )
+                else:
+                    raise KeyError(
+                        f"State Dict contains a key not in the HookedTransformer format: {k}"
+                    )
+
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
             if self.cfg.normalization_type not in ["LN", "LNPre"]:
@@ -1210,7 +1275,7 @@ class HookedTransformer(HookedRootModule):
 
         assert isinstance(tokens, torch.Tensor)
         batch_size, ctx_length = tokens.shape
-        tokens = tokens.to(self.cfg.device)
+        tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
         if use_past_kv_cache:
             past_kv_cache = HookedTransformerKeyValueCache.init_cache(
                 self.cfg, self.cfg.device, batch_size
@@ -1260,7 +1325,7 @@ class HookedTransformer(HookedRootModule):
                 temperature=temperature,
                 freq_penalty=freq_penalty,
                 tokens=tokens,
-            )
+            ).to(devices.get_device_for_block_index(0, self.cfg))
 
             if stop_at_eos:
                 # For all unfinished sequences, add on the next token. If a sequence finished, we throw away the generated token and instead add an EOS token to pad.
