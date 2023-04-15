@@ -69,7 +69,7 @@ class Test_detect_head_successful:
         def test_detect_previous_token_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_regular_sequence, head_name="previous_token_head"
+                    model, test_regular_sequence, detection_pattern="previous_token_head"
                 ),
                 expected_regular_sequence_previous_match,
                 atol=ATOL,
@@ -78,7 +78,7 @@ class Test_detect_head_successful:
         def test_detect_duplicate_token_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_regular_sequence, head_name="duplicate_token_head"
+                    model, test_regular_sequence, detection_pattern="duplicate_token_head"
                 ),
                 torch.zeros(model.cfg.n_layers, model.cfg.n_heads),
                 atol=ATOL,
@@ -87,7 +87,7 @@ class Test_detect_head_successful:
         def test_detect_induction_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_regular_sequence, head_name="induction_head"
+                    model, test_regular_sequence, detection_pattern="induction_head"
                 ),
                 torch.zeros(model.cfg.n_layers, model.cfg.n_heads),
                 atol=ATOL,
@@ -97,7 +97,7 @@ class Test_detect_head_successful:
         def test_detect_previous_token_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_duplicated_sequence, head_name="previous_token_head"
+                    model, test_duplicated_sequence, detection_pattern="previous_token_head"
                 ),
                 expected_duplicated_sequence_previous_match,
                 atol=ATOL,
@@ -106,7 +106,7 @@ class Test_detect_head_successful:
         def test_detect_duplicate_token_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_duplicated_sequence, head_name="duplicate_token_head"
+                    model, test_duplicated_sequence, detection_pattern="duplicate_token_head"
                 ),
                 expected_duplicated_sequence_duplicate_match,
                 atol=ATOL,
@@ -115,7 +115,7 @@ class Test_detect_head_successful:
         def test_detect_induction_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_duplicated_sequence, head_name="induction_head"
+                    model, test_duplicated_sequence, detection_pattern="induction_head"
                 ),
                 expected_duplicated_sequence_induction_match,
                 atol=ATOL,
@@ -127,7 +127,7 @@ def test_detect_head_exclude_bos():
         head_detector.detect_head(
             model,
             test_regular_sequence,
-            head_name="previous_token_head",
+            detection_pattern="previous_token_head",
             exclude_bos=True,
         ),
         expected_previous_exclude_bos_match,
@@ -140,7 +140,7 @@ def test_detect_head_exclude_current_token():
         head_detector.detect_head(
             model,
             test_regular_sequence,
-            head_name="previous_token_head",
+            detection_pattern="previous_token_head",
             exclude_current_token=True,
         ),
         expected_previous_exclude_current_token_match,
@@ -153,7 +153,7 @@ def test_detect_head_exclude_bos_and_current_token():
         head_detector.detect_head(
             model,
             test_regular_sequence,
-            head_name="previous_token_head",
+            detection_pattern="previous_token_head",
             exclude_bos=True,
             exclude_current_token=True,
         ),
@@ -166,46 +166,24 @@ def test_detect_head_with_cache():
     _, cache = model.run_with_cache(test_regular_sequence, remove_batch_dim=True)
     assert torch.allclose(
         head_detector.detect_head(
-            model, test_regular_sequence, head_name="previous_token_head", cache=cache
+            model, test_regular_sequence, detection_pattern="previous_token_head", cache=cache
         ),
         expected_regular_sequence_previous_match,
         atol=ATOL,
     )
 
-
-# Errors
-def test_detect_head_with_neither_head_name_nor_detection_pattern():
-    with pytest.raises(AssertionError) as e:
-        head_detector.detect_head(model, test_regular_sequence)
-    assert (
-        str(e.value)
-        == "Exactly one of head_name or detection_pattern must be specified."
-    )
-
-
-def test_detect_head_with_both_head_name_and_detection_pattern():
-    with pytest.raises(AssertionError) as e:
-        head_detector.detect_head(
-            model,
-            test_regular_sequence,
-            head_name="test",
-            detection_pattern=torch.ones(4, 4),
-        )
-    assert (
-        str(e.value)
-        == "Exactly one of head_name or detection_pattern must be specified."
-    )
-
+##########
+# Errors #
+##########
 
 def test_detect_head_with_invalid_head_name():
-    with pytest.raises(AssertionError) as e:
-        head_detector.detect_head(model, test_regular_sequence, head_name="test")
-    assert str(e.value) == "Head name not valid."
+    with pytest.raises(TypeError) as e:
+        head_detector.detect_head(model, test_regular_sequence, detection_pattern="test")
 
 
 def test_detect_head_with_zero_sequence_length():
     with pytest.raises(AssertionError) as e:
-        head_detector.detect_head(model, "", head_name="previous_token_head")
+        head_detector.detect_head(model, "", detection_pattern="previous_token_head")
     assert (
         str(e.value)
         == "The sequence must be non-empty and must fit within the model's context window."
@@ -215,7 +193,7 @@ def test_detect_head_with_zero_sequence_length():
 def test_detect_head_with_sequence_length_outside_context_window():
     with pytest.raises(AssertionError) as e:
         head_detector.detect_head(
-            model, "a " * model.cfg.n_ctx, head_name="previous_token_head"
+            model, "a " * model.cfg.n_ctx, detection_pattern="previous_token_head"
         )
     assert (
         str(e.value)
@@ -244,8 +222,8 @@ class Test_specific_heads:
         match = head_detector.detect_head(
             model,
             test_regular_sequence,
-            head_name="previous_token_head",
-            specific_heads=[(0, 0)],
+            detection_pattern="previous_token_head",
+            heads=[(0, 0)],
         )
 
         def test_allclose(self):
@@ -266,8 +244,8 @@ class Test_specific_heads:
         match = head_detector.detect_head(
             model,
             test_duplicated_sequence,
-            head_name="previous_token_head",
-            specific_heads=[(0, 0)],
+            detection_pattern="previous_token_head",
+            heads=[(0, 0)],
         )
 
         def test_allclose(self):
@@ -288,8 +266,8 @@ class Test_specific_heads:
         match = head_detector.detect_head(
             model,
             test_duplicated_sequence,
-            head_name="duplicate_token_head",
-            specific_heads=[(0, 0)],
+            detection_pattern="duplicate_token_head",
+            heads=[(0, 0)],
         )
 
         def test_allclose(self):
@@ -310,8 +288,8 @@ class Test_specific_heads:
         match = head_detector.detect_head(
             model,
             test_duplicated_sequence,
-            head_name="induction_head",
-            specific_heads=[(0, 0)],
+            detection_pattern="induction_head",
+            heads=[(0, 0)],
         )
 
         def test_allclose(self):

@@ -1,24 +1,28 @@
-import torch
+from typing import cast, get_args, Literal, List, Optional, Union, Tuple
+
 import numpy as np
+import torch
+
 from transformer_lens import HookedTransformer, ActivationCache
-from typing import List, Tuple
 
-HEAD_NAMES = ['previous_token_head', 'duplicate_token_head', 'induction_head']
+HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
+HEAD_NAMES = get_args(HeadName)
 
-def detect_head(model: HookedTransformer, 
-                                sequence: str,
-                                head_name: str = None,
-                                detection_pattern: torch.Tensor = None, 
-                                specific_heads: List[Tuple[int, int]] = None,
-                                cache: ActivationCache = None,
-                                exclude_bos: bool = False,
-                                exclude_current_token: bool = False) -> torch.Tensor:
-  
+
+def detect_head(
+    model: HookedTransformer,
+    sequence: str,
+    detection_pattern: Union[torch.Tensor, HeadName],
+    heads: Optional[List[Tuple[int, int]]] = None,
+    cache: Optional[ActivationCache] = None,
+    exclude_bos: bool = False,
+    exclude_current_token: bool = False,
+) -> torch.Tensor:
     """Searches the model (or a set of specific heads, for circuit analysis) for a particular type of attention head. This head is specified
-    by a detection pattern, a (sequence_length, sequence_length) tensor representing how much attention to keep at each position. We element-wise 
-    multiply the attention pattern by the detection pattern, and our score is how much attention is left, divided by the total attention. 
-    (1 per token other than the first). 
-    
+    by a detection pattern, a (sequence_length, sequence_length) tensor representing how much attention to keep at each position. We element-wise
+    multiply the attention pattern by the detection pattern, and our score is how much attention is left, divided by the total attention.
+    (1 per token other than the first).
+
     For instance, a perfect previous token head would put 1 attention to the previous token and 0 to everything else. To write a detection pattern
     for this head, we would write a (sequence_length, sequence_length) tensor with 1s below the diagonal and 0s everywhere else. That would then
     be element-wise multiplied by the attention pattern, zeroing out all attention that did not attend to the previous token. The attention
@@ -35,7 +39,7 @@ def detect_head(model: HookedTransformer,
       exclude_current_token: Exclude attention paid to the current token.
 
     Returns a (n_layers, n_heads) Tensor representing the score for each attention head.
-    
+
     Example:
     --------
     .. code-block:: python
@@ -54,93 +58,114 @@ def detect_head(model: HookedTransformer,
         >>> attention_score = detect_head(model, sequence, head_type='previous_token_head')
         >>> imshow(attention_score, zmin=-1, zmax=1, xaxis="Head", yaxis="Layer", title="Previous Head Matches")
     """
-    
-    assert (head_name is None) != (detection_pattern is None), "Exactly one of head_name or detection_pattern must be specified."
-    device = model.cfg.device
 
-    if head_name is not None:
-      assert head_name in HEAD_NAMES, "Head name not valid."
-      detection_pattern = eval(f'get_{head_name}_detection_pattern(model, sequence)').to(device)
+    cfg = model.cfg
+    if isinstance(detection_pattern, str):
+        if detection_pattern not in HEAD_NAMES:
+            raise AssertionError(
+                f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got {detection_pattern}"
+            )
+        detection_pattern = cast(
+            torch.Tensor,
+            eval(f"get_{detection_pattern}_detection_pattern(model, sequence)"),
+        ).to(cfg.device)
 
-    sequence = model.to_tokens(sequence).to(device)
+    tokens = model.to_tokens(sequence).to(cfg.device)
 
-    assert 1 < sequence.shape[-1] < model.cfg.n_ctx, "The sequence must be non-empty and must fit within the model's context window."
-    assert sequence.shape[-1] == detection_pattern.shape[0] == detection_pattern.shape[1], "The detection pattern must be a square matrix of shape (sequence_length, sequence_length)."
+    if not (1 < tokens.shape[-1] < cfg.n_ctx):
+        raise AssertionError(
+            "The sequence must be non-empty and must fit within the model's context window."
+        )
+    if not (
+        tokens.shape[-1] == detection_pattern.shape[0] == detection_pattern.shape[1]
+    ):
+        raise AssertionError(
+            "The detection pattern must be a square matrix of shape (sequence_length, sequence_length)."
+        )
 
     if cache is None:
         _, cache = model.run_with_cache(sequence, remove_batch_dim=True)
 
-    heads = [(i, j) for i in range(model.cfg.n_layers) for j in range(model.cfg.n_heads)]
+    if heads is None:
+        heads = [(layer_i, head_i) for layer_i in range(cfg.n_layers) for head_i in range(cfg.n_heads)]
 
-    # If no specific heads are mentioned, grab all of them.
-    if specific_heads is None:
-        specific_heads = [(i, j) for i in range(model.cfg.n_layers) for j in range(model.cfg.n_heads)]
+    matches = -torch.ones(cfg.n_layers, cfg.n_heads)
 
-    matches = []
+    for layer_i, head_i in heads:
+        attention_pattern = cache["pattern", layer_i, "attn"]
+        # We could batch this, but it only takes a few seconds right now. Can worry about that later.
+        # It'd be a bit more complex of a batch when using specific heads. Could also just batch-compute all heads if it's faster, then set the non-matching heads to -1 afterwards.
+        attention_pattern = attention_pattern[head_i, :, :]
 
-    for head in heads:
-        if head not in specific_heads:
-            matches.append(-1) # This is kinda ugly, the idea is to be able to still plot this on a 2D grid and everything not in the circuit is red. Ideas?
-        else:
-            attention_pattern = cache["pattern", head[0], "attn"]
-            attention_pattern = attention_pattern[head[1], :, :] # We could batch this, but it only takes a few seconds right now. Can worry about that later. 
-            # It'd be a bit more complex of a batch when using specific heads. Could also just batch-compute all heads if it's faster, then set the non-matching heads to -1 afterwards.
-            
-            if exclude_bos:
-              attention_pattern[:, 0] = 0
+        if exclude_bos:
+            attention_pattern[:, 0] = 0
 
-            if exclude_current_token:
-              attention_pattern.fill_diagonal_(0)
+        if exclude_current_token:
+            attention_pattern.fill_diagonal_(0)
 
-            # Elementwise multiplication keeps only the parts of the attention pattern that are also in the detection pattern.
-            matched_attention = attention_pattern * detection_pattern
-            matches.append((torch.sum(matched_attention) / torch.sum(attention_pattern))) # Return total percentage of attention which matches the detection pattern.
+        # Elementwise multiplication keeps only the parts of the attention pattern that are also in the detection pattern.
+        matched_attention = attention_pattern * detection_pattern
+        matches[layer_i, head_i] = matched_attention.sum() / attention_pattern.sum()
 
-    matches = torch.as_tensor(matches)
-    return matches.reshape(model.cfg.n_layers, model.cfg.n_heads)
+    return matches
+
 
 # Previous token head
-def get_previous_token_head_detection_pattern(model: HookedTransformer, sequence: str) -> torch.Tensor:
-    """Outputs a detection score for previous token heads. 
+def get_previous_token_head_detection_pattern(
+    model: HookedTransformer, sequence: str
+) -> torch.Tensor:
+    """Outputs a detection score for previous token heads.
     Previous token head: https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc
-    
+
     Args:
       model: Model being used.
       sequence: String being fed to the model."""
-    
-    sequence = model.to_tokens(sequence)
-    detection_pattern = torch.zeros((sequence.shape[-1], sequence.shape[-1]))
-    detection_pattern[1:, :-1] = torch.eye(sequence.shape[-1] - 1) # Adds a diagonal of 1's below the main diagonal.
+
+    tokens = model.to_tokens(sequence)
+    detection_pattern = torch.zeros(tokens.shape[-1], tokens.shape[-1])
+    detection_pattern[1:, :-1] = torch.eye(
+        tokens.shape[-1] - 1
+    )  # Adds a diagonal of 1's below the main diagonal.
     return torch.tril(detection_pattern)
 
+
 # Duplicate token head
-def get_duplicate_token_head_detection_pattern(model: HookedTransformer, sequence: str) -> torch.Tensor:
-    """Outputs a detection score for duplicate token heads. 
+def get_duplicate_token_head_detection_pattern(
+    model: HookedTransformer, sequence: str
+) -> torch.Tensor:
+    """Outputs a detection score for duplicate token heads.
     Duplicate token head: https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo
-    
+
     Args:
       model: Model being used.
       sequence: String being fed to the model."""
-    
+
     tokens = model.to_tokens(sequence).cpu()
-    token_pattern = np.concatenate([tokens.numpy() for _ in range(tokens.shape[-1])], axis=0)
+    token_pattern = np.concatenate(
+        [tokens.numpy() for _ in range(tokens.shape[-1])], axis=0
+    )
 
     # If token_pattern[i][j] matches its transpose, then token j and token i are duplicates.
     eq_mask = np.equal(token_pattern, token_pattern.T).astype(int)
 
-    np.fill_diagonal(eq_mask, 0) # Current token is always a duplicate of itself. Ignore that.
+    np.fill_diagonal(
+        eq_mask, 0
+    )  # Current token is always a duplicate of itself. Ignore that.
     detection_pattern = eq_mask.astype(int)
     return torch.tril(torch.as_tensor(detection_pattern).float())
 
+
 # Induction head
-def get_induction_head_detection_pattern(model: HookedTransformer, sequence: str) -> torch.Tensor:
-    """Outputs a detection score for induction heads. 
+def get_induction_head_detection_pattern(
+    model: HookedTransformer, sequence: str
+) -> torch.Tensor:
+    """Outputs a detection score for induction heads.
     Induction head: https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY
-    
+
     Args:
       model: Model being used.
       sequence: String being fed to the model."""
-    
+
     duplicate_pattern = get_duplicate_token_head_detection_pattern(model, sequence)
 
     # Shift all items one to the right
@@ -150,6 +175,7 @@ def get_induction_head_detection_pattern(model: HookedTransformer, sequence: str
     zeros_column = torch.zeros((duplicate_pattern.shape[0], 1))
     result_tensor = torch.cat((zeros_column, shifted_tensor[:, 1:]), dim=1)
     return torch.tril(result_tensor)
+
 
 def get_supported_heads():
     """Returns a list of supported heads."""
