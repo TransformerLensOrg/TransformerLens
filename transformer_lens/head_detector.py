@@ -1,4 +1,5 @@
-from typing import cast, get_args, Literal, List, Optional, Union, Tuple
+from collections import defaultdict
+from typing import cast, get_args, Dict, List, Literal, Optional, Union, Tuple
 
 import numpy as np
 import torch
@@ -9,12 +10,15 @@ from transformer_lens.utils import is_square, is_lower_triangular
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
 HEAD_NAMES = get_args(HeadName)
 
+LayerHeadTuple = Tuple[int, int]
+LayerToHead = Dict[int, List[int]]
+
 
 def detect_head(
     model: HookedTransformer,
     input_: Union[str, List[str]],
     detection_pattern: Union[torch.Tensor, HeadName],
-    heads: Optional[List[Tuple[int, int]]] = None,
+    heads: Optional[Union[List[LayerHeadTuple], LayerToHead]] = None,
     cache: Optional[ActivationCache] = None,
     exclude_bos: bool = False,
     exclude_current_token: bool = False,
@@ -62,6 +66,7 @@ def detect_head(
 
     cfg = model.cfg
     tokens = model.to_tokens(input_).to(cfg.device)
+    
 
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
@@ -70,10 +75,17 @@ def detect_head(
                 f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES};"
                 f" got {detection_pattern}"
             )
+        
+        if detection_pattern in ["duplicate_token_head", "induction_head"] and isinstance(input_, list):
+            batch_scores = [detect_head(model, seq, detection_pattern) for seq in input_]
+            return torch.stack(batch_scores).mean(0)
+            
+        
         detection_pattern = cast(
             torch.Tensor,
             eval(f"get_{detection_pattern}_detection_pattern(tokens.cpu())"),
         ).to(cfg.device)
+        
 
     # Validate inputs and detection pattern shape
     if not (1 < tokens.shape[-1] < cfg.n_ctx):
@@ -96,47 +108,49 @@ def detect_head(
         raise AssertionError("detection_pattern is not lower triangular")
 
     if cache is None:
-        _, cache = model.run_with_cache(input_, remove_batch_dim=True)
-
+        _, cache = model.run_with_cache(input_, remove_batch_dim=False)
+    
     if heads is None:
-        heads = [
-            (layer_i, head_i)
+        layer2heads = {
+            layer_i: [head_i for head_i in range(cfg.n_heads)]
             for layer_i in range(cfg.n_layers)
-            for head_i in range(cfg.n_heads)
-        ]
+        }
+    elif isinstance(heads, list):
+        layer2heads = defaultdict(list)
+        for layer, head in heads:
+            layer2heads[layer].append(head)
+    else:
+        layer2heads = heads
 
     matches = -torch.ones(cfg.n_layers, cfg.n_heads)
 
-    for layer_i, head_i in heads:
-        attention_pattern = cache["pattern", layer_i, "attn"]
-        # We could batch this, but it only takes a few seconds right now. Can worry about that later.
-        # It'd be a bit more complex of a batch when using specific heads. Could also just batch-compute all heads if it's faster, then set the non-matching heads to -1 afterwards.
-        attention_pattern = attention_pattern[head_i, :, :]
-
-        if exclude_bos:
-            attention_pattern[:, 0] = 0
-
-        if exclude_current_token:
-            attention_pattern.fill_diagonal_(0)
-
-        # Elementwise multiplication keeps only the parts of the attention pattern that are also in the detection pattern.
-        matched_attention = attention_pattern * detection_pattern
-        matches[layer_i, head_i] = matched_attention.sum() / attention_pattern.sum()
+    for layer, layer_heads in layer2heads.items():
+        # [batch n_heads q_pos k_pos]
+        batch_attention_patterns = cache["pattern", layer, "attn"]
+        for head in layer_heads:
+            head_attention_pattern = batch_attention_patterns[..., head, :, :]
+            if head_attention_pattern.ndim == 2:
+                head_attention_pattern.unsqueeze_(0)
+            matched_head_attention = process_head_attention_pattern(
+                head_attention_pattern,
+                detection_pattern=detection_pattern,
+                exclude_bos=exclude_bos,
+                exclude_current_token=exclude_current_token,
+            )
+            matches[layer, head] = matched_head_attention
 
     return matches
 
 
 # Previous token head
 def get_previous_token_head_detection_pattern(
-    tokens: torch.Tensor,  # [batch x pos x d_model]
+    tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for
-    [previous token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc).
+    """Outputs a detection score for [previous token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc).
 
     Args:
       tokens: Tokens being fed to the model.
     """
-
     detection_pattern = torch.zeros(tokens.shape[-1], tokens.shape[-1])
     # Adds a diagonal of 1's below the main diagonal.
     detection_pattern[1:, :-1] = torch.eye(tokens.shape[-1] - 1)
@@ -145,19 +159,16 @@ def get_previous_token_head_detection_pattern(
 
 # Duplicate token head
 def get_duplicate_token_head_detection_pattern(
-    tokens: torch.Tensor,  # [batch x pos x d_model]
+    tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for
-    [duplicate token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo).
+    """Outputs a detection score for [duplicate token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo).
 
     Args:
       sequence: String being fed to the model.
     """
-
-    token_pattern = np.concatenate(
-        [tokens.numpy() for _ in range(tokens.shape[-1])], axis=0
-    )
-
+    # [pos x pos]
+    token_pattern = tokens.repeat(tokens.shape[-1], 1).numpy()
+    
     # If token_pattern[i][j] matches its transpose, then token j and token i are duplicates.
     eq_mask = np.equal(token_pattern, token_pattern.T).astype(int)
 
@@ -170,22 +181,20 @@ def get_duplicate_token_head_detection_pattern(
 
 # Induction head
 def get_induction_head_detection_pattern(
-    tokens: torch.Tensor,  # [batch x pos x d_model]
+    tokens: torch.Tensor,  # [batch (1) x pos]
 ) -> torch.Tensor:
-    """Outputs a detection score for
-    [induction heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY).
+    """Outputs a detection score for [induction heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY).
 
     Args:
       sequence: String being fed to the model.
     """
-
     duplicate_pattern = get_duplicate_token_head_detection_pattern(tokens)
 
     # Shift all items one to the right
     shifted_tensor = torch.roll(duplicate_pattern, shifts=1, dims=1)
 
     # Replace first column with 0's - we don't care about bos but shifting to the right moves the last column to the first, and the last column might contain non-zero values.
-    zeros_column = torch.zeros((duplicate_pattern.shape[0], 1))
+    zeros_column = torch.zeros(duplicate_pattern.shape[0], 1)
     result_tensor = torch.cat((zeros_column, shifted_tensor[:, 1:]), dim=1)
     return torch.tril(result_tensor)
 
@@ -193,3 +202,25 @@ def get_induction_head_detection_pattern(
 def get_supported_heads():
     """Returns a list of supported heads."""
     print(f"Supported heads: {HEAD_NAMES}")
+
+
+def process_head_attention_pattern(
+    head_attention_pattern: torch.Tensor,  # [batch q_pos k_pos]
+    detection_pattern: torch.Tensor,  # [seq_len seq_len]
+    exclude_bos: bool,
+    exclude_current_token: bool,
+) -> torch.Tensor:
+    """
+    seq_len == q_pos == k_pos
+    """
+    n_batches = len(head_attention_pattern)
+    matched_attention_vals = []
+    for batch in range(n_batches):
+        attention_pattern = head_attention_pattern[batch, :, :]
+        if exclude_bos:
+            attention_pattern[:, 0] = 0
+        if exclude_current_token:
+            attention_pattern.fill_diagonal_(0)
+        matched_attention = attention_pattern * detection_pattern
+        matched_attention_vals.append(matched_attention.sum() / attention_pattern.sum())
+    return torch.tensor(matched_attention_vals).mean()

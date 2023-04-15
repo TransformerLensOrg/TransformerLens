@@ -12,6 +12,8 @@ ATOL = 1e-4  # Absolute tolerance - how far does a float have to be before we co
 model = HookedTransformer.from_pretrained(MODEL)
 test_regular_sequence = " four token sequence"  # Four tokens including BOS
 test_duplicated_sequence = " seven token sequence seven token sequence"
+test_duplicated_sequence2 = " one two three one two three"
+test_regular_sequence_padded = " 2 2 2 seven token seq"
 
 expected_regular_sequence_previous_match = torch.tensor(
     [
@@ -69,7 +71,9 @@ class Test_detect_head_successful:
         def test_detect_previous_token_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_regular_sequence, detection_pattern="previous_token_head"
+                    model,
+                    test_regular_sequence,
+                    detection_pattern="previous_token_head",
                 ),
                 expected_regular_sequence_previous_match,
                 atol=ATOL,
@@ -78,7 +82,9 @@ class Test_detect_head_successful:
         def test_detect_duplicate_token_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_regular_sequence, detection_pattern="duplicate_token_head"
+                    model,
+                    test_regular_sequence,
+                    detection_pattern="duplicate_token_head",
                 ),
                 torch.zeros(model.cfg.n_layers, model.cfg.n_heads),
                 atol=ATOL,
@@ -97,7 +103,9 @@ class Test_detect_head_successful:
         def test_detect_previous_token_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_duplicated_sequence, detection_pattern="previous_token_head"
+                    model,
+                    test_duplicated_sequence,
+                    detection_pattern="previous_token_head",
                 ),
                 expected_duplicated_sequence_previous_match,
                 atol=ATOL,
@@ -106,7 +114,9 @@ class Test_detect_head_successful:
         def test_detect_duplicate_token_head(self):
             assert torch.allclose(
                 head_detector.detect_head(
-                    model, test_duplicated_sequence, detection_pattern="duplicate_token_head"
+                    model,
+                    test_duplicated_sequence,
+                    detection_pattern="duplicate_token_head",
                 ),
                 expected_duplicated_sequence_duplicate_match,
                 atol=ATOL,
@@ -120,6 +130,75 @@ class Test_detect_head_successful:
                 expected_duplicated_sequence_induction_match,
                 atol=ATOL,
             )
+
+
+class Test_batched:
+    def test_previous(self):
+        result_regular_padded = head_detector.detect_head(
+            model, test_regular_sequence_padded, "previous_token_head"
+        )
+        result_duplicated = head_detector.detect_head(
+            model, test_duplicated_sequence, "previous_token_head"
+        )
+        result_duplicated2 = head_detector.detect_head(
+            model, test_duplicated_sequence2, "previous_token_head"
+        )
+        result_batched = head_detector.detect_head(
+            model,
+            [
+                test_regular_sequence_padded,
+                test_duplicated_sequence,
+                test_duplicated_sequence2,
+            ],
+            "previous_token_head",
+        )
+        expected = (result_regular_padded + result_duplicated + result_duplicated2) / 3
+        assert torch.allclose(result_batched, expected, atol=ATOL)
+
+    def test_duplicate(self):
+        result_regular_padded = head_detector.detect_head(
+            model, test_regular_sequence_padded, "duplicate_token_head"
+        )
+        result_duplicated = head_detector.detect_head(
+            model, test_duplicated_sequence, "duplicate_token_head"
+        )
+        result_duplicated2 = head_detector.detect_head(
+            model, test_duplicated_sequence2, "duplicate_token_head"
+        )
+        result_batched = head_detector.detect_head(
+            model,
+            [
+                test_regular_sequence_padded,
+                test_duplicated_sequence,
+                test_duplicated_sequence2,
+            ],
+            "duplicate_token_head",
+        )
+        expected = (result_regular_padded + result_duplicated + result_duplicated2) / 3
+        assert torch.allclose(result_batched, expected, atol=ATOL)
+        
+    def test_induction(self):
+        result_regular_padded = head_detector.detect_head(
+            model, test_regular_sequence_padded, "induction_head"
+        )
+        result_duplicated = head_detector.detect_head(
+            model, test_duplicated_sequence, "induction_head"
+        )
+        result_duplicated2 = head_detector.detect_head(
+            model, test_duplicated_sequence2, "induction_head"
+        )
+        result_batched = head_detector.detect_head(
+            model,
+            [
+                test_regular_sequence_padded,
+                test_duplicated_sequence,
+                test_duplicated_sequence2,
+            ],
+            "induction_head",
+        )
+        expected = (result_regular_padded + result_duplicated + result_duplicated2) / 3
+        assert torch.allclose(result_batched, expected, atol=ATOL)
+    
 
 
 def test_detect_head_exclude_bos():
@@ -166,19 +245,26 @@ def test_detect_head_with_cache():
     _, cache = model.run_with_cache(test_regular_sequence, remove_batch_dim=True)
     assert torch.allclose(
         head_detector.detect_head(
-            model, test_regular_sequence, detection_pattern="previous_token_head", cache=cache
+            model,
+            test_regular_sequence,
+            detection_pattern="previous_token_head",
+            cache=cache,
         ),
         expected_regular_sequence_previous_match,
         atol=ATOL,
     )
 
+
 ##########
 # Errors #
 ##########
 
+
 def test_detect_head_with_invalid_head_name():
     with pytest.raises((AssertionError, TypeError)) as e:
-        head_detector.detect_head(model, test_regular_sequence, detection_pattern="test")
+        head_detector.detect_head(
+            model, test_regular_sequence, detection_pattern="test"
+        )
 
 
 def test_detect_head_with_zero_sequence_length():
@@ -211,17 +297,28 @@ def test_detect_head_with_invalid_detection_pattern():
         == "The detection pattern must be a square matrix of shape (sequence_length, sequence_length)."
     )
 
+
 test_duplicated_seq_len = model.to_tokens(test_duplicated_sequence).shape[-1]
-class Test_detect_head_non_lower_triangular_detection_pattern():
-    detection_pattern = torch.tril(torch.ones(test_duplicated_seq_len, test_duplicated_seq_len)).cuda()
+
+
+class Test_detect_head_non_lower_triangular_detection_pattern:
+    detection_pattern = torch.tril(
+        torch.ones(test_duplicated_seq_len, test_duplicated_seq_len)
+    ).cuda()
+
     def test_no_error(self):
-        head_detector.detect_head(model, test_duplicated_sequence, self.detection_pattern)
-        assert True # ugly, need to make a separate context manager for not raising an error
+        head_detector.detect_head(
+            model, test_duplicated_sequence, self.detection_pattern
+        )
+        assert True  # ugly, need to make a separate context manager for not raising an error
+
     def test_raises_error(self):
         detection_pattern = self.detection_pattern.clone()
         detection_pattern[0, 1] = 1
         with pytest.raises(AssertionError) as e:
-            head_detector.detect_head(model, test_duplicated_sequence, detection_pattern)
+            head_detector.detect_head(
+                model, test_duplicated_sequence, detection_pattern
+            )
         assert str(e.value) == "detection_pattern is not lower triangular"
 
 
