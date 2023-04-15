@@ -4,6 +4,7 @@ import numpy as np
 import torch
 
 from transformer_lens import HookedTransformer, ActivationCache
+from transformer_lens.utils import is_square, is_lower_triangular
 
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
 HEAD_NAMES = get_args(HeadName)
@@ -11,7 +12,7 @@ HEAD_NAMES = get_args(HeadName)
 
 def detect_head(
     model: HookedTransformer,
-    sequence: str,
+    input_: Union[str, List[str]],
     detection_pattern: Union[torch.Tensor, HeadName],
     heads: Optional[List[Tuple[int, int]]] = None,
     cache: Optional[ActivationCache] = None,
@@ -60,18 +61,21 @@ def detect_head(
     """
 
     cfg = model.cfg
+    tokens = model.to_tokens(input_).to(cfg.device)
+
+    # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
         if detection_pattern not in HEAD_NAMES:
             raise AssertionError(
-                f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got {detection_pattern}"
+                f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES};"
+                f" got {detection_pattern}"
             )
         detection_pattern = cast(
             torch.Tensor,
-            eval(f"get_{detection_pattern}_detection_pattern(model, sequence)"),
+            eval(f"get_{detection_pattern}_detection_pattern(tokens.cpu())"),
         ).to(cfg.device)
 
-    tokens = model.to_tokens(sequence).to(cfg.device)
-
+    # Validate inputs and detection pattern shape
     if not (1 < tokens.shape[-1] < cfg.n_ctx):
         raise AssertionError(
             "The sequence must be non-empty and must fit within the model's context window."
@@ -83,11 +87,23 @@ def detect_head(
             "The detection pattern must be a square matrix of shape (sequence_length, sequence_length)."
         )
 
+    if not is_square(detection_pattern):
+        raise AssertionError(
+            f"detection_pattern must be a lower triangular matrix of shape [seq_len x seq_len]; "
+            f"got {detection_pattern.ndim}-dimensional of shape {detection_pattern.shape}"
+        )
+    if not is_lower_triangular(detection_pattern):
+        raise AssertionError("detection_pattern is not lower triangular")
+
     if cache is None:
-        _, cache = model.run_with_cache(sequence, remove_batch_dim=True)
+        _, cache = model.run_with_cache(input_, remove_batch_dim=True)
 
     if heads is None:
-        heads = [(layer_i, head_i) for layer_i in range(cfg.n_layers) for head_i in range(cfg.n_heads)]
+        heads = [
+            (layer_i, head_i)
+            for layer_i in range(cfg.n_layers)
+            for head_i in range(cfg.n_heads)
+        ]
 
     matches = -torch.ones(cfg.n_layers, cfg.n_heads)
 
@@ -112,35 +128,32 @@ def detect_head(
 
 # Previous token head
 def get_previous_token_head_detection_pattern(
-    model: HookedTransformer, sequence: str
+    tokens: torch.Tensor,  # [batch x pos x d_model]
 ) -> torch.Tensor:
-    """Outputs a detection score for previous token heads.
-    Previous token head: https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc
+    """Outputs a detection score for
+    [previous token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc).
 
     Args:
-      model: Model being used.
-      sequence: String being fed to the model."""
+      tokens: Tokens being fed to the model.
+    """
 
-    tokens = model.to_tokens(sequence)
     detection_pattern = torch.zeros(tokens.shape[-1], tokens.shape[-1])
-    detection_pattern[1:, :-1] = torch.eye(
-        tokens.shape[-1] - 1
-    )  # Adds a diagonal of 1's below the main diagonal.
+    # Adds a diagonal of 1's below the main diagonal.
+    detection_pattern[1:, :-1] = torch.eye(tokens.shape[-1] - 1)
     return torch.tril(detection_pattern)
 
 
 # Duplicate token head
 def get_duplicate_token_head_detection_pattern(
-    model: HookedTransformer, sequence: str
+    tokens: torch.Tensor,  # [batch x pos x d_model]
 ) -> torch.Tensor:
-    """Outputs a detection score for duplicate token heads.
-    Duplicate token head: https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo
+    """Outputs a detection score for
+    [duplicate token heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo).
 
     Args:
-      model: Model being used.
-      sequence: String being fed to the model."""
+      sequence: String being fed to the model.
+    """
 
-    tokens = model.to_tokens(sequence).cpu()
     token_pattern = np.concatenate(
         [tokens.numpy() for _ in range(tokens.shape[-1])], axis=0
     )
@@ -157,16 +170,16 @@ def get_duplicate_token_head_detection_pattern(
 
 # Induction head
 def get_induction_head_detection_pattern(
-    model: HookedTransformer, sequence: str
+    tokens: torch.Tensor,  # [batch x pos x d_model]
 ) -> torch.Tensor:
-    """Outputs a detection score for induction heads.
-    Induction head: https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY
+    """Outputs a detection score for
+    [induction heads](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY).
 
     Args:
-      model: Model being used.
-      sequence: String being fed to the model."""
+      sequence: String being fed to the model.
+    """
 
-    duplicate_pattern = get_duplicate_token_head_detection_pattern(model, sequence)
+    duplicate_pattern = get_duplicate_token_head_detection_pattern(tokens)
 
     # Shift all items one to the right
     shifted_tensor = torch.roll(duplicate_pattern, shifts=1, dims=1)

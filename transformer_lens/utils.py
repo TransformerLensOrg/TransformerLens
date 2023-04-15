@@ -657,3 +657,13 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
+
+def is_square(x: torch.Tensor) -> bool:
+    """Checks if `x` is a square matrix."""
+    return x.ndim == 2 and x.shape[0] == x.shape[1]
+
+def is_lower_triangular(x: torch.Tensor) -> bool:
+    """Checks if `x` is a lower triangular matrix."""
+    if not is_square(x):
+        return False
+    return (x - x.tril()).sum().item() == 0

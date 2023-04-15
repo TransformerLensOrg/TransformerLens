@@ -177,7 +177,7 @@ def test_detect_head_with_cache():
 ##########
 
 def test_detect_head_with_invalid_head_name():
-    with pytest.raises(TypeError) as e:
+    with pytest.raises((AssertionError, TypeError)) as e:
         head_detector.detect_head(model, test_regular_sequence, detection_pattern="test")
 
 
@@ -210,6 +210,19 @@ def test_detect_head_with_invalid_detection_pattern():
         str(e.value)
         == "The detection pattern must be a square matrix of shape (sequence_length, sequence_length)."
     )
+
+test_duplicated_seq_len = model.to_tokens(test_duplicated_sequence).shape[-1]
+class Test_detect_head_non_lower_triangular_detection_pattern():
+    detection_pattern = torch.tril(torch.ones(test_duplicated_seq_len, test_duplicated_seq_len)).cuda()
+    def test_no_error(self):
+        head_detector.detect_head(model, test_duplicated_sequence, self.detection_pattern)
+        assert True # ugly, need to make a separate context manager for not raising an error
+    def test_raises_error(self):
+        detection_pattern = self.detection_pattern.clone()
+        detection_pattern[0, 1] = 1
+        with pytest.raises(AssertionError) as e:
+            head_detector.detect_head(model, test_duplicated_sequence, detection_pattern)
+        assert str(e.value) == "detection_pattern is not lower triangular"
 
 
 #################################
@@ -314,7 +327,7 @@ class Test_specific_heads:
 
 class Test_previous_token_head:
     regular_detection_pattern = head_detector.get_previous_token_head_detection_pattern(
-        model, test_regular_sequence
+        model.to_tokens(test_regular_sequence).cpu()
     )
 
     def test_regular_detection_pattern1(self):
@@ -328,7 +341,7 @@ class Test_previous_token_head:
 
     duplicate_detection_pattern = (
         head_detector.get_previous_token_head_detection_pattern(
-            model, test_duplicated_sequence
+            model.to_tokens(test_duplicated_sequence).cpu()
         )
     )
 
@@ -344,13 +357,13 @@ class Test_previous_token_head:
 
 class Test_duplicate_token_head:
     detection_pattern = head_detector.get_duplicate_token_head_detection_pattern(
-        model, test_duplicated_sequence
+        model.to_tokens(test_duplicated_sequence).cpu()
     )
 
     def test1(self):
         assert (
             head_detector.get_duplicate_token_head_detection_pattern(
-                model, test_regular_sequence
+                model.to_tokens(test_regular_sequence).cpu()
             )
             == torch.zeros(4, 4)
         ).all()
@@ -367,13 +380,13 @@ class Test_duplicate_token_head:
 
 class Test_induction_head_detection:
     detection_pattern = head_detector.get_induction_head_detection_pattern(
-        model, test_duplicated_sequence
+        model.to_tokens(test_duplicated_sequence).cpu()
     )
 
     def test1(self):
         assert (
             head_detector.get_duplicate_token_head_detection_pattern(
-                model, test_regular_sequence
+                model.to_tokens(test_regular_sequence).cpu()
             )
             == torch.zeros(4, 4)
         ).all()
