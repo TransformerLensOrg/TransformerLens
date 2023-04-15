@@ -57,56 +57,55 @@ class TestSlice:
 
 MODEL = "solu-1l"
 
-prompt = "Hello World!"
 model = HookedTransformer.from_pretrained(MODEL)
 
 @pytest.fixture
-def nested_list_1x1():
+def nested_list_1():
     return [1]
 
 
 @pytest.fixture
-def nested_list_1x1x1x1():
-    return [[[[6]]]]
+def nested_list_1x1():
+    return [[6]]
 
 
 @pytest.fixture
-def nested_list_1x1x1x3x1():
-    return [[[[[1],[2],[3]]]]]
+def nested_list_1x3():
+    return [[1, 2, 3]]
 
 
-def test_to_str_tokens(nested_list_1x1, nested_list_1x1x1x1, nested_list_1x1x1x3x1):
+def test_to_str_tokens(nested_list_1, nested_list_1x1, nested_list_1x3):
+    tensor_1_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1))
+    assert isinstance(tensor_1_to_str_tokens, list)
+    assert len(tensor_1_to_str_tokens) == 1
+    assert isinstance(tensor_1_to_str_tokens[0], str)
+
     tensor_1x1_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1x1))
     assert isinstance(tensor_1x1_to_str_tokens, list)
     assert len(tensor_1x1_to_str_tokens) == 1
     assert isinstance(tensor_1x1_to_str_tokens[0], str)
 
-    tensor_1x1x1x1_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1x1x1x1))
-    assert isinstance(tensor_1x1x1x1_to_str_tokens, list)
-    assert len(tensor_1x1x1x1_to_str_tokens) == 1
-    assert isinstance(tensor_1x1x1x1_to_str_tokens[0], str)
+    ndarray_1_to_str_tokens = model.to_str_tokens(np.array(nested_list_1))
+    assert isinstance(ndarray_1_to_str_tokens, list)
+    assert len(ndarray_1_to_str_tokens) == 1
+    assert isinstance(ndarray_1_to_str_tokens[0], str)
 
     ndarray_1x1_to_str_tokens = model.to_str_tokens(np.array(nested_list_1x1))
     assert isinstance(ndarray_1x1_to_str_tokens, list)
     assert len(ndarray_1x1_to_str_tokens) == 1
     assert isinstance(ndarray_1x1_to_str_tokens[0], str)
 
-    ndarray_1x1x1x1_to_str_tokens = model.to_str_tokens(np.array(nested_list_1x1x1x1))
-    assert isinstance(ndarray_1x1x1x1_to_str_tokens, list)
-    assert len(ndarray_1x1x1x1_to_str_tokens) == 1
-    assert isinstance(ndarray_1x1x1x1_to_str_tokens[0], str)
-
     single_int_to_single_str_token = model.to_single_str_token(3)
     assert isinstance(single_int_to_single_str_token, str)
 
-    squeezable_tensor_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1x1x1x3x1))
+    squeezable_tensor_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1x3))
     assert isinstance(squeezable_tensor_to_str_tokens, list)
     assert len(squeezable_tensor_to_str_tokens) == 3
     assert isinstance(squeezable_tensor_to_str_tokens[0], str)
     assert isinstance(squeezable_tensor_to_str_tokens[1], str)
     assert isinstance(squeezable_tensor_to_str_tokens[2], str)
 
-    squeezable_ndarray_to_str_tokens = model.to_str_tokens(np.array(nested_list_1x1x1x3x1))
+    squeezable_ndarray_to_str_tokens = model.to_str_tokens(np.array(nested_list_1x3))
     assert isinstance(squeezable_ndarray_to_str_tokens, list)
     assert len(squeezable_ndarray_to_str_tokens) == 3
     assert isinstance(squeezable_ndarray_to_str_tokens[0], str)
