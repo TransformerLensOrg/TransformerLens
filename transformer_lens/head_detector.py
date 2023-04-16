@@ -122,9 +122,10 @@ def get_duplicate_token_head_detection_pattern(model: HookedTransformer, sequenc
       model: Model being used.
       sequence: String being fed to the model."""
     
-    sequence = model.to_tokens(sequence)
-    token_pattern = [np.array(sequence) for i in range(sequence.shape[-1])]
-    token_pattern = np.concatenate(token_pattern, axis=0)
+    sequence = model.to_tokens(sequence).detach().cpu()
+
+    # Repeat sequence to create a square matrix.
+    token_pattern = sequence.repeat(sequence.shape[-1], 1).numpy()
 
     # If token_pattern[i][j] matches its transpose, then token j and token i are duplicates.
     eq_mask = np.equal(token_pattern, token_pattern.T).astype(int)
