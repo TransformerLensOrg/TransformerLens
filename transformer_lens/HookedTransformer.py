@@ -478,7 +478,12 @@ class HookedTransformer(HookedRootModule):
 
     def to_str_tokens(
         self,
-        input: Union[str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]], list],
+        input: Union[str,
+                     Int[torch.Tensor, "pos"],
+                     Int[torch.Tensor, "1 pos"],
+                     Int[np.ndarray, "pos"],
+                     Int[np.ndarray, "1 pos"],
+                     list],
         prepend_bos: bool = True,
     ) -> List[str]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
@@ -506,12 +511,18 @@ class HookedTransformer(HookedRootModule):
         elif isinstance(input, torch.Tensor):
             tokens = input
             tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            if tokens.dim() == 0:
+                # Don't pass dimensionless tensor
+                tokens = tokens.unsqueeze(0)
             assert (
                 tokens.dim() == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         elif isinstance(input, np.ndarray):
             tokens = input
             tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+            if tokens.ndim == 0:
+                # Don't pass dimensionless tensor
+                tokens = np.expand_dims(tokens, axis=0)
             assert (
                 tokens.ndim == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
@@ -530,6 +541,13 @@ class HookedTransformer(HookedRootModule):
         # If token shape is non-empty, raise error
         assert not token.shape, f"Input string: {string} is not a single token!"
         return token.item()
+
+    def to_single_str_token(self, int_token: int) -> str:
+        # Gives the single token corresponding to an int in string form
+        assert isinstance(int_token, int)
+        token = self.to_str_tokens(torch.tensor([int_token]))
+        assert len(token) == 1
+        return token[0]
 
     def get_token_position(
         self,
