@@ -280,15 +280,13 @@ class HookedRootModule(nn.Module):
         Args:
             names_filter (NamesFilter, optional): Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.
             incl_bwd (bool, optional): Whether to also do backwards hooks. Defaults to False.
-            device (_type_, optional): The device to store on. Defaults to CUDA if available else CPU.
+            device (_type_, optional): The device to store on. Defaults to same device as model.
             remove_batch_dim (bool, optional): Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.
             cache (Optional[dict], optional): The cache to store activations in, a new dict is created by default. Defaults to None.
 
         Returns:
             cache (dict): The cache where activations will be stored.
         """
-        if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
         if cache is None:
             cache = {}
 
