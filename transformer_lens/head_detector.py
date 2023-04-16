@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from transformer_lens import HookedTransformer, ActivationCache
-from transformer_lens.utils import is_square, is_lower_triangular
+from transformer_lens.utils import is_lower_triangular
 
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
 HEAD_NAMES = get_args(HeadName)
@@ -13,13 +13,16 @@ HEAD_NAMES = get_args(HeadName)
 LayerHeadTuple = Tuple[int, int]
 LayerToHead = Dict[int, List[int]]
 
-_INVALID_STR_PATTERN_ERR = f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got %s"
-_SEQ_LEN_ERR = "The sequence must be non-empty and must fit within the model's context window."
-_DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length)."
+INVALID_HEAD_NAME_ERR = f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got %s"
+SEQ_LEN_ERR = "The sequence must be non-empty and must fit within the model's context window."
+DET_PAT_NOT_SQUARE_ERR = (
+    "The detection pattern must be a lower triangular matrix of shape "
+    "(sequence_length, sequence_length); sequence_length=%d; got detection patern of shape %s"
+)
 
 def detect_head(
     model: HookedTransformer,
-    input_: Union[str, List[str]],
+    seq: Union[str, List[str]],
     detection_pattern: Union[torch.Tensor, HeadName],
     heads: Optional[Union[List[LayerHeadTuple], LayerToHead]] = None,
     cache: Optional[ActivationCache] = None,
@@ -27,21 +30,32 @@ def detect_head(
     exclude_current_token: bool = False,
 ) -> torch.Tensor:
     """Searches the model (or a set of specific heads, for circuit analysis) for a particular type of attention head. This head is specified
-    by a detection pattern, a (sequence_length, sequence_length) tensor representing how much attention to keep at each position. We element-wise
+    by a detection pattern, a (sequence_length, sequence_length) tensor representing how much attention to keep at each position. That pattern
+    can be also given a name of one specified types of attention head (see `HeadName` for available patterns), in which case the tensor is
+    computed by the function itself. #TODO: wording
+    
+    #TODO: to abs
+    We take the element-wise absolute difference of the attention pattern and the detection pattern. The resulting score expresses how well our
+    expectation (detection pattern) match reality (attention pattern).
+    
+    We element-wise
     multiply the attention pattern by the detection pattern, and our score is how much attention is left, divided by the total attention.
     (1 per token other than the first).
 
     For instance, a perfect previous token head would put 1 attention to the previous token and 0 to everything else. To write a detection pattern
-    for this head, we would write a (sequence_length, sequence_length) tensor with 1s below the diagonal and 0s everywhere else. That would then
-    be element-wise multiplied by the attention pattern, zeroing out all attention that did not attend to the previous token. The attention
+    for this head, we would write a (sequence_length, sequence_length) tensor with `1`s below the diagonal and `0`s everywhere else. We would then
+    element-wise subtract that from the attention pattern and take the absolute value of each element-wise difference. The resulting scores would
+    express how far the detection pattern was off from the attention pattern for each key-value pair
+    
+    , zeroing out all attention that did not attend to the previous token. The attention
     remaining divided by the total attention would then be our score for that attention head. (This particular head is already implemented in HEAD_NAMES)
 
     Args:
       model: Model being used.
-      sequence: String being fed to the model.
+      seq: String or list of strings being fed to the model.
       head_name: Name of an existing head in HEAD_NAMES we want to check. Must pass either a head_name or a detection_pattern, but not both!
-      detection_pattern: (sequence_length, sequence_length) Tensor representing what attention pattern corresponds to the head we're looking for.
-      specific_heads: If a specific list of heads is given here, all other heads' score is set to -1. Useful for IOI-style circuit analysis.
+      detection_pattern: (sequence_length, sequence_length) Tensor representing what attention pattern corresponds to the head we're looking for **or** the name of a pre-specified head. Currently available heads are: `["previous_token_head", "duplicate_token_head", "induction_head"]`.
+      heads: If specific attention heads is given here, all other heads' score is set to -1. Useful for IOI-style circuit analysis. Heads can be spacified as a list of tuples (layer, head) or a dictionary mapping a layer to heads within that layer that we want to analyze.
       cache: Include the cache to save time if you want.
       exclude_bos: Exclude attention paid to the beginning of sequence token.
       exclude_current_token: Exclude attention paid to the current token.
@@ -60,22 +74,22 @@ def detect_head(
         >>> def imshow(tensor, renderer=None, xaxis="", yaxis="", **kwargs):
         >>>     px.imshow(utils.to_numpy(tensor), color_continuous_midpoint=0.0, color_continuous_scale="RdBu", labels={"x":xaxis, "y":yaxis}, **kwargs).show(renderer)
 
-        >>> model = HookedTransformer.from_pretrained('gpt2-small')
+        >>> model = HookedTransformer.from_pretrained("gpt2-small")
         >>> sequence = "This is a test sequence. This is a test sequence."
 
-        >>> attention_score = detect_head(model, sequence, head_type='previous_token_head')
+        >>> attention_score = detect_head(model, sequence, "previous_token_head")
         >>> imshow(attention_score, zmin=-1, zmax=1, xaxis="Head", yaxis="Layer", title="Previous Head Matches")
     """
 
     cfg = model.cfg
-    tokens = model.to_tokens(input_).to(cfg.device)
-    
+    tokens = model.to_tokens(seq).to(cfg.device)
+    seq_len = tokens.shape[-1]
 
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
-        assert detection_pattern in HEAD_NAMES, _INVALID_STR_PATTERN_ERR % detection_pattern
-        if detection_pattern in ["duplicate_token_head", "induction_head"] and isinstance(input_, list):
-            batch_scores = [detect_head(model, seq, detection_pattern) for seq in input_]
+        assert detection_pattern in HEAD_NAMES, INVALID_HEAD_NAME_ERR % detection_pattern
+        if detection_pattern in ["duplicate_token_head", "induction_head"] and isinstance(seq, list):
+            batch_scores = [detect_head(model, seq, detection_pattern) for seq in seq]
             return torch.stack(batch_scores).mean(0)
         detection_pattern = cast(
             torch.Tensor,
@@ -84,11 +98,11 @@ def detect_head(
         
 
     # Validate inputs and detection pattern shape
-    assert 1 < tokens.shape[-1] < cfg.n_ctx, _SEQ_LEN_ERR
-    assert is_lower_triangular(detection_pattern) and tokens.shape[-1] == detection_pattern.shape[0],_DET_PAT_NOT_SQUARE_ERR
+    assert 1 < tokens.shape[-1] < cfg.n_ctx, SEQ_LEN_ERR
+    assert is_lower_triangular(detection_pattern) and seq_len == detection_pattern.shape[0],DET_PAT_NOT_SQUARE_ERR % (seq_len, detection_pattern.shape)
 
     if cache is None:
-        _, cache = model.run_with_cache(input_, remove_batch_dim=False)
+        _, cache = model.run_with_cache(seq, remove_batch_dim=False)
     
     if heads is None:
         layer2heads = {
