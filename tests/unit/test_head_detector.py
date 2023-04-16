@@ -132,7 +132,7 @@ class Test_detect_head_successful:
             )
 
 
-class Test_batched:
+class Test_batched_equal_lengths:
     def test_previous(self):
         result_regular_padded = head_detector.detect_head(
             model, test_regular_sequence_padded, "previous_token_head"
@@ -199,6 +199,23 @@ class Test_batched:
         expected = (result_regular_padded + result_duplicated + result_duplicated2) / 3
         assert torch.allclose(result_batched, expected, atol=ATOL)
 
+
+# class Test_batched_unequal_lengths:
+#     def test_previous(self):
+#         s1 = test_regular_sequence
+#         s2 = test_duplicated_sequence
+#         s3 = [s1, s2]
+#         r1 = head_detector.detect_head(model, s1, "previous_token_head")
+#         r2 = head_detector.detect_head(model, s2, "previous_token_head")
+#         r3 = head_detector.detect_head(model, s3, "previous_token_head")
+#         expected = (r1 + r2) / 2
+#         r1_weight = len(model.to_str_tokens(s1))
+#         r2_weight = len(model.to_str_tokens(s2))
+#         div = r1_weight + r2_weight
+#         r1_normalized = r1 * r1_weight
+#         r2_normalized = r2 * r2_weight
+#         expected_normalized = (r1_normalized + r2_normalized) / div
+#         assert torch.allclose(r3, expected_normalized, atol=ATOL)
 
 def test_detect_head_exclude_bos():
     assert torch.allclose(
