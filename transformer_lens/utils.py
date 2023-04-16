@@ -667,3 +667,8 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
     if not is_square(x):
         return False
     return (x - x.tril()).sum().item() == 0
+
+def abs_error(t1: torch.Tensor, t2: torch.Tensor, *, decimals: int = 3) -> float:
+    """Mean absolute error between two tensors."""
+    return round(((t1 - t2).abs().mean() * len(t1)).item(), decimals)
+
