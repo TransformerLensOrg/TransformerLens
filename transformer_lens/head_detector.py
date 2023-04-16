@@ -17,13 +17,12 @@ LayerToHead = Dict[int, List[int]]
 INVALID_HEAD_NAME_ERR = (
     f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got %s"
 )
+
 SEQ_LEN_ERR = (
     "The sequence must be non-empty and must fit within the model's context window."
 )
-DET_PAT_NOT_SQUARE_ERR = (
-    "The detection pattern must be a lower triangular matrix of shape "
-    "(sequence_length, sequence_length); sequence_length=%d; got detection patern of shape %s"
-)
+
+DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length); sequence_length=%d; got detection patern of shape %s"
 
 
 def detect_head(
@@ -40,23 +39,11 @@ def detect_head(
     """Searches the model (or a set of specific heads, for circuit analysis) for a particular type of attention head. This head is specified
     by a detection pattern, a (sequence_length, sequence_length) tensor representing how much attention to keep at each position. That pattern
     can be also given a name of one specified types of attention head (see `HeadName` for available patterns), in which case the tensor is
-    computed by the function itself. #TODO: wording
+    computed within the function itself.
 
-    #TODO: to abs
-    We take the element-wise absolute difference of the attention pattern and the detection pattern. The resulting score expresses how well our
-    expectation (detection pattern) match reality (attention pattern).
-
-    We element-wise
-    multiply the attention pattern by the detection pattern, and our score is how much attention is left, divided by the total attention.
-    (1 per token other than the first).
-
-    For instance, a perfect previous token head would put 1 attention to the previous token and 0 to everything else. To write a detection pattern
-    for this head, we would write a (sequence_length, sequence_length) tensor with `1`s below the diagonal and `0`s everywhere else. We would then
-    element-wise subtract that from the attention pattern and take the absolute value of each element-wise difference. The resulting scores would
-    express how far the detection pattern was off from the attention pattern for each key-value pair
-
-    , zeroing out all attention that did not attend to the previous token. The attention
-    remaining divided by the total attention would then be our score for that attention head. (This particular head is already implemented in HEAD_NAMES)
+    The mean element-wise absolute difference between the detection pattern and the actual attention pattern is the error measure in the range
+    (0, 2) where lower score corresponds to greater accuracy. Subtracting it from 1 maps results in a score in (-1, 1), with 1 being perfect
+    match and -1 perfect mismatch.
 
     Args:
       model: Model being used.
@@ -67,6 +54,7 @@ def detect_head(
       cache: Include the cache to save time if you want.
       exclude_bos: Exclude attention paid to the beginning of sequence token.
       exclude_current_token: Exclude attention paid to the current token.
+      error_measure: "abs" for using absolute values of element-wise differences as the error measure. "mul" for using element-wise multiplication (legacy code).
 
     Returns a (n_layers, n_heads) Tensor representing the score for each attention head.
 
@@ -74,10 +62,9 @@ def detect_head(
     --------
     .. code-block:: python
 
+        >>> from transformer_lens import HookedTransformer,  utils
         >>> from transformer_lens.head_detector import detect_head
-        >>> from transformer_lens.HookedTransformer import HookedTransformer
         >>> import plotly.express as px
-        >>> import transformer_lens.utils as utils
 
         >>> def imshow(tensor, renderer=None, xaxis="", yaxis="", **kwargs):
         >>>     px.imshow(utils.to_numpy(tensor), color_continuous_midpoint=0.0, color_continuous_scale="RdBu", labels={"x":xaxis, "y":yaxis}, **kwargs).show(renderer)
@@ -224,9 +211,7 @@ def process_head_attention_pattern_score(
     if exclude_current_token:
         attention_pattern.fill_diagonal_(0)
 
-    if error_measure == "abs":
-        matched_attention_val = 1 - tril_abs_error(attention_pattern, detection_pattern)
-        return matched_attention_val
-    else:
-        matched_attention = attention_pattern * detection_pattern
-        return (matched_attention.sum() / attention_pattern.sum()).item()
+    if error_measure == "mul":
+        score = attention_pattern * detection_pattern
+        return (score.sum() / attention_pattern.sum()).item()
+    return 1 - tril_abs_error(attention_pattern, detection_pattern)
