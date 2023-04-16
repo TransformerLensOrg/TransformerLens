@@ -227,11 +227,10 @@ def compute_head_attention_similarity_score(
     abs_diff = (attention_pattern - detection_pattern).abs()
     assert (abs_diff - torch.tril(abs_diff).to(abs_diff.device)).sum() == 0
     
+    size = len(abs_diff)
     if exclude_bos:
         abs_diff[:, 0] = 0
     if exclude_current_token:
         abs_diff.fill_diagonal_(0)
-    
-    size = len(abs_diff)
     
     return 1 - round((abs_diff.mean() * size).item(), 3)
