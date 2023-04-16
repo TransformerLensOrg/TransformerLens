@@ -120,7 +120,7 @@ def detect_head(
         layer_attention_patterns = cache["pattern", layer, "attn"]
         for head in layer_heads:
             head_attention_pattern = layer_attention_patterns[head, :, :]
-            head_score = process_head_attention_pattern_score(
+            head_score = compute_head_attention_similarity_score(
                 head_attention_pattern,
                 detection_pattern=detection_pattern,
                 exclude_bos=exclude_bos,
@@ -193,25 +193,45 @@ def get_supported_heads() -> None:
     print(f"Supported heads: {HEAD_NAMES}")
 
 
-def process_head_attention_pattern_score(
+def compute_head_attention_similarity_score(
     attention_pattern: torch.Tensor,  # [q_pos k_pos]
-    detection_pattern: torch.Tensor,  # [seq_len seq_len]
+    detection_pattern: torch.Tensor,  # [seq_len seq_len] (seq_len == q_pos == k_pos)
     *,
     exclude_bos: bool,
     exclude_current_token: bool,
     error_measure: ErrorMeasure,
 ) -> float:
+    """Compute the similarity between `attention_pattern` and `detection_pattern`.
+    
+    Args:
+      attention_pattern: Lower triangular matrix (Tensor) representing the attention pattern of a particular attention head.
+      detection_pattern: Lower triangular matrix (Tensor) representing the attention pattern we are looking for.
+      exclude_bos: `True` if the beginning-of-sentence (BOS) token should be omitted from comparison. `False` otherwise. 
+      exclude_bcurrent_token: `True` if the current token at each position should be omitted from comparison. `False` otherwise. 
+      error_measure: "abs" for using absolute values of element-wise differences as the error measure. "mul" for using element-wise multiplication (legacy code).
     """
-    seq_len == q_pos == k_pos
-    """
-    assert is_square(attention_pattern)
+    assert is_square(attention_pattern), f"Attention pattern is not square; got shape {attention_pattern.shape}"
 
-    if exclude_bos:
-        attention_pattern[:, 0] = 0
-    if exclude_current_token:
-        attention_pattern.fill_diagonal_(0)
-
+    # mul
+    
     if error_measure == "mul":
+        if exclude_bos:
+            attention_pattern[:, 0] = 0
+        if exclude_current_token:
+            attention_pattern.fill_diagonal_(0)
         score = attention_pattern * detection_pattern
         return (score.sum() / attention_pattern.sum()).item()
-    return 1 - tril_abs_error(attention_pattern, detection_pattern)
+
+    # abs
+    
+    abs_diff = (attention_pattern - detection_pattern).abs()
+    assert (abs_diff - torch.tril(abs_diff).to(abs_diff.device)).sum() == 0
+    
+    if exclude_bos:
+        abs_diff[:, 0] = 0
+    if exclude_current_token:
+        abs_diff.fill_diagonal_(0)
+    
+    size = len(abs_diff)
+    
+    return 1 - round((abs_diff.mean() * size).item(), 3)
