@@ -8,7 +8,7 @@ from transformer_lens import HookedTransformer, ActivationCache
 from transformer_lens.utils import is_lower_triangular
 
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
-HEAD_NAMES = get_args(HeadName)
+HEAD_NAMES = cast(List[HeadName], get_args(HeadName))
 
 LayerHeadTuple = Tuple[int, int]
 LayerToHead = Dict[int, List[int]]
@@ -216,5 +216,6 @@ def process_head_attention_pattern(
         if exclude_current_token:
             attention_pattern.fill_diagonal_(0)
         matched_attention = attention_pattern * detection_pattern
+        # matched_attention = (attention_pattern - detection_pattern).abs()
         matched_attention_vals.append(matched_attention.sum() / attention_pattern.sum())
     return torch.tensor(matched_attention_vals).mean()
