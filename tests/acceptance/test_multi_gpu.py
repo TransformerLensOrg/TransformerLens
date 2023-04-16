@@ -131,7 +131,7 @@ def test_chache_device():
     logits, cache = model.run_with_cache("Hello there", device="cpu")
     assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(torch.device("cpu"))
 
-    model.to("cuda:0")
+    model.to("cuda")
     logits, cache = model.run_with_cache("Hello there")
     assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(logits.device)
 
