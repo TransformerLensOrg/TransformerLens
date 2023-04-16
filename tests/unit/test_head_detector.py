@@ -19,55 +19,6 @@ test_regular_sequence_padded = " 2 2 2 seven token seq"
 zeros_detection_pattern = torch.zeros(model.cfg.n_layers, model.cfg.n_heads)
 test_duplicated_seq_len = model.to_tokens(test_duplicated_sequence).shape[-1]
 
-# expected_regular_sequence_previous_match = torch.tensor(
-#     [
-#         [0.3567, 0.2326, 0.2587, 0.2669, 0.1437, 0.5924, 0.2706, 0.2647],
-#         [0.3250, 0.2487, 0.2685, 0.2771, 0.2737, 0.2520, 0.2523, 0.3359],
-#     ]
-# )
-
-# expected_duplicated_sequence_previous_match = torch.tensor(
-#     [
-#         [0.2978, 0.1737, 0.1593, 0.1686, 0.0905, 0.6462, 0.1885, 0.1767],
-#         [0.2923, 0.2045, 0.1845, 0.2083, 0.1797, 0.1529, 0.1564, 0.2445],
-#     ]
-# )
-
-# expected_duplicated_sequence_duplicate_match = torch.tensor(
-#     [
-#         [0.0904, 0.0944, 0.0010, 0.0155, 0.2024, 0.0071, 0.0164, 0.0715],
-#         [0.0381, 0.0038, 0.0309, 0.0184, 0.0322, 0.0103, 0.0066, 0.0446],
-#     ]
-# )
-
-# expected_duplicated_sequence_induction_match = torch.tensor(
-#     [
-#         [0.1242, 0.0539, 0.0109, 0.0178, 0.0005, 0.0560, 0.0312, 0.0521],
-#         [0.0659, 0.1994, 0.0430, 0.0289, 0.0470, 0.0119, 0.1726, 0.0665],
-#     ]
-# )
-
-# expected_previous_exclude_bos_match = torch.tensor(
-#     [
-#         [0.4312, 0.1414, 0.4195, 0.3316, 0.0016, 0.7672, 0.4385, 0.2628],
-#         [0.4030, 0.1467, 0.3050, 0.3247, 0.3062, 0.2421, 0.2043, 0.3593],
-#     ]
-# )
-
-# expected_previous_exclude_current_token_match = torch.tensor(
-#     [
-#         [0.5441, 0.4149, 0.3545, 0.3771, 0.2738, 0.8821, 0.3797, 0.3835],
-#         [0.6770, 0.3445, 0.3959, 0.4228, 0.4032, 0.3449, 0.3434, 0.5770],
-#     ]
-# )
-
-# expected_previous_exclude_bos_and_current_token_match = torch.tensor(
-#     [
-#         [0.6092, 0.5601, 0.8043, 0.8732, 0.1130, 0.9122, 0.6857, 0.4405],
-#         [0.7011, 0.7523, 0.5545, 0.6449, 0.7958, 0.7565, 0.7082, 0.7833],
-#     ]
-# )
-
 
 expected_regular_sequence_previous_match = torch.tensor(
     [
