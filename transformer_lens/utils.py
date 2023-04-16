@@ -668,15 +668,6 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
         return False
     return (x - x.tril()).sum().item() == 0
 
-def tril_abs_error(t1: torch.Tensor, t2: torch.Tensor, *, decimals: int = 3) -> float:
-    """Mean absolute error between two triangular matrices."""
-    assert t1.ndim == 2 and t1.shape == t2.shape
-    abs_diff = (t1 - t2).abs()
-    assert (abs_diff - torch.tril(abs_diff).to(abs_diff.device)).sum() == 0
-
-    size = len(t1)
-    return round((abs_diff.mean() * size).item(), decimals)
-
 def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) -> None:
     """Validate that the two square tensors have the same structure, i.e., 
     that the directionality of comparisons points in the same directions both 
