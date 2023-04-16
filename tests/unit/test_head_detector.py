@@ -1,9 +1,11 @@
 import math
+from typing import Tuple, cast
 
 import pytest
 import torch
 
 from transformer_lens import HookedTransformer, head_detector
+from transformer_lens.utils import check_structure as check
 
 MODEL = "solu-2l"
 ATOL = 1e-4  # Absolute tolerance - how far does a float have to be before we consider it no longer equal?
@@ -17,80 +19,136 @@ test_regular_sequence_padded = " 2 2 2 seven token seq"
 zeros_detection_pattern = torch.zeros(model.cfg.n_layers, model.cfg.n_heads)
 test_duplicated_seq_len = model.to_tokens(test_duplicated_sequence).shape[-1]
 
+# expected_regular_sequence_previous_match = torch.tensor(
+#     [
+#         [0.3567, 0.2326, 0.2587, 0.2669, 0.1437, 0.5924, 0.2706, 0.2647],
+#         [0.3250, 0.2487, 0.2685, 0.2771, 0.2737, 0.2520, 0.2523, 0.3359],
+#     ]
+# )
+
+# expected_duplicated_sequence_previous_match = torch.tensor(
+#     [
+#         [0.2978, 0.1737, 0.1593, 0.1686, 0.0905, 0.6462, 0.1885, 0.1767],
+#         [0.2923, 0.2045, 0.1845, 0.2083, 0.1797, 0.1529, 0.1564, 0.2445],
+#     ]
+# )
+
+# expected_duplicated_sequence_duplicate_match = torch.tensor(
+#     [
+#         [0.0904, 0.0944, 0.0010, 0.0155, 0.2024, 0.0071, 0.0164, 0.0715],
+#         [0.0381, 0.0038, 0.0309, 0.0184, 0.0322, 0.0103, 0.0066, 0.0446],
+#     ]
+# )
+
+# expected_duplicated_sequence_induction_match = torch.tensor(
+#     [
+#         [0.1242, 0.0539, 0.0109, 0.0178, 0.0005, 0.0560, 0.0312, 0.0521],
+#         [0.0659, 0.1994, 0.0430, 0.0289, 0.0470, 0.0119, 0.1726, 0.0665],
+#     ]
+# )
+
+# expected_previous_exclude_bos_match = torch.tensor(
+#     [
+#         [0.4312, 0.1414, 0.4195, 0.3316, 0.0016, 0.7672, 0.4385, 0.2628],
+#         [0.4030, 0.1467, 0.3050, 0.3247, 0.3062, 0.2421, 0.2043, 0.3593],
+#     ]
+# )
+
+# expected_previous_exclude_current_token_match = torch.tensor(
+#     [
+#         [0.5441, 0.4149, 0.3545, 0.3771, 0.2738, 0.8821, 0.3797, 0.3835],
+#         [0.6770, 0.3445, 0.3959, 0.4228, 0.4032, 0.3449, 0.3434, 0.5770],
+#     ]
+# )
+
+# expected_previous_exclude_bos_and_current_token_match = torch.tensor(
+#     [
+#         [0.6092, 0.5601, 0.8043, 0.8732, 0.1130, 0.9122, 0.6857, 0.4405],
+#         [0.7011, 0.7523, 0.5545, 0.6449, 0.7958, 0.7565, 0.7082, 0.7833],
+#     ]
+# )
+
+
 expected_regular_sequence_previous_match = torch.tensor(
     [
-        [0.3567, 0.2326, 0.2587, 0.2669, 0.1437, 0.5924, 0.2706, 0.2647],
-        [0.3250, 0.2487, 0.2685, 0.2771, 0.2737, 0.2520, 0.2523, 0.3359],
+        [-0.0370, -0.2850, -0.2330, -0.2160, -0.4630, 0.4350, -0.2090, -0.2210],
+        [-0.1000, -0.2530, -0.2130, -0.1960, -0.2030, -0.2460, -0.2450, -0.0780],
     ]
 )
 
 expected_duplicated_sequence_previous_match = torch.tensor(
     [
-        [0.2978, 0.1737, 0.1593, 0.1686, 0.0905, 0.6462, 0.1885, 0.1767],
-        [0.2923, 0.2045, 0.1845, 0.2083, 0.1797, 0.1529, 0.1564, 0.2445],
+        [-0.2620, -0.5100, -0.5390, -0.5200, -0.6760, 0.4350, -0.4800, -0.5040],
+        [-0.2720, -0.4480, -0.4880, -0.4410, -0.4980, -0.5510, -0.5440, -0.3680],
     ]
 )
 
 expected_duplicated_sequence_duplicate_match = torch.tensor(
     [
-        [0.0904, 0.0944, 0.0010, 0.0155, 0.2024, 0.0071, 0.0164, 0.0715],
-        [0.0381, 0.0038, 0.0309, 0.0184, 0.0322, 0.0103, 0.0066, 0.0446],
+        [-0.2480, -0.2400, -0.4270, -0.3980, -0.0240, -0.4140, -0.3960, -0.2860],
+        [-0.3520, -0.4210, -0.3670, -0.3920, -0.3640, -0.4080, -0.4150, -0.3390],
     ]
 )
 
 expected_duplicated_sequence_induction_match = torch.tensor(
     [
-        [0.1242, 0.0539, 0.0109, 0.0178, 0.0005, 0.0560, 0.0312, 0.0521],
-        [0.0659, 0.1994, 0.0430, 0.0289, 0.0470, 0.0119, 0.1726, 0.0665],
+        [-0.1800, -0.3210, -0.4070, -0.3930, -0.4280, -0.3170, -0.3660, -0.3240],
+        [-0.2970, -0.0300, -0.3430, -0.3710, -0.3350, -0.4050, -0.0830, -0.2950],
     ]
 )
 
 expected_previous_exclude_bos_match = torch.tensor(
     [
-        [0.4312, 0.1414, 0.4195, 0.3316, 0.0016, 0.7672, 0.4385, 0.2628],
-        [0.4030, 0.1467, 0.3050, 0.3247, 0.3062, 0.2421, 0.2043, 0.3593],
+        [0.2060, 0.0680, 0.2430, 0.2270, 0.0220, 0.5140, 0.2370, 0.1800],
+        [0.1270, 0.2250, 0.1880, 0.1830, 0.2050, 0.2350, 0.2370, 0.1630],
     ]
 )
 
 expected_previous_exclude_current_token_match = torch.tensor(
     [
-        [0.5441, 0.4149, 0.3545, 0.3771, 0.2738, 0.8821, 0.3797, 0.3835],
-        [0.6770, 0.3445, 0.3959, 0.4228, 0.4032, 0.3449, 0.3434, 0.5770],
+        [0.3080, 0.1550, 0.0380, 0.0760, 0.0130, 0.7630, 0.0780, 0.0890],
+        [0.4200, 0.0250, 0.1090, 0.1490, 0.1190, 0.0230, 0.0200, 0.3400],
     ]
 )
 
 expected_previous_exclude_bos_and_current_token_match = torch.tensor(
     [
-        [0.6092, 0.5601, 0.8043, 0.8732, 0.1130, 0.9122, 0.6857, 0.4405],
-        [0.7011, 0.7523, 0.5545, 0.6449, 0.7958, 0.7565, 0.7082, 0.7833],
+        [0.3000, 0.2580, 0.2630, 0.2690, 0.2480, 0.5920, 0.2740, 0.2390],
+        [0.3970, 0.2530, 0.2600, 0.2780, 0.2760, 0.2550, 0.2530, 0.3310],
     ]
 )
 
 
 # Successes
 class Test_detect_head_successful:
-    
     @pytest.mark.parametrize(
-        ("head_name", "expected"), 
-        (("previous_token_head", expected_regular_sequence_previous_match),
-         ("duplicate_token_head", zeros_detection_pattern),
-         ("induction_head", zeros_detection_pattern)
-         )
+        ("head_name", "expected"),
+        (
+            ("previous_token_head", expected_regular_sequence_previous_match),
+            ("duplicate_token_head", zeros_detection_pattern),
+            ("induction_head", zeros_detection_pattern),
+        ),
     )
     def test_regular_sequence(self, head_name, expected):
-        result = head_detector.detect_head(model, test_regular_sequence, detection_pattern=head_name)
+        result = head_detector.detect_head(
+            model, test_regular_sequence, detection_pattern=head_name
+        )
         assert torch.allclose(result, expected, atol=ATOL)
-    
+
     @pytest.mark.parametrize(
-        ("head_name", "expected"), 
-        (("previous_token_head", expected_duplicated_sequence_previous_match),
-         ("duplicate_token_head", expected_duplicated_sequence_duplicate_match),
-         ("induction_head", expected_duplicated_sequence_induction_match)
-         )
+        ("head_name", "expected"),
+        (
+            ("previous_token_head", expected_duplicated_sequence_previous_match),
+            ("duplicate_token_head", expected_duplicated_sequence_duplicate_match),
+            ("induction_head", expected_duplicated_sequence_induction_match),
+        ),
     )
     def test_duplicated_sequence(self, head_name, expected):
-        result = head_detector.detect_head(model, test_duplicated_sequence, detection_pattern=head_name)
+        result = head_detector.detect_head(
+            model, test_duplicated_sequence, detection_pattern=head_name
+        )
         assert torch.allclose(result, expected, atol=ATOL)
+
 
 @pytest.mark.parametrize("head_name", head_detector.HEAD_NAMES)
 def test_batched_equal_lengths(head_name):
@@ -132,6 +190,7 @@ def test_batched_equal_lengths(head_name):
 #         r2_normalized = r2 * r2_weight
 #         expected_normalized = (r1_normalized + r2_normalized) / div
 #         assert torch.allclose(r3, expected_normalized, atol=ATOL)
+
 
 def test_detect_head_exclude_bos():
     assert torch.allclose(
@@ -194,9 +253,7 @@ def test_detect_head_with_cache():
 
 def test_detect_head_with_invalid_head_name():
     with pytest.raises((AssertionError, TypeError)) as e:
-        head_detector.detect_head(
-            model, test_regular_sequence, "test"
-        )
+        head_detector.detect_head(model, test_regular_sequence, "test")
 
 
 def test_detect_head_with_zero_sequence_length():
@@ -210,9 +267,7 @@ def test_detect_head_with_zero_sequence_length():
 
 def test_detect_head_with_sequence_length_outside_context_window():
     with pytest.raises(AssertionError) as e:
-        head_detector.detect_head(
-            model, "a " * model.cfg.n_ctx, "previous_token_head"
-        )
+        head_detector.detect_head(model, "a " * model.cfg.n_ctx, "previous_token_head")
     assert (
         str(e.value)
         == "The sequence must be non-empty and must fit within the model's context window."
@@ -223,8 +278,6 @@ def test_detect_head_with_invalid_detection_pattern():
     with pytest.raises(AssertionError) as e:
         head_detector.detect_head(model, test_duplicated_sequence, torch.ones(4, 4))
     assert "The detection pattern must be a lower triangular" in str(e.value)
-
-
 
 
 class Test_detect_head_non_lower_triangular_detection_pattern:
