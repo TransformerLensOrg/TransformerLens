@@ -13,6 +13,9 @@ HEAD_NAMES = get_args(HeadName)
 LayerHeadTuple = Tuple[int, int]
 LayerToHead = Dict[int, List[int]]
 
+_INVALID_STR_PATTERN_ERR = f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got %s"
+_SEQ_LEN_ERR = "The sequence must be non-empty and must fit within the model's context window."
+_DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length)."
 
 def detect_head(
     model: HookedTransformer,
@@ -70,17 +73,10 @@ def detect_head(
 
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
-        if detection_pattern not in HEAD_NAMES:
-            raise AssertionError(
-                f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES};"
-                f" got {detection_pattern}"
-            )
-        
+        assert detection_pattern in HEAD_NAMES, _INVALID_STR_PATTERN_ERR % detection_pattern
         if detection_pattern in ["duplicate_token_head", "induction_head"] and isinstance(input_, list):
             batch_scores = [detect_head(model, seq, detection_pattern) for seq in input_]
             return torch.stack(batch_scores).mean(0)
-            
-        
         detection_pattern = cast(
             torch.Tensor,
             eval(f"get_{detection_pattern}_detection_pattern(tokens.cpu())"),
@@ -88,24 +84,8 @@ def detect_head(
         
 
     # Validate inputs and detection pattern shape
-    if not (1 < tokens.shape[-1] < cfg.n_ctx):
-        raise AssertionError(
-            "The sequence must be non-empty and must fit within the model's context window."
-        )
-    if not (
-        tokens.shape[-1] == detection_pattern.shape[0] == detection_pattern.shape[1]
-    ):
-        raise AssertionError(
-            "The detection pattern must be a square matrix of shape (sequence_length, sequence_length)."
-        )
-
-    if not is_square(detection_pattern):
-        raise AssertionError(
-            f"detection_pattern must be a lower triangular matrix of shape [seq_len x seq_len]; "
-            f"got {detection_pattern.ndim}-dimensional of shape {detection_pattern.shape}"
-        )
-    if not is_lower_triangular(detection_pattern):
-        raise AssertionError("detection_pattern is not lower triangular")
+    assert 1 < tokens.shape[-1] < cfg.n_ctx, _SEQ_LEN_ERR
+    assert is_lower_triangular(detection_pattern) and tokens.shape[-1] == detection_pattern.shape[0],_DET_PAT_NOT_SQUARE_ERR
 
     if cache is None:
         _, cache = model.run_with_cache(input_, remove_batch_dim=False)
@@ -199,7 +179,7 @@ def get_induction_head_detection_pattern(
     return torch.tril(result_tensor)
 
 
-def get_supported_heads():
+def get_supported_heads() -> None:
     """Returns a list of supported heads."""
     print(f"Supported heads: {HEAD_NAMES}")
 
