@@ -13,6 +13,5 @@ def get_device_for_block_index(
     layers_per_device = cfg.n_layers // cfg.n_devices
     if device is None:
         device = cfg.device
-    if isinstance(device, torch.device):
-        device = device.type
+    device = torch.device(device).type
     return torch.device(device, index // layers_per_device)
