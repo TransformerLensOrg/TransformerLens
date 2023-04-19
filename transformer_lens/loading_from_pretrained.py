@@ -1319,7 +1319,7 @@ def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.b_V"] = v_bias
 
         W_O = old_state_dict[f"blocks.{l}.attn.proj.weight"]
-        W_O = einops.rearrange(W_O, "(i h) m->i h m", i=cfg.n_heads)
+        W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
         state_dict[f"blocks.{l}.attn.b_O"] = old_state_dict[f"blocks.{l}.attn.proj.bias"]
 
@@ -1338,6 +1338,7 @@ def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
 
     state_dict["ln_final.w"] = old_state_dict["ln_f.weight"]
     state_dict["ln_final.b"] = old_state_dict["ln_f.bias"]
+
     return state_dict
 
 # %%
