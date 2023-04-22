@@ -33,7 +33,7 @@ permissions:
 
 jobs:
   checks:
-    name: Checks
+    name: Code Checks
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -67,3 +67,27 @@ jobs:
       #   run: poetry run mypy transformer_lens
       - name: Build check
         run: poetry build
+  checks:
+    name: Documentation Checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+          - "3.10"
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.4.0
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "poetry"
+      - name: Install dependencies
+        run: |
+          poetry lock --check
+          poetry install --with dev
+      - name: Documentation test
+        run: make documentation-test
