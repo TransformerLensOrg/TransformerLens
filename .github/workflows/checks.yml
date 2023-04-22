@@ -67,7 +67,7 @@ jobs:
       #   run: poetry run mypy transformer_lens
       - name: Build check
         run: poetry build
-  checks:
+  docs:
     name: Documentation Checks
     runs-on: ubuntu-latest
     strategy:
