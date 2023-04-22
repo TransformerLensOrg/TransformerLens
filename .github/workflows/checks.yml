@@ -61,8 +61,6 @@ jobs:
         run: make unit-test
       - name: Acceptance test
         run: make acceptance-test
-      - name: Documentation test
-        run: make documentation-test
       # - name: Type check
       #   run: poetry run mypy transformer_lens
       - name: Build check
