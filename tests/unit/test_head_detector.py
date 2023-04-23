@@ -227,11 +227,11 @@ def test_detect_head_with_invalid_detection_pattern():
 class Test_detect_head_non_lower_triangular_detection_pattern:
     detection_pattern = torch.tril(
         torch.ones(test_duplicated_seq_len, test_duplicated_seq_len)
-    ).cuda()
+    )
 
     def test_no_error(self):
         head_detector.detect_head(
-            model, test_duplicated_sequence, self.detection_pattern
+            model, test_duplicated_sequence, self.detection_pattern.to(device=model.cfg.device)
         )
         assert True  # ugly, need to make a separate context manager for not raising an error
 
