@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from transformer_lens import HookedTransformer, head_detector
-from transformer_lens.utils import check_structure as check
+# from transformer_lens.utils import check_structure as check
 
 MODEL = "solu-2l"
 ATOL = 1e-4  # Absolute tolerance - how far does a float have to be before we consider it no longer equal?
