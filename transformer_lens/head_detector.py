@@ -1,6 +1,6 @@
 from collections import defaultdict
-from typing import cast, Dict, List, Literal, Optional, Tuple, Union
-from typing_extensions import get_args
+from typing import cast, Dict, List, Optional, Tuple, Union
+from typing_extensions import get_args, Literal
 
 import numpy as np
 import torch
