@@ -61,6 +61,8 @@ jobs:
         run: make unit-test
       - name: Acceptance test
         run: make acceptance-test
+      - name: Documentation test
+        run: make documentation-test
       # - name: Type check
       #   run: poetry run mypy transformer_lens
       - name: Build check
@@ -71,7 +73,7 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.10"
+          - "3.9"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -83,9 +85,5 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: "poetry"
-      - name: Install dependencies
-        run: |
-          poetry lock --check
-          poetry install --with dev
       - name: Documentation test
         run: make documentation-test
