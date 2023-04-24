@@ -2055,7 +2055,7 @@ Adds various nice utilities, most notably run_with_hooks to run the model with t
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>names_filter</strong> (<em>NamesFilter</em><em>, </em><em>optional</em>) – Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.</p></li>
 <li><p><strong>incl_bwd</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to also do backwards hooks. Defaults to False.</p></li>
-<li><p><strong>device</strong> (<em>_type_</em><em>, </em><em>optional</em>) – The device to store on. Defaults to CUDA if available else CPU.</p></li>
+<li><p><strong>device</strong> (<em>_type_</em><em>, </em><em>optional</em>) – The device to store on. Defaults to same device as model.</p></li>
 <li><p><strong>remove_batch_dim</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.</p></li>
 <li><p><strong>cache</strong> (<em>Optional</em><em>[</em><em>dict</em><em>]</em><em>, </em><em>optional</em>) – The cache to store activations in, a new dict is created by default. Defaults to None.</p></li>
 </ul>
@@ -2116,7 +2116,7 @@ Adds various nice utilities, most notably run_with_hooks to run the model with t
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>names_filter</strong> (<em>NamesFilter</em><em>, </em><em>optional</em>) – Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.</p></li>
 <li><p><strong>incl_bwd</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to also do backwards hooks. Defaults to False.</p></li>
-<li><p><strong>device</strong> (<em>_type_</em><em>, </em><em>optional</em>) – The device to store on. Defaults to CUDA if available else CPU.</p></li>
+<li><p><strong>device</strong> (<em>_type_</em><em>, </em><em>optional</em>) – The device to store on. Keeps on the same device as the layer if None.</p></li>
 <li><p><strong>remove_batch_dim</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.</p></li>
 <li><p><strong>cache</strong> (<em>Optional</em><em>[</em><em>dict</em><em>]</em><em>, </em><em>optional</em>) – The cache to store activations in, a new dict is created by default. Defaults to None.</p></li>
 </ul>
@@ -2180,8 +2180,7 @@ Boolean function on hook names and hook is the function to add to that hook poin
 list of str, or a function that takes a string and returns a bool. Defaults to None, which
 means cache everything.</p></li>
 <li><p><strong>device</strong> (<em>str</em><em> or </em><em>torch.Device</em><em>, </em><em>optional</em>) – The device to cache activations on. Defaults to the
-model device. Note that this must be set if the model does not have a model.cfg.device
-attribute. WARNING: Setting a different device than the one used by the model leads to
+model device. WARNING: Setting a different device than the one used by the model leads to
 significant performance degradation.</p></li>
 <li><p><strong>remove_batch_dim</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, removes the batch dimension when caching. Only
 makes sense with batch_size=1 inputs. Defaults to False.</p></li>
