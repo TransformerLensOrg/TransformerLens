@@ -122,7 +122,7 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
     )
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Requires at least 2 CUDA devices")
-def test_chache_device():
+def test_cache_device():
     model = HookedTransformer.from_pretrained("gpt2-small", device="cuda:1")
 
     logits, cache = model.run_with_cache("Hello there")
