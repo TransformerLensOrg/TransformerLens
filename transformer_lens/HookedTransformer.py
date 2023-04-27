@@ -1,36 +1,23 @@
-from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple, overload
-from typing_extensions import Literal
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-import einops
-import logging
-import tqdm.auto as tqdm
-import re
-from huggingface_hub import HfApi
-from functools import partial, lru_cache
-from collections import namedtuple
-from jaxtyping import Float, Int
+from typing import Union, List, Dict, NamedTuple, overload
 
+import torch
+import tqdm.auto as tqdm
 from transformers import (
     AutoTokenizer,
     PreTrainedTokenizer,
 )
-from datasets.load import load_dataset
+from typing_extensions import Literal
 
-from transformer_lens.hook_points import HookedRootModule, HookPoint
-from transformer_lens import HookedTransformerConfig
+import transformer_lens.loading_from_pretrained as loading
+import transformer_lens.utils as utils
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.components import *
+from transformer_lens.hook_points import HookedRootModule
+
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from transformer_lens.past_key_value_caching import (
     HookedTransformerKeyValueCache,
 )
-
-from transformer_lens.components import *
-import transformer_lens.loading_from_pretrained as loading
-import transformer_lens.utils as utils
 from transformer_lens.utilities import devices
 
 SingleLoss = Float[torch.Tensor, ""] # Type alias for a single element tensor
