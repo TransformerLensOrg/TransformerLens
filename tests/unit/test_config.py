@@ -48,7 +48,7 @@ def test_hooked_encoder_config_dict_requires_model_type():
 
     # Depending how the test is run, a different error witll be raised
     # See https://github.com/neelnanda-io/TransformerLens/issues/190
-    dataclass_pattern = "HookedTransformerConfig.__init__\(\) missing \d+ required positional arguments"
-    typeguard_pattern = "missing a required argument: .*"
+    dataclass_pattern = r"HookedTransformerConfig.__init__\(\) missing \d+ required positional arguments"
+    typeguard_pattern = r"missing a required argument: .*"
 
     assert e.match(f"{dataclass_pattern}|{typeguard_pattern}")
