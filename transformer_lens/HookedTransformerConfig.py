@@ -1,17 +1,18 @@
-from dataclasses import dataclass
-from typing import Union, Tuple, List, Dict, Any, Optional
-import torch
-import torch.nn as nn
-import random
-import numpy as np
 import logging
-import json
 import pprint
+import random
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import torch
+
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
 @dataclass
-class HookedTransformerConfig:
+class HookedTransformerConfig(TransformerLensConfig):
     """
     Configuration class to store the configuration of a HookedTransformer model.
 
@@ -165,6 +166,8 @@ class HookedTransformerConfig:
     n_params: Optional[int] = None
     use_hook_tokens: bool = False
     gated_mlp: bool = False
+
+    model_type: str = "hooked_transformer"
 
     def __post_init__(self):
         if self.n_heads==-1:

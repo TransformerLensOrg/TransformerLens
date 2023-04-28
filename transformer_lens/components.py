@@ -8,6 +8,8 @@ import logging
 from jaxtyping import Float, Int
 
 from functools import *
+from transformer_lens.HookedEncoderConfig import HookedEncoderConfig
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
 
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import gelu_new, solu, gelu_fast
@@ -22,10 +24,14 @@ from transformer_lens.past_key_value_caching import (
 
 # Embed & Unembed
 class Embed(nn.Module):
-    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, TransformerLensConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
+            model_type = cfg.get("model_type", "hooked_transformer")
+            if model_type == "hooked_transformer":
+                cfg = HookedTransformerConfig.from_dict(cfg)
+            elif model_type == "hooked_encoder":
+                cfg = HookedEncoderConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
             torch.empty(self.cfg.d_vocab, self.cfg.d_model)
