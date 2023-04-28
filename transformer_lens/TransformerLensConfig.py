@@ -1,11 +1,15 @@
-from typing import Protocol
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Any, Dict
 
 
-class TransformerLensConfig(Protocol):
-    model_type: str
+class TransformerLensConfig(ABC):
+    @classmethod
+    @abstractmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> TransformerLensConfig:
+        pass
 
-    def from_dict():
-        ...
-
-    def to_dict():
-        ...
+    @abstractmethod
+    def to_dict(self) -> Dict[str, Any]:
+        pass
