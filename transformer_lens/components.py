@@ -1,37 +1,40 @@
-from typing import Union, Dict, Optional, Tuple
+import logging
+from functools import *
+from typing import Dict, Optional, Tuple, Union
+
+import einops
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-import einops
-import logging
+from fancy_einsum import einsum
 from jaxtyping import Float, Int
 
-from functools import *
-from transformer_lens.HookedEncoderConfig import HookedEncoderConfig
-from transformer_lens.TransformerLensConfig import TransformerLensConfig
-
-from transformer_lens.hook_points import HookPoint
-from transformer_lens.utils import gelu_new, solu, gelu_fast
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedEncoderConfig import HookedEncoderConfig
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.past_key_value_caching import \
+    HookedTransformerKeyValueCacheEntry
+from transformer_lens.TransformerLensConfig import TransformerLensConfig
+from transformer_lens.utils import gelu_fast, gelu_new, solu
 
-from fancy_einsum import einsum
 
-from transformer_lens.past_key_value_caching import (
-    HookedTransformerKeyValueCacheEntry,
-)
+def config_from_dict(cfg: Dict) -> TransformerLensConfig:
+    model_type = cfg.get("model_type", "hooked_transformer")
+    if model_type == "hooked_transformer":
+        return HookedTransformerConfig.from_dict(cfg)
+    elif model_type == "hooked_encoder":
+        return HookedEncoderConfig.from_dict(cfg)
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}")
 
 # Embed & Unembed
 class Embed(nn.Module):
     def __init__(self, cfg: Union[Dict, TransformerLensConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
-            model_type = cfg.get("model_type", "hooked_transformer")
-            if model_type == "hooked_transformer":
-                cfg = HookedTransformerConfig.from_dict(cfg)
-            elif model_type == "hooked_encoder":
-                cfg = HookedEncoderConfig.from_dict(cfg)
+            cfg = config_from_dict(cfg)
         self.cfg = cfg
         self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
             torch.empty(self.cfg.d_vocab, self.cfg.d_model)
