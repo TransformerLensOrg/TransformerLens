@@ -2517,19 +2517,28 @@ And check out the Activation Patching in TransformerLens Demo notebook for a dem
 <p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
 <p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
 <p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
-<p>Params
-model: The relevant model
-corrupted_tokens: The input tokens for the corrupted run
-clean_cache: The cached activations from the clean run
-patching_metric: A function from the model’s output logits to some metric (eg loss, logit diff, etc)
-patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
-activation_name: The name of the activation being patched
-index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
-index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-return_index_df: A Boolean flag for whether to return the dataframe of indices too</p>
-<p>Returns
-patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> – The input tokens for the corrupted run</p></li>
+<li><p><strong>clean_cache</strong> – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+<li><p><strong>patch_setter</strong> – A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation</p></li>
+<li><p><strong>activation_name</strong> – The name of the activation being patched</p></li>
+<li><p><strong>index_axis_names</strong> – The names of the axes to (fully) iterate over, implicitly fills in index_df</p></li>
+<li><p><strong>index_df</strong> – The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df</p></li>
+<li><p><strong>return_index_df</strong> – A Boolean flag for whether to return the dataframe of indices too</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
 index_df <em>optional</em>: The dataframe of indices</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -2557,7 +2566,23 @@ index_df <em>optional</em>: The dataframe of indices</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_by_pos_every">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_by_pos_every</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_cache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metric</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'patch_type</span> <span class="pre">layer</span> <span class="pre">pos</span> <span class="pre">head'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_by_pos_every" title="Permalink to this definition">#</a></dt>
-<dd><p>Helper function to get activation patching results for every head (across all positions) for every act type (output, query, key, value, pattern). Wrapper around each’s patching function, returns a stacked tensor of shape [5, n_layers, pos, n_heads]</p>
+<dd><p>Helper function to get activation patching results for every head (by position) for every act type (output, query, key, value, pattern). Wrapper around each’s patching function, returns a stacked tensor of shape [5, n_layers, pos, n_heads]</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [5, n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -2586,24 +2611,24 @@ index_df <em>optional</em>: The dataframe of indices</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_k_by_pos">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_k_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'k',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_k_by_pos" title="Permalink to this definition">#</a></dt>
-<dd><p>A generic function to do activation patching, will be specialised to specific use cases.</p>
-<p>Activation patching is about studying the counterfactual effect of a specific activation between a clean run and a corrupted run. The idea is have two inputs, clean and corrupted, which have two different outputs, and differ in some key detail. Eg “The Eiffel Tower is in” vs “The Colosseum is in”. Then to take a cached set of activations from the “clean” run, and a set of corrupted.</p>
-<p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
-<p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
-<p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
-<p>Params
-model: The relevant model
-corrupted_tokens: The input tokens for the corrupted run
-clean_cache: The cached activations from the clean run
-patching_metric: A function from the model’s output logits to some metric (eg loss, logit diff, etc)
-patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
-activation_name: The name of the activation being patched
-index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
-index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-return_index_df: A Boolean flag for whether to return the dataframe of indices too</p>
-<p>Returns
-patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
-index_df <em>optional</em>: The dataframe of indices</p>
+<dd><p>Function to get activation patching results for the keys of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -2632,24 +2657,24 @@ index_df <em>optional</em>: The dataframe of indices</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_out_by_pos">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_out_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'z',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_out_by_pos" title="Permalink to this definition">#</a></dt>
-<dd><p>A generic function to do activation patching, will be specialised to specific use cases.</p>
-<p>Activation patching is about studying the counterfactual effect of a specific activation between a clean run and a corrupted run. The idea is have two inputs, clean and corrupted, which have two different outputs, and differ in some key detail. Eg “The Eiffel Tower is in” vs “The Colosseum is in”. Then to take a cached set of activations from the “clean” run, and a set of corrupted.</p>
-<p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
-<p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
-<p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
-<p>Params
-model: The relevant model
-corrupted_tokens: The input tokens for the corrupted run
-clean_cache: The cached activations from the clean run
-patching_metric: A function from the model’s output logits to some metric (eg loss, logit diff, etc)
-patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
-activation_name: The name of the activation being patched
-index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
-index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-return_index_df: A Boolean flag for whether to return the dataframe of indices too</p>
-<p>Returns
-patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
-index_df <em>optional</em>: The dataframe of indices</p>
+<dd><p>Function to get activation patching results for the output of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -2678,47 +2703,47 @@ index_df <em>optional</em>: The dataframe of indices</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_pattern_by_pos">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_pattern_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_pos_pattern_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'pattern',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head_index',</span> <span class="pre">'dest_pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_pattern_by_pos" title="Permalink to this definition">#</a></dt>
-<dd><p>A generic function to do activation patching, will be specialised to specific use cases.</p>
-<p>Activation patching is about studying the counterfactual effect of a specific activation between a clean run and a corrupted run. The idea is have two inputs, clean and corrupted, which have two different outputs, and differ in some key detail. Eg “The Eiffel Tower is in” vs “The Colosseum is in”. Then to take a cached set of activations from the “clean” run, and a set of corrupted.</p>
-<p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
-<p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
-<p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
-<p>Params
-model: The relevant model
-corrupted_tokens: The input tokens for the corrupted run
-clean_cache: The cached activations from the clean run
-patching_metric: A function from the model’s output logits to some metric (eg loss, logit diff, etc)
-patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
-activation_name: The name of the activation being patched
-index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
-index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-return_index_df: A Boolean flag for whether to return the dataframe of indices too</p>
-<p>Returns
-patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
-index_df <em>optional</em>: The dataframe of indices</p>
+<dd><p>Function to get activation patching results for the attention pattern of each Attention Head (by destination position). Returns a tensor of shape [n_layers, n_heads, dest_pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads, dest_pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_pattern_dest_src_pos">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_pattern_dest_src_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_dest_src_pos_pattern_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'pattern',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head_index',</span> <span class="pre">'dest_pos',</span> <span class="pre">'src_pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_pattern_dest_src_pos" title="Permalink to this definition">#</a></dt>
-<dd><p>A generic function to do activation patching, will be specialised to specific use cases.</p>
-<p>Activation patching is about studying the counterfactual effect of a specific activation between a clean run and a corrupted run. The idea is have two inputs, clean and corrupted, which have two different outputs, and differ in some key detail. Eg “The Eiffel Tower is in” vs “The Colosseum is in”. Then to take a cached set of activations from the “clean” run, and a set of corrupted.</p>
-<p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
-<p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
-<p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
-<p>Params
-model: The relevant model
-corrupted_tokens: The input tokens for the corrupted run
-clean_cache: The cached activations from the clean run
-patching_metric: A function from the model’s output logits to some metric (eg loss, logit diff, etc)
-patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
-activation_name: The name of the activation being patched
-index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
-index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-return_index_df: A Boolean flag for whether to return the dataframe of indices too</p>
-<p>Returns
-patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
-index_df <em>optional</em>: The dataframe of indices</p>
+<dd><p>Function to get activation patching results for each destination, source entry of the attention pattern for each Attention Head. Returns a tensor of shape [n_layers, n_heads, dest_pos, src_pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads, dest_pos, src_pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -2747,24 +2772,24 @@ index_df <em>optional</em>: The dataframe of indices</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_q_by_pos">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_q_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'q',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_q_by_pos" title="Permalink to this definition">#</a></dt>
-<dd><p>A generic function to do activation patching, will be specialised to specific use cases.</p>
-<p>Activation patching is about studying the counterfactual effect of a specific activation between a clean run and a corrupted run. The idea is have two inputs, clean and corrupted, which have two different outputs, and differ in some key detail. Eg “The Eiffel Tower is in” vs “The Colosseum is in”. Then to take a cached set of activations from the “clean” run, and a set of corrupted.</p>
-<p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
-<p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
-<p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
-<p>Params
-model: The relevant model
-corrupted_tokens: The input tokens for the corrupted run
-clean_cache: The cached activations from the clean run
-patching_metric: A function from the model’s output logits to some metric (eg loss, logit diff, etc)
-patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
-activation_name: The name of the activation being patched
-index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
-index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-return_index_df: A Boolean flag for whether to return the dataframe of indices too</p>
-<p>Returns
-patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
-index_df <em>optional</em>: The dataframe of indices</p>
+<dd><p>Function to get activation patching results for the queries of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -2793,24 +2818,24 @@ index_df <em>optional</em>: The dataframe of indices</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_v_by_pos">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_v_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'v',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_v_by_pos" title="Permalink to this definition">#</a></dt>
-<dd><p>A generic function to do activation patching, will be specialised to specific use cases.</p>
-<p>Activation patching is about studying the counterfactual effect of a specific activation between a clean run and a corrupted run. The idea is have two inputs, clean and corrupted, which have two different outputs, and differ in some key detail. Eg “The Eiffel Tower is in” vs “The Colosseum is in”. Then to take a cached set of activations from the “clean” run, and a set of corrupted.</p>
-<p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
-<p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
-<p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
-<p>Params
-model: The relevant model
-corrupted_tokens: The input tokens for the corrupted run
-clean_cache: The cached activations from the clean run
-patching_metric: A function from the model’s output logits to some metric (eg loss, logit diff, etc)
-patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
-activation_name: The name of the activation being patched
-index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
-index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-return_index_df: A Boolean flag for whether to return the dataframe of indices too</p>
-<p>Returns
-patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
-index_df <em>optional</em>: The dataframe of indices</p>
+<dd><p>Function to get activation patching results for the values of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -2884,24 +2909,24 @@ index_df <em>optional</em>: The dataframe of indices</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_resid_mid">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_resid_mid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'resid_mid',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_resid_mid" title="Permalink to this definition">#</a></dt>
-<dd><p>A generic function to do activation patching, will be specialised to specific use cases.</p>
-<p>Activation patching is about studying the counterfactual effect of a specific activation between a clean run and a corrupted run. The idea is have two inputs, clean and corrupted, which have two different outputs, and differ in some key detail. Eg “The Eiffel Tower is in” vs “The Colosseum is in”. Then to take a cached set of activations from the “clean” run, and a set of corrupted.</p>
-<p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
-<p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
-<p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
-<p>Params
-model: The relevant model
-corrupted_tokens: The input tokens for the corrupted run
-clean_cache: The cached activations from the clean run
-patching_metric: A function from the model’s output logits to some metric (eg loss, logit diff, etc)
-patch_setter: A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation
-activation_name: The name of the activation being patched
-index_axis_names: The names of the axes to (fully) iterate over, implicitly fills in index_df
-index_df: The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df
-return_index_df: A Boolean flag for whether to return the dataframe of indices too</p>
-<p>Returns
-patched_output: The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
-index_df <em>optional</em>: The dataframe of indices</p>
+<dd><p>Function to get activation patching results for the residual stream (between the attn and MLP layer of each block) (by position). Returns a tensor of shape [n_layers, pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
@@ -2931,42 +2956,42 @@ index_df <em>optional</em>: The dataframe of indices</p>
 <dt class="sig sig-object py" id="transformer_lens.patching.layer_head_dest_src_pos_pattern_patch_setter">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_head_dest_src_pos_pattern_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_head_dest_src_pos_pattern_patch_setter" title="Permalink to this definition">#</a></dt>
 <dd><p>Applies the activation patch where index = [layer,  head_index, dest_pos, src_pos]</p>
-<p>Impliitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
+<p>Implicitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.layer_head_pattern_patch_setter">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_head_pattern_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_head_pattern_patch_setter" title="Permalink to this definition">#</a></dt>
 <dd><p>Applies the activation patch where index = [layer,  head_index]</p>
-<p>Impliitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
+<p>Implicitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.layer_head_pos_pattern_patch_setter">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_head_pos_pattern_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_head_pos_pattern_patch_setter" title="Permalink to this definition">#</a></dt>
 <dd><p>Applies the activation patch where index = [layer,  head_index, dest_pos]</p>
-<p>Impliitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
+<p>Implicitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.layer_head_vector_patch_setter">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_head_vector_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_head_vector_patch_setter" title="Permalink to this definition">#</a></dt>
 <dd><p>Applies the activation patch where index = [layer,  head_index]</p>
-<p>Impliitly assumes that the activation axis order is [batch, pos, head_index, …], which is true of all attention head vector activations (q, k, v, z, result) but <em>not</em> of attention patterns.</p>
+<p>Implicitly assumes that the activation axis order is [batch, pos, head_index, …], which is true of all attention head vector activations (q, k, v, z, result) but <em>not</em> of attention patterns.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.layer_pos_head_vector_patch_setter">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_pos_head_vector_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_pos_head_vector_patch_setter" title="Permalink to this definition">#</a></dt>
 <dd><p>Applies the activation patch where index = [layer, pos, head_index]</p>
-<p>Impliitly assumes that the activation axis order is [batch, pos, head_index, …], which is true of all attention head vector activations (q, k, v, z, result) but <em>not</em> of attention patterns.</p>
+<p>Implicitly assumes that the activation axis order is [batch, pos, head_index, …], which is true of all attention head vector activations (q, k, v, z, result) but <em>not</em> of attention patterns.</p>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.patching.layer_pos_patch_setter">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_pos_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_pos_patch_setter" title="Permalink to this definition">#</a></dt>
 <dd><p>Applies the activation patch where index = [layer, pos]</p>
-<p>Impliitly assumes that the activation axis order is [batch, pos, …], which is true of everything that is not an attention pattern shaped tensor.</p>
+<p>Implicitly assumes that the activation axis order is [batch, pos, …], which is true of everything that is not an attention pattern shaped tensor.</p>
 </dd></dl>
 
 <dl class="py function">
