@@ -666,7 +666,7 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
     """Checks if `x` is a lower triangular matrix."""
     if not is_square(x):
         return False
-    return (x - x.tril()).sum().item() == 0
+    return x.equal(x.tril())
 
 def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) -> None:
     """Validate that the two square tensors have the same structure, i.e., 
@@ -676,7 +676,7 @@ def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) 
     assert t1.ndim == 2
     assert t1.shape == t2.shape
     n_rows, n_cols = cast(Tuple[int, int], t1.shape)
-    
+
     if verbose:
         print("Checking rows")
     row_mismatch = []
