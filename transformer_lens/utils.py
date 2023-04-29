@@ -671,7 +671,9 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
 def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) -> None:
     """Validate that the two square tensors have the same structure, i.e., 
     that the directionality of comparisons points in the same directions both 
-    row-wise and column-wise
+    row-wise and column-wise.
+    
+    This function is not used anywhere in the code right now, just for debugging tests.
     """
     assert t1.ndim == 2
     assert t1.shape == t2.shape
