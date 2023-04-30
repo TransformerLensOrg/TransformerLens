@@ -1,7 +1,14 @@
-from typing import Union, List, Dict, NamedTuple, overload
+import logging
+from functools import lru_cache
+from typing import Union, List, Tuple, Dict, Optional, NamedTuple, overload
 
+import einops
+import numpy as np
 import torch
+import torch.nn as nn
 import tqdm.auto as tqdm
+from fancy_einsum import einsum
+from jaxtyping import Float, Int
 from transformers import (
     AutoTokenizer,
     PreTrainedTokenizer,
@@ -10,10 +17,12 @@ from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
+from transformer_lens import HookedTransformerConfig
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.components import *
-from transformer_lens.hook_points import HookedRootModule
-
+from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.components import Embed, PosEmbed, TransformerBlock, RMSNorm, RMSNormPre, LayerNorm, LayerNormPre, \
+    Unembed
+from transformer_lens.hook_points import HookedRootModule, HookPoint
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from transformer_lens.past_key_value_caching import (
     HookedTransformerKeyValueCache,
