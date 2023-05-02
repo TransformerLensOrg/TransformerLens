@@ -1,4 +1,5 @@
 from collections import defaultdict
+import logging
 from typing import cast, Dict, List, Optional, Tuple, Union
 from typing_extensions import get_args, Literal
 
@@ -35,29 +36,44 @@ def detect_head(
     *,
     exclude_bos: bool = False,
     exclude_current_token: bool = False,
-    error_measure: ErrorMeasure = "abs",
+    error_measure: ErrorMeasure = "mul",
 ) -> torch.Tensor:
-    """Searches the model (or a set of specific heads, for circuit analysis) for a particular type of attention head. This head is specified
-    by a detection pattern, a (sequence_length, sequence_length) tensor representing how much attention to keep at each position. That pattern
-    can be also given a name of one specified types of attention head (see `HeadName` for available patterns), in which case the tensor is
-    computed within the function itself.
+    """Searches the model (or a set of specific heads, for circuit analysis) for a particular type of attention head.
+    This head is specified by a detection pattern, a (sequence_length, sequence_length) tensor representing the attention pattern we expect that type of attention head to show.
+    The detection pattern can be also passed not as a tensor, but as a name of one of pre-specified types of attention head (see `HeadName` for available patterns), in which case the tensor is computed within the function itself.
 
-    The mean element-wise absolute difference between the detection pattern and the actual attention pattern is the error measure in the range
-    (0, 2) where lower score corresponds to greater accuracy. Subtracting it from 1 maps results in a score in (-1, 1), with 1 being perfect
-    match and -1 perfect mismatch.
+    There are two error measures available for quantifying the match between the detection pattern and the actual attention pattern.
+
+    1. `"mul"` (default) multiplies both tensors element-wise and divides the sum of the result by the sum of the attention pattern.
+    Typically, the detection pattern should in this case contain only ones and zeros, which allows a straightforward interpretation of the score:
+    how big fraction of this head's attention is allocated to these specific query-key pairs?
+    Using values other than 0 or 1 is not prohibited but will raise a warning (which can be disabled, of course).
+    2. `"abs"` calculates the mean element-wise absolute difference between the detection pattern and the actual attention pattern.
+    The "raw result" ranges from 0 to 2 where lower score corresponds to greater accuracy. Subtracting it from 1 maps that range to (-1, 1) interval,
+    with 1 being perfect match and -1 perfect mismatch.
+
+    **Which one should you use?** `"abs"` is likely better for quick or exploratory investigations. For precise examinations where you're trying to
+    reproduce as much functionality as possible or really test your understanding of the attention head, you probably want to switch to `"abs"`.
+
+    The advantage of `"abs"` is that you can make more precise predictions, and have that measured in the score.
+    You can predict, for instance, 0.2 attention to X, and 0.8 attention to Y, and your score will be better if your prediction is closer.
+    tThe "mul" metric does not allow this, you'll get the same score if attention is 0.2, 0.8 or 0.5, 0.5 or 0.8, 0.2.
 
     Args:
-      model: Model being used.
-      seq: String or list of strings being fed to the model.
-      head_name: Name of an existing head in HEAD_NAMES we want to check. Must pass either a head_name or a detection_pattern, but not both!
-      detection_pattern: (sequence_length, sequence_length) Tensor representing what attention pattern corresponds to the head we're looking for **or** the name of a pre-specified head. Currently available heads are: `["previous_token_head", "duplicate_token_head", "induction_head"]`.
-      heads: If specific attention heads is given here, all other heads' score is set to -1. Useful for IOI-style circuit analysis. Heads can be spacified as a list of tuples (layer, head) or a dictionary mapping a layer to heads within that layer that we want to analyze.
-      cache: Include the cache to save time if you want.
-      exclude_bos: Exclude attention paid to the beginning of sequence token.
-      exclude_current_token: Exclude attention paid to the current token.
-      error_measure: "abs" for using absolute values of element-wise differences as the error measure. "mul" for using element-wise multiplication (legacy code).
+    ----------
+        model: Model being used.
+        seq: String or list of strings being fed to the model.
+        head_name: Name of an existing head in HEAD_NAMES we want to check. Must pass either a head_name or a detection_pattern, but not both!
+        detection_pattern: (sequence_length, sequence_length) Tensor representing what attention pattern corresponds to the head we're looking for **or** the name of a pre-specified head. Currently available heads are: `["previous_token_head", "duplicate_token_head", "induction_head"]`.
+        heads: If specific attention heads is given here, all other heads' score is set to -1. Useful for IOI-style circuit analysis. Heads can be spacified as a list tuples (layer, head) or a dictionary mapping a layer to heads within that layer that we want to analyze.
+        cache: Include the cache to save time if you want.
+        exclude_bos: Exclude attention paid to the beginning of sequence token.
+        exclude_current_token: Exclude attention paid to the current token.
+        error_measure: `"mul"` for using element-wise multiplication (default). `"abs"` for using absolute values of element-wise differences as the error measure.
 
-    Returns a (n_layers, n_heads) Tensor representing the score for each attention head.
+    Returns:
+    ----------
+    A (n_layers, n_heads) Tensor representing the score for each attention head.
 
     Example:
     --------
@@ -93,6 +109,14 @@ def detect_head(
             torch.Tensor,
             eval(f"get_{detection_pattern}_detection_pattern(tokens.cpu())"),
         ).to(cfg.device)
+
+    # if we're using "mul", detection_pattern should consist of zeros and ones
+    if error_measure == "mul" and not set(detection_pattern.unique().tolist()).issubset(
+        {0, 1}
+    ):
+        logging.warning(
+            "Using detection pattern with values other than 0 or 1 with error_measure 'mul'"
+        )
 
     # Validate inputs and detection pattern shape
     assert 1 < tokens.shape[-1] < cfg.n_ctx, SEQ_LEN_ERR
@@ -183,7 +207,9 @@ def get_induction_head_detection_pattern(
     # Shift all items one to the right
     shifted_tensor = torch.roll(duplicate_pattern, shifts=1, dims=1)
 
-    # Replace first column with 0's - we don't care about bos but shifting to the right moves the last column to the first, and the last column might contain non-zero values.
+    # Replace first column with 0's
+    # we don't care about bos but shifting to the right moves the last column to the first,
+    # and the last column might contain non-zero values.
     zeros_column = torch.zeros(duplicate_pattern.shape[0], 1)
     result_tensor = torch.cat((zeros_column, shifted_tensor[:, 1:]), dim=1)
     return torch.tril(result_tensor)
@@ -203,18 +229,20 @@ def compute_head_attention_similarity_score(
     error_measure: ErrorMeasure,
 ) -> float:
     """Compute the similarity between `attention_pattern` and `detection_pattern`.
-    
+
     Args:
       attention_pattern: Lower triangular matrix (Tensor) representing the attention pattern of a particular attention head.
       detection_pattern: Lower triangular matrix (Tensor) representing the attention pattern we are looking for.
-      exclude_bos: `True` if the beginning-of-sentence (BOS) token should be omitted from comparison. `False` otherwise. 
-      exclude_bcurrent_token: `True` if the current token at each position should be omitted from comparison. `False` otherwise. 
+      exclude_bos: `True` if the beginning-of-sentence (BOS) token should be omitted from comparison. `False` otherwise.
+      exclude_bcurrent_token: `True` if the current token at each position should be omitted from comparison. `False` otherwise.
       error_measure: "abs" for using absolute values of element-wise differences as the error measure. "mul" for using element-wise multiplication (legacy code).
     """
-    assert is_square(attention_pattern), f"Attention pattern is not square; got shape {attention_pattern.shape}"
+    assert is_square(
+        attention_pattern
+    ), f"Attention pattern is not square; got shape {attention_pattern.shape}"
 
     # mul
-    
+
     if error_measure == "mul":
         if exclude_bos:
             attention_pattern[:, 0] = 0
@@ -224,14 +252,14 @@ def compute_head_attention_similarity_score(
         return (score.sum() / attention_pattern.sum()).item()
 
     # abs
-    
+
     abs_diff = (attention_pattern - detection_pattern).abs()
     assert (abs_diff - torch.tril(abs_diff).to(abs_diff.device)).sum() == 0
-    
+
     size = len(abs_diff)
     if exclude_bos:
         abs_diff[:, 0] = 0
     if exclude_current_token:
         abs_diff.fill_diagonal_(0)
-    
+
     return 1 - round((abs_diff.mean() * size).item(), 3)
