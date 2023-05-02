@@ -57,7 +57,7 @@ def detect_head(
 
     The advantage of `"abs"` is that you can make more precise predictions, and have that measured in the score.
     You can predict, for instance, 0.2 attention to X, and 0.8 attention to Y, and your score will be better if your prediction is closer.
-    tThe "mul" metric does not allow this, you'll get the same score if attention is 0.2, 0.8 or 0.5, 0.5 or 0.8, 0.2.
+    The "mul" metric does not allow this, you'll get the same score if attention is 0.2, 0.8 or 0.5, 0.5 or 0.8, 0.2.
 
     Args:
     ----------
@@ -96,6 +96,10 @@ def detect_head(
     cfg = model.cfg
     tokens = model.to_tokens(seq).to(cfg.device)
     seq_len = tokens.shape[-1]
+    
+    # Validate error_measure
+    
+    assert error_measure in get_args(ErrorMeasure), f"Invalid {error_measure=}; valid values are {get_args(ErrorMeasure)}"
 
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
