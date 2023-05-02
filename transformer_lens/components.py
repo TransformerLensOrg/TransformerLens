@@ -504,7 +504,7 @@ class Attention(nn.Module):
         dim = torch.arange(rotary_dim // 2, dtype=torch.float32)
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.original_architecture == "GPTNeoXForCausalLM":
+        if self.cfg.original_architecture == "GPTNeoXForCausalLM" or self.cfg.original_architecture == "LLaMAForCausalLM":
             freq = einops.repeat(freq, "d -> (2 d)")
         else:
             freq = einops.repeat(freq, "d -> (d 2)")
@@ -521,7 +521,7 @@ class Attention(nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if self.cfg.original_architecture == "GPTNeoXForCausalLM":
+        if self.cfg.original_architecture == "GPTNeoXForCausalLM" or self.cfg.original_architecture == "LLaMAForCausalLM":
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
@@ -607,6 +607,67 @@ class MLP(nn.Module):
             + self.b_out
         )
 
+# TODO
+# not sure whether to fold this into MLP or not
+class GatedMLP(nn.Module):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
+        self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp))
+        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model))
+
+        # hook on gate output but before act_fn 
+        self.hook_pre = HookPoint() # [batch, pos, d_mlp]
+        # hook on act_fn(gate_output) * W_in(x) + b_in 
+        self.hook_post = HookPoint() # [batch, pos, d_mlp]
+
+        if self.cfg.act_fn == "relu":
+            self.act_fn = F.relu
+        elif self.cfg.act_fn == "gelu":
+            self.act_fn = F.gelu
+        elif self.cfg.act_fn == "silu":
+            self.act_fn = F.silu
+        elif self.cfg.act_fn == "gelu_new":
+            self.act_fn = gelu_new
+        elif self.cfg.act_fn == "gelu_fast":
+            self.act_fn = gelu_fast
+        elif self.cfg.act_fn == "solu_ln":
+            self.act_fn = solu
+            # Hook taken between activation and layer norm
+            self.hook_mid = HookPoint()  # [batch, pos, d_mlp]
+            if self.cfg.normalization_type == "LN":
+                self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
+            else:
+                self.ln = LayerNormPre(self.cfg)
+
+        else:
+            raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
+
+    def forward(
+        self, x: Float[torch.Tensor, "batch pos d_model"]
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
+        # Technically, all these einsums could be done with a single matmul, but this is more readable.
+        pre_act = self.hook_pre(einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_gate))  # [batch, pos, d_mlp]
+        if not self.cfg.act_fn.endswith("_ln"):
+            post_act = self.hook_post(self.act_fn(pre_act) * einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
+            + self.b_in)  # [batch, pos, d_mlp]
+        else:
+            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+            post_act = self.hook_post(self.ln(mid_act))
+        return (
+            einsum(
+                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
+                post_act,
+                self.W_out,
+            )
+            + self.b_out
+        )
+
 
 # Transformer Block
 class TransformerBlock(nn.Module):
@@ -624,6 +685,14 @@ class TransformerBlock(nn.Module):
             self.ln1 = LayerNormPre(cfg)
             if not self.cfg.attn_only:
                 self.ln2 = LayerNormPre(cfg)
+        elif self.cfg.normalization_type == "RMS": 
+            self.ln1 = RMSNorm(cfg)
+            if not self.cfg.attn_only:
+                self.ln2 = RMSNorm(cfg)
+        elif self.cfg.normalization_type == "RMSPre":
+            self.ln1 = RMSNormPre(cfg)
+            if not self.cfg.attn_only:
+                self.ln2 = RMSNormPre(cfg)
         elif self.cfg.normalization_type is None:
             self.ln1 = nn.Identity()
             if not self.cfg.attn_only:
@@ -640,7 +709,10 @@ class TransformerBlock(nn.Module):
             attn_type = self.cfg.attn_types[block_index]
             self.attn = Attention(cfg, attn_type, block_index)
         if not self.cfg.attn_only:
-            self.mlp = MLP(cfg)
+            if self.cfg.gated_mlp:
+                self.mlp = GatedMLP(cfg)
+            else: 
+                self.mlp = MLP(cfg)
 
         self.hook_q_input = HookPoint()  # [batch, pos, d_model]
         self.hook_k_input = HookPoint()  # [batch, pos, d_model]

@@ -342,16 +342,16 @@ class ActivationCache:
         return_labels: bool = False,
         incl_remainder: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
+        apply_ln: bool = False,
     ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Returns a stack of all head results (ie residual stream contribution) up to layer L. A good way to decompose the outputs of attention layers into attribution by specific heads. Note that the num_components axis has length layer x n_heads ((layer head_index) in einops notation)
-
-        Assumes that the model has been run with use_attn_results=True
 
         Args:
             layer (int): Layer index - heads at all layers strictly before this are included. layer must be in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer
             return_labels (bool, optional): Whether to also return a list of labels of the form "L0H0" for the heads. Defaults to False.
             incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
             pos_slice (Slice): A slice object to apply to the pos dimension. Defaults to None, do nothing.
+            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
         """
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
@@ -395,6 +395,11 @@ class ActivationCache:
                 device=self.model.cfg.device,
             )
 
+        if apply_ln:
+            components = self.apply_ln_to_stack(
+                components, layer, pos_slice=pos_slice
+            )
+            
         if return_labels:
             return components, labels
         else:
@@ -465,6 +470,7 @@ class ActivationCache:
         neuron_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
         incl_remainder: bool = False,
+        apply_ln: bool = False,
     ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
         """Returns a stack of all neuron results (ie residual stream contribution) up to layer L - ie the amount each individual neuron contributes to the residual stream. Also returns a list of labels of the form "L0N0" for the neurons. A good way to decompose the outputs of MLP layers into attribution by specific neurons.
 
@@ -476,6 +482,7 @@ class ActivationCache:
             neuron_slice (Slice, optional): Slice of the neurons. Defaults to None. See utils.Slice for details.
             return_labels (bool, optional): Whether to also return a list of labels of the form "L0H0" for the heads. Defaults to False.
             incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
+            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
         """
 
         if layer is None or layer == -1:
@@ -521,6 +528,12 @@ class ActivationCache:
                 *pos_slice.apply(self["hook_embed"], dim=-2).shape,
                 device=self.model.cfg.device,
             )
+
+        if apply_ln:
+            components = self.apply_ln_to_stack(
+                components, layer, pos_slice=pos_slice
+            )
+
         if return_labels:
             return components, labels
         else:

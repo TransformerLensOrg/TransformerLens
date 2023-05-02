@@ -163,3 +163,43 @@ def test_decompose_resid_with_apply_ln():
     scaled_residual_stack = cache.decompose_resid(layer=-1, pos_slice=-1, apply_ln=True)
 
     assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
+
+@torch.set_grad_enabled(False)
+def test_stack_head_results_with_apply_ln():
+
+    # Load solu-2l
+    model = load_model('solu-2l')
+
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+
+    # Run the model and cache all activations
+    _, cache = model.run_with_cache(tokens)
+
+    # Get per head resid stack and apply ln seperately (cribbed notebook code)
+    per_head_residual = cache.stack_head_results(layer=-1, pos_slice=-1)
+    ref_scaled_residual_stack = cache.apply_ln_to_stack(per_head_residual, layer=-1, pos_slice=-1)
+    
+    # Get scaled_residual_stack using apply_ln parameter
+    scaled_residual_stack = cache.stack_head_results(layer=-1, pos_slice=-1, apply_ln=True)
+
+    assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
+
+@torch.set_grad_enabled(False)
+def test_stack_neuron_results_with_apply_ln():
+
+    # Load solu-2l
+    model = load_model('solu-2l')
+
+    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
+
+    # Run the model and cache all activations
+    _, cache = model.run_with_cache(tokens)
+
+    # Get neuron result stack and apply ln seperately
+    neuron_result_stack = cache.stack_neuron_results(layer=-1, pos_slice=-1)
+    ref_scaled_residual_stack = cache.apply_ln_to_stack(neuron_result_stack, layer=-1, pos_slice=-1)
+    
+    # Get scaled_residual_stack using apply_ln parameter
+    scaled_residual_stack = cache.stack_neuron_results(layer=-1, pos_slice=-1, apply_ln=True)
+
+    assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
