@@ -1,9 +1,9 @@
 import torch
-import torch.nn as nn
 from dataclasses import dataclass
-from typing import Union, Tuple, List, Dict, Any, Optional
+from typing import List
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from jaxtyping import Float 
+from transformer_lens.utilities.devices import get_device_for_block_index
+from jaxtyping import Float
 
 
 @dataclass
@@ -32,11 +32,11 @@ class HookedTransformerKeyValueCacheEntry:
         new_keys: Float[torch.Tensor, "batch new_tokens n_heads d_head"],
         new_values: Float[torch.Tensor, "batch new_tokens n_heads d_head"],
     ):
-        updated_keys: Float[torch.Tensor, 
-            "batch pos_so_far_plus_new_tokens n_heads d_head"
+        updated_keys: Float[
+            torch.Tensor, "batch pos_so_far_plus_new_tokens n_heads d_head"
         ] = torch.cat([self.past_keys, new_keys], dim=1)
-        updated_values: Float[torch.Tensor,
-            "batch pos_so_far_plus_new_tokens n_heads d_head"
+        updated_values: Float[
+            torch.Tensor, "batch pos_so_far_plus_new_tokens n_heads d_head"
         ] = torch.cat([self.past_values, new_values], dim=1)
         self.past_keys = updated_keys
         self.past_values = updated_values
@@ -63,9 +63,11 @@ class HookedTransformerKeyValueCache:
         return cls(
             entries=[
                 HookedTransformerKeyValueCacheEntry.init_cache_entry(
-                    cfg, device, batch_size
+                    cfg,
+                    get_device_for_block_index(i, cfg, device),
+                    batch_size,
                 )
-                for _ in range(cfg.n_layers)
+                for i in range(cfg.n_layers)
             ]
         )
 
