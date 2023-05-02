@@ -99,7 +99,7 @@ def detect_head(
     
     # Validate error_measure
     
-    assert error_measure in get_args(ErrorMeasure), f"Invalid {error_measure=}; valid values are {get_args(ErrorMeasure)}"
+    assert error_measure in get_args(ErrorMeasure), f"Invalid error_measure={error_measure}; valid values are {get_args(ErrorMeasure)}"
 
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
