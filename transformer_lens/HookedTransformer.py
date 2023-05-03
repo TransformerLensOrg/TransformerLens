@@ -13,6 +13,8 @@ from functools import partial, lru_cache
 from collections import namedtuple
 from jaxtyping import Float, Int
 
+from typeguard import typeguard_ignore
+
 from transformers import (
     AutoTokenizer,
     PreTrainedTokenizer,
@@ -1373,6 +1375,7 @@ class HookedTransformer(HookedRootModule):
 
     # Give access to all weights as properties.
     @property
+    @typeguard_ignore
     def W_U(self) -> Float[torch.Tensor, "d_model d_vocab"]:
         """
         Convenience to get the unembedding matrix (ie the linear map from the final residual stream to the output logits)
@@ -1380,10 +1383,12 @@ class HookedTransformer(HookedRootModule):
         return self.unembed.W_U
 
     @property
+    @typeguard_ignore
     def b_U(self) -> Float[torch.Tensor, "d_vocab"]:
         return self.unembed.b_U
 
     @property
+    @typeguard_ignore
     def W_E(self) -> Float[torch.Tensor, "d_vocab d_model"]:
         """
         Convenience to get the embedding matrix
@@ -1391,6 +1396,7 @@ class HookedTransformer(HookedRootModule):
         return self.embed.W_E
 
     @property
+    @typeguard_ignore
     def W_pos(self) -> Float[torch.Tensor, "n_ctx d_model"]:
         """
         Convenience function to get the positional embedding. Only works on models with absolute positional embeddings!
@@ -1398,6 +1404,7 @@ class HookedTransformer(HookedRootModule):
         return self.pos_embed.W_pos
 
     @property
+    @typeguard_ignore
     def W_E_pos(self) -> Float[torch.Tensor, "d_vocab+n_ctx d_model"]:
         """
         Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
@@ -1407,82 +1414,96 @@ class HookedTransformer(HookedRootModule):
     # Layer-specific weights are stacked into one massive tensor and given as properties for convenience and a cache is used to avoid repeated computation. Often a useful convenience when we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use these properties!
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the key weights across all layers"""
         return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the query weights across all layers"""
         return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the value weights across all layers"""
         return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stacks the attn output weights across all layers"""
         return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
         return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the key biases across all layers"""
         return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the query biases across all layers"""
         return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the value biases across all layers"""
         return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the attn output biases across all layers"""
         return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
         return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
         return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     def QK(self):
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
+    @typeguard_ignore
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
 
