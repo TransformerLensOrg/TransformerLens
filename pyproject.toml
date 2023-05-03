@@ -8,7 +8,7 @@ readme = "README.md"
 packages = [{include = "transformer_lens"}]
 
 [tool.poetry.dependencies]
-python = ">=3.7,<4.0"
+python = ">=3.7.4,<4.0"
 einops = ">=0.6.0"
 numpy = [{ version = ">=1.21", python = "<3.10" },
          { version = ">=1.23", python = ">=3.10" }]
@@ -27,6 +27,7 @@ sphinx-autobuild = {version = ">=2021.3.14", optional = true, python = ">=3.8,<3
 furo = {version = ">=2022.12.7", optional = true, python = ">=3.8,<3.10"}
 myst-parser = {version = ">=0.18.1", optional = true, python = ">=3.8,<3.10"}
 tabulate= {version = ">=0.9.0", optional = true, python = ">=3.8,<3.10"}
+typeguard = "^3.0.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.2.0"
