@@ -52,7 +52,7 @@ def detect_head(
     The "raw result" ranges from 0 to 2 where lower score corresponds to greater accuracy. Subtracting it from 1 maps that range to (-1, 1) interval,
     with 1 being perfect match and -1 perfect mismatch.
 
-    **Which one should you use?** `"abs"` is likely better for quick or exploratory investigations. For precise examinations where you're trying to
+    **Which one should you use?** `"mul"` is likely better for quick or exploratory investigations. For precise examinations where you're trying to
     reproduce as much functionality as possible or really test your understanding of the attention head, you probably want to switch to `"abs"`.
 
     The advantage of `"abs"` is that you can make more precise predictions, and have that measured in the score.
