@@ -1,7 +1,7 @@
 from typing import Optional, Union
 
 import torch
-from transformer_lens import HookedTransformerConfig
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 def get_device_for_block_index(
