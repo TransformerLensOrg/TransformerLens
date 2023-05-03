@@ -1,5 +1,3 @@
-from jaxtyping import install_import_hook
-hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 import pytest
 from transformer_lens import HookedTransformer
@@ -163,4 +161,3 @@ def test_conditional_hooks():
     assert "blocks.0.hook_q_input" in cache.keys(), cache.keys()
     assert cache["blocks.0.hook_q_input"].shape == (1, 4, model.cfg.n_heads, model.cfg.d_model), cache["blocks.0.hook_q_input"].shape
 
-hook.uninstall()

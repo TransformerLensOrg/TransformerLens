@@ -1,5 +1,3 @@
-from jaxtyping import install_import_hook
-hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 import pytest
 import torch
@@ -104,4 +102,3 @@ def test_pos_embed_hook():
         ["Hello, world", "Goodbye, world"],
         fwd_hooks=[("hook_pos_embed", edit_pos_embed)])
 
-hook.uninstall()

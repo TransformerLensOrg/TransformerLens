@@ -1,8 +1,6 @@
 """
 Tests for the stop_at_layer parameter in HookedTransformer
 """
-from jaxtyping import install_import_hook
-hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 import torch
@@ -214,4 +212,3 @@ def test_no_stop_no_output():
     assert "blocks.2.hook_resid_post" in cache.keys()
     assert "ln_final.hook_normalized" in cache.keys()
 
-hook.uninstall()

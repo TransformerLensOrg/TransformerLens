@@ -1,5 +1,3 @@
-from jaxtyping import install_import_hook
-hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformers import AutoTokenizer
@@ -46,4 +44,3 @@ def test_d_vocab_from_tokenizer():
         # Check that we don't have BOS when we disable the flag
         assert tokens_without_bos.squeeze()[0] != model.tokenizer.bos_token_id, "BOS token is present when it shouldn't be"
 
-hook.uninstall()
