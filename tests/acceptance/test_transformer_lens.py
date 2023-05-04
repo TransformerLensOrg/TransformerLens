@@ -39,10 +39,12 @@ loss_store = {
     "attn-only-3l": 5.747507095336914,
     "pythia": 4.659344673156738,
     "gelu-2l": 6.501802444458008,
+    "redwood_attn_2l": 10.530948638916016,
+    "solu-1l": 5.256411552429199,
 }
 no_processing = {
-    "solu-1l": 5.256411552429199,
-    "redwood_attn_2l": 10.530948638916016,
+    "solu-1l": loss_store["solu-1l"],
+    "redwood_attn_2l": loss_store["redwood_attn_2l"],
 }
 
 
@@ -63,12 +65,9 @@ def test_from_pretrained_no_processing(name, expected_loss, fold_ln=False):
     model_override = HookedTransformer.from_pretrained(name, fold_ln=fold_ln, center_writing_weights=False, center_unembed=False, refactor_factored_attn_matrices=False)
     assert model_ref.cfg == model_override.cfg
 
-    if name != "redwood_attn_2l": # TODO can't be loaded with from_pretrained
-        # Do the converse check, i.e. check that overriding boolean flags in
-        # from_pretrained_no_processing is equivalent to using from_pretrained
-        model_ref = HookedTransformer.from_pretrained(name)
-        model_override = HookedTransformer.from_pretrained_no_processing(name, fold_ln=fold_ln, center_writing_weights=True, center_unembed=True, refactor_factored_attn_matrices=False)
-        assert model_ref.cfg == model_override.cfg
+    model_ref = HookedTransformer.from_pretrained(name)
+    model_override = HookedTransformer.from_pretrained_no_processing(name, fold_ln=fold_ln, center_writing_weights=True, center_unembed=True, refactor_factored_attn_matrices=False)
+    assert model_ref.cfg == model_override.cfg
 
     # also check losses
     loss = model_ref(text, return_type="loss")
@@ -78,7 +77,8 @@ def test_from_pretrained_no_processing(name, expected_loss, fold_ln=False):
 def test_shortformer_fold_ln_override():
     """It's not possible to fold_ln with Shortformer, so check that when fold_ln is True, this is automatically overwritten (there is no crash)"""
 
-    test_from_pretrained_no_processing("redwood_attn_2l", no_processing["redwood_attn_2l"], fold_ln=True)
+    # test_from_pretrained_no_processing("redwood_attn_2l", no_processing["redwood_attn_2l"], fold_ln=True)
+    test_model("redwood_attn_2l", no_processing["redwood_attn_2l"])
 
 @torch.no_grad()
 def test_pos_embed_hook():

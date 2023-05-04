@@ -749,9 +749,17 @@ class HookedTransformer(HookedRootModule):
             n_devices=n_devices,
         )
 
-        if cfg.positional_embedding_type == "shortformer" and fold_ln:
-            logging.warning("You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead.")
-            fold_ln = False
+        if cfg.positional_embedding_type == "shortformer":
+            if fold_ln:
+                logging.warning("You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead.")
+                fold_ln = False
+            if center_unembed:
+                logging.warning("You tried to specify center_unembed=True for a shortformer model, but this can't be done! Setting center_unembed=False instead.")
+                center_unembed = False
+            if center_writing_weights:
+                logging.warning("You tried to specify center_writing_weights=True for a shortformer model, but this can't be done! Setting center_writing_weights=False instead.")
+                center_writing_weights = False
+
 
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
