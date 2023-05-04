@@ -118,7 +118,7 @@ class LayerNormPre(nn.Module):
         self, x: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]
     ) -> Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
+        scale: Union[Float[torch.Tensor, "batch pos 1"], Float[torch.Tensor, "batch pos head_index 1"]] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         return self.hook_normalized(x / scale)
