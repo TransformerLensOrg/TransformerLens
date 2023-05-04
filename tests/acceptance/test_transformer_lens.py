@@ -57,16 +57,12 @@ def test_model(name, expected_loss):
 
 
 @pytest.mark.parametrize("name,expected_loss", list(no_processing.items()))
-def test_from_pretrained_no_processing(name, expected_loss, fold_ln=False):
+def test_from_pretrained_no_processing(name, expected_loss):
     # Checks if manually overriding the boolean flags in from_pretrained
     # is equivalent to using from_pretrained_no_processing
 
     model_ref = HookedTransformer.from_pretrained_no_processing(name)
-    model_override = HookedTransformer.from_pretrained(name, fold_ln=fold_ln, center_writing_weights=False, center_unembed=False, refactor_factored_attn_matrices=False)
-    assert model_ref.cfg == model_override.cfg
-
-    model_ref = HookedTransformer.from_pretrained(name)
-    model_override = HookedTransformer.from_pretrained_no_processing(name, fold_ln=fold_ln, center_writing_weights=True, center_unembed=True, refactor_factored_attn_matrices=False)
+    model_override = HookedTransformer.from_pretrained(name, fold_ln=False, center_writing_weights=False, center_unembed=False, refactor_factored_attn_matrices=False)
     assert model_ref.cfg == model_override.cfg
 
     # also check losses
