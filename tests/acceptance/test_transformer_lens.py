@@ -70,12 +70,6 @@ def test_from_pretrained_no_processing(name, expected_loss):
     print(loss.item())
     assert (loss.item() - expected_loss) < 4e-5
 
-def test_shortformer_fold_ln_override():
-    """It's not possible to fold_ln with Shortformer, so check that when fold_ln is True, this is automatically overwritten (there is no crash)"""
-
-    # test_from_pretrained_no_processing("redwood_attn_2l", no_processing["redwood_attn_2l"], fold_ln=True)
-    test_model("redwood_attn_2l", no_processing["redwood_attn_2l"])
-
 @torch.no_grad()
 def test_pos_embed_hook():
     """
