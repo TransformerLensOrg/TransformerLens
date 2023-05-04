@@ -699,6 +699,10 @@ def get_pretrained_model_config(
     # Don't need to initialize weights, we're loading from pretrained
     cfg_dict["init_weights"] = False
 
+    if "positional_embedding_type" in cfg_dict and cfg_dict["positional_embedding_type"] == "shortformer" and fold_ln:
+        logging.warning("You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead.")
+        fold_ln = False
+
     if device is not None:
         cfg_dict["device"] = device
     if fold_ln:
