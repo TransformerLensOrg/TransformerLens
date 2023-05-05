@@ -3231,6 +3231,15 @@ An object that represents a slice input. It can be a tuple of integers or a slic
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.check_structure">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">check_structure</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.utils.check_structure" title="Permalink to this definition">#</a></dt>
+<dd><p>Validate that the two square tensors have the same structure, i.e.,
+that the directionality of comparisons points in the same directions both
+row-wise and column-wise.</p>
+<p>This function is not used anywhere in the code right now, just for debugging tests.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utils.composition_scores">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">composition_scores</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">left</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.FactoredMatrix.FactoredMatrix" title="transformer_lens.FactoredMatrix.FactoredMatrix"><span class="pre">FactoredMatrix</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">right</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#transformer_lens.FactoredMatrix.FactoredMatrix" title="transformer_lens.FactoredMatrix.FactoredMatrix"><span class="pre">FactoredMatrix</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">broadcast_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'*leading_dims'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'*leading_dims_left</span> <span class="pre">*T.leading_dims_right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.composition_scores" title="Permalink to this definition">#</a></dt>
 <dd><p>See <cite>HookedTransformer.all_composition_scores</cite> for documentation.</p>
@@ -3303,6 +3312,18 @@ get_act_name(‘pre5’)==’blocks.5.mlp.hook_pre’</p>
 * code (Codeparrot Clean, a Python code dataset <a class="reference external" href="https://huggingface.co/datasets/codeparrot/codeparrot-clean">https://huggingface.co/datasets/codeparrot/codeparrot-clean</a> )
 * c4_code (c4 + code - the 20K data points from c4-10k and code-10k. This is the mix of datasets used to train my interpretability-friendly models, though note that they are <em>not</em> in the correct ratio! There’s 10K texts for each, but about 22M tokens of code and 5M tokens of C4)
 * wiki (Wikipedia, generated from the 20220301.en split of <a class="reference external" href="https://huggingface.co/datasets/wikipedia">https://huggingface.co/datasets/wikipedia</a> )</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.is_lower_triangular">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">is_lower_triangular</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#transformer_lens.utils.is_lower_triangular" title="Permalink to this definition">#</a></dt>
+<dd><p>Checks if <cite>x</cite> is a lower triangular matrix.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.is_square">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">is_square</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#transformer_lens.utils.is_square" title="Permalink to this definition">#</a></dt>
+<dd><p>Checks if <cite>x</cite> is a square matrix.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -3860,6 +3881,7 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.utils.SliceInput"><code class="docutils literal notranslate"><span class="pre">SliceInput</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.check_structure"><code class="docutils literal notranslate"><span class="pre">check_structure()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.composition_scores"><code class="docutils literal notranslate"><span class="pre">composition_scores()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.download_file_from_hf"><code class="docutils literal notranslate"><span class="pre">download_file_from_hf()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.gelu_fast"><code class="docutils literal notranslate"><span class="pre">gelu_fast()</span></code></a></li>
@@ -3867,6 +3889,8 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 <li><a class="reference internal" href="#transformer_lens.utils.get_act_name"><code class="docutils literal notranslate"><span class="pre">get_act_name()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_corner"><code class="docutils literal notranslate"><span class="pre">get_corner()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_dataset"><code class="docutils literal notranslate"><span class="pre">get_dataset()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.is_lower_triangular"><code class="docutils literal notranslate"><span class="pre">is_lower_triangular()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.is_square"><code class="docutils literal notranslate"><span class="pre">is_square()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.keep_single_column"><code class="docutils literal notranslate"><span class="pre">keep_single_column()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.lm_accuracy"><code class="docutils literal notranslate"><span class="pre">lm_accuracy()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.lm_cross_entropy_loss"><code class="docutils literal notranslate"><span class="pre">lm_cross_entropy_loss()</span></code></a></li>
