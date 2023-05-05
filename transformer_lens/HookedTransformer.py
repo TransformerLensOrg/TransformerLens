@@ -453,7 +453,7 @@ class HookedTransformer(HookedRootModule):
         return tokens
 
     def to_string(
-        self, tokens: Union[Int[torch.Tensor, "batch pos"], Int[torch.Tensor, "pos"], np.ndarray, List[Float[torch.Tensor, "pos"]]]
+        self, tokens: Union[Int[torch.Tensor, ""], Int[torch.Tensor, "batch pos"], Int[torch.Tensor, "pos"], np.ndarray, List[Int[torch.Tensor, "pos"]]]
     ) -> Union[str, List[str]]:
         """
         Converts a tensor of tokens to a string (if rank 1) or a list of strings (if rank 2).
