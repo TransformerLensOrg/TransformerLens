@@ -497,7 +497,7 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
-        neuron_labels = neuron_slice.apply(np.arange(self.model.cfg.d_mlp), dim=0)
+        neuron_labels = neuron_slice.apply(torch.arange(self.model.cfg.d_mlp), dim=0)
         if type(neuron_labels) == int:
             neuron_labels = np.array([neuron_labels])
         for l in range(layer):
