@@ -12,6 +12,7 @@ shape_2 = tensor_row0_dim2.shape
 tensor_row0_dim1 = torch.tensor([1, 2, 3, 4, 5])
 shape_1 = tensor_row0_dim1.shape
 
+
 class TestSlice:
     @pytest.mark.parametrize("input_slice, expected_shape", [
         ([0,], shape_2),
@@ -58,6 +59,7 @@ class TestSlice:
 MODEL = "solu-1l"
 
 model = HookedTransformer.from_pretrained(MODEL)
+
 
 @pytest.fixture
 def nested_list_1():
@@ -111,3 +113,48 @@ def test_to_str_tokens(nested_list_1, nested_list_1x1, nested_list_1x3):
     assert isinstance(squeezable_ndarray_to_str_tokens[0], str)
     assert isinstance(squeezable_ndarray_to_str_tokens[1], str)
     assert isinstance(squeezable_ndarray_to_str_tokens[2], str)
+
+
+class Test_is_square:
+    failed_cases = (
+        torch.tensor([]),
+        torch.tensor(2),
+        torch.ones(2, 3),
+        torch.zeros(2),
+        torch.ones(3, 3, 3),
+        torch.ones(1, 1, 1, 1),
+    )
+
+    @pytest.mark.parametrize("x", (torch.ones(3, 3), torch.zeros(1, 1)))
+    def test_pass(self, x: torch.Tensor):
+        assert utils.is_square(x)
+
+    @pytest.mark.parametrize("x", failed_cases)
+    def test_fail(self, x: torch.Tensor):
+        assert not utils.is_square(x)
+
+
+class Test_lower_triangular:
+    @pytest.mark.parametrize(
+        "x",
+        (
+            torch.eye(4),
+            torch.ones(4, 4).tril(),
+            torch.ones(4, 4).triu().T,
+            torch.zeros(4, 4),
+        ),
+    )
+    def test_pass(self, x: torch.Tensor):
+        assert utils.is_lower_triangular(x)
+
+    @pytest.mark.parametrize(
+        "x",
+        (
+            *Test_is_square.failed_cases,
+            torch.ones(4, 4).triu(),
+            torch.ones(4, 4).tril().T,
+            torch.ones(3, 3),
+        ),
+    )
+    def test_fail(self, x: torch.Tensor):
+        assert not utils.is_lower_triangular(x)

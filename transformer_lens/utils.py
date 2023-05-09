@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from datasets.arrow_dataset import Dataset
 import einops
 from transformers import AutoTokenizer
-from typing import Optional, Union, Tuple, List, Dict, Type
+from typing import Optional, Union, Tuple, List, Dict, Type, cast
 import transformers
 from huggingface_hub import hf_hub_download
 import re
@@ -657,3 +657,56 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
+
+def is_square(x: torch.Tensor) -> bool:
+    """Checks if `x` is a square matrix."""
+    return x.ndim == 2 and x.shape[0] == x.shape[1]
+
+def is_lower_triangular(x: torch.Tensor) -> bool:
+    """Checks if `x` is a lower triangular matrix."""
+    if not is_square(x):
+        return False
+    return x.equal(x.tril())
+
+def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) -> None:
+    """Validate that the two square tensors have the same structure, i.e., 
+    that the directionality of comparisons points in the same directions both 
+    row-wise and column-wise.
+    
+    This function is not used anywhere in the code right now, just for debugging tests.
+    """
+    assert t1.ndim == 2
+    assert t1.shape == t2.shape
+    n_rows, n_cols = cast(Tuple[int, int], t1.shape)
+
+    if verbose:
+        print("Checking rows")
+    row_mismatch = []
+    for row_i in range(n_rows - 1):
+        t1_result = t1[row_i].ge(t1[row_i + 1])
+        t2_result = t2[row_i].ge(t2[row_i + 1])
+        if any(t1_result != t2_result):
+            row_mismatch.append(row_i)
+            if verbose:
+                print(f"\trows {row_i}:{row_i + 1}")
+                print(f"\tt1: {t1_result.tolist()}")
+                print(f"\tt2: {t2_result.tolist()}")
+    
+    if verbose:
+        print("Checking columns")
+    col_mismatch = []
+    for col_i in range(n_cols - 1):
+        t1_result = t1[:, col_i].ge(t1[:, col_i + 1])
+        t2_result = t2[:, col_i].ge(t2[:, col_i + 1])
+        if any(t1_result != t2_result):
+            col_mismatch.append(col_i)
+            if verbose:
+                print(f"\trows {col_i}:{col_i + 1}")
+                print(f"\tt1: {t1_result.tolist()}")
+                print(f"\tt2: {t2_result.tolist()}")
+    if not row_mismatch and not col_mismatch:
+        print("PASSED")
+    elif row_mismatch:
+        print(f"row mismatch: {row_mismatch}")
+    elif col_mismatch:
+        print(f"column mismatch: {col_mismatch}")

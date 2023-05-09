@@ -33,11 +33,13 @@ loss_store = {
     "attn-only-3l": 5.747507095336914,
     "pythia": 4.659344673156738,
     "gelu-2l": 6.501802444458008,
+    "redwood_attn_2l": 10.530948638916016,
+    "solu-1l": 5.256411552429199,
 }
-no_processing = [
-    ("solu-1l", 5.256411552429199),
-    ("redwood_attn_2l",10.530948638916016),  # TODO can't be loaded with from_pretrained
-]
+no_processing = {
+    "solu-1l": loss_store["solu-1l"],
+    "redwood_attn_2l": loss_store["redwood_attn_2l"],
+}
 
 
 @pytest.mark.parametrize("name,expected_loss", list(loss_store.items()))
@@ -46,6 +48,7 @@ def test_model(name, expected_loss):
     model = HookedTransformer.from_pretrained(name)
     loss = model(text, return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
+
 
 
 def test_othello_gpt():

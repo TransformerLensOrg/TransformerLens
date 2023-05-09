@@ -90,11 +90,17 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
     gpt2_logits_n_devices, gpt2_cache_n_devices = model_n_devices.run_with_cache(
         gpt2_tokens, remove_batch_dim=True)
 
+    # Make sure the tensors in cache remain on their respective devices
+    for i in range(model_n_devices.cfg.n_layers):
+        expected_device = get_device_for_block_index(i, cfg=model_n_devices.cfg)
+        cache_device = gpt2_cache_n_devices[f"blocks.{i}.mlp.hook_post"].device
+        assert cache_device == expected_device
+
     assert torch.allclose(gpt2_logits_1_device.to("cpu"),
                           gpt2_logits_n_devices.to("cpu"))
     for key in gpt2_cache_1_device.keys():
-        assert torch.allclose(gpt2_cache_1_device[key],
-                              gpt2_cache_n_devices[key])
+        assert torch.allclose(gpt2_cache_1_device[key].to("cpu"),
+                              gpt2_cache_n_devices[key].to("cpu"))
 
     cuda_devices = set()
     n_params_on_device = {}
@@ -114,3 +120,27 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
     print(
         f"Number of devices: {n_devices}, Model loss (1 device): {loss_1_device}, Model loss ({n_devices} devices): {loss_n_devices}, Time taken (1 device): {elapsed_time_1_device:.4f} seconds, Time taken ({n_devices} devices): {elapsed_time_n_devices:.4f} seconds"
     )
+
+@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Requires at least 2 CUDA devices")
+def test_cache_device():
+    model = HookedTransformer.from_pretrained("gpt2-small", device="cuda:1")
+
+    logits, cache = model.run_with_cache("Hello there")
+    assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(torch.device("cuda:1"))
+
+    logits, cache = model.run_with_cache("Hello there", device="cpu")
+    assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(torch.device("cpu"))
+
+    model.to("cuda")
+    logits, cache = model.run_with_cache("Hello there")
+    assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(logits.device)
+
+
+def norm_device(device):
+    """
+    Convenience function to normalize device strings for comparison.
+    """
+    device_str = str(device)
+    if device_str.startswith("cuda") and ':' not in device_str:
+        device_str += ':0'
+    return device_str
