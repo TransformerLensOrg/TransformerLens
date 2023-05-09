@@ -13,7 +13,7 @@ from rich import print as rprint
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 
-from transformer_lens import FactoredMatrix
+from transformer_lens import FactoredMatrix, HookedTransformer
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
@@ -657,3 +657,8 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
+
+def get_all_tokens(model: HookedTransformer) -> List[str]:
+    """Gets all tokens from a HookedTransformer model, represented as a list of strings."""
+    all_tokens = [model.to_str_tokens(np.array([i])) for i in range(model.cfg.d_vocab)]
+    all_tokens = [all_tokens[i][0] for i in range(model.cfg.d_vocab)]
