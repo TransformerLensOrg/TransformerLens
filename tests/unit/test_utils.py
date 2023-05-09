@@ -12,6 +12,7 @@ shape_2 = tensor_row0_dim2.shape
 tensor_row0_dim1 = torch.tensor([1, 2, 3, 4, 5])
 shape_1 = tensor_row0_dim1.shape
 
+
 class TestSlice:
     @pytest.mark.parametrize("input_slice, expected_shape", [
         ([0,], shape_2),
@@ -39,9 +40,9 @@ class TestSlice:
         slc = utils.Slice(input_slice=input_slice)
         sliced_tensor = slc.apply(ref_tensor)
         assert (sliced_tensor == expected_tensor).all()
-    
+
     @pytest.mark.parametrize("input_slice, expected_indices", [
-        ([0,1], np.array([0, 1])),
+        ([0, 1], np.array([0, 1])),
         (0, np.array(0)),
         (torch.tensor(0), np.array(0)),
     ])
@@ -58,6 +59,7 @@ class TestSlice:
 MODEL = "solu-1l"
 
 model = HookedTransformer.from_pretrained(MODEL)
+
 
 @pytest.fixture
 def nested_list_1():
@@ -80,7 +82,8 @@ def test_to_str_tokens(nested_list_1, nested_list_1x1, nested_list_1x3):
     assert len(tensor_1_to_str_tokens) == 1
     assert isinstance(tensor_1_to_str_tokens[0], str)
 
-    tensor_1x1_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1x1))
+    tensor_1x1_to_str_tokens = model.to_str_tokens(
+        torch.tensor(nested_list_1x1))
     assert isinstance(tensor_1x1_to_str_tokens, list)
     assert len(tensor_1x1_to_str_tokens) == 1
     assert isinstance(tensor_1x1_to_str_tokens[0], str)
@@ -98,16 +101,69 @@ def test_to_str_tokens(nested_list_1, nested_list_1x1, nested_list_1x3):
     single_int_to_single_str_token = model.to_single_str_token(3)
     assert isinstance(single_int_to_single_str_token, str)
 
-    squeezable_tensor_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1x3))
+    squeezable_tensor_to_str_tokens = model.to_str_tokens(
+        torch.tensor(nested_list_1x3))
     assert isinstance(squeezable_tensor_to_str_tokens, list)
     assert len(squeezable_tensor_to_str_tokens) == 3
     assert isinstance(squeezable_tensor_to_str_tokens[0], str)
     assert isinstance(squeezable_tensor_to_str_tokens[1], str)
     assert isinstance(squeezable_tensor_to_str_tokens[2], str)
 
-    squeezable_ndarray_to_str_tokens = model.to_str_tokens(np.array(nested_list_1x3))
+    squeezable_ndarray_to_str_tokens = model.to_str_tokens(
+        np.array(nested_list_1x3))
     assert isinstance(squeezable_ndarray_to_str_tokens, list)
     assert len(squeezable_ndarray_to_str_tokens) == 3
     assert isinstance(squeezable_ndarray_to_str_tokens[0], str)
     assert isinstance(squeezable_ndarray_to_str_tokens[1], str)
     assert isinstance(squeezable_ndarray_to_str_tokens[2], str)
+
+
+class Test_is_square:
+    failed_cases = (
+        torch.tensor([]),
+        torch.tensor(2),
+        torch.ones(2, 3),
+        torch.zeros(2),
+        torch.ones(3, 3, 3),
+        torch.ones(1, 1, 1, 1),
+    )
+
+    @pytest.mark.parametrize("x", (torch.ones(3, 3), torch.zeros(1, 1)))
+    def test_pass(self, x: torch.Tensor):
+        assert utils.is_square(x)
+
+    @pytest.mark.parametrize("x", failed_cases)
+    def test_fail(self, x: torch.Tensor):
+        assert not utils.is_square(x)
+
+
+class Test_lower_triangular:
+    @pytest.mark.parametrize(
+        "x",
+        (
+            torch.eye(4),
+            torch.ones(4, 4).tril(),
+            torch.ones(4, 4).triu().T,
+            torch.zeros(4, 4),
+        ),
+    )
+    def test_pass(self, x: torch.Tensor):
+        assert utils.is_lower_triangular(x)
+
+    @pytest.mark.parametrize(
+        "x",
+        (
+            *Test_is_square.failed_cases,
+            torch.ones(4, 4).triu(),
+            torch.ones(4, 4).tril().T,
+            torch.ones(3, 3),
+        ),
+    )
+    def test_fail(self, x: torch.Tensor):
+        assert not utils.is_lower_triangular(x)
+
+
+def test_get_all_tokens():
+    all_tokens = utils.get_all_tokens(model)
+    assert len(all_tokens) == model.cfg.vocab_size
+    assert (all_tokens[0]) == model.to_str_tokens(torch.tensor(0))[0]

@@ -16,4 +16,4 @@ dist/
 docs/build
 .coverage
 .Ds_Store
-
+.pylintrc
