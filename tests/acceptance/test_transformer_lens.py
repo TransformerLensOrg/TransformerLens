@@ -36,11 +36,11 @@ loss_store = {
     "redwood_attn_2l": 10.530948638916016,
     "solu-1l": 5.256411552429199,
 }
-no_processing = {
-    "solu-1l": loss_store["solu-1l"],
-    "redwood_attn_2l": loss_store["redwood_attn_2l"],
-}
 
+no_processing = [
+    ("solu-1l", 5.256411552429199),
+    ("redwood_attn_2l",10.530948638916016),  # TODO can't be loaded with from_pretrained
+]
 
 @pytest.mark.parametrize("name,expected_loss", list(loss_store.items()))
 def test_model(name, expected_loss):
