@@ -1,5 +1,3 @@
-from jaxtyping import install_import_hook
-hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformers import AutoTokenizer
@@ -74,4 +72,3 @@ def test_d_vocab_out_set_d_vocab_infer():
     assert model.cfg.d_vocab == 50257
     assert model.cfg.d_vocab_out == 90
 
-hook.uninstall()

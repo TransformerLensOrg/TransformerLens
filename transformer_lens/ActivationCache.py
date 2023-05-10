@@ -2,11 +2,11 @@
 from __future__ import annotations
 import transformer_lens.utils as utils
 from transformer_lens.utils import Slice, SliceInput
-from jaxtyping import Float
+from jaxtyping import Float, Int
 import torch
 import einops
 from fancy_einsum import einsum
-from typing import Optional, Union, Dict
+from typing import List, Optional, Tuple, Union, Dict
 from typing_extensions import Literal
 import re
 import numpy as np
@@ -190,19 +190,19 @@ class ActivationCache:
 
     def logit_attrs(
             self,
-            residual_stack: TT[T.num_components, T.batch_and_pos_dims:..., T.d_model],
-            tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]],
-            incorrect_tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]] = None,
+            residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+            tokens: Union[str, int, Int[torch.Tensor, ""], Int[torch.Tensor, "batch"], Int[torch.Tensor, "batch position"]],
+            incorrect_tokens: Optional[Union[str, int, Int[torch.Tensor, ""], Int[torch.Tensor, "batch"], Int[torch.Tensor, "batch position"]]] = None,
             pos_slice: Union[Slice, SliceInput] = None,
             batch_slice: Union[Slice, SliceInput] = None,
             has_batch_dim: bool = True
-        ) -> TT[T.num_components, T.batch_and_pos_dims:...]:
+        ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims"]:
         """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
 
         Args:
-            residual_stack (TT["num_components", "batch_and_pos_dims":..., "d_model"]): stack of components of residual stream to get logit attributions for.
-            tokens (Union[str, int, TT[()], TT["batch"], TT["batch", "position"]]): tokens to compute logit attributions on.
-            incorrect_tokens (Union[str, int, TT[()], TT["batch"], TT["batch", "position"]], optional): if provided, compute attributions on logit difference between tokens and incorrect_tokens.
+            residual_stack (Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]): stack of components of residual stream to get logit attributions for.
+            tokens (Union[str, int, Int[torch.Tensor, ""], Int[torch.Tensor, "batch"], Int[torch.Tensor, "batch position"]]): tokens to compute logit attributions on.
+            incorrect_tokens (Union[str, int, Int[torch.Tensor, ""], Int[torch.Tensor, "batch"], Int[torch.Tensor, "batch position"]], optional): if provided, compute attributions on logit difference between tokens and incorrect_tokens.
                 Must have the same shape as tokens.
             pos_slice (Slice, optional): The slice to apply layer norm scaling on.
                 Defaults to None, do nothing.
@@ -211,7 +211,7 @@ class ActivationCache:
             has_batch_dim (bool, optional): Whether residual_stack has a batch dimension.
                 Defaults to True.
         Returns:
-            Components: A [num_components, batch_and_pos_dims:...] tensor of the logit attributions or logit difference attributions if incorrect_tokens was provided.
+            Components: A [num_components, *batch_and_pos_dims] tensor of the logit attributions or logit difference attributions if incorrect_tokens was provided.
         """
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
@@ -471,7 +471,8 @@ class ActivationCache:
         return_labels: bool = False,
         incl_remainder: bool = False,
         apply_ln: bool = False,
-    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
+    ) -> Union[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+               Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]]]:
         """Returns a stack of all neuron results (ie residual stream contribution) up to layer L - ie the amount each individual neuron contributes to the residual stream. Also returns a list of labels of the form "L0N0" for the neurons. A good way to decompose the outputs of MLP layers into attribution by specific neurons.
 
         Note that doing this for all neurons is SUPER expensive on GPU memory and only works for small models or short inputs.
@@ -497,7 +498,7 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
-        neuron_labels = neuron_slice.apply(np.arange(self.model.cfg.d_mlp), dim=0)
+        neuron_labels = neuron_slice.apply(torch.arange(self.model.cfg.d_mlp), dim=0)
         if type(neuron_labels) == int:
             neuron_labels = np.array([neuron_labels])
         for l in range(layer):

@@ -1,6 +1,5 @@
 from jaxtyping import Float, install_import_hook
 
-hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 
 import torch
 
@@ -17,4 +16,3 @@ logits_text: Float[torch.Tensor, "1 n_tokens d_vocab"] = model(prompt, prepend_b
 # n.b. that i used this file to see if my type annotations were working- they were! i occasionally
 # changed one of the sizes and saw that the type checker caught it.
 
-hook.uninstall()

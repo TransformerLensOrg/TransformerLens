@@ -1,6 +1,4 @@
-from jaxtyping import install_import_hook
 
-hook = install_import_hook("transformer_lens", ("typeguard", "typechecked"))
 from transformer_lens import HookedTransformer
 
 MODEL = "solu-1l"
@@ -14,4 +12,3 @@ def test_cache_hook_names():
     _, cache = model.run_with_cache(prompt)
     assert list(cache.keys()) == act_names_in_cache
 
-hook.uninstall()

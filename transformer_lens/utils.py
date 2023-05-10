@@ -364,7 +364,7 @@ class Slice:
             ValueError: If the input_slice is not one of the above types.
         """
         if type(input_slice) == tuple:
-            input_slice = slice(*input_slice)
+            input_slice: slice = slice(*input_slice)
             self.slice = input_slice
             self.mode = "slice"
         elif type(input_slice) == int:

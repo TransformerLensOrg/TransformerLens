@@ -174,7 +174,6 @@ def get_previous_token_head_detection_pattern(
     detection_pattern[1:, :-1] = torch.eye(tokens.shape[-1] - 1)
     return torch.tril(detection_pattern)
 
-
 # Duplicate token head
 def get_duplicate_token_head_detection_pattern(
     tokens: torch.Tensor,  # [batch (1) x pos]

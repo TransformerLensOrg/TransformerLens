@@ -9,6 +9,8 @@ from jaxtyping import Float, Int
 
 from functools import *
 
+from typeguard import typeguard_ignore
+
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import gelu_new, solu, gelu_fast
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -116,7 +118,7 @@ class LayerNormPre(nn.Module):
         self, x: Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]
     ) -> Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]:
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
+        scale: Union[Float[torch.Tensor, "batch pos 1"], Float[torch.Tensor, "batch pos head_index 1"]] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         return self.hook_normalized(x / scale)
@@ -308,6 +310,7 @@ class Attention(nn.Module):
             self.register_buffer("rotary_cos", cos)
     
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def OV(self) -> FactoredMatrix:
         """ 
@@ -322,6 +325,7 @@ class Attention(nn.Module):
         return FactoredMatrix(self.W_V, self.W_O)
     
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def QK(self) -> FactoredMatrix:
         """ 
