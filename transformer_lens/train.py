@@ -1,14 +1,13 @@
-from transformer_lens import HookedTransformer
-from transformer_lens import HookedTransformerConfig
 from dataclasses import dataclass
-from typing import Optional, Callable
-from torch.utils.data import Dataset, DataLoader
+from typing import Optional
+
+import torch
 import torch.optim as optim
 import wandb
-import torch
-import torch.nn as nn
+from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
-from einops import rearrange
+
+from transformer_lens import HookedTransformer
 
 
 @dataclass

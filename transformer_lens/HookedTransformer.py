@@ -1,41 +1,43 @@
-from typing import Callable, Union, List, Tuple, Dict, Optional, NamedTuple, overload
-from typing_extensions import Literal
+import logging
+from functools import lru_cache
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload
+
+import einops
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-import einops
-import logging
 import tqdm.auto as tqdm
-import re
-from huggingface_hub import HfApi
-from functools import partial, lru_cache
-from collections import namedtuple
+from fancy_einsum import einsum
 from jaxtyping import Float, Int
+from transformers import AutoTokenizer, PreTrainedTokenizer
+from typeguard import typeguard_ignore
+from typing_extensions import Literal
 
-from transformers import (
-    AutoTokenizer,
-    PreTrainedTokenizer,
-)
-from datasets.load import load_dataset
-
-from transformer_lens.hook_points import HookedRootModule, HookPoint
-from transformer_lens import HookedTransformerConfig
-from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.FactoredMatrix import FactoredMatrix
-# Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
-from transformer_lens.past_key_value_caching import (
-    HookedTransformerKeyValueCache,
-)
-
-from transformer_lens.components import *
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
+from transformer_lens import HookedTransformerConfig
+from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.components import (
+    Embed,
+    LayerNorm,
+    LayerNormPre,
+    PosEmbed,
+    RMSNorm,
+    RMSNormPre,
+    TransformerBlock,
+    Unembed,
+)
+from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.hook_points import HookedRootModule, HookPoint
+
+# Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
+from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 from transformer_lens.utilities import devices
 
-SingleLoss = Float[torch.Tensor, ""] # Type alias for a single element tensor
+SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
 Loss = Union[SingleLoss, LossPerToken]
+
 
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
@@ -86,10 +88,10 @@ class HookedTransformer(HookedRootModule):
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            if 'llama' in self.cfg.tokenizer_name: 
+            if "llama" in self.cfg.tokenizer_name:
                 # llama tokenizer requires special handling
                 print("Warning: LLaMA tokenizer not loaded. Please load manually.")
-            else: 
+            else:
                 self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
                 if self.tokenizer.eos_token is None:
                     self.tokenizer.eos_token = "<|endoftext|>"
@@ -118,7 +120,7 @@ class HookedTransformer(HookedRootModule):
             self.hook_pos_embed = HookPoint()  # [batch, pos, d__dictmodel]
 
         if self.cfg.use_hook_tokens:
-            self.hook_tokens = HookPoint() # [batch, pos]
+            self.hook_tokens = HookPoint()  # [batch, pos]
 
         self.blocks = nn.ModuleList(
             [
@@ -127,7 +129,7 @@ class HookedTransformer(HookedRootModule):
             ]
         )
 
-        if self.cfg.normalization_type == "RMS": 
+        if self.cfg.normalization_type == "RMS":
             self.ln_final = RMSNorm(self.cfg)
         elif self.cfg.normalization_type == "RMSPre":
             self.ln_final = RMSNormPre(self.cfg)
@@ -167,54 +169,64 @@ class HookedTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
-    def check_hooks_to_add(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
+    def check_hooks_to_add(
+        self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False
+    ) -> None:
         if hook_point_name.endswith("attn.hook_result"):
-            assert self.cfg.use_attn_result, f"Cannot add hook {hook_point_name} if use_attn_result_hook is False"
+            assert (
+                self.cfg.use_attn_result
+            ), f"Cannot add hook {hook_point_name} if use_attn_result_hook is False"
         if hook_point_name.endswith(("hook_q_input", "hook_k_input", "hook_v_input")):
-            assert self.cfg.use_split_qkv_input, f"Cannot add hook {hook_point_name} if use_split_qkv_input is False"
+            assert (
+                self.cfg.use_split_qkv_input
+            ), f"Cannot add hook {hook_point_name} if use_split_qkv_input is False"
 
     @overload
     def forward(
-        self, 
-        input, 
-        return_type: Literal["logits"], 
+        self,
+        input,
+        return_type: Literal["logits"],
         loss_per_token: bool = False,
         prepend_bos: bool = True,
-        stop_at_layer: Optional[int] = None, 
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+    ) -> Loss:
         ...
 
     @overload
     def forward(
-        self, 
-        input, 
-        return_type: Literal["loss"], 
+        self,
+        input,
+        return_type: Literal["loss"],
         loss_per_token: bool = False,
         prepend_bos: bool = True,
-        stop_at_layer: Optional[int] = None, 
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Loss:
-        ...
-    
-    @overload
-    def forward(
-        self, 
-        input, 
-        return_type: Literal["both"], 
-        loss_per_token: bool = False,
-        prepend_bos: bool = True,
-        stop_at_layer: Optional[int] = None, 
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+    ) -> Loss:
         ...
 
     @overload
     def forward(
-        self, 
-        input, 
-        return_type: Literal[None], 
+        self,
+        input,
+        return_type: Literal["both"],
         loss_per_token: bool = False,
         prepend_bos: bool = True,
-        stop_at_layer: Optional[int] = None, 
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None) -> None:
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
+        ...
+
+    @overload
+    def forward(
+        self,
+        input,
+        return_type: Literal[None],
+        loss_per_token: bool = False,
+        prepend_bos: bool = True,
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+    ) -> None:
         ...
 
     # TODO make sure type assertions are provided
@@ -224,7 +236,7 @@ class HookedTransformer(HookedRootModule):
         return_type: Optional[str] = "logits",
         loss_per_token: bool = False,
         prepend_bos: bool = True,
-        stop_at_layer: Optional[int] = None, 
+        stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Union[
         None,
@@ -304,15 +316,15 @@ class HookedTransformer(HookedRootModule):
             raise ValueError(
                 f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"
             )
-        
+
         if stop_at_layer is None:
             # We iterate through every block by default
             transformer_block_list = self.blocks
         else:
             # If we explicitly want to stop at a layer, we only iterate through the blocks up to that layer. Note that this is exclusive, eg stop_at_layer==0 means to only run the embed, stop_at_layer==-1 means to run every layer *apart* from the final one, etc.
-            transformer_block_list = self.blocks[:stop_at_layer] # type: ignore
- 
-        for i, block in enumerate(transformer_block_list): # type: ignore
+            transformer_block_list = self.blocks[:stop_at_layer]  # type: ignore
+
+        for i, block in enumerate(transformer_block_list):  # type: ignore
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
             # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
@@ -329,7 +341,7 @@ class HookedTransformer(HookedRootModule):
                 else None,  # Cache contains a list of HookedTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed=shortformer_pos_embed,
             )  # [batch, pos, d_model]
-        
+
         if stop_at_layer is not None:
             # When we stop at an early layer, we end here rather than doing further computation
             return None
@@ -416,10 +428,10 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str]],
         prepend_bos: bool = True,
         move_to_device: bool = True,
-        truncate: bool = True
+        truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
         """
-        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model. 
+        Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is recommended when creating a sequence of tokens to be input to a model.
 
         Args:
             input (Union[str, List[str]]). The input to tokenize
@@ -439,19 +451,28 @@ class HookedTransformer(HookedRootModule):
             else:
                 input = [self.tokenizer.bos_token + string for string in input]
         tokens = self.tokenizer(
-            input, 
-            return_tensors = "pt", 
-            padding = True,
-            truncation = truncate,
-            max_length = self.cfg.n_ctx if truncate else None,
-            add_special_tokens = False if self.tokenizer.name_or_path.startswith('facebook/opt') else True  # As we manually add the BOS token
-            )["input_ids"]
+            input,
+            return_tensors="pt",
+            padding=True,
+            truncation=truncate,
+            max_length=self.cfg.n_ctx if truncate else None,
+            add_special_tokens=False
+            if self.tokenizer.name_or_path.startswith("facebook/opt")
+            else True,  # As we manually add the BOS token
+        )["input_ids"]
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
         return tokens
 
     def to_string(
-        self, tokens: Union[Int[torch.Tensor, "batch pos"], Int[torch.Tensor, "pos"], np.ndarray, List[Float[torch.Tensor, "pos"]]]
+        self,
+        tokens: Union[
+            Int[torch.Tensor, ""],
+            Int[torch.Tensor, "batch pos"],
+            Int[torch.Tensor, "pos"],
+            np.ndarray,
+            List[Int[torch.Tensor, "pos"]],
+        ],
     ) -> Union[str, List[str]]:
         """
         Converts a tensor of tokens to a string (if rank 1) or a list of strings (if rank 2).
@@ -478,12 +499,14 @@ class HookedTransformer(HookedRootModule):
 
     def to_str_tokens(
         self,
-        input: Union[str,
-                     Int[torch.Tensor, "pos"],
-                     Int[torch.Tensor, "1 pos"],
-                     Int[np.ndarray, "pos"],
-                     Int[np.ndarray, "1 pos"],
-                     list],
+        input: Union[
+            str,
+            Int[torch.Tensor, "pos"],
+            Int[torch.Tensor, "1 pos"],
+            Int[np.ndarray, "pos"],
+            Int[np.ndarray, "1 pos"],
+            list,
+        ],
         prepend_bos: bool = True,
     ) -> List[str]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
@@ -552,7 +575,9 @@ class HookedTransformer(HookedRootModule):
     def get_token_position(
         self,
         single_token: Union[str, int],
-        input: Union[str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]]],
+        input: Union[
+            str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]]
+        ],
         mode="first",
         prepend_bos=True,
     ):
@@ -568,15 +593,14 @@ class HookedTransformer(HookedRootModule):
             input (Union[str, torch.Tensor]): The sequence to
                 search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of tokens with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last". Defaults to "first".
-            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to 
-                the function, otherwise ignored. 
+            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when inputting a string to
+                the function, otherwise ignored.
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
-        
 
         if len(tokens.shape) == 2:
             # If the tokens have shape [1, seq_len], flatten to [seq_len]
@@ -592,7 +616,7 @@ class HookedTransformer(HookedRootModule):
             single_token = single_token.item()
 
         indices = torch.arange(len(tokens))[tokens == single_token]
-        assert len(indices)>0, f"The token does not occur in the prompt"
+        assert len(indices) > 0, f"The token does not occur in the prompt"
         if mode == "first":
             return indices[0].item()
         elif mode == "last":
@@ -600,11 +624,24 @@ class HookedTransformer(HookedRootModule):
         else:
             raise ValueError(f"mode must be 'first' or 'last', not {mode}")
 
-    def tokens_to_residual_directions(self, tokens: Union[str, int, Int[torch.Tensor, ""], Int[torch.Tensor, "pos"], Int[torch.Tensor, "batch pos"]]) -> Union[Float[torch.Tensor, "d_model"], Float[torch.Tensor, "pos d_model"], Float[torch.Tensor, "batch pos d_model"]]:
+    def tokens_to_residual_directions(
+        self,
+        tokens: Union[
+            str,
+            int,
+            Int[torch.Tensor, ""],
+            Int[torch.Tensor, "pos"],
+            Int[torch.Tensor, "batch pos"],
+        ],
+    ) -> Union[
+        Float[torch.Tensor, "d_model"],
+        Float[torch.Tensor, "pos d_model"],
+        Float[torch.Tensor, "batch pos d_model"],
+    ]:
         """Maps tokens to a tensor with the unembedding vector for those tokens, ie the vector in the residual stream that we dot with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and may be incorrect, as the LN weights change the unembed map. This is done automatically with the fold_ln flag on from_pretrained
-        
+
         WARNING 2: LayerNorm scaling will scale up or down the effective direction in the residual stream for each output token on any given input token position. ActivationCache.apply_ln_to_stack will apply the appropriate scaling to these directions.
 
         Args:
@@ -614,10 +651,12 @@ class HookedTransformer(HookedRootModule):
         Returns:
             residual_direction torch.Tensor: The unembedding vector for the token(s), a stack of [d_model] tensor.
         """
-        if isinstance(tokens, torch.Tensor) and tokens.numel()>1:
+        if isinstance(tokens, torch.Tensor) and tokens.numel() > 1:
             # If the tokens are a tensor, and have more than one element, assume they are a batch of tokens
             residual_directions = self.W_U[:, tokens]
-            residual_directions = einops.rearrange(residual_directions, "d_model ... -> ... d_model")
+            residual_directions = einops.rearrange(
+                residual_directions, "d_model ... -> ... d_model"
+            )
             return residual_directions
         else:
             # Otherwise there is a single token
@@ -625,13 +664,12 @@ class HookedTransformer(HookedRootModule):
                 token = self.to_single_token(tokens)
             elif isinstance(tokens, int):
                 token = tokens
-            elif isinstance(tokens, torch.Tensor) and tokens.numel()==1:
+            elif isinstance(tokens, torch.Tensor) and tokens.numel() == 1:
                 token = tokens.item()
             else:
                 raise ValueError(f"Invalid token type: {type(tokens)}")
             residual_direction = self.W_U[:, token]
             return residual_direction
-
 
     def to(self, device_or_dtype, print_details=True):
         """
@@ -639,14 +677,14 @@ class HookedTransformer(HookedRootModule):
         """
         if isinstance(device_or_dtype, torch.device):
             self.cfg.device = device_or_dtype.type
-            if print_details: 
+            if print_details:
                 print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, str):
             self.cfg.device = device_or_dtype
-            if print_details: 
+            if print_details:
                 print("Moving model to device: ", self.cfg.device)
         elif isinstance(device_or_dtype, torch.dtype):
-            if print_details: 
+            if print_details:
                 print("Changing model dtype to", device_or_dtype)
             # change state_dict dtypes
             for k, v in self.state_dict().items():
@@ -749,6 +787,23 @@ class HookedTransformer(HookedRootModule):
             n_devices=n_devices,
         )
 
+        if cfg.positional_embedding_type == "shortformer":
+            if fold_ln:
+                logging.warning(
+                    "You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead."
+                )
+                fold_ln = False
+            if center_unembed:
+                logging.warning(
+                    "You tried to specify center_unembed=True for a shortformer model, but this can't be done! Setting center_unembed=False instead."
+                )
+                center_unembed = False
+            if center_writing_weights:
+                logging.warning(
+                    "You tried to specify center_writing_weights=True for a shortformer model, but this can't be done! Setting center_writing_weights=False instead."
+                )
+                center_writing_weights = False
+
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
             official_model_name, cfg, hf_model
@@ -847,12 +902,6 @@ class HookedTransformer(HookedRootModule):
         assert (
             self.cfg.n_devices == 1 or move_state_dict_to_device
         ), "If n_devices > 1, move_state_dict_to_device must be True"
-
-        
-        if self.cfg.positional_embedding_type == "shortformer":
-            if fold_ln:
-                logging.warning("You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead.")
-                fold_ln = False
 
         if move_state_dict_to_device:
             for k, v in state_dict.items():
@@ -971,24 +1020,27 @@ class HookedTransformer(HookedRootModule):
                 * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             )
 
-            # Finally, we center the weights reading from the residual stream. The output of the first 
-            # part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any input vector 
+            # Finally, we center the weights reading from the residual stream. The output of the first
+            # part of the LayerNorm is mean 0 and standard deviation 1, so the mean of any input vector
             # of the matrix doesn't matter and can be set to zero.
-            # Equivalently, the output of LayerNormPre is orthogonal to the vector of all 1s (because 
+            # Equivalently, the output of LayerNormPre is orthogonal to the vector of all 1s (because
             # dotting with that gets the sum), so we can remove the component of the matrix parallel to this.
             state_dict[f"blocks.{l}.attn.W_Q"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_Q"], 
-                "head_index d_model d_head -> head_index 1 d_head", 
-                "mean")
+                state_dict[f"blocks.{l}.attn.W_Q"],
+                "head_index d_model d_head -> head_index 1 d_head",
+                "mean",
+            )
             state_dict[f"blocks.{l}.attn.W_K"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_K"], 
-                "head_index d_model d_head -> head_index 1 d_head", 
-                "mean")
+                state_dict[f"blocks.{l}.attn.W_K"],
+                "head_index d_model d_head -> head_index 1 d_head",
+                "mean",
+            )
             state_dict[f"blocks.{l}.attn.W_V"] -= einops.reduce(
-                state_dict[f"blocks.{l}.attn.W_V"], 
-                "head_index d_model d_head -> head_index 1 d_head", 
-                "mean")
-            
+                state_dict[f"blocks.{l}.attn.W_V"],
+                "head_index d_model d_head -> head_index 1 d_head",
+                "mean",
+            )
+
             del (
                 state_dict[f"blocks.{l}.ln1.w"],
                 state_dict[f"blocks.{l}.ln1.b"],
@@ -1011,12 +1063,12 @@ class HookedTransformer(HookedRootModule):
 
                 # Center the weights that read in from the LayerNormPre
                 state_dict[f"blocks.{l}.mlp.W_in"] -= einops.reduce(
-                    state_dict[f"blocks.{l}.mlp.W_in"], 
-                    "d_model d_mlp -> 1 d_mlp", 
-                    "mean")
+                    state_dict[f"blocks.{l}.mlp.W_in"],
+                    "d_model d_mlp -> 1 d_mlp",
+                    "mean",
+                )
 
                 del state_dict[f"blocks.{l}.ln2.w"], state_dict[f"blocks.{l}.ln2.b"]
-
 
                 if self.cfg.act_fn.startswith("solu"):
                     # Fold ln3 into activation
@@ -1035,9 +1087,10 @@ class HookedTransformer(HookedRootModule):
 
                     # Center the weights that read in from the LayerNormPre
                     state_dict[f"blocks.{l}.mlp.W_out"] -= einops.reduce(
-                        state_dict[f"blocks.{l}.mlp.W_out"], 
-                        "d_mlp d_model -> 1 d_model", 
-                        "mean")
+                        state_dict[f"blocks.{l}.mlp.W_out"],
+                        "d_mlp d_model -> 1 d_model",
+                        "mean",
+                    )
                     del (
                         state_dict[f"blocks.{l}.mlp.ln.w"],
                         state_dict[f"blocks.{l}.mlp.ln.b"],
@@ -1055,9 +1108,8 @@ class HookedTransformer(HookedRootModule):
 
         # Center the weights that read in from the LayerNormPre
         state_dict[f"unembed.W_U"] -= einops.reduce(
-            state_dict[f"unembed.W_U"], 
-            "d_model d_vocab -> 1 d_vocab", 
-            "mean")
+            state_dict[f"unembed.W_U"], "d_model d_vocab -> 1 d_vocab", "mean"
+        )
 
         del state_dict[f"ln_final.w"]
         return state_dict
@@ -1100,25 +1152,27 @@ class HookedTransformer(HookedRootModule):
             state_dict["unembed.b_U"] - state_dict["unembed.b_U"].mean()
         )
         return state_dict
-    
+
     def fold_value_biases(self, state_dict: Dict[str, torch.Tensor]):
         """Fold the value biases into the output bias. Because attention patterns add up to 1, the value biases always have a constant effect on a head's output
-        Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with. 
+        Further, as the outputs of each head in a layer add together, each head's value bias has a constant effect on the *layer's* output, which can make it harder to interpret the effect of any given head, and it doesn't matter which head a bias is associated with.
         We can factor this all into a single output bias to the layer, and make it easier to interpret the head's output.
         Formally, we take b_O_new = b_O_original + sum_head(b_V_head @ W_O_head)
         """
         for layer in range(self.cfg.n_layers):
             # shape [head_index, d_head]
-            b_V = state_dict[f'blocks.{layer}.attn.b_V']
+            b_V = state_dict[f"blocks.{layer}.attn.b_V"]
             # [head_index, d_head, d_model]
-            W_O = state_dict[f'blocks.{layer}.attn.W_O']
+            W_O = state_dict[f"blocks.{layer}.attn.W_O"]
             # [d_model]
-            b_O_original = state_dict[f'blocks.{layer}.attn.b_O']
+            b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
 
-            folded_b_O = b_O_original + einsum("head_index d_head, head_index d_head d_model -> d_model", b_V, W_O)
-            
-            state_dict[f'blocks.{layer}.attn.b_O'] = folded_b_O 
-            state_dict[f'blocks.{layer}.attn.b_V'] = torch.zeros_like(b_V)
+            folded_b_O = b_O_original + einsum(
+                "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
+            )
+
+            state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
+            state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
         return state_dict
 
     def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
@@ -1200,7 +1254,7 @@ class HookedTransformer(HookedRootModule):
         """
         Toggles whether to allow editing of inputs to each attention head.
         """
-        self.cfg.use_split_qkv_input = use_split_qkv_input 
+        self.cfg.use_split_qkv_input = use_split_qkv_input
 
     def process_weights_(
         self,
@@ -1367,6 +1421,7 @@ class HookedTransformer(HookedRootModule):
 
     # Give access to all weights as properties.
     @property
+    @typeguard_ignore
     def W_U(self) -> Float[torch.Tensor, "d_model d_vocab"]:
         """
         Convenience to get the unembedding matrix (ie the linear map from the final residual stream to the output logits)
@@ -1374,10 +1429,12 @@ class HookedTransformer(HookedRootModule):
         return self.unembed.W_U
 
     @property
+    @typeguard_ignore
     def b_U(self) -> Float[torch.Tensor, "d_vocab"]:
         return self.unembed.b_U
 
     @property
+    @typeguard_ignore
     def W_E(self) -> Float[torch.Tensor, "d_vocab d_model"]:
         """
         Convenience to get the embedding matrix
@@ -1385,6 +1442,7 @@ class HookedTransformer(HookedRootModule):
         return self.embed.W_E
 
     @property
+    @typeguard_ignore
     def W_pos(self) -> Float[torch.Tensor, "n_ctx d_model"]:
         """
         Convenience function to get the positional embedding. Only works on models with absolute positional embeddings!
@@ -1392,6 +1450,7 @@ class HookedTransformer(HookedRootModule):
         return self.pos_embed.W_pos
 
     @property
+    @typeguard_ignore
     def W_E_pos(self) -> Float[torch.Tensor, "d_vocab+n_ctx d_model"]:
         """
         Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
@@ -1401,82 +1460,96 @@ class HookedTransformer(HookedRootModule):
     # Layer-specific weights are stacked into one massive tensor and given as properties for convenience and a cache is used to avoid repeated computation. Often a useful convenience when we want to do analysis on weights across all layers. If GPU memory is a bottleneck, don't use these properties!
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the key weights across all layers"""
         return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the query weights across all layers"""
         return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the value weights across all layers"""
         return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stacks the attn output weights across all layers"""
         return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
         return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the key biases across all layers"""
         return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the query biases across all layers"""
         return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the value biases across all layers"""
         return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the attn output biases across all layers"""
         return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
         return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     @lru_cache(maxsize=None)
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
         return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
 
     @property
+    @typeguard_ignore
     def QK(self):
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
+    @typeguard_ignore
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
 
@@ -1544,8 +1617,8 @@ class HookedTransformer(HookedRootModule):
         ]
 
     def load_sample_training_dataset(self, **kwargs):
-        """ 
-        Helper function to load in a 10K-20K dataset of elements from the model's training data distribution. 
+        """
+        Helper function to load in a 10K-20K dataset of elements from the model's training data distribution.
 
         Wrapper around utils.get_dataset, which identifies the appropriate dataset the pretrained models. Each dataset has a 'text' field, which contains the relevant info, some have several meta data fields.
 
@@ -1558,26 +1631,30 @@ class HookedTransformer(HookedRootModule):
         (Some models will have actually been trained on the data supplied here, for some it's from the validation set)
         """
         model_dataset_map = {
-            'neel': 'c4_code',
-            'neel-solu-old': 'pile',
-            'GPT2LMHeadModel': 'openwebtext',
-            'GPTNeoForCausalLM': 'pile',
-            'GPTNeoXForCausalLM': 'pile',
-            'GPTJForCausalLM': 'pile',
-            'GPTJForCausalLM': 'pile',
-            'OPTForCausalLM': 'pile',
+            "neel": "c4_code",
+            "neel-solu-old": "pile",
+            "GPT2LMHeadModel": "openwebtext",
+            "GPTNeoForCausalLM": "pile",
+            "GPTNeoXForCausalLM": "pile",
+            "GPTJForCausalLM": "pile",
+            "GPTJForCausalLM": "pile",
+            "OPTForCausalLM": "pile",
         }
         if self.cfg.original_architecture in model_dataset_map:
-            self.dataset = utils.get_dataset(model_dataset_map[self.cfg.original_architecture], **kwargs)
+            self.dataset = utils.get_dataset(
+                model_dataset_map[self.cfg.original_architecture], **kwargs
+            )
         else:
             raise ValueError(
                 f"We do not have an available dataset for the relevant model: {self.cfg.original_architecture}"
             )
         return self.dataset
-    
-    def sample_datapoint(self, tokenize=False) -> Union[str, Float[torch.Tensor, "1 pos"]]:
+
+    def sample_datapoint(
+        self, tokenize=False
+    ) -> Union[str, Float[torch.Tensor, "1 pos"]]:
         """
-        Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution the model was trained on. 
+        Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution the model was trained on.
 
         Args:
             tokenize (bool): Whether to return tokens (instead of text). Defaults to False. Note that the returned tokens will be automatically truncated to the model's max context size.
@@ -1589,7 +1666,6 @@ class HookedTransformer(HookedRootModule):
         sample_dataset_size = len(self.dataset)
         index = np.random.randint(0, sample_dataset_size)
         if not tokenize:
-            return self.dataset[index]['text']
+            return self.dataset[index]["text"]
         else:
-            return self.to_tokens(self.dataset[index]['text'], truncate=True)
-
+            return self.to_tokens(self.dataset[index]["text"], truncate=True)
