@@ -2,17 +2,16 @@ import math
 
 import pytest
 import torch
-
 from typeguard import TypeCheckError
 
 from transformer_lens import HookedTransformer
 from transformer_lens.head_detector import (
+    HEAD_NAMES,
+    ErrorMeasure,
     detect_head,
     get_duplicate_token_head_detection_pattern,
     get_induction_head_detection_pattern,
     get_previous_token_head_detection_pattern,
-    ErrorMeasure,
-    HEAD_NAMES,
 )
 
 # from transformer_lens.utils import check_structure as check
