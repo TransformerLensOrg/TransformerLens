@@ -1,13 +1,15 @@
 # %%
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+import logging
+import re
+from typing import Dict, Optional
+
 import einops
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM
-import transformer_lens.utils as utils
-from typing import Optional, Dict
-import logging
 from huggingface_hub import HfApi
-import re
+from transformers import AutoConfig, AutoModelForCausalLM
+
+import transformer_lens.utils as utils
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 # %% The model names used to access the models on the HuggingFace Hub.
 OFFICIAL_MODEL_NAMES = [
@@ -99,8 +101,9 @@ OFFICIAL_MODEL_NAMES = [
     "ArthurConmy/redwood_attn_2l",
     "llama-7b-hf",
     "llama-13b-hf",
-    "llama-30b-hf", 
+    "llama-30b-hf",
     "llama-65b-hf",
+    "Baidicoot/Othello-GPT-Transformer-Lens",
 ]
 
 # Model Aliases:
@@ -160,171 +163,168 @@ MODEL_ALIASES = {
         "solu-4l-wiki-finetune",
         "solu-4l-finetune",
     ],
-
     "EleutherAI/pythia-70m": [
-        "pythia-70m", 
+        "pythia-70m",
         "pythia",
         "EleutherAI/pythia-19m",
-        "pythia-19m", # EleutherAI renamed this model 
+        "pythia-19m",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-160m": [
         "pythia-160m",
         "EleutherAI/pythia-125m",
-        "pythia-125m", # EleutherAI renamed this model"        
+        "pythia-125m",  # EleutherAI renamed this model"
     ],
     "EleutherAI/pythia-410m": [
         "pythia-410m",
         "EleutherAI/pythia-350m",
-        "pythia-350m", # EleutherAI renamed this model
+        "pythia-350m",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-1b": [
         "pythia-1b",
         "EleutherAI/pythia-800m",
-        "pythia-800m", # EleutherAI renamed this model
+        "pythia-800m",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-1.4b": [
         "pythia-1.4b",
         "EleutherAI/pythia-1.3b",
-        "pythia-1.3b", # EleutherAI renamed this model
+        "pythia-1.3b",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-2.8b": [
         "pythia-2.8b",
         "EleutherAI/pythia-2.7b",
-        "pythia-2.7b", # EleutherAI renamed this model
+        "pythia-2.7b",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-6.9b": [
         "pythia-6.9b",
         "EleutherAI/pythia-6.7b",
-        "pythia-6.7b", # EleutherAI renamed this model
+        "pythia-6.7b",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-12b": [
         "pythia-12b",
         "EleutherAI/pythia-13b",
-        "pythia-13b", # EleutherAI renamed this model
+        "pythia-13b",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-70m-deduped": [
         "pythia-70m-deduped",
-        "EleutherAI/pythia-19m-deduped", # EleutherAI renamed this model 
+        "EleutherAI/pythia-19m-deduped",  # EleutherAI renamed this model
         "pythia-19m-deduped",
     ],
     "EleutherAI/pythia-160m-deduped": [
         "pythia-160m-deduped",
-        "EleutherAI/pythia-125m-deduped", # EleutherAI renamed this model
+        "EleutherAI/pythia-125m-deduped",  # EleutherAI renamed this model
         "pythia-125m-deduped",
     ],
     "EleutherAI/pythia-410m-deduped": [
         "pythia-410m-deduped",
-        "EleutherAI/pythia-350m-deduped", # EleutherAI renamed this model
+        "EleutherAI/pythia-350m-deduped",  # EleutherAI renamed this model
         "pythia-350m-deduped",
     ],
     "EleutherAI/pythia-1b-deduped": [
         "pythia-1b-deduped",
-        "EleutherAI/pythia-800m-deduped", # EleutherAI renamed this model
+        "EleutherAI/pythia-800m-deduped",  # EleutherAI renamed this model
         "pythia-800m-deduped",
     ],
     "EleutherAI/pythia-1.4b-deduped": [
         "pythia-1.4b-deduped",
-        "EleutherAI/pythia-1.3b-deduped", # EleutherAI renamed this model
+        "EleutherAI/pythia-1.3b-deduped",  # EleutherAI renamed this model
         "pythia-1.3b-deduped",
     ],
     "EleutherAI/pythia-2.8b-deduped": [
         "pythia-2.8b-deduped",
-        "EleutherAI/pythia-2.7b-deduped", # EleutherAI renamed this model
+        "EleutherAI/pythia-2.7b-deduped",  # EleutherAI renamed this model
         "pythia-2.7b-deduped",
     ],
     "EleutherAI/pythia-6.9b-deduped": [
         "pythia-6.9b-deduped",
-        "EleutherAI/pythia-6.7b-deduped", # EleutherAI renamed this model
+        "EleutherAI/pythia-6.7b-deduped",  # EleutherAI renamed this model
         "pythia-6.7b-deduped",
     ],
     "EleutherAI/pythia-12b-deduped": [
         "pythia-12b-deduped",
-        "EleutherAI/pythia-13b-deduped", # EleutherAI renamed this model
+        "EleutherAI/pythia-13b-deduped",  # EleutherAI renamed this model
         "pythia-13b-deduped",
     ],
-
     "EleutherAI/pythia-70m-v0": [
-        "pythia-70m-v0", 
+        "pythia-70m-v0",
         "pythia-v0",
         "EleutherAI/pythia-19m-v0",
-        "pythia-19m-v0", # EleutherAI renamed this model 
+        "pythia-19m-v0",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-160m-v0": [
         "pythia-160m-v0",
         "EleutherAI/pythia-125m-v0",
-        "pythia-125m-v0", # EleutherAI renamed this model"        
+        "pythia-125m-v0",  # EleutherAI renamed this model"
     ],
     "EleutherAI/pythia-410m-v0": [
         "pythia-410m-v0",
         "EleutherAI/pythia-350m-v0",
-        "pythia-350m-v0", # EleutherAI renamed this model
+        "pythia-350m-v0",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-1b-v0": [
         "pythia-1b-v0",
         "EleutherAI/pythia-800m-v0",
-        "pythia-800m-v0", # EleutherAI renamed this model
+        "pythia-800m-v0",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-1.4b-v0": [
         "pythia-1.4b-v0",
         "EleutherAI/pythia-1.3b-v0",
-        "pythia-1.3b-v0", # EleutherAI renamed this model
+        "pythia-1.3b-v0",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-2.8b-v0": [
         "pythia-2.8b-v0",
         "EleutherAI/pythia-2.7b-v0",
-        "pythia-2.7b-v0", # EleutherAI renamed this model
+        "pythia-2.7b-v0",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-6.9b-v0": [
         "pythia-6.9b-v0",
         "EleutherAI/pythia-6.7b-v0",
-        "pythia-6.7b-v0", # EleutherAI renamed this model
+        "pythia-6.7b-v0",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-12b-v0": [
         "pythia-12b-v0",
         "EleutherAI/pythia-13b-v0",
-        "pythia-13b-v0", # EleutherAI renamed this model
+        "pythia-13b-v0",  # EleutherAI renamed this model
     ],
     "EleutherAI/pythia-70m-deduped-v0": [
         "pythia-70m-deduped-v0",
-        "EleutherAI/pythia-19m-deduped-v0", # EleutherAI renamed this model 
+        "EleutherAI/pythia-19m-deduped-v0",  # EleutherAI renamed this model
         "pythia-19m-deduped-v0",
     ],
     "EleutherAI/pythia-160m-deduped-v0": [
         "pythia-160m-deduped-v0",
-        "EleutherAI/pythia-125m-deduped-v0", # EleutherAI renamed this model
+        "EleutherAI/pythia-125m-deduped-v0",  # EleutherAI renamed this model
         "pythia-125m-deduped-v0",
     ],
     "EleutherAI/pythia-410m-deduped-v0": [
         "pythia-410m-deduped-v0",
-        "EleutherAI/pythia-350m-deduped-v0", # EleutherAI renamed this model
+        "EleutherAI/pythia-350m-deduped-v0",  # EleutherAI renamed this model
         "pythia-350m-deduped-v0",
     ],
     "EleutherAI/pythia-1b-deduped-v0": [
         "pythia-1b-deduped-v0",
-        "EleutherAI/pythia-800m-deduped-v0", # EleutherAI renamed this model
+        "EleutherAI/pythia-800m-deduped-v0",  # EleutherAI renamed this model
         "pythia-800m-deduped-v0",
     ],
     "EleutherAI/pythia-1.4b-deduped-v0": [
         "pythia-1.4b-deduped-v0",
-        "EleutherAI/pythia-1.3b-deduped-v0", # EleutherAI renamed this model
+        "EleutherAI/pythia-1.3b-deduped-v0",  # EleutherAI renamed this model
         "pythia-1.3b-deduped-v0",
     ],
     "EleutherAI/pythia-2.8b-deduped-v0": [
         "pythia-2.8b-deduped-v0",
-        "EleutherAI/pythia-2.7b-deduped-v0", # EleutherAI renamed this model
+        "EleutherAI/pythia-2.7b-deduped-v0",  # EleutherAI renamed this model
         "pythia-2.7b-deduped-v0",
     ],
     "EleutherAI/pythia-6.9b-deduped-v0": [
         "pythia-6.9b-deduped-v0",
-        "EleutherAI/pythia-6.7b-deduped-v0", # EleutherAI renamed this model
+        "EleutherAI/pythia-6.7b-deduped-v0",  # EleutherAI renamed this model
         "pythia-6.7b-deduped-v0",
     ],
     "EleutherAI/pythia-12b-deduped-v0": [
         "pythia-12b-deduped-v0",
-        "EleutherAI/pythia-13b-deduped-v0", # EleutherAI renamed this model
+        "EleutherAI/pythia-13b-deduped-v0",  # EleutherAI renamed this model
         "pythia-13b-deduped-v0",
     ],
-    
     "gpt2": ["gpt2-small"],
     "distilgpt2": ["distillgpt2", "distill-gpt2", "distil-gpt2", "gpt2-xs"],
     "facebook/opt-125m": ["opt-125m", "opt-small", "opt"],
@@ -400,14 +400,19 @@ MODEL_ALIASES = {
         "gpt2-stanford-medium-e",
     ],
     "ArthurConmy/redwood_attn_2l": ["redwood_attn_2l"],
-    "llama-7b-hf": ["llama-7b"], 
+    "llama-7b-hf": ["llama-7b"],
     "llama-13b-hf": ["llama-13b"],
     "llama-30b-hf": ["llama-30b"],
     "llama-65b-hf": ["llama-65b"],
+    "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
-DEFAULT_MODEL_ALIASES = [MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name for name in OFFICIAL_MODEL_NAMES]
+DEFAULT_MODEL_ALIASES = [
+    MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name
+    for name in OFFICIAL_MODEL_NAMES
+]
+
 
 def make_model_alias_map():
     """
@@ -447,12 +452,12 @@ def convert_hf_model_config(official_model_name: str):
     # In case the user passed in an alias
     official_model_name = get_official_model_name(official_model_name)
     # Load HuggingFace model config
-    if 'llama' not in official_model_name:
+    if "llama" not in official_model_name:
         hf_config = AutoConfig.from_pretrained(official_model_name)
         architecture = hf_config.architectures[0]
-    else: 
+    else:
         architecture = "LLaMAForCausalLM"
-    if 'llama-7b' in official_model_name:
+    if "llama-7b" in official_model_name:
         cfg_dict = {
             "d_model": 4096,
             "d_head": 4096 // 32,
@@ -460,16 +465,16 @@ def convert_hf_model_config(official_model_name: str):
             "d_mlp": 11008,
             "n_layers": 32,
             "n_ctx": 2048,
-            "eps": 1e-6, 
+            "eps": 1e-6,
             "d_vocab": 32000,
-            "act_fn": "silu", 
-            "normalization_type": "RMS", 
+            "act_fn": "silu",
+            "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_dim": 4096 // 32, 
-            "final_rms": True, 
-            "gated_mlp": True, 
+            "rotary_dim": 4096 // 32,
+            "final_rms": True,
+            "gated_mlp": True,
         }
-    elif 'llama-13b' in official_model_name:
+    elif "llama-13b" in official_model_name:
         cfg_dict = {
             "d_model": 5120,
             "d_head": 5120 // 40,
@@ -477,16 +482,16 @@ def convert_hf_model_config(official_model_name: str):
             "d_mlp": 13824,
             "n_layers": 40,
             "n_ctx": 2048,
-            "eps": 1e-6, 
+            "eps": 1e-6,
             "d_vocab": 32000,
-            "act_fn": "silu", 
-            "normalization_type": "RMS", 
+            "act_fn": "silu",
+            "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_dim": 5120 // 40, 
-            "final_rms": True, 
-            "gated_mlp": True, 
+            "rotary_dim": 5120 // 40,
+            "final_rms": True,
+            "gated_mlp": True,
         }
-    elif 'llama-30b' in official_model_name:
+    elif "llama-30b" in official_model_name:
         cfg_dict = {
             "d_model": 6656,
             "d_head": 6656 // 52,
@@ -494,16 +499,16 @@ def convert_hf_model_config(official_model_name: str):
             "d_mlp": 17920,
             "n_layers": 60,
             "n_ctx": 2048,
-            "eps": 1e-6, 
+            "eps": 1e-6,
             "d_vocab": 32000,
-            "act_fn": "silu", 
-            "normalization_type": "RMS", 
+            "act_fn": "silu",
+            "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_dim": 6656 // 52, 
-            "final_rms": True, 
-            "gated_mlp": True, 
+            "rotary_dim": 6656 // 52,
+            "final_rms": True,
+            "gated_mlp": True,
         }
-    elif 'llama-65b' in official_model_name:
+    elif "llama-65b" in official_model_name:
         cfg_dict = {
             "d_model": 8192,
             "d_head": 8192 // 64,
@@ -511,14 +516,14 @@ def convert_hf_model_config(official_model_name: str):
             "d_mlp": 22016,
             "n_layers": 80,
             "n_ctx": 2048,
-            "eps": 1e-6, 
+            "eps": 1e-6,
             "d_vocab": 32000,
-            "act_fn": "silu", 
-            "normalization_type": "RMS", 
+            "act_fn": "silu",
+            "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_dim": 8192 // 64, 
-            "final_rms": True, 
-            "gated_mlp": True, 
+            "rotary_dim": 8192 // 64,
+            "final_rms": True,
+            "gated_mlp": True,
         }
     elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
@@ -536,7 +541,7 @@ def convert_hf_model_config(official_model_name: str):
             "use_local_attn": True,
             "window_size": hf_config.window_size,
             "scale_attn_by_inverse_layer_idx": False,
-            "normalization_type": "LN", 
+            "normalization_type": "LN",
         }
     elif architecture == "GPT2LMHeadModel":
         cfg_dict = {
@@ -552,7 +557,7 @@ def convert_hf_model_config(official_model_name: str):
             "use_attn_scale": True,
             "use_local_attn": False,
             "scale_attn_by_inverse_layer_idx": hf_config.scale_attn_by_inverse_layer_idx,
-            "normalization_type": "LN", 
+            "normalization_type": "LN",
         }
     elif architecture == "OPTForCausalLM":
         cfg_dict = {
@@ -568,7 +573,7 @@ def convert_hf_model_config(official_model_name: str):
             "use_attn_scale": True,
             "use_local_attn": False,
             "scale_attn_by_inverse_layer_idx": False,
-            "normalization_type": "LN", 
+            "normalization_type": "LN",
         }
     elif architecture == "GPTJForCausalLM":
         cfg_dict = {
@@ -587,7 +592,7 @@ def convert_hf_model_config(official_model_name: str):
             "parallel_attn_mlp": True,
             "positional_embedding_type": "rotary",
             "rotary_dim": hf_config.rotary_dim,
-            "normalization_type": "LN", 
+            "normalization_type": "LN",
         }
     elif architecture == "GPTNeoXForCausalLM":
         cfg_dict = {
@@ -605,7 +610,7 @@ def convert_hf_model_config(official_model_name: str):
             "scale_attn_by_inverse_layer_idx": False,
             "parallel_attn_mlp": True,
             "positional_embedding_type": "rotary",
-            "normalization_type": "LN", 
+            "normalization_type": "LN",
         }
         rotary_pct = hf_config.rotary_pct
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
@@ -627,6 +632,9 @@ def convert_neel_model_config(official_model_name: str):
     """
     official_model_name = get_official_model_name(official_model_name)
     cfg_json: dict = utils.download_file_from_hf(official_model_name, "config.json")
+    cfg_arch = cfg_json.get(
+        "architecture", "neel" if "_old" not in official_model_name else "neel-solu-old"
+    )
     cfg_dict = {
         "d_model": cfg_json["d_model"],
         "n_layers": cfg_json["n_layers"],
@@ -635,13 +643,11 @@ def convert_neel_model_config(official_model_name: str):
         "n_heads": cfg_json["n_heads"],
         "n_ctx": cfg_json["n_ctx"],
         "d_vocab": cfg_json["d_vocab"],
-        "tokenizer_name": cfg_json["tokenizer_name"],
+        "tokenizer_name": cfg_json.get("tokenizer_name", None),
         "act_fn": cfg_json["act_fn"],
         "attn_only": cfg_json["attn_only"],
         "final_rms": cfg_json.get("final_rms", False),
-        "original_architecture": (
-            "neel" if "_old" not in official_model_name else "neel-solu-old"
-        ),
+        "original_architecture": cfg_arch,
     }
     if "normalization" in cfg_json:
         cfg_dict["normalization_type"] = cfg_json["normalization"]
@@ -689,7 +695,11 @@ def get_pretrained_model_config(
 
     """
     official_model_name = get_official_model_name(model_name)
-    if official_model_name.startswith("NeelNanda") or official_model_name.startswith("ArthurConmy"):
+    if (
+        official_model_name.startswith("NeelNanda")
+        or official_model_name.startswith("ArthurConmy")
+        or official_model_name.startswith("Baidicoot")
+    ):
         cfg_dict = convert_neel_model_config(official_model_name)
     else:
         cfg_dict = convert_hf_model_config(official_model_name)
@@ -698,6 +708,16 @@ def get_pretrained_model_config(
     cfg_dict["model_name"] = official_model_name.split("/")[-1]
     # Don't need to initialize weights, we're loading from pretrained
     cfg_dict["init_weights"] = False
+
+    if (
+        "positional_embedding_type" in cfg_dict
+        and cfg_dict["positional_embedding_type"] == "shortformer"
+        and fold_ln
+    ):
+        logging.warning(
+            "You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_ln=False instead."
+        )
+        fold_ln = False
 
     if device is not None:
         cfg_dict["device"] = device
@@ -718,7 +738,9 @@ def get_pretrained_model_config(
             cfg_dict["checkpoint_index"] = checkpoint_index
             cfg_dict["checkpoint_value"] = checkpoint_labels[checkpoint_index]
         elif checkpoint_value is not None:
-            assert checkpoint_value in checkpoint_labels, f"Checkpoint value {checkpoint_value} is not in list of available checkpoints"
+            assert (
+                checkpoint_value in checkpoint_labels
+            ), f"Checkpoint value {checkpoint_value} is not in list of available checkpoints"
             cfg_dict["checkpoint_value"] = checkpoint_value
             cfg_dict["checkpoint_index"] = checkpoint_labels.index(checkpoint_value)
     else:
@@ -748,14 +770,13 @@ STANFORD_CRFM_CHECKPOINTS = (
     + list(range(20000, 400000 + 1, 1000))
 )
 
-# Linearly spaced checkpoints for Pythia models, taken every 1000 steps. 
+# Linearly spaced checkpoints for Pythia models, taken every 1000 steps.
 # Batch size 2,097,152 tokens, so checkpoints every 2.1B tokens
-PYTHIA_CHECKPOINTS = (
-    [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
-    + list(range(1000, 143000+1, 1000))
+PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
+    range(1000, 143000 + 1, 1000)
 )
 # Pythia V1 has log-spaced early checkpoints (see line above), but V0 doesn't
-PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000+1, 1000))
+PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
 
 def get_checkpoint_labels(model_name: str):
@@ -768,7 +789,9 @@ def get_checkpoint_labels(model_name: str):
         if "v0" in official_model_name:
             return PYTHIA_V0_CHECKPOINTS, "step"
         else:
-            logging.warning("Pythia models on HF were updated on 4/3/23! add '-v0' to model name to access the old models.")
+            logging.warning(
+                "Pythia models on HF were updated on 4/3/23! add '-v0' to model name to access the old models."
+            )
             return PYTHIA_CHECKPOINTS, "step"
     elif official_model_name.startswith("NeelNanda/"):
         api = HfApi()
@@ -804,7 +827,11 @@ def get_pretrained_state_dict(
     these weights rather than reloading the model.
     """
     official_model_name = get_official_model_name(official_model_name)
-    if official_model_name.startswith("NeelNanda") or official_model_name.startswith("ArthurConmy"):
+    if (
+        official_model_name.startswith("NeelNanda")
+        or official_model_name.startswith("ArthurConmy")
+        or official_model_name.startswith("Baidicoot")
+    ):
         api = HfApi()
         repo_files = api.list_repo_files(official_model_name)
         if cfg.from_checkpoint:
@@ -816,6 +843,8 @@ def get_pretrained_state_dict(
         state_dict = utils.download_file_from_hf(official_model_name, file_name)
         if cfg.original_architecture == "neel-solu-old":
             state_dict = convert_neel_solu_old_weights(state_dict, cfg)
+        elif cfg.original_architecture == "mingpt":
+            state_dict = convert_mingpt_weights(state_dict, cfg)
         return state_dict
     else:
         if cfg.from_checkpoint:
@@ -828,11 +857,13 @@ def get_pretrained_state_dict(
                     official_model_name, revision=f"step{cfg.checkpoint_value}"
                 )
             else:
-                raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
+                raise ValueError(
+                    f"Checkpoints for model {official_model_name} are not supported"
+                )
         elif hf_model is None:
             if "llama" in official_model_name:
                 raise NotImplementedError("Must pass in hf_model for LLaMA models")
-            else: 
+            else:
                 hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 
             # Load model weights, and fold in layer norm weights
@@ -846,7 +877,7 @@ def get_pretrained_state_dict(
             state_dict = convert_gptj_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoXForCausalLM":
             state_dict = convert_neox_weights(hf_model, cfg)
-        elif cfg.original_architecture == "LLaMAForCausalLM": 
+        elif cfg.original_architecture == "LLaMAForCausalLM":
             state_dict = convert_llama_weights(hf_model, cfg)
         else:
             raise ValueError(
@@ -1101,16 +1132,16 @@ def convert_neox_weights(neox, cfg: HookedTransformerConfig):
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
 
-def convert_llama_weights(llama, cfg: HookedTransformerConfig): 
+
+def convert_llama_weights(llama, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = llama.model.embed_tokens.weight
 
     # llama has no biases anywhere and deals with everything else roughly like
     # GPTNeoX with different names
-    
-    for l in range(cfg.n_layers):
 
+    for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = llama.model.layers[l].input_layernorm.weight
 
         W_Q = llama.model.layers[l].self_attn.q_proj.weight
@@ -1133,21 +1164,28 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model)
 
-        state_dict[f"blocks.{l}.ln2.w"] = llama.model.layers[l].post_attention_layernorm.weight
+        state_dict[f"blocks.{l}.ln2.w"] = llama.model.layers[
+            l
+        ].post_attention_layernorm.weight
 
         state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
-        state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
+            l
+        ].mlp.gate_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp)
 
-        state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[
+            l
+        ].mlp.down_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model)
-    
+
     state_dict["ln_final.w"] = llama.model.norm.weight
 
     state_dict["unembed.W_U"] = llama.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
 
     return state_dict
+
 
 def convert_opt_weights(opt, cfg: HookedTransformerConfig):
     state_dict = {}
@@ -1274,5 +1312,68 @@ def convert_neel_solu_old_weights(state_dict: dict, cfg: HookedTransformerConfig
             if "W_" in k and "W_pos" not in k:
                 new_state_dict[k] = v.transpose(-2, -1)
     return new_state_dict
+
+
+def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
+    # mingpt (https://github.com/karpathy/minGPT) is mostly similar to GPT-2,
+    # but doesn't concat the QKV matrices.
+    state_dict = {}
+
+    state_dict["embed.W_E"] = old_state_dict["tok_emb.weight"]
+    state_dict["pos_embed.W_pos"] = old_state_dict["pos_emb"].squeeze()
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = old_state_dict[f"blocks.{l}.ln1.weight"]
+        state_dict[f"blocks.{l}.ln1.b"] = old_state_dict[f"blocks.{l}.ln1.bias"]
+
+        W_Q = old_state_dict[f"blocks.{l}.attn.query.weight"]
+        W_K = old_state_dict[f"blocks.{l}.attn.key.weight"]
+        W_V = old_state_dict[f"blocks.{l}.attn.value.weight"]
+        W_Q = einops.rearrange(W_Q, "(i h) m->i m h", i=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(i h) m->i m h", i=cfg.n_heads)
+        W_V = einops.rearrange(W_V, "(i h) m->i m h", i=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        q_bias = einops.rearrange(
+            old_state_dict[f"blocks.{l}.attn.query.bias"], "(i h)->i h", i=cfg.n_heads
+        )
+        k_bias = einops.rearrange(
+            old_state_dict[f"blocks.{l}.attn.key.bias"], "(i h)->i h", i=cfg.n_heads
+        )
+        v_bias = einops.rearrange(
+            old_state_dict[f"blocks.{l}.attn.value.bias"], "(i h)->i h", i=cfg.n_heads
+        )
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = q_bias
+        state_dict[f"blocks.{l}.attn.b_K"] = k_bias
+        state_dict[f"blocks.{l}.attn.b_V"] = v_bias
+
+        W_O = old_state_dict[f"blocks.{l}.attn.proj.weight"]
+        W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = old_state_dict[
+            f"blocks.{l}.attn.proj.bias"
+        ]
+
+        state_dict[f"blocks.{l}.ln2.w"] = old_state_dict[f"blocks.{l}.ln2.weight"]
+        state_dict[f"blocks.{l}.ln2.b"] = old_state_dict[f"blocks.{l}.ln2.bias"]
+
+        W_in = old_state_dict[f"blocks.{l}.mlp.0.weight"]
+        state_dict[f"blocks.{l}.mlp.W_in"] = W_in.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = old_state_dict[f"blocks.{l}.mlp.0.bias"]
+
+        W_out = old_state_dict[f"blocks.{l}.mlp.2.weight"]
+        state_dict[f"blocks.{l}.mlp.W_out"] = W_out.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = old_state_dict[f"blocks.{l}.mlp.2.bias"]
+
+    state_dict[f"unembed.W_U"] = old_state_dict["head.weight"].T
+
+    state_dict["ln_final.w"] = old_state_dict["ln_f.weight"]
+    state_dict["ln_final.b"] = old_state_dict["ln_f.bias"]
+
+    return state_dict
+
 
 # %%

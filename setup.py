@@ -20,6 +20,7 @@ setup(
         "fancy_einsum",
         "rich",
         "accelerate",
+        "typing-extensions",
     ],
     extras_require={"dev": ["pytest", "mypy", "pytest-cov"]},
 )

@@ -1,10 +1,9 @@
 # %%
 
+import einops
 import torch as t
 from jaxtyping import Float
 from typeguard import typechecked
-import einops
-
 
 ZimZam = Float[t.Tensor, "batch feature"]
 

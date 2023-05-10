@@ -10,6 +10,10 @@ project = "TransformerLens"
 copyright = "2023, Neel Nanda"
 author = "Neel Nanda"
 release = "0.0.0"
+project = "TransformerLens"
+copyright = "2023, Neel Nanda"
+author = "Neel Nanda"
+release = "0.0.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -26,6 +30,7 @@ source_suffix = {
     ".md": "markdown",
 }
 
+templates_path = ["_templates"]
 templates_path = ["_templates"]
 exclude_patterns = []
 

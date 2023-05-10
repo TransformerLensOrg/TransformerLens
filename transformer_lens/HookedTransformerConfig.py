@@ -1,14 +1,14 @@
-from dataclasses import dataclass
-from typing import Union, Tuple, List, Dict, Any, Optional
-import torch
-import torch.nn as nn
-import random
-import numpy as np
 import logging
-import json
 import pprint
+import random
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import torch
 
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
+
 
 @dataclass
 class HookedTransformerConfig:
@@ -27,7 +27,7 @@ class HookedTransformerConfig:
         d_mlp (int, *optional*): The dimensionality of the feedforward mlp
             network. Defaults to 4 * d_model, and in an attn-only model is None.
         d_vocab (int): The size of the vocabulary. Defaults to -1, which means not set. If not set, will be
-            automatically set from the tokenizer's vocab size. 
+            automatically set from the tokenizer's vocab size.
         act_fn (str, *optional*): The activation function to use. Always
             lowercase. Supports ['relu', 'gelu', 'silu', 'gelu_new', 'solu_ln',
             'gelu_fast']. Must be set unless using an attn-only model.
@@ -120,7 +120,7 @@ class HookedTransformerConfig:
             the [scaling laws paper](https://arxiv.org/pdf/2001.08361.pdf) found
             that that was a more meaningful number. Ignoring biases and layer
             norms, for convenience)
-        use_hook_tokens (bool): Will add a hook point on the token input to 
+        use_hook_tokens (bool): Will add a hook point on the token input to
             HookedTransformer.forward, which lets you cache or intervene on the tokens.
             Defaults to False.
     """
@@ -138,7 +138,7 @@ class HookedTransformerConfig:
     use_attn_result: bool = False
     use_attn_scale: bool = True
     use_split_qkv_input: bool = False
-    use_local_attn: bool = False 
+    use_local_attn: bool = False
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
     checkpoint_index: Optional[int] = None
@@ -167,7 +167,7 @@ class HookedTransformerConfig:
     gated_mlp: bool = False
 
     def __post_init__(self):
-        if self.n_heads==-1:
+        if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head
 
             if not self.d_model % (self.d_head) == 0:

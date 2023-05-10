@@ -1,14 +1,12 @@
 # Import stuff
 import logging
-from typing import Callable, Union, Optional, Sequence, Dict, List, Tuple
-import torch
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
+
 import torch.nn as nn
 import torch.utils.hooks as hooks
 
-from functools import *
-from contextlib import contextmanager
-
-from dataclasses import dataclass
 
 @dataclass
 class LensHandle:
@@ -21,14 +19,16 @@ class LensHandle:
         context_level (Optional[int], optional): Context level associated with the hooks context
             manager for the given hook. Defaults to None.
     """
+
     hook: hooks.RemovableHandle
     is_permanent: bool = False
     context_level: Optional[int] = None
-    
+
 
 # %%
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
+
 
 # %%
 class HookPoint(nn.Module):
@@ -38,6 +38,7 @@ class HookPoint(nn.Module):
     HookPoint is a dummy module that acts as an identity function by default. By wrapping any
     intermediate activation in a HookPoint, it provides a convenient way to add PyTorch hooks.
     """
+
     def __init__(self):
         super().__init__()
         self.fwd_hooks: List[LensHandle] = []
@@ -67,6 +68,7 @@ class HookPoint(nn.Module):
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
+
             handle = self.register_full_backward_hook(full_hook)
             handle = LensHandle(handle, is_permanent, level)
             self.bwd_hooks.append(handle)
@@ -74,13 +76,14 @@ class HookPoint(nn.Module):
             raise ValueError(f"Invalid direction {dir}")
 
     def remove_hooks(self, dir="fwd", including_permanent=False, level=None) -> None:
-
         def _remove_hooks(handles: List[LensHandle]) -> List[LensHandle]:
             output_handles = []
             for handle in handles:
                 if including_permanent:
                     handle.hook.remove()
-                elif (not handle.is_permanent) and (level is None or handle.context_level == level):
+                elif (not handle.is_permanent) and (
+                    level is None or handle.context_level == level
+                ):
                     handle.hook.remove()
                 else:
                     output_handles.append(handle)
@@ -144,41 +147,77 @@ class HookedRootModule(nn.Module):
     def hook_points(self):
         return self.hook_dict.values()
 
-    def remove_all_hook_fns(self, direction="both", including_permanent=False, level=None):
+    def remove_all_hook_fns(
+        self, direction="both", including_permanent=False, level=None
+    ):
         for hp in self.hook_points():
-            hp.remove_hooks(direction, including_permanent=including_permanent, level=level)
+            hp.remove_hooks(
+                direction, including_permanent=including_permanent, level=level
+            )
 
     def clear_contexts(self):
         for hp in self.hook_points():
             hp.clear_context()
 
-    def reset_hooks(self, clear_contexts=True, direction="both", including_permanent=False, level=None):
+    def reset_hooks(
+        self,
+        clear_contexts=True,
+        direction="both",
+        including_permanent=False,
+        level=None,
+    ):
         if clear_contexts:
             self.clear_contexts()
         self.remove_all_hook_fns(direction, including_permanent, level=level)
         self.is_caching = False
 
-    def check_and_add_hook(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False, level=None) -> None:
+    def check_and_add_hook(
+        self,
+        hook_point,
+        hook_point_name,
+        hook,
+        dir="fwd",
+        is_permanent=False,
+        level=None,
+    ) -> None:
         """Runs checks on the hook, and then adds it to the hook point"""
-        self.check_hooks_to_add(hook_point, hook_point_name, hook, dir=dir, is_permanent=is_permanent)
+        self.check_hooks_to_add(
+            hook_point, hook_point_name, hook, dir=dir, is_permanent=is_permanent
+        )
         hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent, level=level)
-    
-    def check_hooks_to_add(self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False) -> None:
+
+    def check_hooks_to_add(
+        self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False
+    ) -> None:
         """Override this function to add checks on which hooks should be added"""
         pass
 
     def add_hook(self, name, hook, dir="fwd", is_permanent=False, level=None) -> None:
         if type(name) == str:
-            self.check_and_add_hook(self.mod_dict[name], name, hook, dir=dir, is_permanent=is_permanent, level=level)
+            self.check_and_add_hook(
+                self.mod_dict[name],
+                name,
+                hook,
+                dir=dir,
+                is_permanent=is_permanent,
+                level=level,
+            )
         else:
             # Otherwise, name is a Boolean function on names
             for hook_point_name, hp in self.hook_dict.items():
                 if name(hook_point_name):
-                    self.check_and_add_hook(hp, hook_point_name, hook, dir=dir, is_permanent=is_permanent, level=level)
+                    self.check_and_add_hook(
+                        hp,
+                        hook_point_name,
+                        hook,
+                        dir=dir,
+                        is_permanent=is_permanent,
+                        level=level,
+                    )
 
     def add_perma_hook(self, name, hook, dir="fwd") -> None:
         self.add_hook(name, hook, dir=dir, is_permanent=True)
-    
+
     @contextmanager
     def hooks(
         self,
@@ -186,7 +225,7 @@ class HookedRootModule(nn.Module):
         bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
-        ):
+    ):
         """
         A context manager for adding temporary hooks to the model.
 
@@ -196,7 +235,7 @@ class HookedRootModule(nn.Module):
             bwd_hooks: Same as fwd_hooks, but for the backward pass.
             reset_hooks_end (bool): If True, removes all hooks added by this context manager when the context manager exits.
             clear_contexts (bool): If True, clears hook contexts whenever hooks are reset.
-        
+
         Example:
         --------
         .. code-block:: python
@@ -209,7 +248,9 @@ class HookedRootModule(nn.Module):
 
             for name, hook in fwd_hooks:
                 if type(name) == str:
-                    self.mod_dict[name].add_hook(hook, dir="fwd", level=self.context_level)
+                    self.mod_dict[name].add_hook(
+                        hook, dir="fwd", level=self.context_level
+                    )
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict.items():
@@ -217,7 +258,9 @@ class HookedRootModule(nn.Module):
                             hp.add_hook(hook, dir="fwd", level=self.context_level)
             for name, hook in bwd_hooks:
                 if type(name) == str:
-                    self.mod_dict[name].add_hook(hook, dir="bwd", level=self.context_level)
+                    self.mod_dict[name].add_hook(
+                        hook, dir="bwd", level=self.context_level
+                    )
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict:
@@ -226,7 +269,9 @@ class HookedRootModule(nn.Module):
             yield self
         finally:
             if reset_hooks_end:
-                self.reset_hooks(clear_contexts, including_permanent=False, level=self.context_level)
+                self.reset_hooks(
+                    clear_contexts, including_permanent=False, level=self.context_level
+                )
             self.context_level -= 1
 
     def run_with_hooks(
@@ -264,7 +309,9 @@ class HookedRootModule(nn.Module):
                 "WARNING: Hooks will be reset at the end of run_with_hooks. This removes the backward hooks before a backward pass can occur."
             )
 
-        with self.hooks(fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts) as hooked_model:
+        with self.hooks(
+            fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts
+        ) as hooked_model:
             return hooked_model.forward(*model_args, **model_kwargs)
 
     def add_caching_hooks(
@@ -345,7 +392,7 @@ class HookedRootModule(nn.Module):
             incl_bwd (bool, optional): If True, calls backward on the model output and caches gradients
                 as well. Assumes that the model outputs a scalar (e.g., return_type="loss"). Custom loss
                 functions are not supported. Defaults to False.
-            reset_hooks_end (bool, optional): If True, removes all hooks added by this function at the 
+            reset_hooks_end (bool, optional): If True, removes all hooks added by this function at the
                 end of the run. Defaults to True.
             clear_contexts (bool, optional): If True, clears hook contexts whenever hooks are reset.
                 Defaults to False.
@@ -359,13 +406,18 @@ class HookedRootModule(nn.Module):
             names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim
         )
 
-        with self.hooks(fwd_hooks=fwd, bwd_hooks=bwd, reset_hooks_end=reset_hooks_end, clear_contexts=clear_contexts):
+        with self.hooks(
+            fwd_hooks=fwd,
+            bwd_hooks=bwd,
+            reset_hooks_end=reset_hooks_end,
+            clear_contexts=clear_contexts,
+        ):
             model_out = self(*model_args, **model_kwargs)
             if incl_bwd:
                 model_out.backward()
 
         return model_out, cache_dict
-    
+
     def get_caching_hooks(
         self,
         names_filter: NamesFilter = None,
@@ -411,7 +463,7 @@ class HookedRootModule(nn.Module):
                 cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
             else:
                 cache[hook.name + "_grad"] = tensor.detach().to(device)
-        
+
         fwd_hooks = []
         bwd_hooks = []
         for name, hp in self.hook_dict.items():

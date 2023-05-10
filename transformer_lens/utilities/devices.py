@@ -1,7 +1,8 @@
 from typing import Optional, Union
 
 import torch
-from transformer_lens import HookedTransformerConfig
+
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 def get_device_for_block_index(
@@ -11,7 +12,7 @@ def get_device_for_block_index(
 ):
     """
     Determine the device for a given layer index based on the model configuration.
-    
+
     This function assists in distributing model layers across multiple devices. The distribution
     is based on the configuration's number of layers (cfg.n_layers) and devices (cfg.n_devices).
 
