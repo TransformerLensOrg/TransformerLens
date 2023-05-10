@@ -1,21 +1,25 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Union, Tuple
+from typing import Tuple, Union
 
 import torch
 from jaxtyping import Float
-
 from typeguard import typeguard_ignore
 
 import transformer_lens.utils as utils
+
 
 class FactoredMatrix:
     """
     Class to represent low rank factored matrices, where the matrix is represented as a product of two matrices. Has utilities for efficient calculation of eigenvalues, norm and SVD.
     """
 
-    def __init__(self, A: Float[torch.Tensor, "... ldim mdim"], B: Float[torch.Tensor, "... mdim rdim"]):
+    def __init__(
+        self,
+        A: Float[torch.Tensor, "... ldim mdim"],
+        B: Float[torch.Tensor, "... mdim rdim"],
+    ):
         self.A = A
         self.B = B
         assert self.A.size(-1) == self.B.size(
@@ -33,7 +37,12 @@ class FactoredMatrix:
         self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
 
     def __matmul__(
-        self, other: Union[Float[torch.Tensor, "... rdim new_rdim"], Float[torch.Tensor, "rdim"], FactoredMatrix]
+        self,
+        other: Union[
+            Float[torch.Tensor, "... rdim new_rdim"],
+            Float[torch.Tensor, "rdim"],
+            FactoredMatrix,
+        ],
     ) -> Union[FactoredMatrix, Float[torch.Tensor, "... ldim"]]:
         if isinstance(other, torch.Tensor):
             if other.ndim < 2:
@@ -52,7 +61,12 @@ class FactoredMatrix:
             return (self @ other.A) @ other.B
 
     def __rmatmul__(
-        self, other: Union[Float[torch.Tensor, "... new_rdim ldim"], Float[torch.Tensor, "ldim"], FactoredMatrix]
+        self,
+        other: Union[
+            Float[torch.Tensor, "... new_rdim ldim"],
+            Float[torch.Tensor, "ldim"],
+            FactoredMatrix,
+        ],
     ) -> Union[FactoredMatrix, Float[torch.Tensor, "... rdim"]]:
         if isinstance(other, torch.Tensor):
             assert (
@@ -195,6 +209,7 @@ class FactoredMatrix:
     def pair(
         self,
     ) -> Tuple[
-        Float[torch.Tensor, "*leading_dims ldim mdim"], Float[torch.Tensor, "*leading_dims mdim rdim"]
+        Float[torch.Tensor, "*leading_dims ldim mdim"],
+        Float[torch.Tensor, "*leading_dims mdim rdim"],
     ]:
         return (self.A, self.B)

@@ -3,10 +3,10 @@
 
 # %%
 
-from jaxtyping import Float, install_import_hook
-
 import torch as t
-from transformer_lens import HookedTransformer, HookedTransformerConfig
+from jaxtyping import Float
+
+from transformer_lens import HookedTransformer
 
 DEVICE = "cuda" if t.cuda.is_available() else "cpu"
 MODEL = "gpt2"

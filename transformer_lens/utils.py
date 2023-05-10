@@ -1,22 +1,24 @@
 from __future__ import annotations
+
+import re
+from typing import Dict, List, Optional, Tuple, Type, Union, cast
+
+import einops
 import numpy as np
 import torch
 import torch.nn.functional as F
-from datasets.arrow_dataset import Dataset
-import einops
-from transformers import AutoTokenizer
-from typing import Optional, Union, Tuple, List, Dict, Type, cast
 import transformers
-from huggingface_hub import hf_hub_download
-import re
-from rich import print as rprint
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
+from huggingface_hub import hf_hub_download
+from rich import print as rprint
+from transformers import AutoTokenizer
 
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
+
 from jaxtyping import Float, Int
 
 
@@ -33,7 +35,7 @@ def download_file_from_hf(
     )
 
     # Load to the CPU device if CUDA is not available
-    map_location = None if torch.cuda.is_available() else torch.device('cpu')
+    map_location = None if torch.cuda.is_available() else torch.device("cpu")
 
     if file_path.endswith(".pth") or force_is_torch:
         return torch.load(file_path, map_location=map_location)
@@ -42,6 +44,7 @@ def download_file_from_hf(
     else:
         print("File type not supported:", file_path.split(".")[-1])
         return file_path
+
 
 def print_gpu_mem(step_name=""):
     print(
@@ -55,8 +58,10 @@ def get_corner(tensor, n=3):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
     elif isinstance(tensor, FactoredMatrix):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
+
+
 def to_numpy(tensor):
-    """ 
+    """
     Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
     """
     if isinstance(tensor, np.ndarray):
@@ -114,7 +119,9 @@ def lm_accuracy(
         return correct_matches.sum() / correct_matches.numel()
 
 
-def gelu_new(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def gelu_new(
+    input: Float[torch.Tensor, "batch pos d_mlp"]
+) -> Float[torch.Tensor, "batch pos d_mlp"]:
     # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
     return (
         0.5
@@ -128,7 +135,9 @@ def gelu_new(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tenso
     )
 
 
-def gelu_fast(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def gelu_fast(
+    input: Float[torch.Tensor, "batch pos d_mlp"]
+) -> Float[torch.Tensor, "batch pos d_mlp"]:
     return (
         0.5
         * input
@@ -136,7 +145,9 @@ def gelu_fast(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tens
     )
 
 
-def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def solu(
+    input: Float[torch.Tensor, "batch pos d_mlp"]
+) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
@@ -240,6 +251,7 @@ print(data)
 tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
 """
 
+
 def sample_logits(
     final_logits: Float[torch.Tensor, "batch d_vocab"],
     top_k: Optional[int] = None,
@@ -305,7 +317,15 @@ def sample_logits(
 # %%
 # Type alias
 SliceInput: Type = Optional[
-    Union[int, Tuple[int,], Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor, np.ndarray]
+    Union[
+        int,
+        Tuple[int,],
+        Tuple[int, int],
+        Tuple[int, int, int],
+        List[int],
+        torch.Tensor,
+        np.ndarray,
+    ]
 ]
 """
 An optional type alias for a slice input used in the `ActivationCache` module.
@@ -356,10 +376,10 @@ class Slice:
 
         Args:
             input_slice (SliceInput): The slice to apply. Can be an int, a tuple, a list, a torch.Tensor, or None. If None, do nothing.
-            
+
         Returns:
             Slice: A Slice object that can be applied to a tensor.
-        
+
         Raises:
             ValueError: If the input_slice is not one of the above types.
         """
@@ -386,7 +406,7 @@ class Slice:
         self,
         tensor: torch.Tensor,
         dim: int = 0,
-        ) -> torch.Tensor:
+    ) -> torch.Tensor:
         """
         Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor.
 
@@ -405,7 +425,7 @@ class Slice:
     def indices(
         self,
         max_ctx: Optional[int] = None,
-        ) -> Union[np.ndarray, np.int64]:
+    ) -> Union[np.ndarray, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
 
@@ -426,7 +446,7 @@ class Slice:
 
     def __repr__(
         self,
-        ) -> str:
+    ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
 
 
@@ -492,14 +512,14 @@ def get_act_name(
     }
 
     act_name_alias = {
-        "attn":"pattern",
-        "attn_logits":"attn_scores",
-        "key":"k",
-        "query":"q",
-        "value":"v",
-        "mlp_pre":"pre",
-        "mlp_mid":"mid",
-        "mlp_post":"post",
+        "attn": "pattern",
+        "attn_logits": "attn_scores",
+        "key": "k",
+        "query": "q",
+        "value": "v",
+        "mlp_pre": "pre",
+        "mlp_mid": "mid",
+        "mlp_post": "post",
     }
 
     layer_norm_names = ["scale", "normalized"]
@@ -510,7 +530,17 @@ def get_act_name(
     full_act_name = ""
     if layer is not None:
         full_act_name += f"blocks.{layer}."
-    if name in ["k", "v", "q", "z", "rot_k", "rot_q", "result", "pattern", "attn_scores"]:
+    if name in [
+        "k",
+        "v",
+        "q",
+        "z",
+        "rot_k",
+        "rot_q",
+        "result",
+        "pattern",
+        "attn_scores",
+    ]:
         layer_type = "attn"
     elif name in ["pre", "post", "mid"]:
         layer_type = "mlp"
@@ -526,7 +556,9 @@ def get_act_name(
     return full_act_name
 
 
-def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
+def remove_batch_dim(
+    tensor: Float[torch.Tensor, "1 ..."]
+) -> Float[torch.Tensor, "..."]:
     """
     Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
     """
@@ -597,10 +629,12 @@ def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "..
     """
     return tensor.transpose(-1, -2)
 
+
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
 ) -> Union[
-    Float[torch.Tensor, "*leading_dims"], Float[torch.Tensor, "*leading_dims_left *T.leading_dims_right"]
+    Float[torch.Tensor, "*leading_dims"],
+    Float[torch.Tensor, "*leading_dims_left *T.leading_dims_right"],
 ]:
     """
     See `HookedTransformer.all_composition_scores` for documentation.
@@ -627,12 +661,12 @@ def composition_scores(
 # %%
 def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     """
-    Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader. 
-    
+    Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader.
+
     Each dataset has a 'text' field, which contains the relevant info, some also have several meta data fields
 
     Kwargs will be passed to the huggingface dataset loading function, e.g. "data_dir"
-    
+
     Possible inputs:
     * openwebtext (approx the GPT-2 training data https://huggingface.co/datasets/openwebtext)
     * pile (The Pile, a big mess of tons of diverse data https://pile.eleuther.ai/)
@@ -642,25 +676,27 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     * wiki (Wikipedia, generated from the 20220301.en split of https://huggingface.co/datasets/wikipedia )
     """
     dataset_aliases = {
-        'openwebtext': 'stas/openwebtext-10k',
-        'owt': 'stas/openwebtext-10k',
-        'pile': 'NeelNanda/pile-10k',
-        'c4': 'NeelNanda/c4-10k',
-        'code': 'NeelNanda/code-10k',
-        'python': 'NeelNanda/code-10k',
-        'c4_code': 'NeelNanda/c4-code-20k',
-        'c4-code': 'NeelNanda/c4-code-20k',
-        'wiki': 'NeelNanda/wiki-10k'
+        "openwebtext": "stas/openwebtext-10k",
+        "owt": "stas/openwebtext-10k",
+        "pile": "NeelNanda/pile-10k",
+        "c4": "NeelNanda/c4-10k",
+        "code": "NeelNanda/code-10k",
+        "python": "NeelNanda/code-10k",
+        "c4_code": "NeelNanda/c4-code-20k",
+        "c4-code": "NeelNanda/c4-code-20k",
+        "wiki": "NeelNanda/wiki-10k",
     }
     if dataset_name in dataset_aliases:
-        dataset = load_dataset(dataset_aliases[dataset_name], split='train', **kwargs)
+        dataset = load_dataset(dataset_aliases[dataset_name], split="train", **kwargs)
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
 
+
 def is_square(x: torch.Tensor) -> bool:
     """Checks if `x` is a square matrix."""
     return x.ndim == 2 and x.shape[0] == x.shape[1]
+
 
 def is_lower_triangular(x: torch.Tensor) -> bool:
     """Checks if `x` is a lower triangular matrix."""
@@ -668,11 +704,14 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
         return False
     return x.equal(x.tril())
 
-def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) -> None:
-    """Validate that the two square tensors have the same structure, i.e., 
-    that the directionality of comparisons points in the same directions both 
+
+def check_structure(
+    t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False
+) -> None:
+    """Validate that the two square tensors have the same structure, i.e.,
+    that the directionality of comparisons points in the same directions both
     row-wise and column-wise.
-    
+
     This function is not used anywhere in the code right now, just for debugging tests.
     """
     assert t1.ndim == 2
@@ -691,7 +730,7 @@ def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) 
                 print(f"\trows {row_i}:{row_i + 1}")
                 print(f"\tt1: {t1_result.tolist()}")
                 print(f"\tt2: {t2_result.tolist()}")
-    
+
     if verbose:
         print("Checking columns")
     col_mismatch = []

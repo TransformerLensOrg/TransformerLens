@@ -1,12 +1,12 @@
-from collections import defaultdict
 import logging
-from typing import cast, Dict, List, Optional, Tuple, Union
-from typing_extensions import get_args, Literal
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import torch
+from typing_extensions import Literal, get_args
 
-from transformer_lens import HookedTransformer, ActivationCache
+from transformer_lens import ActivationCache, HookedTransformer
 from transformer_lens.utils import is_lower_triangular, is_square
 
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
@@ -96,10 +96,12 @@ def detect_head(
     cfg = model.cfg
     tokens = model.to_tokens(seq).to(cfg.device)
     seq_len = tokens.shape[-1]
-    
+
     # Validate error_measure
-    
-    assert error_measure in get_args(ErrorMeasure), f"Invalid error_measure={error_measure}; valid values are {get_args(ErrorMeasure)}"
+
+    assert error_measure in get_args(
+        ErrorMeasure
+    ), f"Invalid error_measure={error_measure}; valid values are {get_args(ErrorMeasure)}"
 
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
@@ -173,6 +175,7 @@ def get_previous_token_head_detection_pattern(
     # Adds a diagonal of 1's below the main diagonal.
     detection_pattern[1:, :-1] = torch.eye(tokens.shape[-1] - 1)
     return torch.tril(detection_pattern)
+
 
 # Duplicate token head
 def get_duplicate_token_head_detection_pattern(
