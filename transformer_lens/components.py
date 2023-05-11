@@ -90,6 +90,74 @@ class PosEmbed(nn.Module):
         return broadcast_pos_embed.clone()
 
 
+class TokenTypeEmbed(nn.Module):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model))
+
+    def forward(self, token_type_ids: Int[torch.Tensor, "batch pos"]):
+        # TODO: should this method take the tokens rather than the token_type_ids?
+        return self.W_token_type[token_type_ids, :]
+
+
+class BertEmbed(nn.Module):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.word_embed = Embed(cfg)
+        self.pos_embed = PosEmbed(cfg)
+        self.token_type_embed = TokenTypeEmbed(cfg)
+        self.ln = LayerNorm(cfg)
+
+    def forward(self, input_ids, token_type_ids=None):
+        base_index_id = torch.arange(input_ids.shape[1], device=input_ids.device)
+        index_ids = einops.repeat(
+            base_index_id, "pos -> batch pos", batch=input_ids.shape[0]
+        )
+        if token_type_ids is None:
+            token_type_ids = torch.zeros_like(input_ids)
+
+        word_embeddings_out = self.word_embed(input_ids)
+        position_embeddings_out = self.pos_embed(index_ids)
+        token_type_embeddings_out = self.token_type_embed(token_type_ids)
+
+        embeddings_out = (
+            word_embeddings_out + position_embeddings_out + token_type_embeddings_out
+        )
+        layer_norm_out = self.ln(embeddings_out)
+        return layer_norm_out
+
+
+class BertMLMHead(nn.Module):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.W = nn.Parameter(torch.empty(cfg.d_model, cfg.d_model))
+        self.b = nn.Parameter(torch.zeros(cfg.d_model))
+        self.act_fn = F.gelu
+        self.ln = LayerNorm(cfg)
+
+    def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:
+        resid = (
+            einsum(
+                "batch pos d_model_in, d_model_out d_model_in -> batch pos d_model_out",
+                resid,
+                self.W,
+            )
+            + self.b
+        )
+        resid = self.act_fn(resid)
+        resid = self.ln(resid)
+        return resid
+
+
 # LayerNormPre
 # I fold the LayerNorm weights and biases into later weights and biases.
 # This is just the 'center and normalise' part of LayerNorm
@@ -853,3 +921,19 @@ class TransformerBlock(nn.Module):
                 resid_pre + attn_out
             )  # [batch, pos, d_model]
         return resid_post
+
+
+class BertBlock(nn.Module):
+    def __init__(self, cfg: HookedTransformerConfig):
+        super().__init__()
+        self.attn = Attention(cfg)
+        self.ln1 = LayerNorm(cfg)
+        self.mlp = MLP(cfg)
+        self.ln2 = LayerNorm(cfg)
+
+    def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]):
+        resid = resid + self.attn(resid, resid, resid)
+        resid = self.ln1(resid)
+        resid = resid + self.mlp(resid)
+        resid = self.ln2(resid)
+        return resid
