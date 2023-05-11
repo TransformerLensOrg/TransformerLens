@@ -25,6 +25,8 @@ class HookedEncoder(HookedRootModule):
         self.blocks = nn.ModuleList(
             [BertBlock(self.cfg) for _ in range(self.cfg.n_layers)]
         )
+        # TODO: add MLM head
+        self.setup()
 
     def forward(self, x: Float[torch.Tensor, "batch pos"], token_type_ids=None):
         resid = self.embed(x, token_type_ids)
@@ -73,3 +75,11 @@ class HookedEncoder(HookedRootModule):
         # TODO: Add in preprocessing
         # TODO: fill in missing keys rather than using strict=False
         self.load_state_dict(state_dict, strict=False)
+
+    # def run_with_cache(
+    #     self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
+    # ):
+    #     out, cache_dict = super().run_with_cache(
+    #         *model_args, remove_batch_dim=remove_batch_dim, **kwargs
+    #     )
+    #     return out, cache_dict

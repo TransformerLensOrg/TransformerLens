@@ -6,6 +6,44 @@ from transformer_lens.components import BertMLMHead, Unembed
 from transformer_lens.HookedEncoder import HookedEncoder
 
 
+def test_hooked_encoder_padding():
+    # model = HookedEncoder.from_pretrained("bert-base-cased")
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+    sequences = [
+        "Hello, world!",
+        "this is another sequence of tokens",
+        "this is the third sequence of tokens to test BERT padding",
+        "and one more",
+    ]
+
+    tokenized = tokenizer(sequences, return_tensors="pt", padding=True)
+    input_ids = tokenized["input_ids"]
+    attention_mask = tokenized["attention_mask"]
+
+    hf_bert = BertForMaskedLM.from_pretrained("bert-base-cased").bert
+    our_bert = HookedEncoder.from_pretrained("bert-base-cased")
+
+    hf_bert_out = hf_bert(input_ids, attention_mask=attention_mask)[0]
+    our_bert_out = our_bert(input_ids)
+    assert_close(hf_bert_out, our_bert_out)
+    print("HF:", hf_bert_out[0])
+    print("our:", hf_bert_out[0])
+
+    breakpoint()
+
+
+def test_hooked_encoder_run_with_cache():
+    model = HookedEncoder.from_pretrained("bert-base-cased")
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+    input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
+    logits, cache_dict = model.run_with_cache(input_ids)
+    print(f"{logits.shape=}")
+    # print(f"{cache_dict.keys()=}")
+    for k in cache_dict:
+        if k.startswith("blocks.0") or "blocks" not in k:
+            print(k, end=" ")
+
+
 def test_hooked_encoder_mlm_head():
     cfg_dict = loading.convert_hf_model_config("bert-base-cased")
     mlm_head = BertMLMHead(cfg_dict)
