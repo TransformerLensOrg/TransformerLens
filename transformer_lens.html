@@ -5,7 +5,7 @@
     <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
 <link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="Model Properties Table" href="model_properties_table.html" /><link rel="prev" title="Citation" href="content/citation.html" />
 
-    <!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+    <link rel="shortcut icon" href="_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
         <title>transformer_lens package - TransformerLens Documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
@@ -143,8 +143,11 @@
   <aside class="sidebar-drawer">
     <div class="sidebar-container">
       
-      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="index.html">
   
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
   
   <span class="sidebar-brand-text">TransformerLens Documentation</span>
   
@@ -3039,8 +3042,10 @@ an HookedTransformer model.
 :type warmup_steps: int, <em>optional</em>
 :param save_every: After how many batches should a checkpoint be saved
 :type save_every: int, <em>optional</em>
-:param save_dir,: Where to save checkpoints
-:type save_dir,: str, <em>optional</em>
+:param save_dir: Where to save checkpoints
+:type save_dir: str, <em>optional</em>
+:param : Where to save checkpoints
+:type : str, <em>optional</em>
 :param wandb: Whether to use Weights and Biases for logging
 :type wandb: bool
 :param wandb_project: Name of the Weights and Biases project to use
@@ -3279,7 +3284,9 @@ loop hacking stuff together, more so than writing good, readable code. But it is
 <li><p><strong>name</strong> (<em>str</em>) – Takes in the name of the activation. This can be used to specify any activation name by itself.</p></li>
 <li><p><strong>it</strong> (<em>The code assumes the first sequence</em><em> of </em><em>digits passed to</em>) – </p></li>
 <li><p><strong>type.</strong> (<em>that is the layer</em>) – </p></li>
-<li><p><strong>is.</strong> (<em>Given only a word</em><em>, </em><em>it leaves layer and layer_type as</em>) – </p></li>
+<li><p><strong>number</strong> (<em>Given only a word and</em>) – </p></li>
+<li><p><strong>is.</strong> (<em>it leaves layer and layer_type as</em>) – </p></li>
+<li><p><strong>word</strong> (<em>Given only a</em>) – </p></li>
 <li><p><strong>is.</strong> – </p></li>
 <li><p><strong>Examples</strong> – get_act_name(‘embed’) = get_act_name(‘embed’, None, None)
 get_act_name(‘k6’) = get_act_name(‘k’, 6, None)
