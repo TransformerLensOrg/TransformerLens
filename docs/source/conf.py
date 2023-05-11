@@ -16,7 +16,7 @@ release = "0.0.0"
 
 extensions = [
     "sphinx.ext.autodoc",
-    "sphinxcontrib.napoleon",
+    "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx.ext.githubpages",
 ]
@@ -36,3 +36,7 @@ exclude_patterns = []
 html_theme = "furo"
 html_title = "TransformerLens Documentation"
 html_static_path = ["_static"]
+
+html_logo = "_static/transformer_lens_logo.png"
+
+html_favicon = "favicon.ico"
