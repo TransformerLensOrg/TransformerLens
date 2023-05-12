@@ -436,6 +436,7 @@ class Attention(nn.Module):
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        additive_attention_mask: Float[torch.Tensor, "batch 1 1 pos"] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
@@ -489,8 +490,8 @@ class Attention(nn.Module):
         attn_scores = (
             einsum(
                 "batch query_pos head_index d_head, \
-                batch key_pos head_index d_head \
-                -> batch head_index query_pos key_pos",
+                    batch key_pos head_index d_head \
+                    -> batch head_index query_pos key_pos",
                 q,
                 k,
             )
@@ -501,6 +502,9 @@ class Attention(nn.Module):
             attn_scores = self.apply_causal_mask(
                 attn_scores, kv_cache_pos_offset
             )  # [batch, head_index, query_pos, key_pos]
+        if additive_attention_mask is not None:
+            attn_scores += additive_attention_mask
+
         attn_scores = self.hook_attn_scores(attn_scores)
         pattern = self.hook_pattern(
             F.softmax(attn_scores, dim=-1)
@@ -519,8 +523,8 @@ class Attention(nn.Module):
                 (
                     einsum(
                         "batch pos head_index d_head, \
-                        head_index d_head d_model -> \
-                        batch pos d_model",
+                            head_index d_head d_model -> \
+                            batch pos d_model",
                         z,
                         self.W_O,
                     )
@@ -931,8 +935,14 @@ class BertBlock(nn.Module):
         self.mlp = MLP(cfg)
         self.ln2 = LayerNorm(cfg)
 
-    def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]):
-        resid = resid + self.attn(resid, resid, resid)
+    def forward(
+        self,
+        resid: Float[torch.Tensor, "batch pos d_model"],
+        additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
+    ):
+        resid = resid + self.attn(
+            resid, resid, resid, additive_attention_mask=additive_attention_mask
+        )
         resid = self.ln1(resid)
         resid = resid + self.mlp(resid)
         resid = self.ln2(resid)

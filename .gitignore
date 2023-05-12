@@ -15,6 +15,6 @@ _modidx.py
 env
 dist/
 docs/build
-.coverage
+.coverage*
 .Ds_Store
 .pylintrc

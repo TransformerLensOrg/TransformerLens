@@ -1,6 +1,7 @@
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
+from einops import repeat
 from jaxtyping import Float
 from torch import nn
 
@@ -28,11 +29,23 @@ class HookedEncoder(HookedRootModule):
         # TODO: add MLM head
         self.setup()
 
-    def forward(self, x: Float[torch.Tensor, "batch pos"], token_type_ids=None):
+    def forward(
+        self,
+        x: Float[torch.Tensor, "batch pos"],
+        token_type_ids=None,
+        one_zero_attention_mask: Optional[Float[torch.Tensor, "batch pos"]] = None,
+    ):
         resid = self.embed(x, token_type_ids)
 
+        if one_zero_attention_mask is None:
+            additive_attention_mask = None
+        else:
+            additive_attention_mask = -1e5 * repeat(
+                1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos"
+            )
+
         for block in self.blocks:
-            resid = block(resid)
+            resid = block(resid, additive_attention_mask)
 
         return resid
 

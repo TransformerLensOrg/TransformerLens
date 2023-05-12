@@ -5,15 +5,15 @@ from transformer_lens import loading_from_pretrained as loading
 from transformer_lens.components import BertMLMHead, Unembed
 from transformer_lens.HookedEncoder import HookedEncoder
 
+# preds = F.softmax(hf_bert_out, dim=-1).argmax(dim=-1)
+# pred_strings = tokenizer.batch_decode(preds)
+
 
 def test_hooked_encoder_padding():
-    # model = HookedEncoder.from_pretrained("bert-base-cased")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
     sequences = [
         "Hello, world!",
         "this is another sequence of tokens",
-        "this is the third sequence of tokens to test BERT padding",
-        "and one more",
     ]
 
     tokenized = tokenizer(sequences, return_tensors="pt", padding=True)
@@ -24,12 +24,9 @@ def test_hooked_encoder_padding():
     our_bert = HookedEncoder.from_pretrained("bert-base-cased")
 
     hf_bert_out = hf_bert(input_ids, attention_mask=attention_mask)[0]
-    our_bert_out = our_bert(input_ids)
-    assert_close(hf_bert_out, our_bert_out)
-    print("HF:", hf_bert_out[0])
-    print("our:", hf_bert_out[0])
+    our_bert_out = our_bert(input_ids, one_zero_attention_mask=attention_mask)
 
-    breakpoint()
+    assert_close(hf_bert_out, our_bert_out)
 
 
 def test_hooked_encoder_run_with_cache():
