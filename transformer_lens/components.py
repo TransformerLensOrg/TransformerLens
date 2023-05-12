@@ -141,7 +141,7 @@ class BertMLMHead(nn.Module):
         self.cfg = cfg
         self.W = nn.Parameter(torch.empty(cfg.d_model, cfg.d_model))
         self.b = nn.Parameter(torch.zeros(cfg.d_model))
-        self.act_fn = F.gelu
+        self.act_fn = nn.GELU()
         self.ln = LayerNorm(cfg)
 
     def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:

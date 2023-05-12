@@ -2,12 +2,12 @@ from typing import Dict, Optional
 
 import torch
 from einops import repeat
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from torch import nn
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens import HookedTransformerConfig
-from transformer_lens.components import BertBlock, BertEmbed
+from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
 from transformer_lens.hook_points import HookedRootModule
 
 
@@ -26,14 +26,16 @@ class HookedEncoder(HookedRootModule):
         self.blocks = nn.ModuleList(
             [BertBlock(self.cfg) for _ in range(self.cfg.n_layers)]
         )
-        # TODO: add MLM head
+        self.mlm_head = BertMLMHead(cfg)
+        self.unembed = Unembed(self.cfg)
+
         self.setup()
 
     def forward(
         self,
         x: Float[torch.Tensor, "batch pos"],
         token_type_ids=None,
-        one_zero_attention_mask: Optional[Float[torch.Tensor, "batch pos"]] = None,
+        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ):
         resid = self.embed(x, token_type_ids)
 
@@ -47,7 +49,10 @@ class HookedEncoder(HookedRootModule):
         for block in self.blocks:
             resid = block(resid, additive_attention_mask)
 
-        return resid
+        resid = self.mlm_head(resid)
+        logits = self.unembed(resid)
+
+        return logits
 
     @classmethod
     def from_pretrained(

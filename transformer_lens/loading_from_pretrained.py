@@ -6,7 +6,7 @@ from typing import Dict, Optional
 import einops
 import torch
 from huggingface_hub import HfApi
-from transformers import AutoConfig, AutoModelForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForMaskedLM
 
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -882,6 +882,8 @@ def get_pretrained_state_dict(
         elif hf_model is None:
             if "llama" in official_model_name:
                 raise NotImplementedError("Must pass in hf_model for LLaMA models")
+            elif "bert" in official_model_name:
+                hf_model = AutoModelForMaskedLM.from_pretrained(official_model_name)
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 
@@ -899,7 +901,7 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "LLaMAForCausalLM":
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
-            state_dict = convert_bert_weights(hf_model.bert, cfg)
+            state_dict = convert_bert_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -1399,19 +1401,20 @@ def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
 
 def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     state_dict = {}
-    # %%
+
+    embeddings = bert.bert.embeddings
     state_dict.update(
         {
-            "embed.word_embed.W_E": bert.embeddings.word_embeddings.weight,
-            "embed.pos_embed.W_pos": bert.embeddings.position_embeddings.weight,
-            "embed.token_type_embed.W_token_type": bert.embeddings.token_type_embeddings.weight,
-            "embed.ln.w": bert.embeddings.LayerNorm.weight,
-            "embed.ln.b": bert.embeddings.LayerNorm.bias,
+            "embed.word_embed.W_E": embeddings.word_embeddings.weight,
+            "embed.pos_embed.W_pos": embeddings.position_embeddings.weight,
+            "embed.token_type_embed.W_token_type": embeddings.token_type_embeddings.weight,
+            "embed.ln.w": embeddings.LayerNorm.weight,
+            "embed.ln.b": embeddings.LayerNorm.bias,
         }
     )
 
     for l in range(cfg.n_layers):
-        block = bert.encoder.layer[l]
+        block = bert.bert.encoder.layer[l]
         state_dict.update(
             {
                 f"blocks.{l}.attn.W_Q": einops.rearrange(
@@ -1452,5 +1455,19 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
                 f"blocks.{l}.ln2.b": block.output.LayerNorm.bias,
             }
         )
+
+    mlm_head = bert.cls.predictions
+    state_dict.update(
+        {
+            "mlm_head.W": mlm_head.transform.dense.weight,
+            "mlm_head.b": mlm_head.transform.dense.bias,
+            "mlm_head.ln.w": mlm_head.transform.LayerNorm.weight,
+            "mlm_head.ln.b": mlm_head.transform.LayerNorm.bias,
+            # Note: BERT uses tied embeddings
+            "unembed.W_U": embeddings.word_embeddings.weight.T,
+            # "unembed.W_U": mlm_head.decoder.weight.T,
+            "unembed.b_U": mlm_head.bias,
+        }
+    )
 
     return state_dict
