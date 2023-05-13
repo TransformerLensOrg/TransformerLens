@@ -2,6 +2,7 @@ __pycache__
 Testing_Notebook.ipynb
 transformer_lens/scratch.py
 .vscode/
+.idea/
 wandb*
 transformer_lens\.egg*
 MANIFEST.in
