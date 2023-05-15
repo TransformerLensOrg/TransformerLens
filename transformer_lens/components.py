@@ -109,10 +109,14 @@ class BertEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.word_embed = Embed(cfg)
+        self.embed = Embed(cfg)
         self.pos_embed = PosEmbed(cfg)
         self.token_type_embed = TokenTypeEmbed(cfg)
         self.ln = LayerNorm(cfg)
+
+        self.hook_embed = HookPoint()
+        self.hook_pos_embed = HookPoint()
+        self.hook_token_type_embed = HookPoint()
 
     def forward(self, input_ids, token_type_ids=None):
         base_index_id = torch.arange(input_ids.shape[1], device=input_ids.device)
@@ -122,9 +126,11 @@ class BertEmbed(nn.Module):
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
 
-        word_embeddings_out = self.word_embed(input_ids)
-        position_embeddings_out = self.pos_embed(index_ids)
-        token_type_embeddings_out = self.token_type_embed(token_type_ids)
+        word_embeddings_out = self.hook_embed(self.embed(input_ids))
+        position_embeddings_out = self.hook_pos_embed(self.pos_embed(index_ids))
+        token_type_embeddings_out = self.hook_token_type_embed(
+            self.token_type_embed(token_type_ids)
+        )
 
         embeddings_out = (
             word_embeddings_out + position_embeddings_out + token_type_embeddings_out
@@ -930,20 +936,61 @@ class TransformerBlock(nn.Module):
 class BertBlock(nn.Module):
     def __init__(self, cfg: HookedTransformerConfig):
         super().__init__()
+        self.cfg = cfg
+
         self.attn = Attention(cfg)
         self.ln1 = LayerNorm(cfg)
         self.mlp = MLP(cfg)
         self.ln2 = LayerNorm(cfg)
 
+        self.hook_q_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_k_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_v_input = HookPoint()  # [batch, pos, d_model]
+
+        self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
+        self.hook_normalized_resid_post = HookPoint()  # [batch, pos, d_model]
+
     def forward(
         self,
-        resid: Float[torch.Tensor, "batch pos d_model"],
+        resid_pre: Float[torch.Tensor, "batch pos d_model"],
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
     ):
-        resid = resid + self.attn(
-            resid, resid, resid, additive_attention_mask=additive_attention_mask
+        resid_pre = self.hook_resid_pre(resid_pre)
+
+        query_input = resid_pre
+        key_input = resid_pre
+        value_input = resid_pre
+
+        if self.cfg.use_split_qkv_input:
+
+            def add_head_dimension(tensor):
+                return einops.repeat(
+                    tensor,
+                    "batch pos d_model -> batch pos n_heads d_model",
+                    n_heads=self.cfg.n_heads,
+                ).clone()
+
+            query_input = self.hook_q_input(add_head_dimension(query_input))
+            key_input = self.hook_k_input(add_head_dimension(key_input))
+            value_input = self.hook_v_input(add_head_dimension(value_input))
+
+        attn_out = self.hook_attn_out(
+            self.attn(
+                query_input,
+                key_input,
+                value_input,
+                additive_attention_mask=additive_attention_mask,
+            )
         )
-        resid = self.ln1(resid)
-        resid = resid + self.mlp(resid)
-        resid = self.ln2(resid)
-        return resid
+        resid_mid = self.hook_resid_mid(resid_pre + attn_out)
+        normalized_resid_mid = self.ln1(resid_mid)
+
+        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))
+        resid_post = self.hook_resid_post(normalized_resid_mid + mlp_out)
+        normalized_resid_post = self.hook_normalized_resid_post(self.ln2(resid_post))
+
+        return normalized_resid_post

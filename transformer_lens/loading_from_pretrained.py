@@ -1405,7 +1405,7 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     embeddings = bert.bert.embeddings
     state_dict.update(
         {
-            "embed.word_embed.W_E": embeddings.word_embeddings.weight,
+            "embed.embed.W_E": embeddings.word_embeddings.weight,
             "embed.pos_embed.W_pos": embeddings.position_embeddings.weight,
             "embed.token_type_embed.W_token_type": embeddings.token_type_embeddings.weight,
             "embed.ln.w": embeddings.LayerNorm.weight,

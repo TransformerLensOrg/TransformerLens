@@ -127,7 +127,6 @@ def test_hooked_encoder_run_with_cache():
     input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
     logits, cache_dict = model.run_with_cache(input_ids)
     print(f"{logits.shape=}")
-    # print(f"{cache_dict.keys()=}")
     for k in cache_dict:
         if k.startswith("blocks.0") or "blocks" not in k:
             print(k, end=" ")

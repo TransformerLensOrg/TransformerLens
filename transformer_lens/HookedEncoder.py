@@ -2,13 +2,13 @@ from typing import Dict, Optional
 
 import torch
 from einops import repeat
-from jaxtyping import Float, Int
+from jaxtyping import Int
 from torch import nn
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens import HookedTransformerConfig
 from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
-from transformer_lens.hook_points import HookedRootModule
+from transformer_lens.hook_points import HookedRootModule, HookPoint
 
 
 class HookedEncoder(HookedRootModule):
@@ -29,26 +29,28 @@ class HookedEncoder(HookedRootModule):
         self.mlm_head = BertMLMHead(cfg)
         self.unembed = Unembed(self.cfg)
 
+        self.hook_full_embed = HookPoint()
+
         self.setup()
 
     def forward(
         self,
-        x: Float[torch.Tensor, "batch pos"],
+        x: Int[torch.Tensor, "batch pos"],
         token_type_ids=None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ):
-        resid = self.embed(x, token_type_ids)
+        resid = self.hook_full_embed(self.embed(x, token_type_ids))
 
-        if one_zero_attention_mask is None:
-            additive_attention_mask = None
-        else:
-            additive_attention_mask = -1e5 * repeat(
-                1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos"
-            )
+        large_negative_number = -1e5
+        additive_attention_mask = (
+            large_negative_number
+            * repeat(1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos")
+            if one_zero_attention_mask is not None
+            else None
+        )
 
         for block in self.blocks:
             resid = block(resid, additive_attention_mask)
-
         resid = self.mlm_head(resid)
         logits = self.unembed(resid)
 
