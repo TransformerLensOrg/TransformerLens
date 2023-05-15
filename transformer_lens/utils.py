@@ -1,4 +1,6 @@
 from __future__ import annotations
+from jaxtyping import Float, Int
+import json
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -13,11 +15,9 @@ from rich import print as rprint
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 
-from transformer_lens import FactoredMatrix, HookedTransformer
+from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
-import json
-from jaxtyping import Float, Int
 
 
 def download_file_from_hf(
@@ -43,6 +43,7 @@ def download_file_from_hf(
         print("File type not supported:", file_path.split(".")[-1])
         return file_path
 
+
 def print_gpu_mem(step_name=""):
     print(
         f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU."
@@ -55,6 +56,8 @@ def get_corner(tensor, n=3):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
     elif isinstance(tensor, FactoredMatrix):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
+
+
 def to_numpy(tensor):
     """ 
     Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
@@ -122,7 +125,8 @@ def gelu_new(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tenso
         * (
             1.0
             + torch.tanh(
-                np.sqrt(2.0 / np.pi) * (input + 0.044715 * torch.pow(input, 3.0))
+                np.sqrt(2.0 / np.pi) *
+                (input + 0.044715 * torch.pow(input, 3.0))
             )
         )
     )
@@ -200,7 +204,7 @@ def tokenize_and_concatenate(
         num_chunks = 20
         chunk_length = (len(full_text) - 1) // num_chunks + 1
         chunks = [
-            full_text[i * chunk_length : (i + 1) * chunk_length]
+            full_text[i * chunk_length: (i + 1) * chunk_length]
             for i in range(num_chunks)
         ]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
@@ -239,6 +243,7 @@ tokenizer = AutoTokenizer.from_pretrained("NeelNanda/gpt-neox-tokenizer-digits")
 print(data)
 tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
 """
+
 
 def sample_logits(
     final_logits: Float[torch.Tensor, "batch d_vocab"],
@@ -283,11 +288,14 @@ def sample_logits(
         if top_k is not None:
             assert top_k > 0, "top_k has to be greater than 0"
             top_logits, top_idx = final_logits.topk(top_k, dim=-1)
-            indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
-            final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+            indices_to_remove = final_logits < top_logits[..., -
+                                                          1].unsqueeze(-1)
+            final_logits = final_logits.masked_fill(
+                indices_to_remove, -float("inf"))
         elif top_p is not None:
             assert 1.0 >= top_p > 0.0, "top_p has to be in [0, 1)"
-            sorted_logits, sorted_indices = torch.sort(final_logits, descending=True)
+            sorted_logits, sorted_indices = torch.sort(
+                final_logits, descending=True)
             cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
             # We round up - we want prob >= top_p not <top_p
             sorted_indices_to_remove = cumulative_probs > top_p
@@ -298,14 +306,16 @@ def sample_logits(
             indices_to_remove = sorted_indices_to_remove.scatter(
                 -1, sorted_indices, sorted_indices_to_remove
             )
-            final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+            final_logits = final_logits.masked_fill(
+                indices_to_remove, -float("inf"))
         return torch.distributions.categorical.Categorical(logits=final_logits).sample()
 
 
 # %%
 # Type alias
 SliceInput: Type = Optional[
-    Union[int, Tuple[int,], Tuple[int, int], Tuple[int, int, int], List[int], torch.Tensor, np.ndarray]
+    Union[int, Tuple[int,], Tuple[int, int], Tuple[int,
+                                                   int, int], List[int], torch.Tensor, np.ndarray]
 ]
 """
 An optional type alias for a slice input used in the `ActivationCache` module.
@@ -356,10 +366,10 @@ class Slice:
 
         Args:
             input_slice (SliceInput): The slice to apply. Can be an int, a tuple, a list, a torch.Tensor, or None. If None, do nothing.
-            
+
         Returns:
             Slice: A Slice object that can be applied to a tensor.
-        
+
         Raises:
             ValueError: If the input_slice is not one of the above types.
         """
@@ -386,7 +396,7 @@ class Slice:
         self,
         tensor: torch.Tensor,
         dim: int = 0,
-        ) -> torch.Tensor:
+    ) -> torch.Tensor:
         """
         Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor.
 
@@ -405,7 +415,7 @@ class Slice:
     def indices(
         self,
         max_ctx: Optional[int] = None,
-        ) -> Union[np.ndarray, np.int64]:
+    ) -> Union[np.ndarray, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
 
@@ -421,12 +431,13 @@ class Slice:
         if self.mode == "int":
             return np.array([self.slice])
         if max_ctx is None:
-            raise ValueError("max_ctx must be specified if slice is not an integer")
+            raise ValueError(
+                "max_ctx must be specified if slice is not an integer")
         return np.arange(max_ctx)[self.slice]
 
     def __repr__(
         self,
-        ) -> str:
+    ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
 
 
@@ -492,14 +503,14 @@ def get_act_name(
     }
 
     act_name_alias = {
-        "attn":"pattern",
-        "attn_logits":"attn_scores",
-        "key":"k",
-        "query":"q",
-        "value":"v",
-        "mlp_pre":"pre",
-        "mlp_mid":"mid",
-        "mlp_post":"post",
+        "attn": "pattern",
+        "attn_logits": "attn_scores",
+        "key": "k",
+        "query": "q",
+        "value": "v",
+        "mlp_pre": "pre",
+        "mlp_mid": "mid",
+        "mlp_post": "post",
     }
 
     layer_norm_names = ["scale", "normalized"]
@@ -571,7 +582,8 @@ def test_prompt(
         answer_str_token = answer_str_tokens[index - prompt_length]
         # Offset by 1 because models predict the NEXT token
         token_probs = probs[index - 1]
-        sorted_token_probs, sorted_token_values = token_probs.sort(descending=True)
+        sorted_token_probs, sorted_token_values = token_probs.sort(
+            descending=True)
         # Janky way to get the index of the token in the sorted list - I couldn't find a better way?
         correct_rank = torch.arange(len(sorted_token_values))[
             (sorted_token_values == answer_token).cpu()
@@ -597,10 +609,12 @@ def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "..
     """
     return tensor.transpose(-1, -2)
 
+
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
 ) -> Union[
-    Float[torch.Tensor, "*leading_dims"], Float[torch.Tensor, "*leading_dims_left *T.leading_dims_right"]
+    Float[torch.Tensor, "*leading_dims"], Float[torch.Tensor,
+                                                "*leading_dims_left *T.leading_dims_right"]
 ]:
     """
     See `HookedTransformer.all_composition_scores` for documentation.
@@ -628,11 +642,11 @@ def composition_scores(
 def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     """
     Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader. 
-    
+
     Each dataset has a 'text' field, which contains the relevant info, some also have several meta data fields
 
     Kwargs will be passed to the huggingface dataset loading function, e.g. "data_dir"
-    
+
     Possible inputs:
     * openwebtext (approx the GPT-2 training data https://huggingface.co/datasets/openwebtext)
     * pile (The Pile, a big mess of tons of diverse data https://pile.eleuther.ai/)
@@ -653,19 +667,26 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
         'wiki': 'NeelNanda/wiki-10k'
     }
     if dataset_name in dataset_aliases:
-        dataset = load_dataset(dataset_aliases[dataset_name], split='train', **kwargs)
+        dataset = load_dataset(
+            dataset_aliases[dataset_name], split='train', **kwargs)
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
 
-def get_all_tokens(model: HookedTransformer) -> List[str]:
-    """Gets all tokens from a HookedTransformer model, represented as a list of strings."""
-    all_tokens = [model.to_str_tokens(np.array([i])) for i in range(model.cfg.d_vocab)]
+
+def get_all_tokens(model) -> List[str]:
+    """Gets all tokens from a HookedTransformer model, represented as a list of strings.
+    Unable to apply typing to model here due to a circular import."""
+    all_tokens = [model.to_str_tokens(
+        torch.Tensor([i for i in range(model.cfg.d_vocab)]))]
     all_tokens = [all_tokens[i][0] for i in range(model.cfg.d_vocab)]
-    
+    return all_tokens
+
+
 def is_square(x: torch.Tensor) -> bool:
     """Checks if `x` is a square matrix."""
     return x.ndim == 2 and x.shape[0] == x.shape[1]
+
 
 def is_lower_triangular(x: torch.Tensor) -> bool:
     """Checks if `x` is a lower triangular matrix."""
@@ -673,11 +694,12 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
         return False
     return x.equal(x.tril())
 
-def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) -> None:
+
+def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False) -> None:
     """Validate that the two square tensors have the same structure, i.e., 
     that the directionality of comparisons points in the same directions both 
     row-wise and column-wise.
-    
+
     This function is not used anywhere in the code right now, just for debugging tests.
     """
     assert t1.ndim == 2
@@ -696,7 +718,7 @@ def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool=False) 
                 print(f"\trows {row_i}:{row_i + 1}")
                 print(f"\tt1: {t1_result.tolist()}")
                 print(f"\tt2: {t2_result.tolist()}")
-    
+
     if verbose:
         print("Checking columns")
     col_mismatch = []

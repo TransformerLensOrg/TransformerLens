@@ -58,6 +58,7 @@ def test_svd_interpreter_returns_different_answers_for_different_models():
         'w_in', layer_index=1, num_vectors=4, head_index=0)
     w_out_svd = svd_interpreter.get_top_singular_vectors(
         'w_out', layer_index=1, num_vectors=4, head_index=0)
+    print(ov_svd.shape, w_in_svd.shape, w_out_svd.shape)
 
     assert not torch.allclose(ov_svd, expected_OV_match, atol=ATOL)
     assert not torch.allclose(w_in_svd, expected_w_in_match, atol=ATOL)
@@ -69,10 +70,11 @@ def test_svd_interpreter_returns_different_answers_for_different_models():
 
 def test_svd_interpreter_passes_invalid_vector_type():
     svd_interpreter = SVDInterpreter(model)
-    with pytest.raises(AssertionError) as e:
+    with pytest.raises(TypeError) as e:
         svd_interpreter.get_top_singular_vectors(
             'test', layer_index=0, num_vectors=4, head_index=0)
-    assert str(e.value) == "Head index optional only for w_in and w_out, got test"
+    assert str(
+        e.value) == 'type of argument "vector_type" must be one of (Literal[OV], Literal[w_in], Literal[w_out]); got str instead'
 
 
 def test_svd_interpreter_fails_on_invalid_layer_index():

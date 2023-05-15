@@ -165,5 +165,5 @@ class Test_lower_triangular:
 
 def test_get_all_tokens():
     all_tokens = utils.get_all_tokens(model)
-    assert len(all_tokens) == model.cfg.vocab_size
+    assert len(all_tokens) == model.cfg.d_vocab
     assert (all_tokens[0]) == model.to_str_tokens(torch.tensor(0))[0]
