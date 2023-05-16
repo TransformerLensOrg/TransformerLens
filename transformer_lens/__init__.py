@@ -21,3 +21,8 @@ from .past_key_value_caching import (
 )
 from .HookedTransformer import HookedTransformer as EasyTransformer
 from .HookedTransformerConfig import HookedTransformerConfig as EasyTransformerConfig
+
+# Set up custom error message for typeguard
+import typeguard
+from .typecheck import typecheck_fail_callback
+typeguard.config.typecheck_fail_callback = typecheck_fail_callback
