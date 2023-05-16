@@ -1,4 +1,9 @@
+from typing import List
+
 import pytest
+import torch
+import torch.nn.functional as F
+from jaxtyping import Float
 from torch.testing import assert_close
 from transformers import AutoTokenizer, BertForMaskedLM
 
@@ -129,3 +134,22 @@ def test_run_with_cache(our_bert, huggingface_bert, hello_world_tokens):
     assert "blocks.3.attn.hook_attn_scores" in cache
     assert "blocks.7.hook_resid_post" in cache
     assert "mlm_head.ln.hook_normalized" in cache
+
+
+def test_predictions(our_bert, huggingface_bert, tokenizer):
+    input_ids = tokenizer("The [MASK] sat on the mat", return_tensors="pt")["input_ids"]
+
+    def get_predictions(
+        logits: Float[torch.Tensor, "batch pos d_vocab"], positions: List[int]
+    ):
+        logits_at_position = logits.squeeze(0)[positions]
+        predicted_tokens = F.softmax(logits_at_position, dim=-1).argmax(dim=-1)
+        return tokenizer.batch_decode(predicted_tokens)
+
+    our_bert_out = our_bert(input_ids)
+    our_prediction = get_predictions(our_bert_out, [2])
+
+    huggingface_bert_out = huggingface_bert(input_ids).logits
+    huggingface_prediction = get_predictions(huggingface_bert_out, [2])
+
+    assert our_prediction == huggingface_prediction
