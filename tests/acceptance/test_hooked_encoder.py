@@ -1,11 +1,33 @@
+import pytest
 from torch.testing import assert_close
 from transformers import AutoTokenizer, BertForMaskedLM
 
 from transformer_lens.HookedEncoder import HookedEncoder
 
+MODEL_NAME = "bert-base-cased"
 
-def test_hooked_encoder_full():
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+
+@pytest.fixture(scope="module")
+def our_bert():
+    return HookedEncoder.from_pretrained(MODEL_NAME)
+
+
+@pytest.fixture(scope="module")
+def huggingface_bert():
+    return BertForMaskedLM.from_pretrained(MODEL_NAME)
+
+
+@pytest.fixture(scope="module")
+def tokenizer():
+    return AutoTokenizer.from_pretrained(MODEL_NAME)
+
+
+@pytest.fixture
+def hello_world_tokens(tokenizer):
+    return tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
+
+
+def test_full_model(our_bert, huggingface_bert, tokenizer):
     sequences = [
         "Hello, world!",
         "this is another sequence of tokens",
@@ -14,117 +36,92 @@ def test_hooked_encoder_full():
     input_ids = tokenized["input_ids"]
     attention_mask = tokenized["attention_mask"]
 
-    hf_bert = BertForMaskedLM.from_pretrained("bert-base-cased")
-    our_bert = HookedEncoder.from_pretrained("bert-base-cased")
-
-    hf_bert_out = hf_bert(input_ids, attention_mask=attention_mask).logits
+    huggingface_bert_out = huggingface_bert(
+        input_ids, attention_mask=attention_mask
+    ).logits
     our_bert_out = our_bert(input_ids, one_zero_attention_mask=attention_mask)
-    assert_close(hf_bert_out, our_bert_out, rtol=1.3e-6, atol=4e-5)
+    assert_close(huggingface_bert_out, our_bert_out, rtol=1.3e-6, atol=4e-5)
 
 
-def test_bert_from_pretrained_embed_one_sentence():
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-    input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
-
-    hf_bert = BertForMaskedLM.from_pretrained("bert-base-cased").bert
-    our_bert = HookedEncoder.from_pretrained("bert-base-cased")
-
-    hf_embed = hf_bert.embeddings
+def test_embed_one_sentence(our_bert, huggingface_bert, hello_world_tokens):
+    huggingface_embed = huggingface_bert.bert.embeddings
     our_embed = our_bert.embed
 
-    hf_embed_out = hf_embed(input_ids)[0]
-    our_embed_out = our_embed(input_ids).squeeze(0)
-    assert_close(hf_embed_out, our_embed_out)
+    huggingface_embed_out = huggingface_embed(hello_world_tokens)[0]
+    our_embed_out = our_embed(hello_world_tokens).squeeze(0)
+    assert_close(huggingface_embed_out, our_embed_out)
 
 
-# This test might be slightly redundant with the previous, but if anything breaks
-# it will help us to track down the issue
-def test_bert_from_pretrained_embed_two_sentences():
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+def test_embed_two_sentences(our_bert, huggingface_bert, tokenizer):
     encoding = tokenizer("First sentence.", "Second sentence.", return_tensors="pt")
     input_ids = encoding["input_ids"]
     token_type_ids = encoding["token_type_ids"]
 
-    hf_bert = BertForMaskedLM.from_pretrained("bert-base-cased").bert
-    our_bert = HookedEncoder.from_pretrained("bert-base-cased")
-
-    hf_embed_out = hf_bert.embeddings(input_ids, token_type_ids=token_type_ids)[0]
+    huggingface_embed_out = huggingface_bert.bert.embeddings(
+        input_ids, token_type_ids=token_type_ids
+    )[0]
     our_embed_out = our_bert.embed(input_ids, token_type_ids=token_type_ids).squeeze(0)
-    assert_close(hf_embed_out, our_embed_out)
+    assert_close(huggingface_embed_out, our_embed_out)
 
 
-def test_bert_from_pretrained_attention():
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-    input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
+def test_attention(our_bert, huggingface_bert, hello_world_tokens):
+    huggingface_embed = huggingface_bert.bert.embeddings
+    huggingface_attn = huggingface_bert.bert.encoder.layer[0].attention
 
-    hf_bert = BertForMaskedLM.from_pretrained("bert-base-cased").bert
-    hf_embed = hf_bert.embeddings
-    hf_attn = hf_bert.encoder.layer[0].attention
+    embed_out = huggingface_embed(hello_world_tokens)
 
-    embed_out = hf_embed(input_ids)
-
-    our_bert = HookedEncoder.from_pretrained("bert-base-cased")
     our_attn = our_bert.blocks[0].attn
 
     our_attn_out = our_attn(embed_out, embed_out, embed_out)
-    hf_self_attn_out = hf_attn.self(embed_out)[0]
-    hf_attn_out = hf_attn.output.dense(hf_self_attn_out)
-    assert_close(our_attn_out, hf_attn_out)
+    huggingface_self_attn_out = huggingface_attn.self(embed_out)[0]
+    huggingface_attn_out = huggingface_attn.output.dense(huggingface_self_attn_out)
+    assert_close(our_attn_out, huggingface_attn_out)
 
 
-def test_bert_block():
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-    input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
+def test_bert_block(our_bert, huggingface_bert, hello_world_tokens):
+    huggingface_embed = huggingface_bert.bert.embeddings
+    huggingface_block = huggingface_bert.bert.encoder.layer[0]
 
-    hf_bert = BertForMaskedLM.from_pretrained("bert-base-cased").bert
-    hf_embed = hf_bert.embeddings
-    hf_block = hf_bert.encoder.layer[0]
+    embed_out = huggingface_embed(hello_world_tokens)
 
-    embed_out = hf_embed(input_ids)
-
-    our_bert = HookedEncoder.from_pretrained("bert-base-cased")
     our_block = our_bert.blocks[0]
 
     our_block_out = our_block(embed_out)
-    hf_block_out = hf_block(embed_out)[0]
-    assert_close(our_block_out, hf_block_out)
+    huggingface_block_out = huggingface_block(embed_out)[0]
+    assert_close(our_block_out, huggingface_block_out)
 
 
-def test_hooked_encoder_mlm_head():
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-    input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
+def test_mlm_head(our_bert, huggingface_bert, hello_world_tokens):
+    huggingface_bert_core_outputs = huggingface_bert.bert(
+        hello_world_tokens
+    ).last_hidden_state
 
-    our_bert = HookedEncoder.from_pretrained("bert-base-cased")
-    hf_bert = BertForMaskedLM.from_pretrained("bert-base-cased")
-    hf_bert_core_outputs = hf_bert.bert(input_ids).last_hidden_state
-
-    our_mlm_head_out = our_bert.mlm_head(hf_bert_core_outputs)
+    our_mlm_head_out = our_bert.mlm_head(huggingface_bert_core_outputs)
     our_unembed_out = our_bert.unembed(our_mlm_head_out)
-    hf_predictions_out = hf_bert.cls.predictions(hf_bert_core_outputs)
+    huggingface_predictions_out = huggingface_bert.cls.predictions(
+        huggingface_bert_core_outputs
+    )
 
-    assert_close(our_unembed_out, hf_predictions_out, rtol=1.3e-6, atol=4e-5)
-
-
-def test_hooked_encoder_unembed():
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-    input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
-
-    our_bert = HookedEncoder.from_pretrained("bert-base-cased")
-    hf_bert = BertForMaskedLM.from_pretrained("bert-base-cased")
-    hf_bert_core_outputs = hf_bert.bert(input_ids).last_hidden_state
-
-    our_mlm_head_out = our_bert.mlm_head(hf_bert_core_outputs)
-    hf_predictions_out = hf_bert.cls.predictions.transform(hf_bert_core_outputs)
-
-    print((our_mlm_head_out - hf_predictions_out).abs().max())
-    assert_close(our_mlm_head_out, hf_predictions_out, rtol=1.3e-3, atol=1e-5)
+    assert_close(our_unembed_out, huggingface_predictions_out, rtol=1.3e-6, atol=4e-5)
 
 
-def test_hooked_encoder_run_with_cache():
+def test_unembed(our_bert, huggingface_bert, hello_world_tokens):
+    huggingface_bert_core_outputs = huggingface_bert.bert(
+        hello_world_tokens
+    ).last_hidden_state
+
+    our_mlm_head_out = our_bert.mlm_head(huggingface_bert_core_outputs)
+    huggingface_predictions_out = huggingface_bert.cls.predictions.transform(
+        huggingface_bert_core_outputs
+    )
+
+    print((our_mlm_head_out - huggingface_predictions_out).abs().max())
+    assert_close(our_mlm_head_out, huggingface_predictions_out, rtol=1.3e-3, atol=1e-5)
+
+
+def test_run_with_cache(our_bert, huggingface_bert, hello_world_tokens):
     model = HookedEncoder.from_pretrained("bert-base-cased")
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-    input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
-    logits, cache = model.run_with_cache(input_ids)
+    logits, cache = model.run_with_cache(hello_world_tokens)
 
     # check that an arbitrary subset of the keys exist
     assert "embed.hook_embed" in cache
@@ -132,8 +129,3 @@ def test_hooked_encoder_run_with_cache():
     assert "blocks.3.attn.hook_attn_scores" in cache
     assert "blocks.7.hook_resid_post" in cache
     assert "mlm_head.ln.hook_normalized" in cache
-
-
-# TODO: test the masked output
-# preds = F.softmax(hf_bert_out, dim=-1).argmax(dim=-1)
-# pred_strings = tokenizer.batch_decode(preds)
