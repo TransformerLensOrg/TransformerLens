@@ -1,12 +1,14 @@
-from typing import Dict, Optional
+from __future__ import annotations
+
+from typing import Dict, Literal, Optional, Tuple, Union, overload
 
 import torch
 from einops import repeat
-from jaxtyping import Int
+from jaxtyping import Int, Float
 from torch import nn
 
 import transformer_lens.loading_from_pretrained as loading
-from transformer_lens import HookedTransformerConfig
+from transformer_lens import HookedTransformerConfig, ActivationCache
 from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 
@@ -38,7 +40,7 @@ class HookedEncoder(HookedRootModule):
         x: Int[torch.Tensor, "batch pos"],
         token_type_ids=None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ):
+    ) -> Float[torch.Tensor, "batch pos d_vocab"]:
         resid = self.hook_full_embed(self.embed(x, token_type_ids))
 
         large_negative_number = -1e5
@@ -67,7 +69,7 @@ class HookedEncoder(HookedRootModule):
         n_devices=1,
         move_state_dict_to_device=True,
         **model_kwargs,
-    ):
+    ) -> HookedEncoder:
         official_model_name = loading.get_official_model_name(model_name)
 
         cfg = loading.get_pretrained_model_config(
@@ -96,10 +98,36 @@ class HookedEncoder(HookedRootModule):
         # TODO: fill in missing keys rather than using strict=False
         self.load_state_dict(state_dict, strict=False)
 
-    # def run_with_cache(
-    #     self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
-    # ):
-    #     out, cache_dict = super().run_with_cache(
-    #         *model_args, remove_batch_dim=remove_batch_dim, **kwargs
-    #     )
-    #     return out, cache_dict
+    @overload
+    def run_with_cache(
+        self, *model_args, return_cache_object: Literal[True] = True, **kwargs
+    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache]:
+        ...
+
+    @overload
+    def run_with_cache(
+        self, *model_args, return_cache_object: Literal[False] = False, **kwargs
+    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:
+        ...
+
+    def run_with_cache(
+        self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
+    ) -> Tuple[
+        Float[torch.Tensor, "batch pos d_vocab"],
+        Union[ActivationCache, Dict[str, torch.Tensor]],
+    ]:
+        """
+        Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an
+        ActivationCache object, with a bunch of useful HookedTransformer specific methods, otherwise it will return a
+        dictionary of activations as in HookedRootModule.
+        """
+        out, cache_dict = super().run_with_cache(
+            *model_args, remove_batch_dim=remove_batch_dim, **kwargs
+        )
+        if return_cache_object:
+            cache = ActivationCache(
+                cache_dict, self, has_batch_dim=not remove_batch_dim
+            )
+            return out, cache
+        else:
+            return out, cache_dict

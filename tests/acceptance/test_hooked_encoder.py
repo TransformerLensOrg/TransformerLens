@@ -120,16 +120,18 @@ def test_hooked_encoder_unembed():
     assert_close(our_mlm_head_out, hf_predictions_out, rtol=1.3e-3, atol=1e-5)
 
 
-# TODO: unfinished test
 def test_hooked_encoder_run_with_cache():
     model = HookedEncoder.from_pretrained("bert-base-cased")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
     input_ids = tokenizer("Hello, world!", return_tensors="pt")["input_ids"]
-    logits, cache_dict = model.run_with_cache(input_ids)
-    print(f"{logits.shape=}")
-    for k in cache_dict:
-        if k.startswith("blocks.0") or "blocks" not in k:
-            print(k, end=" ")
+    logits, cache = model.run_with_cache(input_ids)
+
+    # check that an arbitrary subset of the keys exist
+    assert "embed.hook_embed" in cache
+    assert "blocks.0.attn.hook_q" in cache
+    assert "blocks.3.attn.hook_attn_scores" in cache
+    assert "blocks.7.hook_resid_post" in cache
+    assert "mlm_head.ln.hook_normalized" in cache
 
 
 # TODO: test the masked output
