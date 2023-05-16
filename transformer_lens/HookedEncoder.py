@@ -54,11 +54,11 @@ class HookedEncoder(HookedRootModule):
 
     def forward(
         self,
-        x: Int[torch.Tensor, "batch pos"],
+        input: Int[torch.Tensor, "batch pos"],
         token_type_ids=None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Float[torch.Tensor, "batch pos d_vocab"]:
-        resid = self.hook_full_embed(self.embed(x, token_type_ids))
+    ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
+        resid = self.hook_full_embed(self.embed(input, token_type_ids))
 
         large_negative_number = -1e5
         additive_attention_mask = (
