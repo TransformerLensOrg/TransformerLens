@@ -62,9 +62,30 @@ class HookedEncoder(HookedRootModule):
 
         self.setup()
 
+    @overload
     def forward(
         self,
         input: Int[torch.Tensor, "batch pos"],
+        return_type: Literal["logits"],
+        token_type_ids=None,
+        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ) -> Float[torch.Tensor, "batch pos d_vocab"]:
+        ...
+
+    @overload
+    def forward(
+        self,
+        input: Int[torch.Tensor, "batch pos"],
+        return_type: Literal[None],
+        token_type_ids=None,
+        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
+        ...
+
+    def forward(
+        self,
+        input: Int[torch.Tensor, "batch pos"],
+        return_type: Literal[None, "logits"] = "logits",
         token_type_ids=None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
@@ -87,6 +108,8 @@ class HookedEncoder(HookedRootModule):
         resid = self.mlm_head(resid)
         logits = self.unembed(resid)
 
+        if return_type is None:
+            return
         return logits
 
     @classmethod
