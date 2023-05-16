@@ -1465,7 +1465,7 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_in"] = einops.rearrange(
             block.intermediate.dense.weight, "mlp model -> model mlp"
         )
-        state_dict[f"blocks.{l}.mlp.b_in"] = (block.intermediate.dense.bias,)
+        state_dict[f"blocks.{l}.mlp.b_in"] = block.intermediate.dense.bias
         state_dict[f"blocks.{l}.mlp.W_out"] = einops.rearrange(
             block.output.dense.weight, "model mlp -> mlp model"
         )
