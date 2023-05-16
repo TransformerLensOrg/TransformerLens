@@ -627,11 +627,6 @@ def convert_hf_model_config(model_name: str):
             "d_vocab": hf_config.vocab_size,
             "act_fn": "gelu",
             "attention_dir": "bidirectional",
-            # TODO: do we want to specify the properties below or
-            #   just use the defaults from HookedTransformerConfig?
-            # "use_attn_scale": True,
-            # "use_local_attn": False,
-            # "normalization_type": "LN",
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
