@@ -1017,7 +1017,7 @@ def convert_gpt2_weights(gpt2, cfg: HookedTransformerConfig):
         W_out = gpt2.transformer.h[l].mlp.c_proj.weight
         state_dict[f"blocks.{l}.mlp.W_out"] = W_out
         state_dict[f"blocks.{l}.mlp.b_out"] = gpt2.transformer.h[l].mlp.c_proj.bias
-    state_dict[f"unembed.W_U"] = gpt2.lm_head.weight.T
+    state_dict["unembed.W_U"] = gpt2.lm_head.weight.T
 
     state_dict["ln_final.w"] = gpt2.transformer.ln_f.weight
     state_dict["ln_final.b"] = gpt2.transformer.ln_f.bias
@@ -1323,8 +1323,8 @@ def convert_opt_weights(opt, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.mlp.b_in"] = opt.model.decoder.layers[l].fc1.bias
         state_dict[f"blocks.{l}.mlp.b_out"] = opt.model.decoder.layers[l].fc2.bias
-    state_dict[f"ln_final.w"] = opt.model.decoder.final_layer_norm.weight
-    state_dict[f"ln_final.b"] = opt.model.decoder.final_layer_norm.bias
+    state_dict["ln_final.w"] = opt.model.decoder.final_layer_norm.weight
+    state_dict["ln_final.b"] = opt.model.decoder.final_layer_norm.bias
     state_dict["unembed.W_U"] = opt.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
@@ -1421,7 +1421,7 @@ def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_out"] = W_out.T
         state_dict[f"blocks.{l}.mlp.b_out"] = old_state_dict[f"blocks.{l}.mlp.2.bias"]
 
-    state_dict[f"unembed.W_U"] = old_state_dict["head.weight"].T
+    state_dict["unembed.W_U"] = old_state_dict["head.weight"].T
 
     state_dict["ln_final.w"] = old_state_dict["ln_f.weight"]
     state_dict["ln_final.b"] = old_state_dict["ln_f.bias"]
@@ -1430,74 +1430,62 @@ def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
 
 
 def convert_bert_weights(bert, cfg: HookedTransformerConfig):
-    state_dict = {}
-
     embeddings = bert.bert.embeddings
-    state_dict.update(
-        {
-            "embed.embed.W_E": embeddings.word_embeddings.weight,
-            "embed.pos_embed.W_pos": embeddings.position_embeddings.weight,
-            "embed.token_type_embed.W_token_type": embeddings.token_type_embeddings.weight,
-            "embed.ln.w": embeddings.LayerNorm.weight,
-            "embed.ln.b": embeddings.LayerNorm.bias,
-        }
-    )
+    state_dict = {
+        "embed.embed.W_E": embeddings.word_embeddings.weight,
+        "embed.pos_embed.W_pos": embeddings.position_embeddings.weight,
+        "embed.token_type_embed.W_token_type": embeddings.token_type_embeddings.weight,
+        "embed.ln.w": embeddings.LayerNorm.weight,
+        "embed.ln.b": embeddings.LayerNorm.bias,
+    }
 
     for l in range(cfg.n_layers):
         block = bert.bert.encoder.layer[l]
-        state_dict.update(
-            {
-                f"blocks.{l}.attn.W_Q": einops.rearrange(
-                    block.attention.self.query.weight, "(i h) m -> i m h", i=cfg.n_heads
-                ),
-                f"blocks.{l}.attn.b_Q": einops.rearrange(
-                    block.attention.self.query.bias, "(i h) -> i h", i=cfg.n_heads
-                ),
-                f"blocks.{l}.attn.W_K": einops.rearrange(
-                    block.attention.self.key.weight, "(i h) m -> i m h", i=cfg.n_heads
-                ),
-                f"blocks.{l}.attn.b_K": einops.rearrange(
-                    block.attention.self.key.bias, "(i h) -> i h", i=cfg.n_heads
-                ),
-                f"blocks.{l}.attn.W_V": einops.rearrange(
-                    block.attention.self.value.weight, "(i h) m -> i m h", i=cfg.n_heads
-                ),
-                f"blocks.{l}.attn.b_V": einops.rearrange(
-                    block.attention.self.value.bias, "(i h) -> i h", i=cfg.n_heads
-                ),
-                f"blocks.{l}.attn.W_O": einops.rearrange(
-                    block.attention.output.dense.weight,
-                    "m (i h) -> i h m",
-                    i=cfg.n_heads,
-                ),
-                f"blocks.{l}.attn.b_O": block.attention.output.dense.bias,
-                f"blocks.{l}.ln1.w": block.attention.output.LayerNorm.weight,
-                f"blocks.{l}.ln1.b": block.attention.output.LayerNorm.bias,
-                f"blocks.{l}.mlp.W_in": einops.rearrange(
-                    block.intermediate.dense.weight, "mlp model -> model mlp"
-                ),
-                f"blocks.{l}.mlp.b_in": block.intermediate.dense.bias,
-                f"blocks.{l}.mlp.W_out": einops.rearrange(
-                    block.output.dense.weight, "model mlp -> mlp model"
-                ),
-                f"blocks.{l}.mlp.b_out": block.output.dense.bias,
-                f"blocks.{l}.ln2.w": block.output.LayerNorm.weight,
-                f"blocks.{l}.ln2.b": block.output.LayerNorm.bias,
-            }
+        state_dict[f"blocks.{l}.attn.W_Q"] = einops.rearrange(
+            block.attention.self.query.weight, "(i h) m -> i m h", i=cfg.n_heads
         )
+        state_dict[f"blocks.{l}.attn.b_Q"] = einops.rearrange(
+            block.attention.self.query.bias, "(i h) -> i h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_K"] = einops.rearrange(
+            block.attention.self.key.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.b_K"] = einops.rearrange(
+            block.attention.self.key.bias, "(i h) -> i h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_V"] = einops.rearrange(
+            block.attention.self.value.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.b_V"] = einops.rearrange(
+            block.attention.self.value.bias, "(i h) -> i h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_O"] = einops.rearrange(
+            block.attention.output.dense.weight,
+            "m (i h) -> i h m",
+            i=cfg.n_heads,
+        )
+        state_dict[f"blocks.{l}.attn.b_O"] = block.attention.output.dense.bias
+        state_dict[f"blocks.{l}.ln1.w"] = block.attention.output.LayerNorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = block.attention.output.LayerNorm.bias
+        state_dict[f"blocks.{l}.mlp.W_in"] = einops.rearrange(
+            block.intermediate.dense.weight, "mlp model -> model mlp"
+        )
+        state_dict[f"blocks.{l}.mlp.b_in"] = (block.intermediate.dense.bias,)
+        state_dict[f"blocks.{l}.mlp.W_out"] = einops.rearrange(
+            block.output.dense.weight, "model mlp -> mlp model"
+        )
+        state_dict[f"blocks.{l}.mlp.b_out"] = block.output.dense.bias
+        state_dict[f"blocks.{l}.ln2.w"] = block.output.LayerNorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = block.output.LayerNorm.bias
 
     mlm_head = bert.cls.predictions
-    state_dict.update(
-        {
-            "mlm_head.W": mlm_head.transform.dense.weight,
-            "mlm_head.b": mlm_head.transform.dense.bias,
-            "mlm_head.ln.w": mlm_head.transform.LayerNorm.weight,
-            "mlm_head.ln.b": mlm_head.transform.LayerNorm.bias,
-            # Note: BERT uses tied embeddings
-            "unembed.W_U": embeddings.word_embeddings.weight.T,
-            # "unembed.W_U": mlm_head.decoder.weight.T,
-            "unembed.b_U": mlm_head.bias,
-        }
-    )
+    state_dict["mlm_head.W"] = mlm_head.transform.dense.weight
+    state_dict["mlm_head.b"] = mlm_head.transform.dense.bias
+    state_dict["mlm_head.ln.w"] = mlm_head.transform.LayerNorm.weight
+    state_dict["mlm_head.ln.b"] = mlm_head.transform.LayerNorm.bias
+    # Note: BERT uses tied embeddings
+    state_dict["unembed.W_U"] = embeddings.word_embeddings.weight.T
+    # "unembed.W_U": mlm_head.decoder.weight.T,
+    state_dict["unembed.b_U"] = mlm_head.bias
 
     return state_dict
