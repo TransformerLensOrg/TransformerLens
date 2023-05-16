@@ -4,17 +4,18 @@ from typing import Dict, Literal, Optional, Tuple, Union, overload
 
 import torch
 from einops import repeat
-from jaxtyping import Int, Float
+from jaxtyping import Float, Int
 from torch import nn
+from transformers import AutoTokenizer
 
 import transformer_lens.loading_from_pretrained as loading
-from transformer_lens import HookedTransformerConfig, ActivationCache
+from transformer_lens import ActivationCache, HookedTransformerConfig
 from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 
 
 class HookedEncoder(HookedRootModule):
-    def __init__(self, cfg, **kwargs):
+    def __init__(self, cfg, tokenizer=None, **kwargs):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
@@ -23,6 +24,22 @@ class HookedEncoder(HookedRootModule):
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedEncoder.from_pretrained() instead."
             )
         self.cfg = cfg
+
+        if tokenizer is not None:
+            self.tokenizer = tokenizer
+        elif self.cfg.tokenizer_name is not None:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+        else:
+            self.tokenizer = None
+
+        if self.cfg.d_vocab == -1:
+            # If we have a tokenizer, vocab size can be inferred from it.
+            assert (
+                self.tokenizer is not None
+            ), "Must provide a tokenizer if d_vocab is not provided"
+            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+        if self.cfg.d_vocab_out == -1:
+            self.cfg.d_vocab_out = self.cfg.d_vocab
 
         self.embed = BertEmbed(self.cfg)
         self.blocks = nn.ModuleList(
