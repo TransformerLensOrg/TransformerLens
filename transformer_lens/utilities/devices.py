@@ -1,10 +1,13 @@
-from typing import Optional, Union
+from __future__ import annotations
+from typing import Optional, Union, TYPE_CHECKING
 
 import torch
 from torch import nn
 
+if TYPE_CHECKING:
+    from transformer_lens.HookedEncoder import HookedEncoder
+    from transformer_lens.HookedTransformer import HookedTransformer
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.hook_points import HookedRootModule
 
 
 def get_device_for_block_index(
@@ -37,7 +40,9 @@ def get_device_for_block_index(
 
 
 def move_to_and_update_config(
-    model: HookedRootModule, device_or_dtype, print_details=True
+    model: Union[HookedTransformer, HookedEncoder],
+    device_or_dtype: Union[torch.device, str, torch.dtype],
+    print_details=True,
 ):
     """
     Wrapper around to that also changes model.cfg.device if it's a torch.device or string.

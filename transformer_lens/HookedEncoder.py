@@ -67,7 +67,7 @@ class HookedEncoder(HookedRootModule):
         self,
         input: Int[torch.Tensor, "batch pos"],
         return_type: Literal["logits"],
-        token_type_ids=None,
+        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_vocab"]:
         ...
@@ -77,7 +77,7 @@ class HookedEncoder(HookedRootModule):
         self,
         input: Int[torch.Tensor, "batch pos"],
         return_type: Literal[None],
-        token_type_ids=None,
+        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
         ...
@@ -86,7 +86,7 @@ class HookedEncoder(HookedRootModule):
         self,
         input: Int[torch.Tensor, "batch pos"],
         return_type: Literal[None, "logits"] = "logits",
-        token_type_ids=None,
+        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
         tokens = input
@@ -127,7 +127,11 @@ class HookedEncoder(HookedRootModule):
         ...
 
     def run_with_cache(
-        self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
+        self,
+        *model_args,
+        return_cache_object: bool = True,
+        remove_batch_dim: bool = False,
+        **kwargs,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_vocab"],
         Union[ActivationCache, Dict[str, torch.Tensor]],
@@ -148,7 +152,11 @@ class HookedEncoder(HookedRootModule):
         else:
             return out, cache_dict
 
-    def to(self, device_or_dtype, print_details=True):
+    def to(
+        self,
+        device_or_dtype: Union[torch.device, str, torch.dtype],
+        print_details: bool = True,
+    ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
     def cuda(self):
@@ -163,10 +171,10 @@ class HookedEncoder(HookedRootModule):
     def from_pretrained(
         cls,
         model_name: str,
-        checkpoint_index=None,
-        checkpoint_value=None,
+        checkpoint_index: Optional[int] = None,
+        checkpoint_value: Optional[int] = None,
         hf_model=None,
-        device=None,
+        device: Optional[str] = None,
         **model_kwargs,
     ) -> HookedEncoder:
         logging.warning(
@@ -345,15 +353,15 @@ class HookedEncoder(HookedRootModule):
 
     @property
     @typeguard_ignore
-    def QK(self):
+    def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
     @typeguard_ignore
-    def OV(self):
+    def OV(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
         return FactoredMatrix(self.W_V, self.W_O)
 
-    def all_head_labels(self):
+    def all_head_labels(self) -> list[str]:
         return [
             f"L{l}H{h}"
             for l in range(self.cfg.n_layers)

@@ -118,7 +118,11 @@ class BertEmbed(nn.Module):
         self.hook_pos_embed = HookPoint()
         self.hook_token_type_embed = HookPoint()
 
-    def forward(self, input_ids, token_type_ids=None):
+    def forward(
+        self,
+        input_ids: Int[torch.Tensor, "batch pos"],
+        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ):
         base_index_id = torch.arange(input_ids.shape[1], device=input_ids.device)
         index_ids = einops.repeat(
             base_index_id, "pos -> batch pos", batch=input_ids.shape[0]

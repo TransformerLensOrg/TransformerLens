@@ -721,8 +721,12 @@ class HookedTransformer(HookedRootModule):
             residual_direction = self.W_U[:, token]
             return residual_direction
 
-    def to(self, device_or_dtype, print_details=True):
-        return devices.move_to_and_update_config(device_or_dtype, print_details)
+    def to(
+        self,
+        device_or_dtype: Union[torch.device, str, torch.dtype],
+        print_details: bool = True,
+    ):
+        return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
     def cuda(self):
         # Wrapper around cuda that also changes self.cfg.device
