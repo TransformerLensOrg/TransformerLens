@@ -55,7 +55,7 @@ class HookedEncoder(HookedRootModule):
         self.blocks = nn.ModuleList(
             [BertBlock(self.cfg) for _ in range(self.cfg.n_layers)]
         )
-        self.mlm_head = BertMLMHead(cfg)
+        self.classifier = BertMLMHead(cfg)
         self.unembed = Unembed(self.cfg)
 
         self.hook_full_embed = HookPoint()
@@ -105,7 +105,7 @@ class HookedEncoder(HookedRootModule):
 
         for block in self.blocks:
             resid = block(resid, additive_attention_mask)
-        resid = self.mlm_head(resid)
+        resid = self.classifier(resid)
         logits = self.unembed(resid)
 
         if return_type is None:
