@@ -55,7 +55,7 @@ class HookedEncoder(HookedRootModule):
         self.blocks = nn.ModuleList(
             [BertBlock(self.cfg) for _ in range(self.cfg.n_layers)]
         )
-        self.classifier = BertMLMHead(cfg)
+        self.mlm_head = BertMLMHead(cfg)
         self.unembed = Unembed(self.cfg)
 
         self.hook_full_embed = HookPoint()
@@ -105,51 +105,12 @@ class HookedEncoder(HookedRootModule):
 
         for block in self.blocks:
             resid = block(resid, additive_attention_mask)
-        resid = self.classifier(resid)
+        resid = self.mlm_head(resid)
         logits = self.unembed(resid)
 
         if return_type is None:
             return
         return logits
-
-    @classmethod
-    def from_pretrained(
-        cls,
-        model_name: str,
-        checkpoint_index=None,
-        checkpoint_value=None,
-        hf_model=None,
-        device=None,
-        **model_kwargs,
-    ) -> HookedEncoder:
-        logging.warning(
-            "HookedEncoder is still in beta. Please be aware that model preprocessing "
-            "(e.g. LayerNorm folding) is not yet supported and backward compatibility "
-            "is not guaranteed."
-        )
-
-        official_model_name = loading.get_official_model_name(model_name)
-
-        cfg = loading.get_pretrained_model_config(
-            official_model_name,
-            checkpoint_index=checkpoint_index,
-            checkpoint_value=checkpoint_value,
-            fold_ln=False,
-            device=device,
-            n_devices=1,
-        )
-
-        state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model
-        )
-
-        model = cls(cfg, **model_kwargs)
-        state_dict = loading.fill_missing_keys(model, state_dict)
-        model.load_state_dict(state_dict)
-
-        print(f"Loaded pretrained model {model_name} into HookedTransformer")
-
-        return model
 
     @overload
     def run_with_cache(
@@ -195,6 +156,45 @@ class HookedEncoder(HookedRootModule):
     def cpu(self):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cpu")
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_name: str,
+        checkpoint_index=None,
+        checkpoint_value=None,
+        hf_model=None,
+        device=None,
+        **model_kwargs,
+    ) -> HookedEncoder:
+        logging.warning(
+            "HookedEncoder is still in beta. Please be aware that model preprocessing "
+            "(e.g. LayerNorm folding) is not yet supported and backward compatibility "
+            "is not guaranteed."
+        )
+
+        official_model_name = loading.get_official_model_name(model_name)
+
+        cfg = loading.get_pretrained_model_config(
+            official_model_name,
+            checkpoint_index=checkpoint_index,
+            checkpoint_value=checkpoint_value,
+            fold_ln=False,
+            device=device,
+            n_devices=1,
+        )
+
+        state_dict = loading.get_pretrained_state_dict(
+            official_model_name, cfg, hf_model
+        )
+
+        model = cls(cfg, **model_kwargs)
+
+        model.load_state_dict(state_dict, strict=False)
+
+        print(f"Loaded pretrained model {model_name} into HookedTransformer")
+
+        return model
 
     @property
     @typeguard_ignore
@@ -350,3 +350,10 @@ class HookedEncoder(HookedRootModule):
     @typeguard_ignore
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
+
+    def all_head_labels(self):
+        return [
+            f"L{l}H{h}"
+            for l in range(self.cfg.n_layers)
+            for h in range(self.cfg.n_heads)
+        ]
