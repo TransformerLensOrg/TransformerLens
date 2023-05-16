@@ -92,6 +92,8 @@ class HookedEncoder(HookedRootModule):
         tokens = input
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
+            if one_zero_attention_mask is not None:
+                one_zero_attention_mask = one_zero_attention_mask.to(self.cfg.device)
 
         resid = self.hook_full_embed(self.embed(tokens, token_type_ids))
 
