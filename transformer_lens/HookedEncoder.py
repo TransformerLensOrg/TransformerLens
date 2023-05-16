@@ -119,8 +119,8 @@ class HookedEncoder(HookedRootModule):
         )
 
         model = cls(cfg, **model_kwargs)
-
-        model.load_state_dict(state_dict, strict=False)
+        state_dict = loading.fill_missing_keys(model, state_dict)
+        model.load_state_dict(state_dict)
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
 
