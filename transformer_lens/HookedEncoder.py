@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Dict, Literal, Optional, Tuple, Union, overload
 
 import torch
@@ -12,10 +13,11 @@ import transformer_lens.loading_from_pretrained as loading
 from transformer_lens import ActivationCache, HookedTransformerConfig
 from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
 from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.utilities import devices
 
 
 class HookedEncoder(HookedRootModule):
-    def __init__(self, cfg, tokenizer=None, **kwargs):
+    def __init__(self, cfg, tokenizer=None, move_to_device=True, **kwargs):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig(**cfg)
@@ -24,6 +26,12 @@ class HookedEncoder(HookedRootModule):
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a pretrained model, use HookedEncoder.from_pretrained() instead."
             )
         self.cfg = cfg
+
+        assert (
+            self.cfg.n_devices == 1
+        ), "Multiple devices not supported for HookedEncoder"
+        if move_to_device:
+            self.to(self.cfg.device)
 
         if tokenizer is not None:
             self.tokenizer = tokenizer
@@ -58,7 +66,11 @@ class HookedEncoder(HookedRootModule):
         token_type_ids=None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
-        resid = self.hook_full_embed(self.embed(input, token_type_ids))
+        tokens = input
+        if tokens.device.type != self.cfg.device:
+            tokens = tokens.to(self.cfg.device)
+
+        resid = self.hook_full_embed(self.embed(tokens, token_type_ids))
 
         large_negative_number = -1e5
         additive_attention_mask = (
@@ -83,20 +95,23 @@ class HookedEncoder(HookedRootModule):
         checkpoint_value=None,
         hf_model=None,
         device=None,
-        n_devices=1,
-        move_state_dict_to_device=True,
         **model_kwargs,
     ) -> HookedEncoder:
+        logging.warning(
+            "HookedEncoder is still in beta. Please be aware that model preprocessing "
+            "(e.g. LayerNorm folding) is not yet supported and backward compatibility "
+            "is not guaranteed."
+        )
+
         official_model_name = loading.get_official_model_name(model_name)
 
         cfg = loading.get_pretrained_model_config(
             official_model_name,
             checkpoint_index=checkpoint_index,
             checkpoint_value=checkpoint_value,
-            # TODO: implement layernorm folding?
             fold_ln=False,
             device=device,
-            n_devices=n_devices,
+            n_devices=1,
         )
 
         state_dict = loading.get_pretrained_state_dict(
@@ -104,16 +119,12 @@ class HookedEncoder(HookedRootModule):
         )
 
         model = cls(cfg, **model_kwargs)
-        model.load_and_process_state_dict(state_dict)
+
+        model.load_state_dict(state_dict, strict=False)
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
 
         return model
-
-    def load_and_process_state_dict(self, state_dict: Dict[str, torch.Tensor]):
-        # TODO: Add in preprocessing
-        # TODO: fill in missing keys rather than using strict=False
-        self.load_state_dict(state_dict, strict=False)
 
     @overload
     def run_with_cache(
@@ -148,3 +159,14 @@ class HookedEncoder(HookedRootModule):
             return out, cache
         else:
             return out, cache_dict
+
+    def to(self, device_or_dtype, print_details=True):
+        return devices.move_to_and_update_config(self, device_or_dtype, print_details)
+
+    def cuda(self):
+        # Wrapper around cuda that also changes self.cfg.device
+        return self.to("cuda")
+
+    def cpu(self):
+        # Wrapper around cuda that also changes self.cfg.device
+        return self.to("cpu")

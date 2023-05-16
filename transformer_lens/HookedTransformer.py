@@ -722,25 +722,7 @@ class HookedTransformer(HookedRootModule):
             return residual_direction
 
     def to(self, device_or_dtype, print_details=True):
-        """
-        Wrapper around to that also changes self.cfg.device if it's a torch.device or string.
-        If torch.dtype, just passes through
-        """
-        if isinstance(device_or_dtype, torch.device):
-            self.cfg.device = device_or_dtype.type
-            if print_details:
-                print("Moving model to device: ", self.cfg.device)
-        elif isinstance(device_or_dtype, str):
-            self.cfg.device = device_or_dtype
-            if print_details:
-                print("Moving model to device: ", self.cfg.device)
-        elif isinstance(device_or_dtype, torch.dtype):
-            if print_details:
-                print("Changing model dtype to", device_or_dtype)
-            # change state_dict dtypes
-            for k, v in self.state_dict().items():
-                self.state_dict()[k] = v.to(device_or_dtype)
-        return nn.Module.to(self, device_or_dtype)
+        return devices.move_to_and_update_config(device_or_dtype, print_details)
 
     def cuda(self):
         # Wrapper around cuda that also changes self.cfg.device
