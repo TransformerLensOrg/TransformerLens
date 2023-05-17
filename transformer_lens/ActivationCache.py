@@ -12,6 +12,7 @@ import re
 import numpy as np
 import logging
 
+
 class ActivationCache:
     """
     A wrapper around a dictionary of cached activations from a model run, with a variety of helper functions. In general, any utility which is specifically about editing/processing activations should be a method here, while any utility which is more general should be a function in utils.py, and any utility which is specifically about model weights should be in HookedTransformer.py or components.py.
@@ -127,7 +128,8 @@ class ActivationCache:
         assert (
             self.has_batch_dim or batch_slice.mode == "empty"
         ), "Cannot index into a cache without a batch dim"
-        still_has_batch_dim = (batch_slice.mode != "int") and self.has_batch_dim
+        still_has_batch_dim = (
+            batch_slice.mode != "int") and self.has_batch_dim
         new_cache_dict = {
             name: batch_slice.apply(param, dim=0)
             for name, param in self.cache_dict.items()
@@ -169,7 +171,8 @@ class ActivationCache:
         components = []
         for l in range(layer + 1):
             if l == self.model.cfg.n_layers:
-                components.append(self[("resid_post", self.model.cfg.n_layers - 1)])
+                components.append(
+                    self[("resid_post", self.model.cfg.n_layers - 1)])
                 labels.append("final_post")
                 continue
             components.append(self[("resid_pre", l)])
@@ -189,14 +192,15 @@ class ActivationCache:
             return components
 
     def logit_attrs(
-            self,
-            residual_stack: TT[T.num_components, T.batch_and_pos_dims:..., T.d_model],
-            tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]],
-            incorrect_tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]] = None,
-            pos_slice: Union[Slice, SliceInput] = None,
-            batch_slice: Union[Slice, SliceInput] = None,
-            has_batch_dim: bool = True
-        ) -> TT[T.num_components, T.batch_and_pos_dims:...]:
+        self,
+        residual_stack: TT[T.num_components, T.batch_and_pos_dims:..., T.d_model],
+        tokens: Union[str, int, TT[()], TT[T.batch], TT[T.batch, T.position]],
+        incorrect_tokens: Union[str, int, TT[()],
+                                TT[T.batch], TT[T.batch, T.position]] = None,
+        pos_slice: Union[Slice, SliceInput] = None,
+        batch_slice: Union[Slice, SliceInput] = None,
+        has_batch_dim: bool = True
+    ) -> TT[T.num_components, T.batch_and_pos_dims:...]:
         """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
 
         Args:
@@ -229,24 +233,28 @@ class ActivationCache:
 
         if incorrect_tokens is not None:
             if isinstance(incorrect_tokens, str):
-                incorrect_tokens = torch.as_tensor(self.model.to_single_token(incorrect_tokens))
+                incorrect_tokens = torch.as_tensor(
+                    self.model.to_single_token(incorrect_tokens))
 
             elif isinstance(incorrect_tokens, int):
                 incorrect_tokens = torch.as_tensor(incorrect_tokens)
 
             if tokens.shape != incorrect_tokens.shape:
-                raise ValueError(f"tokens and incorrect_tokens must have the same shape! (tokens.shape={tokens.shape}, incorrect_tokens.shape={incorrect_tokens.shape})")
-        
+                raise ValueError(
+                    f"tokens and incorrect_tokens must have the same shape! (tokens.shape={tokens.shape}, incorrect_tokens.shape={incorrect_tokens.shape})")
+
             # If incorrect_tokens was provided, take the logit difference
-            logit_directions = logit_directions - self.model.tokens_to_residual_directions(incorrect_tokens)
+            logit_directions = logit_directions - \
+                self.model.tokens_to_residual_directions(incorrect_tokens)
 
+        scaled_residual_stack = self.apply_ln_to_stack(
+            residual_stack, layer=-1, pos_slice=pos_slice, batch_slice=batch_slice, has_batch_dim=has_batch_dim)
 
-        scaled_residual_stack = self.apply_ln_to_stack(residual_stack, layer=-1, pos_slice=pos_slice, batch_slice=batch_slice, has_batch_dim=has_batch_dim)
-
-        logit_attrs = einsum("... d_model, ... d_model -> ...", scaled_residual_stack, logit_directions)
+        logit_attrs = einsum("... d_model, ... d_model -> ...",
+                             scaled_residual_stack, logit_directions)
 
         return logit_attrs
-        
+
     def decompose_resid(
         self,
         layer: Optional[int] = None,
@@ -369,7 +377,8 @@ class ActivationCache:
         labels = []
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
-            components.append(pos_slice.apply(self[("result", l, "attn")], dim=-3))
+            components.append(pos_slice.apply(
+                self[("result", l, "attn")], dim=-3))
             labels.extend([f"L{l}H{h}" for h in range(self.model.cfg.n_heads)])
         if components:
             components = torch.cat(components, dim=-2)
@@ -385,7 +394,8 @@ class ActivationCache:
                 labels.append("remainder")
         elif incl_remainder:
             # There are no components, so the remainder is the entire thing.
-            components = [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)]
+            components = [pos_slice.apply(
+                self[("resid_post", layer - 1)], dim=-2)]
         else:
             # If this is called with layer 0, we return an empty tensor of the right shape to be stacked correctly
             # This uses the shape of hook_embed, which is pretty janky since it assumes embed is in the cache. But it's hard to explicitly code the shape, since it depends on the pos slice, whether we have a batch dim, etc. And it's pretty messy!
@@ -399,12 +409,12 @@ class ActivationCache:
             components = self.apply_ln_to_stack(
                 components, layer, pos_slice=pos_slice
             )
-            
+
         if return_labels:
             return components, labels
         else:
             return components
-    
+
     def stack_activation(
         self,
         activation_name: str,
@@ -419,15 +429,15 @@ class ActivationCache:
             sublayer_type (str, *optional*): The sub layer type of the activation, passed to utils.get_act_name. Can normally be inferred
             incl_remainder (bool, optional): Whether to return a final term which is "the rest of the residual stream". Defaults to False.
         """
-        
+
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
-        
+
         components = []
         for l in range(layer):
             components.append(self[(activation_name, l, sublayer_type)])
-        
+
         return torch.stack(components, dim=0)
 
     def get_neuron_results(
@@ -497,7 +507,8 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
-        neuron_labels = neuron_slice.apply(np.arange(self.model.cfg.d_mlp), dim=0)
+        neuron_labels = neuron_slice.apply(
+            np.arange(self.model.cfg.d_mlp), dim=0)
         if type(neuron_labels) == int:
             neuron_labels = np.array([neuron_labels])
         for l in range(layer):
@@ -516,11 +527,13 @@ class ActivationCache:
             )
 
             if incl_remainder:
-                remainder = self[("resid_post", layer - 1)] - components.sum(dim=0)
+                remainder = self[("resid_post", layer - 1)] - \
+                    components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
                 labels.append("remainder")
         elif incl_remainder:
-            components = [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)]
+            components = [pos_slice.apply(
+                self[("resid_post", layer - 1)], dim=-2)]
         else:
             # Returning empty, give it the right shape to stack properly
             components = torch.zeros(
@@ -592,7 +605,8 @@ class ActivationCache:
             residual_stack = batch_slice.apply(residual_stack, dim=1)
 
         # Center the stack
-        residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
+        residual_stack = residual_stack - \
+            residual_stack.mean(dim=-1, keepdim=True)
 
         if layer == self.model.cfg.n_layers or layer is None:
             scale = self["ln_final.hook_scale"]

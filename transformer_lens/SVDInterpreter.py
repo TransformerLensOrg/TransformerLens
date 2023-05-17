@@ -14,15 +14,15 @@ class SVDInterpreter:
         self.cfg = model.cfg
         self.params = {name: param for name, param in model.named_parameters()}
 
-    def get_top_singular_vectors(self,
-                                 vector_type: Union[Literal["OV"], Literal["w_in"], Literal["w_out"]],
-                                 layer_index: int,
-                                 num_vectors: int = 10,
-                                 head_index: Optional[int] = None) -> torch.Tensor:
+    def get_singular_vectors(self,
+                             vector_type: Union[Literal["OV"], Literal["w_in"], Literal["w_out"]],
+                             layer_index: int,
+                             num_vectors: int = 10,
+                             head_index: Optional[int] = None) -> torch.Tensor:
 
         if head_index is None:
             assert vector_type in [
-                "w_in", "w_out"], "Head index optional only for w_in and w_out, got {vector_type}"
+                "w_in", "w_out"], f"Head index optional only for w_in and w_out, got {vector_type}"
 
         if vector_type == 'OV':
             matrix = self._get_OV_matrix(layer_index, head_index)
@@ -35,16 +35,16 @@ class SVDInterpreter:
 
         else:
             raise ValueError(
-                "Vector type must be in {VECTOR_TYPES}, instead got {vector_type}")
+                f"Vector type must be in {VECTOR_TYPES}, instead got {vector_type}")
 
         is_w_out = (vector_type == 'w_out')
-        return self._get_top_singular_vectors_from_matrix(matrix, self.params[OUTPUT_EMBEDDING], num_vectors, is_w_out)
+        return self._get_singular_vectors_from_matrix(matrix, self.params[OUTPUT_EMBEDDING], num_vectors, is_w_out)
 
-    def _get_top_singular_vectors_from_matrix(self,
-                                              matrix: torch.Tensor,
-                                              embedding: torch.Tensor,
-                                              num_vectors: int = 10,
-                                              is_w_out: bool = False) -> torch.Tensor:
+    def _get_singular_vectors_from_matrix(self,
+                                          matrix: torch.Tensor,
+                                          embedding: torch.Tensor,
+                                          num_vectors: int = 10,
+                                          is_w_out: bool = False) -> torch.Tensor:
 
         U, S, V = torch.linalg.svd(matrix)
         vectors = []

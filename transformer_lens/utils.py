@@ -674,15 +674,6 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     return dataset
 
 
-def get_all_tokens(model) -> List[str]:
-    """Gets all tokens from a HookedTransformer model, represented as a list of strings.
-    Unable to apply typing to model here due to a circular import."""
-    all_tokens = [model.to_str_tokens(
-        torch.Tensor([i for i in range(model.cfg.d_vocab)]))]
-    all_tokens = [all_tokens[i][0] for i in range(model.cfg.d_vocab)]
-    return all_tokens
-
-
 def is_square(x: torch.Tensor) -> bool:
     """Checks if `x` is a square matrix."""
     return x.ndim == 2 and x.shape[0] == x.shape[1]
