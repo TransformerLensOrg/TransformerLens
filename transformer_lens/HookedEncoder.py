@@ -20,15 +20,15 @@ from transformer_lens.utilities import devices
 
 class HookedEncoder(HookedRootModule):
     """
-    Implements a BERT-style encoder using the components in ./components.py, with HookPoints on every interesting activation.
+    This class implements a BERT-style encoder using the components in ./components.py, with HookPoints on every interesting activation. It inherits from HookedRootModule.
 
-    Like HookedTransformer, it can have a pretrained Transformer's weights loaded via `.from_pretrained`.
+    Limitations:
+    - The current MVP implementation supports only the masked language modelling (MLM) task. Next sentence prediction (NSP), causal language modelling, and other tasks are not yet supported.
+    - Also note that model does not include dropouts, which may lead to inconsistent results from training or fine-tuning.
 
-    Unlike HookedTransformer, it does not (yet) do any pre-processing of the weights e.g. folding LayerNorm. Another difference is that the model can currently only be run with tokens, and not strings or list of strings.
-
-    Currently, the supported task/architecture is masked language modelling. Next sentence prediction, causal language modelling, and other tasks are not supported.
-
-    The HookedEncoder does not contain dropouts, which may lead to inconsistent results when pretraining.
+    Like HookedTransformer, it can have a pretrained Transformer's weights loaded via `.from_pretrained`. There are a few features you might know from HookedTransformer which are not yet supported:
+        - There is no preprocessing (e.g. LayerNorm folding) when loading a pretrained model
+        - The model only accepts tokens as inputs, and not strings, or lists of strings
     """
 
     def __init__(self, cfg, tokenizer=None, move_to_device=True, **kwargs):
