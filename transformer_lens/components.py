@@ -91,6 +91,12 @@ class PosEmbed(nn.Module):
 
 
 class TokenTypeEmbed(nn.Module):
+    """
+    The token-type embed is a binary ids indicating whether a token belongs to sequence A or B. For example, for two sentences: "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be [0, 0, ..., 0, 1, ..., 1, 1]. `0` represents tokens from Sentence A, `1` from Sentence B. If not provided, BERT assumes a single sequence input. Typically, shape is (batch_size, sequence_length).
+
+    See the BERT paper for more information: https://arxiv.org/pdf/1810.04805.pdf
+    """
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -104,6 +110,10 @@ class TokenTypeEmbed(nn.Module):
 
 
 class BertEmbed(nn.Module):
+    """
+    Custom embedding layer for a BERT-like model. This module computes the sum of the token, positional and token-type embeddings and takes the layer norm of the result.
+    """
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -144,6 +154,10 @@ class BertEmbed(nn.Module):
 
 
 class BertMLMHead(nn.Module):
+    """
+    Transforms BERT embeddings into logits. The purpose of this module is to predict masked tokens in a sentence.
+    """
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -451,6 +465,7 @@ class Attention(nn.Module):
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
+        additive_attention_mask is an optional mask to add to the attention weights. Defaults to None.
         """
 
         if self.cfg.use_split_qkv_input:
@@ -938,6 +953,10 @@ class TransformerBlock(nn.Module):
 
 
 class BertBlock(nn.Module):
+    """
+    BERT Block. Similar to the TransformerBlock, except that the LayerNorms are applied after the attention and MLP, rather than before.
+    """
+
     def __init__(self, cfg: HookedTransformerConfig):
         super().__init__()
         self.cfg = cfg

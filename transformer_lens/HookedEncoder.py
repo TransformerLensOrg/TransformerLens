@@ -19,6 +19,18 @@ from transformer_lens.utilities import devices
 
 
 class HookedEncoder(HookedRootModule):
+    """
+    Implements a BERT-style encoder using the components in ./components.py, with HookPoints on every interesting activation.
+
+    Like HookedTransformer, it can have a pretrained Transformer's weights loaded via `.from_pretrained`.
+
+    Unlike HookedTransformer, it does not (yet) do any pre-processing of the weights e.g. folding LayerNorm. Another difference is that the model can currently only be run with tokens, and not strings or list of strings.
+
+    Currently, the supported task/architecture is masked language modelling. Next sentence prediction, causal language modelling, and other tasks are not supported.
+
+    The HookedEncoder does not contain dropouts, which may lead to inconsistent results when pretraining.
+    """
+
     def __init__(self, cfg, tokenizer=None, move_to_device=True, **kwargs):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -85,10 +97,17 @@ class HookedEncoder(HookedRootModule):
     def forward(
         self,
         input: Int[torch.Tensor, "batch pos"],
-        return_type: Literal[None, "logits"] = "logits",
+        return_type: Optional[str] = "logits",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
+        """Input must be a batch of tokens. Strings and lists of strings are not yet supported.
+
+        return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), or 'logits' (return logits).
+        token_type_ids Optional[torch.Tensor]: Binary ids indicating whether a token belongs to sequence A or B. For example, for two sentences: "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be [0, 0, ..., 0, 1, ..., 1, 1]. `0` represents tokens from Sentence A, `1` from Sentence B. If not provided, BERT assumes a single sequence input. Typically, shape is (batch_size, sequence_length).
+        one_zero_attention_mask: Optional[torch.Tensor]: A binary mask which indicates which tokens should be attended to (1) and which should be ignored (0). Primarily used for padding variable-length sentences in a batch. For instance, in a batch with sentences of differing lengths, shorter sentences are padded with 0s on the right. If not provided, the model assumes all tokens should be attended to.
+        """
+
         tokens = input
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
@@ -108,10 +127,11 @@ class HookedEncoder(HookedRootModule):
         for block in self.blocks:
             resid = block(resid, additive_attention_mask)
         resid = self.mlm_head(resid)
-        logits = self.unembed(resid)
 
         if return_type is None:
             return
+
+        logits = self.unembed(resid)
         return logits
 
     @overload
@@ -137,9 +157,7 @@ class HookedEncoder(HookedRootModule):
         Union[ActivationCache, Dict[str, torch.Tensor]],
     ]:
         """
-        Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an
-        ActivationCache object, with a bunch of useful HookedTransformer specific methods, otherwise it will return a
-        dictionary of activations as in HookedRootModule.
+        Wrapper around run_with_cache in HookedRootModule. If return_cache_object is True, this will return an ActivationCache object, with a bunch of useful HookedTransformer specific methods, otherwise it will return a dictionary of activations as in HookedRootModule. This function was copied directly from HookedTransformer.
         """
         out, cache_dict = super().run_with_cache(
             *model_args, remove_batch_dim=remove_batch_dim, **kwargs
@@ -177,6 +195,7 @@ class HookedEncoder(HookedRootModule):
         device: Optional[str] = None,
         **model_kwargs,
     ) -> HookedEncoder:
+        """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
         logging.warning(
             "HookedEncoder is still in beta. Please be aware that model preprocessing "
             "(e.g. LayerNorm folding) is not yet supported and backward compatibility "
