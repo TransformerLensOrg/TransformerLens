@@ -6,7 +6,7 @@ from typing import Dict, Optional
 import einops
 import torch
 from huggingface_hub import HfApi
-from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForMaskedLM
+from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -740,7 +740,6 @@ def get_pretrained_model_config(
             cfg_dict["normalization_type"] = "LNPre"
         else:
             logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
-            pass
 
     if checkpoint_index is not None or checkpoint_value is not None:
         checkpoint_labels, checkpoint_label_type = get_checkpoint_labels(
@@ -878,7 +877,7 @@ def get_pretrained_state_dict(
             if "llama" in official_model_name:
                 raise NotImplementedError("Must pass in hf_model for LLaMA models")
             elif "bert" in official_model_name:
-                hf_model = AutoModelForMaskedLM.from_pretrained(official_model_name)
+                hf_model = BertForPreTraining.from_pretrained(official_model_name)
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 

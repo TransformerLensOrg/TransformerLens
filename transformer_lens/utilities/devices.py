@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Optional, Union, TYPE_CHECKING
+
+from typing import TYPE_CHECKING, Optional, Union
 
 import torch
 from torch import nn
@@ -7,6 +8,7 @@ from torch import nn
 if TYPE_CHECKING:
     from transformer_lens.HookedEncoder import HookedEncoder
     from transformer_lens.HookedTransformer import HookedTransformer
+
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 

@@ -1,8 +1,7 @@
 import pytest
 from transformers import AutoTokenizer, BertTokenizerFast
 
-from transformer_lens import HookedTransformerConfig
-from transformer_lens.HookedEncoder import HookedEncoder
+from transformer_lens import HookedEncoder, HookedTransformerConfig
 
 
 @pytest.fixture

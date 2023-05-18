@@ -7,7 +7,7 @@ from jaxtyping import Float
 from torch.testing import assert_close
 from transformers import AutoTokenizer, BertForMaskedLM
 
-from transformer_lens.HookedEncoder import HookedEncoder
+from transformer_lens import HookedEncoder
 
 MODEL_NAME = "bert-base-cased"
 
