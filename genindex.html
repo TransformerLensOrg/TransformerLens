@@ -285,17 +285,23 @@
 </li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.b_out">b_out (transformer_lens.HookedTransformer.HookedTransformer property)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.b_Q">b_Q (transformer_lens.HookedTransformer.HookedTransformer property)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.b_U">b_U (transformer_lens.HookedTransformer.HookedTransformer property)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.b_V">b_V (transformer_lens.HookedTransformer.HookedTransformer property)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.FactoredMatrix.FactoredMatrix.BA">BA (transformer_lens.FactoredMatrix.FactoredMatrix property)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.train.HookedTransformerTrainConfig.batch_size">batch_size (transformer_lens.train.HookedTransformerTrainConfig attribute)</a>
+</li>
+        <li><a href="transformer_lens.html#transformer_lens.components.BertBlock">BertBlock (class in transformer_lens.components)</a>
+</li>
+        <li><a href="transformer_lens.html#transformer_lens.components.BertEmbed">BertEmbed (class in transformer_lens.components)</a>
+</li>
+        <li><a href="transformer_lens.html#transformer_lens.components.BertMLMHead">BertMLMHead (class in transformer_lens.components)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -346,6 +352,8 @@
         <li><a href="transformer_lens.html#transformer_lens.ActivationCache.ActivationCache.compute_head_results">compute_head_results() (transformer_lens.ActivationCache.ActivationCache method)</a>
 </li>
         <li><a href="transformer_lens.html#id0">context_level (transformer_lens.hook_points.LensHandle attribute)</a>, <a href="transformer_lens.html#transformer_lens.hook_points.LensHandle.context_level">[1]</a>
+</li>
+        <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.convert_bert_weights">convert_bert_weights() (in module transformer_lens.loading_from_pretrained)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.convert_gpt2_weights">convert_gpt2_weights() (in module transformer_lens.loading_from_pretrained)</a>
 </li>
@@ -442,8 +450,12 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.FactoredMatrix.FactoredMatrix">FactoredMatrix (class in transformer_lens.FactoredMatrix)</a>
 </li>
-        <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.fill_missing_keys">fill_missing_keys() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
+        <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.fill_missing_keys">fill_missing_keys() (in module transformer_lens.loading_from_pretrained)</a>
+
+        <ul>
+          <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.fill_missing_keys">(transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
+        </ul></li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.final_rms">final_rms (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.fold_layer_norm">fold_layer_norm() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
@@ -453,6 +465,12 @@
         <li><a href="transformer_lens.html#transformer_lens.components.Attention.forward">forward() (transformer_lens.components.Attention method)</a>
 
         <ul>
+          <li><a href="transformer_lens.html#transformer_lens.components.BertBlock.forward">(transformer_lens.components.BertBlock method)</a>
+</li>
+          <li><a href="transformer_lens.html#transformer_lens.components.BertEmbed.forward">(transformer_lens.components.BertEmbed method)</a>
+</li>
+          <li><a href="transformer_lens.html#transformer_lens.components.BertMLMHead.forward">(transformer_lens.components.BertMLMHead method)</a>
+</li>
           <li><a href="transformer_lens.html#transformer_lens.components.Embed.forward">(transformer_lens.components.Embed method)</a>
 </li>
           <li><a href="transformer_lens.html#transformer_lens.components.GatedMLP.forward">(transformer_lens.components.GatedMLP method)</a>
@@ -468,6 +486,8 @@
           <li><a href="transformer_lens.html#transformer_lens.components.RMSNorm.forward">(transformer_lens.components.RMSNorm method)</a>
 </li>
           <li><a href="transformer_lens.html#transformer_lens.components.RMSNormPre.forward">(transformer_lens.components.RMSNormPre method)</a>
+</li>
+          <li><a href="transformer_lens.html#transformer_lens.components.TokenTypeEmbed.forward">(transformer_lens.components.TokenTypeEmbed method)</a>
 </li>
           <li><a href="transformer_lens.html#transformer_lens.components.TransformerBlock.forward">(transformer_lens.components.TransformerBlock method)</a>
 </li>
@@ -1025,11 +1045,19 @@
 </li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.tokens_to_residual_directions">tokens_to_residual_directions() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
+        <li><a href="transformer_lens.html#transformer_lens.components.TokenTypeEmbed">TokenTypeEmbed (class in transformer_lens.components)</a>
+</li>
         <li><a href="transformer_lens.html#transformer_lens.train.train">train() (in module transformer_lens.train)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.components.Attention.training">training (transformer_lens.components.Attention attribute)</a>
 
         <ul>
+          <li><a href="transformer_lens.html#transformer_lens.components.BertBlock.training">(transformer_lens.components.BertBlock attribute)</a>
+</li>
+          <li><a href="transformer_lens.html#transformer_lens.components.BertEmbed.training">(transformer_lens.components.BertEmbed attribute)</a>
+</li>
+          <li><a href="transformer_lens.html#transformer_lens.components.BertMLMHead.training">(transformer_lens.components.BertMLMHead attribute)</a>
+</li>
           <li><a href="transformer_lens.html#transformer_lens.components.Embed.training">(transformer_lens.components.Embed attribute)</a>
 </li>
           <li><a href="transformer_lens.html#transformer_lens.components.GatedMLP.training">(transformer_lens.components.GatedMLP attribute)</a>
@@ -1045,6 +1073,8 @@
           <li><a href="transformer_lens.html#transformer_lens.components.RMSNorm.training">(transformer_lens.components.RMSNorm attribute)</a>
 </li>
           <li><a href="transformer_lens.html#transformer_lens.components.RMSNormPre.training">(transformer_lens.components.RMSNormPre attribute)</a>
+</li>
+          <li><a href="transformer_lens.html#transformer_lens.components.TokenTypeEmbed.training">(transformer_lens.components.TokenTypeEmbed attribute)</a>
 </li>
           <li><a href="transformer_lens.html#transformer_lens.components.TransformerBlock.training">(transformer_lens.components.TransformerBlock attribute)</a>
 </li>
