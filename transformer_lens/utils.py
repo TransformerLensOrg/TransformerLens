@@ -14,7 +14,7 @@ from huggingface_hub import hf_hub_download
 from rich import print as rprint
 from transformers import AutoTokenizer
 
-from transformer_lens import FactoredMatrix
+from transformer_lens.FactoredMatrix import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 import json
