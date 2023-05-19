@@ -201,9 +201,14 @@ class HookedEncoder(HookedRootModule):
     ) -> HookedEncoder:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
         logging.warning(
-            "HookedEncoder is still in beta. Please be aware that model preprocessing "
-            "(e.g. LayerNorm folding) is not yet supported and backward compatibility "
-            "is not guaranteed."
+            "Support for BERT in TransformerLens is currently experimental, until such a time when it has feature "
+            "parity with HookedTransformer and has been tested on real research tasks. Until then, backward "
+            "compatibility is not guaranteed. Please see the docs for information on the limitations of the current "
+            "implementation."
+            "\n"
+            "If using BERT for interpretability research, keep in mind that BERT has some significant architectural "
+            "differences to GPT. For example, LayerNorms are applied *after* the attention and MLP components, meaning "
+            "that the last LayerNorm in a block cannot be folded."
         )
 
         official_model_name = loading.get_official_model_name(model_name)

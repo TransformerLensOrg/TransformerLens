@@ -105,7 +105,6 @@ class TokenTypeEmbed(nn.Module):
         self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model))
 
     def forward(self, token_type_ids: Int[torch.Tensor, "batch pos"]):
-        # TODO: should this method take the tokens rather than the token_type_ids?
         return self.W_token_type[token_type_ids, :]
 
 
