@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import pprint
 import random
@@ -226,7 +228,7 @@ class HookedTransformerConfig:
             ), f"Not enough CUDA devices to support n_devices {self.n_devices}"
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]):
+    def from_dict(cls, config_dict: Dict[str, Any]) -> HookedTransformerConfig:
         """
         Instantiates a `HookedTransformerConfig` from a Python dictionary of
         parameters.

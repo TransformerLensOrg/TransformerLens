@@ -721,26 +721,12 @@ class HookedTransformer(HookedRootModule):
             residual_direction = self.W_U[:, token]
             return residual_direction
 
-    def to(self, device_or_dtype, print_details=True):
-        """
-        Wrapper around to that also changes self.cfg.device if it's a torch.device or string.
-        If torch.dtype, just passes through
-        """
-        if isinstance(device_or_dtype, torch.device):
-            self.cfg.device = device_or_dtype.type
-            if print_details:
-                print("Moving model to device: ", self.cfg.device)
-        elif isinstance(device_or_dtype, str):
-            self.cfg.device = device_or_dtype
-            if print_details:
-                print("Moving model to device: ", self.cfg.device)
-        elif isinstance(device_or_dtype, torch.dtype):
-            if print_details:
-                print("Changing model dtype to", device_or_dtype)
-            # change state_dict dtypes
-            for k, v in self.state_dict().items():
-                self.state_dict()[k] = v.to(device_or_dtype)
-        return nn.Module.to(self, device_or_dtype)
+    def to(
+        self,
+        device_or_dtype: Union[torch.device, str, torch.dtype],
+        print_details: bool = True,
+    ):
+        return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
     def cuda(self):
         # Wrapper around cuda that also changes self.cfg.device
@@ -1033,33 +1019,7 @@ class HookedTransformer(HookedRootModule):
         self.load_state_dict(state_dict)
 
     def fill_missing_keys(self, state_dict):
-        """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
-
-        This function is assumed to be run before weights are initialized.
-
-        Args:
-            state_dict (dict): State dict from a pretrained model
-
-        Returns:
-            dict: State dict with missing keys filled in
-        """
-        # Get the default state dict
-        default_state_dict = self.state_dict()
-        # Get the keys that are missing from the pretrained model
-        missing_keys = set(default_state_dict.keys()) - set(state_dict.keys())
-        # Fill in the missing keys with the default initialization
-        for key in missing_keys:
-            if "hf_model" in key:
-                # Skip keys that are from the HuggingFace model, if loading from HF.
-                continue
-            if "W_" in key:
-                logging.warning(
-                    "Missing key for a weight matrix in pretrained, filled in with an empty tensor: {}".format(
-                        key
-                    )
-                )
-            state_dict[key] = default_state_dict[key]
-        return state_dict
+        return loading.fill_missing_keys(self, state_dict)
 
     def fold_layer_norm(self, state_dict: Dict[str, torch.Tensor]):
         """Takes in a state dict from a pretrained model, formatted to be consistent with HookedTransformer but with

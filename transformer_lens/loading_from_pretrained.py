@@ -6,7 +6,7 @@ from typing import Dict, Optional
 import einops
 import torch
 from huggingface_hub import HfApi
-from transformers import AutoConfig, AutoModelForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -104,6 +104,7 @@ OFFICIAL_MODEL_NAMES = [
     "llama-30b-hf",
     "llama-65b-hf",
     "Baidicoot/Othello-GPT-Transformer-Lens",
+    "bert-base-cased",
 ]
 
 # Model Aliases:
@@ -442,7 +443,7 @@ def get_official_model_name(model_name: str):
     return official_model_name
 
 
-def convert_hf_model_config(official_model_name: str):
+def convert_hf_model_config(model_name: str):
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
     in the HookedTransformerConfig format.
@@ -450,7 +451,7 @@ def convert_hf_model_config(official_model_name: str):
     Takes the official_model_name as an input.
     """
     # In case the user passed in an alias
-    official_model_name = get_official_model_name(official_model_name)
+    official_model_name = get_official_model_name(model_name)
     # Load HuggingFace model config
     if "llama" not in official_model_name:
         hf_config = AutoConfig.from_pretrained(official_model_name)
@@ -614,6 +615,19 @@ def convert_hf_model_config(official_model_name: str):
         }
         rotary_pct = hf_config.rotary_pct
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
+    elif architecture == "BertForMaskedLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.layer_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": "gelu",
+            "attention_dir": "bidirectional",
+        }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
@@ -726,7 +740,6 @@ def get_pretrained_model_config(
             cfg_dict["normalization_type"] = "LNPre"
         else:
             logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
-            pass
 
     if checkpoint_index is not None or checkpoint_value is not None:
         checkpoint_labels, checkpoint_label_type = get_checkpoint_labels(
@@ -863,6 +876,8 @@ def get_pretrained_state_dict(
         elif hf_model is None:
             if "llama" in official_model_name:
                 raise NotImplementedError("Must pass in hf_model for LLaMA models")
+            elif "bert" in official_model_name:
+                hf_model = BertForPreTraining.from_pretrained(official_model_name)
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
 
@@ -879,12 +894,44 @@ def get_pretrained_state_dict(
             state_dict = convert_neox_weights(hf_model, cfg)
         elif cfg.original_architecture == "LLaMAForCausalLM":
             state_dict = convert_llama_weights(hf_model, cfg)
+        elif cfg.original_architecture == "BertForMaskedLM":
+            state_dict = convert_bert_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
             )
 
         return state_dict
+
+
+def fill_missing_keys(model, state_dict):
+    """Takes in a state dict from a pretrained model, and fills in any missing keys with the default initialization.
+
+    This function is assumed to be run before weights are initialized.
+
+    Args:
+        state_dict (dict): State dict from a pretrained model
+
+    Returns:
+        dict: State dict with missing keys filled in
+    """
+    # Get the default state dict
+    default_state_dict = model.state_dict()
+    # Get the keys that are missing from the pretrained model
+    missing_keys = set(default_state_dict.keys()) - set(state_dict.keys())
+    # Fill in the missing keys with the default initialization
+    for key in missing_keys:
+        if "hf_model" in key:
+            # Skip keys that are from the HuggingFace model, if loading from HF.
+            continue
+        if "W_" in key:
+            logging.warning(
+                "Missing key for a weight matrix in pretrained, filled in with an empty tensor: {}".format(
+                    key
+                )
+            )
+        state_dict[key] = default_state_dict[key]
+    return state_dict
 
 
 # %%
@@ -964,7 +1011,7 @@ def convert_gpt2_weights(gpt2, cfg: HookedTransformerConfig):
         W_out = gpt2.transformer.h[l].mlp.c_proj.weight
         state_dict[f"blocks.{l}.mlp.W_out"] = W_out
         state_dict[f"blocks.{l}.mlp.b_out"] = gpt2.transformer.h[l].mlp.c_proj.bias
-    state_dict[f"unembed.W_U"] = gpt2.lm_head.weight.T
+    state_dict["unembed.W_U"] = gpt2.lm_head.weight.T
 
     state_dict["ln_final.w"] = gpt2.transformer.ln_f.weight
     state_dict["ln_final.b"] = gpt2.transformer.ln_f.bias
@@ -1270,8 +1317,8 @@ def convert_opt_weights(opt, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.mlp.b_in"] = opt.model.decoder.layers[l].fc1.bias
         state_dict[f"blocks.{l}.mlp.b_out"] = opt.model.decoder.layers[l].fc2.bias
-    state_dict[f"ln_final.w"] = opt.model.decoder.final_layer_norm.weight
-    state_dict[f"ln_final.b"] = opt.model.decoder.final_layer_norm.bias
+    state_dict["ln_final.w"] = opt.model.decoder.final_layer_norm.weight
+    state_dict["ln_final.b"] = opt.model.decoder.final_layer_norm.bias
     state_dict["unembed.W_U"] = opt.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab)
     return state_dict
@@ -1368,7 +1415,7 @@ def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_out"] = W_out.T
         state_dict[f"blocks.{l}.mlp.b_out"] = old_state_dict[f"blocks.{l}.mlp.2.bias"]
 
-    state_dict[f"unembed.W_U"] = old_state_dict["head.weight"].T
+    state_dict["unembed.W_U"] = old_state_dict["head.weight"].T
 
     state_dict["ln_final.w"] = old_state_dict["ln_f.weight"]
     state_dict["ln_final.b"] = old_state_dict["ln_f.bias"]
@@ -1376,4 +1423,63 @@ def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
     return state_dict
 
 
-# %%
+def convert_bert_weights(bert, cfg: HookedTransformerConfig):
+    embeddings = bert.bert.embeddings
+    state_dict = {
+        "embed.embed.W_E": embeddings.word_embeddings.weight,
+        "embed.pos_embed.W_pos": embeddings.position_embeddings.weight,
+        "embed.token_type_embed.W_token_type": embeddings.token_type_embeddings.weight,
+        "embed.ln.w": embeddings.LayerNorm.weight,
+        "embed.ln.b": embeddings.LayerNorm.bias,
+    }
+
+    for l in range(cfg.n_layers):
+        block = bert.bert.encoder.layer[l]
+        state_dict[f"blocks.{l}.attn.W_Q"] = einops.rearrange(
+            block.attention.self.query.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.b_Q"] = einops.rearrange(
+            block.attention.self.query.bias, "(i h) -> i h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_K"] = einops.rearrange(
+            block.attention.self.key.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.b_K"] = einops.rearrange(
+            block.attention.self.key.bias, "(i h) -> i h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_V"] = einops.rearrange(
+            block.attention.self.value.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.b_V"] = einops.rearrange(
+            block.attention.self.value.bias, "(i h) -> i h", i=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_O"] = einops.rearrange(
+            block.attention.output.dense.weight,
+            "m (i h) -> i h m",
+            i=cfg.n_heads,
+        )
+        state_dict[f"blocks.{l}.attn.b_O"] = block.attention.output.dense.bias
+        state_dict[f"blocks.{l}.ln1.w"] = block.attention.output.LayerNorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = block.attention.output.LayerNorm.bias
+        state_dict[f"blocks.{l}.mlp.W_in"] = einops.rearrange(
+            block.intermediate.dense.weight, "mlp model -> model mlp"
+        )
+        state_dict[f"blocks.{l}.mlp.b_in"] = block.intermediate.dense.bias
+        state_dict[f"blocks.{l}.mlp.W_out"] = einops.rearrange(
+            block.output.dense.weight, "model mlp -> mlp model"
+        )
+        state_dict[f"blocks.{l}.mlp.b_out"] = block.output.dense.bias
+        state_dict[f"blocks.{l}.ln2.w"] = block.output.LayerNorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = block.output.LayerNorm.bias
+
+    mlm_head = bert.cls.predictions
+    state_dict["mlm_head.W"] = mlm_head.transform.dense.weight
+    state_dict["mlm_head.b"] = mlm_head.transform.dense.bias
+    state_dict["mlm_head.ln.w"] = mlm_head.transform.LayerNorm.weight
+    state_dict["mlm_head.ln.b"] = mlm_head.transform.LayerNorm.bias
+    # Note: BERT uses tied embeddings
+    state_dict["unembed.W_U"] = embeddings.word_embeddings.weight.T
+    # "unembed.W_U": mlm_head.decoder.weight.T,
+    state_dict["unembed.b_U"] = mlm_head.bias
+
+    return state_dict

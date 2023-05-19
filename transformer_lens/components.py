@@ -90,6 +90,97 @@ class PosEmbed(nn.Module):
         return broadcast_pos_embed.clone()
 
 
+class TokenTypeEmbed(nn.Module):
+    """
+    The token-type embed is a binary ids indicating whether a token belongs to sequence A or B. For example, for two sentences: "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be [0, 0, ..., 0, 1, ..., 1, 1]. `0` represents tokens from Sentence A, `1` from Sentence B. If not provided, BERT assumes a single sequence input. Typically, shape is (batch_size, sequence_length).
+
+    See the BERT paper for more information: https://arxiv.org/pdf/1810.04805.pdf
+    """
+
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model))
+
+    def forward(self, token_type_ids: Int[torch.Tensor, "batch pos"]):
+        return self.W_token_type[token_type_ids, :]
+
+
+class BertEmbed(nn.Module):
+    """
+    Custom embedding layer for a BERT-like model. This module computes the sum of the token, positional and token-type embeddings and takes the layer norm of the result.
+    """
+
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.embed = Embed(cfg)
+        self.pos_embed = PosEmbed(cfg)
+        self.token_type_embed = TokenTypeEmbed(cfg)
+        self.ln = LayerNorm(cfg)
+
+        self.hook_embed = HookPoint()
+        self.hook_pos_embed = HookPoint()
+        self.hook_token_type_embed = HookPoint()
+
+    def forward(
+        self,
+        input_ids: Int[torch.Tensor, "batch pos"],
+        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ):
+        base_index_id = torch.arange(input_ids.shape[1], device=input_ids.device)
+        index_ids = einops.repeat(
+            base_index_id, "pos -> batch pos", batch=input_ids.shape[0]
+        )
+        if token_type_ids is None:
+            token_type_ids = torch.zeros_like(input_ids)
+
+        word_embeddings_out = self.hook_embed(self.embed(input_ids))
+        position_embeddings_out = self.hook_pos_embed(self.pos_embed(index_ids))
+        token_type_embeddings_out = self.hook_token_type_embed(
+            self.token_type_embed(token_type_ids)
+        )
+
+        embeddings_out = (
+            word_embeddings_out + position_embeddings_out + token_type_embeddings_out
+        )
+        layer_norm_out = self.ln(embeddings_out)
+        return layer_norm_out
+
+
+class BertMLMHead(nn.Module):
+    """
+    Transforms BERT embeddings into logits. The purpose of this module is to predict masked tokens in a sentence.
+    """
+
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.W = nn.Parameter(torch.empty(cfg.d_model, cfg.d_model))
+        self.b = nn.Parameter(torch.zeros(cfg.d_model))
+        self.act_fn = nn.GELU()
+        self.ln = LayerNorm(cfg)
+
+    def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:
+        resid = (
+            einsum(
+                "batch pos d_model_in, d_model_out d_model_in -> batch pos d_model_out",
+                resid,
+                self.W,
+            )
+            + self.b
+        )
+        resid = self.act_fn(resid)
+        resid = self.ln(resid)
+        return resid
+
+
 # LayerNormPre
 # I fold the LayerNorm weights and biases into later weights and biases.
 # This is just the 'center and normalise' part of LayerNorm
@@ -368,10 +459,12 @@ class Attention(nn.Module):
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        additive_attention_mask: Float[torch.Tensor, "batch 1 1 pos"] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
+        additive_attention_mask is an optional mask to add to the attention weights. Defaults to None.
         """
 
         if self.cfg.use_split_qkv_input:
@@ -421,8 +514,8 @@ class Attention(nn.Module):
         attn_scores = (
             einsum(
                 "batch query_pos head_index d_head, \
-                batch key_pos head_index d_head \
-                -> batch head_index query_pos key_pos",
+                    batch key_pos head_index d_head \
+                    -> batch head_index query_pos key_pos",
                 q,
                 k,
             )
@@ -433,6 +526,9 @@ class Attention(nn.Module):
             attn_scores = self.apply_causal_mask(
                 attn_scores, kv_cache_pos_offset
             )  # [batch, head_index, query_pos, key_pos]
+        if additive_attention_mask is not None:
+            attn_scores += additive_attention_mask
+
         attn_scores = self.hook_attn_scores(attn_scores)
         pattern = self.hook_pattern(
             F.softmax(attn_scores, dim=-1)
@@ -451,8 +547,8 @@ class Attention(nn.Module):
                 (
                     einsum(
                         "batch pos head_index d_head, \
-                        head_index d_head d_model -> \
-                        batch pos d_model",
+                            head_index d_head d_model -> \
+                            batch pos d_model",
                         z,
                         self.W_O,
                     )
@@ -853,3 +949,70 @@ class TransformerBlock(nn.Module):
                 resid_pre + attn_out
             )  # [batch, pos, d_model]
         return resid_post
+
+
+class BertBlock(nn.Module):
+    """
+    BERT Block. Similar to the TransformerBlock, except that the LayerNorms are applied after the attention and MLP, rather than before.
+    """
+
+    def __init__(self, cfg: HookedTransformerConfig):
+        super().__init__()
+        self.cfg = cfg
+
+        self.attn = Attention(cfg)
+        self.ln1 = LayerNorm(cfg)
+        self.mlp = MLP(cfg)
+        self.ln2 = LayerNorm(cfg)
+
+        self.hook_q_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_k_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_v_input = HookPoint()  # [batch, pos, d_model]
+
+        self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
+        self.hook_normalized_resid_post = HookPoint()  # [batch, pos, d_model]
+
+    def forward(
+        self,
+        resid_pre: Float[torch.Tensor, "batch pos d_model"],
+        additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
+    ):
+        resid_pre = self.hook_resid_pre(resid_pre)
+
+        query_input = resid_pre
+        key_input = resid_pre
+        value_input = resid_pre
+
+        if self.cfg.use_split_qkv_input:
+
+            def add_head_dimension(tensor):
+                return einops.repeat(
+                    tensor,
+                    "batch pos d_model -> batch pos n_heads d_model",
+                    n_heads=self.cfg.n_heads,
+                ).clone()
+
+            query_input = self.hook_q_input(add_head_dimension(query_input))
+            key_input = self.hook_k_input(add_head_dimension(key_input))
+            value_input = self.hook_v_input(add_head_dimension(value_input))
+
+        attn_out = self.hook_attn_out(
+            self.attn(
+                query_input,
+                key_input,
+                value_input,
+                additive_attention_mask=additive_attention_mask,
+            )
+        )
+        resid_mid = self.hook_resid_mid(resid_pre + attn_out)
+        normalized_resid_mid = self.ln1(resid_mid)
+
+        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))
+        resid_post = self.hook_resid_post(normalized_resid_mid + mlp_out)
+        normalized_resid_post = self.hook_normalized_resid_post(self.ln2(resid_post))
+
+        return normalized_resid_post

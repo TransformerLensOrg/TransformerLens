@@ -1,6 +1,13 @@
-from typing import Optional, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional, Union
 
 import torch
+from torch import nn
+
+if TYPE_CHECKING:
+    from transformer_lens.HookedEncoder import HookedEncoder
+    from transformer_lens.HookedTransformer import HookedTransformer
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
@@ -32,3 +39,29 @@ def get_device_for_block_index(
     device = torch.device(device)
     device_index = (device.index or 0) + (index // layers_per_device)
     return torch.device(device.type, device_index)
+
+
+def move_to_and_update_config(
+    model: Union[HookedTransformer, HookedEncoder],
+    device_or_dtype: Union[torch.device, str, torch.dtype],
+    print_details=True,
+):
+    """
+    Wrapper around to that also changes model.cfg.device if it's a torch.device or string.
+    If torch.dtype, just passes through
+    """
+    if isinstance(device_or_dtype, torch.device):
+        model.cfg.device = device_or_dtype.type
+        if print_details:
+            print("Moving model to device: ", model.cfg.device)
+    elif isinstance(device_or_dtype, str):
+        model.cfg.device = device_or_dtype
+        if print_details:
+            print("Moving model to device: ", model.cfg.device)
+    elif isinstance(device_or_dtype, torch.dtype):
+        if print_details:
+            print("Changing model dtype to", device_or_dtype)
+        # change state_dict dtypes
+        for k, v in model.state_dict().items():
+            model.state_dict()[k] = v.to(device_or_dtype)
+    return nn.Module.to(model, device_or_dtype)
