@@ -25,4 +25,5 @@ from .HookedTransformerConfig import HookedTransformerConfig as EasyTransformerC
 # Set up custom error message for typeguard
 import typeguard
 from .typecheck import typecheck_fail_callback
+
 typeguard.config.typecheck_fail_callback = typecheck_fail_callback
