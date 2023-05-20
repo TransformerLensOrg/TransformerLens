@@ -1,7 +1,8 @@
-from transformer_lens import HookedTransformer, HookedTransformerConfig
-from transformers import AutoTokenizer
-from torch import tensor, equal, Size
 import pytest
+from torch import Size, equal, tensor
+from transformers import AutoTokenizer
+
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 model = HookedTransformer.from_pretrained("solu-1l")
 
