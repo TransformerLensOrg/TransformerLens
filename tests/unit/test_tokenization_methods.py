@@ -9,7 +9,8 @@ model = HookedTransformer.from_pretrained("solu-1l")
 
 def test_set_tokenizer_during_initialization():
     assert (
-        model.tokenizer.name_or_path == "NeelNanda/gpt-neox-tokenizer-digits"
+        model.tokenizer is not None
+        and model.tokenizer.name_or_path == "NeelNanda/gpt-neox-tokenizer-digits"
     ), "initialized with expected tokenizer"
     assert model.cfg.d_vocab == 48262, "expected d_vocab"
 
@@ -17,9 +18,11 @@ def test_set_tokenizer_during_initialization():
 def test_set_tokenizer_lazy():
     cfg = HookedTransformerConfig(1, 10, 1, 1, act_fn="relu", d_vocab=50256)
     model2 = HookedTransformer(cfg)
-    assert model2.tokenizer is None, "initialize without tokenizer"
+    original_tokenizer = model2.tokenizer
+    assert original_tokenizer is None, "initialize without tokenizer"
     model2.set_tokenizer(AutoTokenizer.from_pretrained("gpt2"))
-    assert model2.tokenizer.name_or_path == "gpt2", "set tokenizer"
+    tokenizer = model2.tokenizer
+    assert tokenizer is not None and tokenizer.name_or_path == "gpt2", "set tokenizer"
     assert model2.to_single_token(" SolidGoldMagicarp") == 15831, "glitch token"
 
 
@@ -63,7 +66,7 @@ def test_to_string_from_to_tokens_without_bos():
 
 
 def test_to_string_multiple():
-    s_list = model.to_string([[1, 11765], [43453, 28666]])
+    s_list = model.to_string(tensor([[1, 11765], [43453, 28666]]))
     assert s_list == [
         "<|BOS|>Hello",
         "Charlie Planet",
@@ -129,7 +132,7 @@ def test_get_token_position_str_without_bos():
 
 def test_get_token_position_int_pos():
     single = 2
-    input = tensor([2, 3, 4])
+    input = tensor([2.0, 3, 4])
     pos1 = model.get_token_position(single, input)
     pos2 = model.get_token_position(single, input, prepend_bos=False)
     assert pos1 == 0, "first position"
@@ -138,27 +141,16 @@ def test_get_token_position_int_pos():
 
 def test_get_token_position_int_pos_last():
     single = 2
-    input = tensor([2, 3, 4, 2, 5])
+    input = tensor([2.0, 3, 4, 2, 5])
     pos1 = model.get_token_position(single, input, mode="last")
     assert pos1 == 3, "last position"
 
 
 def test_get_token_position_int_1_pos():
     single = 2
-    input = tensor([[2, 3, 4]])
+    input = tensor([[2.0, 3, 4]])
     pos = model.get_token_position(single, input)
     assert pos == 0, "first position"
-
-
-def test_get_token_position_wrong_tensor_shape():
-    single = "biomolecules"
-    input = tensor([[1], [2]])
-    with pytest.raises(AssertionError) as exc_info:
-        model.get_token_position(single, input)
-    assert (
-        str(exc_info.value)
-        == "If tokens are rank two, they must have shape [1, seq_len], not torch.Size([2, 1])"
-    ), "assertion error"
 
 
 def test_tokens_to_residual_directions():

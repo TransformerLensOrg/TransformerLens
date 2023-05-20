@@ -772,7 +772,7 @@ class HookedTransformer(HookedRootModule):
         n_devices=1,
         move_state_dict_to_device=True,
         **model_kwargs,
-    ):
+    ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
         processing to make the model easier to interpret. Currently supports loading from most autoregressive
         HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models and SoLU models trained by me (Neel Nanda).
