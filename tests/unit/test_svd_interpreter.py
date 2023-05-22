@@ -86,13 +86,22 @@ def test_svd_interpreter_returns_different_answers_for_different_models():
 # Failures
 
 
-def test_svd_interpreter_passes_invalid_vector_type():
+def test_svd_interpreter_fails_on_invalid_vector_type():
     svd_interpreter = SVDInterpreter(model)
-    with pytest.raises(TypeError) as e:
+    with pytest.raises(ValueError) as e:
         svd_interpreter.get_singular_vectors(
             'test', layer_index=0, num_vectors=4, head_index=0)
     assert str(
-        e.value) == 'type of argument "vector_type" must be one of (Literal[OV], Literal[w_in], Literal[w_out]); got str instead'
+        e.value) == "Vector type must be in ['OV', 'w_in', 'w_out'], instead got test"
+
+
+def test_svd_interpreter_fails_on_not_passing_required_head_index():
+    svd_interpreter = SVDInterpreter(model)
+    with pytest.raises(AssertionError) as e:
+        svd_interpreter.get_singular_vectors(
+            'OV', layer_index=0, num_vectors=4)
+        assert str(
+            e.value) == "Head index optional only for w_in and w_out, got OV"
 
 
 def test_svd_interpreter_fails_on_invalid_layer_index():
