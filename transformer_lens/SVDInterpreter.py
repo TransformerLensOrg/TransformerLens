@@ -35,25 +35,22 @@ class SVDInterpreter:
         elif vector_type == 'w_out':
             matrix = self._get_w_out_matrix(layer_index)
             _, _, V = torch.linalg.svd(matrix)
+            V = V.T
 
         else:
             raise ValueError(
                 f"Vector type must be in {VECTOR_TYPES}, instead got {vector_type}")
 
-        is_w_out = (vector_type == 'w_out')
-        return self._get_singular_vectors_from_matrix(V, self.params[OUTPUT_EMBEDDING], num_vectors, is_w_out)
+        return self._get_singular_vectors_from_matrix(V, self.params[OUTPUT_EMBEDDING], num_vectors)
 
     def _get_singular_vectors_from_matrix(self,
-                                          V: torch.Tensor,
+                                          V: Union[torch.Tensor, FactoredMatrix],
                                           embedding: torch.Tensor,
-                                          num_vectors: int = 10,
-                                          is_w_out: bool = False) -> torch.Tensor:
+                                          num_vectors: int = 10) -> torch.Tensor:
+
         vectors = []
         for i in range(num_vectors):
-            if is_w_out:
-                activations = V.T[i, :].float() @ embedding
-            else:
-                activations = V[i, :].float() @ embedding
+            activations = V[i, :].float() @ embedding
             vectors.append(activations)
 
         vectors = torch.stack(vectors, dim=1).unsqueeze(1)
