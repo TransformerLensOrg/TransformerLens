@@ -1,23 +1,33 @@
 from __future__ import annotations
+<<<<<<< HEAD
 from jaxtyping import Float, Int
 import json
+=======
+
+import re
+from typing import Dict, List, Optional, Tuple, Type, Union, cast
+
+import einops
+>>>>>>> 38f4d202283552fc14115dd1f004448d8900be15
 import numpy as np
 import torch
 import torch.nn.functional as F
-from datasets.arrow_dataset import Dataset
-import einops
-from transformers import AutoTokenizer
-from typing import Optional, Union, Tuple, List, Dict, Type, cast
 import transformers
-from huggingface_hub import hf_hub_download
-import re
-from rich import print as rprint
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
+from huggingface_hub import hf_hub_download
+from rich import print as rprint
+from transformers import AutoTokenizer
 
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
+<<<<<<< HEAD
+=======
+import json
+
+from jaxtyping import Float, Int
+>>>>>>> 38f4d202283552fc14115dd1f004448d8900be15
 
 
 def download_file_from_hf(
@@ -33,7 +43,7 @@ def download_file_from_hf(
     )
 
     # Load to the CPU device if CUDA is not available
-    map_location = None if torch.cuda.is_available() else torch.device('cpu')
+    map_location = None if torch.cuda.is_available() else torch.device("cpu")
 
     if file_path.endswith(".pth") or force_is_torch:
         return torch.load(file_path, map_location=map_location)
@@ -59,7 +69,7 @@ def get_corner(tensor, n=3):
 
 
 def to_numpy(tensor):
-    """ 
+    """
     Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
     """
     if isinstance(tensor, np.ndarray):
@@ -117,7 +127,9 @@ def lm_accuracy(
         return correct_matches.sum() / correct_matches.numel()
 
 
-def gelu_new(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def gelu_new(
+    input: Float[torch.Tensor, "batch pos d_mlp"]
+) -> Float[torch.Tensor, "batch pos d_mlp"]:
     # Implementation of GeLU used by GPT2 - subtly different from PyTorch's
     return (
         0.5
@@ -132,7 +144,9 @@ def gelu_new(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tenso
     )
 
 
-def gelu_fast(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def gelu_fast(
+    input: Float[torch.Tensor, "batch pos d_mlp"]
+) -> Float[torch.Tensor, "batch pos d_mlp"]:
     return (
         0.5
         * input
@@ -140,7 +154,9 @@ def gelu_fast(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tens
     )
 
 
-def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def solu(
+    input: Float[torch.Tensor, "batch pos d_mlp"]
+) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
@@ -314,8 +330,15 @@ def sample_logits(
 # %%
 # Type alias
 SliceInput: Type = Optional[
-    Union[int, Tuple[int,], Tuple[int, int], Tuple[int,
-                                                   int, int], List[int], torch.Tensor, np.ndarray]
+    Union[
+        int,
+        Tuple[int,],
+        Tuple[int, int],
+        Tuple[int, int, int],
+        List[int],
+        torch.Tensor,
+        np.ndarray,
+    ]
 ]
 """
 An optional type alias for a slice input used in the `ActivationCache` module.
@@ -374,7 +397,7 @@ class Slice:
             ValueError: If the input_slice is not one of the above types.
         """
         if type(input_slice) == tuple:
-            input_slice = slice(*input_slice)
+            input_slice: slice = slice(*input_slice)
             self.slice = input_slice
             self.mode = "slice"
         elif type(input_slice) == int:
@@ -521,7 +544,17 @@ def get_act_name(
     full_act_name = ""
     if layer is not None:
         full_act_name += f"blocks.{layer}."
-    if name in ["k", "v", "q", "z", "rot_k", "rot_q", "result", "pattern", "attn_scores"]:
+    if name in [
+        "k",
+        "v",
+        "q",
+        "z",
+        "rot_k",
+        "rot_q",
+        "result",
+        "pattern",
+        "attn_scores",
+    ]:
         layer_type = "attn"
     elif name in ["pre", "post", "mid"]:
         layer_type = "mlp"
@@ -537,7 +570,9 @@ def get_act_name(
     return full_act_name
 
 
-def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
+def remove_batch_dim(
+    tensor: Float[torch.Tensor, "1 ..."]
+) -> Float[torch.Tensor, "..."]:
     """
     Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
     """
@@ -613,8 +648,8 @@ def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "..
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
 ) -> Union[
-    Float[torch.Tensor, "*leading_dims"], Float[torch.Tensor,
-                                                "*leading_dims_left *T.leading_dims_right"]
+    Float[torch.Tensor, "*leading_dims"],
+    Float[torch.Tensor, "*leading_dims_left *T.leading_dims_right"],
 ]:
     """
     See `HookedTransformer.all_composition_scores` for documentation.
@@ -641,7 +676,7 @@ def composition_scores(
 # %%
 def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     """
-    Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader. 
+    Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader.
 
     Each dataset has a 'text' field, which contains the relevant info, some also have several meta data fields
 
@@ -656,19 +691,18 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     * wiki (Wikipedia, generated from the 20220301.en split of https://huggingface.co/datasets/wikipedia )
     """
     dataset_aliases = {
-        'openwebtext': 'stas/openwebtext-10k',
-        'owt': 'stas/openwebtext-10k',
-        'pile': 'NeelNanda/pile-10k',
-        'c4': 'NeelNanda/c4-10k',
-        'code': 'NeelNanda/code-10k',
-        'python': 'NeelNanda/code-10k',
-        'c4_code': 'NeelNanda/c4-code-20k',
-        'c4-code': 'NeelNanda/c4-code-20k',
-        'wiki': 'NeelNanda/wiki-10k'
+        "openwebtext": "stas/openwebtext-10k",
+        "owt": "stas/openwebtext-10k",
+        "pile": "NeelNanda/pile-10k",
+        "c4": "NeelNanda/c4-10k",
+        "code": "NeelNanda/code-10k",
+        "python": "NeelNanda/code-10k",
+        "c4_code": "NeelNanda/c4-code-20k",
+        "c4-code": "NeelNanda/c4-code-20k",
+        "wiki": "NeelNanda/wiki-10k",
     }
     if dataset_name in dataset_aliases:
-        dataset = load_dataset(
-            dataset_aliases[dataset_name], split='train', **kwargs)
+        dataset = load_dataset(dataset_aliases[dataset_name], split="train", **kwargs)
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
@@ -686,9 +720,11 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
     return x.equal(x.tril())
 
 
-def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False) -> None:
-    """Validate that the two square tensors have the same structure, i.e., 
-    that the directionality of comparisons points in the same directions both 
+def check_structure(
+    t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False
+) -> None:
+    """Validate that the two square tensors have the same structure, i.e.,
+    that the directionality of comparisons points in the same directions both
     row-wise and column-wise.
 
     This function is not used anywhere in the code right now, just for debugging tests.

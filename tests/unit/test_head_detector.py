@@ -2,15 +2,16 @@ import math
 
 import pytest
 import torch
+from typeguard import TypeCheckError
 
 from transformer_lens import HookedTransformer
 from transformer_lens.head_detector import (
+    HEAD_NAMES,
+    ErrorMeasure,
     detect_head,
     get_duplicate_token_head_detection_pattern,
     get_induction_head_detection_pattern,
     get_previous_token_head_detection_pattern,
-    ErrorMeasure,
-    HEAD_NAMES,
 )
 
 # from transformer_lens.utils import check_structure as check
@@ -353,7 +354,7 @@ def test_detect_head_with_cache(error_measure: ErrorMeasure, expected: torch.Ten
 
 
 def test_detect_head_with_invalid_head_name():
-    with pytest.raises((AssertionError, TypeError)) as e:
+    with pytest.raises((AssertionError, TypeCheckError)) as e:
         detect_head(model, test_regular_sequence, "test")  # type:ignore
 
 

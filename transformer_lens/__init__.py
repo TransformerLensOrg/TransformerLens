@@ -11,6 +11,7 @@ from .FactoredMatrix import FactoredMatrix
 from .ActivationCache import ActivationCache
 from .HookedTransformer import HookedTransformer
 from .SVDInterpreter import SVDInterpreter
+from .HookedEncoder import HookedEncoder
 from . import head_detector
 from . import loading_from_pretrained as loading
 from . import patching
