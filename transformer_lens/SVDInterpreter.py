@@ -35,7 +35,6 @@ class SVDInterpreter:
         elif vector_type == 'w_out':
             matrix = self._get_w_out_matrix(layer_index)
             _, _, V = torch.linalg.svd(matrix)
-            V = V.T
 
         else:
             raise ValueError(

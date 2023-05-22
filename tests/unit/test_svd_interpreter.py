@@ -20,8 +20,8 @@ expected_w_in_match = torch.Tensor([[[0.5572, 0.6466, 0.6406, 0.6094]],
 expected_w_in_unfolded_match = torch.Tensor([[[0.2766, 0.3050, 0.3041, 0.3119]],
                                              [[0.2651, 0.2988, 0.2810, 0.2896]]])
 
-expected_w_out_match = torch.Tensor([[[0.6667, 0.6286, 0.5962, 0.7999]],
-                                     [[0.6464, 0.6284, 0.5825, 0.6928]]])
+expected_w_out_match = torch.Tensor([[[0.5097, 0.4950, 0.5451, 0.7178]],
+                                     [[0.5076, 0.4922, 0.5140, 0.7106]]])
 
 # Successes
 
