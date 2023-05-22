@@ -129,8 +129,7 @@ def test_to_str_tokens(nested_list_1, nested_list_1x1, nested_list_1x3):
     assert len(tensor_1_to_str_tokens) == 1
     assert isinstance(tensor_1_to_str_tokens[0], str)
 
-    tensor_1x1_to_str_tokens = model.to_str_tokens(
-        torch.tensor(nested_list_1x1))
+    tensor_1x1_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1x1))
     assert isinstance(tensor_1x1_to_str_tokens, list)
     assert len(tensor_1x1_to_str_tokens) == 1
     assert isinstance(tensor_1x1_to_str_tokens[0], str)
@@ -148,16 +147,14 @@ def test_to_str_tokens(nested_list_1, nested_list_1x1, nested_list_1x3):
     single_int_to_single_str_token = model.to_single_str_token(3)
     assert isinstance(single_int_to_single_str_token, str)
 
-    squeezable_tensor_to_str_tokens = model.to_str_tokens(
-        torch.tensor(nested_list_1x3))
+    squeezable_tensor_to_str_tokens = model.to_str_tokens(torch.tensor(nested_list_1x3))
     assert isinstance(squeezable_tensor_to_str_tokens, list)
     assert len(squeezable_tensor_to_str_tokens) == 3
     assert isinstance(squeezable_tensor_to_str_tokens[0], str)
     assert isinstance(squeezable_tensor_to_str_tokens[1], str)
     assert isinstance(squeezable_tensor_to_str_tokens[2], str)
 
-    squeezable_ndarray_to_str_tokens = model.to_str_tokens(
-        np.array(nested_list_1x3))
+    squeezable_ndarray_to_str_tokens = model.to_str_tokens(np.array(nested_list_1x3))
     assert isinstance(squeezable_ndarray_to_str_tokens, list)
     assert len(squeezable_ndarray_to_str_tokens) == 3
     assert isinstance(squeezable_ndarray_to_str_tokens[0], str)
