@@ -15,7 +15,6 @@ import transformer_lens.utils as utils
 from transformer_lens.utils import Slice, SliceInput
 
 
-
 class ActivationCache:
     """
     A wrapper around a dictionary of cached activations from a model run, with a variety of helper functions. In general, any utility which is specifically about editing/processing activations should be a method here, while any utility which is more general should be a function in utils.py, and any utility which is specifically about model weights should be in HookedTransformer.py or components.py.
@@ -131,8 +130,7 @@ class ActivationCache:
         assert (
             self.has_batch_dim or batch_slice.mode == "empty"
         ), "Cannot index into a cache without a batch dim"
-        still_has_batch_dim = (
-            batch_slice.mode != "int") and self.has_batch_dim
+        still_has_batch_dim = (batch_slice.mode != "int") and self.has_batch_dim
         new_cache_dict = {
             name: batch_slice.apply(param, dim=0)
             for name, param in self.cache_dict.items()
@@ -174,8 +172,7 @@ class ActivationCache:
         components = []
         for l in range(layer + 1):
             if l == self.model.cfg.n_layers:
-                components.append(
-                    self[("resid_post", self.model.cfg.n_layers - 1)])
+                components.append(self[("resid_post", self.model.cfg.n_layers - 1)])
                 labels.append("final_post")
                 continue
             components.append(self[("resid_pre", l)])
@@ -405,8 +402,7 @@ class ActivationCache:
         labels = []
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
-            components.append(pos_slice.apply(
-                self[("result", l, "attn")], dim=-3))
+            components.append(pos_slice.apply(self[("result", l, "attn")], dim=-3))
             labels.extend([f"L{l}H{h}" for h in range(self.model.cfg.n_heads)])
         if components:
             components = torch.cat(components, dim=-2)
@@ -422,8 +418,7 @@ class ActivationCache:
                 labels.append("remainder")
         elif incl_remainder:
             # There are no components, so the remainder is the entire thing.
-            components = [pos_slice.apply(
-                self[("resid_post", layer - 1)], dim=-2)]
+            components = [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)]
         else:
             # If this is called with layer 0, we return an empty tensor of the right shape to be stacked correctly
             # This uses the shape of hook_embed, which is pretty janky since it assumes embed is in the cache. But it's hard to explicitly code the shape, since it depends on the pos slice, whether we have a batch dim, etc. And it's pretty messy!
@@ -557,13 +552,11 @@ class ActivationCache:
             )
 
             if incl_remainder:
-                remainder = self[("resid_post", layer - 1)] - \
-                    components.sum(dim=0)
+                remainder = self[("resid_post", layer - 1)] - components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
                 labels.append("remainder")
         elif incl_remainder:
-            components = [pos_slice.apply(
-                self[("resid_post", layer - 1)], dim=-2)]
+            components = [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)]
         else:
             # Returning empty, give it the right shape to stack properly
             components = torch.zeros(
@@ -635,8 +628,7 @@ class ActivationCache:
             residual_stack = batch_slice.apply(residual_stack, dim=1)
 
         # Center the stack
-        residual_stack = residual_stack - \
-            residual_stack.mean(dim=-1, keepdim=True)
+        residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         if layer == self.model.cfg.n_layers or layer is None:
             scale = self["ln_final.hook_scale"]
