@@ -7,6 +7,7 @@ VECTOR_TYPES = ["OV", "w_in", "w_out"]
 ATOL = 1e-4  # Absolute tolerance - how far does a float have to be before we consider it no longer equal?
 # ATOL is set to 1e-4 because the tensors we check on are also to 4 decimal places.
 model = HookedTransformer.from_pretrained(MODEL)
+unfolded_model = HookedTransformer.from_pretrained(MODEL, fold_ln=False)
 second_model = HookedTransformer.from_pretrained("solu-3l")
 
 
@@ -15,6 +16,9 @@ expected_OV_match = torch.Tensor([[[0.6597, 0.8689, 0.5669, 0.7345]],
 
 expected_w_in_match = torch.Tensor([[[0.5572, 0.6466, 0.6406, 0.6094]],
                                     [[0.5417, 0.6103, 0.5773, 0.5726]]])
+
+expected_w_in_unfolded_match = torch.Tensor([[[0.2766, 0.3050, 0.3041, 0.3119]],
+                                             [[0.2651, 0.2988, 0.2810, 0.2896]]])
 
 expected_w_out_match = torch.Tensor([[[0.6667, 0.6286, 0.5962, 0.7999]],
                                      [[0.6464, 0.6284, 0.5825, 0.6928]]])
@@ -36,6 +40,14 @@ def test_svd_interpreter():
     assert torch.allclose(ov, expected_OV_match, atol=ATOL)
     assert torch.allclose(w_in, expected_w_in_match, atol=ATOL)
     assert torch.allclose(w_out, expected_w_out_match, atol=ATOL)
+
+
+def test_w_in_when_fold_ln_is_false():
+    svd_interpreter = SVDInterpreter(unfolded_model)
+    w_in = svd_interpreter.get_singular_vectors(
+        'w_in', num_vectors=4, layer_index=0, head_index=0)
+    w_in = w_in.topk(2, dim=0).values
+    assert torch.allclose(w_in, expected_w_in_unfolded_match, atol=ATOL)
 
 
 def test_svd_interpreter_returns_different_answers_for_different_layers():

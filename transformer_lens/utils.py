@@ -429,11 +429,11 @@ class Slice:
             ValueError: If the slice is not an integer and max_ctx is not specified.
         """
         if self.mode == "int":
-            return np.array([self.slice])
+            return np.array([self.slice], dtype=np.int64)
         if max_ctx is None:
             raise ValueError(
                 "max_ctx must be specified if slice is not an integer")
-        return np.arange(max_ctx)[self.slice]
+        return np.arange(max_ctx, dtype=np.int64)[self.slice]
 
     def __repr__(
         self,

@@ -77,7 +77,7 @@ class SVDInterpreter:
 
         if f"blocks.{layer_index}.ln2.w" in self.params:  # If fold_ln == False
             ln_2 = self.params[f"blocks.{layer_index}.ln2.w"]
-            return einsum("out in, in -> out in", w_in, ln_2)
+            return einsum.einsum("out in, in -> out in", w_in, ln_2)
 
         return w_in
 
