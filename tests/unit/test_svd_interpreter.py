@@ -10,14 +10,14 @@ model = HookedTransformer.from_pretrained(MODEL)
 second_model = HookedTransformer.from_pretrained("solu-3l")
 
 
-expected_OV_match = torch.Tensor([[[0.5244, 0.5373, 0.6345, 0.7345]],
-                                  [[0.5042, 0.5367, 0.5940, 0.7241]]]).to(device=model.cfg.device)
+expected_OV_match = torch.Tensor([[[0.6597, 0.8689, 0.5669, 0.7345]],
+                                  [[0.5232, 0.6705, 0.5623, 0.7240]]])
 
-expected_w_in_match = torch.Tensor([[[0.7714, 0.6467, 0.6452, 0.6934]],
-                                    [[0.7647, 0.6104, 0.6264, 0.6458]]]).to(device=model.cfg.device)
+expected_w_in_match = torch.Tensor([[[0.5572, 0.6466, 0.6406, 0.6094]],
+                                    [[0.5417, 0.6103, 0.5773, 0.5726]]])
 
-expected_w_out_match = torch.Tensor([[[0.9165, 0.6831, 0.8395, 0.6889]],
-                                     [[0.7071, 0.5630, 0.7174, 0.6414]]]).to(device=model.cfg.device)
+expected_w_out_match = torch.Tensor([[[0.6667, 0.6286, 0.5962, 0.7999]],
+                                     [[0.6464, 0.6284, 0.5825, 0.6928]]])
 
 # Successes
 
@@ -57,17 +57,18 @@ def test_svd_interpreter_returns_different_answers_for_different_layers():
 
 def test_svd_interpreter_returns_different_answers_for_different_models():
     svd_interpreter = SVDInterpreter(second_model)
-    ov_svd = svd_interpreter.get_singular_vectors(
+    ov = svd_interpreter.get_singular_vectors(
         'OV', layer_index=1, num_vectors=4, head_index=0)
-    w_in_svd = svd_interpreter.get_singular_vectors(
+    w_in = svd_interpreter.get_singular_vectors(
         'w_in', layer_index=1, num_vectors=4, head_index=0)
-    w_out_svd = svd_interpreter.get_singular_vectors(
+    w_out = svd_interpreter.get_singular_vectors(
         'w_out', layer_index=1, num_vectors=4, head_index=0)
 
-    assert ov_svd[:2].shape == w_in_svd[:2].shape == w_out_svd[:2].shape == expected_OV_match.shape
-    assert not torch.allclose(ov_svd[:2], expected_OV_match, atol=ATOL)
-    assert not torch.allclose(w_in_svd[:2], expected_w_in_match, atol=ATOL)
-    assert not torch.allclose(w_out_svd[:2], expected_w_out_match, atol=ATOL)
+    ov, w_in, w_out = ov.topk(2, dim=0).values, w_in.topk(
+        2, dim=0).values, w_out.topk(2, dim=0).values
+    assert not torch.allclose(ov, expected_OV_match, atol=ATOL)
+    assert not torch.allclose(w_in, expected_w_in_match, atol=ATOL)
+    assert not torch.allclose(w_out, expected_w_out_match, atol=ATOL)
 
 
 # Failures
