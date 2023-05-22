@@ -1,14 +1,10 @@
 from __future__ import annotations
-<<<<<<< HEAD
-from jaxtyping import Float, Int
-import json
-=======
 
 import re
 from typing import Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
->>>>>>> 38f4d202283552fc14115dd1f004448d8900be15
+import json
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -16,18 +12,12 @@ import transformers
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
+from jaxtyping import Float, Int
 from rich import print as rprint
 from transformers import AutoTokenizer
-
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
-<<<<<<< HEAD
-=======
-import json
-
-from jaxtyping import Float, Int
->>>>>>> 38f4d202283552fc14115dd1f004448d8900be15
 
 
 def download_file_from_hf(
@@ -702,7 +692,8 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
         "wiki": "NeelNanda/wiki-10k",
     }
     if dataset_name in dataset_aliases:
-        dataset = load_dataset(dataset_aliases[dataset_name], split="train", **kwargs)
+        dataset = load_dataset(
+            dataset_aliases[dataset_name], split="train", **kwargs)
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset
