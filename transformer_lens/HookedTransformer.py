@@ -9,7 +9,7 @@ import torch.nn as nn
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
-from transformers import AutoTokenizer, PreTrainedTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typeguard import typeguard_ignore
 from typing_extensions import Literal
 
@@ -89,33 +89,23 @@ class HookedTransformer(HookedRootModule):
         ), "If n_devices > 1, must move_to_device"
 
         if tokenizer is not None:
-            self.tokenizer = tokenizer
+            self.set_tokenizer(tokenizer)
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             if "llama" in self.cfg.tokenizer_name:
                 # llama tokenizer requires special handling
                 print("Warning: LLaMA tokenizer not loaded. Please load manually.")
             else:
-                self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
-                if self.tokenizer.eos_token is None:
-                    self.tokenizer.eos_token = "<|endoftext|>"
-                if self.tokenizer.pad_token is None:
-                    self.tokenizer.pad_token = self.tokenizer.eos_token
-                if self.tokenizer.bos_token is None:
-                    self.tokenizer.bos_token = self.tokenizer.eos_token
+                self.set_tokenizer(
+                    AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+                )
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens
             # directly. In this case, we don't need a tokenizer.
-            self.tokenizer = None
-
-        if self.cfg.d_vocab == -1:
-            # If we have a tokenizer, vocab size can be inferred from it.
             assert (
-                self.tokenizer is not None
+                self.cfg.d_vocab != -1
             ), "Must provide a tokenizer if d_vocab is not provided"
-            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
-        if self.cfg.d_vocab_out == -1:
-            self.cfg.d_vocab_out = self.cfg.d_vocab
+            self.tokenizer = None
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
@@ -446,9 +436,23 @@ class HookedTransformer(HookedRootModule):
         Sets the tokenizer to use for this model.
         tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer
         """
-        assert isinstance(tokenizer, PreTrainedTokenizer)
+        assert isinstance(
+            tokenizer, PreTrainedTokenizerBase
+        ), f"{type(tokenizer)} is not a supported tokenizer, please use PreTrainedTokenizer or PreTrainedTokenizerFast"
         self.tokenizer = tokenizer
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        if self.tokenizer.eos_token is None:
+            self.tokenizer.eos_token = "<|endoftext|>"
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        if self.tokenizer.bos_token is None:
+            self.tokenizer.bos_token = self.tokenizer.eos_token
+
+        # Infer vocab size from tokenizer
+        if self.cfg.d_vocab == -1:
+            self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
+        if self.cfg.d_vocab_out == -1:
+            self.cfg.d_vocab_out = self.cfg.d_vocab
 
     def to_tokens(
         self,
@@ -768,7 +772,7 @@ class HookedTransformer(HookedRootModule):
         n_devices=1,
         move_state_dict_to_device=True,
         **model_kwargs,
-    ):
+    ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
         processing to make the model easier to interpret. Currently supports loading from most autoregressive
         HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models and SoLU models trained by me (Neel Nanda).

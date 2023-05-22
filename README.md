@@ -80,6 +80,13 @@ If adding a feature, please add unit tests for it to the tests folder, and check
 - Unit tests only via `make unit-test`
 - Acceptance tests only via `make acceptance-test`
 
+### Formatting
+
+This project uses `pycln`, `isort` and `black` for formatting, pull requests are checked in github actions.
+
+- Format all files via `make format`
+- Only check the formatting via `make check-format`
+
 ### Demos
 
 If adding a feature, please add it to the demo notebook in the `demos` folder, and check that it works in the demo format. This can be tested by replacing `pip install git+https://github.com/JayBaileyCS/TransformerLens.git` with `pip install git+https://github.com/<YOUR_USERNAME_HERE>/TransformerLens.git` in the demo notebook, and running it in a fresh environment.

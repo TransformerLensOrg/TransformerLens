@@ -30,14 +30,6 @@ def test_d_vocab_from_tokenizer():
         model = HookedTransformer(
             cfg=cfg, tokenizer=AutoTokenizer.from_pretrained(tokenizer_name)
         )
-        # Jank token setup
-        # Perhaps we should write a wrapper around the tokenizer
-        if model.tokenizer.eos_token is None:
-            model.tokenizer.eos_token = "<|endoftext|>"
-        if model.tokenizer.pad_token is None:
-            model.tokenizer.pad_token = model.tokenizer.eos_token
-        if model.tokenizer.bos_token is None:
-            model.tokenizer.bos_token = model.tokenizer.eos_token
 
         tokens_with_bos = model.to_tokens(test_string)
         tokens_without_bos = model.to_tokens(test_string, prepend_bos=False)
