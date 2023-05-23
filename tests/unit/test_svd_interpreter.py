@@ -117,16 +117,16 @@ def test_svd_interpreter_fails_on_invalid_vector_type():
         svd_interpreter.get_singular_vectors(
             "test", layer_index=0, num_vectors=4, head_index=0
         )
-    assert ('argument "vector_type" (str) did not match any element in the union' in str(e.value))
+    assert 'argument "vector_type" (str) did not match any element in the union' in str(
+        e.value
+    )
 
 
 def test_svd_interpreter_fails_on_not_passing_required_head_index():
     svd_interpreter = SVDInterpreter(model)
     with pytest.raises(AssertionError) as e:
-        svd_interpreter.get_singular_vectors(
-            "OV", layer_index=0, num_vectors=4)
-        assert str(
-            e.value) == "Head index optional only for w_in and w_out, got OV"
+        svd_interpreter.get_singular_vectors("OV", layer_index=0, num_vectors=4)
+        assert str(e.value) == "Head index optional only for w_in and w_out, got OV"
 
 
 def test_svd_interpreter_fails_on_invalid_layer_index():
