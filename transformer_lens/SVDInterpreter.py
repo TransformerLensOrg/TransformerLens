@@ -1,8 +1,8 @@
 from typing import Optional, Union
-from typing_extensions import Literal
 
 import fancy_einsum as einsum
 import torch
+from typing_extensions import Literal
 
 from transformer_lens import FactoredMatrix, HookedTransformer
 
