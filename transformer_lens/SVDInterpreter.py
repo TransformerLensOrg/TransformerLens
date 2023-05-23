@@ -1,4 +1,5 @@
-from typing import Literal, Optional, Union
+from typing import Optional, Union
+from typing_extensions import Literal
 
 import fancy_einsum as einsum
 import torch
