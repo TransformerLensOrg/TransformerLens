@@ -2,6 +2,7 @@ from typing import Optional, Union
 
 import fancy_einsum as einsum
 import torch
+from typeguard import typechecked
 from typing_extensions import Literal
 
 from transformer_lens import FactoredMatrix, HookedTransformer
@@ -16,6 +17,7 @@ class SVDInterpreter:
         self.cfg = model.cfg
         self.params = {name: param for name, param in model.named_parameters()}
 
+    @typechecked
     def get_singular_vectors(
         self,
         vector_type: Union[Literal["OV"], Literal["w_in"], Literal["w_out"]],
