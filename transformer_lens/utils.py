@@ -1,4 +1,6 @@
 from __future__ import annotations
+from jaxtyping import Float, Int
+import json
 
 import re
 from typing import Dict, List, Optional, Tuple, Type, Union, cast
@@ -17,9 +19,6 @@ from transformers import AutoTokenizer
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
-import json
-
-from jaxtyping import Float, Int
 
 
 def download_file_from_hf(
@@ -129,7 +128,8 @@ def gelu_new(
         * (
             1.0
             + torch.tanh(
-                np.sqrt(2.0 / np.pi) * (input + 0.044715 * torch.pow(input, 3.0))
+                np.sqrt(2.0 / np.pi) *
+                (input + 0.044715 * torch.pow(input, 3.0))
             )
         )
     )
@@ -211,7 +211,7 @@ def tokenize_and_concatenate(
         num_chunks = 20
         chunk_length = (len(full_text) - 1) // num_chunks + 1
         chunks = [
-            full_text[i * chunk_length : (i + 1) * chunk_length]
+            full_text[i * chunk_length: (i + 1) * chunk_length]
             for i in range(num_chunks)
         ]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
@@ -295,11 +295,14 @@ def sample_logits(
         if top_k is not None:
             assert top_k > 0, "top_k has to be greater than 0"
             top_logits, top_idx = final_logits.topk(top_k, dim=-1)
-            indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
-            final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+            indices_to_remove = final_logits < top_logits[..., -
+                                                          1].unsqueeze(-1)
+            final_logits = final_logits.masked_fill(
+                indices_to_remove, -float("inf"))
         elif top_p is not None:
             assert 1.0 >= top_p > 0.0, "top_p has to be in [0, 1)"
-            sorted_logits, sorted_indices = torch.sort(final_logits, descending=True)
+            sorted_logits, sorted_indices = torch.sort(
+                final_logits, descending=True)
             cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
             # We round up - we want prob >= top_p not <top_p
             sorted_indices_to_remove = cumulative_probs > top_p
@@ -310,7 +313,8 @@ def sample_logits(
             indices_to_remove = sorted_indices_to_remove.scatter(
                 -1, sorted_indices, sorted_indices_to_remove
             )
-            final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+            final_logits = final_logits.masked_fill(
+                indices_to_remove, -float("inf"))
         return torch.distributions.categorical.Categorical(logits=final_logits).sample()
 
 
@@ -439,10 +443,11 @@ class Slice:
             ValueError: If the slice is not an integer and max_ctx is not specified.
         """
         if self.mode == "int":
-            return np.array([self.slice])
+            return np.array([self.slice], dtype=np.int64)
         if max_ctx is None:
-            raise ValueError("max_ctx must be specified if slice is not an integer")
-        return np.arange(max_ctx)[self.slice]
+            raise ValueError(
+                "max_ctx must be specified if slice is not an integer")
+        return np.arange(max_ctx, dtype=np.int64)[self.slice]
 
     def __repr__(
         self,
@@ -603,7 +608,8 @@ def test_prompt(
         answer_str_token = answer_str_tokens[index - prompt_length]
         # Offset by 1 because models predict the NEXT token
         token_probs = probs[index - 1]
-        sorted_token_probs, sorted_token_values = token_probs.sort(descending=True)
+        sorted_token_probs, sorted_token_values = token_probs.sort(
+            descending=True)
         # Janky way to get the index of the token in the sorted list - I couldn't find a better way?
         correct_rank = torch.arange(len(sorted_token_values))[
             (sorted_token_values == answer_token).cpu()
@@ -687,7 +693,8 @@ def get_dataset(dataset_name: str, **kwargs) -> Dataset:
         "wiki": "NeelNanda/wiki-10k",
     }
     if dataset_name in dataset_aliases:
-        dataset = load_dataset(dataset_aliases[dataset_name], split="train", **kwargs)
+        dataset = load_dataset(
+            dataset_aliases[dataset_name], split="train", **kwargs)
     else:
         raise ValueError(f"Dataset {dataset_name} not supported")
     return dataset

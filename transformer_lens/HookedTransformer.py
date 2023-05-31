@@ -337,13 +337,15 @@ class HookedTransformer(HookedRootModule):
             # If we explicitly want to stop at a layer, we only iterate through the blocks up to that layer. Note that
             # this is exclusive, eg stop_at_layer==0 means to only run the embed, stop_at_layer==-1 means to run every
             # layer *apart* from the final one, etc.
-            transformer_block_list = self.blocks[:stop_at_layer]  # type: ignore
+            # type: ignore
+            transformer_block_list = self.blocks[:stop_at_layer]
 
         for i, block in enumerate(transformer_block_list):  # type: ignore
             # Note that each block includes skip connections, so we don't need
             # residual + block(residual)
             # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
-            residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
+            residual = residual.to(
+                devices.get_device_for_block_index(i, self.cfg))
             if shortformer_pos_embed is not None:
                 shortformer_pos_embed = shortformer_pos_embed.to(
                     devices.get_device_for_block_index(i, self.cfg)
@@ -376,7 +378,8 @@ class HookedTransformer(HookedRootModule):
                 elif return_type == "both":
                     return Output(logits, loss)
                 else:
-                    logging.warning(f"Invalid return_type passed in: {return_type}")
+                    logging.warning(
+                        f"Invalid return_type passed in: {return_type}")
                     return None
 
     def loss_fn(
@@ -460,6 +463,7 @@ class HookedTransformer(HookedRootModule):
         prepend_bos: bool = True,
         move_to_device: bool = True,
         truncate: bool = True,
+        left_pad: bool = False,
     ) -> Int[torch.Tensor, "batch pos"]:
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is
@@ -472,6 +476,7 @@ class HookedTransformer(HookedRootModule):
             Defaults to True
             truncate (bool): If the output tokens are too long, whether to truncate the output tokens to the model's
             max context window. Does nothing for shorter inputs. Defaults to True.
+            left_pad (bool): Whether to pad on the left or right. Defaults to False (right_pad)
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt
         to the model as the first token is often treated weirdly, but should only be done at the START of the prompt.
@@ -499,6 +504,16 @@ class HookedTransformer(HookedRootModule):
         )["input_ids"]
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
+
+        # If left_pad, shift each sequence by the number of padding tokens it has.
+        # This moves the padding from right padding to left padding.
+        if left_pad and isinstance(input, list) and len(input) > 1:
+            # Shift by # of pad tokens
+            pad_token = self.to_single_token(self.tokenizer.pad_token)
+            to_shift = torch.sum(tokens == pad_token, dim=1)
+            for i in range(len(input)):
+                tokens[i] = torch.roll(tokens[i], to_shift[i].item(), dims=-1)
+
         return tokens
 
     def to_string(
@@ -569,7 +584,8 @@ class HookedTransformer(HookedRootModule):
         """
         if isinstance(input, list):
             return list(
-                map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input)
+                map(lambda tokens: self.to_str_tokens(
+                    tokens, prepend_bos), input)
             )  # type: ignore
         elif isinstance(input, str):
             tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
@@ -592,7 +608,8 @@ class HookedTransformer(HookedRootModule):
                 tokens.ndim == 1
             ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
         else:
-            raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
+            raise ValueError(
+                f"Invalid input type to to_str_tokens: {type(input)}")
         str_tokens = self.tokenizer.batch_decode(
             tokens, clean_up_tokenization_spaces=False
         )
@@ -619,7 +636,8 @@ class HookedTransformer(HookedRootModule):
         self,
         single_token: Union[str, int],
         input: Union[
-            str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]]
+            str, Union[Float[torch.Tensor, "pos"],
+                       Float[torch.Tensor, "1 pos"]]
         ],
         mode="first",
         prepend_bos=True,
@@ -745,14 +763,18 @@ class HookedTransformer(HookedRootModule):
         model.embed.to(devices.get_device_for_block_index(0, model.cfg))
         model.hook_embed.to(devices.get_device_for_block_index(0, model.cfg))
         if model.cfg.positional_embedding_type != "rotary":
-            model.pos_embed.to(devices.get_device_for_block_index(0, model.cfg))
-            model.hook_pos_embed.to(devices.get_device_for_block_index(0, model.cfg))
+            model.pos_embed.to(
+                devices.get_device_for_block_index(0, model.cfg))
+            model.hook_pos_embed.to(
+                devices.get_device_for_block_index(0, model.cfg))
         if hasattr(model, "ln_final"):
             model.ln_final.to(
-                devices.get_device_for_block_index(model.cfg.n_layers - 1, model.cfg)
+                devices.get_device_for_block_index(
+                    model.cfg.n_layers - 1, model.cfg)
             )
         model.unembed.to(
-            devices.get_device_for_block_index(model.cfg.n_layers - 1, model.cfg)
+            devices.get_device_for_block_index(
+                model.cfg.n_layers - 1, model.cfg)
         )
         for i, block in enumerate(model.blocks):
             block.to(devices.get_device_for_block_index(i, model.cfg))
@@ -1280,7 +1302,8 @@ class HookedTransformer(HookedRootModule):
             )
 
             W_Q_eff_even, W_K_eff_even_T = (
-                FactoredMatrix(W_Q_eff, W_K_eff.transpose(-1, -2)).make_even().pair
+                FactoredMatrix(W_Q_eff, W_K_eff.transpose(-1, -2)
+                               ).make_even().pair
             )
             W_K_eff_even = W_K_eff_even_T.transpose(-1, -2)
 
@@ -1642,7 +1665,8 @@ class HookedTransformer(HookedRootModule):
         Returns:
             bias (torch.Tensor): [d_model], accumulated bias
         """
-        accumulated_bias = torch.zeros(self.cfg.d_model, device=self.cfg.device)
+        accumulated_bias = torch.zeros(
+            self.cfg.d_model, device=self.cfg.device)
 
         for i in range(layer):
             accumulated_bias += self.blocks[i].attn.b_O
@@ -1679,7 +1703,8 @@ class HookedTransformer(HookedRootModule):
         scores = utils.composition_scores(left, right, broadcast_dims=True)
         # Mask scores to be zero for all pairs with the right head in the same layer or earlier layer than the left head.
         mask = (
-            torch.arange(self.cfg.n_layers, device=self.cfg.device)[:, None, None, None]
+            torch.arange(self.cfg.n_layers, device=self.cfg.device)[
+                :, None, None, None]
             < torch.arange(self.cfg.n_layers, device=self.cfg.device)[
                 None, None, :, None
             ]
