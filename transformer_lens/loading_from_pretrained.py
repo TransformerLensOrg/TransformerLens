@@ -117,7 +117,7 @@ OFFICIAL_MODEL_NAMES = [
     "roneneldan/TinyStories-Instruct-33M",
     "roneneldan/TinyStories-1Layer-28M",
     "roneneldan/TinyStories-2Layers-33M",
-    "roneneldan/TinyStories-Instruct-1Layers-283M",
+    "roneneldan/TinyStories-Instruct-1Layers-28M",
     "roneneldan/TinyStories-Instruct-2Layers-33M",
 ]
 

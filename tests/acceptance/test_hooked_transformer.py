@@ -15,7 +15,7 @@ model_names = [
     "pythia",
     "gelu-2l",
     "othello-gpt",
-    "tiny-stories-33M"
+    "tiny-stories-33M",
 ]
 text = "Hello world!"
 """ 
@@ -40,7 +40,7 @@ loss_store = {
     "gelu-2l": 6.501802444458008,
     "redwood_attn_2l": 10.530948638916016,
     "solu-1l": 5.256411552429199,
-    "tiny-stories-33M": 12.203617095947266
+    "tiny-stories-33M": 12.203617095947266,
 }
 
 no_processing = [
