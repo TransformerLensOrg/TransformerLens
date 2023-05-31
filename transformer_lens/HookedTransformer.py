@@ -511,6 +511,10 @@ class HookedTransformer(HookedRootModule):
             # Shift by # of pad tokens
             pad_token = self.to_single_token(self.tokenizer.pad_token)
             to_shift = torch.sum(tokens == pad_token, dim=1)
+
+            # In GPT-2, the pad token is the same as the bos token, so prepend_bos overcounts the shift by 1.
+            if pad_token == self.to_single_token(self.tokenizer.bos_token) and prepend_bos:
+                to_shift = to_shift - 1
             for i in range(len(input)):
                 tokens[i] = torch.roll(tokens[i], to_shift[i].item(), dims=-1)
 
