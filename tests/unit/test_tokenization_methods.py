@@ -23,8 +23,7 @@ def test_set_tokenizer_lazy():
     model2.set_tokenizer(AutoTokenizer.from_pretrained("gpt2"))
     tokenizer = model2.tokenizer
     assert tokenizer is not None and tokenizer.name_or_path == "gpt2", "set tokenizer"
-    assert model2.to_single_token(
-        " SolidGoldMagicarp") == 15831, "glitch token"
+    assert model2.to_single_token(" SolidGoldMagicarp") == 15831, "glitch token"
 
 
 def test_to_tokens_default():
@@ -38,8 +37,7 @@ def test_to_tokens_default():
 def test_to_tokens_without_bos():
     s = "Hello, world!"
     tokens = model.to_tokens(s, prepend_bos=False)
-    assert equal(tokens, tensor([[11765, 14, 1499, 3]])
-                 ), "creates a tensor without BOS"
+    assert equal(tokens, tensor([[11765, 14, 1499, 3]])), "creates a tensor without BOS"
 
 
 def test_to_tokens_device():
@@ -63,42 +61,53 @@ def test_to_tokens_truncate():
 def test_to_tokens_with_left_pad_and_str_sequence():
     s = "Hello, world!"
     tokens = model.to_tokens(s, prepend_bos=False, left_pad=True)
-    assert equal(tokens, tensor([[11765, 14, 1499, 3]])
-                 ), "creates a tensor without BOS"
+    assert equal(tokens, tensor([[11765, 14, 1499, 3]])), "creates a tensor without BOS"
 
 
 def test_to_tokens_with_left_pad_and_single_sequence():
     s = ["Hello, world!"]
     tokens = model.to_tokens(s, prepend_bos=False, left_pad=True)
-    assert equal(tokens, tensor([[11765, 14, 1499, 3]])
-                 ), "creates a tensor without BOS"
+    assert equal(tokens, tensor([[11765, 14, 1499, 3]])), "creates a tensor without BOS"
 
 
 def test_to_tokens_with_left_pad_and_equal_sequences():
     s = ["Hello, world!", "Hello, world!"]
     tokens = model.to_tokens(s, prepend_bos=False, left_pad=True)
-    assert equal(tokens, tensor([[11765, 14, 1499, 3], [11765, 14, 1499, 3]])
-                 ), "creates a tensor without BOS"
+    assert equal(
+        tokens, tensor([[11765, 14, 1499, 3], [11765, 14, 1499, 3]])
+    ), "creates a tensor without BOS"
 
 
 def test_to_tokens_with_left_pad_and_multiple_sequences():
     s = ["Hello, world!", "Hello, world! But longer!"]
     tokens_right_pad = model.to_tokens(s, prepend_bos=False)
-    assert equal(tokens_right_pad, tensor(
-        [[11765, 14, 1499, 3, 2, 2, 2], [11765, 14, 1499, 3, 1268, 3248, 3]]))
+    assert equal(
+        tokens_right_pad,
+        tensor([[11765, 14, 1499, 3, 2, 2, 2], [11765, 14, 1499, 3, 1268, 3248, 3]]),
+    )
     tokens_left_pad = model.to_tokens(s, prepend_bos=False, left_pad=True)
-    assert equal(tokens_left_pad, tensor(
-        [[2, 2, 2, 11765, 14, 1499, 3], [11765, 14, 1499, 3, 1268, 3248, 3]]))
+    assert equal(
+        tokens_left_pad,
+        tensor([[2, 2, 2, 11765, 14, 1499, 3], [11765, 14, 1499, 3, 1268, 3248, 3]]),
+    )
 
 
 def test_to_tokens_with_left_pad_and_multiple_sequences_and_prepend_bos():
     s = ["Hello, world!", "Hello, world! But longer!"]
     tokens_right_pad = model.to_tokens(s, prepend_bos=True)
-    assert equal(tokens_right_pad, tensor(
-        [[1, 11765, 14, 1499, 3, 2, 2, 2], [1, 11765, 14, 1499, 3, 1268, 3248, 3]]))
+    assert equal(
+        tokens_right_pad,
+        tensor(
+            [[1, 11765, 14, 1499, 3, 2, 2, 2], [1, 11765, 14, 1499, 3, 1268, 3248, 3]]
+        ),
+    )
     tokens_left_pad = model.to_tokens(s, prepend_bos=True, left_pad=True)
-    assert equal(tokens_left_pad, tensor(
-        [[2, 2, 2, 1, 11765, 14, 1499, 3], [1, 11765, 14, 1499, 3, 1268, 3248, 3]]))
+    assert equal(
+        tokens_left_pad,
+        tensor(
+            [[2, 2, 2, 1, 11765, 14, 1499, 3], [1, 11765, 14, 1499, 3, 1268, 3248, 3]]
+        ),
+    )
 
 
 def test_to_string_from_to_tokens_without_bos():
