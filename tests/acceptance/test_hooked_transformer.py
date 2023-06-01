@@ -1,6 +1,6 @@
+import gc
 import os
 
-import gc 
 import pytest
 import torch
 
