@@ -1,7 +1,8 @@
+import os
+
 import pytest
 import torch
 
-import os
 from transformer_lens import HookedTransformer
 from transformer_lens.utils import clear_huggingface_cache
 
@@ -61,6 +62,7 @@ def test_model(name, expected_loss):
 
     if "GITHUB_ACTIONS" in os.environ:
         clear_huggingface_cache()
+
 
 def test_othello_gpt():
     # like test model but Othello GPT has a weird input format
