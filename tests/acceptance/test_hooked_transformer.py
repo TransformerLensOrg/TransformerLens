@@ -1,5 +1,6 @@
 import os
 
+import gc 
 import pytest
 import torch
 
@@ -59,6 +60,8 @@ def test_model(name, expected_loss):
     model = HookedTransformer.from_pretrained(name)
     loss = model(text, return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
+    del model
+    gc.collect()
 
     if "GITHUB_ACTIONS" in os.environ:
         clear_huggingface_cache()
