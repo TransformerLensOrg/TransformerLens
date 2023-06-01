@@ -1,7 +1,11 @@
+import gc
+import os
+
 import pytest
 import torch
 
 from transformer_lens import HookedTransformer
+from transformer_lens.utils import clear_huggingface_cache
 
 model_names = [
     "attn-only-demo",
@@ -56,6 +60,11 @@ def test_model(name, expected_loss):
     model = HookedTransformer.from_pretrained(name)
     loss = model(text, return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
+    del model
+    gc.collect()
+
+    if "GITHUB_ACTIONS" in os.environ:
+        clear_huggingface_cache()
 
 
 def test_othello_gpt():
@@ -85,6 +94,9 @@ def test_from_pretrained_no_processing(name, expected_loss):
     # is equivalent to using from_pretrained_no_processing
 
     model_ref = HookedTransformer.from_pretrained_no_processing(name)
+    model_ref_config = model_ref.cfg
+    reff_loss = model_ref(text, return_type="loss")
+    del model_ref
     model_override = HookedTransformer.from_pretrained(
         name,
         fold_ln=False,
@@ -92,12 +104,15 @@ def test_from_pretrained_no_processing(name, expected_loss):
         center_unembed=False,
         refactor_factored_attn_matrices=False,
     )
-    assert model_ref.cfg == model_override.cfg
+    assert model_ref_config == model_override.cfg
 
     if name != "redwood_attn_2l":  # TODO can't be loaded with from_pretrained
         # Do the converse check, i.e. check that overriding boolean flags in
         # from_pretrained_no_processing is equivalent to using from_pretrained
         model_ref = HookedTransformer.from_pretrained(name)
+        model_ref_config = model_ref.cfg
+        reff_loss = model_ref(text, return_type="loss")
+        del model_ref
         model_override = HookedTransformer.from_pretrained_no_processing(
             name,
             fold_ln=True,
@@ -105,12 +120,11 @@ def test_from_pretrained_no_processing(name, expected_loss):
             center_unembed=True,
             refactor_factored_attn_matrices=False,
         )
-        assert model_ref.cfg == model_override.cfg
+        assert model_ref_config == model_override.cfg
 
     # also check losses
-    loss = model_ref(text, return_type="loss")
-    print(loss.item())
-    assert (loss.item() - expected_loss) < 4e-5
+    print(reff_loss.item())
+    assert (reff_loss.item() - expected_loss) < 4e-5
 
 
 @torch.no_grad()
