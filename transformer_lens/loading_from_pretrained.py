@@ -1500,7 +1500,7 @@ class Config:
     n_layers: int = 12
 
 
-# Returns the configuration parameters of the model as a simple Config dataclass
+# Returns the configuration parameters of the model as a basic Config dataclass
 def get_basic_config(model_name: str, **kwargs) -> Config:
     return Config(
         **{
