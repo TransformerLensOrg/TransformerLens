@@ -1,9 +1,9 @@
 # %%
+import dataclasses
 import logging
 import re
 from typing import Dict, Optional
 
-from dataclasses import dataclass
 import einops
 import torch
 from huggingface_hub import HfApi
@@ -1486,7 +1486,7 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     return state_dict
 
 
-@dataclass
+@dataclasses.dataclass
 class Config:
     d_model: int = 768
     debug: bool = True
