@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from typing import Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
@@ -44,6 +45,22 @@ def download_file_from_hf(
     else:
         print("File type not supported:", file_path.split(".")[-1])
         return file_path
+
+
+def clear_huggingface_cache():
+    """
+    Deletes the Hugging Face cache directory and all its contents.
+
+    This function deletes the Hugging Face cache directory, which is used to store downloaded models and their associated files. Deleting the cache directory will remove all the downloaded models and their files, so you will need to download them again if you want to use them in your code.
+
+    Parameters:
+    None
+
+    Returns:
+    None
+    """
+    print("Deleting Hugging Face cache directory and all its contents.")
+    shutil.rmtree(CACHE_DIR)
 
 
 def print_gpu_mem(step_name=""):
