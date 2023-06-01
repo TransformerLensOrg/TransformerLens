@@ -1,9 +1,9 @@
 # %%
-from dataclasses import dataclass
 import logging
 import re
 from typing import Dict, Optional
 
+from dataclasses import dataclass
 import einops
 import torch
 from huggingface_hub import HfApi
