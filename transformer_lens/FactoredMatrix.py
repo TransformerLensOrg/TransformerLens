@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 import torch
 from jaxtyping import Float
@@ -145,7 +145,7 @@ class FactoredMatrix:
         """Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k."""
         return torch.linalg.eig(self.BA).eigenvalues
 
-    def _convert_to_slice(self, sequence: Tuple, idx: int) -> Tuple:
+    def _convert_to_slice(self, sequence: Union[Tuple, List], idx: int) -> Tuple:
         """
         e.g. if sequence = (1, 2, 3) and idx = 1, return (1, slice(2, 3), 3)
         """

@@ -53,4 +53,4 @@ def test_index_dimension_get_element(sample_factored_matrix):
 
 def test_index_dimension_too_big(sample_factored_matrix):
     with pytest.raises(Exception):
-        result = sample_factored_matrix[1, 1, 1, 1, 1, 1]
+        _ = sample_factored_matrix[1, 1, 1, 1, 1, 1]
