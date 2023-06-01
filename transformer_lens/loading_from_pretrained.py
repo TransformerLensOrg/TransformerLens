@@ -471,7 +471,7 @@ def get_official_model_name(model_name: str):
     return official_model_name
 
 
-def convert_hf_model_config(model_name: str):
+def convert_hf_model_config(model_name: str, **kwargs):
     """
     Returns the model config for a HuggingFace model, converted to a dictionary
     in the HookedTransformerConfig format.
@@ -482,7 +482,7 @@ def convert_hf_model_config(model_name: str):
     official_model_name = get_official_model_name(model_name)
     # Load HuggingFace model config
     if "llama" not in official_model_name:
-        hf_config = AutoConfig.from_pretrained(official_model_name)
+        hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
         architecture = hf_config.architectures[0]
     else:
         architecture = "LLaMAForCausalLM"
@@ -665,7 +665,7 @@ def convert_hf_model_config(model_name: str):
     return cfg_dict
 
 
-def convert_neel_model_config(official_model_name: str):
+def convert_neel_model_config(official_model_name: str, **kwargs):
     """
     Loads the config for a model trained by me (NeelNanda), converted to a dictionary
     in the HookedTransformerConfig format.
@@ -673,7 +673,9 @@ def convert_neel_model_config(official_model_name: str):
     AutoConfig is not supported, because these models are in the HookedTransformer format, so we directly download and load the json.
     """
     official_model_name = get_official_model_name(official_model_name)
-    cfg_json: dict = utils.download_file_from_hf(official_model_name, "config.json")
+    cfg_json: dict = utils.download_file_from_hf(
+        official_model_name, "config.json", **kwargs
+    )
     cfg_arch = cfg_json.get(
         "architecture", "neel" if "_old" not in official_model_name else "neel-solu-old"
     )
@@ -711,6 +713,7 @@ def get_pretrained_model_config(
     fold_ln: bool = False,
     device: Optional[str] = None,
     n_devices: int = 1,
+    **kwargs,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
 
@@ -734,6 +737,8 @@ def get_pretrained_model_config(
         device (str, optional): The device to load the model onto. By
             default will load to CUDA if available, else CPU.
         n_devices (int): The number of devices to split the model across. Defaults to 1.
+        kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
+            Also given to other HuggingFace functions when compatible.
 
     """
     official_model_name = get_official_model_name(model_name)
@@ -742,9 +747,9 @@ def get_pretrained_model_config(
         or official_model_name.startswith("ArthurConmy")
         or official_model_name.startswith("Baidicoot")
     ):
-        cfg_dict = convert_neel_model_config(official_model_name)
+        cfg_dict = convert_neel_model_config(official_model_name, **kwargs)
     else:
-        cfg_dict = convert_hf_model_config(official_model_name)
+        cfg_dict = convert_hf_model_config(official_model_name, **kwargs)
     # Processing common to both model types
     # Remove any prefix, saying the organization who made a model.
     cfg_dict["model_name"] = official_model_name.split("/")[-1]
@@ -771,7 +776,8 @@ def get_pretrained_model_config(
 
     if checkpoint_index is not None or checkpoint_value is not None:
         checkpoint_labels, checkpoint_label_type = get_checkpoint_labels(
-            official_model_name
+            official_model_name,
+            **kwargs,
         )
         cfg_dict["from_checkpoint"] = True
         cfg_dict["checkpoint_label_type"] = checkpoint_label_type
@@ -820,7 +826,7 @@ PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
 PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
 
-def get_checkpoint_labels(model_name: str):
+def get_checkpoint_labels(model_name: str, **kwargs):
     """Returns the checkpoint labels for a given model, and the label_type
     (step or token). Raises an error for models that are not checkpointed."""
     official_model_name = get_official_model_name(model_name)
@@ -836,7 +842,10 @@ def get_checkpoint_labels(model_name: str):
             return PYTHIA_CHECKPOINTS, "step"
     elif official_model_name.startswith("NeelNanda/"):
         api = HfApi()
-        files_list = api.list_repo_files(official_model_name)
+        files_list = api.list_repo_files(
+            official_model_name,
+            **utils.select_compatible_kwargs(kwargs, api.list_repo_files),
+        )
         labels = []
         for file_name in files_list:
             match = re.match(r"checkpoints/.*_(\d*)\.pth", file_name)
@@ -858,6 +867,7 @@ def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
     hf_model=None,
+    **kwargs,
 ) -> Dict[str, torch.Tensor]:
     """
     Loads in the model weights for a pretrained model, and processes them to
@@ -865,7 +875,9 @@ def get_pretrained_state_dict(
     models (and expects the checkpoint info to be stored in the config object)
 
     hf_model: Optionally, a HuggingFace model object. If provided, we will use
-    these weights rather than reloading the model.
+        these weights rather than reloading the model.
+    kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
+        Also given to other HuggingFace functions when compatible.
     """
     official_model_name = get_official_model_name(official_model_name)
     if (
@@ -874,14 +886,23 @@ def get_pretrained_state_dict(
         or official_model_name.startswith("Baidicoot")
     ):
         api = HfApi()
-        repo_files = api.list_repo_files(official_model_name)
+        repo_files = api.list_repo_files(
+            official_model_name,
+            **utils.select_compatible_kwargs(kwargs, api.list_repo_files),
+        )
         if cfg.from_checkpoint:
             file_name = list(
                 filter(lambda x: x.endswith(f"{cfg.checkpoint_value}.pth"), repo_files)
             )[0]
         else:
             file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
-        state_dict = utils.download_file_from_hf(official_model_name, file_name)
+        state_dict = utils.download_file_from_hf(
+            official_model_name, file_name, **kwargs
+        )
+        dtype = kwargs.get("torch_dtype", None)
+        if dtype is not None:
+            state_dict = {k: v.to(dtype) for k, v in state_dict.items()}
+
         if cfg.original_architecture == "neel-solu-old":
             state_dict = convert_neel_solu_old_weights(state_dict, cfg)
         elif cfg.original_architecture == "mingpt":
@@ -891,11 +912,15 @@ def get_pretrained_state_dict(
         if cfg.from_checkpoint:
             if official_model_name.startswith("stanford-crfm"):
                 hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name, revision=f"checkpoint-{cfg.checkpoint_value}"
+                    official_model_name,
+                    revision=f"checkpoint-{cfg.checkpoint_value}",
+                    **kwargs,
                 )
             elif official_model_name.startswith("EleutherAI/pythia"):
                 hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name, revision=f"step{cfg.checkpoint_value}"
+                    official_model_name,
+                    revision=f"step{cfg.checkpoint_value}",
+                    **kwargs,
                 )
             else:
                 raise ValueError(
@@ -905,9 +930,13 @@ def get_pretrained_state_dict(
             if "llama" in official_model_name:
                 raise NotImplementedError("Must pass in hf_model for LLaMA models")
             elif "bert" in official_model_name:
-                hf_model = BertForPreTraining.from_pretrained(official_model_name)
+                hf_model = BertForPreTraining.from_pretrained(
+                    official_model_name, **kwargs
+                )
             else:
-                hf_model = AutoModelForCausalLM.from_pretrained(official_model_name)
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    official_model_name, **kwargs
+                )
 
             # Load model weights, and fold in layer norm weights
         if cfg.original_architecture == "GPT2LMHeadModel":

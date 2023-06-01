@@ -771,7 +771,9 @@ class HookedTransformer(HookedRootModule):
         device=None,
         n_devices=1,
         move_state_dict_to_device=True,
-        **model_kwargs,
+        tokenizer=None,
+        move_to_device=True,
+        **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
         processing to make the model easier to interpret. Currently supports loading from most autoregressive
@@ -817,9 +819,18 @@ class HookedTransformer(HookedRootModule):
             move_state_dict_to_device (bool): Whether to move the state dict to the
                 relevant device before processing and loading in the weights.
                 Defaults to True.
-            model_kwargs (dict, optional): Any additional kwargs to pass to the
-                HookedTransformer initialization.
+            tokenizer (*optional): The tokenizer to use for the model. If not
+                provided, it is inferred from cfg.tokenizer_name or initialized to None.
+                If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
+            move_to_device (bool, optional): Whether to move the model to the device specified in cfg.
+                device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
+                will be split across multiple devices.
+            from_pretrained_kwargs (dict, optional): Any other optional argument passed to HuggingFace's
+                from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to other HuggingFace
+                functions when compatible. For some models or arguments it doesn't work, especially for
+                models that are not internally loaded with HuggingFace's from_pretrained (e.g. SoLU models).
         """
+
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
@@ -833,6 +844,7 @@ class HookedTransformer(HookedRootModule):
             fold_ln=fold_ln,
             device=device,
             n_devices=n_devices,
+            **from_pretrained_kwargs,
         )
 
         if cfg.positional_embedding_type == "shortformer":
@@ -858,11 +870,15 @@ class HookedTransformer(HookedRootModule):
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the
         # HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model
+            official_model_name, cfg, hf_model, **from_pretrained_kwargs
         )
 
         # Create the HookedTransformer object
-        model = cls(cfg, **model_kwargs)
+        model = cls(cfg, tokenizer, move_to_device)
+
+        dtype = from_pretrained_kwargs.get("torch_dtype", None)
+        if dtype is not None:
+            model = model.to(dtype)
 
         model.load_and_process_state_dict(
             state_dict,
@@ -950,7 +966,7 @@ class HookedTransformer(HookedRootModule):
                 subsequent linear layer. This does not change the computation. Defaults to True.
             center_writing_weights (bool, optional): Whether to center weights writing to the
                 residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the computation.
-                efaults to True.
+                Defaults to True.
             center_unembed (bool, optional): Whether to center W_U (ie set mean to be zero).
                 Softmax is translation invariant so this doesn't affect log probs or loss, but does change logits.
                 Defaults to True.
