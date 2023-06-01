@@ -1,4 +1,5 @@
 # %%
+from dataclasses import dataclass
 import logging
 import re
 from typing import Dict, Optional
@@ -10,7 +11,6 @@ from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from dataclasses import dataclass
 
 # %% The model names used to access the models on the HuggingFace Hub.
 OFFICIAL_MODEL_NAMES = [

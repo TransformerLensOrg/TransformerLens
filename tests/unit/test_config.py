@@ -2,9 +2,9 @@
 Tests that verify than an arbitrary component (e.g. Embed) can be initialized using dict and object versions of HookedTransformerConfig and HookedEncoderConfig.
 """
 
+from transformer_lens import loading_from_pretrained as loading
 from transformer_lens.components import Embed
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens import loading_from_pretrained as loading
 
 
 def test_hooked_transformer_config_object():
