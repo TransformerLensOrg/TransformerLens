@@ -28,7 +28,6 @@ def test_hooked_transformer_config_dict():
 
 def test_get_basic_config():
     cfg = loading.get_basic_config('gpt2-small')
-
     assert cfg.d_model
     assert cfg.layer_norm_eps
     assert cfg.d_vocab

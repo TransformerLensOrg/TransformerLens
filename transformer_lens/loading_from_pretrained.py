@@ -1503,7 +1503,8 @@ class Config:
 # Returns the configuration parameters of the model as a simple Config dataclass
 def get_basic_config(model_name: str, **kwargs) -> Config:
     return Config(
-        **{k: v for k, v in get_pretrained_model_config(model_name, **kwargs).to_dict().items() if k in [
+        **{k: v for k, v in get_pretrained_model_config(model_name, 
+                                                        **kwargs).to_dict().items() if k in [
             'd_model',
             'debug',
             'layer_norm_eps',
