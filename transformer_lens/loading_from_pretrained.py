@@ -105,6 +105,20 @@ OFFICIAL_MODEL_NAMES = [
     "llama-65b-hf",
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
+    "roneneldan/TinyStories-1M",
+    "roneneldan/TinyStories-3M",
+    "roneneldan/TinyStories-8M",
+    "roneneldan/TinyStories-28M",
+    "roneneldan/TinyStories-33M",
+    "roneneldan/TinyStories-Instruct-1M",
+    "roneneldan/TinyStories-Instruct-3M",
+    "roneneldan/TinyStories-Instruct-8M",
+    "roneneldan/TinyStories-Instruct-28M",
+    "roneneldan/TinyStories-Instruct-33M",
+    "roneneldan/TinyStories-1Layer-28M",
+    "roneneldan/TinyStories-2Layers-33M",
+    "roneneldan/TinyStories-Instruct-1Layers-28M",
+    "roneneldan/TinyStories-Instruct-2Layers-33M",
 ]
 
 # Model Aliases:
@@ -406,6 +420,20 @@ MODEL_ALIASES = {
     "llama-30b-hf": ["llama-30b"],
     "llama-65b-hf": ["llama-65b"],
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
+    "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
+    "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
+    "roneneldan/TinyStories-8M": ["tiny-stories-8M"],
+    "roneneldan/TinyStories-28M": ["tiny-stories-28M"],
+    "roneneldan/TinyStories-33M": ["tiny-stories-33M"],
+    "roneneldan/TinyStories-Instruct-1M": ["tiny-stories-instruct-1M"],
+    "roneneldan/TinyStories-Instruct-3M": ["tiny-stories-instruct-3M"],
+    "roneneldan/TinyStories-Instruct-8M": ["tiny-stories-instruct-8M"],
+    "roneneldan/TinyStories-Instruct-28M": ["tiny-stories-instruct-28M"],
+    "roneneldan/TinyStories-Instruct-33M": ["tiny-stories-instruct-33M"],
+    "roneneldan/TinyStories-1Layer-28M": ["tiny-stories-1L-28M"],
+    "roneneldan/TinyStories-2Layers-33M": ["tiny-stories-2L-33M"],
+    "roneneldan/TinyStories-Instruct-1Layers-28M": ["tiny-stories-instruct-1L-28M"],
+    "roneneldan/TinyStories-Instruct-2Layers-33M": ["tiny-stories-instruct-2L-33M"],
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
