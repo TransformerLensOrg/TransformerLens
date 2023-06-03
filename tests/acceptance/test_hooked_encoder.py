@@ -136,6 +136,27 @@ def test_run_with_cache(our_bert, huggingface_bert, hello_world_tokens):
     assert "mlm_head.ln.hook_normalized" in cache
 
 
+def test_from_pretrained_dtype():
+    """Check that the parameter `torch_dtype` works"""
+    model = HookedEncoder.from_pretrained(MODEL_NAME, torch_dtype=torch.bfloat16)
+    assert model.W_K.dtype == torch.bfloat16
+
+
+def test_from_pretrained_revision():
+    """
+    Check that the from_pretrained parameter `revision` (= git version) works
+    """
+
+    _ = HookedEncoder.from_pretrained(MODEL_NAME, revision="main")
+
+    try:
+        _ = HookedEncoder.from_pretrained(MODEL_NAME, revision="inexistent_branch_name")
+    except:
+        pass
+    else:
+        raise AssertionError("Should have raised an error")
+
+
 def test_predictions(our_bert, huggingface_bert, tokenizer):
     input_ids = tokenizer("The [MASK] sat on the mat", return_tensors="pt")["input_ids"]
 

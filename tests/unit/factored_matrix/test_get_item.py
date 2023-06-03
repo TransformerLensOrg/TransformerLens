@@ -39,3 +39,18 @@ def test_getitem_multiple_slices(sample_factored_matrix):
     result = sample_factored_matrix[:, :, 1]
     assert_close(result.A, sample_factored_matrix.A[:, :, 1])
     assert_close(result.B, sample_factored_matrix.B[:, :, 1])
+
+
+def test_index_dimension_get_line(sample_factored_matrix):
+    result = sample_factored_matrix[0, 0, 0, 1]
+    assert_close(result.AB.squeeze(), sample_factored_matrix.AB[0, 0, 0, 1])
+
+
+def test_index_dimension_get_element(sample_factored_matrix):
+    result = sample_factored_matrix[0, 0, 0, 0, 1]
+    assert_close(result.AB.squeeze(), sample_factored_matrix.AB[0, 0, 0, 0, 1])
+
+
+def test_index_dimension_too_big(sample_factored_matrix):
+    with pytest.raises(Exception):
+        _ = sample_factored_matrix[1, 1, 1, 1, 1, 1]

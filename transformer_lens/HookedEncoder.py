@@ -197,7 +197,9 @@ class HookedEncoder(HookedRootModule):
         checkpoint_value: Optional[int] = None,
         hf_model=None,
         device: Optional[str] = None,
-        **model_kwargs,
+        tokenizer=None,
+        move_to_device=True,
+        **from_pretrained_kwargs,
     ) -> HookedEncoder:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
         logging.warning(
@@ -220,13 +222,18 @@ class HookedEncoder(HookedRootModule):
             fold_ln=False,
             device=device,
             n_devices=1,
+            **from_pretrained_kwargs,
         )
 
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model
+            official_model_name, cfg, hf_model, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, **model_kwargs)
+        model = cls(cfg, tokenizer, move_to_device)
+
+        dtype = from_pretrained_kwargs.get("torch_dtype", None)
+        if dtype is not None:
+            model = model.to(dtype)
 
         model.load_state_dict(state_dict, strict=False)
 

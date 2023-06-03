@@ -19,6 +19,7 @@ model_names = [
     "pythia",
     "gelu-2l",
     "othello-gpt",
+    "tiny-stories-33M",
 ]
 text = "Hello world!"
 """ 
@@ -43,6 +44,7 @@ loss_store = {
     "gelu-2l": 6.501802444458008,
     "redwood_attn_2l": 10.530948638916016,
     "solu-1l": 5.256411552429199,
+    "tiny-stories-33M": 12.203617095947266,
 }
 
 no_processing = [
@@ -125,6 +127,27 @@ def test_from_pretrained_no_processing(name, expected_loss):
     # also check losses
     print(reff_loss.item())
     assert (reff_loss.item() - expected_loss) < 4e-5
+
+
+def test_from_pretrained_dtype():
+    """Check that the parameter `torch_dtype` works"""
+    model = HookedTransformer.from_pretrained("solu-1l", torch_dtype=torch.bfloat16)
+    assert model.W_K.dtype == torch.bfloat16
+
+
+def test_from_pretrained_revision():
+    """
+    Check that the from_pretrained parameter `revision` (= git version) works
+    """
+
+    _ = HookedTransformer.from_pretrained("gpt2", revision="main")
+
+    try:
+        _ = HookedTransformer.from_pretrained("gpt2", revision="inexistent_branch_name")
+    except:
+        pass
+    else:
+        raise AssertionError("Should have raised an error")
 
 
 @torch.no_grad()
