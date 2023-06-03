@@ -129,6 +129,27 @@ def test_from_pretrained_no_processing(name, expected_loss):
     assert (reff_loss.item() - expected_loss) < 4e-5
 
 
+def test_from_pretrained_dtype():
+    """Check that the parameter `torch_dtype` works"""
+    model = HookedTransformer.from_pretrained("solu-1l", torch_dtype=torch.bfloat16)
+    assert model.W_K.dtype == torch.bfloat16
+
+
+def test_from_pretrained_revision():
+    """
+    Check that the from_pretrained parameter `revision` (= git version) works
+    """
+
+    _ = HookedTransformer.from_pretrained("gpt2", revision="main")
+
+    try:
+        _ = HookedTransformer.from_pretrained("gpt2", revision="inexistent_branch_name")
+    except:
+        pass
+    else:
+        raise AssertionError("Should have raised an error")
+
+
 @torch.no_grad()
 def test_pos_embed_hook():
     """
