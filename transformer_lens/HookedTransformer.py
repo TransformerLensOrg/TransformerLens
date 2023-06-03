@@ -168,7 +168,13 @@ class HookedTransformer(HookedRootModule):
         self.setup()
 
     def check_hooks_to_add(
-        self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False
+        self,
+        hook_point,
+        hook_point_name,
+        hook,
+        dir="fwd",
+        is_permanent=False,
+        prepend=False,
     ) -> None:
         if hook_point_name.endswith("attn.hook_result"):
             assert (

@@ -1,6 +1,6 @@
 import pytest
-
 from transformer_lens import HookedTransformer
+import torch
 
 MODEL = "solu-1l"
 
@@ -166,3 +166,40 @@ def test_conditional_hooks():
         model.cfg.n_heads,
         model.cfg.d_model,
     ), cache["blocks.0.hook_q_input"].shape
+
+
+def test_prepending_hooks():
+    """Add two hooks to a model: one that sets last layer activations to all 0s
+    One that sets them to random noise.
+
+    If the last activations are 0, then the logits will just be the model's logit bias.
+    This is not true if the last activations are random noise.
+
+    This test tests the prepending functionality by ensuring this property holds!"""
+
+    def set_to_zero(z, hook):
+        z[:] = 0.0
+        return z
+
+    def set_to_randn(z, hook):
+        z = torch.randn_like(z) * 0.1
+        return z
+
+    for zero_attach_pos in range(2):
+        model.reset_hooks()
+
+        for hook_idx in range(2):
+            model.add_hook(
+                "blocks.0.hook_resid_post",
+                set_to_zero if hook_idx == zero_attach_pos else set_to_randn,
+                prepend=True,
+            )
+
+        logits = model(torch.arange(5)[None, :])
+        assert (
+            torch.allclose(logits, model.unembed.b_U[None, :])
+            == (zero_attach_pos == 0)
+            # zero_attach_pos==0 means that we put zero_hook on first,
+            # then preprended random noise hook BEFORE that.
+            # So the final state should be the unembedding bias iff we put the zero hook on first.
+        )
