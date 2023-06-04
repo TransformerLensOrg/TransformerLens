@@ -14,7 +14,7 @@ MODEL_NAME = "bert-base-cased"
 
 @pytest.fixture(scope="module")
 def our_bert():
-    return HookedEncoder.from_pretrained(MODEL_NAME)
+    return HookedEncoder.from_pretrained(MODEL_NAME, device="cpu")
 
 
 @pytest.fixture(scope="module")
@@ -174,3 +174,9 @@ def test_predictions(our_bert, huggingface_bert, tokenizer):
     huggingface_prediction = get_predictions(huggingface_bert_out, [2])
 
     assert our_prediction == huggingface_prediction
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires a CUDA device")
+def test_cuda(hello_world_tokens):
+    model = HookedEncoder.from_pretrained(MODEL_NAME)
+    model(hello_world_tokens)
