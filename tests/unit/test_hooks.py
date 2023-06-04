@@ -21,7 +21,7 @@ class Counter:
 def test_hook_attaches_normally():
     c = Counter()
     _ = model.run_with_hooks(prompt, fwd_hooks=[(embed, c.inc)])
-    assert all([len(hp.fwd_hooks) == 0 for _, hp in model.hook_dict.items()]) 
+    assert all([len(hp.fwd_hooks) == 0 for _, hp in model.hook_dict.items()])
     assert c.count == 1
     model.remove_all_hook_fns(including_permanent=True)
 
