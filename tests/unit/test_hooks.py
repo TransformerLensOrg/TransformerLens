@@ -21,7 +21,7 @@ class Counter:
 def test_hook_attaches_normally():
     c = Counter()
     _ = model.run_with_hooks(prompt, fwd_hooks=[(embed, c.inc)])
-    assert all([len(hp.fwd_hooks) == 0 for _, hp in model.hook_dict.items()])
+    assert all([len(hp.fwd_hooks) == 0 for _, hp in model.hook_dict.items()]) 
     assert c.count == 1
     model.remove_all_hook_fns(including_permanent=True)
 
@@ -169,7 +169,15 @@ def test_conditional_hooks():
     ), cache["blocks.0.hook_q_input"].shape
 
 
-def test_prepending_hooks():
+@pytest.mark.parametrize(
+    "zero_attach_pos,prepend",
+    [
+        (zero_attach_pos, prepend)
+        for zero_attach_pos in range(2)
+        for prepend in [True, False]
+    ],
+)
+def test_prepending_hooks(zero_attach_pos, prepend):
     """Add two hooks to a model: one that sets last layer activations to all 0s
     One that sets them to random noise.
 
@@ -186,21 +194,18 @@ def test_prepending_hooks():
         z = torch.randn_like(z) * 0.1
         return z
 
-    for zero_attach_pos in range(2):
-        model.reset_hooks()
+    model.reset_hooks()
 
-        for hook_idx in range(2):
-            model.add_hook(
-                "blocks.0.hook_resid_post",
-                set_to_zero if hook_idx == zero_attach_pos else set_to_randn,
-                prepend=True,
-            )
-
-        logits = model(torch.arange(5)[None, :])
-        assert (
-            torch.allclose(logits, model.unembed.b_U[None, :])
-            == (zero_attach_pos == 0)
-            # zero_attach_pos==0 means that we put zero_hook on first,
-            # then preprended random noise hook BEFORE that.
-            # So the final state should be the unembedding bias iff we put the zero hook on first.
+    for hook_idx in range(2):
+        model.add_hook(
+            "blocks.0.hook_resid_post",
+            set_to_zero if hook_idx == zero_attach_pos else set_to_randn,
+            prepend=prepend,
         )
+    logits = model(torch.arange(5)[None, :])
+
+    logits_are_unembed_bias = (zero_attach_pos == 1) != prepend
+    # the logits should be equal to the unembed bias
+    # exactly when the zero hook is attached last XOR it is prepended
+
+    assert torch.allclose(logits, model.unembed.b_U[None, :]) == logits_are_unembed_bias
