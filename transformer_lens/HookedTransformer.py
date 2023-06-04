@@ -1733,7 +1733,6 @@ class HookedTransformer(HookedRootModule):
             "GPTNeoForCausalLM": "pile",
             "GPTNeoXForCausalLM": "pile",
             "GPTJForCausalLM": "pile",
-            "GPTJForCausalLM": "pile",
             "OPTForCausalLM": "pile",
         }
         if self.cfg.original_architecture in model_dataset_map:

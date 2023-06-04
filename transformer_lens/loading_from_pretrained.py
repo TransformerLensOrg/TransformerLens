@@ -844,7 +844,7 @@ def get_checkpoint_labels(model_name: str, **kwargs):
         api = HfApi()
         files_list = api.list_repo_files(
             official_model_name,
-            **utils.select_compatible_kwargs(kwargs, api.list_repo_files),
+            **utils._select_compatible_kwargs(kwargs, api.list_repo_files),
         )
         labels = []
         for file_name in files_list:
@@ -888,7 +888,7 @@ def get_pretrained_state_dict(
         api = HfApi()
         repo_files = api.list_repo_files(
             official_model_name,
-            **utils.select_compatible_kwargs(kwargs, api.list_repo_files),
+            **utils._select_compatible_kwargs(kwargs, api.list_repo_files),
         )
         if cfg.from_checkpoint:
             file_name = list(
@@ -989,33 +989,6 @@ def fill_missing_keys(model, state_dict):
             )
         state_dict[key] = default_state_dict[key]
     return state_dict
-
-
-# %%
-def convert_state_dict(
-    state_dict: dict,
-    cfg: HookedTransformerConfig,
-):
-    """Converts a state_dict from a HuggingFace model to a state_dict
-    compatible with HookedTransformer."""
-    official_model_name = get_official_model_name(official_model_name)
-
-    if cfg["original_architecture"] == "gpt2":
-        return convert_gpt2_weights(state_dict, cfg)
-    elif cfg["original_architecture"] == "neo":
-        return convert_neo_weights(state_dict, cfg)
-    elif cfg["original_architecture"] == "gptj":
-        return convert_gptj_weights(state_dict, cfg)
-    elif cfg["original_architecture"] == "neox":
-        return convert_neox_weights(state_dict, cfg)
-    elif cfg["original_architecture"] == "opt":
-        return convert_opt_weights(state_dict, cfg)
-    elif cfg["original_architecture"] == "neel-solu-old":
-        return convert_neel_solu_old_weights(state_dict, cfg)
-    elif cfg["original_architecture"] == "neel":
-        return state_dict
-    else:
-        raise ValueError(f"Unknown architecture {cfg['original_architecture']}")
 
 
 # Convert state dicts

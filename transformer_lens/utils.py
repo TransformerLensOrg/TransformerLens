@@ -24,7 +24,7 @@ import json
 from jaxtyping import Float, Int
 
 
-def select_compatible_kwargs(
+def _select_compatible_kwargs(
     kwargs_dict: Dict[str, Any], callable: Callable
 ) -> Dict[str, Any]:
     """Return a dict with the elements kwargs_dict that are parameters of callable"""
@@ -53,7 +53,7 @@ def download_file_from_hf(
         filename=file_name,
         subfolder=subfolder,
         cache_dir=cache_dir,
-        **select_compatible_kwargs(kwargs, hf_hub_download),
+        **_select_compatible_kwargs(kwargs, hf_hub_download),
     )
 
     # Load to the CPU device if CUDA is not available
@@ -336,7 +336,7 @@ def sample_logits(
             indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
         elif top_p is not None:
-            assert 1.0 >= top_p > 0.0, "top_p has to be in [0, 1)"
+            assert 1.0 >= top_p > 0.0, "top_p has to be in (0, 1]"
             sorted_logits, sorted_indices = torch.sort(final_logits, descending=True)
             cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
             # We round up - we want prob >= top_p not <top_p
