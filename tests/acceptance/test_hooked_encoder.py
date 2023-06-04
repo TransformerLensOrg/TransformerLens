@@ -176,9 +176,7 @@ def test_predictions(our_bert, huggingface_bert, tokenizer):
     assert our_prediction == huggingface_prediction
 
 
-@pytest.mark.skipif(
-        not torch.cuda.is_available(), reason="Requires a CUDA device"
-)
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires a CUDA device")
 def test_cuda(hello_world_tokens):
     model = HookedEncoder.from_pretrained(MODEL_NAME)
     model(hello_world_tokens)
