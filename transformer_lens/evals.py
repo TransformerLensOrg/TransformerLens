@@ -61,9 +61,10 @@ def make_owt_data_loader(tokenizer, batch_size=8):
 
 def make_pile_data_loader(tokenizer, batch_size=8):
     """
-    Evaluate on OpenWebText an open source replication of the GPT-2 training corpus (Reddit links with >3 karma)
+    Evaluate on the first 10k texts from The Pile.
 
-    I think the Mistral models were trained on this dataset, so they get very good performance.
+    The Pile is EleutherAI's general-purpose english dataset, made of 22 subsets
+    including academic papers, books, internet content...
     """
     pile_data = load_dataset("NeelNanda/pile-10k", split="train")
     print(len(pile_data))
@@ -76,7 +77,10 @@ def make_pile_data_loader(tokenizer, batch_size=8):
 
 def make_code_data_loader(tokenizer, batch_size=8):
     """
-    Evaluate on the CodeParrot dataset, a dump of Python code. All models seem to get significantly lower loss here (even non-code trained models like GPT-2), presumably code is much easier to predict than natural language?
+    Evaluate on the CodeParrot dataset, a dump of Python code.
+
+    All models seem to get significantly lower loss here (even non-code trained models like GPT-2),
+    presumably code is much easier to predict than natural language?
     """
     code_data = load_dataset("codeparrot/codeparrot-valid-v2-near-dedup", split="train")
     print(len(code_data))

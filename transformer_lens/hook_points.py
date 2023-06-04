@@ -61,6 +61,10 @@ class HookPoint(nn.Module):
             def full_hook(module, module_input, module_output):
                 return hook(module_output, hook=self)
 
+            full_hook.__name__ = (
+                hook.__repr__()
+            )  # annotate the `full_hook` with the string representation of the `hook` function
+
             handle = self.register_forward_hook(full_hook)
             handle = LensHandle(handle, is_permanent, level)
             self.fwd_hooks.append(handle)
@@ -68,6 +72,10 @@ class HookPoint(nn.Module):
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
+
+            full_hook.__name__ = (
+                hook.__repr__()
+            )  # annotate the `full_hook` with the string representation of the `hook` function
 
             handle = self.register_full_backward_hook(full_hook)
             handle = LensHandle(handle, is_permanent, level)

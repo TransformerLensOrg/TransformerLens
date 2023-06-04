@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import inspect
 import re
-from typing import Dict, List, Optional, Tuple, Type, Union, cast
+import shutil
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
 import numpy as np
@@ -22,8 +24,24 @@ import json
 from jaxtyping import Float, Int
 
 
+def _select_compatible_kwargs(
+    kwargs_dict: Dict[str, Any], callable: Callable
+) -> Dict[str, Any]:
+    """Return a dict with the elements kwargs_dict that are parameters of callable"""
+    return {
+        k: v
+        for k, v in kwargs_dict.items()
+        if k in inspect.getfullargspec(callable).args
+    }
+
+
 def download_file_from_hf(
-    repo_name, file_name, subfolder=".", cache_dir=CACHE_DIR, force_is_torch=False
+    repo_name,
+    file_name,
+    subfolder=".",
+    cache_dir=CACHE_DIR,
+    force_is_torch=False,
+    **kwargs,
 ):
     """
     Helper function to download files from the HuggingFace Hub, from subfolder/file_name in repo_name, saving locally to cache_dir and returning the loaded file (if a json or Torch object) and the file path otherwise.
@@ -31,7 +49,11 @@ def download_file_from_hf(
     If it's a Torch file without the ".pth" extension, set force_is_torch=True to load it as a Torch object.
     """
     file_path = hf_hub_download(
-        repo_id=repo_name, filename=file_name, subfolder=subfolder, cache_dir=cache_dir
+        repo_id=repo_name,
+        filename=file_name,
+        subfolder=subfolder,
+        cache_dir=cache_dir,
+        **_select_compatible_kwargs(kwargs, hf_hub_download),
     )
 
     # Load to the CPU device if CUDA is not available
@@ -44,6 +66,22 @@ def download_file_from_hf(
     else:
         print("File type not supported:", file_path.split(".")[-1])
         return file_path
+
+
+def clear_huggingface_cache():
+    """
+    Deletes the Hugging Face cache directory and all its contents.
+
+    This function deletes the Hugging Face cache directory, which is used to store downloaded models and their associated files. Deleting the cache directory will remove all the downloaded models and their files, so you will need to download them again if you want to use them in your code.
+
+    Parameters:
+    None
+
+    Returns:
+    None
+    """
+    print("Deleting Hugging Face cache directory and all its contents.")
+    shutil.rmtree(CACHE_DIR)
 
 
 def print_gpu_mem(step_name=""):
@@ -298,7 +336,7 @@ def sample_logits(
             indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
         elif top_p is not None:
-            assert 1.0 >= top_p > 0.0, "top_p has to be in [0, 1)"
+            assert 1.0 >= top_p > 0.0, "top_p has to be in (0, 1]"
             sorted_logits, sorted_indices = torch.sort(final_logits, descending=True)
             cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
             # We round up - we want prob >= top_p not <top_p
