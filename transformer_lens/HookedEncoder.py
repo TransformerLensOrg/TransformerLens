@@ -45,9 +45,6 @@ class HookedEncoder(HookedRootModule):
         assert (
             self.cfg.n_devices == 1
         ), "Multiple devices not supported for HookedEncoder"
-        if move_to_device:
-            self.to(self.cfg.device)
-
         if tokenizer is not None:
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
@@ -72,6 +69,9 @@ class HookedEncoder(HookedRootModule):
         self.unembed = Unembed(self.cfg)
 
         self.hook_full_embed = HookPoint()
+
+        if move_to_device:
+            self.to(self.cfg.device)
 
         self.setup()
 
