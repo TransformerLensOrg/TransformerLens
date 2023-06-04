@@ -1,4 +1,5 @@
 import pytest
+import torch
 from torch import Size, equal, tensor
 from transformers import AutoTokenizer
 
@@ -30,16 +31,21 @@ def test_to_tokens_default():
     s = "Hello, world!"
     tokens = model.to_tokens(s)
     assert equal(
-        tokens, tensor([[1, 11765, 14, 1499, 3]])
+        tokens, tensor([[1, 11765, 14, 1499, 3]]).to(model.cfg.device)
     ), "creates a tensor of tokens with BOS"
 
 
 def test_to_tokens_without_bos():
     s = "Hello, world!"
     tokens = model.to_tokens(s, prepend_bos=False)
-    assert equal(tokens, tensor([[11765, 14, 1499, 3]])), "creates a tensor without BOS"
+    assert equal(
+        tokens, tensor([[11765, 14, 1499, 3]]).to(model.cfg.device)
+    ), "creates a tensor without BOS"
 
 
+@pytest.mark.skipif(
+    torch.cuda.is_available(), reason="Test not relevant when running on GPU"
+)
 def test_to_tokens_device():
     s = "Hello, world!"
     tokens1 = model.to_tokens(s, move_to_device=False)

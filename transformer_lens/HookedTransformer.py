@@ -664,7 +664,9 @@ class HookedTransformer(HookedRootModule):
         elif isinstance(single_token, torch.Tensor):
             single_token = single_token.item()
 
-        indices = torch.arange(len(tokens))[tokens == single_token]
+        indices = torch.arange(len(tokens), device=tokens.device)[
+            tokens == single_token
+        ]
         assert len(indices) > 0, f"The token does not occur in the prompt"
         if mode == "first":
             return indices[0].item()
