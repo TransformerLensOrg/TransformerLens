@@ -1,4 +1,5 @@
 import pytest
+import torch
 
 from transformer_lens import HookedTransformer
 
@@ -166,3 +167,45 @@ def test_conditional_hooks():
         model.cfg.n_heads,
         model.cfg.d_model,
     ), cache["blocks.0.hook_q_input"].shape
+
+
+@pytest.mark.parametrize(
+    "zero_attach_pos,prepend",
+    [
+        (zero_attach_pos, prepend)
+        for zero_attach_pos in range(2)
+        for prepend in [True, False]
+    ],
+)
+def test_prepending_hooks(zero_attach_pos, prepend):
+    """Add two hooks to a model: one that sets last layer activations to all 0s
+    One that sets them to random noise.
+
+    If the last activations are 0, then the logits will just be the model's logit bias.
+    This is not true if the last activations are random noise.
+
+    This test tests the prepending functionality by ensuring this property holds!"""
+
+    def set_to_zero(z, hook):
+        z[:] = 0.0
+        return z
+
+    def set_to_randn(z, hook):
+        z = torch.randn_like(z) * 0.1
+        return z
+
+    model.reset_hooks()
+
+    for hook_idx in range(2):
+        model.add_hook(
+            "blocks.0.hook_resid_post",
+            set_to_zero if hook_idx == zero_attach_pos else set_to_randn,
+            prepend=prepend,
+        )
+    logits = model(torch.arange(5)[None, :])
+
+    logits_are_unembed_bias = (zero_attach_pos == 1) != prepend
+    # the logits should be equal to the unembed bias
+    # exactly when the zero hook is attached last XOR it is prepended
+
+    assert torch.allclose(logits, model.unembed.b_U[None, :]) == logits_are_unembed_bias
