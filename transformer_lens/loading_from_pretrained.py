@@ -1,4 +1,5 @@
 # %%
+import dataclasses
 import logging
 import re
 from typing import Dict, Optional
@@ -1513,3 +1514,42 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     state_dict["unembed.b_U"] = mlm_head.bias
 
     return state_dict
+
+
+@dataclasses.dataclass
+class Config:
+    d_model: int = 768
+    debug: bool = True
+    layer_norm_eps: float = 1e-5
+    d_vocab: int = 50257
+    init_range: float = 0.02
+    n_ctx: int = 1024
+    d_head: int = 64
+    d_mlp: int = 3072
+    n_heads: int = 12
+    n_layers: int = 12
+
+
+# Returns the configuration parameters of the model as a basic Config dataclass
+def get_basic_config(model_name: str, **kwargs) -> Config:
+    return Config(
+        **{
+            k: v
+            for k, v in get_pretrained_model_config(model_name, **kwargs)
+            .to_dict()
+            .items()
+            if k
+            in [
+                "d_model",
+                "debug",
+                "layer_norm_eps",
+                "d_vocab",
+                "init_range",
+                "n_ctx",
+                "d_head",
+                "d_mlp",
+                "n_heads",
+                "n_layers",
+            ]
+        }
+    )
