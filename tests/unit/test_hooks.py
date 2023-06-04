@@ -1,6 +1,7 @@
 import pytest
-from transformer_lens import HookedTransformer
 import torch
+
+from transformer_lens import HookedTransformer
 
 MODEL = "solu-1l"
 
