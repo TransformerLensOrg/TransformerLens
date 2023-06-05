@@ -353,6 +353,8 @@
 </li>
         <li><a href="transformer_lens.html#transformer_lens.ActivationCache.ActivationCache.compute_head_results">compute_head_results() (transformer_lens.ActivationCache.ActivationCache method)</a>
 </li>
+        <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config">Config (class in transformer_lens.loading_from_pretrained)</a>
+</li>
         <li><a href="transformer_lens.html#id0">context_level (transformer_lens.hook_points.LensHandle attribute)</a>, <a href="transformer_lens.html#transformer_lens.hook_points.LensHandle.context_level">[1]</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.convert_bert_weights">convert_bert_weights() (in module transformer_lens.loading_from_pretrained)</a>
@@ -377,8 +379,6 @@
 </li>
         <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.convert_opt_weights">convert_opt_weights() (in module transformer_lens.loading_from_pretrained)</a>
 </li>
-        <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.convert_state_dict">convert_state_dict() (in module transformer_lens.loading_from_pretrained)</a>
-</li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.cpu">cpu() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.cuda">cuda() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
@@ -392,16 +392,34 @@
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_head">d_head (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+
+        <ul>
+          <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.d_head">(transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
+        </ul></li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_mlp">d_mlp (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+
+        <ul>
+          <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.d_mlp">(transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
+        </ul></li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_model">d_model (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+
+        <ul>
+          <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.d_model">(transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
+        </ul></li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_vocab">d_vocab (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+
+        <ul>
+          <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.d_vocab">(transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
+        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_vocab_out">d_vocab_out (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+</li>
+        <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.debug">debug (transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.ActivationCache.ActivationCache.decompose_resid">decompose_resid() (transformer_lens.ActivationCache.ActivationCache method)</a>
 </li>
@@ -560,15 +578,17 @@
 </li>
         <li><a href="transformer_lens.html#transformer_lens.patching.get_act_patch_attn_out">get_act_patch_attn_out() (in module transformer_lens.patching)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.patching.get_act_patch_block_every">get_act_patch_block_every() (in module transformer_lens.patching)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.patching.get_act_patch_mlp_out">get_act_patch_mlp_out() (in module transformer_lens.patching)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.patching.get_act_patch_resid_mid">get_act_patch_resid_mid() (in module transformer_lens.patching)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.patching.get_act_patch_resid_pre">get_act_patch_resid_pre() (in module transformer_lens.patching)</a>
+</li>
+        <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.get_basic_config">get_basic_config() (in module transformer_lens.loading_from_pretrained)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.hook_points.HookedRootModule.get_caching_hooks">get_caching_hooks() (transformer_lens.hook_points.HookedRootModule method)</a>
 </li>
@@ -616,7 +636,7 @@
   <h2>H</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="transformer_lens.html#id5">hook (transformer_lens.hook_points.LensHandle attribute)</a>, <a href="transformer_lens.html#transformer_lens.hook_points.LensHandle.hook">[1]</a>
+        <li><a href="transformer_lens.html#id7">hook (transformer_lens.hook_points.LensHandle attribute)</a>, <a href="transformer_lens.html#transformer_lens.hook_points.LensHandle.hook">[1]</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.hook_points.HookedRootModule.hook_points">hook_points() (transformer_lens.hook_points.HookedRootModule method)</a>
 </li>
@@ -656,12 +676,14 @@
 </li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_mode">init_mode (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
 </li>
-        <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_weights">init_weights (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+        <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.init_range">init_range (transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
-        <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.init_weights">init_weights() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
+        <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_weights">init_weights (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
 </li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="transformer_lens.html#transformer_lens.HookedTransformer.HookedTransformer.init_weights">init_weights() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
+</li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.initializer_range">initializer_range (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.evals.ioi_eval">ioi_eval() (in module transformer_lens.evals)</a>
@@ -670,7 +692,7 @@
 </li>
         <li><a href="transformer_lens.html#transformer_lens.utils.is_lower_triangular">is_lower_triangular() (in module transformer_lens.utils)</a>
 </li>
-        <li><a href="transformer_lens.html#id6">is_permanent (transformer_lens.hook_points.LensHandle attribute)</a>, <a href="transformer_lens.html#transformer_lens.hook_points.LensHandle.is_permanent">[1]</a>
+        <li><a href="transformer_lens.html#id8">is_permanent (transformer_lens.hook_points.LensHandle attribute)</a>, <a href="transformer_lens.html#transformer_lens.hook_points.LensHandle.is_permanent">[1]</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.utils.is_square">is_square() (in module transformer_lens.utils)</a>
 </li>
@@ -707,6 +729,8 @@
         <li><a href="transformer_lens.html#transformer_lens.patching.layer_head_pos_pattern_patch_setter">layer_head_pos_pattern_patch_setter() (in module transformer_lens.patching)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.patching.layer_head_vector_patch_setter">layer_head_vector_patch_setter() (in module transformer_lens.patching)</a>
+</li>
+        <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.layer_norm_eps">layer_norm_eps (transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.patching.layer_pos_head_vector_patch_setter">layer_pos_head_vector_patch_setter() (in module transformer_lens.patching)</a>
 </li>
@@ -820,13 +844,25 @@
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_ctx">n_ctx (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+
+        <ul>
+          <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.n_ctx">(transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
+        </ul></li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_devices">n_devices (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
 </li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_heads">n_heads (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+
+        <ul>
+          <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.n_heads">(transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
+        </ul></li>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_layers">n_layers (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+
+        <ul>
+          <li><a href="transformer_lens.html#transformer_lens.loading_from_pretrained.Config.n_layers">(transformer_lens.loading_from_pretrained.Config attribute)</a>
 </li>
+        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="transformer_lens.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_params">n_params (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
