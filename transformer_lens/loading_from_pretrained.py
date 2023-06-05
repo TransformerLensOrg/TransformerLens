@@ -116,9 +116,9 @@ OFFICIAL_MODEL_NAMES = [
     "roneneldan/TinyStories-Instruct-8M",
     "roneneldan/TinyStories-Instruct-28M",
     "roneneldan/TinyStories-Instruct-33M",
-    "roneneldan/TinyStories-1Layer-28M",
+    "roneneldan/TinyStories-1Layer-21M",
     "roneneldan/TinyStories-2Layers-33M",
-    "roneneldan/TinyStories-Instruct-1Layers-28M",
+    "roneneldan/TinyStories-Instuct-1Layer-21M",
     "roneneldan/TinyStories-Instruct-2Layers-33M",
 ]
 
@@ -431,9 +431,9 @@ MODEL_ALIASES = {
     "roneneldan/TinyStories-Instruct-8M": ["tiny-stories-instruct-8M"],
     "roneneldan/TinyStories-Instruct-28M": ["tiny-stories-instruct-28M"],
     "roneneldan/TinyStories-Instruct-33M": ["tiny-stories-instruct-33M"],
-    "roneneldan/TinyStories-1Layer-28M": ["tiny-stories-1L-28M"],
+    "roneneldan/TinyStories-1Layer-21M": ["tiny-stories-1L-21M"],
     "roneneldan/TinyStories-2Layers-33M": ["tiny-stories-2L-33M"],
-    "roneneldan/TinyStories-Instruct-1Layers-28M": ["tiny-stories-instruct-1L-28M"],
+    "roneneldan/TinyStories-Instuct-1Layer-21M": ["tiny-stories-instruct-1L-21M"],
     "roneneldan/TinyStories-Instruct-2Layers-33M": ["tiny-stories-instruct-2L-33M"],
 }
 

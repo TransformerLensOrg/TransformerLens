@@ -3,9 +3,15 @@ import os
 
 import pytest
 import torch
+from transformers import AutoConfig
 
 from transformer_lens import HookedTransformer
+from transformer_lens.loading_from_pretrained import OFFICIAL_MODEL_NAMES
 from transformer_lens.utils import clear_huggingface_cache
+
+TINY_STORIES_MODEL_NAMES = [
+    name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
+]
 
 model_names = [
     "attn-only-demo",
@@ -184,3 +190,14 @@ def test_pos_embed_hook():
         ["Hello, world", "Goodbye, world"],
         fwd_hooks=[("hook_pos_embed", edit_pos_embed)],
     )
+
+
+def test_all_tinystories_models_exist():
+    for model in TINY_STORIES_MODEL_NAMES:
+        try:
+            AutoConfig.from_pretrained(model)
+        except OSError:
+            pytest.fail(
+                f"Could not download model '{model}' from Huggingface."
+                " Maybe the name was changed or the model has been removed."
+            )
