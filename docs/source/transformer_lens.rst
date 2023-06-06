@@ -1,6 +1,14 @@
 transformer\_lens package
 =========================
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.utilities
+
 Submodules
 ----------
 
@@ -16,6 +24,14 @@ transformer\_lens.FactoredMatrix module
 ---------------------------------------
 
 .. automodule:: transformer_lens.FactoredMatrix
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+transformer\_lens.HookedEncoder module
+--------------------------------------
+
+.. automodule:: transformer_lens.HookedEncoder
    :members:
    :undoc-members:
    :show-inheritance:
@@ -48,6 +64,14 @@ transformer\_lens.evals module
 ------------------------------
 
 .. automodule:: transformer_lens.evals
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+transformer\_lens.head\_detector module
+---------------------------------------
+
+.. automodule:: transformer_lens.head_detector
    :members:
    :undoc-members:
    :show-inheritance:
@@ -88,14 +112,6 @@ transformer\_lens.patching module
 ---------------------------------
 
 .. automodule:: transformer_lens.patching
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-transformer\_lens.torchtyping\_helper module
---------------------------------------------
-
-.. automodule:: transformer_lens.torchtyping_helper
    :members:
    :undoc-members:
    :show-inheritance:
