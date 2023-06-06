@@ -263,7 +263,7 @@ class LayerNorm(nn.Module):
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         x = x / scale  # [batch, pos, length]
-        return self.hook_normalized(x * self.w + self.b)
+        return self.hook_normalized(x) * self.w + self.b
 
 
 class RMSNormPre(nn.Module):
