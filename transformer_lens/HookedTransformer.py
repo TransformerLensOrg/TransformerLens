@@ -1334,14 +1334,14 @@ class HookedTransformer(HookedRootModule):
 
         return state_dict
 
-    def set_use_attn_result(self, use_attn_result):
+    def set_use_attn_result(self, use_attn_result: bool):
         """
         Toggles whether to explicitly calculate and expose the result for each attention head - useful for
         interpretability but can easily burn through GPU memory.
         """
         self.cfg.use_attn_result = use_attn_result
 
-    def set_use_split_qkv_input(self, use_split_qkv_input):
+    def set_use_split_qkv_input(self, use_split_qkv_input: bool):
         """
         Toggles whether to allow editing of inputs to each attention head.
         """
