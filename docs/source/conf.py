@@ -73,4 +73,4 @@ functions_to_ignore = [
     "select_compatible_kwargs",
 ]
 
-autodoc_default_options = {'exclude-members': ", ".join(functions_to_ignore)}
+autodoc_default_options = {"exclude-members": ", ".join(functions_to_ignore)}
