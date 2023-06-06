@@ -24,7 +24,7 @@ import json
 from jaxtyping import Float, Int
 
 
-def _select_compatible_kwargs(
+def select_compatible_kwargs(
     kwargs_dict: Dict[str, Any], callable: Callable
 ) -> Dict[str, Any]:
     """Return a dict with the elements kwargs_dict that are parameters of callable"""
@@ -53,7 +53,7 @@ def download_file_from_hf(
         filename=file_name,
         subfolder=subfolder,
         cache_dir=cache_dir,
-        **_select_compatible_kwargs(kwargs, hf_hub_download),
+        **select_compatible_kwargs(kwargs, hf_hub_download),
     )
 
     # Load to the CPU device if CUDA is not available

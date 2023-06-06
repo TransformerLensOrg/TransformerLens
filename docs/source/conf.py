@@ -40,3 +40,37 @@ html_static_path = ["_static"]
 html_logo = "_static/transformer_lens_logo.png"
 
 html_favicon = "favicon.ico"
+
+
+# -- Ignore some functions that are not interesting for end users ------------
+
+functions_to_ignore = [
+    # functions from load_from_pretrained.py
+    "convert_hf_model_config",
+    "convert_bert_weights",
+    "convert_gpt2_weights",
+    "convert_gptj_weights",
+    "convert_llama_weights",
+    "convert_mingpt_weights",
+    "convert_neel_solu_old_weights",
+    "convert_neo_weights",
+    "convert_neox_weights",
+    "convert_neel_model_config",
+    "convert_opt_weights",
+    "fill_missing_keys",
+    "get_basic_config",
+    "get_official_model_name",
+    "get_pretrained_state_dict",
+    "make_model_alias_map",
+    # functions from make_docs.py
+    "get_config",
+    "get_property",
+    # functions from patching.py
+    "make_df_from_ranges",
+    # functions from utils.py
+    "check_structure",
+    "clear_huggingface_cache",
+    "select_compatible_kwargs",
+]
+
+autodoc_default_options = {"exclude-members": ", ".join(functions_to_ignore)}

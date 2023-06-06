@@ -845,7 +845,7 @@ def get_checkpoint_labels(model_name: str, **kwargs):
         api = HfApi()
         files_list = api.list_repo_files(
             official_model_name,
-            **utils._select_compatible_kwargs(kwargs, api.list_repo_files),
+            **utils.select_compatible_kwargs(kwargs, api.list_repo_files),
         )
         labels = []
         for file_name in files_list:
@@ -889,7 +889,7 @@ def get_pretrained_state_dict(
         api = HfApi()
         repo_files = api.list_repo_files(
             official_model_name,
-            **utils._select_compatible_kwargs(kwargs, api.list_repo_files),
+            **utils.select_compatible_kwargs(kwargs, api.list_repo_files),
         )
         if cfg.from_checkpoint:
             file_name = list(
