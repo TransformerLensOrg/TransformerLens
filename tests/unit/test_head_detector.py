@@ -14,8 +14,6 @@ from transformer_lens.head_detector import (
     get_previous_token_head_detection_pattern,
 )
 
-# from transformer_lens.utils import check_structure as check
-
 MODEL = "solu-2l"
 ATOL = 1e-4  # Absolute tolerance - how far does a float have to be before we consider it no longer equal?
 # ATOL is set to 1e-4 because the tensors we check on are also to 4 decimal places.
