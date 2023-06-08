@@ -122,6 +122,10 @@ OFFICIAL_MODEL_NAMES = [
     "roneneldan/TinyStories-2Layers-33M",
     "roneneldan/TinyStories-Instuct-1Layer-21M",
     "roneneldan/TinyStories-Instruct-2Layers-33M",
+    "stabilityai/stablelm-base-alpha-3b",
+    "stabilityai/stablelm-base-alpha-7b",
+    "stabilityai/stablelm-tuned-alpha-3b",
+    "stabilityai/stablelm-tuned-alpha-7b",
 ]
 
 # Model Aliases:
@@ -443,6 +447,22 @@ MODEL_ALIASES = {
     "roneneldan/TinyStories-2Layers-33M": ["tiny-stories-2L-33M"],
     "roneneldan/TinyStories-Instuct-1Layer-21M": ["tiny-stories-instruct-1L-21M"],
     "roneneldan/TinyStories-Instruct-2Layers-33M": ["tiny-stories-instruct-2L-33M"],
+    "stabilityai/stablelm-base-alpha-3b": [
+        "stablelm-base-alpha-3b",
+        "stablelm-base-3b",
+    ],
+    "stabilityai/stablelm-base-alpha-7b": [
+        "stablelm-base-alpha-7b",
+        "stablelm-base-7b",
+    ],
+    "stabilityai/stablelm-tuned-alpha-3b": [
+        "stablelm-tuned-alpha-3b",
+        "stablelm-tuned-3b",
+    ],
+    "stabilityai/stablelm-tuned-alpha-7b": [
+        "stablelm-tuned-alpha-7b",
+        "stablelm-tuned-7b",
+    ],
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
