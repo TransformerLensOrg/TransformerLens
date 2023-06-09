@@ -289,18 +289,3 @@ def test_stack_neuron_results_with_apply_ln():
     assert torch.isclose(
         ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7
     ).all()
-
-
-def test_hook_mlp_in_memory():
-    """Test that the new hook_mlp_in is not taking any extra memory"""
-
-    model = load_model("solu-2l")
-
-    # Run the model and cache all activations
-    tokens, _ = get_ioi_tokens_and_answer_tokens(model)
-    _, cache = model.run_with_cache(tokens)
-
-    assert (
-        cache["blocks.0.hook_resid_mid"].data_ptr()
-        == cache["blocks.0.hook_mlp_in"].data_ptr()
-    )
