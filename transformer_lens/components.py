@@ -377,8 +377,6 @@ class Attention(nn.Module):
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
-        self.register_buffer("IGNORE", torch.tensor(-1e5))
-
         self.layer_id = layer_id
 
         # attn_scale is a constant that we divide the attention scores by pre-softmax. I'm not entirely sure why it matters, but it's probably a mix of softmax not being scale invariant and numerical stability?
@@ -591,13 +589,17 @@ class Attention(nn.Module):
         assert (
             query_ctx_length + past_kv_pos_offset == key_ctx_length
         ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
+
+        IGNORE = torch.finfo(attn_scores.dtype).min
+        IGNORE = torch.tensor(IGNORE, dtype=attn_scores.dtype).to(attn_scores.device)
+
         return torch.where(
             self.mask[
                 past_kv_pos_offset : past_kv_pos_offset + query_ctx_length,
                 :key_ctx_length,
             ],
             attn_scores,
-            self.IGNORE,
+            IGNORE,
         )
 
     def rotary_rotate_qk(
