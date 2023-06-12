@@ -6,6 +6,7 @@ import torch
 from transformers import AutoConfig
 
 from transformer_lens import HookedTransformer
+from transformer_lens.utils import get_act_name
 from transformer_lens.loading_from_pretrained import OFFICIAL_MODEL_NAMES
 from transformer_lens.utils import clear_huggingface_cache
 
@@ -13,30 +14,7 @@ TINY_STORIES_MODEL_NAMES = [
     name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
 ]
 
-model_names = [
-    "attn-only-demo",
-    "gpt2-small",
-    "opt-125m",
-    "gpt-neo-125M",
-    "stanford-gpt2-small-a",
-    "solu-4l-old",
-    "solu-6l",
-    "attn-only-3l",
-    "pythia",
-    "gelu-2l",
-    "othello-gpt",
-    "tiny-stories-33M",
-]
 text = "Hello world!"
-""" 
-# Code to regenerate loss store
-store = {}
-for name in model_names:
-    model = HookedTransformer.from_pretrained(name, device='cuda')
-    loss = model(text,return_type="loss")
-    store[name] = loss.item()
-print(store)
-"""
 loss_store = {
     "attn-only-demo": 5.701841354370117,
     "gpt2-small": 5.331855773925781,
@@ -52,14 +30,15 @@ loss_store = {
     "solu-1l": 5.256411552429199,
     "tiny-stories-33M": 12.203617095947266,
 }
-
-no_processing = [
-    ("solu-1l", 5.256411552429199),
-    (
-        "redwood_attn_2l",
-        10.530948638916016,
-    ),  # TODO can't be loaded with from_pretrained
-]
+""" 
+# Code to regenerate loss store
+new_loss_store = {}
+for name in loss_store.keys():
+    model = HookedTransformer.from_pretrained(name, device='cuda')
+    loss = model(text, return_type="loss")
+    new_loss_store[name] = loss.item()
+print(new_store)
+"""
 
 
 @pytest.mark.parametrize("name,expected_loss", list(loss_store.items()))
@@ -96,7 +75,10 @@ def test_othello_gpt():
     assert (loss.item() - expected_loss) < 4e-5
 
 
-@pytest.mark.parametrize("name,expected_loss", no_processing)
+@pytest.mark.parametrize(
+    "name,expected_loss",
+    [(k, v) for k, v in loss_store.items() if k in ["solu-1l", "redwood_attn_2l"]],
+)
 def test_from_pretrained_no_processing(name, expected_loss):
     # Checks if manually overriding the boolean flags in from_pretrained
     # is equivalent to using from_pretrained_no_processing
@@ -114,21 +96,20 @@ def test_from_pretrained_no_processing(name, expected_loss):
     )
     assert model_ref_config == model_override.cfg
 
-    if name != "redwood_attn_2l":  # TODO can't be loaded with from_pretrained
-        # Do the converse check, i.e. check that overriding boolean flags in
-        # from_pretrained_no_processing is equivalent to using from_pretrained
-        model_ref = HookedTransformer.from_pretrained(name)
-        model_ref_config = model_ref.cfg
-        reff_loss = model_ref(text, return_type="loss")
-        del model_ref
-        model_override = HookedTransformer.from_pretrained_no_processing(
-            name,
-            fold_ln=True,
-            center_writing_weights=True,
-            center_unembed=True,
-            refactor_factored_attn_matrices=False,
-        )
-        assert model_ref_config == model_override.cfg
+    # Do the converse check, i.e. check that overriding boolean flags in
+    # from_pretrained_no_processing is equivalent to using from_pretrained
+    model_ref = HookedTransformer.from_pretrained(name)
+    model_ref_config = model_ref.cfg
+    reff_loss = model_ref(text, return_type="loss")
+    del model_ref
+    model_override = HookedTransformer.from_pretrained_no_processing(
+        name,
+        fold_ln=True,
+        center_writing_weights=True,
+        center_unembed=True,
+        refactor_factored_attn_matrices=False,
+    )
+    assert model_ref_config == model_override.cfg
 
     # also check losses
     print(reff_loss.item())
@@ -141,15 +122,39 @@ def test_from_pretrained_dtype():
     assert model.W_K.dtype == torch.bfloat16
 
 
+def test_future_attention_scores_neg_inf():
+    model = HookedTransformer.from_pretrained("pythia")
+    hook_name = str(get_act_name("attn_scores", 0))
+    # fmt: off
+    sample_input = torch.tensor([[1073, 1089, 1098, 1084, 1097, 1098, 1098, 1098, 1098, 1098]])
+    # fmt: on
+    _, cache = model.run_with_cache(
+        sample_input,
+        names_filter=lambda name: name == hook_name,
+    )
+    assert (cache[hook_name] == (-torch.inf)).int().sum().item() == cache[
+        hook_name
+    ].shape[0] * cache[hook_name].shape[1] * (
+        cache[hook_name].shape[2] * (cache[hook_name].shape[2] - 1)
+    ) // 2, (
+        "The attention paid to future tokens should be -inf in all cases and attention paid to current tokens should not be -inf",
+        (cache[hook_name] == (-torch.inf)).int().sum().item(),
+        cache[hook_name][0, -1],
+    )
+
+
 def test_from_pretrained_revision():
     """
     Check that the from_pretrained parameter `revision` (= git version) works
     """
 
-    _ = HookedTransformer.from_pretrained("gpt2", revision="main")
+    model_name = "roneneldan/TinyStories-1M"  # this model has no revisions
+    _ = HookedTransformer.from_pretrained(model_name, revision="main")
 
     try:
-        _ = HookedTransformer.from_pretrained("gpt2", revision="inexistent_branch_name")
+        _ = HookedTransformer.from_pretrained(
+            model_name, revision="inexistent_branch_name"
+        )
     except:
         pass
     else:
@@ -163,7 +168,7 @@ def test_pos_embed_hook():
     - do not permanently change the pos embed
     - can be used to alter the pos embed for a specific batch element
     """
-    model = HookedTransformer.from_pretrained("gpt2-small")
+    model = HookedTransformer.from_pretrained("solu-1l")
     initial_W_pos = model.W_pos.detach().clone()
 
     def remove_pos_embed(z, hook):
