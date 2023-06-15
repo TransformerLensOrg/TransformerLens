@@ -59,6 +59,7 @@ class HookedTransformer(HookedRootModule):
         self,
         cfg,
         tokenizer=None,
+        left_pad=False,
         move_to_device=True,
     ):
         """
@@ -70,6 +71,8 @@ class HookedTransformer(HookedRootModule):
         tokenizer (*optional): The tokenizer to use for the model. If not
             provided, it is inferred from cfg.tokenizer_name or initialized to None.
             If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
+        left_pad (bool): Whether the tokenizer should pad from the left instead of the right. 
+            False by default. If False, padding_side is set to right.
         move_to_device (bool): Whether to move the model to the device specified in cfg.
             device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
             will be split across multiple devices.
@@ -83,6 +86,7 @@ class HookedTransformer(HookedRootModule):
                 "pretrained model, use HookedTransformer.from_pretrained() instead."
             )
         self.cfg = cfg
+        self.left_pad = left_pad
 
         assert (
             self.cfg.n_devices == 1 or move_to_device
@@ -284,6 +288,14 @@ class HookedTransformer(HookedRootModule):
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
+        if self.tokenizer and self.tokenizer.padding_side and self.tokenizer.padding_side == 'left':
+            attention_mask = torch.tensor(tokens == self.tokenizer.pad_token, dtype=torch.bool)
+            # Fill with smallest possible value.
+            if tokens.dtype.is_floating_point:
+                min_value = torch.finfo(tokens.dtype).min
+            else:
+                min_value = torch.iinfo(tokens.dtype).min
+            tokens.masked_fill_(attention_mask, min_value)
 
         # If we're doing caching, then we reuse keys and values from previous runs, as that's the only
         # way that past activations will affect the final logits. The cache contains those so we don't
@@ -453,6 +465,8 @@ class HookedTransformer(HookedRootModule):
             self.tokenizer.pad_token = self.tokenizer.eos_token
         if self.tokenizer.bos_token is None:
             self.tokenizer.bos_token = self.tokenizer.eos_token
+        if self.left_pad:
+            self.tokenizer.padding_side = 'left'
 
         # Infer vocab size from tokenizer
         if self.cfg.d_vocab == -1:
