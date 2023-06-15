@@ -355,7 +355,8 @@ class HookedTransformer(HookedRootModule):
             # If we explicitly want to stop at a layer, we only iterate through the blocks up to that layer. Note that
             # this is exclusive, eg stop_at_layer==0 means to only run the embed, stop_at_layer==-1 means to run every
             # layer *apart* from the final one, etc.
-            transformer_block_list = self.blocks[:stop_at_layer]  # type: ignore
+            # type: ignore
+            transformer_block_list = self.blocks[:stop_at_layer]
 
         for i, block in enumerate(transformer_block_list):  # type: ignore
             # Note that each block includes skip connections, so we don't need
@@ -480,6 +481,7 @@ class HookedTransformer(HookedRootModule):
         prepend_bos: bool = True,
         move_to_device: bool = True,
         truncate: bool = True,
+        left_pad: bool = False,
     ) -> Int[torch.Tensor, "batch pos"]:
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is
@@ -492,6 +494,7 @@ class HookedTransformer(HookedRootModule):
             Defaults to True
             truncate (bool): If the output tokens are too long, whether to truncate the output tokens to the model's
             max context window. Does nothing for shorter inputs. Defaults to True.
+            left_pad (bool): Whether to pad on the left or right. Defaults to False (right_pad)
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt
         to the model as the first token is often treated weirdly, but should only be done at the START of the prompt.
@@ -519,6 +522,23 @@ class HookedTransformer(HookedRootModule):
         )["input_ids"]
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
+
+        # If left_pad, shift each sequence by the number of padding tokens it has.
+        # This moves the padding from right padding to left padding.
+        if left_pad and isinstance(input, list) and len(input) > 1:
+            # Shift by # of pad tokens
+            pad_token = self.to_single_token(self.tokenizer.pad_token)
+            to_shift = torch.sum(tokens == pad_token, dim=1)
+
+            # In GPT-2, the pad token is the same as the bos token, so prepend_bos overcounts the shift by 1.
+            if (
+                pad_token == self.to_single_token(self.tokenizer.bos_token)
+                and prepend_bos
+            ):
+                to_shift = to_shift - 1
+            for i in range(len(input)):
+                tokens[i] = torch.roll(tokens[i], to_shift[i].item(), dims=-1)
+
         return tokens
 
     def to_string(

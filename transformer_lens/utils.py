@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import inspect
 import re
 import shutil
@@ -13,15 +14,23 @@ import transformers
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
+from jaxtyping import Float, Int
 from rich import print as rprint
 from transformers import AutoTokenizer
 
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
-import json
 
-from jaxtyping import Float, Int
+def select_compatible_kwargs(
+    kwargs_dict: Dict[str, Any], callable: Callable
+) -> Dict[str, Any]:
+    """Return a dict with the elements kwargs_dict that are parameters of callable"""
+    return {
+        k: v
+        for k, v in kwargs_dict.items()
+        if k in inspect.getfullargspec(callable).args
+    }
 
 
 def select_compatible_kwargs(
