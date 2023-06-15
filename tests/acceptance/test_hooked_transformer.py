@@ -6,16 +6,12 @@ import torch
 from transformers import AutoConfig
 
 from transformer_lens import HookedTransformer
-<<<<<<< HEAD
 from transformer_lens.loading_from_pretrained import OFFICIAL_MODEL_NAMES
 from transformer_lens.utils import clear_huggingface_cache
 
 TINY_STORIES_MODEL_NAMES = [
     name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
 ]
-=======
-from transformer_lens.utils import clear_huggingface_cache
->>>>>>> 99ed18f64a13a8bb1583ed0c8ab1975e8e48f6bd
 
 model_names = [
     "attn-only-demo",
@@ -137,7 +133,6 @@ def test_from_pretrained_no_processing(name, expected_loss):
     # also check losses
     print(reff_loss.item())
     assert (reff_loss.item() - expected_loss) < 4e-5
-<<<<<<< HEAD
 
 
 def test_from_pretrained_dtype():
@@ -159,8 +154,6 @@ def test_from_pretrained_revision():
         pass
     else:
         raise AssertionError("Should have raised an error")
-=======
->>>>>>> 99ed18f64a13a8bb1583ed0c8ab1975e8e48f6bd
 
 
 @torch.no_grad()
