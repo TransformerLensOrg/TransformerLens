@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import inspect
 import json
+import inspect
 import re
 import shutil
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
