@@ -27,6 +27,13 @@ def test_set_tokenizer_lazy():
     assert model2.to_single_token(" SolidGoldMagicarp") == 15831, "glitch token"
 
 
+def test_left_pad():
+    model = HookedTransformer.from_pretrained("solu-1l", left_pad=True)
+    assert model.tokenizer.padding_side == "left"
+    tokens = model.to_tokens(["Sequence", "Longer sequence"])
+    assert torch.all(tokens == tensor([[2, 2, 1, 25232], [1, 12144, 255, 3315]]))
+
+
 def test_to_tokens_default():
     s = "Hello, world!"
     tokens = model.to_tokens(s)
