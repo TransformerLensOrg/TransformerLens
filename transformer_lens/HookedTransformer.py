@@ -71,7 +71,7 @@ class HookedTransformer(HookedRootModule):
         tokenizer (*optional): The tokenizer to use for the model. If not
             provided, it is inferred from cfg.tokenizer_name or initialized to None.
             If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
-        left_pad (bool): Whether the tokenizer should pad from the left instead of the right. 
+        left_pad (bool): Whether the tokenizer should pad from the left instead of the right.
             False by default. If False, padding_side is set to right.
         move_to_device (bool): Whether to move the model to the device specified in cfg.
             device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
@@ -288,8 +288,14 @@ class HookedTransformer(HookedRootModule):
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
-        if self.tokenizer and self.tokenizer.padding_side and self.tokenizer.padding_side == 'left':
-            attention_mask = torch.tensor(tokens == self.tokenizer.pad_token, dtype=torch.bool)
+        if (
+            self.tokenizer
+            and self.tokenizer.padding_side
+            and self.tokenizer.padding_side == "left"
+        ):
+            attention_mask = torch.tensor(
+                tokens == self.tokenizer.pad_token, dtype=torch.bool
+            )
             # Fill with smallest possible value.
             if tokens.dtype.is_floating_point:
                 min_value = torch.finfo(tokens.dtype).min
@@ -467,7 +473,7 @@ class HookedTransformer(HookedRootModule):
         if self.tokenizer.bos_token is None:
             self.tokenizer.bos_token = self.tokenizer.eos_token
         if self.left_pad:
-            self.tokenizer.padding_side = 'left'
+            self.tokenizer.padding_side = "left"
 
         # Infer vocab size from tokenizer
         if self.cfg.d_vocab == -1:
@@ -481,7 +487,6 @@ class HookedTransformer(HookedRootModule):
         prepend_bos: bool = True,
         move_to_device: bool = True,
         truncate: bool = True,
-        left_pad: bool = False,
     ) -> Int[torch.Tensor, "batch pos"]:
         """
         Converts a string to a tensor of tokens. If prepend_bos is True, prepends the BOS token to the input - this is
@@ -494,7 +499,6 @@ class HookedTransformer(HookedRootModule):
             Defaults to True
             truncate (bool): If the output tokens are too long, whether to truncate the output tokens to the model's
             max context window. Does nothing for shorter inputs. Defaults to True.
-            left_pad (bool): Whether to pad on the left or right. Defaults to False (right_pad)
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt
         to the model as the first token is often treated weirdly, but should only be done at the START of the prompt.
@@ -522,22 +526,6 @@ class HookedTransformer(HookedRootModule):
         )["input_ids"]
         if move_to_device:
             tokens = tokens.to(self.cfg.device)
-
-        # If left_pad, shift each sequence by the number of padding tokens it has.
-        # This moves the padding from right padding to left padding.
-        if left_pad and isinstance(input, list) and len(input) > 1:
-            # Shift by # of pad tokens
-            pad_token = self.to_single_token(self.tokenizer.pad_token)
-            to_shift = torch.sum(tokens == pad_token, dim=1)
-
-            # In GPT-2, the pad token is the same as the bos token, so prepend_bos overcounts the shift by 1.
-            if (
-                pad_token == self.to_single_token(self.tokenizer.bos_token)
-                and prepend_bos
-            ):
-                to_shift = to_shift - 1
-            for i in range(len(input)):
-                tokens[i] = torch.roll(tokens[i], to_shift[i].item(), dims=-1)
 
         return tokens
 

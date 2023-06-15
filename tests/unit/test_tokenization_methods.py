@@ -29,7 +29,7 @@ def test_set_tokenizer_lazy():
 
 def test_left_pad():
     model = HookedTransformer.from_pretrained("solu-1l", left_pad=True)
-    assert model.tokenizer.padding_side == 'left'
+    assert model.tokenizer.padding_side == "left"
     tokens = model.to_tokens(["Sequence", "Longer sequence"])
     assert torch.all(tokens == tensor([[2, 2, 1, 25232], [1, 12144, 255, 3315]]))
 
@@ -69,58 +69,6 @@ def test_to_tokens_truncate():
     tokens2 = model.to_tokens(s, truncate=False)
     assert len(tokens1[0]) == 1024, "truncated by default"
     assert len(tokens2[0]) == 1027, "not truncated"
-
-
-def test_to_tokens_with_left_pad_and_str_sequence():
-    s = "Hello, world!"
-    tokens = model.to_tokens(s, prepend_bos=False, left_pad=True)
-    assert equal(tokens, tensor([[11765, 14, 1499, 3]])), "creates a tensor without BOS"
-
-
-def test_to_tokens_with_left_pad_and_single_sequence():
-    s = ["Hello, world!"]
-    tokens = model.to_tokens(s, prepend_bos=False, left_pad=True)
-    assert equal(tokens, tensor([[11765, 14, 1499, 3]])), "creates a tensor without BOS"
-
-
-def test_to_tokens_with_left_pad_and_equal_sequences():
-    s = ["Hello, world!", "Hello, world!"]
-    tokens = model.to_tokens(s, prepend_bos=False, left_pad=True)
-    assert equal(
-        tokens, tensor([[11765, 14, 1499, 3], [11765, 14, 1499, 3]])
-    ), "creates a tensor without BOS"
-
-
-def test_to_tokens_with_left_pad_and_multiple_sequences():
-    s = ["Hello, world!", "Hello, world! But longer!"]
-    tokens_right_pad = model.to_tokens(s, prepend_bos=False)
-    assert equal(
-        tokens_right_pad,
-        tensor([[11765, 14, 1499, 3, 2, 2, 2], [11765, 14, 1499, 3, 1268, 3248, 3]]),
-    )
-    tokens_left_pad = model.to_tokens(s, prepend_bos=False, left_pad=True)
-    assert equal(
-        tokens_left_pad,
-        tensor([[2, 2, 2, 11765, 14, 1499, 3], [11765, 14, 1499, 3, 1268, 3248, 3]]),
-    )
-
-
-def test_to_tokens_with_left_pad_and_multiple_sequences_and_prepend_bos():
-    s = ["Hello, world!", "Hello, world! But longer!"]
-    tokens_right_pad = model.to_tokens(s, prepend_bos=True)
-    assert equal(
-        tokens_right_pad,
-        tensor(
-            [[1, 11765, 14, 1499, 3, 2, 2, 2], [1, 11765, 14, 1499, 3, 1268, 3248, 3]]
-        ),
-    )
-    tokens_left_pad = model.to_tokens(s, prepend_bos=True, left_pad=True)
-    assert equal(
-        tokens_left_pad,
-        tensor(
-            [[2, 2, 2, 1, 11765, 14, 1499, 3], [1, 11765, 14, 1499, 3, 1268, 3248, 3]]
-        ),
-    )
 
 
 def test_to_string_from_to_tokens_without_bos():
