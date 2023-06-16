@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Dict, Optional, Tuple, Union, List, cast, overload
+from typing import Dict, List, Optional, Tuple, Union, cast, overload
 
 import torch
 from einops import repeat
