@@ -9,7 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
-from typeguard import typeguard_ignore
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
@@ -412,7 +411,6 @@ class Attention(nn.Module):
             self.register_buffer("rotary_cos", cos)
 
     @property
-    @typeguard_ignore
     @lru_cache(maxsize=None)
     def OV(self) -> FactoredMatrix:
         """
@@ -427,7 +425,6 @@ class Attention(nn.Module):
         return FactoredMatrix(self.W_V, self.W_O)
 
     @property
-    @typeguard_ignore
     @lru_cache(maxsize=None)
     def QK(self) -> FactoredMatrix:
         """
