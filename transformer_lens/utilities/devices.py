@@ -5,16 +5,11 @@ from typing import TYPE_CHECKING, Optional, Union
 import torch
 from torch import nn
 
-if TYPE_CHECKING:
-    from transformer_lens.HookedEncoder import HookedEncoder
-    from transformer_lens.HookedTransformer import HookedTransformer
-
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-
+import transformer_lens
 
 def get_device_for_block_index(
     index: int,
-    cfg: HookedTransformerConfig,
+    cfg: 'transformer_lens.HookedTransformerConfig',
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -42,7 +37,7 @@ def get_device_for_block_index(
 
 
 def move_to_and_update_config(
-    model: Union[HookedTransformer, HookedEncoder],
+    model: Union['transformer_lens.HookedTransformer', 'transformer_lens.HookedEncoder'],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
 ):

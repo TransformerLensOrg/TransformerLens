@@ -41,9 +41,9 @@ class FactoredMatrix:
         other: Union[
             Float[torch.Tensor, "... rdim new_rdim"],
             Float[torch.Tensor, "rdim"],
-            FactoredMatrix,
+            "FactoredMatrix",
         ],
-    ) -> Union[FactoredMatrix, Float[torch.Tensor, "... ldim"]]:
+    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... ldim"]]:
         if isinstance(other, torch.Tensor):
             if other.ndim < 2:
                 # It's a vector, so we collapse the factorisation and just return a vector
@@ -65,9 +65,9 @@ class FactoredMatrix:
         other: Union[
             Float[torch.Tensor, "... new_rdim ldim"],
             Float[torch.Tensor, "ldim"],
-            FactoredMatrix,
+            "FactoredMatrix",
         ],
-    ) -> Union[FactoredMatrix, Float[torch.Tensor, "... rdim"]]:
+    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... rdim"]]:
         if isinstance(other, torch.Tensor):
             assert (
                 other.size(-1) == self.ldim

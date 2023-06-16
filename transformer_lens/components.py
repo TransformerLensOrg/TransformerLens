@@ -459,7 +459,7 @@ class Attention(nn.Module):
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
-        additive_attention_mask: Float[torch.Tensor, "batch 1 1 pos"] = None,
+        additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
