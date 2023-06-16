@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Dict, Optional, Tuple, Union, cast, overload
+from typing import Dict, Optional, Tuple, Union, List, cast, overload
 
 import torch
 from einops import repeat
@@ -376,7 +376,7 @@ class HookedEncoder(HookedRootModule):
     def OV(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
         return FactoredMatrix(self.W_V, self.W_O)
 
-    def all_head_labels(self) -> list[str]:
+    def all_head_labels(self) -> List[str]:
         return [
             f"L{l}H{h}"
             for l in range(self.cfg.n_layers)
