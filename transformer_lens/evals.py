@@ -104,11 +104,11 @@ DATASET_LOADERS = [
 
 # %%
 @torch.inference_mode()
-def evaluate_on_dataset(model, data_loader, truncate=100):
+def evaluate_on_dataset(model, data_loader, truncate=100, device="cuda"):
     running_loss = 0
     total = 0
     for batch in tqdm.tqdm(data_loader):
-        loss = model(batch["tokens"].cuda(), return_type="loss").mean()
+        loss = model(batch["tokens"].to(device), return_type="loss").mean()
         running_loss += loss.item()
         total += 1
         if total > truncate:
@@ -119,7 +119,7 @@ def evaluate_on_dataset(model, data_loader, truncate=100):
 # %%
 @torch.inference_mode()
 def induction_loss(
-    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=True
+    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=True, device="cuda"
 ):
     """
     Generates a batch of random sequences repeated twice, and measures model performance on the second half. Tests whether a model has induction heads.
@@ -127,7 +127,7 @@ def induction_loss(
     By default, prepends a beginning of string token (prepend_bos flag), which is useful to give models a resting position, and sometimes models were trained with this.
     """
     # Make the repeated sequence
-    first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).cuda()
+    first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).to(device)
     repeated_tokens = einops.repeat(first_half_tokens, "b p -> b (2 p)")
 
     # Prepend a Beginning Of String token
