@@ -7,6 +7,7 @@ from torch import nn
 
 import transformer_lens
 
+
 def get_device_for_block_index(
     index: int,
     cfg: 'transformer_lens.HookedTransformerConfig',
