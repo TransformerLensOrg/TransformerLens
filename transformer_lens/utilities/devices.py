@@ -10,7 +10,7 @@ import transformer_lens
 
 def get_device_for_block_index(
     index: int,
-    cfg: 'transformer_lens.HookedTransformerConfig',
+    cfg: "transformer_lens.HookedTransformerConfig",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -38,7 +38,9 @@ def get_device_for_block_index(
 
 
 def move_to_and_update_config(
-    model: Union['transformer_lens.HookedTransformer', 'transformer_lens.HookedEncoder'],
+    model: Union[
+        "transformer_lens.HookedTransformer", "transformer_lens.HookedEncoder"
+    ],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
 ):
