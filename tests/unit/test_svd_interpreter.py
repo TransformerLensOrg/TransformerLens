@@ -49,9 +49,9 @@ def test_svd_interpreter():
         w_out.topk(2, dim=0).values,
     )
     assert ov.shape == w_in.shape == w_out.shape == expected_OV_match.shape
-    assert torch.allclose(ov, expected_OV_match, atol=ATOL)
-    assert torch.allclose(w_in, expected_w_in_match, atol=ATOL)
-    assert torch.allclose(w_out, expected_w_out_match, atol=ATOL)
+    assert torch.allclose(ov.cpu(), expected_OV_match, atol=ATOL)
+    assert torch.allclose(w_in.cpu(), expected_w_in_match, atol=ATOL)
+    assert torch.allclose(w_out.cpu(), expected_w_out_match, atol=ATOL)
 
 
 def test_w_in_when_fold_ln_is_false():
@@ -60,7 +60,7 @@ def test_w_in_when_fold_ln_is_false():
         "w_in", num_vectors=4, layer_index=0, head_index=0
     )
     w_in = w_in.topk(2, dim=0).values
-    assert torch.allclose(w_in, expected_w_in_unfolded_match, atol=ATOL)
+    assert torch.allclose(w_in.cpu(), expected_w_in_unfolded_match, atol=ATOL)
 
 
 def test_svd_interpreter_returns_different_answers_for_different_layers():
@@ -81,9 +81,9 @@ def test_svd_interpreter_returns_different_answers_for_different_layers():
         w_out.topk(2, dim=0).values,
     )
     assert ov.shape == w_in.shape == w_out.shape == expected_OV_match.shape
-    assert not torch.allclose(ov, expected_OV_match, atol=ATOL)
-    assert not torch.allclose(w_in, expected_w_in_match, atol=ATOL)
-    assert not torch.allclose(w_out, expected_w_out_match, atol=ATOL)
+    assert not torch.allclose(ov.cpu(), expected_OV_match, atol=ATOL)
+    assert not torch.allclose(w_in.cpu(), expected_w_in_match, atol=ATOL)
+    assert not torch.allclose(w_out.cpu(), expected_w_out_match, atol=ATOL)
 
 
 def test_svd_interpreter_returns_different_answers_for_different_models():
@@ -103,9 +103,9 @@ def test_svd_interpreter_returns_different_answers_for_different_models():
         w_in.topk(2, dim=0).values,
         w_out.topk(2, dim=0).values,
     )
-    assert not torch.allclose(ov, expected_OV_match, atol=ATOL)
-    assert not torch.allclose(w_in, expected_w_in_match, atol=ATOL)
-    assert not torch.allclose(w_out, expected_w_out_match, atol=ATOL)
+    assert not torch.allclose(ov.cpu(), expected_OV_match, atol=ATOL)
+    assert not torch.allclose(w_in.cpu(), expected_w_in_match, atol=ATOL)
+    assert not torch.allclose(w_out.cpu(), expected_w_out_match, atol=ATOL)
 
 
 # Failures
