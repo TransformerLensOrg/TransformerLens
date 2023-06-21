@@ -14,19 +14,19 @@ second_model = HookedTransformer.from_pretrained("solu-3l")
 
 
 expected_OV_match = torch.Tensor(
-    [[[0.6597, 0.8689, 0.5669, 0.7345]], [[0.5232, 0.6705, 0.5623, 0.7240]]]
+    [[[0.6597, 0.8689, 0.6344, 0.7345]], [[0.5244, 0.6705, 0.5940, 0.7240]]]
 )
 
 expected_w_in_match = torch.Tensor(
-    [[[0.5572, 0.6466, 0.6406, 0.6094]], [[0.5417, 0.6103, 0.5773, 0.5726]]]
+    [[[0.7714, 0.6608, 0.6452, 0.6933]], [[0.7647, 0.6466, 0.6406, 0.6458]]]
 )
 
 expected_w_in_unfolded_match = torch.Tensor(
-    [[[0.2766, 0.3050, 0.3041, 0.3119]], [[0.2651, 0.2988, 0.2810, 0.2896]]]
+    [[[0.3639, 0.3164, 0.3095, 0.3430]], [[0.3614, 0.3050, 0.3041, 0.3140]]]
 )
 
 expected_w_out_match = torch.Tensor(
-    [[[0.5097, 0.4950, 0.5451, 0.7178]], [[0.5076, 0.4922, 0.5140, 0.7106]]]
+    [[[0.5097, 0.5389, 0.7906, 0.7178]], [[0.5076, 0.5350, 0.7674, 0.7106]]]
 )
 
 # Successes
@@ -36,13 +36,14 @@ def test_svd_interpreter():
     svd_interpreter = SVDInterpreter(model)
     ov = svd_interpreter.get_singular_vectors(
         "OV", num_vectors=4, layer_index=0, head_index=0
-    )
+    ).abs()
     w_in = svd_interpreter.get_singular_vectors(
         "w_in", num_vectors=4, layer_index=0, head_index=0
-    )
+    ).abs()
     w_out = svd_interpreter.get_singular_vectors(
         "w_out", num_vectors=4, layer_index=0, head_index=0
-    )
+    ).abs()
+
     ov, w_in, w_out = (
         ov.topk(2, dim=0).values,
         w_in.topk(2, dim=0).values,
@@ -58,7 +59,7 @@ def test_w_in_when_fold_ln_is_false():
     svd_interpreter = SVDInterpreter(unfolded_model)
     w_in = svd_interpreter.get_singular_vectors(
         "w_in", num_vectors=4, layer_index=0, head_index=0
-    )
+    ).abs()
     w_in = w_in.topk(2, dim=0).values
     assert torch.allclose(w_in.cpu(), expected_w_in_unfolded_match, atol=ATOL)
 
@@ -67,13 +68,13 @@ def test_svd_interpreter_returns_different_answers_for_different_layers():
     svd_interpreter = SVDInterpreter(model)
     ov = svd_interpreter.get_singular_vectors(
         "OV", layer_index=1, num_vectors=4, head_index=0
-    )
+    ).abs()
     w_in = svd_interpreter.get_singular_vectors(
         "w_in", layer_index=1, num_vectors=4, head_index=0
-    )
+    ).abs()
     w_out = svd_interpreter.get_singular_vectors(
         "w_out", layer_index=1, num_vectors=4, head_index=0
-    )
+    ).abs()
 
     ov, w_in, w_out = (
         ov.topk(2, dim=0).values,
@@ -90,13 +91,13 @@ def test_svd_interpreter_returns_different_answers_for_different_models():
     svd_interpreter = SVDInterpreter(second_model)
     ov = svd_interpreter.get_singular_vectors(
         "OV", layer_index=1, num_vectors=4, head_index=0
-    )
+    ).abs()
     w_in = svd_interpreter.get_singular_vectors(
         "w_in", layer_index=1, num_vectors=4, head_index=0
-    )
+    ).abs()
     w_out = svd_interpreter.get_singular_vectors(
         "w_out", layer_index=1, num_vectors=4, head_index=0
-    )
+    ).abs()
 
     ov, w_in, w_out = (
         ov.topk(2, dim=0).values,
