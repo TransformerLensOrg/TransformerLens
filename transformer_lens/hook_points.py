@@ -167,6 +167,8 @@ class HookedRootModule(nn.Module):
         self.mod_dict = {}
         self.hook_dict: Dict[str, HookPoint] = {}
         for name, module in self.named_modules():
+            if name == "":
+                continue
             module.name = name
             self.mod_dict[name] = module
             if "HookPoint" in str(type(module)):

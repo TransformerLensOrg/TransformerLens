@@ -940,6 +940,10 @@ def get_pretrained_state_dict(
                 )
 
             # Load model weights, and fold in layer norm weights
+
+        for param in hf_model.parameters():
+            param.requires_grad = False
+
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoForCausalLM":
