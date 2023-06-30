@@ -783,3 +783,17 @@ def check_structure(
         print(f"row mismatch: {row_mismatch}")
     elif col_mismatch:
         print(f"column mismatch: {col_mismatch}")
+
+
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        # Parse the PyTorch version to check if it's below version 2.0
+        major_version = int(torch.__version__.split('.')[0])
+        if major_version == 1:
+            torch.backends.mps.enabled = False
+        else:
+            return torch.device("mps")
+
+    return torch.device("cpu")

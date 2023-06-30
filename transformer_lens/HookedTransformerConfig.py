@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 
+from transformer_lens import utils
+
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
 
@@ -220,7 +222,7 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
 
         if self.device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+            self.device = utils.get_device()
 
         if self.n_devices > 1:
             assert (
