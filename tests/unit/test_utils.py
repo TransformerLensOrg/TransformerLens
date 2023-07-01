@@ -205,3 +205,82 @@ class Test_lower_triangular:
     )
     def test_fail(self, x: torch.Tensor):
         assert not utils.is_lower_triangular(x)
+
+
+@pytest.mark.parametrize(
+        "prepend_space_to_answer, expected_console_output",
+        [(
+            True,
+            """Tokenized prompt: ['<|BOS|>', 'The', ' circumference', ' is', ' the', ' perimeter', ' of', ' the', ' circ']
+Tokenized answer: [' le', '.']
+Performance on answer token:
+Rank: 5284     Logit:  3.81 Prob:  0.00% Token: | le|
+Top 0th token. Logit: 16.69 Prob: 38.00% Token: |a|
+Top 1th token. Logit: 15.71 Prob: 14.30% Token: |let|
+Top 2th token. Logit: 15.48 Prob: 11.37% Token: |ump|
+Top 3th token. Logit: 14.94 Prob:  6.64% Token: |u|
+Top 4th token. Logit: 13.96 Prob:  2.49% Token: |lets|
+Top 5th token. Logit: 13.23 Prob:  1.19% Token: |ut|
+Top 6th token. Logit: 13.17 Prob:  1.13% Token: |umn|
+Top 7th token. Logit: 13.01 Prob:  0.96% Token: |us|
+Top 8th token. Logit: 12.96 Prob:  0.91% Token: | is|
+Top 9th token. Logit: 12.89 Prob:  0.85% Token: |umb|
+Performance on answer token:
+Rank: 340      Logit:  8.94 Prob:  0.01% Token: |.|
+Top 0th token. Logit: 16.19 Prob: 16.71% Token: |vy|
+Top 1th token. Logit: 15.80 Prob: 11.24% Token: |vers|
+Top 2th token. Logit: 15.33 Prob:  7.03% Token: |aps|
+Top 3th token. Logit: 14.63 Prob:  3.48% Token: |vens|
+Top 4th token. Logit: 14.62 Prob:  3.45% Token: |av|
+Top 5th token. Logit: 14.43 Prob:  2.87% Token: |opard|
+Top 6th token. Logit: 14.30 Prob:  2.52% Token: |as|
+Top 7th token. Logit: 14.26 Prob:  2.41% Token: |ew|
+Top 8th token. Logit: 14.23 Prob:  2.33% Token: |on|
+Top 9th token. Logit: 13.98 Prob:  1.82% Token: |gged|
+Ranks of the answer tokens: [(' le', 5284), ('.', 340)]
+"""
+        ), (
+            False,
+            """Tokenized prompt: ['<|BOS|>', 'The', ' circumference', ' is', ' the', ' perimeter', ' of', ' the', ' circ']
+Tokenized answer: ['le', '.']
+Performance on answer token:
+Rank: 93       Logit:  9.99 Prob:  0.05% Token: |le|
+Top 0th token. Logit: 16.69 Prob: 38.00% Token: |a|
+Top 1th token. Logit: 15.71 Prob: 14.30% Token: |let|
+Top 2th token. Logit: 15.48 Prob: 11.37% Token: |ump|
+Top 3th token. Logit: 14.94 Prob:  6.64% Token: |u|
+Top 4th token. Logit: 13.96 Prob:  2.49% Token: |lets|
+Top 5th token. Logit: 13.23 Prob:  1.19% Token: |ut|
+Top 6th token. Logit: 13.17 Prob:  1.13% Token: |umn|
+Top 7th token. Logit: 13.01 Prob:  0.96% Token: |us|
+Top 8th token. Logit: 12.96 Prob:  0.91% Token: | is|
+Top 9th token. Logit: 12.89 Prob:  0.85% Token: |umb|
+Performance on answer token:
+Rank: 2        Logit: 12.46 Prob:  2.60% Token: |.|
+Top 0th token. Logit: 15.30 Prob: 44.91% Token: |th|
+Top 1th token. Logit: 12.67 Prob:  3.22% Token: | 1|
+Top 2th token. Logit: 12.46 Prob:  2.60% Token: |.|
+Top 3th token. Logit: 12.33 Prob:  2.30% Token: | 2|
+Top 4th token. Logit: 11.98 Prob:  1.62% Token: |,|
+Top 5th token. Logit: 11.85 Prob:  1.41% Token: |-|
+Top 6th token. Logit: 11.79 Prob:  1.33% Token: | and|
+Top 7th token. Logit: 11.62 Prob:  1.13% Token: | 3|
+Top 8th token. Logit: 11.56 Prob:  1.06% Token: |thal|
+Top 9th token. Logit: 11.48 Prob:  0.98% Token: |an|
+Ranks of the answer tokens: [('le', 93), ('.', 2)]
+"""
+        )]
+    )
+def test_test_prompt(
+    prepend_space_to_answer, 
+    expected_console_output,
+    capfd 
+):
+    utils.test_prompt(
+        "The circumference is the perimeter of the circ", 
+        "le.", 
+        model,
+        prepend_space_to_answer=prepend_space_to_answer
+    )
+    out, err = capfd.readouterr()
+    assert out == expected_console_output
