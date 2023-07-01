@@ -57,6 +57,8 @@ jobs:
         run: |
           poetry lock --check
           poetry install --with dev
+      - name: Check format
+        run: make check-format
       - name: Unit test
         run: make unit-test
       - name: Acceptance test

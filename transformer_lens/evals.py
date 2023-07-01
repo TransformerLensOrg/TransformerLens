@@ -3,14 +3,17 @@
 A file with some rough evals for models - I expect you to be likely better off using the HuggingFace evaluate library if you want to do anything properly, but this is here if you want it and want to eg cheaply and roughly compare models you've trained to baselines.
 """
 
-from typing import List, Dict, Optional
+import random
+from typing import Dict, List, Optional
+
+import einops
 import torch
 import tqdm.auto as tqdm
-import random
 from datasets import load_dataset
-from transformer_lens import HookedTransformer, HookedTransformerConfig, utils
 from torch.utils.data import DataLoader, Dataset
-import einops
+
+from transformer_lens import utils
+
 
 # %%
 def sanity_check(model):
@@ -58,9 +61,10 @@ def make_owt_data_loader(tokenizer, batch_size=8):
 
 def make_pile_data_loader(tokenizer, batch_size=8):
     """
-    Evaluate on OpenWebText an open source replication of the GPT-2 training corpus (Reddit links with >3 karma)
+    Evaluate on the first 10k texts from The Pile.
 
-    I think the Mistral models were trained on this dataset, so they get very good performance.
+    The Pile is EleutherAI's general-purpose english dataset, made of 22 subsets
+    including academic papers, books, internet content...
     """
     pile_data = load_dataset("NeelNanda/pile-10k", split="train")
     print(len(pile_data))
@@ -73,7 +77,10 @@ def make_pile_data_loader(tokenizer, batch_size=8):
 
 def make_code_data_loader(tokenizer, batch_size=8):
     """
-    Evaluate on the CodeParrot dataset, a dump of Python code. All models seem to get significantly lower loss here (even non-code trained models like GPT-2), presumably code is much easier to predict than natural language?
+    Evaluate on the CodeParrot dataset, a dump of Python code.
+
+    All models seem to get significantly lower loss here (even non-code trained models like GPT-2),
+    presumably code is much easier to predict than natural language?
     """
     code_data = load_dataset("codeparrot/codeparrot-valid-v2-near-dedup", split="train")
     print(len(code_data))
@@ -94,13 +101,14 @@ DATASET_LOADERS = [
     make_code_data_loader,
 ]
 
+
 # %%
 @torch.inference_mode()
-def evaluate_on_dataset(model, data_loader, truncate=100):
+def evaluate_on_dataset(model, data_loader, truncate=100, device="cuda"):
     running_loss = 0
     total = 0
     for batch in tqdm.tqdm(data_loader):
-        loss = model(batch["tokens"].cuda(), return_type="loss").mean()
+        loss = model(batch["tokens"].to(device), return_type="loss").mean()
         running_loss += loss.item()
         total += 1
         if total > truncate:
@@ -111,7 +119,7 @@ def evaluate_on_dataset(model, data_loader, truncate=100):
 # %%
 @torch.inference_mode()
 def induction_loss(
-    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=True
+    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=True, device="cuda"
 ):
     """
     Generates a batch of random sequences repeated twice, and measures model performance on the second half. Tests whether a model has induction heads.
@@ -119,7 +127,7 @@ def induction_loss(
     By default, prepends a beginning of string token (prepend_bos flag), which is useful to give models a resting position, and sometimes models were trained with this.
     """
     # Make the repeated sequence
-    first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).cuda()
+    first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).to(device)
     repeated_tokens = einops.repeat(first_half_tokens, "b p -> b (2 p)")
 
     # Prepend a Beginning Of String token
@@ -134,6 +142,7 @@ def induction_loss(
     )
     # Take the loss over the second half of the sequence
     return correct_log_probs[:, subseq_len + 1 :].mean()
+
 
 # %%
 @torch.inference_mode()
@@ -153,7 +162,7 @@ def evaluate(model, truncate=100, batch_size=8, tokenizer=None):
 class IOIDataset(Dataset):
     """
     Dataset for Indirect Object Identification tasks.
-    Paper: https://arxiv.org/pdf/2211.00593.pdf 
+    Paper: https://arxiv.org/pdf/2211.00593.pdf
 
     Example:
     --------
@@ -179,19 +188,23 @@ class IOIDataset(Dataset):
         >>> print(ioi_eval(model, dataset=ds))
         {'Logit Difference': 3.7498160457611083, 'Accuracy': 1.0}
     """
-    def __init__(self,
-                 tokenizer,
-                 templates: Optional[List[str]] = None,
-                 names: Optional[List[str]] = None,
-                 nouns: Optional[Dict[str, List[str]]] = None,
-                 num_samples: int = 1000,
-                 symmetric: bool = False,
-                 prepend_bos: bool = True,
-                 ):
+
+    def __init__(
+        self,
+        tokenizer,
+        templates: Optional[List[str]] = None,
+        names: Optional[List[str]] = None,
+        nouns: Optional[Dict[str, List[str]]] = None,
+        num_samples: int = 1000,
+        symmetric: bool = False,
+        prepend_bos: bool = True,
+    ):
         self.tokenizer = tokenizer
         self.prepend_bos = prepend_bos
 
-        self.templates = templates if templates is not None else self.get_default_templates()
+        self.templates = (
+            templates if templates is not None else self.get_default_templates()
+        )
         self.names = names if names is not None else self.get_default_names()
         self.nouns = nouns if nouns is not None else self.get_default_nouns()
 
@@ -199,40 +212,42 @@ class IOIDataset(Dataset):
         for _ in range(num_samples // 2 if symmetric else num_samples):
             # If symmetric, get_sample will return two samples
             self.samples.extend(self.get_sample(symmetric=symmetric))
-    
+
     def __len__(self):
         return len(self.samples)
-    
+
     def __getitem__(self, idx):
         sample = self.samples[idx]
-        prompt = self.tokenizer.encode(sample['text'])
+        prompt = self.tokenizer.encode(sample["text"])
         if self.prepend_bos:
             prompt = [self.tokenizer.bos_token_id] + prompt
 
         return {
-            'prompt': torch.LongTensor(prompt),
-            'IO': torch.LongTensor(self.tokenizer.encode(sample['IO'])),
-            'S': torch.LongTensor(self.tokenizer.encode(sample['S'])),
+            "prompt": torch.LongTensor(prompt),
+            "IO": torch.LongTensor(self.tokenizer.encode(sample["IO"])),
+            "S": torch.LongTensor(self.tokenizer.encode(sample["S"])),
         }
-        
+
     def get_sample(self, symmetric=False) -> List[Dict[str, str]]:
         template: str = random.choice(self.templates)
         for noun_type, noun_list in self.nouns.items():
             template = template.replace(f"[{noun_type}]", random.choice(noun_list))
-        
+
         samples: List[Dict[str, str]] = []
-        
+
         # Sample two names without replacement
         names = random.sample(self.names, 2)
         sample = template.replace("[A]", names[0])
         sample = sample.replace("[B]", names[1])
         # Prepend spaces to IO and S so that the target is e.g. " Mary" and not "Mary"
-        samples.append({'text': sample, 'IO': " " + names[0], 'S': " " + names[1]})
+        samples.append({"text": sample, "IO": " " + names[0], "S": " " + names[1]})
 
         if symmetric:
             sample_2 = template.replace("[A]", names[1])
             sample_2 = sample_2.replace("[B]", names[0])
-            samples.append({'text': sample_2, 'IO': " " + names[1], 'S': " " + names[0]})
+            samples.append(
+                {"text": sample_2, "IO": " " + names[1], "S": " " + names[0]}
+            )
 
         return samples
 
@@ -246,7 +261,7 @@ class IOIDataset(Dataset):
             "[A] and [B] went to the [LOCATION] to buy [OBJECT]. [B] handed the [OBJECT] to [A]",
             "Then, [B] and [A] went to the [LOCATION]. [B] gave the [OBJECT] to [A]",
         ]
-    
+
     @staticmethod
     def get_default_nouns():
         return {
@@ -257,7 +272,9 @@ class IOIDataset(Dataset):
 
 # %%
 @torch.inference_mode()
-def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None, symmetric=False):
+def ioi_eval(
+    model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None, symmetric=False
+):
     """
     Evaluates the model on the Indirect Object Identification task.
 
@@ -272,21 +289,23 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
     """
     if tokenizer is None:
         tokenizer = model.tokenizer
-    
+
     if dataset is None:
         dataset = IOIDataset(tokenizer, num_samples=num_samples, symmetric=symmetric)
 
     def collate(samples):
-        prompts = [sample['prompt'] for sample in samples]
+        prompts = [sample["prompt"] for sample in samples]
         padded_prompts = torch.nn.utils.rnn.pad_sequence(prompts, batch_first=True)
         return {
-            'prompt': padded_prompts,
-            'IO': [sample['IO'] for sample in samples],
-            'S': [sample['S'] for sample in samples],
-            'prompt_length': [p.shape[0] for p in prompts],
+            "prompt": padded_prompts,
+            "IO": [sample["IO"] for sample in samples],
+            "S": [sample["S"] for sample in samples],
+            "prompt_length": [p.shape[0] for p in prompts],
         }
 
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate)
+    data_loader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=True, collate_fn=collate
+    )
 
     total_correct = 0
     total_logit_diff = 0
@@ -294,9 +313,9 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
         batch_logits = model(batch["prompt"], return_type="logits")
 
         for i in range(batch_logits.shape[0]):
-            io = batch['IO'][i]
-            s = batch['S'][i]
-            prefix_length = batch['prompt_length'][i] - io.shape[0]
+            io = batch["IO"][i]
+            s = batch["S"][i]
+            prefix_length = batch["prompt_length"][i] - io.shape[0]
 
             # Trim io and s to the same length
             min_len = min(io.shape[0], s.shape[0])
@@ -319,8 +338,8 @@ def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None
             correct = logit_diff > 0
             total_correct += correct.item()
             total_logit_diff += logit_diff.item()
-    
+
     return {
-        'Logit Difference': total_logit_diff / len(dataset),
-        'Accuracy': total_correct / len(dataset),
-        }
+        "Logit Difference": total_logit_diff / len(dataset),
+        "Accuracy": total_correct / len(dataset),
+    }

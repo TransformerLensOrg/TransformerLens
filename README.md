@@ -1,5 +1,7 @@
 # TransformerLens
 
+![TransformerLens](assets/rm_transformer_lens_logo.png)
+
 [![Pypi](https://img.shields.io/pypi/v/transformer-lens)](https://pypi.org/project/transformer-lens/)
 
 (Formerly known as EasyTransformer)
@@ -77,6 +79,13 @@ If adding a feature, please add unit tests for it to the tests folder, and check
 - All tests via `make test`
 - Unit tests only via `make unit-test`
 - Acceptance tests only via `make acceptance-test`
+
+### Formatting
+
+This project uses `pycln`, `isort` and `black` for formatting, pull requests are checked in github actions.
+
+- Format all files via `make format`
+- Only check the formatting via `make check-format`
 
 ### Demos
 

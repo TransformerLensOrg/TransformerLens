@@ -12,7 +12,7 @@ If you are modifying a non-environment page or an atari environment page, please
 
 Install the required packages:
 
-Need to use python 3.9 (3.10 has an issue with napoleon extension) and below 3.8 doesn't have sphinx suppourt.
+Need to use python 3.9 (3.10 has an issue with napoleon extension) and below 3.8 doesn't have sphinx support.
 ```
 poetry install --extras docs
 ```
