@@ -84,10 +84,6 @@ class HookedTransformer(HookedRootModule):
             )
         self.cfg = cfg
 
-        assert (
-            self.cfg.n_devices == 1 or move_to_device
-        ), "If n_devices > 1, must move_to_device"
-
         if tokenizer is not None:
             self.set_tokenizer(tokenizer)
         elif self.cfg.tokenizer_name is not None:
@@ -157,7 +153,7 @@ class HookedTransformer(HookedRootModule):
             # the second gets the next n_layers // n_devices blocks ... the last gets the last n_layers // n_devices
             # blocks, the final
             # normalization layer (if it exists) and the unembed layer
-            HookedTransformer.move_model_modules_to_device(self)
+            self.move_model_modules_to_device()
 
         # Helper variable to store a small (10K-20K) dataset of training data. Empty by default, can be loaded with
         # load_sample_training_dataset
@@ -777,7 +773,6 @@ class HookedTransformer(HookedRootModule):
         hf_model=None,
         device=None,
         n_devices=1,
-        move_state_dict_to_device=True,
         tokenizer=None,
         move_to_device=True,
         **from_pretrained_kwargs,
@@ -823,9 +818,6 @@ class HookedTransformer(HookedRootModule):
                 default will load to CUDA if available, else CPU.
             n_devices (int, optional): The number of devices to split the model
                 across. Defaults to 1. If greater than 1, `device` must be cuda.
-            move_state_dict_to_device (bool): Whether to move the state dict to the
-                relevant device before processing and loading in the weights.
-                Defaults to True.
             tokenizer (*optional): The tokenizer to use for the model. If not
                 provided, it is inferred from cfg.tokenizer_name or initialized to None.
                 If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
@@ -881,7 +873,7 @@ class HookedTransformer(HookedRootModule):
         )
 
         # Create the HookedTransformer object
-        model = cls(cfg, tokenizer, move_to_device)
+        model = cls(cfg, tokenizer, move_to_device=False)
 
         dtype = from_pretrained_kwargs.get("torch_dtype", None)
         if dtype is not None:
@@ -893,8 +885,10 @@ class HookedTransformer(HookedRootModule):
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
-            move_state_dict_to_device=move_state_dict_to_device,
         )
+
+        if move_to_device:
+            model.move_model_modules_to_device()
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
 
@@ -960,7 +954,6 @@ class HookedTransformer(HookedRootModule):
         center_unembed: bool = True,
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
-        move_state_dict_to_device: bool = True,
     ):
         """Method to load a state dict into the model, and to apply processing to simplify it. The state dict is assumed
         to be in the HookedTransformer format.
@@ -983,38 +976,9 @@ class HookedTransformer(HookedRootModule):
                 output bias to the layer, and make it easier to interpret the head's output.
             refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
-            move_state_dict_to_device (bool, optional): Whether to move the state dict to the device of the model.
-                Defaults to True.
             model_name (str, optional): checks the model name for special cases of state dict loading. Only used for
                 Redwood 2L model currently
         """
-
-        assert (
-            self.cfg.n_devices == 1 or move_state_dict_to_device
-        ), "If n_devices > 1, move_state_dict_to_device must be True"
-
-        if move_state_dict_to_device:
-            for k, v in state_dict.items():
-                if k.startswith("embed") or k.startswith("pos_embed"):
-                    state_dict[k] = v.to(
-                        devices.get_device_for_block_index(0, self.cfg)
-                    )
-                elif k.startswith("ln_final") or k.startswith("unembed"):
-                    state_dict[k] = v.to(
-                        devices.get_device_for_block_index(
-                            self.cfg.n_layers - 1, self.cfg
-                        )
-                    )
-                elif k.startswith("blocks"):
-                    state_dict[k] = v.to(
-                        devices.get_device_for_block_index(
-                            int(k.split(".")[1]), self.cfg
-                        )
-                    )
-                else:
-                    raise KeyError(
-                        f"State Dict contains a key not in the HookedTransformer format: {k}"
-                    )
 
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
