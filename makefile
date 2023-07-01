@@ -20,4 +20,4 @@ acceptance-test:
 	poetry run pytest -v --typeguard-packages=transformer_lens --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/acceptance
 
 documentation-test:
-    poetry run pytest --nbmake demos/*ipynb
+	poetry run pytest --nbmake demos/*ipynb
