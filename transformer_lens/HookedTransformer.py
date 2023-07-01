@@ -748,22 +748,21 @@ class HookedTransformer(HookedRootModule):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cpu")
 
-    @classmethod
-    def move_model_modules_to_device(cls, model: "HookedTransformer"):
-        model.embed.to(devices.get_device_for_block_index(0, model.cfg))
-        model.hook_embed.to(devices.get_device_for_block_index(0, model.cfg))
-        if model.cfg.positional_embedding_type != "rotary":
-            model.pos_embed.to(devices.get_device_for_block_index(0, model.cfg))
-            model.hook_pos_embed.to(devices.get_device_for_block_index(0, model.cfg))
-        if hasattr(model, "ln_final"):
-            model.ln_final.to(
-                devices.get_device_for_block_index(model.cfg.n_layers - 1, model.cfg)
+    def move_model_modules_to_device(self):
+        self.embed.to(devices.get_device_for_block_index(0, self.cfg))
+        self.hook_embed.to(devices.get_device_for_block_index(0, self.cfg))
+        if self.cfg.positional_embedding_type != "rotary":
+            self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+            self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+        if hasattr(self, "ln_final"):
+            self.ln_final.to(
+                devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg)
             )
-        model.unembed.to(
-            devices.get_device_for_block_index(model.cfg.n_layers - 1, model.cfg)
+        self.unembed.to(
+            devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg)
         )
-        for i, block in enumerate(model.blocks):
-            block.to(devices.get_device_for_block_index(i, model.cfg))
+        for i, block in enumerate(self.blocks):
+            block.to(devices.get_device_for_block_index(i, self.cfg))
 
     @classmethod
     def from_pretrained(
