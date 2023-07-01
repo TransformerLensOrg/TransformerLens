@@ -85,5 +85,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: "poetry"
+      - name: Install dependencies
+        run: |
+          poetry lock --check
+          poetry install --with dev
       - name: Documentation test
         run: make documentation-test
