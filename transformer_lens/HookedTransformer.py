@@ -1319,7 +1319,6 @@ class HookedTransformer(HookedRootModule):
         center_writing_weights: bool = True,
         center_unembed: bool = True,
         refactor_factored_attn_matrices: bool = False,
-        move_state_dict_to_device: bool = True,
     ):
         """
         Wrapper around load_and_process_state_dict to allow for in-place processing of the weights. This is useful if
@@ -1343,7 +1342,6 @@ class HookedTransformer(HookedRootModule):
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
-            move_state_dict_to_device=move_state_dict_to_device,
         )
 
     @torch.inference_mode()
