@@ -6,9 +6,9 @@ import torch
 from transformers import AutoConfig
 
 from transformer_lens import HookedTransformer
+from transformer_lens.components import LayerNormPre
 from transformer_lens.loading_from_pretrained import OFFICIAL_MODEL_NAMES
 from transformer_lens.utils import clear_huggingface_cache
-from transformer_lens.components import LayerNormPre
 
 TINY_STORIES_MODEL_NAMES = [
     name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
