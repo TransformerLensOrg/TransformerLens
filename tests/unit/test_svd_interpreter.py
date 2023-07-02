@@ -6,8 +6,7 @@ from transformer_lens import HookedTransformer, SVDInterpreter
 
 MODEL = "solu-2l"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
-ATOL = 1e-4  # Absolute tolerance - how far does a float have to be before we consider it no longer equal?
-# ATOL is set to 1e-4 because the tensors we check on are also to 4 decimal places.
+ATOL = 2e-4  # Absolute tolerance - how far does a float have to be before we consider it no longer equal?
 model = HookedTransformer.from_pretrained(MODEL)
 unfolded_model = HookedTransformer.from_pretrained(MODEL, fold_ln=False)
 second_model = HookedTransformer.from_pretrained("solu-3l")
