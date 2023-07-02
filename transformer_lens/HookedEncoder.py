@@ -229,13 +229,16 @@ class HookedEncoder(HookedRootModule):
             official_model_name, cfg, hf_model, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, tokenizer, move_to_device)
+        model = cls(cfg, tokenizer, move_to_device=False)
 
         dtype = from_pretrained_kwargs.get("torch_dtype", None)
         if dtype is not None:
             model = model.to(dtype)
 
         model.load_state_dict(state_dict, strict=False)
+
+        if move_to_device:
+            model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
 
