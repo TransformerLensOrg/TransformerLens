@@ -180,6 +180,10 @@ class HookedTransformer(HookedRootModule):
             assert (
                 self.cfg.use_split_qkv_input
             ), f"Cannot add hook {hook_point_name} if use_split_qkv_input is False"
+        if hook_point_name.endswith("mlp_in"):
+            assert (
+                self.cfg.use_hook_mlp_in
+            ), f"Cannot add hook {hook_point_name} if use_hook_mlp_in is False"
 
     @overload
     def forward(
@@ -1312,6 +1316,12 @@ class HookedTransformer(HookedRootModule):
         Toggles whether to allow editing of inputs to each attention head.
         """
         self.cfg.use_split_qkv_input = use_split_qkv_input
+
+    def set_use_hook_mlp_in(self, use_hook_mlp_in: bool):
+        """
+        Toggles whether to allow storing and editing inputs to each MLP layer.
+        """
+        self.cfg.use_hook_mlp_in = use_hook_mlp_in
 
     def process_weights_(
         self,

@@ -41,6 +41,8 @@ class HookedTransformerConfig:
             for large models, so defaults to False
         use_split_qkv_input (bool): whether to explicitly calculate the input of
             each head separately, with a hook. Defaults to false to save memory.
+        use_hook_mlp_in (bool): whether to use a hook to get the input to the
+            MLP layer. Defaults to false to save memory.
         use_attn_scale (bool): whether to scale the attention weights by
             1/sqrt(d_head)
         model_name (str): the name of the model, used to load
@@ -140,6 +142,7 @@ class HookedTransformerConfig:
     use_attn_result: bool = False
     use_attn_scale: bool = True
     use_split_qkv_input: bool = False
+    use_hook_mlp_in: bool = False
     use_local_attn: bool = False
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False

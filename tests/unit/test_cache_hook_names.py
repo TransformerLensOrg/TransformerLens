@@ -19,7 +19,6 @@ act_names_in_cache = [
     "blocks.0.attn.hook_z",
     "blocks.0.hook_attn_out",
     "blocks.0.hook_resid_mid",
-    "blocks.0.hook_mlp_in",
     "blocks.0.ln2.hook_scale",
     "blocks.0.ln2.hook_normalized",
     "blocks.0.mlp.hook_pre",
