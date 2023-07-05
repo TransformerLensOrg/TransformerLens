@@ -747,7 +747,7 @@ class HookedTransformer(HookedRootModule):
     def cpu(self):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cpu")
-    
+
     def mps(self):
         # Wrapper around mps that also changes self.cfg.device
         return self.to("mps")

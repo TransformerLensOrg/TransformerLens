@@ -790,7 +790,7 @@ def get_device():
         return torch.device("cuda")
     if torch.backends.mps.is_available():
         # Parse the PyTorch version to check if it's below version 2.0
-        major_version = int(torch.__version__.split('.')[0])
+        major_version = int(torch.__version__.split(".")[0])
         if major_version < 2:
             torch.backends.mps.enabled = False
         else:
