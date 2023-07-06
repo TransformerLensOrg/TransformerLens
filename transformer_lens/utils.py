@@ -788,12 +788,10 @@ def check_structure(
 def get_device():
     if torch.cuda.is_available():
         return torch.device("cuda")
-    if torch.backends.mps.is_available():
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
         # Parse the PyTorch version to check if it's below version 2.0
         major_version = int(torch.__version__.split(".")[0])
-        if major_version < 2:
-            torch.backends.mps.enabled = False
-        else:
+        if major_version >= 2:
             return torch.device("mps")
 
     return torch.device("cpu")
