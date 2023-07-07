@@ -293,7 +293,7 @@ def sample_logits(
     temperature: float = 1.0,
     freq_penalty: float = 0.0,
     tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
-) -> Float[torch.Tensor, "batch"]:
+) -> Int[torch.Tensor, "batch"]:
     """
     Sample from the logits, in order to generate text
 
@@ -459,7 +459,7 @@ class Slice:
     def indices(
         self,
         max_ctx: Optional[int] = None,
-    ) -> Union[np.ndarray, np.int64]:
+    ) -> Union[np.ndarray, np.int32, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
 

@@ -769,6 +769,12 @@ def get_pretrained_model_config(
 
     if device is not None:
         cfg_dict["device"] = device
+
+    if kwargs.get("torch_dtype", None) is not None:
+        cfg_dict["dtype"] = kwargs["torch_dtype"]
+    elif "dtype" in cfg_dict:
+        kwargs["torch_dtype"] = cfg_dict["dtype"]
+
     if fold_ln:
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
             cfg_dict["normalization_type"] = "LNPre"
