@@ -152,7 +152,7 @@ def test_conditional_hooks():
 
     model.reset_hooks()
     model.set_use_attn_in(True)
-    model.add_hook("blocks.0.attn.hook_in", identity_hook)
+    model.add_hook("blocks.0.hook_attn_in", identity_hook)
 
     # check that things are the right shape
 
