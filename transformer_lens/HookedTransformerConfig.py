@@ -145,7 +145,7 @@ class HookedTransformerConfig:
     use_attn_scale: bool = True
     use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
-    use_attn_in: bool = True
+    use_attn_in: bool = False
     use_local_attn: bool = False
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
