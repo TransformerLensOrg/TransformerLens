@@ -184,6 +184,10 @@ class HookedTransformer(HookedRootModule):
             assert (
                 self.cfg.use_hook_mlp_in
             ), f"Cannot add hook {hook_point_name} if use_hook_mlp_in is False"
+        if hook_point_name.endswith("attn_in"):
+            assert (
+                self.cfg.use_attn_in
+            ), f"Cannot add hook {hook_point_name} if use_attn_in is False"
 
     @overload
     def forward(
@@ -1322,6 +1326,12 @@ class HookedTransformer(HookedRootModule):
         Toggles whether to allow storing and editing inputs to each MLP layer.
         """
         self.cfg.use_hook_mlp_in = use_hook_mlp_in
+
+    def set_use_attn_in(self, use_attn_in: bool):
+        """
+        Toggles whether to allow editing of inputs to each attention head.
+        """
+        self.cfg.use_attn_in = use_attn_in
 
     def process_weights_(
         self,

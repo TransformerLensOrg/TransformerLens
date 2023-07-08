@@ -467,7 +467,7 @@ class Attention(nn.Module):
         additive_attention_mask is an optional mask to add to the attention weights. Defaults to None.
         """
 
-        if self.cfg.use_split_qkv_input:
+        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
             qkv_einops_string = "batch pos head_index d_model"
         else:
             qkv_einops_string = "batch pos d_model"
@@ -859,14 +859,15 @@ class TransformerBlock(nn.Module):
             else:
                 self.mlp = MLP(cfg)
 
-        self.hook_q_input = HookPoint()  # [batch, pos, d_model]
-        self.hook_k_input = HookPoint()  # [batch, pos, d_model]
-        self.hook_v_input = HookPoint()  # [batch, pos, d_model]
+        self.hook_attn_in = HookPoint()  # [batch, pos, n_heads, d_model]
+        self.hook_q_input = HookPoint()  # [batch, pos, n_heads, d_model]
+        self.hook_k_input = HookPoint()  # [batch, pos, n_heads, d_model]
+        self.hook_v_input = HookPoint()  # [batch, pos, n_heads, d_model]
+        self.hook_mlp_in = HookPoint()  # [batch, pos, d_model]
 
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
-
-        self.hook_mlp_in = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
+
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
@@ -892,25 +893,35 @@ class TransformerBlock(nn.Module):
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
 
-        query_input = resid_pre
-        key_input = resid_pre
-        value_input = resid_pre
+        def add_head_dimension(tensor):
+            return einops.repeat(
+                tensor,
+                "batch pos d_model -> batch pos n_heads d_model",
+                n_heads=self.cfg.n_heads,
+            ).clone()
+
+        attn_in = (
+            resid_pre
+            if not self.cfg.use_attn_in
+            else self.hook_attn_in(add_head_dimension(resid_pre.clone()))
+        )
 
         if self.cfg.use_split_qkv_input:
-
-            def add_head_dimension(tensor):
-                return einops.repeat(
-                    tensor,
-                    "batch pos d_model -> batch pos n_heads d_model",
-                    n_heads=self.cfg.n_heads,
-                ).clone()
-
-            query_input = self.hook_q_input(add_head_dimension(query_input))
-            key_input = self.hook_k_input(add_head_dimension(key_input))
-            value_input = self.hook_v_input(add_head_dimension(value_input))
-
+            query_input = self.hook_q_input(
+                add_head_dimension(attn_in) if not self.cfg.use_attn_in else attn_in
+            )
+            key_input = self.hook_k_input(
+                add_head_dimension(attn_in) if not self.cfg.use_attn_in else attn_in
+            )
+            value_input = self.hook_v_input(
+                add_head_dimension(attn_in) if not self.cfg.use_attn_in else attn_in
+            )
             if shortformer_pos_embed is not None:
                 shortformer_pos_embed = add_head_dimension(shortformer_pos_embed)
+        else:
+            query_input = attn_in
+            key_input = attn_in
+            value_input = attn_in
 
         attn_out = self.hook_attn_out(
             # hook the residual stream states that are used to calculate the

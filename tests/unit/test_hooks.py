@@ -136,6 +136,7 @@ def test_conditional_hooks():
         ("blocks.0.attn.hook_result", model.set_use_attn_result),
         ("blocks.0.hook_q_input", model.set_use_split_qkv_input),
         ("blocks.0.hook_mlp_in", model.set_use_hook_mlp_in),
+        ("blocks.0.hook_attn_in", model.set_use_attn_in),
     ]:
         model.reset_hooks()
         set_use_hook_function(False)
@@ -148,6 +149,12 @@ def test_conditional_hooks():
     model.reset_hooks()
     model.set_use_split_qkv_input(True)
     model.add_hook("blocks.0.hook_q_input", identity_hook)
+
+    model.reset_hooks()
+    model.set_use_attn_in(True)
+    model.add_hook("blocks.0.attn.hook_in", identity_hook)
+
+    # check that things are the right shape
 
     cache = model.run_with_cache(
         prompt,
