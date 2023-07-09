@@ -136,6 +136,10 @@ def test_run_with_cache(our_bert, huggingface_bert, hello_world_tokens):
     assert "mlm_head.ln.hook_normalized" in cache
 
 
+@pytest.mark.skipif(
+    torch.backends.mps.is_available(),
+    reason="bfloat16 unsupported by MPS: https://github.com/pytorch/pytorch/issues/78168",
+)
 def test_from_pretrained_dtype():
     """Check that the parameter `torch_dtype` works"""
     model = HookedEncoder.from_pretrained(MODEL_NAME, torch_dtype=torch.bfloat16)
