@@ -810,6 +810,11 @@ copied to that device</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.mps">
+<span class="sig-name descname"><span class="pre">mps</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.mps" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.run_with_cache">
 <span class="sig-name descname"><span class="pre">run_with_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">model_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_cache_object</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">typing_extensions.Literal</span><span class="p"><span class="pre">[</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.run_with_cache" title="Permalink to this definition">#</a></dt>
 <dt class="sig sig-object py">
@@ -1409,6 +1414,11 @@ to the Pile, which covers some of it, but imperfectly.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.move_model_modules_to_device">
 <span class="sig-name descname"><span class="pre">move_model_modules_to_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.move_model_modules_to_device" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.mps">
+<span class="sig-name descname"><span class="pre">mps</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.mps" title="Permalink to this definition">#</a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
@@ -4007,6 +4017,11 @@ get_act_name(‘pre5’)==’blocks.5.mlp.hook_pre’</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_device">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_device" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utils.is_lower_triangular">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">is_lower_triangular</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#transformer_lens.utils.is_lower_triangular" title="Permalink to this definition">#</a></dt>
 <dd><p>Checks if <cite>x</cite> is a lower triangular matrix.</p>
@@ -4260,6 +4275,7 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 <li><a class="reference internal" href="#transformer_lens.HookedEncoder.HookedEncoder.cuda"><code class="docutils literal notranslate"><span class="pre">HookedEncoder.cuda()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedEncoder.HookedEncoder.forward"><code class="docutils literal notranslate"><span class="pre">HookedEncoder.forward()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedEncoder.HookedEncoder.from_pretrained"><code class="docutils literal notranslate"><span class="pre">HookedEncoder.from_pretrained()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedEncoder.HookedEncoder.mps"><code class="docutils literal notranslate"><span class="pre">HookedEncoder.mps()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedEncoder.HookedEncoder.run_with_cache"><code class="docutils literal notranslate"><span class="pre">HookedEncoder.run_with_cache()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedEncoder.HookedEncoder.to"><code class="docutils literal notranslate"><span class="pre">HookedEncoder.to()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedEncoder.HookedEncoder.training"><code class="docutils literal notranslate"><span class="pre">HookedEncoder.training</span></code></a></li>
@@ -4308,6 +4324,7 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.load_sample_training_dataset"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.load_sample_training_dataset()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.loss_fn"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.loss_fn()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.move_model_modules_to_device"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.move_model_modules_to_device()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.mps"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.mps()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.process_weights_"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.process_weights_()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.refactor_factored_attn_matrices"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.refactor_factored_attn_matrices()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.run_with_cache"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.run_with_cache()</span></code></a></li>
@@ -4638,6 +4655,7 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 <li><a class="reference internal" href="#transformer_lens.utils.get_act_name"><code class="docutils literal notranslate"><span class="pre">get_act_name()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_corner"><code class="docutils literal notranslate"><span class="pre">get_corner()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_dataset"><code class="docutils literal notranslate"><span class="pre">get_dataset()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_device"><code class="docutils literal notranslate"><span class="pre">get_device()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.is_lower_triangular"><code class="docutils literal notranslate"><span class="pre">is_lower_triangular()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.is_square"><code class="docutils literal notranslate"><span class="pre">is_square()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.keep_single_column"><code class="docutils literal notranslate"><span class="pre">keep_single_column()</span></code></a></li>
