@@ -8,13 +8,12 @@ permissions:
 jobs:
   update-doc:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.ref }} # necessary so that we check out the branch, rather than merely detach to the commit; we can't push without a branch name!
           repository: ${{ github.event.pull_request.head.repo.full_name }} # necessary to deal with forks
+          fetch-depth: 0
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
@@ -46,16 +45,8 @@ jobs:
               exit 0
           else
               git commit -m "Regenerate docs"
-              git push
+              if ! git push; then
+                echo 'Unable to push the commit which repairs the docs. This often happens when the pull request is from a fork. Please apply the diff manually (see the "Get necessary docs changes" step, or run `poetry run sphinx-apidoc -f -o docs/source .` to regenerate the docs locally), and commit it in the ordinary way.'
+                exit 1
+              fi
           fi
-
-      - uses: actions/github-script@v3
-        if: ${{ failure() && steps.commit.conclusion == 'failure' }}
-        with:
-          script: |
-            github.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'Auto-generated documentation is now out of sync. Please check the "Get necessary docs changes" step of the failed "Regenerate docs" pipeline to find the diff to apply, or run `poetry run sphinx-apidoc -f -o docs/source .`.',
-            })
