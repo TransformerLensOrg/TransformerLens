@@ -1,0 +1,42 @@
+name: Regenerate docs
+
+on: pull_request
+
+permissions:
+  contents: write
+
+jobs:
+  update-doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.ref }} # necessary so that we check out the branch, rather than merely detach to the commit; we can't push without a branch name!
+          repository: ${{ github.event.pull_request.head.repo.full_name }} # necessary to deal with forks
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.4.0
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: "poetry"
+      - name: Install dependencies
+        run: poetry install --extras docs
+      - name: Regenerate .rst documentation
+        run: poetry run sphinx-apidoc -f -o docs/source .
+      - name: Commit documentation
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add docs/source
+          git diff --cached # for displaying in the GitHub Actions output
+          CHANGED_FILES="$(git diff --cached --name-only)"
+          if [ -z "$CHANGED_FILES" ]; then
+              echo "No changes to docs"
+              exit 0
+          else
+              git commit -m "Regenerate docs"
+              git push
+          fi
