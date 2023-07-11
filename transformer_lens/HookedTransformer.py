@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
-from jaxtyping import Float, Int
+from jaxtyping import Bool, Float, Int
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typeguard import typeguard_ignore
 from typing_extensions import Literal
@@ -284,6 +284,13 @@ class HookedTransformer(HookedRootModule):
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
+            
+        if self.tokenizer.padding_side == "left":
+            left_attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
+        else:
+            # If the padding side is right, we don't need to compute the attention mask.
+            # We separate this case from left padding for computational efficiency.
+            left_attention_mask = None
 
         # If we're doing caching, then we reuse keys and values from previous runs, as that's the only
         # way that past activations will affect the final logits. The cache contains those so we don't
@@ -314,7 +321,7 @@ class HookedTransformer(HookedRootModule):
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         if self.cfg.positional_embedding_type == "standard":
             pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset)
+                self.pos_embed(tokens, pos_offset, left_attention_mask)
             )  # [batch, pos, d_model]
             residual = embed + pos_embed  # [batch, pos, d_model]
             shortformer_pos_embed = None
@@ -322,7 +329,7 @@ class HookedTransformer(HookedRootModule):
             # If we're using shortformer style attention, we don't add the positional embedding to the residual stream.
             # See HookedTransformerConfig for details
             pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset)
+                self.pos_embed(tokens, pos_offset, left_attention_mask)
             )  # [batch, pos, d_model]
             residual = embed
             shortformer_pos_embed = pos_embed
@@ -361,6 +368,7 @@ class HookedTransformer(HookedRootModule):
                 if past_kv_cache is not None
                 else None,  # Cache contains a list of HookedTransformerKeyValueCache objects, one for each block
                 shortformer_pos_embed=shortformer_pos_embed,
+                left_attention_mask=left_attention_mask,
             )  # [batch, pos, d_model]
 
         if stop_at_layer is not None:
@@ -551,7 +559,7 @@ class HookedTransformer(HookedRootModule):
             list,
         ],
         prepend_bos: bool = True,
-    ) -> List[str]:
+    ) -> Union[List[str], List[List[str]]]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt

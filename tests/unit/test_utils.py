@@ -205,3 +205,75 @@ class Test_lower_triangular:
     )
     def test_fail(self, x: torch.Tensor):
         assert not utils.is_lower_triangular(x)
+
+
+class TestGetAttentionMask:
+
+    prompts = [
+        'Hello world!',
+        'How are you today?',
+        'I\'m fine, thank you.',
+        'I am happy.',
+    ]
+
+    # fixtures
+    @pytest.fixture(scope="class", params=["gpt2-small", "facebook/opt-125m"])
+    def model_name(self, request):
+        return request.param
+
+    @pytest.fixture(scope="class")
+    def model(self, model_name):
+        return HookedTransformer.from_pretrained(model_name)
+    
+    # tests
+    @pytest.mark.parametrize("padding_side", ['left', 'right'])
+    def test_get_attention_mask(self, model, padding_side):
+        # setup
+        model.tokenizer.padding_side = padding_side
+        prepend_bos = True
+
+        prompts = self.prompts
+        tokens = model.to_tokens(prompts, prepend_bos=prepend_bos)
+        str_tokens = model.to_str_tokens(prompts, prepend_bos=prepend_bos)
+        print(str_tokens)
+
+        attention_mask = utils.get_attention_mask(
+            model.tokenizer, tokens, prepend_bos=prepend_bos
+        )  # [batch pos]
+        
+        # dimension should be the same
+        assert attention_mask.shape == tokens.shape
+        
+        # number of attended tokens for each sequence
+        # should be the same as the number of 1s in the attention mask for that sequence
+        num_attended_tokens = torch.tensor([len(t) for t in str_tokens], device=attention_mask.device)
+        assert (num_attended_tokens == attention_mask.sum(dim=1)).all()
+        
+        # all the masked tokens should be the padding token
+        assert (tokens[attention_mask == 0] == model.tokenizer.pad_token_id).all()
+
+        non_pad_token_mask = (tokens != model.tokenizer.pad_token_id).int()
+        attended_but_non_pad_mask = attention_mask != non_pad_token_mask
+        if model.tokenizer.bos_token == model.tokenizer.pad_token and prepend_bos:
+            # if bos_token is the same as pad_token and prepend_bos is True,
+            # then there is one attended but non-pad token (bos token) in each sequence
+            assert attended_but_non_pad_mask.sum() == tokens.shape[0]
+        else:
+            # otherwise, there should be no attended but non-pad token
+            assert attended_but_non_pad_mask.sum() == 0
+
+        if padding_side == 'right':
+            # the first token is always attended
+            assert (attention_mask[:, 0] == 1).all()
+            
+            # attended tokens are at the beginning of the sequence
+            for i, num in enumerate(num_attended_tokens.tolist()):
+                assert (attention_mask[i, 0:num] == 1).all()
+
+        else:  # left padding case
+            # the last token is always attended
+            assert (attention_mask[:, -1] == 1).all()
+            
+            # attended tokens are at the end of the sequence
+            for i, num in enumerate(num_attended_tokens.tolist()):
+                assert (attention_mask[i, -num:] == 1).all()

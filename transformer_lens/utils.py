@@ -795,3 +795,53 @@ def get_device():
             return torch.device("mps")
 
     return torch.device("cpu")
+
+
+def get_attention_mask(
+    tokenizer,
+    tokens: Int[torch.Tensor, "batch pos"],
+    prepend_bos: bool = True,
+) -> Int[torch.Tensor, "batch pos"]:
+    """
+    This method calculates an attention mask for a given sequence of tokens when left padding is used. The attention
+    mask is a binary tensor where each element is 1 if the corresponding token is not a pad token and 0 otherwise. In
+    the special case where the BOS token is the same as the pad token and bos token is prepended to process the tokens,
+    this method ensures that the prepended BOS (pad) token also gets a 1 in the attention mask.
+    Gotcha: Make sure that the passed prepend_bos is the same as the one used to generate the tokens!
+    """
+    # Initialize the attention mask to be 1 wherever the token is not a pad token
+    attetnion_mask = tokens.ne(tokenizer.pad_token_id)
+
+    # Handle the special case where the BOS token is the same as the pad token
+    if tokenizer.bos_token_id == tokenizer.pad_token_id and prepend_bos:
+        if tokenizer.padding_side == 'right':
+            # Set the first token to 1 in the attention mask
+            attetnion_mask[:, 0] = True
+
+        else:
+            is_pad_token = 1 - attetnion_mask.int()
+            
+            # Find the position of the pad token used as the BOS token and thus should get attended
+            pad_bos_positions = is_pad_token.cumsum(dim=-1).argmax(dim=-1)
+            
+            # Set the corresponding position in the attention mask to 1, to ensure that the BOS token is not treated as a pad token
+            attetnion_mask[torch.arange(attetnion_mask.shape[0]), pad_bos_positions] = True
+
+    return attetnion_mask.int()
+
+
+def get_causal_mask_for_left_padding(
+        left_attention_mask: Int[torch.Tensor, "batch pos"],
+    ) -> torch.Tensor:
+
+    mask = einops.repeat(torch.zeros_like(left_attention_mask),
+                         'b pos1 -> b pos1 pos2',
+                         pos2=left_attention_mask.shape[1]).bool().clone()
+    num_attended_tokens_list = (left_attention_mask).sum(-1).tolist()
+
+    for i, num_attended_tokens in enumerate(num_attended_tokens_list):
+        mask[i, -num_attended_tokens:, -num_attended_tokens:] = torch.tril(
+            torch.ones((num_attended_tokens, num_attended_tokens)).bool()
+        )
+        
+    return mask
