@@ -119,16 +119,21 @@ def evaluate_on_dataset(model, data_loader, truncate=100, device="cuda"):
 # %%
 @torch.inference_mode()
 def induction_loss(
-    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=True, device="cuda"
+    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=None, device="cuda"
 ):
     """
     Generates a batch of random sequences repeated twice, and measures model performance on the second half. Tests whether a model has induction heads.
 
-    By default, prepends a beginning of string token (prepend_bos flag), which is useful to give models a resting position, and sometimes models were trained with this.
+    By default, prepends a beginning of string token (prepend_bos flag defaults to None, implying usage of self.prepend_bos whose default is True set
+    by set_prepend_bos() method), which is useful to give models a resting position, and sometimes models were trained with this.
     """
     # Make the repeated sequence
     first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).to(device)
     repeated_tokens = einops.repeat(first_half_tokens, "b p -> b (2 p)")
+    
+    # Use the provided prepend_bos as an override if it's not None;
+    # otherwise use self.prepend_bos (defaults to True) set by set_prepend_bos().
+    prepend_bos = utils.override_or_use_global_flag(model.prepend_bos, override=prepend_bos)
 
     # Prepend a Beginning Of String token
     if prepend_bos:
