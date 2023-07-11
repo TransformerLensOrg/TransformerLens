@@ -8,6 +8,8 @@ permissions:
 jobs:
   update-doc:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v3
         with:
@@ -24,14 +26,20 @@ jobs:
           cache: "poetry"
       - name: Install dependencies
         run: poetry install --extras docs
+
       - name: Regenerate .rst documentation
         run: poetry run sphinx-apidoc -f -o docs/source .
-      - name: Commit documentation
+
+      - name: Get necessary docs changes
         run: |
           git config --global user.name 'github-actions'
           git config --global user.email 'github-actions@github.com'
           git add docs/source
-          git diff --cached # for displaying in the GitHub Actions output
+          git diff --cached  # for displaying in the GitHub Actions output
+
+      - name: Commit documentation
+        id: commit
+        run: |
           CHANGED_FILES="$(git diff --cached --name-only)"
           if [ -z "$CHANGED_FILES" ]; then
               echo "No changes to docs"
@@ -40,3 +48,14 @@ jobs:
               git commit -m "Regenerate docs"
               git push
           fi
+
+      - uses: actions/github-script@v3
+        if: ${{ failure() && steps.commit.conclusion == 'failure' }}
+        with:
+          script: |
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'Auto-generated documentation is now out of sync. Please check the "Get necessary docs changes" step of the failed "Regenerate docs" pipeline to find the diff to apply, or run `poetry run sphinx-apidoc -f -o docs/source .`.',
+            })
