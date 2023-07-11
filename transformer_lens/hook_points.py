@@ -382,9 +382,11 @@ class HookedRootModule(nn.Module):
         if names_filter is None:
             names_filter = lambda name: True
         elif type(names_filter) == str:
-            names_filter = lambda name: name == names_filter
+            filter_str = names_filter
+            names_filter = lambda name: name == filter_str
         elif type(names_filter) == list:
-            names_filter = lambda name: name in names_filter
+            filter_list = names_filter
+            names_filter = lambda name: name in filter_list
 
         self.is_caching = True
 
@@ -488,10 +490,11 @@ class HookedRootModule(nn.Module):
         if names_filter is None:
             names_filter = lambda name: True
         elif type(names_filter) == str:
-            names_filter = lambda name: name == names_filter
+            filter_str = names_filter
+            names_filter = lambda name: name == filter_str
         elif type(names_filter) == list:
-            names_filter = lambda name: name in names_filter
-
+            filter_list = names_filter
+            names_filter = lambda name: name in filter_list
         self.is_caching = True
 
         def save_hook(tensor, hook):

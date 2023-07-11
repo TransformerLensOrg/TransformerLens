@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 
+from transformer_lens import utils
+
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
 
@@ -41,6 +43,8 @@ class HookedTransformerConfig:
             for large models, so defaults to False
         use_split_qkv_input (bool): whether to explicitly calculate the input of
             each head separately, with a hook. Defaults to false to save memory.
+        use_hook_mlp_in (bool): whether to use a hook to get the input to the
+            MLP layer. Defaults to false to save memory.
         use_attn_scale (bool): whether to scale the attention weights by
             1/sqrt(d_head)
         model_name (str): the name of the model, used to load
@@ -140,6 +144,7 @@ class HookedTransformerConfig:
     use_attn_result: bool = False
     use_attn_scale: bool = True
     use_split_qkv_input: bool = False
+    use_hook_mlp_in: bool = False
     use_local_attn: bool = False
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
@@ -217,7 +222,7 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
 
         if self.device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.device = utils.get_device()
 
         if self.n_devices > 1:
             assert (

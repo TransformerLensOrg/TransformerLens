@@ -55,11 +55,8 @@ def download_file_from_hf(
         **select_compatible_kwargs(kwargs, hf_hub_download),
     )
 
-    # Load to the CPU device if CUDA is not available
-    map_location = None if torch.cuda.is_available() else torch.device("cpu")
-
     if file_path.endswith(".pth") or force_is_torch:
-        return torch.load(file_path, map_location=map_location)
+        return torch.load(file_path, map_location="cpu")
     elif file_path.endswith(".json"):
         return json.load(open(file_path, "r"))
     else:
@@ -786,3 +783,15 @@ def check_structure(
         print(f"row mismatch: {row_mismatch}")
     elif col_mismatch:
         print(f"column mismatch: {col_mismatch}")
+
+
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        # Parse the PyTorch version to check if it's below version 2.0
+        major_version = int(torch.__version__.split(".")[0])
+        if major_version >= 2:
+            return torch.device("mps")
+
+    return torch.device("cpu")

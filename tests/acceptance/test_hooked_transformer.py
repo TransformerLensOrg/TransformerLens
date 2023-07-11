@@ -6,6 +6,7 @@ import torch
 from transformers import AutoConfig
 
 from transformer_lens import HookedTransformer
+from transformer_lens.components import LayerNormPre
 from transformer_lens.loading_from_pretrained import OFFICIAL_MODEL_NAMES
 from transformer_lens.utils import clear_huggingface_cache
 
@@ -135,10 +136,23 @@ def test_from_pretrained_no_processing(name, expected_loss):
     assert (reff_loss.item() - expected_loss) < 4e-5
 
 
+@pytest.mark.skipif(
+    torch.backends.mps.is_available(),
+    reason="bfloat16 unsupported by MPS: https://github.com/pytorch/pytorch/issues/78168",
+)
 def test_from_pretrained_dtype():
     """Check that the parameter `torch_dtype` works"""
     model = HookedTransformer.from_pretrained("solu-1l", torch_dtype=torch.bfloat16)
     assert model.W_K.dtype == torch.bfloat16
+
+
+def test_process_weights_inplace():
+    """Check that process_weights_ works"""
+    model = HookedTransformer.from_pretrained_no_processing("gpt2-small")
+    model.process_weights_()
+    loss = model.forward(text, return_type="loss")
+    assert (loss.item() - loss_store["gpt2-small"]) < 4e-5
+    assert isinstance(model.ln_final, LayerNormPre)
 
 
 def test_from_pretrained_revision():

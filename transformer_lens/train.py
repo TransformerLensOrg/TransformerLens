@@ -7,7 +7,7 @@ import wandb
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 
-from transformer_lens import HookedTransformer
+from transformer_lens import HookedTransformer, utils
 
 
 @dataclass
@@ -74,7 +74,7 @@ def train(
         wandb.init(project=config.wandb_project_name, config=vars(config))
 
     if config.device is None:
-        config.device = "cuda" if torch.cuda.is_available() else "cpu"
+        config.device = utils.get_device()
 
     if config.optimizer_name in ["Adam", "AdamW"]:
         # Weight decay in Adam is implemented badly, so use AdamW instead (see PyTorch AdamW docs)
