@@ -162,7 +162,7 @@ class HookedTransformer(HookedRootModule):
         # Gives each module a parameter with its name (relative to this root module)
         # Needed for HookPoints to work
         self.setup()
-        
+
         # Prepend the BOS token to the input as default when the input is a string.
         # Even for models not explicitly trained with this, heads often use the first position as a resting position
         # and accordingly lose information from the first token, so this empirically seems to give better results.
@@ -263,7 +263,7 @@ class HookedTransformer(HookedRootModule):
             - position-1 because we're predicting the next token, and there's no specified next token for the final
             token. Defaults to False.
         prepend_bos Optional[bool]: Whether to prepend the BOS token to the input (Only applies when input is a string).
-            Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()). 
+            Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()).
             Pass True or False to override the default.
         stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer. Exclusive - ie,
         stop_at_layer = 0 will only run the embedding layer, stop_at_layer = 1 will run the embedding layer and the
@@ -277,7 +277,9 @@ class HookedTransformer(HookedRootModule):
 
         # Use the provided prepend_bos as an override if it's not None;
         # otherwise use self.prepend_bos (defaults to True) set by set_prepend_bos().
-        prepend_bos = utils.override_or_use_global_flag(self.prepend_bos, override=prepend_bos)
+        prepend_bos = utils.override_or_use_global_flag(
+            self.prepend_bos, override=prepend_bos
+        )
 
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
@@ -468,7 +470,7 @@ class HookedTransformer(HookedRootModule):
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
-            
+
     def set_prepend_bos(self, prepend_bos: bool):
         """
         Set the value of prepend_bos to control whether to prepend the BOS token to the methods that process input text
@@ -493,7 +495,7 @@ class HookedTransformer(HookedRootModule):
         Args:
             input (Union[str, List[str]]). The input to tokenize
             prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
-                Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()). 
+                Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()).
                 Pass True or False to override the default.
             move_to_device (bool): Whether to move the output tensor of tokens to the device the model lives on.
             Defaults to True
@@ -509,10 +511,12 @@ class HookedTransformer(HookedRootModule):
         capitalized. It's easy to shoot yourself in the foot here if you're not careful!
         """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
-        
+
         # Use the provided prepend_bos as an override if it's not None;
         # otherwise use self.prepend_bos (defaults to True) set by set_prepend_bos().
-        prepend_bos = utils.override_or_use_global_flag(self.prepend_bos, override=prepend_bos)
+        prepend_bos = utils.override_or_use_global_flag(
+            self.prepend_bos, override=prepend_bos
+        )
 
         if prepend_bos:
             if isinstance(input, str):
@@ -595,7 +599,7 @@ class HookedTransformer(HookedRootModule):
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should
             be a tensor of shape [pos] or [1, pos]
             prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
-                Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()). 
+                Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()).
                 Pass True or False to override the default.
 
         Returns:
@@ -678,7 +682,7 @@ class HookedTransformer(HookedRootModule):
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last".
                 Defaults to "first".
             prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
-                Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()). 
+                Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()).
                 Pass True or False to override the default.
         """
         if isinstance(input, str):
@@ -1429,7 +1433,7 @@ class HookedTransformer(HookedRootModule):
             freq_penalty (float): Frequency penalty for sampling - how much to penalise previous tokens. Higher values will make the model more random
             use_past_kv_cache (bool): If True, create and use cache to speed up generation
             prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
-                Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()). 
+                Defaults to None, implying usage of self.prepend_bos (default is True set by set_prepend_bos()).
                 Pass True or False to override the default.
             return_type (str, *optional*): The type of the output to return - either a string (str), a tensor of tokens (tensor) or whatever the format of the input was (input).
             verbose (bool): If True, show tqdm progress bars for generation
@@ -1518,7 +1522,9 @@ class HookedTransformer(HookedRootModule):
         if return_type == "str":
             # Use the provided prepend_bos as an override if it's not None;
             # otherwise use self.prepend_bos (defaults to True) set by set_prepend_bos().
-            prepend_bos = utils.override_or_use_global_flag(self.prepend_bos, override=prepend_bos)
+            prepend_bos = utils.override_or_use_global_flag(
+                self.prepend_bos, override=prepend_bos
+            )
 
             if prepend_bos:
                 # If we prepended a BOS token, remove it when returning output.

@@ -130,10 +130,12 @@ def induction_loss(
     # Make the repeated sequence
     first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).to(device)
     repeated_tokens = einops.repeat(first_half_tokens, "b p -> b (2 p)")
-    
+
     # Use the provided prepend_bos as an override if it's not None;
     # otherwise use self.prepend_bos (defaults to True) set by set_prepend_bos().
-    prepend_bos = utils.override_or_use_global_flag(model.prepend_bos, override=prepend_bos)
+    prepend_bos = utils.override_or_use_global_flag(
+        model.prepend_bos, override=prepend_bos
+    )
 
     # Prepend a Beginning Of String token
     if prepend_bos:

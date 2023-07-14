@@ -798,9 +798,9 @@ def get_device():
 
 
 def override_or_use_global_flag(
-        global_flag: bool,
-        override: Optional[bool] = None,
-    ) -> bool:
+    global_flag: bool,
+    override: Optional[bool] = None,
+) -> bool:
     """
     Determines which flag to return based on whether an overriding flag is provided.
     If a not-None overriding flag is provided, it is returned.
