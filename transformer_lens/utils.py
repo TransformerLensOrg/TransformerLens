@@ -797,8 +797,8 @@ def get_device():
     return torch.device("cpu")
 
 
-def override_or_use_global_flag(
-    global_flag: bool,
+def override_or_use_default_flag(
+    default_flag: bool,
     override: Optional[bool] = None,
 ) -> bool:
     """
@@ -806,4 +806,4 @@ def override_or_use_global_flag(
     If a not-None overriding flag is provided, it is returned.
     Otherwise, the global flag is returned.
     """
-    return override if override is not None else global_flag
+    return override if override is not None else default_flag
