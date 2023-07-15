@@ -205,7 +205,7 @@ class Test_lower_triangular:
     )
     def test_fail(self, x: torch.Tensor):
         assert not utils.is_lower_triangular(x)
-        
+
 
 def test_override_or_use_default_flag():
     # Case when override is not None
@@ -301,14 +301,15 @@ class TestAttentionMask:
             for i, num in enumerate(intended_num_attended_tokens.tolist()):
                 assert (attention_mask[i, -num:] == 1).all()
 
-    def test_get_causal_mask_for_left_padding(self, model):
+    @pytest.mark.parametrize("prepend_bos", [True, False])
+    def test_get_causal_mask_for_left_padding(self, model, prepend_bos):
         model.tokenizer.padding_side = "left"
 
         prompts = self.prompts
-        tokens = model.to_tokens(prompts)
+        tokens = model.to_tokens(prompts, prepend_bos=prepend_bos)
 
         left_attention_mask = utils.get_attention_mask(
-            model.tokenizer, tokens
+            model.tokenizer, tokens, prepend_bos=prepend_bos
         )  # [batch pos]
 
         final_mask = utils.get_causal_mask_for_left_padding(left_attention_mask)
@@ -316,7 +317,6 @@ class TestAttentionMask:
         pad_token_mask = ~left_attention_mask.bool()
         assert final_mask[pad_token_mask].sum() == 0
 
-        causal_pad_mask = (
-            ~model.blocks[0].attn.mask[: tokens.shape[1], : tokens.shape[1]].bool()
-        )
-        assert final_mask[causal_pad_mask].sum() == 0
+        attn = model.blocks[0].attn
+        causal_pad_mask = ~attn.mask[: tokens.shape[1], : tokens.shape[1]]
+        assert final_mask[:, causal_pad_mask].sum() == 0

@@ -53,16 +53,17 @@ class TestPosEmbedWithLeftPadding:
 
     # tests
     @pytest.mark.parametrize("padding_side", ["left", "right"])
-    def test_pos_embed(self, model, padding_side):
+    @pytest.mark.parametrize("prepend_bos", [True, False])
+    def test_pos_embed(self, model, padding_side, prepend_bos):
         # setup
         model.tokenizer.padding_side = padding_side
 
         prompts = self.prompts
-        tokens = model.to_tokens(prompts)
-        str_tokens = model.to_str_tokens(prompts)
+        tokens = model.to_tokens(prompts, prepend_bos=prepend_bos)
+        str_tokens = model.to_str_tokens(prompts, prepend_bos=prepend_bos)
 
         left_attention_mask = utils.get_attention_mask(
-            model.tokenizer, tokens
+            model.tokenizer, tokens, prepend_bos
         )  # [batch pos]
 
         output_pos_embed = model.pos_embed(

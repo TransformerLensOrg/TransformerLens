@@ -812,7 +812,7 @@ def override_or_use_default_flag(
 def get_attention_mask(
     tokenizer,
     tokens: Int[torch.Tensor, "batch pos"],
-    prepend_bos: bool = True,
+    prepend_bos: bool,
 ) -> Int[torch.Tensor, "batch pos"]:
     """
     This method calculates an attention mask for a given sequence of tokens when left padding is used. The attention

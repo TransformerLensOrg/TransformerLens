@@ -296,13 +296,14 @@ class HookedTransformer(HookedRootModule):
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
-        if self.tokenizer.padding_side == "left":
+        if self.tokenizer and self.tokenizer.padding_side == "left":
             # If the padding side is left, we need to compute the attention mask for the adjustment of
             # absolute positional embeddings and attention masking so that the pad tokens are not attended.
             left_attention_mask = utils.get_attention_mask(
                 self.tokenizer, tokens, prepend_bos
             )
         else:
+            # If tokenizer is not set, we assume that the input is right-padded.
             # If the padding side is right, we don't need to compute the attention mask.
             # We separate this case from left padding for computational efficiency.
             left_attention_mask = None
