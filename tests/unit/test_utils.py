@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 import torch
-import einops
 
 import transformer_lens.utils as utils
 from transformer_lens import HookedTransformer
@@ -209,12 +208,11 @@ class Test_lower_triangular:
 
 
 class TestAttentionMask:
-
     prompts = [
-        'Hello world!',
-        'How are you today?',
-        'I\'m fine, thank you.',
-        'I am happy.',
+        "Hello world!",
+        "How are you today?",
+        "I'm fine, thank you.",
+        "I am happy.",
     ]
 
     # fixtures
@@ -225,9 +223,9 @@ class TestAttentionMask:
     @pytest.fixture(scope="class")
     def model(self, model_name):
         return HookedTransformer.from_pretrained(model_name)
-    
+
     # tests
-    @pytest.mark.parametrize("padding_side", ['left', 'right'])
+    @pytest.mark.parametrize("padding_side", ["left", "right"])
     @pytest.mark.parametrize("prepend_bos", [True, False])
     def test_get_attention_mask(self, model, padding_side, prepend_bos):
         # setup
@@ -240,16 +238,18 @@ class TestAttentionMask:
         attention_mask = utils.get_attention_mask(
             model.tokenizer, tokens, prepend_bos=prepend_bos
         )  # [batch pos]
-        
+
         # dimension should be the same
         assert attention_mask.shape == tokens.shape
-        
+
         # number of attended tokens for each sequence
         # should be the same as the number of 1s in the attention mask for that sequence
         str_tokens = model.to_str_tokens(prompts, prepend_bos=prepend_bos)
-        intended_num_attended_tokens = torch.tensor([len(t) for t in str_tokens], device=attention_mask.device)
+        intended_num_attended_tokens = torch.tensor(
+            [len(t) for t in str_tokens], device=attention_mask.device
+        )
         assert (intended_num_attended_tokens == attention_mask.sum(dim=1)).all()
-        
+
         # all the masked tokens should be the padding token
         assert (tokens[attention_mask == 0] == model.tokenizer.pad_token_id).all()
 
@@ -263,10 +263,10 @@ class TestAttentionMask:
             # otherwise, there should be no attended but non-pad token
             assert attended_but_non_pad_mask.sum() == 0
 
-        if padding_side == 'right':
+        if padding_side == "right":
             # the first token is always attended
             assert (attention_mask[:, 0] == 1).all()
-            
+
             # attended tokens are at the beginning of the sequence
             for i, num in enumerate(intended_num_attended_tokens.tolist()):
                 assert (attention_mask[i, 0:num] == 1).all()
@@ -274,11 +274,11 @@ class TestAttentionMask:
         else:  # left padding case
             # the last token is always attended
             assert (attention_mask[:, -1] == 1).all()
-            
+
             # attended tokens are at the end of the sequence
             for i, num in enumerate(intended_num_attended_tokens.tolist()):
                 assert (attention_mask[i, -num:] == 1).all()
-    
+
     def test_get_causal_mask_for_left_padding(self, model):
         model.tokenizer.padding_side = "left"
 
@@ -288,16 +288,13 @@ class TestAttentionMask:
         left_attention_mask = utils.get_attention_mask(
             model.tokenizer, tokens
         )  # [batch pos]
-        
+
         final_mask = utils.get_causal_mask_for_left_padding(left_attention_mask)
-        
+
         pad_token_mask = ~left_attention_mask.bool()
         assert final_mask[pad_token_mask].sum() == 0
-        
-        causal_pad_mask = ~model.blocks[0].attn.mask[:tokens.shape[1], :tokens.shape[1]].bool()
+
+        causal_pad_mask = (
+            ~model.blocks[0].attn.mask[: tokens.shape[1], : tokens.shape[1]].bool()
+        )
         assert final_mask[causal_pad_mask].sum() == 0
-
-
-
-        
-        

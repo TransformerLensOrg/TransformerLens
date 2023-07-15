@@ -15,7 +15,12 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import Slice, gelu_fast, gelu_new, solu, get_causal_mask_for_left_padding
+from transformer_lens.utils import (
+    gelu_fast,
+    gelu_new,
+    get_causal_mask_for_left_padding,
+    solu,
+)
 
 
 # Embed & Unembed
@@ -101,19 +106,22 @@ class PosEmbed(nn.Module):
             batch_pos_embed = einops.repeat(
                 pos_embed, "pos d_model -> batch pos d_model", batch=tokens.size(0)
             )
-        
+
         else:
             # Left padding case
             # Separated from the right padding case for computational efficiency
             # (this code is a bit slower than the code above)
             position_ids = einops.repeat(
                 torch.arange(tokens_length, device=tokens.device),
-                "tokens_length -> tokens_length batch", batch=tokens.size(0)
+                "tokens_length -> tokens_length batch",
+                batch=tokens.size(0),
             )  # [tokens_length, batch]
 
             # shift the position ids so that the id at the the first attended token position becomes zero.
             # The position ids of the prepending pad tokens are shifted to -1.
-            shifted_position_ids = left_attention_mask.T.cumsum(dim=0) - 1  # [tokens_length, batch]
+            shifted_position_ids = (
+                left_attention_mask.T.cumsum(dim=0) - 1
+            )  # [tokens_length, batch]
 
             # Set the position ids of all prepending pad tokens to an arbitrary number (zero here)
             # just to avoid indexing errors.
@@ -122,13 +130,17 @@ class PosEmbed(nn.Module):
                 past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
             ]  # [pos, batch]
             pos_embed = self.W_pos[offsetted_position_ids]  # [pos, batch, d_model]
-            
+
             # Set the position embeddings to 0 for pad tokens
             padding_mask = ~left_attention_mask.T.bool()  # [tokens_length, batch]
             offsetted_padding_mask = padding_mask[
                 past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
-            ].unsqueeze(-1)  # [pos, batch, 1]
-            batch_pos_embed = torch.where(offsetted_padding_mask, 0, pos_embed).transpose(0, 1)
+            ].unsqueeze(
+                -1
+            )  # [pos, batch, 1]
+            batch_pos_embed = torch.where(
+                offsetted_padding_mask, 0, pos_embed
+            ).transpose(0, 1)
 
         return batch_pos_embed.clone()
 
@@ -619,7 +631,7 @@ class Attention(nn.Module):
                 + self.b_O
             )  # [batch, pos, d_model]
         return out
-    
+
     def apply_causal_mask(
         self,
         attn_scores: Float[
@@ -637,7 +649,7 @@ class Attention(nn.Module):
         assert (
             query_ctx_length + past_kv_pos_offset == key_ctx_length
         ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
-        
+
         if left_attention_mask is None:
             # Right padding case
             # Apply only a causal mask to the attention scores
@@ -650,7 +662,10 @@ class Attention(nn.Module):
 
         masked_attn_scores = torch.where(
             final_mask[
-                :, :, past_kv_pos_offset : past_kv_pos_offset + query_ctx_length, :key_ctx_length,
+                :,
+                :,
+                past_kv_pos_offset : past_kv_pos_offset + query_ctx_length,
+                :key_ctx_length,
             ],
             attn_scores,
             self.IGNORE,

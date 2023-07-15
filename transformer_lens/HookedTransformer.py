@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
-from jaxtyping import Bool, Float, Int
+from jaxtyping import Float, Int
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typeguard import typeguard_ignore
 from typing_extensions import Literal
@@ -284,11 +284,13 @@ class HookedTransformer(HookedRootModule):
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
-            
+
         if self.tokenizer.padding_side == "left":
             # If the padding side is left, we need to compute the attention mask for the adjustment of
             # absolute positional embeddings and attention masking so that the pad tokens are not attended.
-            left_attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
+            left_attention_mask = utils.get_attention_mask(
+                self.tokenizer, tokens, prepend_bos
+            )
         else:
             # If the padding side is right, we don't need to compute the attention mask.
             # We separate this case from left padding for computational efficiency.

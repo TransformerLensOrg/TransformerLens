@@ -814,47 +814,53 @@ def get_attention_mask(
 
     # Handle the special case where the BOS token is the same as the pad token
     if tokenizer.bos_token_id == tokenizer.pad_token_id and prepend_bos:
-        if tokenizer.padding_side == 'right':
+        if tokenizer.padding_side == "right":
             # Set the first token to 1 in the attention mask
             attetnion_mask[:, 0] = True
 
         else:
             is_pad_token = 1 - attetnion_mask.int()
-            
+
             # Find the position of the pad token used as the BOS token and thus should get attended
             pad_bos_positions = is_pad_token.cumsum(dim=-1).argmax(dim=-1)
-            
+
             # Set the corresponding position in the attention mask to 1, to ensure that the BOS token is not treated as a pad token
-            attetnion_mask[torch.arange(attetnion_mask.shape[0]), pad_bos_positions] = True
+            attetnion_mask[
+                torch.arange(attetnion_mask.shape[0]), pad_bos_positions
+            ] = True
 
     return attetnion_mask.int()
 
 
 def get_causal_mask_for_left_padding(
     left_attention_mask: torch.Tensor,
-) -> torch.Tensor:  
+) -> torch.Tensor:
     """
     Generate a causal mask for left padded sequences.
-    
+
     The generated mask will have dimensions [batch_size, pos, pos], and its purpose is to prevent each token from
-    attending to future tokens in the sequence. Additionally, this mask prevents each token from attending to 
+    attending to future tokens in the sequence. Additionally, this mask prevents each token from attending to
     padding tokens in the past positions for left-padded sequences.
 
     Args:
-        left_attention_mask (torch.Tensor): The left attention mask, indicating which tokens are 
+        left_attention_mask (torch.Tensor): The left attention mask, indicating which tokens are
             not padding tokens. Shape: [batch_size, pos]
 
     Returns:
         torch.Tensor: The causal attention mask for left padded sequences. Shape: [batch_size, pos, pos]
     """
-    
+
     # Initialize a mask with zeros and the same size as the left attention mask
     # The mask is 3D, with the same number of positions in both the second and third dimensions
-    mask = einops.repeat(
-        torch.zeros_like(left_attention_mask), 
-        'b pos1 -> b pos1 pos2', 
-        pos2=left_attention_mask.shape[1]
-    ).bool().clone()
+    mask = (
+        einops.repeat(
+            torch.zeros_like(left_attention_mask),
+            "b pos1 -> b pos1 pos2",
+            pos2=left_attention_mask.shape[1],
+        )
+        .bool()
+        .clone()
+    )
 
     # Compute the number of attended tokens (non-padding tokens) in each sequence
     num_attended_tokens_list = left_attention_mask.sum(-1).tolist()
@@ -866,5 +872,5 @@ def get_causal_mask_for_left_padding(
         mask[i, -num_attended_tokens:, -num_attended_tokens:] = torch.tril(
             torch.ones((num_attended_tokens, num_attended_tokens)).bool()
         )
-    
+
     return mask
