@@ -6,6 +6,7 @@ from transformer_lens import HookedTransformer
 class TestPrependBos:
     prompt = "Hello world!"
     
+    # helper functions
     def get_num_tokens_in_prompt(self, model, prompt, prepend_bos):
         tokenizer = model.tokenizer
 
@@ -30,15 +31,21 @@ class TestPrependBos:
     def check_tokens_length(self, model, logits, str_tokens, tokens, intended_prepend_bos):
         expected_num_tokens = self.get_num_tokens_in_prompt(model, self.prompt, intended_prepend_bos)
         assert logits.shape[1] == len(str_tokens) == tokens.shape[1] == expected_num_tokens
+        
+    # fixtures
+    @pytest.fixture(scope="class", params=["gpt2", "facebook/opt-125m"])
+    def model_name(self, request):
+        return request.param
 
     @pytest.fixture(scope="class")
-    def model(self):
-        return HookedTransformer.from_pretrained("gpt2")
+    def model(self, model_name):
+        return HookedTransformer.from_pretrained(model_name)
 
-    def test_default_prepend_bos(self):
+    # tests
+    def test_default_prepend_bos(self, model_name):
         intended_prepend_bos = True
 
-        model = HookedTransformer.from_pretrained("gpt2")
+        model = HookedTransformer.from_pretrained(model_name)
         assert model.prepend_bos == intended_prepend_bos, "Default prepend_bos should be True"
 
         logits = model(self.prompt)  # [batch pos d_vocab]
@@ -76,8 +83,8 @@ class TestPrependBos:
             self.check_first_token(model, str_tokens, tokens, intended_prepend_bos)
             self.check_tokens_length(model, logits, str_tokens, tokens, intended_prepend_bos)
 
-    def test_prepend_bos_with_get_token_position(self):
-        model = HookedTransformer.from_pretrained("gpt2")
+    def test_prepend_bos_with_get_token_position(self, model_name):
+        model = HookedTransformer.from_pretrained(model_name)
 
         bos_position = model.get_token_position(
             model.tokenizer.bos_token_id, self.prompt
