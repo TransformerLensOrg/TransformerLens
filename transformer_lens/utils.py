@@ -489,7 +489,7 @@ class Slice:
 
 def get_act_name(
     name: str,
-    layer: Optional[int] = None,
+    layer: Optional[Union[int, str]] = None,
     layer_type: Optional[str] = None,
 ):
     """
@@ -831,17 +831,40 @@ def get_attention_mask(
 
 
 def get_causal_mask_for_left_padding(
-        left_attention_mask: Int[torch.Tensor, "batch pos"],
-    ) -> torch.Tensor:
+    left_attention_mask: torch.Tensor,
+) -> torch.Tensor:  
+    """
+    Generate a causal mask for left padded sequences.
+    
+    The generated mask will have dimensions [batch_size, pos, pos], and its purpose is to prevent each token from
+    attending to future tokens in the sequence. Additionally, this mask prevents each token from attending to 
+    padding tokens in the past positions for left-padded sequences.
 
-    mask = einops.repeat(torch.zeros_like(left_attention_mask),
-                         'b pos1 -> b pos1 pos2',
-                         pos2=left_attention_mask.shape[1]).bool().clone()
-    num_attended_tokens_list = (left_attention_mask).sum(-1).tolist()
+    Args:
+        left_attention_mask (torch.Tensor): The left attention mask, indicating which tokens are 
+            not padding tokens. Shape: [batch_size, pos]
 
+    Returns:
+        torch.Tensor: The causal attention mask for left padded sequences. Shape: [batch_size, pos, pos]
+    """
+    
+    # Initialize a mask with zeros and the same size as the left attention mask
+    # The mask is 3D, with the same number of positions in both the second and third dimensions
+    mask = einops.repeat(
+        torch.zeros_like(left_attention_mask), 
+        'b pos1 -> b pos1 pos2', 
+        pos2=left_attention_mask.shape[1]
+    ).bool().clone()
+
+    # Compute the number of attended tokens (non-padding tokens) in each sequence
+    num_attended_tokens_list = left_attention_mask.sum(-1).tolist()
+
+    # For each sequence in the batch...
     for i, num_attended_tokens in enumerate(num_attended_tokens_list):
+        # ...set the lower triangular part of the last num_attended_tokens positions to 1,
+        # preventing each token from attending to padding tokens in the past positions
         mask[i, -num_attended_tokens:, -num_attended_tokens:] = torch.tril(
             torch.ones((num_attended_tokens, num_attended_tokens)).bool()
         )
-        
+    
     return mask
