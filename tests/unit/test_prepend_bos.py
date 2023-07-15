@@ -8,10 +8,10 @@ class TestPrependBos:
 
     @pytest.fixture(scope="class")
     def model(self):
-        return HookedTransformer.from_pretrained("gpt2-small")
+        return HookedTransformer.from_pretrained("gpt2")
 
     def test_default_prepend_bos_value(self):
-        model = HookedTransformer.from_pretrained("gpt2-small")
+        model = HookedTransformer.from_pretrained("gpt2")
         assert model.prepend_bos == True, "Default prepend_bos should be True"
 
     def test_set_prepend_bos(self, model):
@@ -19,7 +19,7 @@ class TestPrependBos:
         assert model.prepend_bos == False, "prepend_bos should be set to False"
 
     def test_default_prepend_bos_at_method_level(self):
-        model = HookedTransformer.from_pretrained("gpt2-small")
+        model = HookedTransformer.from_pretrained("gpt2")
 
         logits = model(self.prompt)  # [batch pos d_vocab]
         str_tokens = model.to_str_tokens(self.prompt)
@@ -53,7 +53,7 @@ class TestPrependBos:
                 assert logits.shape[1] == len(str_tokens) == tokens.shape[1]
 
     def test_set_prepend_bos_with_get_token_position(self):
-        model = HookedTransformer.from_pretrained("gpt2-small")
+        model = HookedTransformer.from_pretrained("gpt2")
 
         bos_position = model.get_token_position(
             model.tokenizer.bos_token_id, self.prompt
