@@ -166,7 +166,7 @@ class HookedTransformer(HookedRootModule):
         # Prepend the BOS token to the input as default when the input is a string.
         # Even for models not explicitly trained with this, heads often use the first position as a resting position
         # and accordingly lose information from the first token, so this empirically seems to give better results.
-        self.set_default_prepend_bos(True)
+        self.set_default_prepend_bos(self.cfg.default_prepend_bos)
 
     def check_hooks_to_add(
         self,
@@ -471,15 +471,13 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
-    def set_default_prepend_bos(self, prepend_bos: bool):
+    def set_default_prepend_bos(self, default_prepend_bos: bool):
         """
-        Set the value of prepend_bos to control whether to prepend the BOS token to the methods that process input text
-        to tokenize. Only applies when input is a string. Default value of prepend_bos is set to True - even for models
-        not explicitly trained with this, heads often use the first position as a resting position and accordingly lose
-        information from the first token, so this empirically seems to give better results. Call set_default_prepend_bos(False)
-        to disable this behavior.
+        Set the value of self.prepend_bos which is used to control the default behavior of whether to prepend
+        the BOS token to the methods that process input text to tokenize (only when input is a string).
+        This default value can overriden by passing prepend_bos=True or prepend_bos=False to the methods.
         """
-        self.prepend_bos = prepend_bos
+        self.prepend_bos = default_prepend_bos
 
     def to_tokens(
         self,
