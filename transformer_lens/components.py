@@ -111,11 +111,6 @@ class PosEmbed(nn.Module):
             # Left padding case
             # Separated from the right padding case for computational efficiency
             # (this code is a bit slower than the code above)
-            position_ids = einops.repeat(
-                torch.arange(tokens_length, device=tokens.device),
-                "tokens_length -> tokens_length batch",
-                batch=tokens.size(0),
-            )  # [tokens_length, batch]
 
             # shift the position ids so that the id at the the first attended token position becomes zero.
             # The position ids of the prepending pad tokens are shifted to -1.
