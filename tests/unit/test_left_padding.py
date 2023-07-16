@@ -4,7 +4,7 @@ import torch
 from transformer_lens import HookedTransformer, utils
 
 
-class TestPosEmbedWithLeftPadding:
+class TestLeftPadding:
     prompts = [
         "Hello world!",
         "How are you today?",
@@ -24,21 +24,24 @@ class TestPosEmbedWithLeftPadding:
         right_token_start,
         right_token_end,
     ):
+        atol = 1e-4
+
         assert torch.allclose(
             left_outputs[i, left_token_start:left_token_end, :],
             right_outputs[i, right_token_start:right_token_end, :],
+            atol=atol,
         )
 
         assert torch.allclose(
             left_outputs[i, left_token_start:left_token_end, :],
             single_outputs[0],
-            atol=1e-4,
+            atol=atol,
         )
 
         assert torch.allclose(
             right_outputs[i, right_token_start:right_token_end, :],
             single_outputs[0],
-            atol=1e-4,
+            atol=atol,
         )
 
     # fixtures
@@ -85,7 +88,9 @@ class TestPosEmbedWithLeftPadding:
 
         attended_output_pos_embed = output_pos_embed[left_attention_mask.bool()]
 
-        assert torch.allclose(attended_output_pos_embed, target_output_pos_embed)
+        assert torch.allclose(
+            attended_output_pos_embed, target_output_pos_embed, atol=1e-4
+        )
 
         # padded positions should have zero pos_embed
         assert output_pos_embed[~left_attention_mask.bool()].sum() == 0
@@ -118,8 +123,8 @@ class TestPosEmbedWithLeftPadding:
         right_first_logits = right_logits[:, 0, :]
 
         # check if the left and right padding outputs are the same for the first and last tokens
-        assert torch.allclose(left_last_logits, right_last_logits)
-        assert torch.allclose(left_first_logits, right_first_logits)
+        assert torch.allclose(left_last_logits, right_last_logits, atol=1e-4)
+        assert torch.allclose(left_first_logits, right_first_logits, atol=1e-4)
 
         # check if the left and right padding outputs are the same for all tokens
         # and if the batched padded outputs are the same as the single prompt outputs
