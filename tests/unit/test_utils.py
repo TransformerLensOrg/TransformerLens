@@ -208,8 +208,9 @@ class Test_lower_triangular:
 
 
 @pytest.mark.parametrize(
-        "prepend_space_to_answer, expected_console_output",
-        [(
+    "prepend_space_to_answer, expected_console_output",
+    [
+        (
             True,
             """Tokenized prompt: ['<|BOS|>', 'The', ' circumference', ' is', ' the', ' perimeter', ' of', ' the', ' circ']
 Tokenized answer: [' le', '.']
@@ -238,8 +239,9 @@ Top 7th token. Logit: 14.26 Prob:  2.41% Token: |ew|
 Top 8th token. Logit: 14.23 Prob:  2.33% Token: |on|
 Top 9th token. Logit: 13.98 Prob:  1.82% Token: |gged|
 Ranks of the answer tokens: [(' le', 5284), ('.', 340)]
-"""
-        ), (
+""",
+        ),
+        (
             False,
             """Tokenized prompt: ['<|BOS|>', 'The', ' circumference', ' is', ' the', ' perimeter', ' of', ' the', ' circ']
 Tokenized answer: ['le', '.']
@@ -268,19 +270,16 @@ Top 7th token. Logit: 11.62 Prob:  1.13% Token: | 3|
 Top 8th token. Logit: 11.56 Prob:  1.06% Token: |thal|
 Top 9th token. Logit: 11.48 Prob:  0.98% Token: |an|
 Ranks of the answer tokens: [('le', 93), ('.', 2)]
-"""
-        )]
-    )
-def test_test_prompt(
-    prepend_space_to_answer, 
-    expected_console_output,
-    capfd 
-):
+""",
+        ),
+    ],
+)
+def test_test_prompt(prepend_space_to_answer, expected_console_output, capfd):
     utils.test_prompt(
-        "The circumference is the perimeter of the circ", 
-        "le.", 
+        "The circumference is the perimeter of the circ",
+        "le.",
         model,
-        prepend_space_to_answer=prepend_space_to_answer
+        prepend_space_to_answer=prepend_space_to_answer,
     )
     out, err = capfd.readouterr()
     assert out == expected_console_output
