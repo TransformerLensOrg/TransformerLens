@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 import torch
 from jaxtyping import Float
@@ -145,6 +145,17 @@ class FactoredMatrix:
         """Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k."""
         return torch.linalg.eig(self.BA).eigenvalues
 
+    def _convert_to_slice(self, sequence: Union[Tuple, List], idx: int) -> Tuple:
+        """
+        e.g. if sequence = (1, 2, 3) and idx = 1, return (1, slice(2, 3), 3)
+        """
+        if isinstance(idx, int):
+            sequence = list(sequence)
+            sequence[idx] = slice(sequence[idx], sequence[idx] + 1)
+            sequence = tuple(sequence)
+
+        return sequence
+
     def __getitem__(self, idx: Union[int, Tuple]) -> FactoredMatrix:
         """Indexing - assumed to only apply to the leading dimensions."""
         if not isinstance(idx, tuple):
@@ -153,8 +164,11 @@ class FactoredMatrix:
         if length <= len(self.shape) - 2:
             return FactoredMatrix(self.A[idx], self.B[idx])
         elif length == len(self.shape) - 1:
+            idx = self._convert_to_slice(idx, -1)
             return FactoredMatrix(self.A[idx], self.B[idx[:-1]])
         elif length == len(self.shape):
+            idx = self._convert_to_slice(idx, -1)
+            idx = self._convert_to_slice(idx, -2)
             return FactoredMatrix(
                 self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])]
             )

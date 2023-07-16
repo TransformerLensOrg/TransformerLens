@@ -52,26 +52,54 @@ class HookPoint(nn.Module):
     def add_perma_hook(self, hook, dir="fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
-    def add_hook(self, hook, dir="fwd", is_permanent=False, level=None) -> None:
-        # Hook format is fn(activation, hook_name)
-        # Change it into PyTorch hook format (this includes input and output,
-        # which are the same for a HookPoint)
+    def add_hook(
+        self, hook, dir="fwd", is_permanent=False, level=None, prepend=False
+    ) -> None:
+        """
+        Hook format is fn(activation, hook_name)
+        Change it into PyTorch hook format (this includes input and output,
+        which are the same for a HookPoint)
+        If prepend is True, add this hook before all other hooks
+        """
         if dir == "fwd":
 
             def full_hook(module, module_input, module_output):
                 return hook(module_output, hook=self)
 
+            full_hook.__name__ = (
+                hook.__repr__()
+            )  # annotate the `full_hook` with the string representation of the `hook` function
+
             handle = self.register_forward_hook(full_hook)
             handle = LensHandle(handle, is_permanent, level)
-            self.fwd_hooks.append(handle)
+
+            if prepend:
+                # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
+                self._forward_hooks.move_to_end(handle.hook.id, last=False)
+                self.fwd_hooks.insert(0, handle)
+
+            else:
+                self.fwd_hooks.append(handle)
+
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
+
             def full_hook(module, module_input, module_output):
                 return hook(module_output[0], hook=self)
 
+            full_hook.__name__ = (
+                hook.__repr__()
+            )  # annotate the `full_hook` with the string representation of the `hook` function
+
             handle = self.register_full_backward_hook(full_hook)
             handle = LensHandle(handle, is_permanent, level)
-            self.bwd_hooks.append(handle)
+
+            if prepend:
+                # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
+                self._backward_hooks.move_to_end(handle.hook.id, last=False)
+                self.bwd_hooks.insert(0, handle)
+            else:
+                self.bwd_hooks.append(handle)
         else:
             raise ValueError(f"Invalid direction {dir}")
 
@@ -139,6 +167,8 @@ class HookedRootModule(nn.Module):
         self.mod_dict = {}
         self.hook_dict: Dict[str, HookPoint] = {}
         for name, module in self.named_modules():
+            if name == "":
+                continue
             module.name = name
             self.mod_dict[name] = module
             if "HookPoint" in str(type(module)):
@@ -179,12 +209,20 @@ class HookedRootModule(nn.Module):
         dir="fwd",
         is_permanent=False,
         level=None,
+        prepend=False,
     ) -> None:
         """Runs checks on the hook, and then adds it to the hook point"""
         self.check_hooks_to_add(
-            hook_point, hook_point_name, hook, dir=dir, is_permanent=is_permanent
+            hook_point,
+            hook_point_name,
+            hook,
+            dir=dir,
+            is_permanent=is_permanent,
+            prepend=prepend,
         )
-        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent, level=level)
+        hook_point.add_hook(
+            hook, dir=dir, is_permanent=is_permanent, level=level, prepend=prepend
+        )
 
     def check_hooks_to_add(
         self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False
@@ -192,7 +230,9 @@ class HookedRootModule(nn.Module):
         """Override this function to add checks on which hooks should be added"""
         pass
 
-    def add_hook(self, name, hook, dir="fwd", is_permanent=False, level=None) -> None:
+    def add_hook(
+        self, name, hook, dir="fwd", is_permanent=False, level=None, prepend=False
+    ) -> None:
         if type(name) == str:
             self.check_and_add_hook(
                 self.mod_dict[name],
@@ -201,6 +241,7 @@ class HookedRootModule(nn.Module):
                 dir=dir,
                 is_permanent=is_permanent,
                 level=level,
+                prepend=prepend,
             )
         else:
             # Otherwise, name is a Boolean function on names
@@ -213,6 +254,7 @@ class HookedRootModule(nn.Module):
                         dir=dir,
                         is_permanent=is_permanent,
                         level=level,
+                        prepend=prepend,
                     )
 
     def add_perma_hook(self, name, hook, dir="fwd") -> None:
@@ -340,9 +382,11 @@ class HookedRootModule(nn.Module):
         if names_filter is None:
             names_filter = lambda name: True
         elif type(names_filter) == str:
-            names_filter = lambda name: name == names_filter
+            filter_str = names_filter
+            names_filter = lambda name: name == filter_str
         elif type(names_filter) == list:
-            names_filter = lambda name: name in names_filter
+            filter_list = names_filter
+            names_filter = lambda name: name in filter_list
 
         self.is_caching = True
 
@@ -446,10 +490,11 @@ class HookedRootModule(nn.Module):
         if names_filter is None:
             names_filter = lambda name: True
         elif type(names_filter) == str:
-            names_filter = lambda name: name == names_filter
+            filter_str = names_filter
+            names_filter = lambda name: name == filter_str
         elif type(names_filter) == list:
-            names_filter = lambda name: name in names_filter
-
+            filter_list = names_filter
+            names_filter = lambda name: name in filter_list
         self.is_caching = True
 
         def save_hook(tensor, hook):

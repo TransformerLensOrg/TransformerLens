@@ -45,9 +45,6 @@ class HookedEncoder(HookedRootModule):
         assert (
             self.cfg.n_devices == 1
         ), "Multiple devices not supported for HookedEncoder"
-        if move_to_device:
-            self.to(self.cfg.device)
-
         if tokenizer is not None:
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
@@ -72,6 +69,9 @@ class HookedEncoder(HookedRootModule):
         self.unembed = Unembed(self.cfg)
 
         self.hook_full_embed = HookPoint()
+
+        if move_to_device:
+            self.to(self.cfg.device)
 
         self.setup()
 
@@ -189,6 +189,10 @@ class HookedEncoder(HookedRootModule):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cpu")
 
+    def mps(self):
+        # Wrapper around cuda that also changes self.cfg.device
+        return self.to("mps")
+
     @classmethod
     def from_pretrained(
         cls,
@@ -197,7 +201,9 @@ class HookedEncoder(HookedRootModule):
         checkpoint_value: Optional[int] = None,
         hf_model=None,
         device: Optional[str] = None,
-        **model_kwargs,
+        tokenizer=None,
+        move_to_device=True,
+        **from_pretrained_kwargs,
     ) -> HookedEncoder:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
         logging.warning(
@@ -220,15 +226,23 @@ class HookedEncoder(HookedRootModule):
             fold_ln=False,
             device=device,
             n_devices=1,
+            **from_pretrained_kwargs,
         )
 
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model
+            official_model_name, cfg, hf_model, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, **model_kwargs)
+        model = cls(cfg, tokenizer, move_to_device=False)
+
+        dtype = from_pretrained_kwargs.get("torch_dtype", None)
+        if dtype is not None:
+            model = model.to(dtype)
 
         model.load_state_dict(state_dict, strict=False)
+
+        if move_to_device:
+            model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
 

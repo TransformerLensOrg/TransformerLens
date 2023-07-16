@@ -1,7 +1,18 @@
+import gc
+import os
+
 import pytest
 import torch
+from transformers import AutoConfig
 
 from transformer_lens import HookedTransformer
+from transformer_lens.components import LayerNormPre
+from transformer_lens.loading_from_pretrained import OFFICIAL_MODEL_NAMES
+from transformer_lens.utils import clear_huggingface_cache
+
+TINY_STORIES_MODEL_NAMES = [
+    name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
+]
 
 model_names = [
     "attn-only-demo",
@@ -15,6 +26,7 @@ model_names = [
     "pythia",
     "gelu-2l",
     "othello-gpt",
+    "tiny-stories-33M",
 ]
 text = "Hello world!"
 """ 
@@ -39,6 +51,7 @@ loss_store = {
     "gelu-2l": 6.501802444458008,
     "redwood_attn_2l": 10.530948638916016,
     "solu-1l": 5.256411552429199,
+    "tiny-stories-33M": 12.203617095947266,
 }
 
 no_processing = [
@@ -56,6 +69,11 @@ def test_model(name, expected_loss):
     model = HookedTransformer.from_pretrained(name)
     loss = model(text, return_type="loss")
     assert (loss.item() - expected_loss) < 4e-5
+    del model
+    gc.collect()
+
+    if "GITHUB_ACTIONS" in os.environ:
+        clear_huggingface_cache()
 
 
 def test_othello_gpt():
@@ -85,6 +103,9 @@ def test_from_pretrained_no_processing(name, expected_loss):
     # is equivalent to using from_pretrained_no_processing
 
     model_ref = HookedTransformer.from_pretrained_no_processing(name)
+    model_ref_config = model_ref.cfg
+    reff_loss = model_ref(text, return_type="loss")
+    del model_ref
     model_override = HookedTransformer.from_pretrained(
         name,
         fold_ln=False,
@@ -92,12 +113,15 @@ def test_from_pretrained_no_processing(name, expected_loss):
         center_unembed=False,
         refactor_factored_attn_matrices=False,
     )
-    assert model_ref.cfg == model_override.cfg
+    assert model_ref_config == model_override.cfg
 
     if name != "redwood_attn_2l":  # TODO can't be loaded with from_pretrained
         # Do the converse check, i.e. check that overriding boolean flags in
         # from_pretrained_no_processing is equivalent to using from_pretrained
         model_ref = HookedTransformer.from_pretrained(name)
+        model_ref_config = model_ref.cfg
+        reff_loss = model_ref(text, return_type="loss")
+        del model_ref
         model_override = HookedTransformer.from_pretrained_no_processing(
             name,
             fold_ln=True,
@@ -105,12 +129,45 @@ def test_from_pretrained_no_processing(name, expected_loss):
             center_unembed=True,
             refactor_factored_attn_matrices=False,
         )
-        assert model_ref.cfg == model_override.cfg
+        assert model_ref_config == model_override.cfg
 
     # also check losses
-    loss = model_ref(text, return_type="loss")
-    print(loss.item())
-    assert (loss.item() - expected_loss) < 4e-5
+    print(reff_loss.item())
+    assert (reff_loss.item() - expected_loss) < 4e-5
+
+
+@pytest.mark.skipif(
+    torch.backends.mps.is_available(),
+    reason="bfloat16 unsupported by MPS: https://github.com/pytorch/pytorch/issues/78168",
+)
+def test_from_pretrained_dtype():
+    """Check that the parameter `torch_dtype` works"""
+    model = HookedTransformer.from_pretrained("solu-1l", torch_dtype=torch.bfloat16)
+    assert model.W_K.dtype == torch.bfloat16
+
+
+def test_process_weights_inplace():
+    """Check that process_weights_ works"""
+    model = HookedTransformer.from_pretrained_no_processing("gpt2-small")
+    model.process_weights_()
+    loss = model.forward(text, return_type="loss")
+    assert (loss.item() - loss_store["gpt2-small"]) < 4e-5
+    assert isinstance(model.ln_final, LayerNormPre)
+
+
+def test_from_pretrained_revision():
+    """
+    Check that the from_pretrained parameter `revision` (= git version) works
+    """
+
+    _ = HookedTransformer.from_pretrained("gpt2", revision="main")
+
+    try:
+        _ = HookedTransformer.from_pretrained("gpt2", revision="inexistent_branch_name")
+    except:
+        pass
+    else:
+        raise AssertionError("Should have raised an error")
 
 
 @torch.no_grad()
@@ -147,3 +204,14 @@ def test_pos_embed_hook():
         ["Hello, world", "Goodbye, world"],
         fwd_hooks=[("hook_pos_embed", edit_pos_embed)],
     )
+
+
+def test_all_tinystories_models_exist():
+    for model in TINY_STORIES_MODEL_NAMES:
+        try:
+            AutoConfig.from_pretrained(model)
+        except OSError:
+            pytest.fail(
+                f"Could not download model '{model}' from Huggingface."
+                " Maybe the name was changed or the model has been removed."
+            )

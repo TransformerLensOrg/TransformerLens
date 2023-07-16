@@ -284,3 +284,25 @@ def test_test_prompt(
     )
     out, err = capfd.readouterr()
     assert out == expected_console_output
+
+
+def test_override_or_use_default_flag():
+    # Case when override is not None
+    assert utils.override_or_use_default_flag(default_flag=True, override=True) == True
+    assert (
+        utils.override_or_use_default_flag(default_flag=True, override=False) == False
+    )
+    assert utils.override_or_use_default_flag(default_flag=False, override=True) == True
+    assert (
+        utils.override_or_use_default_flag(default_flag=False, override=False) == False
+    )
+
+    # Case when override is None
+    assert utils.override_or_use_default_flag(default_flag=True, override=None) == True
+    assert (
+        utils.override_or_use_default_flag(default_flag=False, override=None) == False
+    )
+
+    # Case when override is not passed
+    assert utils.override_or_use_default_flag(default_flag=True) == True
+    assert utils.override_or_use_default_flag(default_flag=False) == False

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import inspect
+import json
 import re
-from typing import Dict, List, Optional, Tuple, Type, Union, cast
+import shutil
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
 import numpy as np
@@ -11,19 +14,33 @@ import transformers
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
+from jaxtyping import Float, Int
 from rich import print as rprint
 from transformers import AutoTokenizer
 
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
-import json
 
-from jaxtyping import Float, Int
+
+def select_compatible_kwargs(
+    kwargs_dict: Dict[str, Any], callable: Callable
+) -> Dict[str, Any]:
+    """Return a dict with the elements kwargs_dict that are parameters of callable"""
+    return {
+        k: v
+        for k, v in kwargs_dict.items()
+        if k in inspect.getfullargspec(callable).args
+    }
 
 
 def download_file_from_hf(
-    repo_name, file_name, subfolder=".", cache_dir=CACHE_DIR, force_is_torch=False
+    repo_name,
+    file_name,
+    subfolder=".",
+    cache_dir=CACHE_DIR,
+    force_is_torch=False,
+    **kwargs,
 ):
     """
     Helper function to download files from the HuggingFace Hub, from subfolder/file_name in repo_name, saving locally to cache_dir and returning the loaded file (if a json or Torch object) and the file path otherwise.
@@ -31,19 +48,36 @@ def download_file_from_hf(
     If it's a Torch file without the ".pth" extension, set force_is_torch=True to load it as a Torch object.
     """
     file_path = hf_hub_download(
-        repo_id=repo_name, filename=file_name, subfolder=subfolder, cache_dir=cache_dir
+        repo_id=repo_name,
+        filename=file_name,
+        subfolder=subfolder,
+        cache_dir=cache_dir,
+        **select_compatible_kwargs(kwargs, hf_hub_download),
     )
 
-    # Load to the CPU device if CUDA is not available
-    map_location = None if torch.cuda.is_available() else torch.device("cpu")
-
     if file_path.endswith(".pth") or force_is_torch:
-        return torch.load(file_path, map_location=map_location)
+        return torch.load(file_path, map_location="cpu")
     elif file_path.endswith(".json"):
         return json.load(open(file_path, "r"))
     else:
         print("File type not supported:", file_path.split(".")[-1])
         return file_path
+
+
+def clear_huggingface_cache():
+    """
+    Deletes the Hugging Face cache directory and all its contents.
+
+    This function deletes the Hugging Face cache directory, which is used to store downloaded models and their associated files. Deleting the cache directory will remove all the downloaded models and their files, so you will need to download them again if you want to use them in your code.
+
+    Parameters:
+    None
+
+    Returns:
+    None
+    """
+    print("Deleting Hugging Face cache directory and all its contents.")
+    shutil.rmtree(CACHE_DIR)
 
 
 def print_gpu_mem(step_name=""):
@@ -298,7 +332,7 @@ def sample_logits(
             indices_to_remove = final_logits < top_logits[..., -1].unsqueeze(-1)
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
         elif top_p is not None:
-            assert 1.0 >= top_p > 0.0, "top_p has to be in [0, 1)"
+            assert 1.0 >= top_p > 0.0, "top_p has to be in (0, 1]"
             sorted_logits, sorted_indices = torch.sort(final_logits, descending=True)
             cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
             # We round up - we want prob >= top_p not <top_p
@@ -439,10 +473,10 @@ class Slice:
             ValueError: If the slice is not an integer and max_ctx is not specified.
         """
         if self.mode == "int":
-            return np.array([self.slice])
+            return np.array([self.slice], dtype=np.int64)
         if max_ctx is None:
             raise ValueError("max_ctx must be specified if slice is not an integer")
-        return np.arange(max_ctx)[self.slice]
+        return np.arange(max_ctx, dtype=np.int64)[self.slice]
 
     def __repr__(
         self,
@@ -574,7 +608,7 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    prepend_bos: bool = True,
+    prepend_bos: Optional[bool] = None,
     top_k: int = 10,
 ):
     """
@@ -751,3 +785,27 @@ def check_structure(
         print(f"row mismatch: {row_mismatch}")
     elif col_mismatch:
         print(f"column mismatch: {col_mismatch}")
+
+
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        # Parse the PyTorch version to check if it's below version 2.0
+        major_version = int(torch.__version__.split(".")[0])
+        if major_version >= 2:
+            return torch.device("mps")
+
+    return torch.device("cpu")
+
+
+def override_or_use_default_flag(
+    default_flag: bool,
+    override: Optional[bool] = None,
+) -> bool:
+    """
+    Determines which flag to return based on whether an overriding flag is provided.
+    If a not-None overriding flag is provided, it is returned.
+    Otherwise, the global flag is returned.
+    """
+    return override if override is not None else default_flag

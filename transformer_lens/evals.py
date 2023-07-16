@@ -61,9 +61,10 @@ def make_owt_data_loader(tokenizer, batch_size=8):
 
 def make_pile_data_loader(tokenizer, batch_size=8):
     """
-    Evaluate on OpenWebText an open source replication of the GPT-2 training corpus (Reddit links with >3 karma)
+    Evaluate on the first 10k texts from The Pile.
 
-    I think the Mistral models were trained on this dataset, so they get very good performance.
+    The Pile is EleutherAI's general-purpose english dataset, made of 22 subsets
+    including academic papers, books, internet content...
     """
     pile_data = load_dataset("NeelNanda/pile-10k", split="train")
     print(len(pile_data))
@@ -76,7 +77,10 @@ def make_pile_data_loader(tokenizer, batch_size=8):
 
 def make_code_data_loader(tokenizer, batch_size=8):
     """
-    Evaluate on the CodeParrot dataset, a dump of Python code. All models seem to get significantly lower loss here (even non-code trained models like GPT-2), presumably code is much easier to predict than natural language?
+    Evaluate on the CodeParrot dataset, a dump of Python code.
+
+    All models seem to get significantly lower loss here (even non-code trained models like GPT-2),
+    presumably code is much easier to predict than natural language?
     """
     code_data = load_dataset("codeparrot/codeparrot-valid-v2-near-dedup", split="train")
     print(len(code_data))
@@ -100,11 +104,11 @@ DATASET_LOADERS = [
 
 # %%
 @torch.inference_mode()
-def evaluate_on_dataset(model, data_loader, truncate=100):
+def evaluate_on_dataset(model, data_loader, truncate=100, device="cuda"):
     running_loss = 0
     total = 0
     for batch in tqdm.tqdm(data_loader):
-        loss = model(batch["tokens"].cuda(), return_type="loss").mean()
+        loss = model(batch["tokens"].to(device), return_type="loss").mean()
         running_loss += loss.item()
         total += 1
         if total > truncate:
@@ -115,16 +119,23 @@ def evaluate_on_dataset(model, data_loader, truncate=100):
 # %%
 @torch.inference_mode()
 def induction_loss(
-    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=True
+    model, tokenizer=None, batch_size=4, subseq_len=384, prepend_bos=None, device="cuda"
 ):
     """
     Generates a batch of random sequences repeated twice, and measures model performance on the second half. Tests whether a model has induction heads.
 
-    By default, prepends a beginning of string token (prepend_bos flag), which is useful to give models a resting position, and sometimes models were trained with this.
+    By default, prepends a beginning of string token (prepend_bos flag defaults to None, implying usage of model.prepend_bos whose default is True set
+    by set_default_prepend_bos() method), which is useful to give models a resting position, and sometimes models were trained with this.
     """
     # Make the repeated sequence
-    first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).cuda()
+    first_half_tokens = torch.randint(100, 20000, (batch_size, subseq_len)).to(device)
     repeated_tokens = einops.repeat(first_half_tokens, "b p -> b (2 p)")
+
+    # Use the provided prepend_bos as an override if it's not None;
+    # otherwise use model.prepend_bos (defaults to True) set by model.set_default_prepend_bos().
+    prepend_bos = utils.override_or_use_default_flag(
+        model.prepend_bos, override=prepend_bos
+    )
 
     # Prepend a Beginning Of String token
     if prepend_bos:
