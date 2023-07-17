@@ -815,6 +815,7 @@ class HookedTransformer(HookedRootModule):
         n_devices=1,
         tokenizer=None,
         move_to_device=True,
+        fold_value_biases=True,
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
@@ -874,6 +875,9 @@ class HookedTransformer(HookedRootModule):
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
 
+        if from_pretrained_kwargs.get("torch_dtype", None) == torch.float16 and device in ["cpu", None]:
+            logging.warning("float16 models may not work on CPU. Consider using a GPU or bfloat16.")
+
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
@@ -924,6 +928,7 @@ class HookedTransformer(HookedRootModule):
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
         )
 
@@ -942,6 +947,7 @@ class HookedTransformer(HookedRootModule):
         center_writing_weights=False,
         center_unembed=False,
         refactor_factored_attn_matrices=False,
+        fold_value_biases=False,
         **from_pretrained_kwargs,
     ):
         """Wrapper for from_pretrained with all boolean flags related to simplifying the model set to False. Refer to
@@ -951,6 +957,7 @@ class HookedTransformer(HookedRootModule):
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             **from_pretrained_kwargs,
         )
@@ -1019,6 +1026,10 @@ class HookedTransformer(HookedRootModule):
             model_name (str, optional): checks the model name for special cases of state dict loading. Only used for
                 Redwood 2L model currently
         """
+        if self.cfg.dtype not in [torch.float32, torch.float64]:
+            logging.warning(
+                "With reduced precision, it is advised to use `from_pretrained_no_processing` instead of `from_pretrained`."
+            )
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
             if self.cfg.normalization_type not in ["LN", "LNPre"]:
