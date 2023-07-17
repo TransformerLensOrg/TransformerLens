@@ -274,7 +274,7 @@ class HookedTransformer(HookedRootModule):
 
         # Use the provided prepend_bos as an override if it's not None;
         # otherwise use self.cfg.default_prepend_bos (defaults to True unless specified otherwise)
-        do_prepend_bos = utils.override_or_use_default_flag(
+        prepend_bos = utils.override_or_use_default_flag(
             self.cfg.default_prepend_bos, override=prepend_bos
         )
 
@@ -284,7 +284,7 @@ class HookedTransformer(HookedRootModule):
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
             # This is only intended to support passing in a single string
-            tokens = self.to_tokens(input, prepend_bos=do_prepend_bos)
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
         else:
             tokens = input
         if len(tokens.shape) == 1:
@@ -501,11 +501,11 @@ class HookedTransformer(HookedRootModule):
 
         # Use the provided prepend_bos as an override if it's not None;
         # otherwise use self.cfg.default_prepend_bos (defaults to True unless specified otherwise)
-        do_prepend_bos = utils.override_or_use_default_flag(
+        prepend_bos = utils.override_or_use_default_flag(
             self.cfg.default_prepend_bos, override=prepend_bos
         )
 
-        if do_prepend_bos:
+        if prepend_bos:
             if isinstance(input, str):
                 input = self.tokenizer.bos_token + input
             else:
@@ -1436,6 +1436,12 @@ class HookedTransformer(HookedRootModule):
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens - by default returns same type as input
         """
+        # Use the provided prepend_bos as an override if it's not None;
+        # otherwise use self.cfg.default_prepend_bos (defaults to True unless specified otherwise)
+        prepend_bos = utils.override_or_use_default_flag(
+            self.cfg.default_prepend_bos, override=prepend_bos
+        )
+        
         if type(input) == str:
             # If text, convert to tokens (batch_size=1)
             assert (
@@ -1516,13 +1522,7 @@ class HookedTransformer(HookedRootModule):
                 break
 
         if return_type == "str":
-            # Use the provided prepend_bos as an override if it's not None;
-            # otherwise use self.cfg.default_prepend_bos (defaults to True unless specified otherwise)
-            do_prepend_bos = utils.override_or_use_default_flag(
-                self.cfg.default_prepend_bos, override=prepend_bos
-            )
-
-            if do_prepend_bos:
+            if prepend_bos:
                 # If we prepended a BOS token, remove it when returning output.
                 return self.tokenizer.decode(tokens[0, 1:])
             else:

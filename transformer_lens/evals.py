@@ -133,12 +133,12 @@ def induction_loss(
 
     # Use the provided prepend_bos as an override if it's not None;
     # otherwise use model.cfg.default_prepend_bos (defaults to True)
-    do_prepend_bos = utils.override_or_use_default_flag(
+    prepend_bos = utils.override_or_use_default_flag(
         model.cfg.default_prepend_bos, override=prepend_bos
     )
 
     # Prepend a Beginning Of String token
-    if do_prepend_bos:
+    if prepend_bos:
         if tokenizer is None:
             tokenizer = model.tokenizer
         repeated_tokens[:, 0] = tokenizer.bos_token_id
