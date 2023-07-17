@@ -875,8 +875,12 @@ class HookedTransformer(HookedRootModule):
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
 
-        if from_pretrained_kwargs.get("torch_dtype", None) == torch.float16 and device in ["cpu", None]:
-            logging.warning("float16 models may not work on CPU. Consider using a GPU or bfloat16.")
+        if from_pretrained_kwargs.get(
+            "torch_dtype", None
+        ) == torch.float16 and device in ["cpu", None]:
+            logging.warning(
+                "float16 models may not work on CPU. Consider using a GPU or bfloat16."
+            )
 
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)

@@ -182,7 +182,9 @@ def check_performance(tl_model, hf_model, margin):
     approximately the same confidence in the expected answer.
     """
     prompt = " Unable"
-    tokens = tl_model.tokenizer(prompt, return_tensors="pt")["input_ids"].to("cuda" if torch.cuda.is_available() else "cpu")
+    tokens = tl_model.tokenizer(prompt, return_tensors="pt")["input_ids"].to(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
 
     expected_token = tl_model.tokenizer.encode(" to")[
         0
@@ -200,7 +202,9 @@ def check_dtype(dtype, margin, no_processing=False):
     for model_path in ["gpt2", "roneneldan/TinyStories-33M", "EleutherAI/pythia-70m"]:
         if no_processing:
             # For low precision, the processing is not advised.
-            model = HookedTransformer.from_pretrained_no_processing(model_path, torch_dtype=dtype)
+            model = HookedTransformer.from_pretrained_no_processing(
+                model_path, torch_dtype=dtype
+            )
         else:
             model = HookedTransformer.from_pretrained(model_path, torch_dtype=dtype)
 

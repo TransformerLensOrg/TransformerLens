@@ -1079,9 +1079,15 @@ def convert_neo_weights(neo, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.W_K"] = W_K
         state_dict[f"blocks.{l}.attn.W_V"] = W_V
 
-        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
 
         W_O = neo.transformer.h[l].attn.attention.out_proj.weight
         W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
@@ -1125,9 +1131,15 @@ def convert_gptj_weights(gptj, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.W_K"] = W_K
         state_dict[f"blocks.{l}.attn.W_V"] = W_V
 
-        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
 
         W_O = gptj.transformer.h[l].attn.out_proj.weight
         W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
@@ -1242,9 +1254,15 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.W_K"] = W_K
         state_dict[f"blocks.{l}.attn.W_V"] = W_V
 
-        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
         W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
