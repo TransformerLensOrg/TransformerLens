@@ -1441,7 +1441,7 @@ class HookedTransformer(HookedRootModule):
         prepend_bos = utils.override_or_use_default_flag(
             self.cfg.default_prepend_bos, override=prepend_bos
         )
-        
+
         if type(input) == str:
             # If text, convert to tokens (batch_size=1)
             assert (
