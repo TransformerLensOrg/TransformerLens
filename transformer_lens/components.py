@@ -908,13 +908,19 @@ class TransformerBlock(nn.Module):
 
         if self.cfg.use_split_qkv_input:
             query_input = self.hook_q_input(
-                add_head_dimension(attn_in) if not self.cfg.use_attn_in else attn_in # we've already added the extra dimension if we're using attn_in!
+                add_head_dimension(attn_in)
+                if not self.cfg.use_attn_in
+                else attn_in  # we've already added the extra dimension if we're using attn_in!
             )
             key_input = self.hook_k_input(
-                add_head_dimension(attn_in) if not self.cfg.use_attn_in else attn_in # we've already added the extra dimension if we're using attn_in!
+                add_head_dimension(attn_in)
+                if not self.cfg.use_attn_in
+                else attn_in  # we've already added the extra dimension if we're using attn_in!
             )
             value_input = self.hook_v_input(
-                add_head_dimension(attn_in) if not self.cfg.use_attn_in else attn_in # we've already added the extra dimension if we're using attn_in!
+                add_head_dimension(attn_in)
+                if not self.cfg.use_attn_in
+                else attn_in  # we've already added the extra dimension if we're using attn_in!
             )
             if shortformer_pos_embed is not None:
                 shortformer_pos_embed = add_head_dimension(shortformer_pos_embed)
