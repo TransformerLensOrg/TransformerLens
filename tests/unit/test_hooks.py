@@ -140,35 +140,44 @@ def test_conditional_hooks():
     ]:
         model.reset_hooks()
         set_use_hook_function(False)
+        # Ensure that we get an error when we inappropriately add a hook
         with pytest.raises(AssertionError):
             model.add_hook(hook_name, identity_hook)
+
+        # Ensure we DON'T get an error when we add a hook properly
         set_use_hook_function(True)
         model.add_hook(hook_name, identity_hook)
 
-    # check that things are the right shape in the split_q case
-    model.reset_hooks()
-    model.set_use_split_qkv_input(True)
-    model.add_hook("blocks.0.hook_q_input", identity_hook)
+        # Reset the flag
+        set_use_hook_function(False)
 
-    model.reset_hooks()
-    model.set_use_attn_in(True)
-    model.add_hook("blocks.0.hook_attn_in", identity_hook)
+    # Check that hooks cache things with the right shape
 
-    # check that things are the right shape
+    # The correct shapes of cached values for the hooks with three dimensions and with four dimensions
+    # (Batch size one, the prompt has length 4)
+    correct_shapes = {
+        3: [1, 4, model.cfg.d_model],
+        4: [1, 4, model.cfg.n_heads, model.cfg.d_model],
+    }
 
-    cache = model.run_with_cache(
-        prompt,
-        names_filter=lambda x: x == "blocks.0.hook_q_input",
-    )[1]
+    for hook_name, set_use_hook_function, number_of_dimensions in [
+        ("blocks.0.hook_q_input", model.set_use_split_qkv_input, 4),
+        ("blocks.0.hook_attn_in", model.set_use_attn_in, 4),
+        ("blocks.0.hook_mlp_in", model.set_use_hook_mlp_in, 3),
+    ]:
+        model.reset_hooks()
+        set_use_hook_function(True)
 
-    assert len(cache) == 1, len(cache)
-    assert "blocks.0.hook_q_input" in cache.keys(), cache.keys()
-    assert cache["blocks.0.hook_q_input"].shape == (
-        1,
-        4,
-        model.cfg.n_heads,
-        model.cfg.d_model,
-    ), cache["blocks.0.hook_q_input"].shape
+        cache = model.run_with_cache(
+            prompt,
+            names_filter=lambda x: x == hook_name,
+        )[1]
+
+        assert list(cache.keys()) == [hook_name]
+        assert list(cache[hook_name].shape) == correct_shapes[number_of_dimensions]
+
+        # Reset the flag
+        set_use_hook_function(False)
 
 
 @pytest.mark.parametrize(
