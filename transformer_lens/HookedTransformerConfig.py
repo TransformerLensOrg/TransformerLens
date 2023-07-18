@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 
+from transformer_lens import utils
+
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
 
@@ -129,6 +131,11 @@ class HookedTransformerConfig:
         use_hook_tokens (bool): Will add a hook point on the token input to
             HookedTransformer.forward, which lets you cache or intervene on the tokens.
             Defaults to False.
+        default_prepend_bos (bool): Default value of whether to prepend the BOS token when the methods of HookedTransformer
+            process input text to tokenize (only when input is a string). Defaults to True - even for models not explicitly
+            trained with this, heads often use the first position as a resting position and accordingly lose information from
+            the first token, so this empirically seems to give better results. Call set_default_prepend_bos(False) to change
+            this default value to False.
     """
 
     n_layers: int
@@ -173,6 +180,7 @@ class HookedTransformerConfig:
     n_params: Optional[int] = None
     use_hook_tokens: bool = False
     gated_mlp: bool = False
+    default_prepend_bos: bool = True
 
     def __post_init__(self):
         if self.n_heads == -1:
@@ -223,7 +231,7 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
 
         if self.device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.device = utils.get_device()
 
         if self.n_devices > 1:
             assert (

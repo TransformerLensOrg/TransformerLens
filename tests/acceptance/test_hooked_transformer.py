@@ -136,6 +136,10 @@ def test_from_pretrained_no_processing(name, expected_loss):
     assert (reff_loss.item() - expected_loss) < 4e-5
 
 
+@pytest.mark.skipif(
+    torch.backends.mps.is_available(),
+    reason="bfloat16 unsupported by MPS: https://github.com/pytorch/pytorch/issues/78168",
+)
 def test_from_pretrained_dtype():
     """Check that the parameter `torch_dtype` works"""
     model = HookedTransformer.from_pretrained("solu-1l", torch_dtype=torch.bfloat16)
