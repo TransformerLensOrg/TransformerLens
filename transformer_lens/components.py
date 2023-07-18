@@ -395,7 +395,7 @@ class Attention(nn.Module):
         self.hook_z = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_attn_scores = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
-        self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
+        self.hook_result = HookPoint()  # [batch, pos, head_index, d_model]
 
         # See HookedTransformerConfig for more details.
         if self.cfg.positional_embedding_type == "shortformer":
