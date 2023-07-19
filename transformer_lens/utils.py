@@ -345,6 +345,8 @@ def sample_logits(
                 -1, sorted_indices, sorted_indices_to_remove
             )
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+
+        final_logits = final_logits.to(torch.float32)
         return torch.distributions.categorical.Categorical(logits=final_logits).sample()
 
 
