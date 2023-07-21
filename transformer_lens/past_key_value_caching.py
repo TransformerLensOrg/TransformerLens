@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Union
 
 import torch
 from jaxtyping import Float
@@ -17,15 +17,15 @@ class HookedTransformerKeyValueCacheEntry:
     def init_cache_entry(
         cls,
         cfg: HookedTransformerConfig,
-        device: torch.device,
+        device: Union[torch.device, str, None],
         batch_size: int = 1,
     ):
         return cls(
             past_keys=torch.empty(
-                (batch_size, 0, cfg.n_heads, cfg.d_head), device=device
+                (batch_size, 0, cfg.n_heads, cfg.d_head), device=device, dtype=cfg.dtype
             ),
             past_values=torch.empty(
-                (batch_size, 0, cfg.n_heads, cfg.d_head), device=device
+                (batch_size, 0, cfg.n_heads, cfg.d_head), device=device, dtype=cfg.dtype
             ),
         )
 
@@ -60,7 +60,10 @@ class HookedTransformerKeyValueCache:
 
     @classmethod
     def init_cache(
-        cls, cfg: HookedTransformerConfig, device: torch.device, batch_size: int = 1
+        cls,
+        cfg: HookedTransformerConfig,
+        device: Union[torch.device, str, None],
+        batch_size: int = 1,
     ):
         return cls(
             entries=[

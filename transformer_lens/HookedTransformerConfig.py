@@ -134,6 +134,7 @@ class HookedTransformerConfig:
             trained with this, heads often use the first position as a resting position and accordingly lose information from
             the first token, so this empirically seems to give better results. Call set_default_prepend_bos(False) to change
             this default value to False.
+        dtype (torch.dtype, *optional*): The model's dtype. Defaults to torch.float32.
     """
 
     n_layers: int
@@ -178,6 +179,7 @@ class HookedTransformerConfig:
     use_hook_tokens: bool = False
     gated_mlp: bool = False
     default_prepend_bos: bool = True
+    dtype: torch.dtype = torch.float32
 
     def __post_init__(self):
         if self.n_heads == -1:
