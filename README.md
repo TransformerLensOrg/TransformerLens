@@ -64,7 +64,7 @@ One significant design decision made was to have a single transformer implementa
 
 ## Installation
 
-`pip install git+https://github.com/neelnanda-io/TransformerLens`
+`pip install transformer_lens`
 
 Import the library with `import transformer_lens`
 
