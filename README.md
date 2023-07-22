@@ -10,9 +10,17 @@ This library is maintained by **Joseph Bloom** and was created by **[Neel Nanda]
 
 ## Installation
 
-`pip install transformer_lens`
+Install: `pip install transformer_lens`
 
-Import the library with `import transformer_lens`
+```python
+import transformer_lens
+
+# Load a model (eg GPT-2 Small)
+model = transformer_lens.HookedTransformer.from_pretrained("gpt2-small")
+
+# Run the model and get logits and activations
+logits, activations = model.run_with_cache("Hello World")
+```
 
 ## Key Tutorials
 
