@@ -6,19 +6,11 @@
 
 ## [Read the Docs Here](https://neelnanda-io.github.io/TransformerLens/)
 
-## Learning Resources
+## Key Tutorials
 
 ### [Introduction to the Library](https://arena-ch1-transformers.streamlit.app/[1.2]_Intro_to_Mech_Interp)
 
 ### [Demo of Main Features](https://neelnanda.io/transformer-lens-demo)
-
-### [ARENA Mechanistic Interpretability Tutorials](https://arena-ch1-transformers.streamlit.app/)
-
-### [A Guide to Getting Started in Mechanistic Interpretability](https://neelnanda.io/getting-started)
-
-### [Paper Reading List](https://neelnanda.io/paper-list)
-
-## [Main Tutorial Here](https://neelnanda.io/transformer-lens-demo)
 
 ## A Library for Mechanistic Interpretability of Generative Language Models
 
@@ -34,29 +26,37 @@ I (Neel Nanda) used to work for the [Anthropic interpretability team](transforme
 
 The core features were heavily inspired by the interface to [Anthropic's excellent Garcon tool](https://transformer-circuits.pub/2021/garcon/index.html). Credit to Nelson Elhage and Chris Olah for building Garcon and showing me the value of good infrastructure for enabling exploratory research!
 
-## Getting Started
+## Getting Started in Mechanistic Interpretability
 
-**Start with the [main demo](https://neelnanda.io/transformer-lens-demo) to learn how the library works, and the basic features**.
+Mechanistic interpretability is a very young and small field, and there are a _lot_ of open problems. This means there's both a lot of low-hanging fruit, and that the bar for entry is low - if you would like to help, please try working on one! The standard answer to "why has no one done this yet" is just that there aren't enough people! Key resources:
 
-To see what using it for exploratory analysis in practice looks like, check out [my notebook analysing Indirect Objection Identification](https://neelnanda.io/exploratory-analysis-demo) or [my recording of myself doing research](https://www.youtube.com/watch?v=yo4QvDn-vsU)!
-
-Mechanistic interpretability is a very young and small field, and there are a _lot_ of open problems - if you would like to help, please try working on one! **Check out my [list of concrete open problems](https://neelnanda.io/concrete-open-problems) to figure out where to start.**. It begins with advice on skilling up, and key resources to check out.
-
-If you're new to transformers, check out my [what is a transformer tutorial](https://neelnanda.io/transformer-tutorial) and [tutorial on coding GPT-2 from scratch](https://neelnanda.io/transformer-tutorial-2) (with [an accompanying template](https://neelnanda.io/transformer-template) to write one yourself!
+* [A Guide to Getting Started in Mechanistic Interpretability](https://neelnanda.io/getting-started)
+* [ARENA Mechanistic Interpretability Tutorials](https://arena-ch1-transformers.streamlit.app/) from Callum McDougall. A comprehensive practical introduction to mech interp, written in TransformerLens - full of snippets to copy and they come with exercises and solutions! Notable tutorials:
+  * [Coding GPT-2 from scratch](https://arena-ch1-transformers.streamlit.app/[1.1]_Transformer_from_Scratch), with accompanying video tutorial from me ([1](https://neelnanda.io/transformer-tutorial) [2](https://neelnanda.io/transformer-tutorial-2))
+  * [Indirect Object Identification](https://arena-ch1-transformers.streamlit.app/[1.3]_Indirect_Object_Identification): a replication of interpretability in the wild, that covers standard techniques in mech interp such as [direct logit attribution](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=disz2gTx-jooAcR0a5r8e7LZ), [activation patching and path patching](https://www.lesswrong.com/posts/xh85KbTFhbCz7taD4/how-to-think-about-activation-patching)
+* [Mech Interp Paper Reading List](https://neelnanda.io/paper-list)
+* [200 Concrete Open Problems in Mechanistic Interpretability](https://neelnanda.io/concrete-open-problems)
+* [A Comprehensive Mechanistic Interpretability Explainer](https://neelnanda.io/glossary): To look up all the jargon and unfamiliar terms you're going to come across!
 
 ## Gallery
 
-Research done using TransformerLens:
+Research done involving TransformerLens:
 
-- Finding Neurons In A Haystack by
-- Actually, Othello-GPT
-- A Circuit
+- [Progress Measures for Grokking via Mechanistic Interpretability](https://arxiv.org/abs/2301.05217) (ICLR Spotlight, 2023) by Neel Nanda, Lawrence Chan, Tom Lieberum, Jess Smith, Jacob Steinhardt
+- [Finding Neurons in a Haystack: Case Studies with Sparse Probing](https://arxiv.org/abs/2305.01610) by Wes Gurnee, Neel Nanda, Matthew Pauly, Katherine Harvey, Dmitrii Troitskii, Dimitris Bertsimas
 - [Towards Automated Circuit Discovery for Mechanistic Interpretability](https://arxiv.org/abs/2304.14997) by Arthur Conmy, Augustine N. Mavor-Parker, Aengus Lynch, Stefan Heimersheim, Adrià Garriga-Alonso
+- [Actually, Othello-GPT Has A Linear Emergent World Representation](https://neelnanda.io/othello) by Neel Nanda
+- [A circuit for Python docstrings in a 4-layer attention-only transformer](https://www.alignmentforum.org/posts/u6KXXmKFbXfWzoAXn/a-circuit-for-python-docstrings-in-a-4-layer-attention-only) by Stefan Heimersheim and Jett Janiak
+- [A Toy Model of Universality](https://arxiv.org/abs/2302.03025) (ICML, 2023) by Bilal Chughtai, Lawrence Chan, Neel Nanda
+- [N2G: A Scalable Approach for Quantifying Interpretable Neuron Representations in Large Language Models](https://openreview.net/forum?id=ZB6bK6MTYq) (2023, ICLR Workshop RTML) by Alex Foote, Neel Nanda, Esben Kran, Ioannis Konstas, Fazl Barez
+- [Eliciting Latent Predictions from Transformers with the Tuned Lens](https://arxiv.org/abs/2303.08112) by Nora Belrose, Zach Furman, Logan Smith, Danny Halawi, Igor Ostrovsky, Lev McKinney, Stella Biderman, Jacob Steinhardt
 
 User contributed examples of the library being used in action:
 
 - [Induction Heads Phase Change Replication](https://colab.research.google.com/github/ckkissane/induction-heads-transformer-lens/blob/main/Induction_Heads_Phase_Change.ipynb): A partial replication of [In-Context Learning and Induction Heads](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html) from Connor Kissane
 - [Decision Transformer Interpretability](https://github.com/jbloomAus/DecisionTransformerInterpretability): A set of scripts for training decision transformers which uses transformer lens to view intermediate activations, perform attribution and ablations. A write up of the initial work can be found [here](https://www.lesswrong.com/posts/bBuBDJBYHt39Q5zZy/decision-transformer-interpretability).
+
+* Check out [our demos folder](https://github.com/neelnanda-io/TransformerLens/tree/main/demos) for more examples of TransformerLens in practice
 
 ## Advice for Reading the Code
 
@@ -117,8 +117,6 @@ If you have issues, questions, feature requests or bug reports, please search th
 You're also welcome to join the open source mech interp community on [Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-1qosyh8g3-9bF3gamhLNJiqCL_QqLFrA)! Please use issues for concrete discussions about the package, and Slack for higher bandwidth discussions about eg supporting important new use cases, or if you want to make substantial contributions to the library and want a maintainer's opinion. We'd also love for you to come and share your projects on the Slack!
 
 We're particularly excited to support grad students and professional researchers using TransformerLens for their work, please have a low bar for reaching out if there's ways we could better support your use case!
-
-
 
 ## Citation
 
