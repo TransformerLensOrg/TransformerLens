@@ -103,6 +103,7 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/SoLU_4L512W_Wiki_Finetune",
     "ArthurConmy/redwood_attn_2l",
     "llama-7b-hf",
+    "meta-llama/Llama-2-7b-chat-hf",
     "llama-13b-hf",
     "llama-30b-hf",
     "llama-65b-hf",
@@ -425,6 +426,7 @@ MODEL_ALIASES = {
     ],
     "ArthurConmy/redwood_attn_2l": ["redwood_attn_2l"],
     "llama-7b-hf": ["llama-7b"],
+    "meta-llama/Llama-2-7b-chat-hf": ["meta-llama/Llama-2-7b-chat-hf"],
     "llama-13b-hf": ["llama-13b"],
     "llama-30b-hf": ["llama-30b"],
     "llama-65b-hf": ["llama-65b"],
@@ -490,12 +492,15 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # In case the user passed in an alias
     official_model_name = get_official_model_name(model_name)
     # Load HuggingFace model config
-    if "llama" not in official_model_name:
+    if "llama" not in official_model_name.lower():
         hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
         architecture = hf_config.architectures[0]
     else:
-        architecture = "LLaMAForCausalLM"
-    if "llama-7b" in official_model_name:
+        if "Llama-2" in official_model_name:
+            architecture = "LlamaForCausalLM" # different capitalization
+        else:
+            architecture = "LLaMAForCausalLM"
+    if "llama-7b" in official_model_name or "Llama-2-7b".lower() in official_model_name.lower(): # same architecture for LLaMA and Llama-2
         cfg_dict = {
             "d_model": 4096,
             "d_head": 4096 // 32,
@@ -511,6 +516,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 4096 // 32,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": not "Llama-2".lower() in official_model_name.lower(), # Llama-2 tokenizer seems to auto add the BOS.,,?
         }
     elif "llama-13b" in official_model_name:
         cfg_dict = {
@@ -942,7 +948,7 @@ def get_pretrained_state_dict(
                     f"Checkpoints for model {official_model_name} are not supported"
                 )
         elif hf_model is None:
-            if "llama" in official_model_name:
+            if "llama" in official_model_name.lower():
                 raise NotImplementedError("Must pass in hf_model for LLaMA models")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
@@ -968,7 +974,7 @@ def get_pretrained_state_dict(
             state_dict = convert_gptj_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoXForCausalLM":
             state_dict = convert_neox_weights(hf_model, cfg)
-        elif cfg.original_architecture == "LLaMAForCausalLM":
+        elif str(cfg.original_architecture).lower() == "LLaMAForCausalLM".lower(): # Llama-2 was capitalized differently
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
