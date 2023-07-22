@@ -41,6 +41,8 @@ OFFICIAL_MODEL_NAMES = [
     "stanford-crfm/celebrimbor-gpt2-medium-x81",
     "stanford-crfm/durin-gpt2-medium-x343",
     "stanford-crfm/eowyn-gpt2-medium-x777",
+    "EleutherAI/pythia-14m",
+    "EleutherAI/pythia-31m",
     "EleutherAI/pythia-70m",
     "EleutherAI/pythia-160m",
     "EleutherAI/pythia-410m",
@@ -178,6 +180,12 @@ MODEL_ALIASES = {
         "solu-4l-wiki",
         "solu-4l-wiki-finetune",
         "solu-4l-finetune",
+    ],
+    "EleutherAI/pythia-14m": [
+        "pythia-14m",
+    ],
+    "EleutherAI/pythia-31m": [
+        "pythia-31m",
     ],
     "EleutherAI/pythia-70m": [
         "pythia-70m",
