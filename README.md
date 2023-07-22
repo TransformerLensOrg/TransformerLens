@@ -4,39 +4,27 @@
 
 [![Pypi](https://img.shields.io/pypi/v/transformer-lens)](https://pypi.org/project/transformer-lens/)
 
+This library is maintained by **Joseph Bloom** and was created by **[Neel Nanda](https://neelnanda.io)**
+
 ## [Read the Docs Here](https://neelnanda-io.github.io/TransformerLens/)
+
+## Installation
+
+`pip install transformer_lens`
+
+Import the library with `import transformer_lens`
 
 ## Key Tutorials
 
-### [Introduction to the Library](https://arena-ch1-transformers.streamlit.app/[1.2]_Intro_to_Mech_Interp)
+### [Introduction to the Library and Mech Interp](https://arena-ch1-transformers.streamlit.app/[1.2]_Intro_to_Mech_Interp)
 
-### [Demo of Main Features](https://neelnanda.io/transformer-lens-demo)
+### [Demo of Main TransformerLens Features](https://neelnanda.io/transformer-lens-demo)
 
 ## A Library for Mechanistic Interpretability of Generative Language Models
 
 This is a library for doing [mechanistic interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style language models. The goal of mechanistic interpretability is to take a trained model and reverse engineer the algorithms the model learned during training from its weights. It is a fact about the world today that we have computer programs that can essentially speak English at a human level (GPT-3, PaLM, etc), yet we have no idea how they work nor how to write one ourselves. This offends me greatly, and I would like to solve this!
 
 TransformerLens lets you load in an open source language model, like GPT-2, and exposes the internal activations of the model to you. You can cache any internal activation in the model, and add in functions to edit, remove or replace these activations as the model runs. The core design principle I've followed is to enable exploratory analysis. One of the most fun parts of mechanistic interpretability compared to normal ML is the extremely short feedback loops! The point of this library is to keep the gap between having an experiment idea and seeing the results as small as possible, to make it easy for **research to feel like play** and to enter a flow state. Part of what I aimed for is to make _my_ experience of doing research easier and more fun, hopefully this transfers to you!
-
-This library is maintained by **Joseph Bloom** and was created by **[Neel Nanda](https://neelnanda.io)**
-
-## Background
-
-I (Neel Nanda) used to work for the [Anthropic interpretability team](transformer-circuits.pub), and I wrote this library because after I left and tried doing independent research, I got extremely frustrated by the state of open source tooling. There's a lot of excellent infrastructure like HuggingFace and DeepSpeed to _use_ or _train_ models, but very little to dig into their internals and reverse engineer how they work. **This library tries to solve that**, and to make it easy to get into the field even if you don't work at an industry org with real infrastructure! One of the great things about mechanistic interpretability is that you don't need large models or tons of compute. There are lots of important open problems that can be solved with a small model in a Colab notebook!
-
-The core features were heavily inspired by the interface to [Anthropic's excellent Garcon tool](https://transformer-circuits.pub/2021/garcon/index.html). Credit to Nelson Elhage and Chris Olah for building Garcon and showing me the value of good infrastructure for enabling exploratory research!
-
-## Getting Started in Mechanistic Interpretability
-
-Mechanistic interpretability is a very young and small field, and there are a _lot_ of open problems. This means there's both a lot of low-hanging fruit, and that the bar for entry is low - if you would like to help, please try working on one! The standard answer to "why has no one done this yet" is just that there aren't enough people! Key resources:
-
-* [A Guide to Getting Started in Mechanistic Interpretability](https://neelnanda.io/getting-started)
-* [ARENA Mechanistic Interpretability Tutorials](https://arena-ch1-transformers.streamlit.app/) from Callum McDougall. A comprehensive practical introduction to mech interp, written in TransformerLens - full of snippets to copy and they come with exercises and solutions! Notable tutorials:
-  * [Coding GPT-2 from scratch](https://arena-ch1-transformers.streamlit.app/[1.1]_Transformer_from_Scratch), with accompanying video tutorial from me ([1](https://neelnanda.io/transformer-tutorial) [2](https://neelnanda.io/transformer-tutorial-2))
-  * [Indirect Object Identification](https://arena-ch1-transformers.streamlit.app/[1.3]_Indirect_Object_Identification): a replication of interpretability in the wild, that covers standard techniques in mech interp such as [direct logit attribution](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=disz2gTx-jooAcR0a5r8e7LZ), [activation patching and path patching](https://www.lesswrong.com/posts/xh85KbTFhbCz7taD4/how-to-think-about-activation-patching)
-* [Mech Interp Paper Reading List](https://neelnanda.io/paper-list)
-* [200 Concrete Open Problems in Mechanistic Interpretability](https://neelnanda.io/concrete-open-problems)
-* [A Comprehensive Mechanistic Interpretability Explainer](https://neelnanda.io/glossary): To look up all the jargon and unfamiliar terms you're going to come across!
 
 ## Gallery
 
@@ -56,21 +44,40 @@ User contributed examples of the library being used in action:
 - [Induction Heads Phase Change Replication](https://colab.research.google.com/github/ckkissane/induction-heads-transformer-lens/blob/main/Induction_Heads_Phase_Change.ipynb): A partial replication of [In-Context Learning and Induction Heads](https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html) from Connor Kissane
 - [Decision Transformer Interpretability](https://github.com/jbloomAus/DecisionTransformerInterpretability): A set of scripts for training decision transformers which uses transformer lens to view intermediate activations, perform attribution and ablations. A write up of the initial work can be found [here](https://www.lesswrong.com/posts/bBuBDJBYHt39Q5zZy/decision-transformer-interpretability).
 
-* Check out [our demos folder](https://github.com/neelnanda-io/TransformerLens/tree/main/demos) for more examples of TransformerLens in practice
+Check out [our demos folder](https://github.com/neelnanda-io/TransformerLens/tree/main/demos) for more examples of TransformerLens in practice
 
-## Advice for Reading the Code
+## Getting Started in Mechanistic Interpretability
+
+Mechanistic interpretability is a very young and small field, and there are a _lot_ of open problems. This means there's both a lot of low-hanging fruit, and that the bar for entry is low - if you would like to help, please try working on one! The standard answer to "why has no one done this yet" is just that there aren't enough people! Key resources:
+
+- [A Guide to Getting Started in Mechanistic Interpretability](https://neelnanda.io/getting-started)
+- [ARENA Mechanistic Interpretability Tutorials](https://arena-ch1-transformers.streamlit.app/) from Callum McDougall. A comprehensive practical introduction to mech interp, written in TransformerLens - full of snippets to copy and they come with exercises and solutions! Notable tutorials:
+  - [Coding GPT-2 from scratch](https://arena-ch1-transformers.streamlit.app/[1.1]_Transformer_from_Scratch), with accompanying video tutorial from me ([1](https://neelnanda.io/transformer-tutorial) [2](https://neelnanda.io/transformer-tutorial-2))
+  - [Indirect Object Identification](https://arena-ch1-transformers.streamlit.app/[1.3]_Indirect_Object_Identification): a replication of interpretability in the wild, that covers standard techniques in mech interp such as [direct logit attribution](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=disz2gTx-jooAcR0a5r8e7LZ), [activation patching and path patching](https://www.lesswrong.com/posts/xh85KbTFhbCz7taD4/how-to-think-about-activation-patching)
+- [Mech Interp Paper Reading List](https://neelnanda.io/paper-list)
+- [200 Concrete Open Problems in Mechanistic Interpretability](https://neelnanda.io/concrete-open-problems)
+- [A Comprehensive Mechanistic Interpretability Explainer](https://neelnanda.io/glossary): To look up all the jargon and unfamiliar terms you're going to come across!
+
+## Support & Community
+
+If you have issues, questions, feature requests or bug reports, please search the issues to check if it's already been answered, and if not please raise an issue!
+
+You're also welcome to join the open source mech interp community on [Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-1qosyh8g3-9bF3gamhLNJiqCL_QqLFrA)! Please use issues for concrete discussions about the package, and Slack for higher bandwidth discussions about eg supporting important new use cases, or if you want to make substantial contributions to the library and want a maintainer's opinion. We'd also love for you to come and share your projects on the Slack!
+
+We're particularly excited to support grad students and professional researchers using TransformerLens for their work, please have a low bar for reaching out if there's ways we could better support your use case!
+
+## Background
+
+I (Neel Nanda) used to work for the [Anthropic interpretability team](transformer-circuits.pub), and I wrote this library because after I left and tried doing independent research, I got extremely frustrated by the state of open source tooling. There's a lot of excellent infrastructure like HuggingFace and DeepSpeed to _use_ or _train_ models, but very little to dig into their internals and reverse engineer how they work. **This library tries to solve that**, and to make it easy to get into the field even if you don't work at an industry org with real infrastructure! One of the great things about mechanistic interpretability is that you don't need large models or tons of compute. There are lots of important open problems that can be solved with a small model in a Colab notebook!
+
+The core features were heavily inspired by the interface to [Anthropic's excellent Garcon tool](https://transformer-circuits.pub/2021/garcon/index.html). Credit to Nelson Elhage and Chris Olah for building Garcon and showing me the value of good infrastructure for enabling exploratory research!
+
+
+## Interacting with the code / Contributing
+
+### Advice for Reading the Code
 
 One significant design decision made was to have a single transformer implementation that could support a range of subtly different GPT-style models. This has the upside of interpretability code just working for arbitrary models when you change the model name in `HookedTransformer.from_pretrained`! But it has the significant downside that the code implementing the model (in `HookedTransformer.py` and `components.py`) can be difficult to read. I recommend starting with my [Clean Transformer Demo](https://neelnanda.io/transformer-solution), which is a clean, minimal implementation of GPT-2 with the same internal architecture and activation names as HookedTransformer, but is significantly clearer and better documented.
-
-## Installation
-
-`pip install transformer_lens`
-
-Import the library with `import transformer_lens`
-
-(Note: This library used to be known as EasyTransformer, and some breaking changes have been made since the rename. If you need to use the old version with some legacy code, run `pip install git+https://github.com/neelnanda-io/TransformerLens@v1`.)
-
-## Local Development
 
 ### DevContainer
 
@@ -109,14 +116,6 @@ This project uses `pycln`, `isort` and `black` for formatting, pull requests are
 ### Demos
 
 If adding a feature, please add it to the demo notebook in the `demos` folder, and check that it works in the demo format. This can be tested by replacing `pip install git+https://github.com/neelnanda-io/TransformerLens.git` with `pip install git+https://github.com/<YOUR_USERNAME_HERE>/TransformerLens.git` in the demo notebook, and running it in a fresh environment.
-
-## Support & Community
-
-If you have issues, questions, feature requests or bug reports, please search the issues to check if it's already been answered, and if not please raise an issue! 
-
-You're also welcome to join the open source mech interp community on [Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-1qosyh8g3-9bF3gamhLNJiqCL_QqLFrA)! Please use issues for concrete discussions about the package, and Slack for higher bandwidth discussions about eg supporting important new use cases, or if you want to make substantial contributions to the library and want a maintainer's opinion. We'd also love for you to come and share your projects on the Slack!
-
-We're particularly excited to support grad students and professional researchers using TransformerLens for their work, please have a low bar for reaching out if there's ways we could better support your use case!
 
 ## Citation
 
