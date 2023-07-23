@@ -103,10 +103,14 @@ OFFICIAL_MODEL_NAMES = [
     "NeelNanda/SoLU_4L512W_Wiki_Finetune",
     "ArthurConmy/redwood_attn_2l",
     "llama-7b-hf",
-    "meta-llama/Llama-2-7b-chat-hf",
     "llama-13b-hf",
     "llama-30b-hf",
     "llama-65b-hf",
+    "Llama-2-7b-hf",
+    "Llama-2-7b-chat-hf",
+    "Llama-2-13b-hf",
+    "Llama-2-13b-chat-hf",
+    # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
     "roneneldan/TinyStories-1M",
@@ -426,10 +430,14 @@ MODEL_ALIASES = {
     ],
     "ArthurConmy/redwood_attn_2l": ["redwood_attn_2l"],
     "llama-7b-hf": ["llama-7b"],
-    "meta-llama/Llama-2-7b-chat-hf": ["meta-llama/Llama-2-7b-chat-hf"],
     "llama-13b-hf": ["llama-13b"],
     "llama-30b-hf": ["llama-30b"],
     "llama-65b-hf": ["llama-65b"],
+    "Llama-2-7b-hf": ["Llama-2-7b", "meta-llama/Llama-2-7b-hf"],
+    "Llama-2-7b-chat-hf": ["Llama-2-7b-chat", "meta-llama/Llama-2-7b-chat-hf"],
+    "Llama-2-13b-hf": ["Llama-2-13b", "meta-llama/Llama-2-13b-hf"],
+    "Llama-2-13b-chat-hf": ["Llama-2-13b-chat", "meta-llama/Llama-2-13b-chat-hf"],
+    # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
     "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
@@ -496,18 +504,15 @@ def convert_hf_model_config(model_name: str, **kwargs):
         hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
         architecture = hf_config.architectures[0]
     else:
-        if "Llama-2" in official_model_name:
-            architecture = "LlamaForCausalLM" # different capitalization
-        else:
-            architecture = "LLaMAForCausalLM"
-    if "llama-7b" in official_model_name or "Llama-2-7b".lower() in official_model_name.lower(): # same architecture for LLaMA and Llama-2
+        architecture = "LlamaForCausalLM"
+    if official_model_name.startswith(("llama-7b", "Llama-2-7b")): # same architecture for LLaMA and Llama-2
         cfg_dict = {
             "d_model": 4096,
             "d_head": 4096 // 32,
             "n_heads": 32,
             "d_mlp": 11008,
             "n_layers": 32,
-            "n_ctx": 2048,
+            "n_ctx": 2048 if official_model_name.startswith("llama-7b") else 4096,
             "eps": 1e-6,
             "d_vocab": 32000,
             "act_fn": "silu",
@@ -516,16 +521,15 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 4096 // 32,
             "final_rms": True,
             "gated_mlp": True,
-            "default_prepend_bos": not "Llama-2".lower() in official_model_name.lower(), # Llama-2 tokenizer seems to auto add the BOS.,,?
         }
-    elif "llama-13b" in official_model_name:
+    elif official_model_name.startswith(("llama-13b", "Llama-2-13b")): # same architecture for LLaMA and Llama-2
         cfg_dict = {
             "d_model": 5120,
             "d_head": 5120 // 40,
             "n_heads": 40,
             "d_mlp": 13824,
             "n_layers": 40,
-            "n_ctx": 2048,
+            "n_ctx": 2048 if official_model_name.startswith("llama-13b") else 4096,
             "eps": 1e-6,
             "d_vocab": 32000,
             "act_fn": "silu",
@@ -974,7 +978,7 @@ def get_pretrained_state_dict(
             state_dict = convert_gptj_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoXForCausalLM":
             state_dict = convert_neox_weights(hf_model, cfg)
-        elif str(cfg.original_architecture).lower() == "LLaMAForCausalLM".lower(): # Llama-2 was capitalized differently
+        elif cfg.original_architecture == "LlamaForCausalLM":
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
