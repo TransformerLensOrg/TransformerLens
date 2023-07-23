@@ -4,6 +4,7 @@ from torch.testing import assert_close
 
 from transformer_lens import FactoredMatrix
 
+
 # This test function is parametrized with different types of scalars, including non-scalar tensors and arrays, to check that the correct errors are raised.
 # Considers cases with and without leading dimensions as well as left and right multiplication.
 @pytest.mark.parametrize(
