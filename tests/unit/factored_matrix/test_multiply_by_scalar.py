@@ -8,33 +8,22 @@ from transformer_lens import FactoredMatrix
 # This test function is parametrized with different types of scalars, including non-scalar tensors and arrays, to check that the correct errors are raised.
 # Considers cases with and without leading dimensions as well as left and right multiplication.
 @pytest.mark.parametrize(
-    "scalar, error_expected", 
+    "scalar, error_expected",
     [
         # Test cases with different types of scalar values.
         (torch.rand(1), None),  # 1-element Tensor. No error expected.
         (float(torch.rand(1).item()), None),  # float. No error expected.
         (int(torch.randint(1, 10, (1,)).item()), None),  # int. No error expected.
-
         # Test cases with non-scalar values that are expected to raise errors.
-        (torch.rand(2, 2), AssertionError),  # Non-scalar Tensor. AssertionError expected.
+        (
+            torch.rand(2, 2),
+            AssertionError,
+        ),  # Non-scalar Tensor. AssertionError expected.
         (torch.rand(2), AssertionError),  # Non-scalar Tensor. AssertionError expected.
-
-    ]
+    ],
 )
-@pytest.mark.parametrize(
-    "leading_dim", 
-    [
-        False,
-        True
-    ]
-)
-@pytest.mark.parametrize(
-    "multiply_from_left", 
-    [
-        False,
-        True
-    ]
-)
+@pytest.mark.parametrize("leading_dim", [False, True])
+@pytest.mark.parametrize("multiply_from_left", [False, True])
 def test_multiply(scalar, leading_dim, multiply_from_left, error_expected):
     # Prepare a FactoredMatrix, with or without leading dimensions
     if leading_dim:

@@ -81,22 +81,18 @@ class FactoredMatrix:
                 return FactoredMatrix(other, self.AB)
         elif isinstance(other, FactoredMatrix):
             return other.A @ (other.B @ self)
-        
-    def __mul__(
-        self,
-        scalar: Union[int, float, torch.Tensor]
-    ) -> FactoredMatrix:
+
+    def __mul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:
         """
         Left scalar multiplication. Scalar multiplication distributes over matrix multiplication, so we can just multiply one of the factor matrices by the scalar.
         """
         if isinstance(scalar, torch.Tensor):
-            assert scalar.numel() == 1, f"Tensor must be a scalar for use with * but was of shape {scalar.shape}. For matrix multiplication, use @ instead."
+            assert (
+                scalar.numel() == 1
+            ), f"Tensor must be a scalar for use with * but was of shape {scalar.shape}. For matrix multiplication, use @ instead."
         return FactoredMatrix(self.A * scalar, self.B)
 
-    def __rmul__(
-        self,
-        scalar: Union[int, float, torch.Tensor]
-    ) -> FactoredMatrix:
+    def __rmul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:
         """
         Right scalar multiplication. For scalar multiplication from the right, we can reuse the __mul__ method.
         """
