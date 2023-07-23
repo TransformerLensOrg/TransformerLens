@@ -90,7 +90,7 @@ class FactoredMatrix:
         Left scalar multiplication. Scalar multiplication distributes over matrix multiplication, so we can just multiply one of the factor matrices by the scalar.
         """
         if isinstance(scalar, torch.Tensor):
-            assert scalar.numel() == 1, "The tensor must be a scalar for use with *. For multiplication by a matrix or vector, use @."
+            assert scalar.numel() == 1, f"Tensor must be a scalar for use with * but was of shape {scalar.shape}. For matrix multiplication, use @ instead."
         return FactoredMatrix(self.A * scalar, self.B)
 
     def __rmul__(
