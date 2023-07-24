@@ -52,6 +52,14 @@ transformer\_lens.HookedTransformerConfig module
    :undoc-members:
    :show-inheritance:
 
+transformer\_lens.SVDInterpreter module
+---------------------------------------
+
+.. automodule:: transformer_lens.SVDInterpreter
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 transformer\_lens.components module
 -----------------------------------
 
