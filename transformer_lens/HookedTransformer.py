@@ -60,6 +60,7 @@ class HookedTransformer(HookedRootModule):
         cfg,
         tokenizer=None,
         move_to_device=True,
+        padding_side="right",
     ):
         """
         Model initialization. Note that if you want to load the model from pretrained weights, you should use the
@@ -73,6 +74,7 @@ class HookedTransformer(HookedRootModule):
         move_to_device (bool): Whether to move the model to the device specified in cfg.
             device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
             will be split across multiple devices.
+        padding_side (str): Which side to pad on. Must be "right" or "left".
         """
         super().__init__()
         if isinstance(cfg, Dict):
@@ -85,7 +87,7 @@ class HookedTransformer(HookedRootModule):
         self.cfg = cfg
 
         if tokenizer is not None:
-            self.set_tokenizer(tokenizer)
+            self.set_tokenizer(tokenizer, padding_side=padding_side)
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             if "llama" in self.cfg.tokenizer_name:
@@ -93,7 +95,8 @@ class HookedTransformer(HookedRootModule):
                 print("Warning: LLaMA tokenizer not loaded. Please load manually.")
             else:
                 self.set_tokenizer(
-                    AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+                    AutoTokenizer.from_pretrained(self.cfg.tokenizer_name),
+                    padding_side=padding_side,
                 )
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens
@@ -190,6 +193,7 @@ class HookedTransformer(HookedRootModule):
                 self.cfg.use_hook_mlp_in
             ), f"Cannot add hook {hook_point_name} if use_hook_mlp_in is False"
 
+    @utils.locally_override_and_restore_defaults
     @overload
     def forward(
         self,
@@ -197,11 +201,14 @@ class HookedTransformer(HookedRootModule):
         return_type: Literal["logits"],
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Loss:
         ...
 
+    @utils.locally_override_and_restore_defaults
     @overload
     def forward(
         self,
@@ -209,11 +216,14 @@ class HookedTransformer(HookedRootModule):
         return_type: Literal["loss"],
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Loss:
         ...
 
+    @utils.locally_override_and_restore_defaults
     @overload
     def forward(
         self,
@@ -221,11 +231,14 @@ class HookedTransformer(HookedRootModule):
         return_type: Literal["both"],
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
         ...
 
+    @utils.locally_override_and_restore_defaults
     @overload
     def forward(
         self,
@@ -233,20 +246,25 @@ class HookedTransformer(HookedRootModule):
         return_type: Literal[None],
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> None:
         ...
 
     # TODO make sure type assertions are provided
+    @utils.locally_override_and_restore_defaults
     def forward(
         self,
         input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         return_type: Optional[str] = "logits",
         loss_per_token: bool = False,
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Union[
         None,
         Float[torch.Tensor, "batch pos d_vocab"],
@@ -274,7 +292,7 @@ class HookedTransformer(HookedRootModule):
         if you want a custom loss function, the recommended behaviour is returning the logits and then applying your
         custom loss function.
         """
-
+        
         # Use the provided prepend_bos as an override if it's not None;
         # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
         prepend_bos = utils.override_or_use_default_flag(
@@ -287,7 +305,7 @@ class HookedTransformer(HookedRootModule):
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
             # This is only intended to support passing in a single string
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
         else:
             tokens = input
         if len(tokens.shape) == 1:
@@ -299,9 +317,19 @@ class HookedTransformer(HookedRootModule):
         if self.tokenizer and self.tokenizer.padding_side == "left":
             # If the padding side is left, we need to compute the attention mask for the adjustment of
             # absolute positional embeddings and attention masking so that the pad tokens are not attended.
-            left_attention_mask = utils.get_attention_mask(
-                self.tokenizer, tokens, prepend_bos
-            )
+            
+            if past_left_attention_mask is None:
+                left_attention_mask = utils.get_attention_mask(
+                    self.tokenizer, tokens, prepend_bos
+                )
+            else:
+                assert past_kv_cache is not None, "If past_left_attention_mask is not None, past_kv_cache must not be None"
+                assert tokens.shape[1] == 1, "If past_left_attention_mask is not None, tokens must be a single token along the sequence dimension"
+                # past_kv_cache is not None, so we're doing caching.
+                # We need to extend the past_left_attention_mask.
+                # Append '1' to the right of the past_left_attention_mask to account for the new tokens
+                left_attention_mask = utils.extend_tensor_with_ones(past_left_attention_mask)
+
         else:
             # If tokenizer is not set, we assume that the input is right-padded.
             # If the padding side is right, we don't need to compute the attention mask.
@@ -461,10 +489,15 @@ class HookedTransformer(HookedRootModule):
         else:
             return out, cache_dict
 
-    def set_tokenizer(self, tokenizer):
+    def set_tokenizer(
+            self,
+            tokenizer,
+            padding_side="right",
+        ):
         """
         Sets the tokenizer to use for this model.
         tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer
+        padding_side (str): "right" or "left", which side to pad on
         """
         assert isinstance(
             tokenizer, PreTrainedTokenizerBase
@@ -483,6 +516,9 @@ class HookedTransformer(HookedRootModule):
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
+            
+        assert padding_side in ["right", "left"], f"padding_side must be 'right' or 'left', got {padding_side}"
+        self.tokenizer.padding_side = padding_side
 
     def set_default_prepend_bos(self, default_prepend_bos: bool):
         """
@@ -492,10 +528,12 @@ class HookedTransformer(HookedRootModule):
         """
         self.prepend_bos = default_prepend_bos
 
+    @utils.locally_override_and_restore_defaults
     def to_tokens(
         self,
         input: Union[str, List[str]],
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
         move_to_device: bool = True,
         truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
@@ -581,6 +619,7 @@ class HookedTransformer(HookedRootModule):
         else:
             raise ValueError(f"Invalid shape passed in: {tokens.shape}")
 
+    @utils.locally_override_and_restore_defaults
     def to_str_tokens(
         self,
         input: Union[
@@ -592,6 +631,7 @@ class HookedTransformer(HookedRootModule):
             list,
         ],
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
     ) -> Union[List[str], List[List[str]]]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
@@ -621,7 +661,7 @@ class HookedTransformer(HookedRootModule):
                 map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input)
             )  # type: ignore
         elif isinstance(input, str):
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)[0]
         elif isinstance(input, torch.Tensor):
             tokens = input
             tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
@@ -664,6 +704,7 @@ class HookedTransformer(HookedRootModule):
         assert len(token) == 1
         return token[0]
 
+    @utils.locally_override_and_restore_defaults
     def get_token_position(
         self,
         single_token: Union[str, int],
@@ -672,6 +713,7 @@ class HookedTransformer(HookedRootModule):
         ],
         mode="first",
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
     ):
         """
         Get the position of a single_token in a string or sequence of tokens. Raises an error if the token is not
@@ -698,7 +740,7 @@ class HookedTransformer(HookedRootModule):
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
         else:
             tokens = input
 
@@ -828,6 +870,7 @@ class HookedTransformer(HookedRootModule):
         n_devices=1,
         tokenizer=None,
         move_to_device=True,
+        padding_side="right",
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
@@ -881,6 +924,7 @@ class HookedTransformer(HookedRootModule):
                 from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to other HuggingFace
                 functions when compatible. For some models or arguments it doesn't work, especially for
                 models that are not internally loaded with HuggingFace's from_pretrained (e.g. SoLU models).
+            padding_side (str, optional): Which side to pad on when tokenizing. Defaults to "right".
         """
 
         # Get the model name used in HuggingFace, rather than the alias.
@@ -926,7 +970,7 @@ class HookedTransformer(HookedRootModule):
         )
 
         # Create the HookedTransformer object
-        model = cls(cfg, tokenizer, move_to_device=False)
+        model = cls(cfg, tokenizer, move_to_device=False, padding_side=padding_side)
 
         dtype = from_pretrained_kwargs.get("torch_dtype", None)
         if dtype is not None:
@@ -1403,6 +1447,7 @@ class HookedTransformer(HookedRootModule):
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
         )
 
+    @utils.locally_override_and_restore_defaults
     @torch.inference_mode()
     def generate(
         self,
@@ -1418,6 +1463,7 @@ class HookedTransformer(HookedRootModule):
         num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
         prepend_bos: Optional[bool] = None,
+        padding_side: Optional[Literal["left", "right"]] = None,
         return_type: Optional[str] = "input",
         verbose: bool = True,
     ) -> Float[torch.Tensor, "batch pos_plus_new_tokens"]:
@@ -1456,7 +1502,7 @@ class HookedTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
         else:
             tokens = input
 
@@ -1496,19 +1542,33 @@ class HookedTransformer(HookedRootModule):
             if use_past_kv_cache:
                 # We just take the final tokens, as a [batch, 1] tensor
                 if index > 0:
+                    past_left_attention_mask = utils.get_attention_mask(
+                        self.tokenizer, tokens[:, :-1], prepend_bos,
+                    )
                     logits = self.forward(
                         tokens[:, -1:],
                         return_type="logits",
+                        prepend_bos=prepend_bos,
+                        padding_side=padding_side,
                         past_kv_cache=past_kv_cache,
+                        past_left_attention_mask=past_left_attention_mask,
                     )
                 else:
                     logits = self.forward(
-                        tokens, return_type="logits", past_kv_cache=past_kv_cache
+                        tokens, return_type="logits",
+                        prepend_bos=prepend_bos,
+                        padding_side=padding_side,
+                        past_kv_cache=past_kv_cache,
+                        past_left_attention_mask=None,
                     )
-
             else:
                 # We input the entire sequence, as a [batch, pos] tensor, since we aren't using the cache
-                logits = self.forward(tokens, return_type="logits")
+                logits = self.forward(
+                    tokens,
+                    return_type="logits",
+                    prepend_bos=prepend_bos,
+                    padding_side=padding_side,
+                )
             final_logits = logits[:, -1, :]
 
             sampled_tokens = utils.sample_logits(

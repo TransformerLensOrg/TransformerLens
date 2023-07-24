@@ -886,3 +886,62 @@ def get_causal_mask_for_left_padding(
         )
 
     return mask
+
+
+def locally_override_and_restore_defaults(function):
+    """
+    This decorator is used to override the parameters with default values during a function's execution.
+    It guarantees that the default parameters are not changed after the function execution,
+    even when an error occurs during the execution.
+    """
+    def wrapper(self, *args, **kwargs):
+        sig = inspect.signature(function)
+        arg_names = list(sig.parameters.keys())
+        if arg_names[0] == "self":
+            arg_names = arg_names[1:]
+
+        arg_values = dict(zip(arg_names, args))
+        arg_values.update(kwargs)
+
+        # prepend_bos
+        # Prepare the overriden value
+        # default_prepend_bos = self.cfg.default_prepend_bos
+        # prepend_bos = arg_values.pop("prepend_bos", None)
+        # assert prepend_bos in [None, True, False], (
+        #     f"prepend_bos must be one of None, True, or False, but got {prepend_bos}."
+        # )
+        # arg_values["prepend_bos"] = override_or_use_default_flag(default_prepend_bos, override=prepend_bos)
+
+        # padding_side
+        # Prepare the overriden value
+        default_padding_side = self.tokenizer.padding_side
+        padding_side = arg_values.pop("padding_side", None)
+        assert padding_side in [None, "left", "right"], (
+            f"padding_side must be one of None, 'left', or 'right', but got {padding_side}."
+        )
+        
+        arg_values["padding_side"] = override_or_use_default_flag(default_padding_side, override=padding_side)
+
+        try:
+            # This is important because self.tokenizer.padding_side is
+            # the actual padding_side used by Transformers Tokenizer.
+            self.tokenizer.padding_side = arg_values["padding_side"]
+            
+            # Execute the original function with the overridden padding_side
+            outputs = function(self, **arg_values)
+            
+            # Reset the padding_side of the tokenizer
+            self.tokenizer.padding_side = default_padding_side
+            return outputs
+
+        except Exception as e:
+            # If an error occurs, reset the padding_side of the tokenizer before propagating the exception
+            self.tokenizer.padding_side = default_padding_side
+            raise e
+
+    return wrapper
+
+
+def extend_tensor_with_ones(tensor, dim=1):
+    new_elements = torch.ones((tensor.shape[0], 1), dtype=tensor.dtype, device=tensor.device)
+    return torch.cat([tensor, new_elements], dim=dim)
