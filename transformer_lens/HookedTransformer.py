@@ -1510,12 +1510,17 @@ class HookedTransformer(HookedRootModule):
                     )
                 else:
                     logits = self.forward(
-                        tokens, return_type="logits", prepend_bos=prepend_bos, past_kv_cache=past_kv_cache
+                        tokens,
+                        return_type="logits",
+                        prepend_bos=prepend_bos,
+                        past_kv_cache=past_kv_cache,
                     )
 
             else:
                 # We input the entire sequence, as a [batch, pos] tensor, since we aren't using the cache
-                logits = self.forward(tokens, return_type="logits", prepend_bos=prepend_bos)
+                logits = self.forward(
+                    tokens, return_type="logits", prepend_bos=prepend_bos
+                )
             final_logits = logits[:, -1, :]
 
             sampled_tokens = utils.sample_logits(
