@@ -136,6 +136,7 @@ class HookedTransformerConfig:
             so this empirically seems to give better results. To change the default behavior to False, pass in
             default_prepend_bos=False. Note that you can also locally override the default behavior by passing
             in prepend_bos=True/False when you call a method that processes the input string.
+        dtype (torch.dtype, *optional*): The model's dtype. Defaults to torch.float32.
     """
 
     n_layers: int
@@ -180,6 +181,7 @@ class HookedTransformerConfig:
     use_hook_tokens: bool = False
     gated_mlp: bool = False
     default_prepend_bos: bool = True
+    dtype: torch.dtype = torch.float32
 
     def __post_init__(self):
         if self.n_heads == -1:
