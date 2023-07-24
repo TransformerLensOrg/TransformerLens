@@ -234,9 +234,6 @@ class HookedTransformerConfig:
 
         if self.n_devices > 1:
             assert (
-                self.device == "cuda"
-            ), "n_devices > 1 is only supported on CUDA devices"
-            assert (
                 torch.cuda.device_count() >= self.n_devices
             ), f"Not enough CUDA devices to support n_devices {self.n_devices}"
 
