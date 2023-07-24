@@ -1200,8 +1200,10 @@ batch of a single element. The prepend_bos flag only applies when inputting a te
 - position-1 because we’re predicting the next token, and there’s no specified next token for the final
 token. Defaults to False.</p>
 </dd>
-<dt>prepend_bos Optional[bool]: Whether to prepend the BOS token to the input (Only applies when input is a string).</dt><dd><p>Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-Pass True or False to override the default.</p>
+<dt>prepend_bos Optional[bool]: Whether to prepend the BOS token to the input (only applies when input is a string).</dt><dd><p>Defaults to None, implying usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+(Even for models not explicitly trained with a prepended BOS token, heads often use the first position as a resting
+position and accordingly lose information from the first token, so this empirically seems to give better results.)
+Pass True or False to locally override the default.</p>
 </dd>
 </dl>
 <p>stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer. Exclusive - ie,
@@ -1215,7 +1217,7 @@ custom loss function.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.from_pretrained">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_ln</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_writing_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_unembed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">refactor_factored_attn_matrices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">move_to_device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_value_biases</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">from_pretrained_kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer" title="transformer_lens.HookedTransformer.HookedTransformer"><span class="pre">HookedTransformer</span></a></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.from_pretrained" title="Permalink to this definition">#</a></dt>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_ln</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_writing_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_unembed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">refactor_factored_attn_matrices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">move_to_device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_value_biases</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_prepend_bos</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">from_pretrained_kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer" title="transformer_lens.HookedTransformer.HookedTransformer"><span class="pre">HookedTransformer</span></a></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.from_pretrained" title="Permalink to this definition">#</a></dt>
 <dd><p>Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
 processing to make the model easier to interpret. Currently supports loading from most autoregressive
 HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models and SoLU models trained by me (Neel Nanda).</p>
@@ -1260,6 +1262,13 @@ If None, then the model cannot be passed strings, and d_vocab must be explicitly
 <li><p><strong>move_to_device</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to move the model to the device specified in cfg.
 device. Must be true if <cite>n_devices</cite> in the config is greater than 1, since the model’s layers
 will be split across multiple devices.</p></li>
+<li><p><strong>default_prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Default behavior of whether to prepend the BOS token when the
+methods of HookedTransformer process input text to tokenize (only when input is a string).
+Defaults to True - even for models not explicitly trained with this, heads often use the
+first position as a resting position and accordingly lose information from the first token,
+so this empirically seems to give better results. To change the default behavior to False, pass in
+default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+in prepend_bos=True/False when you call a method that processes the input string.</p></li>
 <li><p><strong>from_pretrained_kwargs</strong> (<em>dict</em><em>, </em><em>optional</em>) – Any other optional argument passed to HuggingFace’s
 from_pretrained (e.g. “cache_dir” or “torch_dtype”). Also passed to other HuggingFace
 functions when compatible. For some models or arguments it doesn’t work, especially for
@@ -1300,7 +1309,7 @@ instead.</p>
 <li><p><strong>freq_penalty</strong> (<em>float</em>) – Frequency penalty for sampling - how much to penalise previous tokens. Higher values will make the model more random</p></li>
 <li><p><strong>use_past_kv_cache</strong> (<em>bool</em>) – If True, create and use cache to speed up generation</p></li>
 <li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (applicable when input is a string).
-Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
+Defaults to None, implying usage of self.cfg.default_prepend_bos (default is True unless specified otherwise).
 Pass True or False to override the default.</p></li>
 <li><p><strong>return_type</strong> (str, <em>optional</em>) – The type of the output to return - either a string (str), a tensor of tokens (tensor) or whatever the format of the input was (input).</p></li>
 <li><p><strong>verbose</strong> (<em>bool</em>) – If True, show tqdm progress bars for generation</p></li>
@@ -1322,7 +1331,7 @@ Pass True or False to override the default.</p></li>
 present.</p>
 <p>Gotcha: If you’re inputting a string, it’ll automatically be tokenized. Be careful about the setting for prepend_bos!
 When a string is input to the model, a BOS (beginning of sequence) token is prepended by default when the
-string is tokenized because self.prepend_bos is set as True by set_default_prepend_bos() in the initializer. But this
+string is tokenized because self.cfg.default_prepend_bos is set to True unless specified otherwise. But this
 should only be done at the START of the input, not when inputting part of the prompt. If you’re getting weird
 off-by-one errors, check carefully for what the setting should be!</p>
 <dl class="field-list simple">
@@ -1336,9 +1345,9 @@ search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of to
 dimension.</p></li>
 <li><p><strong>mode</strong> (<em>str</em><em>, </em><em>optional</em>) – If there are multiple matches, which match to return. Supports “first” or “last”.
 Defaults to “first”.</p></li>
-<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (applicable when input is a string).
-Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-Pass True or False to override the default.</p></li>
+<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (only applies when input is a string).
+Defaults to None, implying usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+Pass True or False to locally override the default.</p></li>
 </ul>
 </dd>
 </dl>
@@ -1487,14 +1496,6 @@ models with an associated dataset. But you can manually replace self.dataset wit
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.set_default_prepend_bos">
-<span class="sig-name descname"><span class="pre">set_default_prepend_bos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">default_prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.set_default_prepend_bos" title="Permalink to this definition">#</a></dt>
-<dd><p>Set the value of self.prepend_bos which is used to control the default behavior of whether to prepend
-the BOS token to the methods that process input text to tokenize (only when input is a string).
-This default value can overriden by passing prepend_bos=True or prepend_bos=False to the methods.</p>
-</dd></dl>
-
-<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.set_tokenizer">
 <span class="sig-name descname"><span class="pre">set_tokenizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.set_tokenizer" title="Permalink to this definition">#</a></dt>
 <dd><p>Sets the tokenizer to use for this model.
@@ -1639,8 +1640,8 @@ not a single token! If uncertain use to_tokens</p>
 <dd><p>Method to map text, a list of text or tokens to a list of tokens as strings</p>
 <p>Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt
 to the model as the first token is often treated weirdly, but should only be done at the START of the prompt.
-If prepend_bos=None is passed, it implies the usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-Therefore, make sure to turn it off by passing prepend_bos=False if you’re looking at the tokenization of part of
+If prepend_bos=None is passed, it implies the usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+Therefore, make sure to locally turn it off by passing prepend_bos=False if you’re looking at the tokenization of part of
 the prompt! (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)</p>
 <p>Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is
 capitalized. It’s easy to shoot yourself in the foot here if you’re not careful!</p>
@@ -1651,9 +1652,9 @@ capitalized. It’s easy to shoot yourself in the foot here if you’re not care
 <li><p><strong>input</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>list</em><em>, </em><em>torch.Tensor</em><em>]</em>) – The input - either a string or a tensor of tokens. If tokens, should</p></li>
 <li><p><strong>[</strong><strong>1</strong> (<em>be a tensor</em><em> of </em><em>shape</em><em> [</em><em>pos</em><em>] </em><em>or</em>) – </p></li>
 <li><p><strong>pos</strong><strong>]</strong> – </p></li>
-<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (applicable when input is a string).
-Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-Pass True or False to override the default.</p></li>
+<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (only applies when input is a string).
+Defaults to None, implying usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+Pass True or False to locally override the default.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -1681,9 +1682,9 @@ recommended when creating a sequence of tokens to be input to a model.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>input</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>List</em><em>[</em><em>str</em><em>]</em><em>]</em>) – </p></li>
-<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (applicable when input is a string).
-Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-Pass True or False to override the default.</p></li>
+<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (only applies when input is a string).
+Defaults to None, implying usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+Pass True or False to locally override the default.</p></li>
 <li><p><strong>move_to_device</strong> (<em>bool</em>) – Whether to move the output tensor of tokens to the device the model lives on.</p></li>
 <li><p><strong>True</strong> (<em>Defaults to</em>) – </p></li>
 <li><p><strong>truncate</strong> (<em>bool</em>) – If the output tokens are too long, whether to truncate the output tokens to the model’s</p></li>
@@ -1867,11 +1868,13 @@ norms, for convenience)</p></li>
 <li><p><strong>use_hook_tokens</strong> (<em>bool</em>) – Will add a hook point on the token input to
 HookedTransformer.forward, which lets you cache or intervene on the tokens.
 Defaults to False.</p></li>
-<li><p><strong>default_prepend_bos</strong> (<em>bool</em>) – Default value of whether to prepend the BOS token when the methods of HookedTransformer
-process input text to tokenize (only when input is a string). Defaults to True - even for models not explicitly
-trained with this, heads often use the first position as a resting position and accordingly lose information from
-the first token, so this empirically seems to give better results. Call set_default_prepend_bos(False) to change
-this default value to False.</p></li>
+<li><p><strong>default_prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Default behavior of whether to prepend the BOS token when the
+methods of HookedTransformer process input text to tokenize (only when input is a string).
+Defaults to True - even for models not explicitly trained with this, heads often use the
+first position as a resting position and accordingly lose information from the first token,
+so this empirically seems to give better results. To change the default behavior to False, pass in
+default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+in prepend_bos=True/False when you call a method that processes the input string.</p></li>
 <li><p><strong>dtype</strong> (torch.dtype, <em>optional</em>) – The model’s dtype. Defaults to torch.float32.</p></li>
 </ul>
 </dd>
@@ -2679,8 +2682,8 @@ Paper: <a class="reference external" href="https://arxiv.org/pdf/2211.00593.pdf"
 <dt class="sig sig-object py" id="transformer_lens.evals.induction_loss">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">induction_loss</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subseq_len</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">384</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cuda'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.induction_loss" title="Permalink to this definition">#</a></dt>
 <dd><p>Generates a batch of random sequences repeated twice, and measures model performance on the second half. Tests whether a model has induction heads.</p>
-<p>By default, prepends a beginning of string token (prepend_bos flag defaults to None, implying usage of model.prepend_bos whose default is True set
-by set_default_prepend_bos() method), which is useful to give models a resting position, and sometimes models were trained with this.</p>
+<p>By default, prepends a beginning of string token (when prepend_bos flag defaults to None, model.cfg.default_prepend_bos is used
+whose default is True unless specified otherwise), which is useful to give models a resting position, and sometimes models were trained with this.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -3244,7 +3247,7 @@ manager for the given hook. Defaults to None.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.loading_from_pretrained.get_pretrained_model_config">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.loading_from_pretrained.</span></span><span class="sig-name descname"><span class="pre">get_pretrained_model_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.loading_from_pretrained.get_pretrained_model_config" title="Permalink to this definition">#</a></dt>
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.loading_from_pretrained.</span></span><span class="sig-name descname"><span class="pre">get_pretrained_model_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.loading_from_pretrained.get_pretrained_model_config" title="Permalink to this definition">#</a></dt>
 <dd><p>Returns the pretrained model config as an HookedTransformerConfig object.</p>
 <p>There are two types of pretrained models: HuggingFace models (where
 AutoModel and AutoConfig work), and models trained by me (NeelNanda) which
@@ -3265,7 +3268,14 @@ subsequent linear layers (see HookedTransformer.fold_layer_norm for
 details). Defaults to False.</p></li>
 <li><p><strong>device</strong> (<em>str</em><em>, </em><em>optional</em>) – The device to load the model onto. By
 default will load to CUDA if available, else CPU.</p></li>
-<li><p><strong>n_devices</strong> (<em>int</em>) – The number of devices to split the model across. Defaults to 1.</p></li>
+<li><p><strong>n_devices</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of devices to split the model across. Defaults to 1.</p></li>
+<li><p><strong>default_prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Default behavior of whether to prepend the BOS token when the
+methods of HookedTransformer process input text to tokenize (only when input is a string).
+Defaults to True - even for models not explicitly trained with this, heads often use the
+first position as a resting position and accordingly lose information from the first token,
+so this empirically seems to give better results. To change the default behavior to False, pass in
+default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+in prepend_bos=True/False when you call a method that processes the input string.</p></li>
 <li><p><strong>kwargs</strong> – Other optional arguments passed to HuggingFace’s from_pretrained.
 Also given to other HuggingFace functions when compatible.</p></li>
 </ul>
@@ -4444,7 +4454,6 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.refactor_factored_attn_matrices"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.refactor_factored_attn_matrices()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.run_with_cache"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.run_with_cache()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.sample_datapoint"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.sample_datapoint()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_default_prepend_bos"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_default_prepend_bos()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_tokenizer"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_tokenizer()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_result"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_use_attn_result()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_hook_mlp_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_use_hook_mlp_in()</span></code></a></li>
