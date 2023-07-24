@@ -88,7 +88,7 @@ class HookedTransformer(HookedRootModule):
             self.set_tokenizer(tokenizer)
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            if "llama" in self.cfg.tokenizer_name:
+            if "llama" in self.cfg.tokenizer_name.lower():
                 # llama tokenizer requires special handling
                 print("Warning: LLaMA tokenizer not loaded. Please load manually.")
             else:
@@ -163,6 +163,11 @@ class HookedTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
+        # Prepend the BOS token to the input as default when the input is a string.
+        # Even for models not explicitly trained with this, heads often use the first position as a resting position
+        # and accordingly lose information from the first token, so this empirically seems to give better results.
+        self.set_default_prepend_bos(self.cfg.default_prepend_bos)
+
     def check_hooks_to_add(
         self,
         hook_point,
@@ -191,7 +196,7 @@ class HookedTransformer(HookedRootModule):
         input,
         return_type: Literal["logits"],
         loss_per_token: bool = False,
-        prepend_bos: bool = True,
+        prepend_bos: Optional[bool] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Loss:
@@ -203,7 +208,7 @@ class HookedTransformer(HookedRootModule):
         input,
         return_type: Literal["loss"],
         loss_per_token: bool = False,
-        prepend_bos: bool = True,
+        prepend_bos: Optional[bool] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Loss:
@@ -215,7 +220,7 @@ class HookedTransformer(HookedRootModule):
         input,
         return_type: Literal["both"],
         loss_per_token: bool = False,
-        prepend_bos: bool = True,
+        prepend_bos: Optional[bool] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
@@ -227,7 +232,7 @@ class HookedTransformer(HookedRootModule):
         input,
         return_type: Literal[None],
         loss_per_token: bool = False,
-        prepend_bos: bool = True,
+        prepend_bos: Optional[bool] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> None:
@@ -239,7 +244,7 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         return_type: Optional[str] = "logits",
         loss_per_token: bool = False,
-        prepend_bos: bool = True,
+        prepend_bos: Optional[bool] = None,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Union[
@@ -257,10 +262,9 @@ class HookedTransformer(HookedRootModule):
             Average loss is a scalar (averaged over position *and* batch), per-token loss is a tensor ([batch, position-1])
             - position-1 because we're predicting the next token, and there's no specified next token for the final
             token. Defaults to False.
-        prepend_bos bool: Whether to prepend the BOS token to the input. Only applies when input is a string. Defaults
-            to True (unlike to_tokens) - even for models not explicitly trained with this, heads often use the first
-            position as a resting position and accordingly lose information from the first token, so this empirically
-            seems to give better results.
+        prepend_bos Optional[bool]: Whether to prepend the BOS token to the input (Only applies when input is a string).
+            Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
+            Pass True or False to override the default.
         stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer. Exclusive - ie,
         stop_at_layer = 0 will only run the embedding layer, stop_at_layer = 1 will run the embedding layer and the
         first transformer block, etc. Supports negative indexing. Useful for analysis of intermediate layers, eg finding
@@ -270,6 +274,13 @@ class HookedTransformer(HookedRootModule):
         if you want a custom loss function, the recommended behaviour is returning the logits and then applying your
         custom loss function.
         """
+
+        # Use the provided prepend_bos as an override if it's not None;
+        # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
+        prepend_bos = utils.override_or_use_default_flag(
+            self.prepend_bos, override=prepend_bos
+        )
+
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
             assert (
@@ -460,10 +471,18 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
+    def set_default_prepend_bos(self, default_prepend_bos: bool):
+        """
+        Set the value of self.prepend_bos which is used to control the default behavior of whether to prepend
+        the BOS token to the methods that process input text to tokenize (only when input is a string).
+        This default value can overriden by passing prepend_bos=True or prepend_bos=False to the methods.
+        """
+        self.prepend_bos = default_prepend_bos
+
     def to_tokens(
         self,
         input: Union[str, List[str]],
-        prepend_bos: bool = True,
+        prepend_bos: Optional[bool] = None,
         move_to_device: bool = True,
         truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
@@ -473,7 +492,9 @@ class HookedTransformer(HookedRootModule):
 
         Args:
             input (Union[str, List[str]]). The input to tokenize
-            prepend_bos (bool): Whether to prepend a beginning of sequence token. Defaults to True
+            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
+                Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
+                Pass True or False to override the default.
             move_to_device (bool): Whether to move the output tensor of tokens to the device the model lives on.
             Defaults to True
             truncate (bool): If the output tokens are too long, whether to truncate the output tokens to the model's
@@ -488,6 +509,13 @@ class HookedTransformer(HookedRootModule):
         capitalized. It's easy to shoot yourself in the foot here if you're not careful!
         """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
+
+        # Use the provided prepend_bos as an override if it's not None;
+        # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
+        prepend_bos = utils.override_or_use_default_flag(
+            self.prepend_bos, override=prepend_bos
+        )
+
         if prepend_bos:
             if isinstance(input, str):
                 input = self.tokenizer.bos_token + input
@@ -550,14 +578,15 @@ class HookedTransformer(HookedRootModule):
             Int[np.ndarray, "1 pos"],
             list,
         ],
-        prepend_bos: bool = True,
+        prepend_bos: Optional[bool] = None,
     ) -> List[str]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt
         to the model as the first token is often treated weirdly, but should only be done at the START of the prompt.
-        Make sure to turn it off if you're looking at the tokenization of part of the prompt!
-        (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
+        If prepend_bos=None is passed, it implies the usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
+        Therefore, make sure to turn it off by passing prepend_bos=False if you're looking at the tokenization of part of
+        the prompt! (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
 
         Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is
         capitalized. It's easy to shoot yourself in the foot here if you're not careful!
@@ -567,8 +596,9 @@ class HookedTransformer(HookedRootModule):
         Args:
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should
             be a tensor of shape [pos] or [1, pos]
-            prepend_bos (bool, optional): Whether to prepend a BOS token. Only applies if input is a string. Defaults to
-            True.
+            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
+                Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
+                Pass True or False to override the default.
 
         Returns:
             str_tokens: List of individual tokens as strings
@@ -628,16 +658,17 @@ class HookedTransformer(HookedRootModule):
             str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]]
         ],
         mode="first",
-        prepend_bos=True,
+        prepend_bos: Optional[bool] = None,
     ):
         """
         Get the position of a single_token in a string or sequence of tokens. Raises an error if the token is not
         present.
 
-        Gotcha: If you're inputting a string, it'll automatically be tokenized. Be careful about prepend_bos is true or
-        false! When a string is input to the model, a BOS (beginning of sequence) token is prepended by default when the
-        string is tokenized. But this should only be done at the START of the input, not when inputting part of the
-        prompt. If you're getting weird off-by-one errors, check carefully for what the setting should be!
+        Gotcha: If you're inputting a string, it'll automatically be tokenized. Be careful about the setting for prepend_bos!
+        When a string is input to the model, a BOS (beginning of sequence) token is prepended by default when the
+        string is tokenized because self.prepend_bos is set as True by set_default_prepend_bos() in the initializer. But this
+        should only be done at the START of the input, not when inputting part of the prompt. If you're getting weird
+        off-by-one errors, check carefully for what the setting should be!
 
         Args:
             single_token (Union[str, int]): The token to search for. Can
@@ -648,8 +679,9 @@ class HookedTransformer(HookedRootModule):
                 dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last".
                 Defaults to "first".
-            prepend_bos (bool): Prepends a BOS (beginning of sequence) token when tokenizing a string. Only matters when
-                inputting a string to the function, otherwise ignored.
+            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
+                Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
+                Pass True or False to override the default.
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
@@ -783,6 +815,7 @@ class HookedTransformer(HookedRootModule):
         n_devices=1,
         tokenizer=None,
         move_to_device=True,
+        fold_value_biases=True,
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
@@ -837,6 +870,17 @@ class HookedTransformer(HookedRootModule):
                 functions when compatible. For some models or arguments it doesn't work, especially for
                 models that are not internally loaded with HuggingFace's from_pretrained (e.g. SoLU models).
         """
+        assert not (
+            from_pretrained_kwargs.get("load_in_8bit", False)
+            or from_pretrained_kwargs.get("load_in_4bit", False)
+        ), "Quantization not supported"
+
+        if from_pretrained_kwargs.get(
+            "torch_dtype", None
+        ) == torch.float16 and device in ["cpu", None]:
+            logging.warning(
+                "float16 models may not work on CPU. Consider using a GPU or bfloat16."
+            )
 
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
@@ -883,15 +927,12 @@ class HookedTransformer(HookedRootModule):
         # Create the HookedTransformer object
         model = cls(cfg, tokenizer, move_to_device=False)
 
-        dtype = from_pretrained_kwargs.get("torch_dtype", None)
-        if dtype is not None:
-            model = model.to(dtype)
-
         model.load_and_process_state_dict(
             state_dict,
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
         )
 
@@ -910,6 +951,7 @@ class HookedTransformer(HookedRootModule):
         center_writing_weights=False,
         center_unembed=False,
         refactor_factored_attn_matrices=False,
+        fold_value_biases=False,
         **from_pretrained_kwargs,
     ):
         """Wrapper for from_pretrained with all boolean flags related to simplifying the model set to False. Refer to
@@ -919,6 +961,7 @@ class HookedTransformer(HookedRootModule):
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             **from_pretrained_kwargs,
         )
@@ -987,6 +1030,10 @@ class HookedTransformer(HookedRootModule):
             model_name (str, optional): checks the model name for special cases of state dict loading. Only used for
                 Redwood 2L model currently
         """
+        if self.cfg.dtype not in [torch.float32, torch.float64] and fold_ln:
+            logging.warning(
+                "With reduced precision, it is advised to use `from_pretrained_no_processing` instead of `from_pretrained`."
+            )
 
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
@@ -1372,10 +1419,10 @@ class HookedTransformer(HookedRootModule):
         freq_penalty: float = 0.0,
         num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
-        prepend_bos=True,
+        prepend_bos: Optional[bool] = None,
         return_type: Optional[str] = "input",
         verbose: bool = True,
-    ) -> Float[torch.Tensor, "batch pos_plus_new_tokens"]:
+    ) -> Union[Int[torch.Tensor, "batch pos_plus_new_tokens"], str]:
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
 
@@ -1398,7 +1445,9 @@ class HookedTransformer(HookedRootModule):
             temperature (float): Temperature for sampling. Higher values will make the model more random (limit of temp -> 0 is just taking the top token, limit of temp -> inf is sampling from a uniform distribution)
             freq_penalty (float): Frequency penalty for sampling - how much to penalise previous tokens. Higher values will make the model more random
             use_past_kv_cache (bool): If True, create and use cache to speed up generation
-            prepend_bos (bool): If True, prepend the model's bos_token_id to the input, if it's a string. Irrelevant if input is a tensor.
+            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
+                Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
+                Pass True or False to override the default.
             return_type (str, *optional*): The type of the output to return - either a string (str), a tensor of tokens (tensor) or whatever the format of the input was (input).
             verbose (bool): If True, show tqdm progress bars for generation
         Returns:
@@ -1484,6 +1533,12 @@ class HookedTransformer(HookedRootModule):
                 break
 
         if return_type == "str":
+            # Use the provided prepend_bos as an override if it's not None;
+            # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
+            prepend_bos = utils.override_or_use_default_flag(
+                self.prepend_bos, override=prepend_bos
+            )
+
             if prepend_bos:
                 # If we prepended a BOS token, remove it when returning output.
                 return self.tokenizer.decode(tokens[0, 1:])

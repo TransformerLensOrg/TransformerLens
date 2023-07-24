@@ -144,7 +144,7 @@ def detect_head(
     else:
         layer2heads = heads
 
-    matches = -torch.ones(cfg.n_layers, cfg.n_heads)
+    matches = -torch.ones(cfg.n_layers, cfg.n_heads, dtype=cfg.dtype)
 
     for layer, layer_heads in layer2heads.items():
         # [n_heads q_pos k_pos]
