@@ -293,7 +293,7 @@ def sample_logits(
     temperature: float = 1.0,
     freq_penalty: float = 0.0,
     tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
-) -> Float[torch.Tensor, "batch"]:
+) -> Int[torch.Tensor, "batch"]:
     """
     Sample from the logits, in order to generate text
 
@@ -345,6 +345,8 @@ def sample_logits(
                 -1, sorted_indices, sorted_indices_to_remove
             )
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+
+        final_logits = final_logits.to(torch.float32)
         return torch.distributions.categorical.Categorical(logits=final_logits).sample()
 
 
@@ -459,7 +461,7 @@ class Slice:
     def indices(
         self,
         max_ctx: Optional[int] = None,
-    ) -> Union[np.ndarray, np.int64]:
+    ) -> Union[np.ndarray, np.int32, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
 
@@ -608,7 +610,7 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    prepend_bos: bool = True,
+    prepend_bos: Optional[bool] = None,
     top_k: int = 10,
 ):
     """
@@ -795,3 +797,15 @@ def get_device():
             return torch.device("mps")
 
     return torch.device("cpu")
+
+
+def override_or_use_default_flag(
+    default_flag: bool,
+    override: Optional[bool] = None,
+) -> bool:
+    """
+    Determines which flag to return based on whether an overriding flag is provided.
+    If a not-None overriding flag is provided, it is returned.
+    Otherwise, the global flag is returned.
+    """
+    return override if override is not None else default_flag
