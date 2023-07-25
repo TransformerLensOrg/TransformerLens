@@ -50,4 +50,10 @@ def test_multiply(scalar, leading_dim, multiply_from_left, error_expected):
         if multiply_from_left:
             assert_close((fm * scalar).AB, (a @ b) * scalar)
         else:
-            assert_close((scalar * fm).AB, (a @ b) * scalar)
+            assert_close((scalar * fm).AB, scalar * (a @ b))
+        # This next test is implementation dependant and can be broken and removed at any time!
+        # It checks that the multiplication is performed on the A factor matrix.
+        if multiply_from_left:
+            assert_close((fm * scalar).A, a * scalar)
+        else:
+            assert_close((scalar * fm).A, scalar * a)
