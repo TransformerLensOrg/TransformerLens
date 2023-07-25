@@ -1,6 +1,6 @@
 import logging
 from functools import lru_cache
-from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, Union, overload
 
 import einops
 import numpy as np
@@ -1409,7 +1409,7 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, Float[torch.Tensor, "batch pos"]] = "",
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
-        eos_token_id: Optional[int] = None,
+        eos_token_id: Optional[Union[int, Sequence]] = None,
         do_sample: bool = False,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
@@ -1433,10 +1433,11 @@ class HookedTransformer(HookedRootModule):
         instead.
 
         Args:
-            input (int): Either a batch of tokens ([batch, pos]) or a text string (this will be converted to a batch of tokens with batch size 1)
+            input (Union[str, Int[torch.Tensor, "batch pos"])]): Either a batch of tokens ([batch, pos]) or a text string (this will be converted to a batch of tokens with batch size 1)
             max_new_tokens (int): Maximum number of tokens to generate
             stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
-            eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
+            eos_token_id (Optional[Union[int, Sequence]], *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos.
+                It's also possible to provide a list of token IDs (not just the eos_token_id), in which case the generation will stop when any of them are output (useful e.g. for stable_lm).
             do_sample (bool): If True, sample from the model's output distribution. Otherwise, use greedy search (take the max logit each time).
             top_k (int): Number of tokens to sample from. If None, sample from all tokens
             top_p (float): Probability mass to sample from. If 1.0, sample from all tokens. If <1.0, we take the top tokens with cumulative probability >= top_p
@@ -1474,7 +1475,8 @@ class HookedTransformer(HookedRootModule):
 
         assert isinstance(tokens, torch.Tensor)
         batch_size, ctx_length = tokens.shape
-        tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
+        device = devices.get_device_for_block_index(0, self.cfg)
+        tokens = tokens.to(device)
         if use_past_kv_cache:
             past_kv_cache = HookedTransformerKeyValueCache.init_cache(
                 self.cfg, self.cfg.device, batch_size
@@ -1482,12 +1484,30 @@ class HookedTransformer(HookedRootModule):
         else:
             past_kv_cache = None
 
-        if stop_at_eos and eos_token_id is None:
-            assert (
+        stop_tokens = []
+        eos_token_for_padding = 0
+        if stop_at_eos:
+            tokenizer_has_eos_token = (
                 self.tokenizer is not None and self.tokenizer.eos_token_id is not None
-            ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+            )
+            if eos_token_id is None:
+                assert (
+                    tokenizer_has_eos_token
+                ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
 
-            eos_token_id = self.tokenizer.eos_token_id
+                eos_token_id = self.tokenizer.eos_token_id
+
+            if isinstance(eos_token_id, int):
+                stop_tokens = [eos_token_id]
+                eos_token_for_padding = eos_token_id
+            else:
+                # eos_token_id is a Sequence (e.g. list or tuple)
+                stop_tokens = eos_token_id
+                eos_token_for_padding = (
+                    self.tokenizer.eos_token_id
+                    if tokenizer_has_eos_token
+                    else eos_token_id[0]
+                )
 
         # An array to track which sequences in the batch have finished.
         finished_sequences = torch.zeros(
@@ -1530,12 +1550,15 @@ class HookedTransformer(HookedRootModule):
                 temperature=temperature,
                 freq_penalty=freq_penalty,
                 tokens=tokens,
-            ).to(devices.get_device_for_block_index(0, self.cfg))
+            ).to(device)
 
             if stop_at_eos:
-                # For all unfinished sequences, add on the next token. If a sequence finished, we throw away the generated token and instead add an EOS token to pad.
-                sampled_tokens[finished_sequences] = eos_token_id
-                finished_sequences.logical_or_(sampled_tokens == eos_token_id)
+                # For all unfinished sequences, add on the next token.
+                # If a sequence was finished, throw away the generated token and add eos_token_for_padding instead.
+                sampled_tokens[finished_sequences] = eos_token_for_padding
+                finished_sequences.logical_or_(
+                    torch.isin(sampled_tokens, torch.tensor(stop_tokens).to(device))
+                )
 
             tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
 
