@@ -1,3 +1,5 @@
+import random
+
 import pytest
 import torch
 from torch.testing import assert_close
@@ -12,8 +14,8 @@ from transformer_lens import FactoredMatrix
     [
         # Test cases with different types of scalar values.
         (torch.rand(1), None),  # 1-element Tensor. No error expected.
-        (float(torch.rand(1).item()), None),  # float. No error expected.
-        (int(torch.randint(1, 10, (1,)).item()), None),  # int. No error expected.
+        (random.random(), None),  # float. No error expected.
+        (random.randint(-100, 100), None),  # int. No error expected.
         # Test cases with non-scalar values that are expected to raise errors.
         (
             torch.rand(2, 2),
