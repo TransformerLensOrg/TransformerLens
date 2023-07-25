@@ -1543,7 +1543,7 @@ class HookedTransformer(HookedRootModule):
             ).to(device)
 
             if stop_at_eos:
-                # For all unfinished sequences, add on the next token. 
+                # For all unfinished sequences, add on the next token.
                 # If a sequence was finished, throw away the generated token and add eos_token_for_padding instead.
                 sampled_tokens[finished_sequences] = eos_token_for_padding
                 finished_sequences.logical_or_(
