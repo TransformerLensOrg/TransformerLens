@@ -1481,7 +1481,7 @@ class HookedTransformer(HookedRootModule):
             past_kv_cache = None
 
         stop_tokens = []
-        pad_token_id = 0
+        eos_token_for_padding = 0
         if stop_at_eos:
             tokenizer_has_eos_token = (
                 self.tokenizer is not None and self.tokenizer.eos_token_id is not None
@@ -1495,11 +1495,11 @@ class HookedTransformer(HookedRootModule):
 
             if isinstance(eos_token_id, int):
                 stop_tokens = [eos_token_id]
-                pad_token_id = eos_token_id
+                eos_token_for_padding = eos_token_id
             else:
                 # eos_token_id is a Sequence (e.g. list or tuple)
                 stop_tokens = eos_token_id
-                pad_token_id = (
+                eos_token_for_padding = (
                     self.tokenizer.eos_token_id
                     if tokenizer_has_eos_token
                     else eos_token_id[0]
@@ -1543,8 +1543,9 @@ class HookedTransformer(HookedRootModule):
             ).to(device)
 
             if stop_at_eos:
-                # For all unfinished sequences, add on the next token. If a sequence finished, we throw away the generated token and instead add an EOS token to pad.
-                sampled_tokens[finished_sequences] = pad_token_id
+                # For all unfinished sequences, add on the next token. 
+                # If a sequence was finished, throw away the generated token and add eos_token_for_padding instead.
+                sampled_tokens[finished_sequences] = eos_token_for_padding
                 finished_sequences.logical_or_(
                     torch.isin(sampled_tokens, torch.tensor(stop_tokens).to(device))
                 )
