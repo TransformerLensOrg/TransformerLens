@@ -1,6 +1,6 @@
 import logging
 from functools import lru_cache
-from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, Union, overload
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload
 
 import einops
 import numpy as np
@@ -1409,8 +1409,8 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, Float[torch.Tensor, "batch pos"]] = "",
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
-        eos_token_id: Optional[Union[int, Sequence]] = None,
-        do_sample: bool = False,
+        eos_token_id: Optional[int] = None,
+        do_sample: bool = True,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
         temperature: float = 1.0,
@@ -1543,14 +1543,19 @@ class HookedTransformer(HookedRootModule):
                 )
             final_logits = logits[:, -1, :]
 
-            sampled_tokens = utils.sample_logits(
-                final_logits,
-                top_k=top_k,
-                top_p=top_p,
-                temperature=temperature,
-                freq_penalty=freq_penalty,
-                tokens=tokens,
-            ).to(device)
+            if do_sample:
+                sampled_tokens = utils.sample_logits(
+                    final_logits,
+                    top_k=top_k,
+                    top_p=top_p,
+                    temperature=temperature,
+                    freq_penalty=freq_penalty,
+                    tokens=tokens,
+                ).to(devices.get_device_for_block_index(0, self.cfg))
+            else:
+                sampled_tokens = final_logits.argmax(-1).to(
+                    devices.get_device_for_block_index(0, self.cfg)
+                )
 
             if stop_at_eos:
                 # For all unfinished sequences, add on the next token.
