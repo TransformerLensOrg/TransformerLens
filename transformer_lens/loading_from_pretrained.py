@@ -127,6 +127,10 @@ OFFICIAL_MODEL_NAMES = [
     "roneneldan/TinyStories-2Layers-33M",
     "roneneldan/TinyStories-Instuct-1Layer-21M",
     "roneneldan/TinyStories-Instruct-2Layers-33M",
+    "stabilityai/stablelm-base-alpha-3b",
+    "stabilityai/stablelm-base-alpha-7b",
+    "stabilityai/stablelm-tuned-alpha-3b",
+    "stabilityai/stablelm-tuned-alpha-7b",
 ]
 
 # Model Aliases:
@@ -453,6 +457,22 @@ MODEL_ALIASES = {
     "roneneldan/TinyStories-2Layers-33M": ["tiny-stories-2L-33M"],
     "roneneldan/TinyStories-Instuct-1Layer-21M": ["tiny-stories-instruct-1L-21M"],
     "roneneldan/TinyStories-Instruct-2Layers-33M": ["tiny-stories-instruct-2L-33M"],
+    "stabilityai/stablelm-base-alpha-3b": [
+        "stablelm-base-alpha-3b",
+        "stablelm-base-3b",
+    ],
+    "stabilityai/stablelm-base-alpha-7b": [
+        "stablelm-base-alpha-7b",
+        "stablelm-base-7b",
+    ],
+    "stabilityai/stablelm-tuned-alpha-3b": [
+        "stablelm-tuned-alpha-3b",
+        "stablelm-tuned-3b",
+    ],
+    "stabilityai/stablelm-tuned-alpha-7b": [
+        "stablelm-tuned-alpha-7b",
+        "stablelm-tuned-7b",
+    ],
 }
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
@@ -736,6 +756,7 @@ def get_pretrained_model_config(
     fold_ln: bool = False,
     device: Optional[str] = None,
     n_devices: int = 1,
+    default_prepend_bos: bool = True,
     **kwargs,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -759,7 +780,14 @@ def get_pretrained_model_config(
             details). Defaults to False.
         device (str, optional): The device to load the model onto. By
             default will load to CUDA if available, else CPU.
-        n_devices (int): The number of devices to split the model across. Defaults to 1.
+        n_devices (int, optional): The number of devices to split the model across. Defaults to 1.
+        default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
+            methods of HookedTransformer process input text to tokenize (only when input is a string).
+            Defaults to True - even for models not explicitly trained with this, heads often use the
+            first position as a resting position and accordingly lose information from the first token,
+            so this empirically seems to give better results. To change the default behavior to False, pass in
+            default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+            in prepend_bos=True/False when you call a method that processes the input string.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
             Also given to other HuggingFace functions when compatible.
 
@@ -824,6 +852,7 @@ def get_pretrained_model_config(
 
     cfg_dict["device"] = device
     cfg_dict["n_devices"] = n_devices
+    cfg_dict["default_prepend_bos"] = default_prepend_bos
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg

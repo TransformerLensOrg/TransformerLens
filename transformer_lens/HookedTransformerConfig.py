@@ -129,11 +129,13 @@ class HookedTransformerConfig:
         use_hook_tokens (bool): Will add a hook point on the token input to
             HookedTransformer.forward, which lets you cache or intervene on the tokens.
             Defaults to False.
-        default_prepend_bos (bool): Default value of whether to prepend the BOS token when the methods of HookedTransformer
-            process input text to tokenize (only when input is a string). Defaults to True - even for models not explicitly
-            trained with this, heads often use the first position as a resting position and accordingly lose information from
-            the first token, so this empirically seems to give better results. Call set_default_prepend_bos(False) to change
-            this default value to False.
+        default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
+            methods of HookedTransformer process input text to tokenize (only when input is a string).
+            Defaults to True - even for models not explicitly trained with this, heads often use the
+            first position as a resting position and accordingly lose information from the first token,
+            so this empirically seems to give better results. To change the default behavior to False, pass in
+            default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+            in prepend_bos=True/False when you call a method that processes the input string.
         dtype (torch.dtype, *optional*): The model's dtype. Defaults to torch.float32.
     """
 
@@ -234,11 +236,13 @@ class HookedTransformerConfig:
 
         if self.n_devices > 1:
             assert (
-                self.device == "cuda"
-            ), "n_devices > 1 is only supported on CUDA devices"
-            assert (
                 torch.cuda.device_count() >= self.n_devices
             ), f"Not enough CUDA devices to support n_devices {self.n_devices}"
+
+        assert self.default_prepend_bos in [
+            True,
+            False,
+        ], f"padding_side must be either True or False, but {self.default_prepend_bos} is given"
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> HookedTransformerConfig:
