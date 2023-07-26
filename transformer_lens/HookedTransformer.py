@@ -1,6 +1,6 @@
 import logging
 from functools import lru_cache
-from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple, Union, overload
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload
 
 import einops
 import numpy as np
@@ -1556,7 +1556,6 @@ class HookedTransformer(HookedRootModule):
                 sampled_tokens = final_logits.argmax(-1).to(
                     devices.get_device_for_block_index(0, self.cfg)
                 )
-
 
             if stop_at_eos:
                 # For all unfinished sequences, add on the next token.
