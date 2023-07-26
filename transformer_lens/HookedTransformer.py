@@ -60,7 +60,7 @@ class HookedTransformer(HookedRootModule):
         cfg,
         tokenizer=None,
         move_to_device=True,
-        padding_side="right",
+        default_padding_side="right",
     ):
         """
         Model initialization. Note that if you want to load the model from pretrained weights, you should use the
@@ -74,7 +74,7 @@ class HookedTransformer(HookedRootModule):
         move_to_device (bool): Whether to move the model to the device specified in cfg.
             device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
             will be split across multiple devices.
-        padding_side (str): Which side to pad on. Must be "right" or "left".
+        default_padding_side (str): Which side to pad on. Must be "right" or "left".
         """
         super().__init__()
         if isinstance(cfg, Dict):
@@ -87,7 +87,7 @@ class HookedTransformer(HookedRootModule):
         self.cfg = cfg
 
         if tokenizer is not None:
-            self.set_tokenizer(tokenizer, padding_side=padding_side)
+            self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             if "llama" in self.cfg.tokenizer_name:
@@ -96,7 +96,7 @@ class HookedTransformer(HookedRootModule):
             else:
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(self.cfg.tokenizer_name),
-                    padding_side=padding_side,
+                    default_padding_side=default_padding_side,
                 )
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens
@@ -295,7 +295,7 @@ class HookedTransformer(HookedRootModule):
         
         # Use the provided prepend_bos as an override if it's not None;
         # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
-        prepend_bos = utils.override_or_use_default_flag(
+        prepend_bos = utils.override_or_use_default_value(
             self.prepend_bos, override=prepend_bos
         )
 
@@ -492,12 +492,12 @@ class HookedTransformer(HookedRootModule):
     def set_tokenizer(
             self,
             tokenizer,
-            padding_side="right",
+            default_padding_side="right",
         ):
         """
         Sets the tokenizer to use for this model.
         tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer
-        padding_side (str): "right" or "left", which side to pad on
+        default_padding_side (str): "right" or "left", which side to pad on
         """
         assert isinstance(
             tokenizer, PreTrainedTokenizerBase
@@ -517,8 +517,8 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
             
-        assert padding_side in ["right", "left"], f"padding_side must be 'right' or 'left', got {padding_side}"
-        self.tokenizer.padding_side = padding_side
+        assert default_padding_side in ["right", "left"], f"padding_side must be 'right' or 'left', got {default_padding_side}"
+        self.tokenizer.padding_side = default_padding_side
 
     def set_default_prepend_bos(self, default_prepend_bos: bool):
         """
@@ -563,7 +563,7 @@ class HookedTransformer(HookedRootModule):
 
         # Use the provided prepend_bos as an override if it's not None;
         # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
-        prepend_bos = utils.override_or_use_default_flag(
+        prepend_bos = utils.override_or_use_default_value(
             self.prepend_bos, override=prepend_bos
         )
 
@@ -870,7 +870,7 @@ class HookedTransformer(HookedRootModule):
         n_devices=1,
         tokenizer=None,
         move_to_device=True,
-        padding_side="right",
+        default_padding_side="right",
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
@@ -924,7 +924,7 @@ class HookedTransformer(HookedRootModule):
                 from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to other HuggingFace
                 functions when compatible. For some models or arguments it doesn't work, especially for
                 models that are not internally loaded with HuggingFace's from_pretrained (e.g. SoLU models).
-            padding_side (str, optional): Which side to pad on when tokenizing. Defaults to "right".
+            default_padding_side (str, optional): Which side to pad on when tokenizing. Defaults to "right".
         """
 
         # Get the model name used in HuggingFace, rather than the alias.
@@ -970,7 +970,7 @@ class HookedTransformer(HookedRootModule):
         )
 
         # Create the HookedTransformer object
-        model = cls(cfg, tokenizer, move_to_device=False, padding_side=padding_side)
+        model = cls(cfg, tokenizer, move_to_device=False, default_padding_side=default_padding_side)
 
         dtype = from_pretrained_kwargs.get("torch_dtype", None)
         if dtype is not None:
@@ -1593,7 +1593,7 @@ class HookedTransformer(HookedRootModule):
         if return_type == "str":
             # Use the provided prepend_bos as an override if it's not None;
             # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
-            prepend_bos = utils.override_or_use_default_flag(
+            prepend_bos = utils.override_or_use_default_value(
                 self.prepend_bos, override=prepend_bos
             )
 

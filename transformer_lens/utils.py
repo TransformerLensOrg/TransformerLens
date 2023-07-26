@@ -797,7 +797,7 @@ def get_device():
     return torch.device("cpu")
 
 
-def override_or_use_default_flag(
+def override_or_use_default_value(
     default_flag: bool,
     override: Optional[bool] = None,
 ) -> bool:
@@ -822,26 +822,26 @@ def get_attention_mask(
     Gotcha: Make sure that the passed prepend_bos is the same as the one used to generate the tokens!
     """
     # Initialize the attention mask to be 1 wherever the token is not a pad token
-    attetnion_mask = tokens.ne(tokenizer.pad_token_id)
+    attention_mask = tokens.ne(tokenizer.pad_token_id)
 
     # Handle the special case where the BOS token is the same as the pad token
     if tokenizer.bos_token_id == tokenizer.pad_token_id and prepend_bos:
         if tokenizer.padding_side == "right":
             # Set the first token to 1 in the attention mask
-            attetnion_mask[:, 0] = True
+            attention_mask[:, 0] = True
 
         else:
-            is_pad_token = 1 - attetnion_mask.int()
+            is_pad_token = 1 - attention_mask.int()
 
             # Find the position of the pad token used as the BOS token and thus should get attended
             pad_bos_positions = is_pad_token.cumsum(dim=-1).argmax(dim=-1)
 
             # Set the corresponding position in the attention mask to 1, to ensure that the BOS token is not treated as a pad token
-            attetnion_mask[
-                torch.arange(attetnion_mask.shape[0]), pad_bos_positions
+            attention_mask[
+                torch.arange(attention_mask.shape[0]), pad_bos_positions
             ] = True
 
-    return attetnion_mask.int()
+    return attention_mask.int()
 
 
 def get_causal_mask_for_left_padding(
@@ -920,7 +920,7 @@ def locally_override_and_restore_defaults(function):
             f"padding_side must be one of None, 'left', or 'right', but got {padding_side}."
         )
         
-        arg_values["padding_side"] = override_or_use_default_flag(default_padding_side, override=padding_side)
+        arg_values["padding_side"] = override_or_use_default_value(default_padding_side, override=padding_side)
 
         try:
             # This is important because self.tokenizer.padding_side is

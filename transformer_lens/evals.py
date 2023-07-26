@@ -133,7 +133,7 @@ def induction_loss(
 
     # Use the provided prepend_bos as an override if it's not None;
     # otherwise use model.prepend_bos (defaults to True) set by model.set_default_prepend_bos().
-    prepend_bos = utils.override_or_use_default_flag(
+    prepend_bos = utils.override_or_use_default_value(
         model.prepend_bos, override=prepend_bos
     )
 
