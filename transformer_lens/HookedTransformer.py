@@ -289,11 +289,6 @@ class HookedTransformer(HookedRootModule):
         if you want a custom loss function, the recommended behaviour is returning the logits and then applying your
         custom loss function.
         """
-        
-        # Use the provided prepend_bos as an override if it's not None;
-        prepend_bos = utils.override_or_use_default_value(
-            self.cfg.default_prepend_bos, override=prepend_bos
-        )
 
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
@@ -548,12 +543,6 @@ class HookedTransformer(HookedRootModule):
         capitalized. It's easy to shoot yourself in the foot here if you're not careful!
         """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
-
-        # Use the provided prepend_bos as an override if it's not None;
-        # otherwise use self.cfg.default_prepend_bos (defaults to True unless specified otherwise)
-        prepend_bos = utils.override_or_use_default_value(
-            self.cfg.default_prepend_bos, override=prepend_bos
-        )
 
         if prepend_bos:
             if isinstance(input, str):
@@ -1510,11 +1499,6 @@ class HookedTransformer(HookedRootModule):
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens - by default returns same type as input
         """
-        # Use the provided prepend_bos as an override if it's not None;
-        # otherwise use self.cfg.default_prepend_bos (defaults to True unless specified otherwise)
-        prepend_bos = utils.override_or_use_default_flag(
-            self.cfg.default_prepend_bos, override=prepend_bos
-        )
 
         if type(input) == str:
             # If text, convert to tokens (batch_size=1)
