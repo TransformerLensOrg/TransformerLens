@@ -9,6 +9,7 @@ import torch.nn as nn
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
+from transformer_lens.utils import USE_DEFAULT_VALUE
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typeguard import typeguard_ignore
 from typing_extensions import Literal
@@ -37,7 +38,6 @@ from transformer_lens.utilities import devices
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
 Loss = Union[SingleLoss, LossPerToken]
-
 
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
@@ -200,8 +200,8 @@ class HookedTransformer(HookedRootModule):
         input,
         return_type: Literal["logits"],
         loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
         past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -215,8 +215,8 @@ class HookedTransformer(HookedRootModule):
         input,
         return_type: Literal["loss"],
         loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
         past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -230,8 +230,8 @@ class HookedTransformer(HookedRootModule):
         input,
         return_type: Literal["both"],
         loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
         past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -245,8 +245,8 @@ class HookedTransformer(HookedRootModule):
         input,
         return_type: Literal[None],
         loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
         past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -260,8 +260,8 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         return_type: Optional[str] = "logits",
         loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
         past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -532,8 +532,8 @@ class HookedTransformer(HookedRootModule):
     def to_tokens(
         self,
         input: Union[str, List[str]],
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         move_to_device: bool = True,
         truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
@@ -630,8 +630,8 @@ class HookedTransformer(HookedRootModule):
             Int[np.ndarray, "1 pos"],
             list,
         ],
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
     ) -> Union[List[str], List[List[str]]]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
@@ -712,8 +712,8 @@ class HookedTransformer(HookedRootModule):
             str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]]
         ],
         mode="first",
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
     ):
         """
         Get the position of a single_token in a string or sequence of tokens. Raises an error if the token is not
@@ -1462,8 +1462,8 @@ class HookedTransformer(HookedRootModule):
         freq_penalty: float = 0.0,
         num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
-        prepend_bos: Optional[bool] = None,
-        padding_side: Optional[Literal["left", "right"]] = None,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
     ) -> Float[torch.Tensor, "batch pos_plus_new_tokens"]:

@@ -21,6 +21,7 @@ from transformers import AutoTokenizer
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
+USE_DEFAULT_VALUE = None
 
 
 def select_compatible_kwargs(
@@ -608,7 +609,7 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    prepend_bos: Optional[bool] = None,
+    prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
     top_k: int = 10,
 ):
     """
