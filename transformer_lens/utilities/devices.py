@@ -47,8 +47,7 @@ def move_to_and_update_config(
     print_details=True,
 ):
     """
-    Wrapper around to that also changes model.cfg.device if it's a torch.device or string.
-    If torch.dtype, just passes through
+    Wrapper around `to` that also updates `model.cfg`.
     """
     if isinstance(device_or_dtype, torch.device):
         model.cfg.device = device_or_dtype.type
@@ -59,6 +58,7 @@ def move_to_and_update_config(
         if print_details:
             print("Moving model to device: ", model.cfg.device)
     elif isinstance(device_or_dtype, torch.dtype):
+        model.cfg.dtype = device_or_dtype
         if print_details:
             print("Changing model dtype to", device_or_dtype)
         # change state_dict dtypes

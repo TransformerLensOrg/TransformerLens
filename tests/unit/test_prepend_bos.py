@@ -53,7 +53,7 @@ class TestPrependBos:
 
         model = HookedTransformer.from_pretrained(model_name)
         assert (
-            model.prepend_bos == intended_prepend_bos
+            model.cfg.default_prepend_bos == intended_prepend_bos
         ), "Default prepend_bos should be True"
 
         logits = model(self.prompt)  # [batch pos d_vocab]
@@ -70,10 +70,12 @@ class TestPrependBos:
         )
         assert bos_position == 0
 
-    @pytest.mark.parametrize("intended_prepend_bos", [True, False])
-    def test_set_default_prepend_bos(self, model, intended_prepend_bos):
-        model.set_default_prepend_bos(intended_prepend_bos)
-        assert model.prepend_bos == intended_prepend_bos
+    def test_default_prepend_bos_to_false(self, model_name):
+        intended_prepend_bos = False
+
+        model = HookedTransformer.from_pretrained(
+            model_name, default_prepend_bos=intended_prepend_bos
+        )
 
         logits = model(self.prompt)  # [batch pos d_vocab]
         str_tokens = model.to_str_tokens(self.prompt)
@@ -87,7 +89,7 @@ class TestPrependBos:
     @pytest.mark.parametrize("intended_prepend_bos", [True, False])
     def test_override_prepend_bos(self, model, intended_prepend_bos):
         for default_prepend_bos in [True, False]:
-            model.set_default_prepend_bos(default_prepend_bos)
+            model.cfg.default_prepend_bos = default_prepend_bos
 
             logits = model(
                 self.prompt, prepend_bos=intended_prepend_bos
@@ -115,7 +117,7 @@ class TestPrependBos:
                 model.tokenizer.bos_token_id, self.prompt, prepend_bos=False
             )
 
-        model.set_default_prepend_bos(False)
+        model.cfg.default_prepend_bos = False
         with pytest.raises(AssertionError):
             bos_position = model.get_token_position(
                 model.tokenizer.bos_token_id, self.prompt
