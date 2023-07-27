@@ -673,10 +673,7 @@ class Attention(nn.Module):
 
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if (
-            self.cfg.original_architecture == "GPTNeoXForCausalLM"
-            or self.cfg.original_architecture == "LLaMAForCausalLM"
-        ):
+        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
             freq = einops.repeat(freq, "d -> (2 d)")
         else:
             freq = einops.repeat(freq, "d -> (d 2)")
@@ -696,8 +693,8 @@ class Attention(nn.Module):
         """
         rot_x = x.clone()
         if (
-            self.cfg.original_architecture == "GPTNeoXForCausalLM"
-            or self.cfg.original_architecture == "LLaMAForCausalLM"
+            self.cfg.original_architecture
+            in ["GPTNeoXForCausalLM", "LlamaForCausalLM"],
         ):
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
