@@ -136,12 +136,6 @@ def test_run_with_cache(our_bert, huggingface_bert, hello_world_tokens):
     assert "mlm_head.ln.hook_normalized" in cache
 
 
-def test_from_pretrained_dtype():
-    """Check that the parameter `torch_dtype` works"""
-    model = HookedEncoder.from_pretrained(MODEL_NAME, torch_dtype=torch.bfloat16)
-    assert model.W_K.dtype == torch.bfloat16
-
-
 def test_from_pretrained_revision():
     """
     Check that the from_pretrained parameter `revision` (= git version) works
@@ -155,6 +149,19 @@ def test_from_pretrained_revision():
         pass
     else:
         raise AssertionError("Should have raised an error")
+
+
+@pytest.mark.skipif(
+    torch.backends.mps.is_available() or not torch.cuda.is_available(),
+    reason="bfloat16 unsupported by MPS: https://github.com/pytorch/pytorch/issues/78168 or no GPU",
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_half_precision(dtype):
+    """Check the 16 bits loading and inferences."""
+    model = HookedEncoder.from_pretrained(MODEL_NAME, torch_dtype=dtype)
+    assert model.W_K.dtype == dtype
+
+    _ = model(model.tokenizer("Hello, world", return_tensors="pt")["input_ids"])
 
 
 def test_predictions(our_bert, huggingface_bert, tokenizer):

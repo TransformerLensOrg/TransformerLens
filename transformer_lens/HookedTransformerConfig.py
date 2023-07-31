@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import torch
 
+from transformer_lens import utils
+
 SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
 
 
@@ -41,6 +43,8 @@ class HookedTransformerConfig:
             for large models, so defaults to False
         use_split_qkv_input (bool): whether to explicitly calculate the input of
             each head separately, with a hook. Defaults to false to save memory.
+        use_hook_mlp_in (bool): whether to use a hook to get the input to the
+            MLP layer. Defaults to false to save memory.
         use_attn_scale (bool): whether to scale the attention weights by
             1/sqrt(d_head)
         model_name (str): the name of the model, used to load
@@ -125,6 +129,14 @@ class HookedTransformerConfig:
         use_hook_tokens (bool): Will add a hook point on the token input to
             HookedTransformer.forward, which lets you cache or intervene on the tokens.
             Defaults to False.
+        default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
+            methods of HookedTransformer process input text to tokenize (only when input is a string).
+            Defaults to True - even for models not explicitly trained with this, heads often use the
+            first position as a resting position and accordingly lose information from the first token,
+            so this empirically seems to give better results. To change the default behavior to False, pass in
+            default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+            in prepend_bos=True/False when you call a method that processes the input string.
+        dtype (torch.dtype, *optional*): The model's dtype. Defaults to torch.float32.
     """
 
     n_layers: int
@@ -140,6 +152,7 @@ class HookedTransformerConfig:
     use_attn_result: bool = False
     use_attn_scale: bool = True
     use_split_qkv_input: bool = False
+    use_hook_mlp_in: bool = False
     use_local_attn: bool = False
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
@@ -167,6 +180,8 @@ class HookedTransformerConfig:
     n_params: Optional[int] = None
     use_hook_tokens: bool = False
     gated_mlp: bool = False
+    default_prepend_bos: bool = True
+    dtype: torch.dtype = torch.float32
 
     def __post_init__(self):
         if self.n_heads == -1:
@@ -217,15 +232,17 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
 
         if self.device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.device = utils.get_device()
 
         if self.n_devices > 1:
             assert (
-                self.device == "cuda"
-            ), "n_devices > 1 is only supported on CUDA devices"
-            assert (
                 torch.cuda.device_count() >= self.n_devices
             ), f"Not enough CUDA devices to support n_devices {self.n_devices}"
+
+        assert self.default_prepend_bos in [
+            True,
+            False,
+        ], f"padding_side must be either True or False, but {self.default_prepend_bos} is given"
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> HookedTransformerConfig:

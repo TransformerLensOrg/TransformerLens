@@ -44,7 +44,8 @@ def test_to_tokens_without_bos():
 
 
 @pytest.mark.skipif(
-    torch.cuda.is_available(), reason="Test not relevant when running on GPU"
+    torch.cuda.is_available() or torch.backends.mps.is_available(),
+    reason="Test not relevant when running on GPU",
 )
 def test_to_tokens_device():
     s = "Hello, world!"

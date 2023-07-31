@@ -188,6 +188,10 @@ class HookedEncoder(HookedRootModule):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cpu")
 
+    def mps(self):
+        # Wrapper around cuda that also changes self.cfg.device
+        return self.to("mps")
+
     @classmethod
     def from_pretrained(
         cls,
@@ -212,6 +216,11 @@ class HookedEncoder(HookedRootModule):
             "that the last LayerNorm in a block cannot be folded."
         )
 
+        assert not (
+            from_pretrained_kwargs.get("load_in_8bit", False)
+            or from_pretrained_kwargs.get("load_in_4bit", False)
+        ), "Quantization not supported"
+
         official_model_name = loading.get_official_model_name(model_name)
 
         cfg = loading.get_pretrained_model_config(
@@ -228,13 +237,12 @@ class HookedEncoder(HookedRootModule):
             official_model_name, cfg, hf_model, **from_pretrained_kwargs
         )
 
-        model = cls(cfg, tokenizer, move_to_device)
-
-        dtype = from_pretrained_kwargs.get("torch_dtype", None)
-        if dtype is not None:
-            model = model.to(dtype)
+        model = cls(cfg, tokenizer, move_to_device=False)
 
         model.load_state_dict(state_dict, strict=False)
+
+        if move_to_device:
+            model.to(cfg.device)
 
         print(f"Loaded pretrained model {model_name} into HookedTransformer")
 

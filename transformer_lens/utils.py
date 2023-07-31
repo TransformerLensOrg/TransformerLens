@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import re
 import shutil
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
@@ -13,15 +14,13 @@ import transformers
 from datasets.arrow_dataset import Dataset
 from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
+from jaxtyping import Float, Int
 from rich import print as rprint
 from transformers import AutoTokenizer
 
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
-import json
-
-from jaxtyping import Float, Int
 
 
 def select_compatible_kwargs(
@@ -56,11 +55,8 @@ def download_file_from_hf(
         **select_compatible_kwargs(kwargs, hf_hub_download),
     )
 
-    # Load to the CPU device if CUDA is not available
-    map_location = None if torch.cuda.is_available() else torch.device("cpu")
-
     if file_path.endswith(".pth") or force_is_torch:
-        return torch.load(file_path, map_location=map_location)
+        return torch.load(file_path, map_location="cpu")
     elif file_path.endswith(".json"):
         return json.load(open(file_path, "r"))
     else:
@@ -297,7 +293,7 @@ def sample_logits(
     temperature: float = 1.0,
     freq_penalty: float = 0.0,
     tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
-) -> Float[torch.Tensor, "batch"]:
+) -> Int[torch.Tensor, "batch"]:
     """
     Sample from the logits, in order to generate text
 
@@ -349,6 +345,8 @@ def sample_logits(
                 -1, sorted_indices, sorted_indices_to_remove
             )
             final_logits = final_logits.masked_fill(indices_to_remove, -float("inf"))
+
+        final_logits = final_logits.to(torch.float32)
         return torch.distributions.categorical.Categorical(logits=final_logits).sample()
 
 
@@ -463,7 +461,7 @@ class Slice:
     def indices(
         self,
         max_ctx: Optional[int] = None,
-    ) -> Union[np.ndarray, np.int64]:
+    ) -> Union[np.ndarray, np.int32, np.int64]:
         """
         Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])
 
@@ -477,10 +475,10 @@ class Slice:
             ValueError: If the slice is not an integer and max_ctx is not specified.
         """
         if self.mode == "int":
-            return np.array([self.slice])
+            return np.array([self.slice], dtype=np.int64)
         if max_ctx is None:
             raise ValueError("max_ctx must be specified if slice is not an integer")
-        return np.arange(max_ctx)[self.slice]
+        return np.arange(max_ctx, dtype=np.int64)[self.slice]
 
     def __repr__(
         self,
@@ -612,7 +610,7 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    prepend_bos: bool = True,
+    prepend_bos: Optional[bool] = None,
     top_k: int = 10,
 ):
     """
@@ -787,3 +785,27 @@ def check_structure(
         print(f"row mismatch: {row_mismatch}")
     elif col_mismatch:
         print(f"column mismatch: {col_mismatch}")
+
+
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        # Parse the PyTorch version to check if it's below version 2.0
+        major_version = int(torch.__version__.split(".")[0])
+        if major_version >= 2:
+            return torch.device("mps")
+
+    return torch.device("cpu")
+
+
+def override_or_use_default_flag(
+    default_flag: bool,
+    override: Optional[bool] = None,
+) -> bool:
+    """
+    Determines which flag to return based on whether an overriding flag is provided.
+    If a not-None overriding flag is provided, it is returned.
+    Otherwise, the global flag is returned.
+    """
+    return override if override is not None else default_flag

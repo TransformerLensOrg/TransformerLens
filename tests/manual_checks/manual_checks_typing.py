@@ -6,9 +6,9 @@
 import torch as t
 from jaxtyping import Float
 
-from transformer_lens import HookedTransformer
+from transformer_lens import HookedTransformer, utils
 
-DEVICE = "cuda" if t.cuda.is_available() else "cpu"
+DEVICE = utils.get_device()
 MODEL = "gpt2"
 
 # %%
