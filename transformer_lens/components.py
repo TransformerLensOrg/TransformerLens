@@ -637,12 +637,12 @@ class Attention(nn.Module):
 
     def rotary_rotate_qk(
         self,
-        q: Float[torch.Tensor, "batch pos head_index d_head"],
-        k: Float[torch.Tensor, "batch pos head_index d_head"],
+        q: Float[torch.Tensor, "batch q_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch k_pos head_index d_head"],
         past_kv_pos_offset,
     ) -> Tuple[
-        Float[torch.Tensor, "batch pos head_index d_head"],
-        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch q_pos head_index d_head"],
+        Float[torch.Tensor, "batch k_pos head_index d_head"],
     ]:
         # We first apply standard q and k calculation
         q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
