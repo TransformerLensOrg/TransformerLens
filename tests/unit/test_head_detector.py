@@ -2,7 +2,7 @@ import math
 
 import pytest
 import torch
-from typeguard import TypeCheckError
+from beartype.roar import BeartypeCallHintParamViolation
 
 from transformer_lens import HookedTransformer
 from transformer_lens.head_detector import (
@@ -352,8 +352,8 @@ def test_detect_head_with_cache(error_measure: ErrorMeasure, expected: torch.Ten
 
 
 def test_detect_head_with_invalid_head_name():
-    with pytest.raises((AssertionError, TypeCheckError)) as e:
-        detect_head(model, test_regular_sequence, "test")  # type:ignore
+    with pytest.raises(BeartypeCallHintParamViolation) as e:
+        detect_head(model, test_regular_sequence, "test")
 
 
 def test_detect_head_with_zero_sequence_length():

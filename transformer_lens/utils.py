@@ -667,10 +667,10 @@ def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "..
 
 
 def composition_scores(
-    left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
+    left: "FactoredMatrix", right: "FactoredMatrix", broadcast_dims=True
 ) -> Union[
     Float[torch.Tensor, "*leading_dims"],
-    Float[torch.Tensor, "*leading_dims_left *T.leading_dims_right"],
+    Float[torch.Tensor, "*leading_dims_left_and_right"],
 ]:
     """
     See `HookedTransformer.all_composition_scores` for documentation.
