@@ -120,8 +120,16 @@ class HookedEncoder(HookedRootModule):
         resid = self.hook_full_embed(self.embed(tokens, token_type_ids))
 
         large_negative_number = -torch.inf
-        mask = repeat(1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos") if one_zero_attention_mask is not None else None
-        additive_attention_mask = torch.where(mask == 1, large_negative_number, 0) if mask is not None else None
+        mask = (
+            repeat(1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos")
+            if one_zero_attention_mask is not None
+            else None
+        )
+        additive_attention_mask = (
+            torch.where(mask == 1, large_negative_number, 0)
+            if mask is not None
+            else None
+        )
 
         for block in self.blocks:
             resid = block(resid, additive_attention_mask)
