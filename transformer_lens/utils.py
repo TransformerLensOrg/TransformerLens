@@ -612,7 +612,7 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+    prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
     top_k: int = 10,
 ):
     """
@@ -802,9 +802,9 @@ def get_device():
 
 
 def override_or_use_default_value(
-    default_flag: bool,
-    override: Optional[bool] = None,
-) -> bool:
+    default_flag: Any,
+    override: Optional[Any] = None,
+) -> Any:
     """
     Determines which flag to return based on whether an overriding flag is provided.
     If a not-None overriding flag is provided, it is returned.
@@ -1035,5 +1035,7 @@ class LocallyOverridenDefaults:
 
 
 def extend_tensor_with_ones(tensor, dim=1):
-    new_elements = torch.ones((tensor.shape[0], 1), dtype=tensor.dtype, device=tensor.device)
+    new_elements = torch.ones(
+        (tensor.shape[0], 1), dtype=tensor.dtype, device=tensor.device
+    )
     return torch.cat([tensor, new_elements], dim=dim)

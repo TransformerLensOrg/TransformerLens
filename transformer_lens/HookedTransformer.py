@@ -9,7 +9,6 @@ import torch.nn as nn
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
-from transformer_lens.utils import USE_DEFAULT_VALUE
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typeguard import typeguard_ignore
 from typing_extensions import Literal
@@ -39,6 +38,7 @@ from transformer_lens.utils import USE_DEFAULT_VALUE
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
 Loss = Union[SingleLoss, LossPerToken]
+
 
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
@@ -488,10 +488,10 @@ class HookedTransformer(HookedRootModule):
             return out, cache_dict
 
     def set_tokenizer(
-            self,
-            tokenizer,
-            default_padding_side="right",
-        ):
+        self,
+        tokenizer,
+        default_padding_side="right",
+    ):
         """
         Sets the tokenizer to use for this model.
         tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer
@@ -514,16 +514,18 @@ class HookedTransformer(HookedRootModule):
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
-            
-        assert default_padding_side in ["right", "left"], f"padding_side must be 'right' or 'left', got {default_padding_side}"
+
+        assert default_padding_side in [
+            "right",
+            "left",
+        ], f"padding_side must be 'right' or 'left', got {default_padding_side}"
         self.tokenizer.padding_side = default_padding_side
 
-    @utils.locally_override_and_restore_defaults
     def to_tokens(
         self,
         input: Union[str, List[str]],
-        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
-        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         move_to_device: bool = True,
         truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
@@ -608,7 +610,6 @@ class HookedTransformer(HookedRootModule):
         else:
             raise ValueError(f"Invalid shape passed in: {tokens.shape}")
 
-    @utils.locally_override_and_restore_defaults
     def to_str_tokens(
         self,
         input: Union[
@@ -619,8 +620,8 @@ class HookedTransformer(HookedRootModule):
             Int[np.ndarray, "1 pos"],
             list,
         ],
-        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
-        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
     ) -> Union[List[str], List[List[str]]]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
@@ -703,7 +704,6 @@ class HookedTransformer(HookedRootModule):
         assert len(token) == 1
         return token[0]
 
-    @utils.locally_override_and_restore_defaults
     def get_token_position(
         self,
         single_token: Union[str, int],
@@ -711,8 +711,8 @@ class HookedTransformer(HookedRootModule):
             str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]]
         ],
         mode="first",
-        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
-        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
     ):
         """
         Get the position of a single_token in a string or sequence of tokens. Raises an error if the token is not
@@ -739,7 +739,9 @@ class HookedTransformer(HookedRootModule):
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+            tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, padding_side=padding_side
+            )
         else:
             tokens = input
 
@@ -990,7 +992,12 @@ class HookedTransformer(HookedRootModule):
         )
 
         # Create the HookedTransformer object
-        model = cls(cfg, tokenizer, move_to_device=False, default_padding_side=default_padding_side)
+        model = cls(
+            cfg,
+            tokenizer,
+            move_to_device=False,
+            default_padding_side=default_padding_side,
+        )
 
         model.load_and_process_state_dict(
             state_dict,
@@ -1484,8 +1491,8 @@ class HookedTransformer(HookedRootModule):
         freq_penalty: float = 0.0,
         num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
-        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
-        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
     ) -> Union[Int[torch.Tensor, "batch pos_plus_new_tokens"], str]:
@@ -1899,7 +1906,10 @@ class HookedTransformer(HookedRootModule):
         return self.dataset
 
     def sample_datapoint(
-        self, tokenize=False
+        self,
+        tokenize: bool = False,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
     ) -> Union[str, Float[torch.Tensor, "1 pos"]]:
         """
         Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution
@@ -1919,4 +1929,9 @@ class HookedTransformer(HookedRootModule):
         if not tokenize:
             return self.dataset[index]["text"]
         else:
-            return self.to_tokens(self.dataset[index]["text"], truncate=True)
+            return self.to_tokens(
+                self.dataset[index]["text"],
+                prepend_bos=prepend_bos,
+                padding_side=padding_side,
+                truncate=True,
+            )

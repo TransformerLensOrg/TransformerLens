@@ -213,7 +213,9 @@ def test_override_or_use_default_flag():
     assert (
         utils.override_or_use_default_value(default_flag=True, override=False) == False
     )
-    assert utils.override_or_use_default_value(default_flag=False, override=True) == True
+    assert (
+        utils.override_or_use_default_value(default_flag=False, override=True) == True
+    )
     assert (
         utils.override_or_use_default_value(default_flag=False, override=False) == False
     )
