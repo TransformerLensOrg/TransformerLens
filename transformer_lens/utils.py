@@ -4,6 +4,7 @@ import inspect
 import json
 import re
 import shutil
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
@@ -906,58 +907,131 @@ def get_causal_mask_for_left_padding(
     return mask
 
 
-def locally_override_and_restore_defaults(function):
+def get_nested_attr(obj, attr_str):
     """
-    This decorator is used to override the parameters with default values during a function's execution.
-    It guarantees that the default parameters are not changed after the function execution,
-    even when an error occurs during the execution.
+    Retrieves a nested attribute from an object based on a dot-separated string.
+
+    For example, if `attr_str` is "a.b.c", this function will return `obj.a.b.c`.
+
+    Args:
+        obj (Any): The object from which to retrieve the attribute.
+        attr_str (str): A dot-separated string representing the attribute hierarchy.
+
+    Returns:
+        Any: The value of the nested attribute.
     """
-    def wrapper(self, *args, **kwargs):
-        sig = inspect.signature(function)
-        arg_names = list(sig.parameters.keys())
-        if arg_names[0] == "self":
-            arg_names = arg_names[1:]
+    attrs = attr_str.split(".")
+    for attr in attrs:
+        obj = getattr(obj, attr)
+    return obj
 
-        arg_values = dict(zip(arg_names, args))
-        arg_values.update(kwargs)
 
-        # prepend_bos
-        # Prepare the overriden value
-        # default_prepend_bos = self.cfg.default_prepend_bos
-        # prepend_bos = arg_values.pop("prepend_bos", None)
-        # assert prepend_bos in [None, True, False], (
-        #     f"prepend_bos must be one of None, True, or False, but got {prepend_bos}."
-        # )
-        # arg_values["prepend_bos"] = override_or_use_default_flag(default_prepend_bos, override=prepend_bos)
+def set_nested_attr(obj, attr_str, value):
+    """
+    Sets a nested attribute of an object based on a dot-separated string.
 
-        # padding_side
-        # Prepare the overriden value
-        default_padding_side = self.tokenizer.padding_side
-        padding_side = arg_values.pop("padding_side", None)
-        assert padding_side in [None, "left", "right"], (
-            f"padding_side must be one of None, 'left', or 'right', but got {padding_side}."
-        )
-        
-        arg_values["padding_side"] = override_or_use_default_value(default_padding_side, override=padding_side)
+    For example, if `attr_str` is "a.b.c", this function will set the value of `obj.a.b.c` to `value`.
 
-        try:
-            # This is important because self.tokenizer.padding_side is
-            # the actual padding_side used by Transformers Tokenizer.
-            self.tokenizer.padding_side = arg_values["padding_side"]
-            
-            # Execute the original function with the overridden padding_side
-            outputs = function(self, **arg_values)
-            
-            # Reset the padding_side of the tokenizer
-            self.tokenizer.padding_side = default_padding_side
-            return outputs
+    Args:
+        obj (Any): The object on which to set the attribute.
+        attr_str (str): A dot-separated string representing the attribute hierarchy.
+        value (Any): The value to set for the nested attribute.
+    """
+    attrs = attr_str.split(".")
 
-        except Exception as e:
-            # If an error occurs, reset the padding_side of the tokenizer before propagating the exception
-            self.tokenizer.padding_side = default_padding_side
-            raise e
+    # Navigate to the deepest object containing the attribute to be set
+    for attr in attrs[:-1]:
+        obj = getattr(obj, attr)
 
-    return wrapper
+    # Set the nested attribute's value
+    setattr(obj, attrs[-1], value)
+
+
+class LocallyOverridenDefaults:
+    """
+    Context manager that allows temporary overriding of default values within a model.
+    Once the context is exited, the default values are restored.
+
+    WARNING: This context manager must be used for any function/method that directly accesses
+    default values which may be overridden by the user using the function/method's arguments,
+    e.g., `model.cfg.default_prepend_bos` and `model.tokenizer.padding_side` which can be
+    overriden by `prepend_bos` and `padding_side` arguments, respectively, in the `to_tokens`.
+    """
+
+    def __init__(self, model, **overrides):
+        """
+        Initializes the context manager.
+
+        Args:
+            model (HookedTransformer): The model whose default values will be overridden.
+            overrides (dict): Key-value pairs of properties to override and their new values.
+        """
+        self.model = model
+        self.overrides = overrides
+
+        # Dictionary defining valid defaults, valid values, and locations to find and store them
+        self.values_with_defaults = {
+            "prepend_bos": {
+                "default_location": "model.cfg.default_prepend_bos",
+                "valid_values": [USE_DEFAULT_VALUE, True, False],
+                "skip_overriding": False,
+                "default_value_to_restore": None,  # Will be set later
+            },
+            "padding_side": {
+                "default_location": "model.tokenizer.padding_side",
+                "valid_values": [USE_DEFAULT_VALUE, "left", "right"],
+                "skip_overriding": model.tokenizer
+                is None,  # Do not override if tokenizer is None
+                "default_value_to_restore": None,  # Will be set later
+            },
+        }
+
+        # Ensure provided overrides are defined in the dictionary above
+        for override in overrides:
+            assert override in self.values_with_defaults, (
+                f"{override} is not a valid parameter to override. "
+                f"Valid parameters are {self.values_with_defaults.keys()}."
+            )
+
+    def __enter__(self):
+        """
+        Override default values upon entering the context.
+        """
+        for property, override in self.overrides.items():
+            info = self.values_with_defaults[property]
+            if info["skip_overriding"]:
+                continue  # Skip if overriding for this property is disabled
+
+            # Ensure the override is a valid value
+            valid_values = info["valid_values"]
+            assert (
+                override in valid_values
+            ), f"{property} must be one of {valid_values}, but got {override}."
+
+            # Fetch current default and store it to restore later
+            default_location = info["default_location"]
+            default_value = get_nested_attr(self, default_location)
+            info["default_value_to_restore"] = deepcopy(default_value)
+
+            # Override the default value
+            locally_overriden_value = override_or_use_default_value(
+                default_value, override
+            )
+            set_nested_attr(self, default_location, locally_overriden_value)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Restore default values upon exiting the context.
+        """
+        for property in self.overrides:
+            info = self.values_with_defaults[property]
+            if info["skip_overriding"]:
+                continue
+
+            # Restore the default value from before the context was entered
+            default_location = info["default_location"]
+            default_value = info["default_value_to_restore"]
+            set_nested_attr(self, default_location, default_value)
 
 
 def extend_tensor_with_ones(tensor, dim=1):
