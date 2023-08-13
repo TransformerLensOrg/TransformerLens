@@ -812,39 +812,54 @@ def override_or_use_default_value(
     return override if override is not None else default_flag
 
 
+def get_cumsum_along_dim(tensor, dim, reverse=False):
+    """
+    Returns the cumulative sum of a tensor along a given dimension.
+    """
+    if reverse:
+        tensor = tensor.flip(dims=(dim,))
+    cumsum = tensor.cumsum(dim=dim)
+    if reverse:
+        cumsum = cumsum.flip(dims=(dim,))
+    return cumsum
+
+
 def get_attention_mask(
-    tokenizer,
-    tokens: Int[torch.Tensor, "batch pos"],
-    prepend_bos: bool,
-) -> Int[torch.Tensor, "batch pos"]:
+    tokenizer, tokens: torch.Tensor, prepend_bos: bool
+) -> torch.Tensor:
     """
-    This method calculates an attention mask for a given sequence of tokens when left padding is used. The attention
-    mask is a binary tensor where each element is 1 if the corresponding token is not a pad token and 0 otherwise. In
-    the special case where the BOS token is the same as the pad token and bos token is prepended to process the tokens,
-    this method ensures that the prepended BOS (pad) token also gets a 1 in the attention mask.
-    Gotcha: Make sure that the passed prepend_bos is the same as the one used to generate the tokens!
+    Computes the attention mask for the tokenized input.
+
+    Args:
+        tokenizer: The tokenizer used for tokenization.
+        tokens (torch.Tensor): The tokenized input.
+        prepend_bos (bool): If True, a BOS token is prepended to the input.
+
+    Returns:
+        torch.Tensor: The attention mask for the input.
     """
-    # Initialize the attention mask to be 1 wherever the token is not a pad token
-    attention_mask = tokens.ne(tokenizer.pad_token_id)
 
-    # Handle the special case where the BOS token is the same as the pad token
-    if tokenizer.bos_token_id == tokenizer.pad_token_id and prepend_bos:
-        if tokenizer.padding_side == "right":
-            # Set the first token to 1 in the attention mask
-            attention_mask[:, 0] = True
+    # Initialize the attention mask with ones (indicating all tokens should be attended to)
+    attention_mask = torch.ones_like(tokens)
+    is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
 
-        else:
-            is_pad_token = 1 - attention_mask.int()
+    if tokenizer.padding_side == "right":
+        # Zero-out the rightmost trailing pad tokens
+        is_trailing_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=True) == 0
+        attention_mask[is_trailing_pad] = 0
+    else:
+        # Zero-out the leftmost leading pad tokens
+        is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
+        attention_mask[is_leading_pad] = 0
 
-            # Find the position of the pad token used as the BOS token and thus should get attended
-            pad_bos_positions = is_pad_token.cumsum(dim=-1).argmax(dim=-1)
+        # If the bos token is the same as the pad token,
+        # the last token of the leftmost leading pad tokens is the bos token.
+        # We need to set the attention mask for the bos token to 1.
+        if prepend_bos and tokenizer.bos_token_id == tokenizer.pad_token_id:
+            pad_bos_positions = is_leading_pad.sum(-1) - 1
+            attention_mask[torch.arange(attention_mask.shape[0]), pad_bos_positions] = 1
 
-            # Set the corresponding position in the attention mask to 1, to ensure that the BOS token is not treated as a pad token
-            attention_mask[
-                torch.arange(attention_mask.shape[0]), pad_bos_positions
-            ] = True
-
-    return attention_mask.int()
+    return attention_mask
 
 
 def get_causal_mask_for_left_padding(
