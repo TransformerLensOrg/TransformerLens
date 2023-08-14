@@ -198,7 +198,7 @@ class HookedTransformer(HookedRootModule):
         padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Loss:
         ...
 
@@ -212,7 +212,7 @@ class HookedTransformer(HookedRootModule):
         padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Loss:
         ...
 
@@ -226,7 +226,7 @@ class HookedTransformer(HookedRootModule):
         padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
         ...
 
@@ -240,7 +240,7 @@ class HookedTransformer(HookedRootModule):
         padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> None:
         ...
 
@@ -254,7 +254,7 @@ class HookedTransformer(HookedRootModule):
         padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Union[
         None,
         Float[torch.Tensor, "batch pos d_vocab"],
