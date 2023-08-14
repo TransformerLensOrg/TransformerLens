@@ -830,6 +830,9 @@ def get_attention_mask(
 ) -> torch.Tensor:
     """
     Computes the attention mask for the tokenized input.
+    NOTE: Only the leftmost leading pads (when `padding_side == left`)
+    or rightmost trailing pads (when `padding_side == right`) are
+    considered as real pad tokens that should not be attended.
 
     Args:
         tokenizer: The tokenizer used for tokenization.
