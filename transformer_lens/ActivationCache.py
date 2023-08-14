@@ -215,7 +215,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         batch_slice: Union[Slice, SliceInput] = None,
         has_batch_dim: bool = True,
-    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims"]:
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims_out"]:
         """Returns the logit attributions for the residual stack on an input of tokens, or the logit difference attributions for the residual stack if incorrect_tokens is provided.
 
         Args:
@@ -583,7 +583,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         batch_slice: Union[Slice, SliceInput] = None,
         has_batch_dim: bool = True,
-    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
+    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims_out d_model"]:
         """Takes a stack of components of the residual stream (eg outputs of decompose_resid or accumulated_resid), treats them as the input to a specific layer, and applies the layer norm scaling of that layer to them, using the cached scale factors - simulating what that component of the residual stream contributes to that layer's input.
 
         The layernorm scale is global across the entire residual stream for each layer, batch element and position, which is why we need to use the cached scale factors rather than just applying a new LayerNorm.

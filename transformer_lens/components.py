@@ -9,7 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
-from typeguard import typeguard_ignore
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
@@ -84,7 +83,7 @@ class PosEmbed(nn.Module):
         self,
         tokens: Int[torch.Tensor, "batch pos"],
         past_kv_pos_offset: int = 0,
-        left_attention_mask: Int[torch.Tensor, "batch pos"] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         Forward pass for positional embeddings.
@@ -494,7 +493,6 @@ class Attention(nn.Module):
             self.register_buffer("rotary_cos", cos)
 
     @property
-    @typeguard_ignore
     @lru_cache(maxsize=None)
     def OV(self) -> FactoredMatrix:
         """
@@ -509,7 +507,6 @@ class Attention(nn.Module):
         return FactoredMatrix(self.W_V, self.W_O)
 
     @property
-    @typeguard_ignore
     @lru_cache(maxsize=None)
     def QK(self) -> FactoredMatrix:
         """
@@ -541,8 +538,8 @@ class Attention(nn.Module):
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
-        additive_attention_mask: Float[torch.Tensor, "batch 1 1 pos"] = None,
-        left_attention_mask: Int[torch.Tensor, "batch pos"] = None,
+        additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
@@ -709,12 +706,12 @@ class Attention(nn.Module):
 
     def rotary_rotate_qk(
         self,
-        q: Float[torch.Tensor, "batch pos head_index d_head"],
-        k: Float[torch.Tensor, "batch pos head_index d_head"],
+        q: Float[torch.Tensor, "batch q_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch k_pos head_index d_head"],
         past_kv_pos_offset,
     ) -> Tuple[
-        Float[torch.Tensor, "batch pos head_index d_head"],
-        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch q_pos head_index d_head"],
+        Float[torch.Tensor, "batch k_pos head_index d_head"],
     ]:
         # We first apply standard q and k calculation
         q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
