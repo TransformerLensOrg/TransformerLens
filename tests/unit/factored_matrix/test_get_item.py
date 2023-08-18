@@ -70,10 +70,7 @@ def test_getitem_sequences_and_ints(sample_factored_matrix):
     result = sample_factored_matrix[:, :, :, A_idx, B_idx]
     assert_close(result.A, sample_factored_matrix.A[:, :, :, A_idx, :])
     # we squeeze result.B, because indexing by ints is designed not to delete dimensions
-    assert_close(
-        result.B.squeeze(-1),
-        sample_factored_matrix.B[:, :, :, :, B_idx]
-    )
+    assert_close(result.B.squeeze(-1), sample_factored_matrix.B[:, :, :, :, B_idx])
 
 
 def test_getitem_tensors(sample_factored_matrix):
