@@ -155,11 +155,12 @@ class FactoredMatrix:
 
     def _convert_to_slice(self, sequence: Union[Tuple, List], idx: int) -> Tuple:
         """
-        e.g. if sequence = (1, 2, 3) and idx = 1, return (1, slice(2, 3), 3)
+        e.g. if sequence = (1, 2, 3) and idx = 1, return (1, slice(2, 3), 3). This only edits elements if they are ints.
         """
         if isinstance(idx, int):
             sequence = list(sequence)
-            sequence[idx] = slice(sequence[idx], sequence[idx] + 1)
+            if isinstance(sequence[idx], int):
+                sequence[idx] = slice(sequence[idx], sequence[idx] + 1)
             sequence = tuple(sequence)
 
         return sequence
