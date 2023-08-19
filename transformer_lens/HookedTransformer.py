@@ -469,7 +469,10 @@ class HookedTransformer(HookedRootModule):
 
         # If the tokenizer prepends the BOS token to the input by default, turn it off.
         # We manually control whether or not to prepend BOS tokens.
-        self.cfg.add_special_tokens = len(self.tokenizer("")["input_ids"]) == 0
+        self.cfg.add_special_tokens = not (
+            len(self.tokenizer("")["input_ids"]) > 0
+            and self.tokenizer("")["input_ids"][0] == self.tokenizer.bos_token_id
+        )
 
     def to_tokens(
         self,
