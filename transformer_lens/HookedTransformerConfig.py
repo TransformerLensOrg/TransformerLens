@@ -182,6 +182,7 @@ class HookedTransformerConfig:
     gated_mlp: bool = False
     default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
+    add_special_tokens: Optional[bool] = None  # will be set by set_tokenizer
 
     def __post_init__(self):
         if self.n_heads == -1:

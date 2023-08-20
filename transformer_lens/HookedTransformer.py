@@ -467,6 +467,13 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
+        # If the tokenizer prepends the BOS token to the input by default, turn it off.
+        # We manually control whether or not to prepend BOS tokens.
+        self.cfg.add_special_tokens = not (
+            len(self.tokenizer("")["input_ids"]) > 0
+            and self.tokenizer("")["input_ids"][0] == self.tokenizer.bos_token_id
+        )
+
     def to_tokens(
         self,
         input: Union[str, List[str]],
@@ -497,6 +504,9 @@ class HookedTransformer(HookedRootModule):
         capitalized. It's easy to shoot yourself in the foot here if you're not careful!
         """
         assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
+        assert (
+            self.cfg.add_special_tokens is not None
+        ), "Set the tokenizer for the model by calling set_tokenizer"
 
         # Use the provided prepend_bos as an override if it's not None;
         # otherwise use self.cfg.default_prepend_bos (defaults to True unless specified otherwise)
@@ -515,9 +525,7 @@ class HookedTransformer(HookedRootModule):
             padding=True,
             truncation=truncate,
             max_length=self.cfg.n_ctx if truncate else None,
-            add_special_tokens=False
-            if self.tokenizer.name_or_path.startswith("facebook/opt")
-            else True,  # As we manually add the BOS token
+            add_special_tokens=self.cfg.add_special_tokens,
         )["input_ids"]
         if move_to_device:
             tokens = tokens.to(self.cfg.device)

@@ -13,9 +13,7 @@ class TestPrependBos:
         # copied from HookedTransformer.to_tokens()
         tokens = tokenizer(
             prompt,
-            add_special_tokens=False
-            if model.tokenizer.name_or_path.startswith("facebook/opt")
-            else True,  # As we manually add the BOS token
+            add_special_tokens=model.cfg.add_special_tokens,
         )["input_ids"]
 
         return len(tokens) + int(intended_prepend_bos)
