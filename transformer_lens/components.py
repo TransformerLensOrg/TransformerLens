@@ -688,7 +688,7 @@ class Attention(nn.Module):
             # Left padding case
             # Apply a causal mask to the attention scores considering the left padding
             final_mask = get_causal_mask_for_left_padding(left_attention_mask)
-            final_mask = final_mask.unsqueeze(1)  # [batch, 1, pos, pos]
+            final_mask = final_mask.unsqueeze(1).to(attn_scores.device)  # [batch, 1, pos, pos]
 
         masked_attn_scores = torch.where(
             final_mask[
