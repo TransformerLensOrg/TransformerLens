@@ -519,6 +519,13 @@ class HookedTransformer(HookedRootModule):
             "left",
         ], f"padding_side must be 'right' or 'left', got {default_padding_side}"
         self.tokenizer.padding_side = default_padding_side
+        
+        # If the tokenizer prepends the BOS token to the input by default, turn it off.
+        # We manually control whether or not to prepend BOS tokens.
+        self.cfg.add_special_tokens = not (
+            len(self.tokenizer("")["input_ids"]) > 0
+            and self.tokenizer("")["input_ids"][0] == self.tokenizer.bos_token_id
+        )
 
     def to_tokens(
         self,
@@ -556,6 +563,9 @@ class HookedTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Cannot use to_tokens without a tokenizer"
+            assert (
+                self.cfg.add_special_tokens is not None
+            ), "Set the tokenizer for the model by calling set_tokenizer"
 
             if self.cfg.default_prepend_bos:
                 if isinstance(input, str):
