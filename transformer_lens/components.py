@@ -804,6 +804,8 @@ class GatedMLP(nn.Module):
 
         # hook on gate output but before act_fn
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
+        # hook on the linear component of the input
+        self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
         # hook on act_fn(gate_output) * W_in(x) + b_in
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
@@ -841,9 +843,9 @@ class GatedMLP(nn.Module):
         if not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(
                 self.act_fn(pre_act)
-                * einsum(
+                * self.hook_pre_linear(einsum(
                     "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in
-                )
+                ))
                 + self.b_in
             )  # [batch, pos, d_mlp]
         else:
