@@ -578,9 +578,7 @@ class HookedTransformer(HookedRootModule):
                 padding=True,
                 truncation=truncate,
                 max_length=self.cfg.n_ctx if truncate else None,
-                add_special_tokens=False
-                if self.tokenizer.name_or_path.startswith("facebook/opt")
-                else True,  # As we manually add the BOS token
+                add_special_tokens=self.cfg.add_special_tokens,
             )["input_ids"]
             if move_to_device:
                 tokens = tokens.to(self.cfg.device)
