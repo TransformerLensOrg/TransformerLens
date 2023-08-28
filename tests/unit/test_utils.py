@@ -207,7 +207,7 @@ class Test_lower_triangular:
         assert not utils.is_lower_triangular(x)
 
 
-def test_override_or_use_default_flag():
+def test_override_or_use_default_value():
     # Case when override is not None
     assert utils.override_or_use_default_value(default_flag=True, override=True) == True
     assert (

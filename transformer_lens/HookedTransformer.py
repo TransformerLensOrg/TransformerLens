@@ -519,7 +519,7 @@ class HookedTransformer(HookedRootModule):
             "left",
         ], f"padding_side must be 'right' or 'left', got {default_padding_side}"
         self.tokenizer.padding_side = default_padding_side
-        
+
         # If the tokenizer prepends the BOS token to the input by default, turn it off.
         # We manually control whether or not to prepend BOS tokens.
         self.cfg.add_special_tokens = not (
