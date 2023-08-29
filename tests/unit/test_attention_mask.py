@@ -22,24 +22,21 @@ def test_attention_mask():
     layer = 0
     low_attn_score = 1e-6
     ones_input_matrix = torch.ones((input_length, input_length))
+    masked = torch.triu(ones_input_matrix, diagonal=1).bool()
 
     def attn_scores_hook(attn_scores, hook):
-        upper_right_mask = torch.triu(ones_input_matrix, diagonal=1)
-        lower_left_mask = torch.tril(ones_input_matrix)
-
         assert torch.all(
-            attn_scores[:, :, upper_right_mask.bool()] == float("-inf")
+            attn_scores[:, :, masked] == float("-inf")
         ), "Attention scores excluded by the mask are not being set to -inf"
 
         # Set low attention scores that are attended to by the mask
-        attn_scores[:, :, lower_left_mask.bool()] = low_attn_score
+        attn_scores[:, :, ~masked] = low_attn_score
 
         return attn_scores
 
     def attn_hook(attn, hook):
-        upper_right_mask = torch.triu(ones_input_matrix, diagonal=1)
         assert torch.all(
-            attn[:, :, upper_right_mask.bool()] == 0
+            attn[:, :, masked] == 0
         ), "Attention pattern attends outside the mask"
 
         return attn
