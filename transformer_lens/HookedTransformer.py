@@ -13,6 +13,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
+import transformer_lens.tokenization_utils as tokenization_utils
 import transformer_lens.utils as utils
 from transformer_lens import HookedTransformerConfig
 from transformer_lens.ActivationCache import ActivationCache
@@ -105,6 +106,10 @@ class HookedTransformer(HookedRootModule):
                 self.cfg.d_vocab != -1
             ), "Must provide a tokenizer if d_vocab is not provided"
             self.tokenizer = None
+            if default_padding_side != "right":
+                print(
+                    "Warning: default_padding_side is not set because tokenizer is not set."
+                )
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
@@ -486,10 +491,52 @@ class HookedTransformer(HookedRootModule):
         else:
             return out, cache_dict
 
+    def ensure_consistent_default_padding_side(self):
+        tokenizer = self.tokenizer_dict[self.cfg.default_prepend_bos]
+        if (
+            self.tokenizer_dict[not self.cfg.default_prepend_bos].padding_side
+            != tokenizer.padding_side
+        ):
+            self.tokenizer_dict[
+                not self.cfg.default_prepend_bos
+            ].padding_side = tokenizer.padding_side
+            print(
+                f"Warning: padding_side is hard-set to {tokenizer.padding_side}. "
+                f"Please use default_padding_side instead of tokenizer.padding_side "
+                "to set the default padding side of the tokenizer."
+            )
+
+    @property
+    def default_padding_side(self):
+        self.ensure_consistent_default_padding_side()
+        return self.tokenizer.padding_side
+
+    @default_padding_side.setter
+    def default_padding_side(self, default_padding_side):
+        assert default_padding_side in [
+            "right",
+            "left",
+        ], f"padding_side must be 'right' or 'left', got {default_padding_side}"
+
+        self.tokenizer_dict[True].padding_side = default_padding_side
+        self.tokenizer_dict[False].padding_side = default_padding_side
+
+    @property
+    def tokenizer(self):
+        self.ensure_consistent_default_padding_side()
+        return self.tokenizer_dict[self.cfg.default_prepend_bos]
+
+    @tokenizer.setter
+    def tokenizer(self, tokenizer):
+        if tokenizer is None:
+            self.tokenizer_dict = {True: None, False: None}
+        else:
+            self.set_tokenizer(tokenizer, default_padding_side=tokenizer.padding_side)
+
     def set_tokenizer(
         self,
         tokenizer,
-        default_padding_side="right",
+        default_padding_side=None,
     ):
         """
         Sets the tokenizer to use for this model.
@@ -499,33 +546,18 @@ class HookedTransformer(HookedRootModule):
         assert isinstance(
             tokenizer, PreTrainedTokenizerBase
         ), f"{type(tokenizer)} is not a supported tokenizer, please use PreTrainedTokenizer or PreTrainedTokenizerFast"
-        self.tokenizer = tokenizer
 
-        if self.tokenizer.eos_token is None:
-            self.tokenizer.eos_token = "<|endoftext|>"
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        if self.tokenizer.bos_token is None:
-            self.tokenizer.bos_token = self.tokenizer.eos_token
+        self.tokenizer_dict = tokenization_utils.get_tokenizer_dict(tokenizer)
+        if default_padding_side is not None:
+            self.default_padding_side = default_padding_side
+        else:
+            self.default_padding_side = tokenizer.padding_side
 
         # Infer vocab size from tokenizer
         if self.cfg.d_vocab == -1:
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
-
-        assert default_padding_side in [
-            "right",
-            "left",
-        ], f"padding_side must be 'right' or 'left', got {default_padding_side}"
-        self.tokenizer.padding_side = default_padding_side
-
-        # If the tokenizer prepends the BOS token to the input by default, turn it off.
-        # We manually control whether or not to prepend BOS tokens.
-        self.cfg.add_special_tokens = not (
-            len(self.tokenizer("")["input_ids"]) > 0
-            and self.tokenizer("")["input_ids"][0] == self.tokenizer.bos_token_id
-        )
 
     def to_tokens(
         self,
@@ -563,22 +595,13 @@ class HookedTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Cannot use to_tokens without a tokenizer"
-            assert (
-                self.cfg.add_special_tokens is not None
-            ), "Set the tokenizer for the model by calling set_tokenizer"
-
-            if self.cfg.default_prepend_bos:
-                if isinstance(input, str):
-                    input = self.tokenizer.bos_token + input
-                else:
-                    input = [self.tokenizer.bos_token + string for string in input]
+            
             tokens = self.tokenizer(
                 input,
                 return_tensors="pt",
                 padding=True,
                 truncation=truncate,
                 max_length=self.cfg.n_ctx if truncate else None,
-                add_special_tokens=self.cfg.add_special_tokens,
             )["input_ids"]
             if move_to_device:
                 tokens = tokens.to(self.cfg.device)

@@ -1,4 +1,6 @@
 import pytest
+import torch
+from transformers import AutoTokenizer
 
 from transformer_lens import HookedTransformer
 
@@ -8,12 +10,11 @@ class TestPrependBos:
 
     # helper functions
     def get_num_tokens_in_prompt(self, model, prompt, intended_prepend_bos):
-        tokenizer = model.tokenizer
-
-        # copied from HookedTransformer.to_tokens()
+        tokenizer = AutoTokenizer.from_pretrained(
+            model.tokenizer.name_or_path, add_bos_token=False
+        )
         tokens = tokenizer(
             prompt,
-            add_special_tokens=model.cfg.add_special_tokens,
         )["input_ids"]
 
         return len(tokens) + int(intended_prepend_bos)
