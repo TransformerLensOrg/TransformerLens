@@ -957,7 +957,7 @@ class LocallyOverridenDefaults:
 
     WARNING: This context manager must be used for any function/method that directly accesses
     default values which may be overridden by the user using the function/method's arguments,
-    e.g., `model.cfg.default_prepend_bos` and `model.tokenizer.padding_side` which can be
+    e.g., `model.cfg.default_prepend_bos` and `model.default_padding_side` which can be
     overriden by `prepend_bos` and `padding_side` arguments, respectively, in the `to_tokens`.
     """
 
@@ -972,38 +972,45 @@ class LocallyOverridenDefaults:
         self.model = model
         self.overrides = overrides
 
-        # Dictionary defining valid defaults, valid values, and locations to find and store them
-        self.values_with_defaults = {
-            "prepend_bos": {
+        # List defining valid defaults, valid values, and locations to find and store them,
+        # and the condition for skipping overriding the default value. The order of the list
+        # determines the order in which the defaults are overriden and restored.
+        self.properties_with_defaults = [
+            {
+                "property": "prepend_bos",
                 "default_location": "model.cfg.default_prepend_bos",
                 "valid_values": [USE_DEFAULT_VALUE, True, False],
                 "skip_overriding": False,
                 "default_value_to_restore": None,  # Will be set later
             },
-            "padding_side": {
-                "default_location": "model.tokenizer.padding_side",
+            {
+                "property": "padding_side",
+                "default_location": "model.default_padding_side",
                 "valid_values": [USE_DEFAULT_VALUE, "left", "right"],
-                "skip_overriding": model.tokenizer
-                is None,  # Do not override if tokenizer is None
+                # Do not override if tokenizer is None
+                "skip_overriding": model.tokenizer is None,
                 "default_value_to_restore": None,  # Will be set later
             },
-        }
+        ]
 
-        # Ensure provided overrides are defined in the dictionary above
+        # Ensure provided overrides are defined in the list above
+        valid_properties = [info["property"] for info in self.properties_with_defaults]
         for override in overrides:
-            assert override in self.values_with_defaults, (
-                f"{override} is not a valid parameter to override. "
-                f"Valid parameters are {self.values_with_defaults.keys()}."
+            assert override in valid_properties, (
+                f"{override} is not a valid property to override. "
+                f"Valid properties are {valid_properties}."
             )
 
     def __enter__(self):
         """
         Override default values upon entering the context.
         """
-        for property, override in self.overrides.items():
-            info = self.values_with_defaults[property]
-            if info["skip_overriding"]:
-                continue  # Skip if overriding for this property is disabled
+        for info in self.properties_with_defaults:
+            property = info["property"]
+            if property not in self.overrides or info["skip_overriding"]:
+                continue
+
+            override = self.overrides[property]
 
             # Ensure the override is a valid value
             valid_values = info["valid_values"]
@@ -1026,9 +1033,8 @@ class LocallyOverridenDefaults:
         """
         Restore default values upon exiting the context.
         """
-        for property in self.overrides:
-            info = self.values_with_defaults[property]
-            if info["skip_overriding"]:
+        for info in self.properties_with_defaults:
+            if info["property"] not in self.overrides or info["skip_overriding"]:
                 continue
 
             # Restore the default value from before the context was entered
