@@ -4,6 +4,7 @@ import inspect
 import json
 import re
 import shutil
+from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
@@ -21,6 +22,7 @@ from transformers import AutoTokenizer
 from transformer_lens import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
+USE_DEFAULT_VALUE = None
 
 
 def select_compatible_kwargs(
@@ -491,7 +493,7 @@ class Slice:
 
 def get_act_name(
     name: str,
-    layer: Optional[int] = None,
+    layer: Optional[Union[int, str]] = None,
     layer_type: Optional[str] = None,
 ):
     """
@@ -610,7 +612,7 @@ def test_prompt(
     model,
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    prepend_bos: Optional[bool] = None,
+    prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
     top_k: int = 10,
 ):
     """
@@ -799,13 +801,244 @@ def get_device():
     return torch.device("cpu")
 
 
-def override_or_use_default_flag(
-    default_flag: bool,
-    override: Optional[bool] = None,
-) -> bool:
+def override_or_use_default_value(
+    default_flag: Any,
+    override: Optional[Any] = None,
+) -> Any:
     """
     Determines which flag to return based on whether an overriding flag is provided.
     If a not-None overriding flag is provided, it is returned.
     Otherwise, the global flag is returned.
     """
     return override if override is not None else default_flag
+
+
+def get_cumsum_along_dim(tensor, dim, reverse=False):
+    """
+    Returns the cumulative sum of a tensor along a given dimension.
+    """
+    if reverse:
+        tensor = tensor.flip(dims=(dim,))
+    cumsum = tensor.cumsum(dim=dim)
+    if reverse:
+        cumsum = cumsum.flip(dims=(dim,))
+    return cumsum
+
+
+def get_attention_mask(
+    tokenizer, tokens: torch.Tensor, prepend_bos: bool
+) -> torch.Tensor:
+    """
+    Computes the attention mask for the tokenized input.
+    NOTE: Only the leftmost leading pads (when `padding_side == left`)
+    or rightmost trailing pads (when `padding_side == right`) are
+    considered as real pad tokens that should not be attended.
+
+    Args:
+        tokenizer: The tokenizer used for tokenization.
+        tokens (torch.Tensor): The tokenized input.
+        prepend_bos (bool): If True, a BOS token is prepended to the input.
+
+    Returns:
+        torch.Tensor: The attention mask for the input.
+    """
+
+    # Initialize the attention mask with ones (indicating all tokens should be attended to)
+    attention_mask = torch.ones_like(tokens)
+    is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
+
+    if tokenizer.padding_side == "right":
+        # Zero-out the rightmost trailing pad tokens
+        is_trailing_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=True) == 0
+        attention_mask[is_trailing_pad] = 0
+    else:
+        # Zero-out the leftmost leading pad tokens
+        is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
+        attention_mask[is_leading_pad] = 0
+
+        # If the bos token is the same as the pad token,
+        # the last token of the leftmost leading pad tokens is the bos token.
+        # We need to set the attention mask for the bos token to 1.
+        if prepend_bos and tokenizer.bos_token_id == tokenizer.pad_token_id:
+            pad_bos_positions = is_leading_pad.sum(-1) - 1
+            attention_mask[torch.arange(attention_mask.shape[0]), pad_bos_positions] = 1
+
+    return attention_mask
+
+
+def get_causal_mask_for_left_padding(
+    left_attention_mask: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Generate a causal mask for left padded sequences.
+
+    The generated mask will have dimensions [batch_size, pos, pos], and its purpose is to prevent each token from
+    attending to future tokens in the sequence. Additionally, this mask prevents each token from attending to
+    padding tokens in the past positions for left-padded sequences.
+
+    Args:
+        left_attention_mask (torch.Tensor): The left attention mask, indicating which tokens are
+            not padding tokens. Shape: [batch_size, pos]
+
+    Returns:
+        torch.Tensor: The causal attention mask for left padded sequences. Shape: [batch_size, pos, pos]
+    """
+
+    # Initialize a mask with zeros and the same size as the left attention mask
+    # The mask is 3D, with the same number of positions in both the second and third dimensions
+    mask = (
+        einops.repeat(
+            torch.zeros_like(left_attention_mask),
+            "b pos1 -> b pos1 pos2",
+            pos2=left_attention_mask.shape[1],
+        )
+        .bool()
+        .clone()
+    )
+
+    # Compute the number of attended tokens (non-padding tokens) in each sequence
+    num_attended_tokens_list = left_attention_mask.sum(-1).tolist()
+
+    # For each sequence in the batch...
+    for i, num_attended_tokens in enumerate(num_attended_tokens_list):
+        # ...set the lower triangular part of the last num_attended_tokens positions to 1,
+        # preventing each token from attending to padding tokens in the past positions
+        mask[i, -num_attended_tokens:, -num_attended_tokens:] = torch.tril(
+            torch.ones((num_attended_tokens, num_attended_tokens)).bool()
+        )
+
+    return mask
+
+
+def get_nested_attr(obj, attr_str):
+    """
+    Retrieves a nested attribute from an object based on a dot-separated string.
+
+    For example, if `attr_str` is "a.b.c", this function will return `obj.a.b.c`.
+
+    Args:
+        obj (Any): The object from which to retrieve the attribute.
+        attr_str (str): A dot-separated string representing the attribute hierarchy.
+
+    Returns:
+        Any: The value of the nested attribute.
+    """
+    attrs = attr_str.split(".")
+    for attr in attrs:
+        obj = getattr(obj, attr)
+    return obj
+
+
+def set_nested_attr(obj, attr_str, value):
+    """
+    Sets a nested attribute of an object based on a dot-separated string.
+
+    For example, if `attr_str` is "a.b.c", this function will set the value of `obj.a.b.c` to `value`.
+
+    Args:
+        obj (Any): The object on which to set the attribute.
+        attr_str (str): A dot-separated string representing the attribute hierarchy.
+        value (Any): The value to set for the nested attribute.
+    """
+    attrs = attr_str.split(".")
+
+    # Navigate to the deepest object containing the attribute to be set
+    for attr in attrs[:-1]:
+        obj = getattr(obj, attr)
+
+    # Set the nested attribute's value
+    setattr(obj, attrs[-1], value)
+
+
+class LocallyOverridenDefaults:
+    """
+    Context manager that allows temporary overriding of default values within a model.
+    Once the context is exited, the default values are restored.
+
+    WARNING: This context manager must be used for any function/method that directly accesses
+    default values which may be overridden by the user using the function/method's arguments,
+    e.g., `model.cfg.default_prepend_bos` and `model.tokenizer.padding_side` which can be
+    overriden by `prepend_bos` and `padding_side` arguments, respectively, in the `to_tokens`.
+    """
+
+    def __init__(self, model, **overrides):
+        """
+        Initializes the context manager.
+
+        Args:
+            model (HookedTransformer): The model whose default values will be overridden.
+            overrides (dict): Key-value pairs of properties to override and their new values.
+        """
+        self.model = model
+        self.overrides = overrides
+
+        # Dictionary defining valid defaults, valid values, and locations to find and store them
+        self.values_with_defaults = {
+            "prepend_bos": {
+                "default_location": "model.cfg.default_prepend_bos",
+                "valid_values": [USE_DEFAULT_VALUE, True, False],
+                "skip_overriding": False,
+                "default_value_to_restore": None,  # Will be set later
+            },
+            "padding_side": {
+                "default_location": "model.tokenizer.padding_side",
+                "valid_values": [USE_DEFAULT_VALUE, "left", "right"],
+                "skip_overriding": model.tokenizer
+                is None,  # Do not override if tokenizer is None
+                "default_value_to_restore": None,  # Will be set later
+            },
+        }
+
+        # Ensure provided overrides are defined in the dictionary above
+        for override in overrides:
+            assert override in self.values_with_defaults, (
+                f"{override} is not a valid parameter to override. "
+                f"Valid parameters are {self.values_with_defaults.keys()}."
+            )
+
+    def __enter__(self):
+        """
+        Override default values upon entering the context.
+        """
+        for property, override in self.overrides.items():
+            info = self.values_with_defaults[property]
+            if info["skip_overriding"]:
+                continue  # Skip if overriding for this property is disabled
+
+            # Ensure the override is a valid value
+            valid_values = info["valid_values"]
+            assert (
+                override in valid_values
+            ), f"{property} must be one of {valid_values}, but got {override}."
+
+            # Fetch current default and store it to restore later
+            default_location = info["default_location"]
+            default_value = get_nested_attr(self, default_location)
+            info["default_value_to_restore"] = deepcopy(default_value)
+
+            # Override the default value
+            locally_overriden_value = override_or_use_default_value(
+                default_value, override
+            )
+            set_nested_attr(self, default_location, locally_overriden_value)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Restore default values upon exiting the context.
+        """
+        for property in self.overrides:
+            info = self.values_with_defaults[property]
+            if info["skip_overriding"]:
+                continue
+
+            # Restore the default value from before the context was entered
+            default_location = info["default_location"]
+            default_value = info["default_value_to_restore"]
+            set_nested_attr(self, default_location, default_value)
+
+
+def extend_tensor_with_ones(tensor, dim=1):
+    new_elements = torch.ones(
+        (tensor.shape[0], 1), dtype=tensor.dtype, device=tensor.device
+    )
+    return torch.cat([tensor, new_elements], dim=dim)

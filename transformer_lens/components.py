@@ -14,7 +14,12 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import gelu_fast, gelu_new, solu
+from transformer_lens.utils import (
+    gelu_fast,
+    gelu_new,
+    get_causal_mask_for_left_padding,
+    solu,
+)
 
 
 # Embed & Unembed
@@ -75,20 +80,65 @@ class PosEmbed(nn.Module):
         )
 
     def forward(
-        self, tokens: Int[torch.Tensor, "batch pos"], past_kv_pos_offset: int = 0
+        self,
+        tokens: Int[torch.Tensor, "batch pos"],
+        past_kv_pos_offset: int = 0,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
-        """Tokens have shape [batch, pos]
-        past_kv_pos_offset is the length of tokens in the past_kv_cache (if used, defaults to zero if unused)
-        Output shape [pos, d_model] - will be broadcast along batch dim"""
+        """
+        Forward pass for positional embeddings.
 
+        Args:
+            tokens (Int[torch.Tensor, "batch pos"]): Input tokens.
+            past_kv_pos_offset (int, optional): The length of tokens in the past_kv_cache. Defaults to 0.
+            left_attention_mask (Int[torch.Tensor, "batch pos"], optional): The attention mask for left padded tokens.
+                None when right padding is used. Defaults to None.
+
+        Returns:
+            Float[torch.Tensor, "batch pos d_model"]: Absolute position embeddings.
+        """
         tokens_length = tokens.size(-1)
-        pos_embed = self.W_pos[
-            past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
-        ]  # [pos, d_model]
-        broadcast_pos_embed = einops.repeat(
-            pos_embed, "pos d_model -> batch pos d_model", batch=tokens.size(0)
-        )  # [batch, pos, d_model]
-        return broadcast_pos_embed.clone()
+
+        if left_attention_mask is None:
+            # Right padding case
+            pos_embed = self.W_pos[
+                past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
+            ]  # [pos, d_model]
+            batch_pos_embed = einops.repeat(
+                pos_embed, "pos d_model -> batch pos d_model", batch=tokens.size(0)
+            )
+
+        else:
+            # Left padding case
+            # Separated from the right padding case for computational efficiency
+            # (this code is a bit slower than the code above)
+
+            # shift the position ids so that the id at the the first attended token position becomes zero.
+            # The position ids of the prepending pad tokens are shifted to -1.
+            shifted_position_ids = (
+                left_attention_mask.T.cumsum(dim=0) - 1
+            )  # [tokens_length, batch]
+
+            # Set the position ids of all prepending pad tokens to an arbitrary number (zero here)
+            # just to avoid indexing errors.
+            position_ids = shifted_position_ids.masked_fill(shifted_position_ids < 0, 0)
+            offsetted_position_ids = position_ids[
+                past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
+            ]  # [pos, batch]
+            pos_embed = self.W_pos[offsetted_position_ids]  # [pos, batch, d_model]
+
+            # Set the position embeddings to 0 for pad tokens
+            padding_mask = ~left_attention_mask.T.bool()  # [tokens_length, batch]
+            offsetted_padding_mask = padding_mask[
+                past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
+            ].unsqueeze(
+                -1
+            )  # [pos, batch, 1]
+            batch_pos_embed = torch.where(
+                offsetted_padding_mask, 0, pos_embed
+            ).transpose(0, 1)
+
+        return batch_pos_embed.clone()
 
 
 class TokenTypeEmbed(nn.Module):
@@ -489,11 +539,13 @@ class Attention(nn.Module):
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
         additive_attention_mask is an optional mask to add to the attention weights. Defaults to None.
+        left_attention_mask is the attention mask for left padded tokens. None when right padding is used. Defaults to None.
         """
 
         if self.cfg.use_split_qkv_input:
@@ -558,7 +610,7 @@ class Attention(nn.Module):
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
-                attn_scores, kv_cache_pos_offset
+                attn_scores, kv_cache_pos_offset, left_attention_mask
             )  # [batch, head_index, query_pos, key_pos]
         if additive_attention_mask is not None:
             attn_scores += additive_attention_mask
@@ -616,6 +668,7 @@ class Attention(nn.Module):
             torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"
         ],
         past_kv_pos_offset: int = 0,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ):
         # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it's just a single token.
         query_ctx_length = attn_scores.size(-2)
@@ -626,14 +679,32 @@ class Attention(nn.Module):
         assert (
             query_ctx_length + past_kv_pos_offset == key_ctx_length
         ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
-        return torch.where(
-            self.mask[
+
+        if left_attention_mask is None:
+            # Right padding case
+            # Apply only a causal mask to the attention scores
+            final_mask = self.mask[None, None]  # [1, 1, pos, pos]
+        else:
+            # Left padding case
+            # Apply a causal mask to the attention scores considering the left padding
+            final_mask = get_causal_mask_for_left_padding(left_attention_mask)
+            final_mask = final_mask.unsqueeze(1).to(
+                attn_scores.device
+            )  # [batch, 1, pos, pos]
+
+        masked_attn_scores = torch.where(
+            final_mask[
+                :,
+                :,
                 past_kv_pos_offset : past_kv_pos_offset + query_ctx_length,
                 :key_ctx_length,
             ],
             attn_scores,
             self.IGNORE,
         )
+
+        # Return the masked attention scores
+        return masked_attn_scores
 
     def rotary_rotate_qk(
         self,
@@ -924,6 +995,7 @@ class TransformerBlock(nn.Module):
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
@@ -931,6 +1003,7 @@ class TransformerBlock(nn.Module):
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
             cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See HookedTransformerConfig for details. Defaults to None.
+            left_attention_mask (torch.Tensor, optional): The attention mask for left padded tokens. None when right padding is used. Defaults to None.
 
         Returns:
             _type_: _description_
@@ -968,6 +1041,7 @@ class TransformerBlock(nn.Module):
                 + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
                 value_input=self.ln1(value_input),
                 past_kv_cache_entry=past_kv_cache_entry,
+                left_attention_mask=left_attention_mask,
             )
         )  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
