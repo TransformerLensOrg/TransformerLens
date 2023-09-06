@@ -493,6 +493,9 @@ class HookedTransformer(HookedRootModule):
 
     def ensure_consistent_default_padding_side(self):
         tokenizer = self.tokenizer_dict[self.cfg.default_prepend_bos]
+        if tokenizer is None:
+            return
+
         if (
             self.tokenizer_dict[not self.cfg.default_prepend_bos].padding_side
             != tokenizer.padding_side
