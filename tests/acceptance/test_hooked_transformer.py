@@ -14,6 +14,10 @@ TINY_STORIES_MODEL_NAMES = [
     name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
 ]
 
+PYTHIA_MODEL_NAMES = [
+    name for name in OFFICIAL_MODEL_NAMES if name.startswith("EleutherAI/pythia")
+]
+
 model_names = [
     "attn-only-demo",
     "gpt2-small",
@@ -153,7 +157,8 @@ def test_from_pretrained_revision():
     _ = HookedTransformer.from_pretrained("gpt2", revision="main")
 
     try:
-        _ = HookedTransformer.from_pretrained("gpt2", revision="inexistent_branch_name")
+        _ = HookedTransformer.from_pretrained(
+            "gpt2", revision="inexistent_branch_name")
     except:
         pass
     else:
@@ -206,7 +211,8 @@ def check_dtype(dtype, margin, no_processing=False):
                 model_path, torch_dtype=dtype
             )
         else:
-            model = HookedTransformer.from_pretrained(model_path, torch_dtype=dtype)
+            model = HookedTransformer.from_pretrained(
+                model_path, torch_dtype=dtype)
 
         hf_model = AutoModelForCausalLM.from_pretrained(
             model_path,
@@ -283,6 +289,17 @@ def test_pos_embed_hook():
 
 def test_all_tinystories_models_exist():
     for model in TINY_STORIES_MODEL_NAMES:
+        try:
+            AutoConfig.from_pretrained(model)
+        except OSError:
+            pytest.fail(
+                f"Could not download model '{model}' from Huggingface."
+                " Maybe the name was changed or the model has been removed."
+            )
+
+
+def test_all_pythia_models_exist():
+    for model in PYTHIA_MODEL_NAMES:
         try:
             AutoConfig.from_pretrained(model)
         except OSError:
