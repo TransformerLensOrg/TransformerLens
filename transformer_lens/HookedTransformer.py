@@ -598,7 +598,7 @@ class HookedTransformer(HookedRootModule):
             assert (
                 self.tokenizer is not None
             ), "Cannot use to_tokens without a tokenizer"
-            
+
             tokens = self.tokenizer(
                 input,
                 return_tensors="pt",

@@ -1,5 +1,4 @@
 import pytest
-import torch
 from transformers import AutoTokenizer
 
 from transformer_lens import HookedTransformer
