@@ -157,8 +157,7 @@ def test_from_pretrained_revision():
     _ = HookedTransformer.from_pretrained("gpt2", revision="main")
 
     try:
-        _ = HookedTransformer.from_pretrained(
-            "gpt2", revision="inexistent_branch_name")
+        _ = HookedTransformer.from_pretrained("gpt2", revision="inexistent_branch_name")
     except:
         pass
     else:
@@ -211,8 +210,7 @@ def check_dtype(dtype, margin, no_processing=False):
                 model_path, torch_dtype=dtype
             )
         else:
-            model = HookedTransformer.from_pretrained(
-                model_path, torch_dtype=dtype)
+            model = HookedTransformer.from_pretrained(model_path, torch_dtype=dtype)
 
         hf_model = AutoModelForCausalLM.from_pretrained(
             model_path,

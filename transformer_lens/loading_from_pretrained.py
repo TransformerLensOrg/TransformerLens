@@ -718,8 +718,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attention_dir": "bidirectional",
         }
     else:
-        raise NotImplementedError(
-            f"{architecture} is not currently supported.")
+        raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
     cfg_dict["original_architecture"] = architecture
     # The name such that AutoTokenizer.from_pretrained works
@@ -848,8 +847,7 @@ def get_pretrained_model_config(
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
             cfg_dict["normalization_type"] = "LNPre"
         else:
-            logging.warning(
-                "Cannot fold in layer norm, normalization_type is not LN.")
+            logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
 
     if checkpoint_index is not None or checkpoint_value is not None:
         checkpoint_labels, checkpoint_label_type = get_checkpoint_labels(
@@ -866,8 +864,7 @@ def get_pretrained_model_config(
                 checkpoint_value in checkpoint_labels
             ), f"Checkpoint value {checkpoint_value} is not in list of available checkpoints"
             cfg_dict["checkpoint_value"] = checkpoint_value
-            cfg_dict["checkpoint_index"] = checkpoint_labels.index(
-                checkpoint_value)
+            cfg_dict["checkpoint_index"] = checkpoint_labels.index(checkpoint_value)
     else:
         cfg_dict["from_checkpoint"] = False
 
@@ -971,12 +968,10 @@ def get_pretrained_state_dict(
         )
         if cfg.from_checkpoint:
             file_name = list(
-                filter(lambda x: x.endswith(
-                    f"{cfg.checkpoint_value}.pth"), repo_files)
+                filter(lambda x: x.endswith(f"{cfg.checkpoint_value}.pth"), repo_files)
             )[0]
         else:
-            file_name = list(
-                filter(lambda x: x.endswith("final.pth"), repo_files))[0]
+            file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
         state_dict = utils.download_file_from_hf(
             official_model_name, file_name, **kwargs
         )
@@ -1009,8 +1004,7 @@ def get_pretrained_state_dict(
                 )
         elif hf_model is None:
             if "llama" in official_model_name.lower():
-                raise NotImplementedError(
-                    "Must pass in hf_model for LLaMA models")
+                raise NotImplementedError("Must pass in hf_model for LLaMA models")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name, **kwargs
@@ -1219,8 +1213,7 @@ def convert_gptj_weights(gptj, cfg: HookedTransformerConfig):
         W_O = gptj.transformer.h[l].attn.out_proj.weight
         W_O = einops.rearrange(W_O, "m (i h)->i h m", i=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
-        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
-            cfg.d_model, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
         # Layer Norm 1 and 2 are tied.
         state_dict[f"blocks.{l}.ln2.w"] = state_dict[f"blocks.{l}.ln1.w"]
@@ -1344,8 +1337,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
 
-        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
-            cfg.d_model, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
         state_dict[f"blocks.{l}.ln2.w"] = llama.model.layers[
             l
@@ -1355,14 +1347,12 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
             l
         ].mlp.gate_proj.weight.T
-        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(
-            cfg.d_mlp, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
 
         state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[
             l
         ].mlp.down_proj.weight.T
-        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(
-            cfg.d_model, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
     state_dict["ln_final.w"] = llama.model.norm.weight
 
