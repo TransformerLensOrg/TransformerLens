@@ -75,6 +75,9 @@ OFFICIAL_MODEL_NAMES = [
     "EleutherAI/pythia-2.8b-deduped-v0",
     "EleutherAI/pythia-6.9b-deduped-v0",
     "EleutherAI/pythia-12b-deduped-v0",
+    "EleutherAI/pythia-160m-seed1",
+    "EleutherAI/pythia-160m-seed2",
+    "EleutherAI/pythia-160m-seed3",
     "NeelNanda/SoLU_1L_v9_old",
     "NeelNanda/SoLU_2L_v10_old",
     "NeelNanda/SoLU_4L_v11_old",
@@ -357,6 +360,21 @@ MODEL_ALIASES = {
         "pythia-12b-deduped-v0",
         "EleutherAI/pythia-13b-deduped-v0",  # EleutherAI renamed this model
         "pythia-13b-deduped-v0",
+    ],
+    "EleutherAI/pythia-160m-seed1": [
+        "pythia-160m-seed1",
+        "EleutherAI/pythia-125m-seed1",
+        "pythia-125m-seed1",  # EleutherAI renamed this model"
+    ],
+    "EleutherAI/pythia-160m-seed2": [
+        "pythia-160m-seed2",
+        "EleutherAI/pythia-125m-seed2",
+        "pythia-125m-seed2",  # EleutherAI renamed this model"
+    ],
+    "EleutherAI/pythia-160m-seed3": [
+        "pythia-160m-seed3",
+        "EleutherAI/pythia-125m-seed3",
+        "pythia-125m-seed3",  # EleutherAI renamed this model"
     ],
     "gpt2": ["gpt2-small"],
     "distilgpt2": ["distillgpt2", "distill-gpt2", "distil-gpt2", "gpt2-xs"],
