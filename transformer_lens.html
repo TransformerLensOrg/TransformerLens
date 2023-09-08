@@ -995,6 +995,13 @@ HookedTransformerConfig object.</p>
 </dd></dl>
 
 <dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_gate">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_gate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">d_model</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_gate" title="Permalink to this definition">#</a></dt>
+<dd><p>Stacks the MLP gate weights across all layers.</p>
+<p>Only works for models with gated MLPs</p>
+</dd></dl>
+
+<dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_in">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_in</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">d_model</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_in" title="Permalink to this definition">#</a></dt>
 <dd><p>Stacks the MLP input weights across all layers</p>
@@ -2342,6 +2349,12 @@ registered hooks while the latter silently ignores them.</p>
 <dt class="sig sig-object py" id="transformer_lens.components.GatedMLP">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.components.</span></span><span class="sig-name descname"><span class="pre">GatedMLP</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig" title="transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><span class="pre">HookedTransformerConfig</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.components.GatedMLP" title="Permalink to this definition">#</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
+<p>The equation of a gated MLP:
+pre = x &#64; W_gate
+pre_linear = x &#64; W_in
+post = Gelu(pre) * (pre_linear) + b_in
+mlp_out = post &#64; W_out + b_out</p>
+<p>In one equation, mlp_out = (Gelu(x &#64; W_gate) * (x &#64; W_in) + b_in) &#64; W_out + b_out</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.GatedMLP.forward">
 <span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.GatedMLP.forward" title="Permalink to this definition">#</a></dt>
@@ -4515,6 +4528,7 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_Q"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_Q</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_U"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_U</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_V"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_V</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_gate"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_gate</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_in</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_out"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_out</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_pos"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_pos</span></code></a></li>
