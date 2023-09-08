@@ -1656,6 +1656,17 @@ class HookedTransformer(HookedRootModule):
 
     @property
     @lru_cache(maxsize=None)
+    def W_gate(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
+        """Stacks the MLP gate weights across all layers.
+        
+        Only works for models with gated MLPs"""
+        if self.cfg.gated_mlp:
+            return torch.stack([block.mlp.W_gate for block in self.blocks], dim=0)
+        else:
+            return None
+
+    @property
+    @lru_cache(maxsize=None)
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
