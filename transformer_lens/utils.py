@@ -578,7 +578,7 @@ def get_act_name(
         "attn_scores",
     ]:
         layer_type = "attn"
-    elif name in ["pre", "post", "mid"]:
+    elif name in ["pre", "post", "mid", "pre_linear"]:
         layer_type = "mlp"
     elif layer_type in layer_type_alias:
         layer_type = layer_type_alias[layer_type]
