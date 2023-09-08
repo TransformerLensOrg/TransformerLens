@@ -856,6 +856,16 @@ class MLP(nn.Module):
 # TODO
 # not sure whether to fold this into MLP or not
 class GatedMLP(nn.Module):
+    """
+    The equation of a gated MLP:
+    pre = x @ W_gate
+    pre_linear = x @ W_in
+    post = Gelu(pre) * (pre_linear) + b_in
+    mlp_out = post @ W_out + b_out
+
+    In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in) + b_in) @ W_out + b_out
+    """
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -875,6 +885,8 @@ class GatedMLP(nn.Module):
 
         # hook on gate output but before act_fn
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
+        # hook on the linear component of the input
+        self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
         # hook on act_fn(gate_output) * W_in(x) + b_in
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
@@ -910,12 +922,13 @@ class GatedMLP(nn.Module):
             )
         )  # [batch, pos, d_mlp]
         if not self.cfg.act_fn.endswith("_ln"):
-            post_act = self.hook_post(
-                self.act_fn(pre_act)
-                * einsum(
+            pre_linear = self.hook_pre_linear(
+                einsum(
                     "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in
                 )
-                + self.b_in
+            )
+            post_act = self.hook_post(
+                (self.act_fn(pre_act) * pre_linear) + self.b_in
             )  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
