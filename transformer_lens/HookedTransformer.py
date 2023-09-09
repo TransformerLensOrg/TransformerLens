@@ -92,9 +92,7 @@ class HookedTransformer(HookedRootModule):
             # If we have a tokenizer name, we can load it from HuggingFace
             if "llama" in self.cfg.tokenizer_name.lower():
                 # llama tokenizer requires special handling
-                logging.warning(
-                    "LLaMA tokenizer not loaded. Please load manually."
-                )
+                logging.warning("LLaMA tokenizer not loaded. Please load manually.")
             else:
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(

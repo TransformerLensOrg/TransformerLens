@@ -141,10 +141,10 @@ class TestPrependBos:
             tokens_with_bos = model.to_tokens(input, prepend_bos=True)
             tokens_without_bos = model.to_tokens(input, prepend_bos=False)
             assert tokens_with_bos[..., 1:].equal(tokens_without_bos)
-            
+
             str_tokens_with_bos = model.to_str_tokens(input, prepend_bos=True)
             str_tokens_without_bos = model.to_str_tokens(input, prepend_bos=False)
-            
+
             if isinstance(str_tokens_with_bos[0], list):
                 for i in range(len(str_tokens_with_bos)):
                     assert str_tokens_with_bos[i][1:] == str_tokens_without_bos[i]
