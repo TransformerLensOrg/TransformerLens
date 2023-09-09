@@ -1048,6 +1048,8 @@ class HookedTransformer(HookedRootModule):
         center_unembed=False,
         refactor_factored_attn_matrices=False,
         fold_value_biases=False,
+        default_prepend_bos=True,
+        default_padding_side="right",
         **from_pretrained_kwargs,
     ):
         """Wrapper for from_pretrained with all boolean flags related to simplifying the model set to False. Refer to
@@ -1059,6 +1061,8 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            default_prepend_bos=default_prepend_bos,
+            default_padding_side=default_padding_side,
             **from_pretrained_kwargs,
         )
 
