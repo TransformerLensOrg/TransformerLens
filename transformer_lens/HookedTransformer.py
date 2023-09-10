@@ -1450,6 +1450,8 @@ class HookedTransformer(HookedRootModule):
         """
         Toggles whether to allow storing and editing inputs to each MLP layer.
         """
+
+        assert not self.cfg.attn_only, "Can't use hook_mlp_in with attn_only model"
         self.cfg.use_hook_mlp_in = use_hook_mlp_in
 
     def process_weights_(
