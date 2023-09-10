@@ -1,5 +1,4 @@
 import logging
-from functools import *
 from typing import Dict, Optional, Tuple, Union
 
 import einops
