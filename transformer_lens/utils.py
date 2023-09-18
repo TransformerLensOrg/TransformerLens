@@ -1037,8 +1037,8 @@ class LocallyOverridenDefaults:
             set_nested_attr(self, default_location, default_value)
 
 
-def extend_tensor_with_ones(tensor, dim=1):
+def extend_tensor_with_ones(tensor, dim=1, num_elements=1):
     new_elements = torch.ones(
-        (tensor.shape[0], 1), dtype=tensor.dtype, device=tensor.device
+        (tensor.shape[0], num_elements), dtype=tensor.dtype, device=tensor.device
     )
     return torch.cat([tensor, new_elements], dim=dim)

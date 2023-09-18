@@ -229,14 +229,11 @@ class HookedTransformer(HookedRootModule):
                 assert (
                     past_kv_cache is not None
                 ), "If past_left_attention_mask is not None, past_kv_cache must not be None"
-                assert (
-                    tokens.shape[1] == 1
-                ), "If past_left_attention_mask is not None, tokens must be a single token along the sequence dimension"
                 # past_kv_cache is not None, so we're doing caching.
                 # We need to extend the past_left_attention_mask.
-                # Append '1' to the right of the past_left_attention_mask to account for the new tokens
+                # Append '1's to the right of the past_left_attention_mask to account for each new token.
                 left_attention_mask = utils.extend_tensor_with_ones(
-                    past_left_attention_mask
+                    past_left_attention_mask, num_elements=tokens.shape[1]
                 )
 
         else:
@@ -264,10 +261,6 @@ class HookedTransformer(HookedRootModule):
             assert cached_batch_size == batch_size
             assert num_heads_in_cache == self.cfg.n_heads
             assert d_head_in_cache == self.cfg.d_head
-            # If we want to generate from the empty string, we'd pass in an empty cache, so we need to handle that case
-            assert (
-                cache_ctx_length == 0 or ctx_length == 1
-            ), "Pass in one token at a time after loading cache"
             pos_offset = cache_ctx_length
         if self.cfg.use_hook_tokens:
             tokens = self.hook_tokens(tokens)
@@ -433,6 +426,11 @@ class HookedTransformer(HookedRootModule):
             stop_at_layer = 0 will only run the embedding layer, stop_at_layer = 1 will run the embedding layer and the
             first transformer block, etc. Supports negative indexing. Useful for analysis of intermediate layers, eg finding
             neuron activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
+        past_kv_cache Optional[HookedTransformerKeyValueCache]: If not None, keys and values will be stored for every
+            attention head. If there are keys and values already in the cache, these will be prepended to the keys and values
+            for the new input, so that the new tokens can pay attention to previous tokens. This is useful for generating text,
+            because we don't need to repeat computation for tokens that have already been through the model. Defaults to None
+            (don't use caching).
 
         Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models -
         if you want a custom loss function, the recommended behaviour is returning the logits and then applying your
@@ -499,6 +497,9 @@ class HookedTransformer(HookedRootModule):
                 if return_type == "logits":
                     return logits
                 else:
+                    assert (
+                        tokens is not None
+                    ), "tokens must be passed in if return_type is 'loss' or 'both'"
                     loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
                     if return_type == "loss":
                         return loss

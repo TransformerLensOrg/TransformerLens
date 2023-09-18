@@ -82,7 +82,7 @@ class PosEmbed(nn.Module):
         self,
         tokens: Int[torch.Tensor, "batch pos"],
         past_kv_pos_offset: int = 0,
-        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         Forward pass for positional embeddings.
@@ -532,7 +532,7 @@ class Attention(nn.Module):
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
-        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
@@ -661,7 +661,7 @@ class Attention(nn.Module):
             torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"
         ],
         past_kv_pos_offset: int = 0,
-        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ):
         # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it's just a single token.
         query_ctx_length = attn_scores.size(-2)
@@ -1001,7 +1001,7 @@ class TransformerBlock(nn.Module):
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
-        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
