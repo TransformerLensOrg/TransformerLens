@@ -427,10 +427,10 @@ class HookedTransformer(HookedRootModule):
             first transformer block, etc. Supports negative indexing. Useful for analysis of intermediate layers, eg finding
             neuron activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
         past_kv_cache Optional[HookedTransformerKeyValueCache]: If not None, keys and values will be stored for every
-            attention head. If there are keys and values already in the cache, these will be prepended to the keys and values
-            for the new input, so that the new tokens can pay attention to previous tokens. This is useful for generating text,
-            because we don't need to repeat computation for tokens that have already been through the model. Defaults to None
-            (don't use caching).
+            attention head (unless the cache is frozen). If there are keys and values already in the cache, these will be
+            prepended to the keys and values for the new input, so that the new tokens can pay attention to previous tokens.
+            This is useful for generating text, because we don't need to repeat computation for tokens that have already been
+            through the model. Defaults to None (don't use caching).
 
         Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models -
         if you want a custom loss function, the recommended behaviour is returning the logits and then applying your
