@@ -817,6 +817,23 @@ def override_or_use_default_value(
     return override if override is not None else default_flag
 
 
+def get_offset_position_ids(
+    past_kv_pos_offset: int,
+    attention_mask: Int[torch.Tensor, "batch offset_pos"],
+) -> Int[torch.Tensor, "batch pos"]:
+    """
+    Returns the indices of non-padded tokens, offset by the position of the first attended token.
+    """
+    # shift the position ids so that the id at the the first attended token position becomes zero.
+    # The position ids of the prepending pad tokens are shifted to -1.
+    shifted_position_ids = attention_mask.cumsum(dim=1) - 1  # [batch, tokens_length]
+
+    # Set the position ids of all prepending pad tokens to an arbitrary number (zero here)
+    # just to avoid indexing errors.
+    position_ids = shifted_position_ids.masked_fill(shifted_position_ids < 0, 0)
+    return position_ids[:, past_kv_pos_offset:]  # [pos, batch]
+
+
 def get_cumsum_along_dim(tensor, dim, reverse=False):
     """
     Returns the cumulative sum of a tensor along a given dimension.
@@ -868,50 +885,6 @@ def get_attention_mask(
             attention_mask[torch.arange(attention_mask.shape[0]), pad_bos_positions] = 1
 
     return attention_mask
-
-
-def get_causal_mask_for_left_padding(
-    left_attention_mask: torch.Tensor,
-) -> torch.Tensor:
-    """
-    Generate a causal mask for left padded sequences.
-
-    The generated mask will have dimensions [batch_size, pos, pos], and its purpose is to prevent each token from
-    attending to future tokens in the sequence. Additionally, this mask prevents each token from attending to
-    padding tokens in the past positions for left-padded sequences.
-
-    Args:
-        left_attention_mask (torch.Tensor): The left attention mask, indicating which tokens are
-            not padding tokens. Shape: [batch_size, pos]
-
-    Returns:
-        torch.Tensor: The causal attention mask for left padded sequences. Shape: [batch_size, pos, pos]
-    """
-
-    # Initialize a mask with zeros and the same size as the left attention mask
-    # The mask is 3D, with the same number of positions in both the second and third dimensions
-    mask = (
-        einops.repeat(
-            torch.zeros_like(left_attention_mask),
-            "b pos1 -> b pos1 pos2",
-            pos2=left_attention_mask.shape[1],
-        )
-        .bool()
-        .clone()
-    )
-
-    # Compute the number of attended tokens (non-padding tokens) in each sequence
-    num_attended_tokens_list = left_attention_mask.sum(-1).tolist()
-
-    # For each sequence in the batch...
-    for i, num_attended_tokens in enumerate(num_attended_tokens_list):
-        # ...set the lower triangular part of the last num_attended_tokens positions to 1,
-        # preventing each token from attending to padding tokens in the past positions
-        mask[i, -num_attended_tokens:, -num_attended_tokens:] = torch.tril(
-            torch.ones((num_attended_tokens, num_attended_tokens)).bool()
-        )
-
-    return mask
 
 
 def get_nested_attr(obj, attr_str):
@@ -1039,13 +1012,6 @@ class LocallyOverridenDefaults:
             default_location = info["default_location"]
             default_value = info["default_value_to_restore"]
             set_nested_attr(self, default_location, default_value)
-
-
-def extend_tensor_with_ones(tensor, dim=1):
-    new_elements = torch.ones(
-        (tensor.shape[0], 1), dtype=tensor.dtype, device=tensor.device
-    )
-    return torch.cat([tensor, new_elements], dim=dim)
 
 
 def get_tokenizer_with_bos(tokenizer):
