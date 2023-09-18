@@ -193,7 +193,6 @@ class HookedTransformer(HookedRootModule):
         prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
         padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
         Optional[Int[torch.Tensor, "batch pos"]],  # tokens
@@ -221,19 +220,15 @@ class HookedTransformer(HookedRootModule):
             # If the padding side is left, we need to compute the attention mask for the adjustment of
             # absolute positional embeddings and attention masking so that the pad tokens are not attended.
 
-            if past_left_attention_mask is None:
-                left_attention_mask = utils.get_attention_mask(
-                    self.tokenizer, tokens, self.cfg.default_prepend_bos
-                )
-            else:
-                assert (
-                    past_kv_cache is not None
-                ), "If past_left_attention_mask is not None, past_kv_cache must not be None"
+            left_attention_mask = utils.get_attention_mask(
+                self.tokenizer, tokens, self.cfg.default_prepend_bos
+            )
+            if past_kv_cache is not None:
                 # past_kv_cache is not None, so we're doing caching.
-                # We need to extend the past_left_attention_mask.
-                # Append '1's to the right of the past_left_attention_mask to account for each new token.
-                left_attention_mask = utils.extend_tensor_with_ones(
-                    past_left_attention_mask, num_elements=tokens.shape[1]
+                # We need to extend the previous_left_attention_mask.
+                # Update the past_kv_cache with the new left_attention_mask (unless it's frozen)
+                left_attention_mask = past_kv_cache.append_left_attention_mask(
+                    left_attention_mask
                 )
 
         else:
@@ -306,7 +301,6 @@ class HookedTransformer(HookedRootModule):
         left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Loss:
         ...
 
@@ -326,7 +320,6 @@ class HookedTransformer(HookedRootModule):
         left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Loss:
         ...
 
@@ -346,7 +339,6 @@ class HookedTransformer(HookedRootModule):
         left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
         ...
 
@@ -366,7 +358,6 @@ class HookedTransformer(HookedRootModule):
         left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> None:
         ...
 
@@ -391,7 +382,6 @@ class HookedTransformer(HookedRootModule):
         left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Union[
         None,
         Float[torch.Tensor, "batch pos d_vocab"],
@@ -430,7 +420,8 @@ class HookedTransformer(HookedRootModule):
             attention head (unless the cache is frozen). If there are keys and values already in the cache, these will be
             prepended to the keys and values for the new input, so that the new tokens can pay attention to previous tokens.
             This is useful for generating text, because we don't need to repeat computation for tokens that have already been
-            through the model. Defaults to None (don't use caching).
+            through the model. Also caches left_attention_mask so previous tokens are masked correctly (unless frozen).
+            Defaults to None (don't use caching).
 
         Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models -
         if you want a custom loss function, the recommended behaviour is returning the logits and then applying your
@@ -451,7 +442,6 @@ class HookedTransformer(HookedRootModule):
                     prepend_bos=prepend_bos,
                     padding_side=padding_side,
                     past_kv_cache=past_kv_cache,
-                    past_left_attention_mask=past_left_attention_mask,
                 )
             else:
                 assert type(input) == torch.Tensor
@@ -1682,18 +1672,12 @@ class HookedTransformer(HookedRootModule):
                 if use_past_kv_cache:
                     # We just take the final tokens, as a [batch, 1] tensor
                     if index > 0:
-                        past_left_attention_mask = utils.get_attention_mask(
-                            self.tokenizer,
-                            tokens[:, :-1],
-                            self.cfg.default_prepend_bos,
-                        )
                         logits = self.forward(
                             tokens[:, -1:],
                             return_type="logits",
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
-                            past_left_attention_mask=past_left_attention_mask,
                         )
                     else:
                         logits = self.forward(
@@ -1702,7 +1686,6 @@ class HookedTransformer(HookedRootModule):
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
-                            past_left_attention_mask=None,
                         )
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using the cache

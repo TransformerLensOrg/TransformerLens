@@ -1,7 +1,6 @@
-# %%
 import torch as t
 
-from transformer_lens import HookedTransformer, utils
+from transformer_lens import HookedTransformer
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 
 MODEL = "solu-1l"
@@ -29,18 +28,11 @@ def test_single_new_token():
         pre_prompt_tokens,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache,
-        past_left_attention_mask=None,
-    )
-    past_left_attention_mask = utils.get_attention_mask(
-        model.tokenizer,
-        pre_prompt_tokens,
-        model.cfg.default_prepend_bos,
     )
     with_cache_logits = model(
         new_token,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache,
-        past_left_attention_mask=past_left_attention_mask,
     )
     print("no_cache_logits", no_cache_logits[:, -1])
     print("with_cache_logits", with_cache_logits[:, -1])
@@ -63,18 +55,11 @@ def test_multiple_new_tokens():
         pre_prompt_tokens,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache,
-        past_left_attention_mask=None,
-    )
-    past_left_attention_mask = utils.get_attention_mask(
-        model.tokenizer,
-        pre_prompt_tokens,
-        model.cfg.default_prepend_bos,
     )
     with_cache_logits = model(
         new_tokens,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache,
-        past_left_attention_mask=past_left_attention_mask,
     )
     assert t.allclose(no_cache_logits[:, -1], with_cache_logits[:, -1], atol=1e-3)
     assert t.allclose(
@@ -83,15 +68,8 @@ def test_multiple_new_tokens():
 
 
 def test_freeze_cache():
-    past_left_attention_mask = utils.get_attention_mask(
-        model.tokenizer,
-        pre_prompt_tokens,
-        model.cfg.default_prepend_bos,
-    )
-
     post_prompt_1 = " I'm headed to the church to play bingo."
     new_tokens_1 = model.to_tokens(post_prompt_1, prepend_bos=False)
-    full_prompt_tokens_1 = t.cat([pre_prompt_tokens, new_tokens_1], dim=-1)
     past_kv_cache_1 = HookedTransformerKeyValueCache.init_cache(
         model.cfg, model.cfg.device, pre_prompt_tokens.shape[0]
     )
@@ -106,28 +84,24 @@ def test_freeze_cache():
         pre_prompt_tokens,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache_1,
-        past_left_attention_mask=None,
     )
     past_kv_cache_1.freeze()
     with_cache_logits_1 = model(
         new_tokens_1,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache_1,
-        past_left_attention_mask=past_left_attention_mask,
     )
 
     model(
         pre_prompt_tokens,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache_2,
-        past_left_attention_mask=None,
     )
     past_kv_cache_2.freeze()
     model(
         new_tokens_2,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache_2,
-        past_left_attention_mask=past_left_attention_mask,
     )
 
     # Caches frozen at the same point should be identical
@@ -144,7 +118,6 @@ def test_freeze_cache():
         new_tokens_1,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache_2,
-        past_left_attention_mask=past_left_attention_mask,
     )
     assert t.allclose(with_cache_logits_1, with_cache_2_logits_1, atol=1e-3)
 
@@ -154,7 +127,6 @@ def test_freeze_cache():
         new_tokens_1,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache_2,
-        past_left_attention_mask=past_left_attention_mask,
     )
     for entry_1, entry_2 in zip(past_kv_cache_1.entries, past_kv_cache_2.entries):
         assert entry_1.past_keys.shape[1] < entry_2.past_keys.shape[1]
@@ -163,15 +135,9 @@ def test_freeze_cache():
     # Rerunning the same prompt with a different cache should give different
     # results
     assert t.allclose(with_cache_logits_1, with_cache_2_logits_1, atol=1e-3)
-    past_left_attention_mask = utils.get_attention_mask(
-        model.tokenizer,
-        full_prompt_tokens_1,
-        model.cfg.default_prepend_bos,
-    )
     with_cache_2_logits_1 = model(
         new_tokens_1,
         padding_side=padding_side,
         past_kv_cache=past_kv_cache_2,
-        past_left_attention_mask=past_left_attention_mask,
     )
     assert not t.allclose(with_cache_logits_1, with_cache_2_logits_1, atol=1e-3)

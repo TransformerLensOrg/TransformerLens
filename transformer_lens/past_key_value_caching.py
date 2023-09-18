@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List, Union
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Int
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.devices import get_device_for_block_index
@@ -58,6 +58,8 @@ class HookedTransformerKeyValueCache:
     """
 
     entries: List[HookedTransformerKeyValueCacheEntry]
+    previous_left_attention_mask: Int[torch.Tensor, "batch pos_so_far"]
+    frozen: bool = False
 
     @classmethod
     def init_cache(
@@ -74,16 +76,36 @@ class HookedTransformerKeyValueCache:
                     batch_size,
                 )
                 for i in range(cfg.n_layers)
-            ]
+            ],
+            previous_left_attention_mask=torch.empty(
+                # This may actually be an int64, but type promotion will handle it:
+                # See: https://pytorch.org/docs/stable/tensor_attributes.html#type-promotion-doc
+                # See: https://github.com/pytorch/pytorch/issues/35014
+                (batch_size, 0),
+                device=device,
+                dtype=torch.int,
+            ),
         )
 
     def freeze(self):
+        self.frozen = True
         for entry in self.entries:
             entry.frozen = True
 
     def unfreeze(self):
+        self.frozen = False
         for entry in self.entries:
             entry.frozen = False
+
+    def append_left_attention_mask(
+        self, left_attention_mask: Int[torch.Tensor, "batch new_tokens"]
+    ):
+        updated_left_attention_mask = torch.cat(
+            [self.previous_left_attention_mask, left_attention_mask], dim=-1
+        )
+        if not self.frozen:
+            self.previous_left_attention_mask = updated_left_attention_mask
+        return updated_left_attention_mask
 
     def __getitem__(self, idx):
         return self.entries[idx]
