@@ -590,6 +590,13 @@ class Attention(nn.Module):
             q = q.to(torch.float32)
             k = k.to(torch.float32)
 
+        result = einsum(
+                "batch query_pos head_index d_head, \
+                    batch key_pos head_index d_head \
+                    -> batch head_index query_pos key_pos",
+                q,
+                k,
+            )
         attn_scores = (
             einsum(
                 "batch query_pos head_index d_head, \
@@ -693,7 +700,7 @@ class Attention(nn.Module):
                 :key_ctx_length,
             ],
             attn_scores,
-            self.IGNORE,
+            torch.tensor(-1e5),
         )
 
         # Return the masked attention scores
