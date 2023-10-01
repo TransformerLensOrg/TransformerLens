@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Union
+from typing import Optional, Union
 
 import torch
 from torch import nn
 
-if TYPE_CHECKING:
-    from transformer_lens.HookedEncoder import HookedEncoder
-    from transformer_lens.HookedTransformer import HookedTransformer
-
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+import transformer_lens
 
 
 def get_device_for_block_index(
     index: int,
-    cfg: HookedTransformerConfig,
+    cfg: "transformer_lens.HookedTransformerConfig",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -42,13 +38,14 @@ def get_device_for_block_index(
 
 
 def move_to_and_update_config(
-    model: Union[HookedTransformer, HookedEncoder],
+    model: Union[
+        "transformer_lens.HookedTransformer", "transformer_lens.HookedEncoder"
+    ],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
 ):
     """
-    Wrapper around to that also changes model.cfg.device if it's a torch.device or string.
-    If torch.dtype, just passes through
+    Wrapper around `to` that also updates `model.cfg`.
     """
     if isinstance(device_or_dtype, torch.device):
         model.cfg.device = device_or_dtype.type
@@ -59,6 +56,7 @@ def move_to_and_update_config(
         if print_details:
             print("Moving model to device: ", model.cfg.device)
     elif isinstance(device_or_dtype, torch.dtype):
+        model.cfg.dtype = device_or_dtype
         if print_details:
             print("Changing model dtype to", device_or_dtype)
         # change state_dict dtypes
