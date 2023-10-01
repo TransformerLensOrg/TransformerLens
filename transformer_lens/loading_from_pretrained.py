@@ -956,6 +956,9 @@ def get_pretrained_state_dict(
     kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
         Also given to other HuggingFace functions when compatible.
     """
+    if "torch_dtype" in kwargs:
+        dtype = kwargs["torch_dtype"]
+        del kwargs["torch_dtype"]
     official_model_name = get_official_model_name(official_model_name)
     if (
         official_model_name.startswith("NeelNanda")
