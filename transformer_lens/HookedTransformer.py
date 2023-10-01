@@ -37,6 +37,15 @@ SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
 Loss = Union[SingleLoss, LossPerToken]
 
+DTYPE_FROM_STRING = {
+    "float32": torch.float32,
+    "fp32": torch.float32,
+    "float16": torch.float16,
+    "fp16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "bf16": torch.bfloat16,
+}
+
 
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
@@ -880,6 +889,7 @@ class HookedTransformer(HookedRootModule):
         fold_value_biases=True,
         default_prepend_bos=True,
         default_padding_side="right",
+        dtype="float32",
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
@@ -936,6 +946,9 @@ class HookedTransformer(HookedRootModule):
                 so this empirically seems to give better results. To change the default behavior to False, pass in
                 default_prepend_bos=False. Note that you can also locally override the default behavior by passing
                 in prepend_bos=True/False when you call a method that processes the input string.
+            dtype (str | torch.dtype, optional): What data type to load the model in (also sets the dtype of
+                the HuggingFace model). Set to bfloat16 or float16 if you get out of memory errors when loading
+                the model. 
             from_pretrained_kwargs (dict, optional): Any other optional argument passed to HuggingFace's
                 from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to other HuggingFace
                 functions when compatible. For some models or arguments it doesn't work, especially for
@@ -947,9 +960,17 @@ class HookedTransformer(HookedRootModule):
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
 
-        if from_pretrained_kwargs.get(
+        if isinstance(dtype, str):
+            # Convert from string to a torch dtype
+            dtype = DTYPE_FROM_STRING[dtype]
+        if "torch_dtype" in from_pretrained_kwargs:
+            # For backwards compatibility with the previous way to do low precision loading
+            # This should maybe check the user did not explicitly set dtype *and* torch_dtype
+            dtype = from_pretrained_kwargs["torch_dtype"]
+
+        if ((from_pretrained_kwargs.get(
             "torch_dtype", None
-        ) == torch.float16 and device in ["cpu", None]:
+            ) == torch.float16) or dtype == torch.float16) and device in ["cpu", None]:
             logging.warning(
                 "float16 models may not work on CPU. Consider using a GPU or bfloat16."
             )
@@ -968,6 +989,7 @@ class HookedTransformer(HookedRootModule):
             device=device,
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
+            dtype=dtype,
             **from_pretrained_kwargs,
         )
 
@@ -994,7 +1016,7 @@ class HookedTransformer(HookedRootModule):
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the
         # HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model, **from_pretrained_kwargs
+            official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
         # Create the HookedTransformer object
@@ -1030,6 +1052,7 @@ class HookedTransformer(HookedRootModule):
         center_unembed=False,
         refactor_factored_attn_matrices=False,
         fold_value_biases=False,
+        dtype=torch.float32,
         **from_pretrained_kwargs,
     ):
         """Wrapper for from_pretrained with all boolean flags related to simplifying the model set to False. Refer to
@@ -1041,6 +1064,7 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            dtype=dtype,
             **from_pretrained_kwargs,
         )
 
