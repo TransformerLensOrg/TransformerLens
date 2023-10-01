@@ -457,7 +457,7 @@ class Attention(nn.Module):
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
-        self.register_buffer("IGNORE", torch.tensor(-torch.inf))
+        self.register_buffer("IGNORE", torch.tensor(-1e5))
 
         self.layer_id = layer_id
 
