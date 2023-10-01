@@ -948,7 +948,7 @@ class HookedTransformer(HookedRootModule):
                 in prepend_bos=True/False when you call a method that processes the input string.
             dtype (str | torch.dtype, optional): What data type to load the model in (also sets the dtype of
                 the HuggingFace model). Set to bfloat16 or float16 if you get out of memory errors when loading
-                the model. 
+                the model.
             from_pretrained_kwargs (dict, optional): Any other optional argument passed to HuggingFace's
                 from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to other HuggingFace
                 functions when compatible. For some models or arguments it doesn't work, especially for
@@ -968,9 +968,10 @@ class HookedTransformer(HookedRootModule):
             # This should maybe check the user did not explicitly set dtype *and* torch_dtype
             dtype = from_pretrained_kwargs["torch_dtype"]
 
-        if ((from_pretrained_kwargs.get(
-            "torch_dtype", None
-            ) == torch.float16) or dtype == torch.float16) and device in ["cpu", None]:
+        if (
+            (from_pretrained_kwargs.get("torch_dtype", None) == torch.float16)
+            or dtype == torch.float16
+        ) and device in ["cpu", None]:
             logging.warning(
                 "float16 models may not work on CPU. Consider using a GPU or bfloat16."
             )
@@ -1364,9 +1365,7 @@ class HookedTransformer(HookedRootModule):
             # [d_model]
             b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
 
-            folded_b_O = b_O_original + einsum(
-                "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
-            )
+            folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
             state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)

@@ -976,7 +976,7 @@ def get_pretrained_state_dict(
         state_dict = utils.download_file_from_hf(
             official_model_name, file_name, **kwargs
         )
-        
+
         # Convert to dtype
         state_dict = {k: v.to(dtype) for k, v in state_dict.items()}
 
@@ -1010,15 +1010,11 @@ def get_pretrained_state_dict(
                 raise NotImplementedError("Must pass in hf_model for LLaMA models")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
-                    official_model_name,
-                    torch_dtype=dtype,
-                    **kwargs
+                    official_model_name, torch_dtype=dtype, **kwargs
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name,
-                    torch_dtype=dtype,
-                    **kwargs
+                    official_model_name, torch_dtype=dtype, **kwargs
                 )
 
             # Load model weights, and fold in layer norm weights
