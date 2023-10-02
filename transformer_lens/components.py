@@ -612,6 +612,7 @@ class Attention(nn.Module):
         pattern = self.hook_pattern(
             F.softmax(attn_scores, dim=-1)
         )  # [batch, head_index, query_pos, key_pos]
+        pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = pattern.to(self.cfg.dtype)
         z = self.hook_z(
             einsum(
