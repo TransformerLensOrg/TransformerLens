@@ -1017,37 +1017,36 @@ class TransformerBlock(nn.Module):
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
 
-        def add_head_dimension(tensor):
-            return einops.repeat(
+        def add_head_dimension(
+            tensor: Float[torch.Tensor, "batch pos d_model"],
+            clone_tensor=True,
+            # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
+        ):
+            repeated_tensor = einops.repeat(
                 tensor,
                 "batch pos d_model -> batch pos n_heads d_model",
                 n_heads=self.cfg.n_heads,
-            ).clone()
+            )
+            if clone_tensor:
+                return repeated_tensor.clone()
+            else:
+                return repeated_tensor
 
-        attn_in = (
-            resid_pre
-            if not self.cfg.use_attn_in
-            else self.hook_attn_in(add_head_dimension(resid_pre.clone()))
-        )
-
-        if self.cfg.use_split_qkv_input:
-            query_input = self.hook_q_input(
-                add_head_dimension(attn_in)
-                if not self.cfg.use_attn_in
-                else attn_in  # we've already added the extra dimension if we're using attn_in!
-            )
-            key_input = self.hook_k_input(
-                add_head_dimension(attn_in)
-                if not self.cfg.use_attn_in
-                else attn_in  # we've already added the extra dimension if we're using attn_in!
-            )
-            value_input = self.hook_v_input(
-                add_head_dimension(attn_in)
-                if not self.cfg.use_attn_in
-                else attn_in  # we've already added the extra dimension if we're using attn_in!
-            )
+        if self.cfg.use_attn_in or self.cfg.use_split_qkv_input:
+            # We're adding a head dimension
+            attn_in = add_head_dimension(resid_pre, clone_tensor=False)
             if shortformer_pos_embed is not None:
                 shortformer_pos_embed = add_head_dimension(shortformer_pos_embed)
+        else:
+            attn_in = resid_pre
+
+        if self.cfg.use_attn_in:
+            attn_in = self.hook_attn_in(attn_in.clone())
+
+        if self.cfg.use_split_qkv_input:
+            query_input = self.hook_q_input(attn_in.clone())
+            key_input = self.hook_k_input(attn_in.clone())
+            value_input = self.hook_v_input(attn_in.clone())
         else:
             query_input = attn_in
             key_input = attn_in
