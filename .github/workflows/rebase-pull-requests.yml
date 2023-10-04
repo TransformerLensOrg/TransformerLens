@@ -1,0 +1,9 @@
+name: Rebase Pull Requests
+on:
+  push:
+    branches: [main]
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: linhbn123/rebase-pull-requests@v1.0.1
