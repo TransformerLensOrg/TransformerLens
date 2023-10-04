@@ -609,9 +609,9 @@ class Attention(nn.Module):
             attn_scores += additive_attention_mask
 
         attn_scores = self.hook_attn_scores(attn_scores)
-        pattern = self.hook_pattern(
-            F.softmax(attn_scores, dim=-1)
-        )  # [batch, head_index, query_pos, key_pos]
+        pattern = F.softmax(attn_scores, dim=-1)
+        pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
+        pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
         z = self.hook_z(
             einsum(
