@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import numpy as np
 import pytest
@@ -210,67 +210,105 @@ class Test_lower_triangular:
 
 
 @pytest.mark.parametrize(
-    "prepend_space_to_answer, expected_print_output, expected_rprint_output",
+    "prepend_space_to_answer, expected_print_calls, expected_rprint_calls",
     [
         (
             True,
-            """Tokenized prompt: ['<|BOS|>', 'The', ' circumference', ' is', ' the', ' perimeter', ' of', ' the', ' circ']
-Tokenized answer: [' le', '.']
-Top 0th token. Logit: 16.69 Prob: 38.00% Token: |a|
-Top 1th token. Logit: 15.71 Prob: 14.30% Token: |let|
-Top 2th token. Logit: 15.48 Prob: 11.37% Token: |ump|
-Top 3th token. Logit: 14.94 Prob:  6.64% Token: |u|
-Top 4th token. Logit: 13.96 Prob:  2.49% Token: |lets|
-Top 5th token. Logit: 13.23 Prob:  1.19% Token: |ut|
-Top 6th token. Logit: 13.17 Prob:  1.13% Token: |umn|
-Top 7th token. Logit: 13.01 Prob:  0.96% Token: |us|
-Top 8th token. Logit: 12.96 Prob:  0.91% Token: | is|
-Top 9th token. Logit: 12.89 Prob:  0.85% Token: |umb|
-Top 0th token. Logit: 16.19 Prob: 16.71% Token: |vy|
-Top 1th token. Logit: 15.80 Prob: 11.24% Token: |vers|
-Top 2th token. Logit: 15.33 Prob:  7.03% Token: |aps|
-Top 3th token. Logit: 14.63 Prob:  3.48% Token: |vens|
-Top 4th token. Logit: 14.62 Prob:  3.45% Token: |av|
-Top 5th token. Logit: 14.43 Prob:  2.87% Token: |opard|
-Top 6th token. Logit: 14.30 Prob:  2.52% Token: |as|
-Top 7th token. Logit: 14.26 Prob:  2.41% Token: |ew|
-Top 8th token. Logit: 14.23 Prob:  2.33% Token: |on|
-Top 9th token. Logit: 13.98 Prob:  1.82% Token: |gged|""",
-            """Performance on answer token:
-[b]Rank: 5284     Logit:  3.81 Prob:  0.00% Token: | le|[/b]
-Performance on answer token:
-[b]Rank: 340      Logit:  8.94 Prob:  0.01% Token: |.|[/b]
-[b]Ranks of the answer tokens:[/b] [(' le', 5284), ('.', 340)]""",
+            [
+                call(
+                    "Tokenized prompt:",
+                    [
+                        "<|BOS|>",
+                        "The",
+                        " circumference",
+                        " is",
+                        " the",
+                        " perimeter",
+                        " of",
+                        " the",
+                        " circ",
+                    ],
+                ),
+                call("Tokenized answer:", [" le", "."]),
+                call("Top 0th token. Logit: 16.69 Prob: 38.00% Token: |a|"),
+                call("Top 1th token. Logit: 15.71 Prob: 14.30% Token: |let|"),
+                call("Top 2th token. Logit: 15.48 Prob: 11.37% Token: |ump|"),
+                call("Top 3th token. Logit: 14.94 Prob:  6.64% Token: |u|"),
+                call("Top 4th token. Logit: 13.96 Prob:  2.49% Token: |lets|"),
+                call("Top 5th token. Logit: 13.23 Prob:  1.19% Token: |ut|"),
+                call("Top 6th token. Logit: 13.17 Prob:  1.13% Token: |umn|"),
+                call("Top 7th token. Logit: 13.01 Prob:  0.96% Token: |us|"),
+                call("Top 8th token. Logit: 12.96 Prob:  0.91% Token: | is|"),
+                call("Top 9th token. Logit: 12.89 Prob:  0.85% Token: |umb|"),
+                call("Top 0th token. Logit: 16.19 Prob: 16.71% Token: |vy|"),
+                call("Top 1th token. Logit: 15.80 Prob: 11.24% Token: |vers|"),
+                call("Top 2th token. Logit: 15.33 Prob:  7.03% Token: |aps|"),
+                call("Top 3th token. Logit: 14.63 Prob:  3.48% Token: |vens|"),
+                call("Top 4th token. Logit: 14.62 Prob:  3.45% Token: |av|"),
+                call("Top 5th token. Logit: 14.43 Prob:  2.87% Token: |opard|"),
+                call("Top 6th token. Logit: 14.30 Prob:  2.52% Token: |as|"),
+                call("Top 7th token. Logit: 14.26 Prob:  2.41% Token: |ew|"),
+                call("Top 8th token. Logit: 14.23 Prob:  2.33% Token: |on|"),
+                call("Top 9th token. Logit: 13.98 Prob:  1.82% Token: |gged|"),
+            ],
+            [
+                call(
+                    "Performance on answer token:\n[b]Rank: 5284     Logit:  3.81 Prob:  0.00% Token: | le|[/b]"
+                ),
+                call(
+                    "Performance on answer token:\n[b]Rank: 340      Logit:  8.94 Prob:  0.01% Token: |.|[/b]"
+                ),
+                call("[b]Ranks of the answer tokens:[/b] [(' le', 5284), ('.', 340)]"),
+            ],
         ),
         (
             False,
-            """Tokenized prompt: ['<|BOS|>', 'The', ' circumference', ' is', ' the', ' perimeter', ' of', ' the', ' circ']
-Tokenized answer: ['le', '.']
-Top 0th token. Logit: 16.69 Prob: 38.00% Token: |a|
-Top 1th token. Logit: 15.71 Prob: 14.30% Token: |let|
-Top 2th token. Logit: 15.48 Prob: 11.37% Token: |ump|
-Top 3th token. Logit: 14.94 Prob:  6.64% Token: |u|
-Top 4th token. Logit: 13.96 Prob:  2.49% Token: |lets|
-Top 5th token. Logit: 13.23 Prob:  1.19% Token: |ut|
-Top 6th token. Logit: 13.17 Prob:  1.13% Token: |umn|
-Top 7th token. Logit: 13.01 Prob:  0.96% Token: |us|
-Top 8th token. Logit: 12.96 Prob:  0.91% Token: | is|
-Top 9th token. Logit: 12.89 Prob:  0.85% Token: |umb|
-Top 0th token. Logit: 15.30 Prob: 44.91% Token: |th|
-Top 1th token. Logit: 12.67 Prob:  3.22% Token: | 1|
-Top 2th token. Logit: 12.46 Prob:  2.60% Token: |.|
-Top 3th token. Logit: 12.33 Prob:  2.30% Token: | 2|
-Top 4th token. Logit: 11.98 Prob:  1.62% Token: |,|
-Top 5th token. Logit: 11.85 Prob:  1.41% Token: |-|
-Top 6th token. Logit: 11.79 Prob:  1.33% Token: | and|
-Top 7th token. Logit: 11.62 Prob:  1.13% Token: | 3|
-Top 8th token. Logit: 11.56 Prob:  1.06% Token: |thal|
-Top 9th token. Logit: 11.48 Prob:  0.98% Token: |an|""",
-            """Performance on answer token:
-[b]Rank: 93       Logit:  9.99 Prob:  0.05% Token: |le|[/b]
-Performance on answer token:
-[b]Rank: 2        Logit: 12.46 Prob:  2.60% Token: |.|[/b]
-[b]Ranks of the answer tokens:[/b] [('le', 93), ('.', 2)]""",
+            [
+                call(
+                    "Tokenized prompt:",
+                    [
+                        "<|BOS|>",
+                        "The",
+                        " circumference",
+                        " is",
+                        " the",
+                        " perimeter",
+                        " of",
+                        " the",
+                        " circ",
+                    ],
+                ),
+                call("Tokenized answer:", ["le", "."]),
+                call("Top 0th token. Logit: 16.69 Prob: 38.00% Token: |a|"),
+                call("Top 1th token. Logit: 15.71 Prob: 14.30% Token: |let|"),
+                call("Top 2th token. Logit: 15.48 Prob: 11.37% Token: |ump|"),
+                call("Top 3th token. Logit: 14.94 Prob:  6.64% Token: |u|"),
+                call("Top 4th token. Logit: 13.96 Prob:  2.49% Token: |lets|"),
+                call("Top 5th token. Logit: 13.23 Prob:  1.19% Token: |ut|"),
+                call("Top 6th token. Logit: 13.17 Prob:  1.13% Token: |umn|"),
+                call("Top 7th token. Logit: 13.01 Prob:  0.96% Token: |us|"),
+                call("Top 8th token. Logit: 12.96 Prob:  0.91% Token: | is|"),
+                call("Top 9th token. Logit: 12.89 Prob:  0.85% Token: |umb|"),
+                call("Top 0th token. Logit: 15.30 Prob: 44.91% Token: |th|"),
+                call("Top 1th token. Logit: 12.67 Prob:  3.22% Token: | 1|"),
+                call("Top 2th token. Logit: 12.46 Prob:  2.60% Token: |.|"),
+                call("Top 3th token. Logit: 12.33 Prob:  2.30% Token: | 2|"),
+                call("Top 4th token. Logit: 11.98 Prob:  1.62% Token: |,|"),
+                call("Top 5th token. Logit: 11.85 Prob:  1.41% Token: |-|"),
+                call("Top 6th token. Logit: 11.79 Prob:  1.33% Token: | and|"),
+                call("Top 7th token. Logit: 11.62 Prob:  1.13% Token: | 3|"),
+                call("Top 8th token. Logit: 11.56 Prob:  1.06% Token: |thal|"),
+                call("Top 9th token. Logit: 11.48 Prob:  0.98% Token: |an|"),
+            ],
+            [
+                call(
+                    "Performance on answer token:\n[b]Rank: 93       Logit:  9.99 Prob:  0.05% Token: |le|[/b]"
+                ),
+                call(
+                    "Performance on answer token:\n[b]Rank: 2        Logit: 12.46 Prob:  2.60% Token: |.|[/b]"
+                ),
+                call("[b]Ranks of the answer tokens:[/b] [('le', 93), ('.', 2)]"),
+            ],
         ),
     ],
 )
@@ -280,28 +318,24 @@ def test_test_prompt(
     mocked_rprint,
     mocked_print,
     prepend_space_to_answer,
-    expected_print_output,
-    expected_rprint_output,
+    expected_print_calls,
+    expected_rprint_calls,
 ):
-    def get_output_from_mock_calls(mock_calls):
-        return "\n".join(
-            [
-                " ".join([str(call_args) for call_args in mock_call.args])
-                for mock_call in mock_calls
-            ]
-        )
-
     utils.test_prompt(
         "The circumference is the perimeter of the circ",
         "le.",
         model,
         prepend_space_to_answer=prepend_space_to_answer,
     )
-    print_out = get_output_from_mock_calls(mocked_print.mock_calls)
-    rprint_out = get_output_from_mock_calls(mocked_rprint.mock_calls)
 
-    assert print_out == expected_print_output
-    assert rprint_out == expected_rprint_output
+    for received_call, expected_call in zip(
+        mocked_print.mock_calls, expected_print_calls
+    ):
+        assert received_call == expected_call
+    for received_call, expected_call in zip(
+        mocked_rprint.mock_calls, expected_rprint_calls
+    ):
+        assert received_call == expected_call
 
 
 def test_override_or_use_default_value():
