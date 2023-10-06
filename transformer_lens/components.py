@@ -1,5 +1,4 @@
 import logging
-from functools import *
 from typing import Dict, Optional, Tuple, Union
 
 import einops
@@ -9,13 +8,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
-from typeguard import typeguard_ignore
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import gelu_fast, gelu_new, solu
+from transformer_lens.utils import (
+    gelu_fast,
+    gelu_new,
+    get_causal_mask_for_left_padding,
+    solu,
+)
 
 
 # Embed & Unembed
@@ -26,7 +29,7 @@ class Embed(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
-            torch.empty(self.cfg.d_vocab, self.cfg.d_model)
+            torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=cfg.dtype)
         )
 
     def forward(
@@ -45,10 +48,10 @@ class Unembed(nn.Module):
         self.cfg = cfg
         # Note that there's a separate variable for d_vocab_out and d_vocab (the input vocab size). For language tasks these are always the same, but for algorithmic tasks we may want them to be different.
         self.W_U: Float[torch.Tensor, "d_model d_vocab_out"] = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_vocab_out)
+            torch.empty(self.cfg.d_model, self.cfg.d_vocab_out, dtype=cfg.dtype)
         )
         self.b_U: Float[torch.Tensor, "d_vocab_out"] = nn.Parameter(
-            torch.zeros(self.cfg.d_vocab_out)
+            torch.zeros(self.cfg.d_vocab_out, dtype=cfg.dtype)
         )
 
     def forward(
@@ -71,23 +74,70 @@ class PosEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model))
+        self.W_pos = nn.Parameter(
+            torch.empty(self.cfg.n_ctx, self.cfg.d_model, dtype=cfg.dtype)
+        )
 
     def forward(
-        self, tokens: Int[torch.Tensor, "batch pos"], past_kv_pos_offset: int = 0
+        self,
+        tokens: Int[torch.Tensor, "batch pos"],
+        past_kv_pos_offset: int = 0,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
-        """Tokens have shape [batch, pos]
-        past_kv_pos_offset is the length of tokens in the past_kv_cache (if used, defaults to zero if unused)
-        Output shape [pos, d_model] - will be broadcast along batch dim"""
+        """
+        Forward pass for positional embeddings.
 
+        Args:
+            tokens (Int[torch.Tensor, "batch pos"]): Input tokens.
+            past_kv_pos_offset (int, optional): The length of tokens in the past_kv_cache. Defaults to 0.
+            left_attention_mask (Int[torch.Tensor, "batch pos"], optional): The attention mask for left padded tokens.
+                None when right padding is used. Defaults to None.
+
+        Returns:
+            Float[torch.Tensor, "batch pos d_model"]: Absolute position embeddings.
+        """
         tokens_length = tokens.size(-1)
-        pos_embed = self.W_pos[
-            past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
-        ]  # [pos, d_model]
-        broadcast_pos_embed = einops.repeat(
-            pos_embed, "pos d_model -> batch pos d_model", batch=tokens.size(0)
-        )  # [batch, pos, d_model]
-        return broadcast_pos_embed.clone()
+
+        if left_attention_mask is None:
+            # Right padding case
+            pos_embed = self.W_pos[
+                past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
+            ]  # [pos, d_model]
+            batch_pos_embed = einops.repeat(
+                pos_embed, "pos d_model -> batch pos d_model", batch=tokens.size(0)
+            )
+
+        else:
+            # Left padding case
+            # Separated from the right padding case for computational efficiency
+            # (this code is a bit slower than the code above)
+
+            # shift the position ids so that the id at the the first attended token position becomes zero.
+            # The position ids of the prepending pad tokens are shifted to -1.
+            shifted_position_ids = (
+                left_attention_mask.T.cumsum(dim=0) - 1
+            )  # [tokens_length, batch]
+
+            # Set the position ids of all prepending pad tokens to an arbitrary number (zero here)
+            # just to avoid indexing errors.
+            position_ids = shifted_position_ids.masked_fill(shifted_position_ids < 0, 0)
+            offsetted_position_ids = position_ids[
+                past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
+            ]  # [pos, batch]
+            pos_embed = self.W_pos[offsetted_position_ids]  # [pos, batch, d_model]
+
+            # Set the position embeddings to 0 for pad tokens
+            padding_mask = ~left_attention_mask.T.bool()  # [tokens_length, batch]
+            offsetted_padding_mask = padding_mask[
+                past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
+            ].unsqueeze(
+                -1
+            )  # [pos, batch, 1]
+            batch_pos_embed = torch.where(
+                offsetted_padding_mask, 0, pos_embed
+            ).transpose(0, 1)
+
+        return batch_pos_embed.clone()
 
 
 class TokenTypeEmbed(nn.Module):
@@ -102,7 +152,9 @@ class TokenTypeEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model))
+        self.W_token_type = nn.Parameter(
+            torch.empty(2, self.cfg.d_model, dtype=cfg.dtype)
+        )
 
     def forward(self, token_type_ids: Int[torch.Tensor, "batch pos"]):
         return self.W_token_type[token_type_ids, :]
@@ -162,8 +214,8 @@ class BertMLMHead(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W = nn.Parameter(torch.empty(cfg.d_model, cfg.d_model))
-        self.b = nn.Parameter(torch.zeros(cfg.d_model))
+        self.W = nn.Parameter(torch.empty(cfg.d_model, cfg.d_model, dtype=cfg.dtype))
+        self.b = nn.Parameter(torch.zeros(cfg.d_model, dtype=cfg.dtype))
         self.act_fn = nn.GELU()
         self.ln = LayerNorm(cfg)
 
@@ -213,12 +265,15 @@ class LayerNormPre(nn.Module):
         Float[torch.Tensor, "batch pos d_model"],
         Float[torch.Tensor, "batch pos head_index d_model"],
     ]:
+        if self.cfg.dtype not in [torch.float32, torch.float64]:
+            x = x.to(torch.float32)
+
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: Union[
             Float[torch.Tensor, "batch pos 1"],
             Float[torch.Tensor, "batch pos head_index 1"],
         ] = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt())
-        return self.hook_normalized(x / scale)
+        return self.hook_normalized(x / scale).to(self.cfg.dtype)
 
 
 class LayerNorm(nn.Module):
@@ -240,8 +295,8 @@ class LayerNorm(nn.Module):
         else:
             self.length = length
 
-        self.w = nn.Parameter(torch.ones(self.length))
-        self.b = nn.Parameter(torch.zeros(self.length))
+        self.w = nn.Parameter(torch.ones(self.length, dtype=cfg.dtype))
+        self.b = nn.Parameter(torch.zeros(self.length, dtype=cfg.dtype))
 
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos, 1]
@@ -258,12 +313,15 @@ class LayerNorm(nn.Module):
         Float[torch.Tensor, "batch pos d_model"],
         Float[torch.Tensor, "batch pos head_index d_model"],
     ]:
+        if self.cfg.dtype not in [torch.float32, torch.float64]:
+            x = x.to(torch.float32)
+
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         x = x / scale  # [batch, pos, length]
-        return self.hook_normalized(x * self.w + self.b)
+        return self.hook_normalized(x * self.w + self.b).to(self.cfg.dtype)
 
 
 class RMSNormPre(nn.Module):
@@ -282,10 +340,15 @@ class RMSNormPre(nn.Module):
     def forward(
         self, x: Float[torch.Tensor, "batch pos length"]
     ) -> Float[torch.Tensor, "batch pos length"]:
+        if self.cfg.dtype not in [torch.float32, torch.float64]:
+            x = x.to(torch.float32)
+
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
-        return self.hook_normalized(x / scale)  # [batch, pos, length]
+        return self.hook_normalized(x / scale).to(
+            self.cfg.dtype
+        )  # [batch, pos, length]
 
 
 class RMSNorm(nn.Module):
@@ -307,7 +370,7 @@ class RMSNorm(nn.Module):
         else:
             self.length = length
 
-        self.w = nn.Parameter(torch.ones(self.length))
+        self.w = nn.Parameter(torch.ones(self.length, dtype=cfg.dtype))
 
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos, 1]
@@ -316,10 +379,13 @@ class RMSNorm(nn.Module):
     def forward(
         self, x: Float[torch.Tensor, "batch pos length"]
     ) -> Float[torch.Tensor, "batch pos length"]:
+        if self.cfg.dtype not in [torch.float32, torch.float64]:
+            x = x.to(torch.float32)
+
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
-        x = self.hook_normalized(x / scale)  # [batch, pos, length]
+        x = self.hook_normalized(x / scale).to(self.cfg.dtype)  # [batch, pos, length]
         return x * self.w
 
 
@@ -345,21 +411,35 @@ class Attention(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_Q = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
+            torch.empty(
+                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            )
         )
         self.W_K = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
+            torch.empty(
+                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            )
         )
         self.W_V = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head)
+            torch.empty(
+                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            )
         )
         self.W_O = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model)
+            torch.empty(
+                self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype
+            )
         )
-        self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head))
-        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head))
-        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head))
-        self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model))
+        self.b_Q = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self.b_K = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self.b_V = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.attn_type = attn_type
         # Create a max_ctx x max_ctx mask, with True iff that query position
@@ -377,7 +457,7 @@ class Attention(nn.Module):
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
-        self.register_buffer("IGNORE", torch.tensor(-1e5))
+        self.register_buffer("IGNORE", torch.tensor(-torch.inf))
 
         self.layer_id = layer_id
 
@@ -395,7 +475,7 @@ class Attention(nn.Module):
         self.hook_z = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_attn_scores = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
-        self.hook_result = HookPoint()  # [batch, head_index, head_index, d_model]
+        self.hook_result = HookPoint()  # [batch, pos, head_index, d_model]
 
         # See HookedTransformerConfig for more details.
         if self.cfg.positional_embedding_type == "shortformer":
@@ -406,36 +486,28 @@ class Attention(nn.Module):
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
             sin, cos = self.calculate_sin_cos_rotary(
-                self.cfg.rotary_dim, self.cfg.n_ctx
+                self.cfg.rotary_dim, self.cfg.n_ctx, dtype=self.cfg.dtype
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def OV(self) -> FactoredMatrix:
         """
         OV-Circuit, as defined in A Mathematical Framework. Because there's no non-linearity between the value vector and the output of the layer, the output is purely determined by the matrix W_OV = W_V @ W_O, and not W_V or W_O individually. (Mathematically, for a single head, output == pattern @ residual @ W_V @ W_O, see the glossary for more)
 
         Done in the order W_V, W_O because the paper uses left-multiplying weight matrices, and TransformerLens uses right-multiplying, sorry!
 
-        lru_cache says "compute this the first time a user runs attn.OV, and then cache it". By not defining this in __init__, this means it's only computed and only consumes memory for investigations that need it.
-
         Returns a FactoredMatrix, with left matrix W_V [head_index, d_model, d_head] and right matrix W_O [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model]. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the OV circuit of a head k, attn.OV[k] works.
         """
         return FactoredMatrix(self.W_V, self.W_O)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def QK(self) -> FactoredMatrix:
         """
         QK-Circuit, as defined in A Mathematical Framework. Because there's no non-linearity in the key-query dot product, the output is purely determined by the matrix W_QK = W_Q.T @ W_K, and not W_Q or W_K individually. (Mathematically, for a single head, pattern = destination_residual.T @ W_Q.T @ W_K @ source-residual, see the glossary for more).
 
         Done in the order Q on the left, K on the right, because the pattern has dimensions [destination_pos, source_pos]
-
-        lru_cache says "compute this the first time a user runs attn.QK, and then cache it". By not defining this in __init__, this means it's only computed and only consumes memory for investigations that need it.
 
         Returns a FactoredMatrix, with left matrix W_Q [head_index, d_model, d_head] and right matrix W_K.T [head_index, d_head, d_model] - this is a low rank factorisation of the underlying [head_index, d_model, d_model] matrix. FactoredMatrix has helper functions to deal with these large matrices efficiently. To get the QK circuit of a head k, attn.QK[k] works.
         """
@@ -459,12 +531,14 @@ class Attention(nn.Module):
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
-        additive_attention_mask: Float[torch.Tensor, "batch 1 1 pos"] = None,
+        additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
         additive_attention_mask is an optional mask to add to the attention weights. Defaults to None.
+        left_attention_mask is the attention mask for left padded tokens. None when right padding is used. Defaults to None.
         """
 
         if self.cfg.use_split_qkv_input:
@@ -511,6 +585,11 @@ class Attention(nn.Module):
         if self.cfg.positional_embedding_type == "rotary":
             q, k = self.rotary_rotate_qk(q, k, kv_cache_pos_offset)
 
+        if self.cfg.dtype not in [torch.float32, torch.float64]:
+            # If using 16 bits, increase the precision to avoid numerical instabilities
+            q = q.to(torch.float32)
+            k = k.to(torch.float32)
+
         attn_scores = (
             einsum(
                 "batch query_pos head_index d_head, \
@@ -524,15 +603,16 @@ class Attention(nn.Module):
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
-                attn_scores, kv_cache_pos_offset
+                attn_scores, kv_cache_pos_offset, left_attention_mask
             )  # [batch, head_index, query_pos, key_pos]
         if additive_attention_mask is not None:
             attn_scores += additive_attention_mask
 
         attn_scores = self.hook_attn_scores(attn_scores)
-        pattern = self.hook_pattern(
-            F.softmax(attn_scores, dim=-1)
-        )  # [batch, head_index, query_pos, key_pos]
+        pattern = F.softmax(attn_scores, dim=-1)
+        pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
+        pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
+        pattern = pattern.to(self.cfg.dtype)
         z = self.hook_z(
             einsum(
                 "batch key_pos head_index d_head, \
@@ -581,6 +661,7 @@ class Attention(nn.Module):
             torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"
         ],
         past_kv_pos_offset: int = 0,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ):
         # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it's just a single token.
         query_ctx_length = attn_scores.size(-2)
@@ -591,8 +672,23 @@ class Attention(nn.Module):
         assert (
             query_ctx_length + past_kv_pos_offset == key_ctx_length
         ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
-        return torch.where(
-            self.mask[
+
+        if left_attention_mask is None:
+            # Right padding case
+            # Apply only a causal mask to the attention scores
+            final_mask = self.mask[None, None]  # [1, 1, pos, pos]
+        else:
+            # Left padding case
+            # Apply a causal mask to the attention scores considering the left padding
+            final_mask = get_causal_mask_for_left_padding(left_attention_mask)
+            final_mask = final_mask.unsqueeze(1).to(
+                attn_scores.device
+            )  # [batch, 1, pos, pos]
+
+        masked_attn_scores = torch.where(
+            final_mask[
+                :,
+                :,
                 past_kv_pos_offset : past_kv_pos_offset + query_ctx_length,
                 :key_ctx_length,
             ],
@@ -600,14 +696,17 @@ class Attention(nn.Module):
             self.IGNORE,
         )
 
+        # Return the masked attention scores
+        return masked_attn_scores
+
     def rotary_rotate_qk(
         self,
-        q: Float[torch.Tensor, "batch pos head_index d_head"],
-        k: Float[torch.Tensor, "batch pos head_index d_head"],
+        q: Float[torch.Tensor, "batch q_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch k_pos head_index d_head"],
         past_kv_pos_offset,
     ) -> Tuple[
-        Float[torch.Tensor, "batch pos head_index d_head"],
-        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch q_pos head_index d_head"],
+        Float[torch.Tensor, "batch k_pos head_index d_head"],
     ]:
         # We first apply standard q and k calculation
         q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
@@ -615,7 +714,11 @@ class Attention(nn.Module):
         return q, k
 
     def calculate_sin_cos_rotary(
-        self, rotary_dim: int, n_ctx: int, base: int = 10000
+        self,
+        rotary_dim: int,
+        n_ctx: int,
+        base: int = 10000,
+        dtype: torch.dtype = torch.float32,
     ) -> Tuple[
         Float[torch.Tensor, "n_ctx rotary_dim"], Float[torch.Tensor, "n_ctx rotary_dim"]
     ]:
@@ -625,20 +728,19 @@ class Attention(nn.Module):
         Note: For some inexplicable reason, in GPT-J each ADJACENT pair of elements in k and q are rotated, in GPT-NeoX the pair of elements at k and k+n//2 are rotated (ie folding the full length in half, and then looking at pairs accordingly). I have absolutely no clue why, it should be completely equivalent.
         To resolve this, I've coded it to default to the GPT-J mode, but to explicitly check whether it's GPT-NeoX and then do the GPT-NeoX thing if it is.
         """
-        pos = torch.arange(n_ctx, dtype=torch.float32)
-        dim = torch.arange(rotary_dim // 2, dtype=torch.float32)
+        high_precision = torch.float32 if dtype != torch.float64 else torch.float64
+        pos = torch.arange(n_ctx, dtype=high_precision)
+        dim = torch.arange(rotary_dim // 2, dtype=high_precision)
+
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if (
-            self.cfg.original_architecture == "GPTNeoXForCausalLM"
-            or self.cfg.original_architecture == "LLaMAForCausalLM"
-        ):
+        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
             freq = einops.repeat(freq, "d -> (2 d)")
         else:
             freq = einops.repeat(freq, "d -> (d 2)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
-        return torch.sin(angles), torch.cos(angles)
+        return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
 
     def rotate_every_two(
         self, x: Float[torch.Tensor, "... rotary_dim"]
@@ -651,10 +753,7 @@ class Attention(nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if (
-            self.cfg.original_architecture == "GPTNeoXForCausalLM"
-            or self.cfg.original_architecture == "LLaMAForCausalLM"
-        ):
+        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
@@ -690,10 +789,14 @@ class MLP(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
-        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp))
-        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
-        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model))
+        self.W_in = nn.Parameter(
+            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
+        )
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
+        self.W_out = nn.Parameter(
+            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
+        )
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
@@ -746,19 +849,37 @@ class MLP(nn.Module):
 # TODO
 # not sure whether to fold this into MLP or not
 class GatedMLP(nn.Module):
+    """
+    The equation of a gated MLP:
+    pre = x @ W_gate
+    pre_linear = x @ W_in
+    post = Gelu(pre) * (pre_linear) + b_in
+    mlp_out = post @ W_out + b_out
+
+    In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in) + b_in) @ W_out + b_out
+    """
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
-        self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp))
-        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp))
-        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model))
-        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model))
+        self.W_in = nn.Parameter(
+            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
+        )
+        self.W_gate = nn.Parameter(
+            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
+        )
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
+        self.W_out = nn.Parameter(
+            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
+        )
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         # hook on gate output but before act_fn
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
+        # hook on the linear component of the input
+        self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
         # hook on act_fn(gate_output) * W_in(x) + b_in
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
@@ -794,12 +915,13 @@ class GatedMLP(nn.Module):
             )
         )  # [batch, pos, d_mlp]
         if not self.cfg.act_fn.endswith("_ln"):
-            post_act = self.hook_post(
-                self.act_fn(pre_act)
-                * einsum(
+            pre_linear = self.hook_pre_linear(
+                einsum(
                     "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in
                 )
-                + self.b_in
+            )
+            post_act = self.hook_post(
+                (self.act_fn(pre_act) * pre_linear) + self.b_in
             )  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
@@ -879,6 +1001,7 @@ class TransformerBlock(nn.Module):
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
@@ -886,6 +1009,7 @@ class TransformerBlock(nn.Module):
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
             cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See HookedTransformerConfig for details. Defaults to None.
+            left_attention_mask (torch.Tensor, optional): The attention mask for left padded tokens. None when right padding is used. Defaults to None.
 
         Returns:
             _type_: _description_
@@ -923,6 +1047,7 @@ class TransformerBlock(nn.Module):
                 + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
                 value_input=self.ln1(value_input),
                 past_kv_cache_entry=past_kv_cache_entry,
+                left_attention_mask=left_attention_mask,
             )
         )  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
@@ -944,7 +1069,11 @@ class TransformerBlock(nn.Module):
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
             # In GPT-J, LN1 and LN2 are tied, in GPT-NeoX they aren't.
-            normalized_resid_pre_2 = self.ln2(resid_pre)
+            normalized_resid_pre_2 = self.ln2(
+                resid_pre
+                if not self.cfg.use_hook_mlp_in
+                else self.hook_mlp_in(resid_pre.clone())
+            )
             mlp_out = self.hook_mlp_out(
                 self.mlp(normalized_resid_pre_2)
             )  # [batch, pos, d_model]

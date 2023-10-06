@@ -1,5 +1,4 @@
 import logging
-from functools import lru_cache
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload
 
 import einops
@@ -10,7 +9,6 @@ import tqdm.auto as tqdm
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
-from typeguard import typeguard_ignore
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
@@ -33,6 +31,7 @@ from transformer_lens.hook_points import HookedRootModule, HookPoint
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for generation.
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 from transformer_lens.utilities import devices
+from transformer_lens.utils import USE_DEFAULT_VALUE
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
@@ -60,6 +59,7 @@ class HookedTransformer(HookedRootModule):
         cfg,
         tokenizer=None,
         move_to_device=True,
+        default_padding_side="right",
     ):
         """
         Model initialization. Note that if you want to load the model from pretrained weights, you should use the
@@ -73,6 +73,7 @@ class HookedTransformer(HookedRootModule):
         move_to_device (bool): Whether to move the model to the device specified in cfg.
             device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
             will be split across multiple devices.
+        default_padding_side (str): Which side to pad on. Must be "right" or "left".
         """
         super().__init__()
         if isinstance(cfg, Dict):
@@ -85,15 +86,16 @@ class HookedTransformer(HookedRootModule):
         self.cfg = cfg
 
         if tokenizer is not None:
-            self.set_tokenizer(tokenizer)
+            self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            if "llama" in self.cfg.tokenizer_name:
+            if "llama" in self.cfg.tokenizer_name.lower():
                 # llama tokenizer requires special handling
                 print("Warning: LLaMA tokenizer not loaded. Please load manually.")
             else:
                 self.set_tokenizer(
-                    AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+                    AutoTokenizer.from_pretrained(self.cfg.tokenizer_name),
+                    default_padding_side=default_padding_side,
                 )
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens
@@ -163,11 +165,6 @@ class HookedTransformer(HookedRootModule):
         # Needed for HookPoints to work
         self.setup()
 
-        # Prepend the BOS token to the input as default when the input is a string.
-        # Even for models not explicitly trained with this, heads often use the first position as a resting position
-        # and accordingly lose information from the first token, so this empirically seems to give better results.
-        self.set_default_prepend_bos(self.cfg.default_prepend_bos)
-
     def check_hooks_to_add(
         self,
         hook_point,
@@ -190,104 +187,28 @@ class HookedTransformer(HookedRootModule):
                 self.cfg.use_hook_mlp_in
             ), f"Cannot add hook {hook_point_name} if use_hook_mlp_in is False"
 
-    @overload
-    def forward(
-        self,
-        input,
-        return_type: Literal["logits"],
-        loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Loss:
-        ...
-
-    @overload
-    def forward(
-        self,
-        input,
-        return_type: Literal["loss"],
-        loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Loss:
-        ...
-
-    @overload
-    def forward(
-        self,
-        input,
-        return_type: Literal["both"],
-        loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
-        ...
-
-    @overload
-    def forward(
-        self,
-        input,
-        return_type: Literal[None],
-        loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        stop_at_layer: Optional[int] = None,
-        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> None:
-        ...
-
-    # TODO make sure type assertions are provided
-    def forward(
+    def input_to_embed(
         self,
         input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
-        return_type: Optional[str] = "logits",
-        loss_per_token: bool = False,
-        prepend_bos: Optional[bool] = None,
-        stop_at_layer: Optional[int] = None,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Union[
-        None,
-        Float[torch.Tensor, "batch pos d_vocab"],
-        Loss,
-        Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss],
+        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+    ) -> Tuple[
+        Float[torch.Tensor, "batch pos d_model"],  # residual
+        Optional[Int[torch.Tensor, "batch pos"]],  # tokens
+        Optional[Float[torch.Tensor, "batch pos d_model"]],  # shortformer_pos_embed
+        Optional[torch.Tensor],  # left_attention_mask [batch pos]
     ]:
-        """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a
-        batch of a single element. The prepend_bos flag only applies when inputting a text string.
-
-        return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate
-            logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
-        loss_per_token bool: Whether to return the (next token prediction) loss per token (True) or average (False).
-            Average loss is a scalar (averaged over position *and* batch), per-token loss is a tensor ([batch, position-1])
-            - position-1 because we're predicting the next token, and there's no specified next token for the final
-            token. Defaults to False.
-        prepend_bos Optional[bool]: Whether to prepend the BOS token to the input (Only applies when input is a string).
-            Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-            Pass True or False to override the default.
-        stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer. Exclusive - ie,
-        stop_at_layer = 0 will only run the embedding layer, stop_at_layer = 1 will run the embedding layer and the
-        first transformer block, etc. Supports negative indexing. Useful for analysis of intermediate layers, eg finding
-        neuron activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
-
-        Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models -
-        if you want a custom loss function, the recommended behaviour is returning the logits and then applying your
-        custom loss function.
-        """
-
-        # Use the provided prepend_bos as an override if it's not None;
-        # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
-        prepend_bos = utils.override_or_use_default_flag(
-            self.prepend_bos, override=prepend_bos
-        )
-
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
             assert (
                 self.tokenizer is not None
             ), "Must provide a tokenizer if passing a string to the model"
             # This is only intended to support passing in a single string
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+            tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, padding_side=padding_side
+            )
         else:
             tokens = input
         if len(tokens.shape) == 1:
@@ -295,6 +216,34 @@ class HookedTransformer(HookedRootModule):
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
+
+        if self.tokenizer and self.tokenizer.padding_side == "left":
+            # If the padding side is left, we need to compute the attention mask for the adjustment of
+            # absolute positional embeddings and attention masking so that the pad tokens are not attended.
+
+            if past_left_attention_mask is None:
+                left_attention_mask = utils.get_attention_mask(
+                    self.tokenizer, tokens, self.cfg.default_prepend_bos
+                )
+            else:
+                assert (
+                    past_kv_cache is not None
+                ), "If past_left_attention_mask is not None, past_kv_cache must not be None"
+                assert (
+                    tokens.shape[1] == 1
+                ), "If past_left_attention_mask is not None, tokens must be a single token along the sequence dimension"
+                # past_kv_cache is not None, so we're doing caching.
+                # We need to extend the past_left_attention_mask.
+                # Append '1' to the right of the past_left_attention_mask to account for the new tokens
+                left_attention_mask = utils.extend_tensor_with_ones(
+                    past_left_attention_mask
+                )
+
+        else:
+            # If tokenizer is not set, we assume that the input is right-padded.
+            # If the padding side is right, we don't need to compute the attention mask.
+            # We separate this case from left padding for computational efficiency.
+            left_attention_mask = None
 
         # If we're doing caching, then we reuse keys and values from previous runs, as that's the only
         # way that past activations will affect the final logits. The cache contains those so we don't
@@ -325,7 +274,7 @@ class HookedTransformer(HookedRootModule):
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         if self.cfg.positional_embedding_type == "standard":
             pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset)
+                self.pos_embed(tokens, pos_offset, left_attention_mask)
             )  # [batch, pos, d_model]
             residual = embed + pos_embed  # [batch, pos, d_model]
             shortformer_pos_embed = None
@@ -333,7 +282,7 @@ class HookedTransformer(HookedRootModule):
             # If we're using shortformer style attention, we don't add the positional embedding to the residual stream.
             # See HookedTransformerConfig for details
             pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset)
+                self.pos_embed(tokens, pos_offset, left_attention_mask)
             )  # [batch, pos, d_model]
             residual = embed
             shortformer_pos_embed = pos_embed
@@ -346,55 +295,218 @@ class HookedTransformer(HookedRootModule):
             raise ValueError(
                 f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"
             )
+        return residual, tokens, shortformer_pos_embed, left_attention_mask
 
-        if stop_at_layer is None:
-            # We iterate through every block by default
-            transformer_block_list = self.blocks
-        else:
-            # If we explicitly want to stop at a layer, we only iterate through the blocks up to that layer. Note that
-            # this is exclusive, eg stop_at_layer==0 means to only run the embed, stop_at_layer==-1 means to run every
-            # layer *apart* from the final one, etc.
-            transformer_block_list = self.blocks[:stop_at_layer]  # type: ignore
+    @overload
+    def forward(
+        self,
+        input,
+        return_type: Literal["logits"],
+        loss_per_token: bool = False,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        start_at_layer: Optional[int] = None,
+        tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        shortformer_pos_embed: Optional[
+            Float[torch.Tensor, "batch pos d_model"]
+        ] = None,
+        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,
+    ) -> Loss:
+        ...
 
-        for i, block in enumerate(transformer_block_list):  # type: ignore
-            # Note that each block includes skip connections, so we don't need
-            # residual + block(residual)
-            # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
-            residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
-            if shortformer_pos_embed is not None:
-                shortformer_pos_embed = shortformer_pos_embed.to(
-                    devices.get_device_for_block_index(i, self.cfg)
+    @overload
+    def forward(
+        self,
+        input,
+        return_type: Literal["loss"],
+        loss_per_token: bool = False,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        start_at_layer: Optional[int] = None,
+        tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        shortformer_pos_embed: Optional[
+            Float[torch.Tensor, "batch pos d_model"]
+        ] = None,
+        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,
+    ) -> Loss:
+        ...
+
+    @overload
+    def forward(
+        self,
+        input,
+        return_type: Literal["both"],
+        loss_per_token: bool = False,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        start_at_layer: Optional[int] = None,
+        tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        shortformer_pos_embed: Optional[
+            Float[torch.Tensor, "batch pos d_model"]
+        ] = None,
+        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
+        ...
+
+    @overload
+    def forward(
+        self,
+        input,
+        return_type: Literal[None],
+        loss_per_token: bool = False,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        start_at_layer: Optional[int] = None,
+        tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        shortformer_pos_embed: Optional[
+            Float[torch.Tensor, "batch pos d_model"]
+        ] = None,
+        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,
+    ) -> None:
+        ...
+
+    # TODO make sure type assertions are provided
+    def forward(
+        self,
+        input: Union[
+            str,
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+            Float[torch.Tensor, "batch pos d_model"],
+        ],
+        return_type: Optional[str] = "logits",
+        loss_per_token: bool = False,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        start_at_layer: Optional[int] = None,
+        tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        shortformer_pos_embed: Optional[
+            Float[torch.Tensor, "batch pos d_model"]
+        ] = None,
+        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        stop_at_layer: Optional[int] = None,
+        past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+    ) -> Union[
+        None,
+        Float[torch.Tensor, "batch pos d_vocab"],
+        Loss,
+        Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss],
+    ]:
+        """Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically tokenized to a
+        batch of a single element. The prepend_bos flag only applies when inputting a text string.
+
+        return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate
+            logits), 'logits' (return logits), 'loss' (return cross-entropy loss), 'both' (return logits and loss)
+        loss_per_token bool: Whether to return the (next token prediction) loss per token (True) or average (False).
+            Average loss is a scalar (averaged over position *and* batch), per-token loss is a tensor ([batch, position-1])
+            - position-1 because we're predicting the next token, and there's no specified next token for the final
+            token. Defaults to False.
+        prepend_bos Optional[bool]: Whether to prepend the BOS token to the input (only applies when input is a string).
+            Defaults to None, implying usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+            (Even for models not explicitly trained with a prepended BOS token, heads often use the first position as a resting
+            position and accordingly lose information from the first token, so this empirically seems to give better results.)
+            Pass True or False to locally override the default.
+        start_at_layer Optional[int]: If not None, start the forward pass at the specified layer. Requires input to be the
+            residual stream before the specified layer with shape [batch, pos, d_model]. Inclusive - ie, start_at_layer = 0
+            skips the embedding then runs the rest of the model. Supports negative indexing. start_at_layer = -1 only runs the
+            final block and the unembedding. Defaults to None (run the full model).
+        tokens: Optional[Int[torch.Tensor, "batch pos"]]: Tokenized input. Only use if start_at_layer is not None and return
+            type is "loss" or "both".
+        shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]]: Positional embedding for shortformer models.
+            Only use if start_at_layer is not None and self.cfg.positional_embedding_type == "shortformer".
+        left_attention_mask: Optional[torch.Tensor]: The attention mask for left padded tokens. Only use if start_at_layer is
+            not None and self.tokenizer.padding_side == "left".
+        stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer. Exclusive - ie,
+            stop_at_layer = 0 will only run the embedding layer, stop_at_layer = 1 will run the embedding layer and the
+            first transformer block, etc. Supports negative indexing. Useful for analysis of intermediate layers, eg finding
+            neuron activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
+
+        Note that loss is the standard "predict the next token" cross-entropy loss for GPT-2 style language models -
+        if you want a custom loss function, the recommended behaviour is returning the logits and then applying your
+        custom loss function.
+        """
+
+        with utils.LocallyOverridenDefaults(
+            self, prepend_bos=prepend_bos, padding_side=padding_side
+        ):
+            if start_at_layer is None:
+                (
+                    residual,
+                    tokens,
+                    shortformer_pos_embed,
+                    left_attention_mask,
+                ) = self.input_to_embed(
+                    input,
+                    prepend_bos=prepend_bos,
+                    padding_side=padding_side,
+                    past_kv_cache=past_kv_cache,
+                    past_left_attention_mask=past_left_attention_mask,
                 )
-
-            residual = block(
-                residual,
-                past_kv_cache_entry=past_kv_cache[i]
-                if past_kv_cache is not None
-                else None,  # Cache contains a list of HookedTransformerKeyValueCache objects, one for each block
-                shortformer_pos_embed=shortformer_pos_embed,
-            )  # [batch, pos, d_model]
-
-        if stop_at_layer is not None:
-            # When we stop at an early layer, we end here rather than doing further computation
-            return None
-
-        if self.cfg.normalization_type is not None:
-            residual = self.ln_final(residual)  # [batch, pos, d_model]
-        if return_type is None:
-            return None
-        else:
-            logits = self.unembed(residual)  # [batch, pos, d_vocab]
-            if return_type == "logits":
-                return logits
             else:
-                loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
-                if return_type == "loss":
-                    return loss
-                elif return_type == "both":
-                    return Output(logits, loss)
+                assert type(input) == torch.Tensor
+                residual = input
+
+            if start_at_layer is None:
+                start_at_layer = 0
+            # If we explicitly want to start or stop at a layer, we only iterate through the blocks between those indices.
+            # Note that start_at_layer is inclusive and stop_at_layer is exclusive.
+            # Eg: start_at_layer==None + stop_at_layer==0 means to only run the embed.
+            # Eg: start_at_layer==3 + stop_at_layer==-1 means to run from layer 3 until the end of the PENULTIMATE layer
+            transformer_block_list = self.blocks[start_at_layer:stop_at_layer]  # type: ignore
+
+            for i, block in enumerate(transformer_block_list):  # type: ignore
+                # Note that each block includes skip connections, so we don't need
+                # residual + block(residual)
+                # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
+                residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
+                if shortformer_pos_embed is not None:
+                    shortformer_pos_embed = shortformer_pos_embed.to(
+                        devices.get_device_for_block_index(i, self.cfg)
+                    )
+
+                residual = block(
+                    residual,
+                    past_kv_cache_entry=past_kv_cache[i]
+                    if past_kv_cache is not None
+                    else None,  # Cache contains a list of HookedTransformerKeyValueCache objects, one for each block
+                    shortformer_pos_embed=shortformer_pos_embed,
+                    left_attention_mask=left_attention_mask,
+                )  # [batch, pos, d_model]
+
+            if stop_at_layer is not None:
+                # When we stop at an early layer, we end here rather than doing further computation
+                return None
+
+            if self.cfg.normalization_type is not None:
+                residual = self.ln_final(residual)  # [batch, pos, d_model]
+            if return_type is None:
+                return None
+            else:
+                logits = self.unembed(residual)  # [batch, pos, d_vocab]
+                if return_type == "logits":
+                    return logits
                 else:
-                    logging.warning(f"Invalid return_type passed in: {return_type}")
-                    return None
+                    loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
+                    if return_type == "loss":
+                        return loss
+                    elif return_type == "both":
+                        return Output(logits, loss)
+                    else:
+                        logging.warning(f"Invalid return_type passed in: {return_type}")
+                        return None
 
     def loss_fn(
         self,
@@ -448,10 +560,15 @@ class HookedTransformer(HookedRootModule):
         else:
             return out, cache_dict
 
-    def set_tokenizer(self, tokenizer):
+    def set_tokenizer(
+        self,
+        tokenizer,
+        default_padding_side="right",
+    ):
         """
         Sets the tokenizer to use for this model.
         tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer
+        default_padding_side (str): "right" or "left", which side to pad on
         """
         assert isinstance(
             tokenizer, PreTrainedTokenizerBase
@@ -471,18 +588,24 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
-    def set_default_prepend_bos(self, default_prepend_bos: bool):
-        """
-        Set the value of self.prepend_bos which is used to control the default behavior of whether to prepend
-        the BOS token to the methods that process input text to tokenize (only when input is a string).
-        This default value can overriden by passing prepend_bos=True or prepend_bos=False to the methods.
-        """
-        self.prepend_bos = default_prepend_bos
+        assert default_padding_side in [
+            "right",
+            "left",
+        ], f"padding_side must be 'right' or 'left', got {default_padding_side}"
+        self.tokenizer.padding_side = default_padding_side
+
+        # If the tokenizer prepends the BOS token to the input by default, turn it off.
+        # We manually control whether or not to prepend BOS tokens.
+        self.cfg.add_special_tokens = not (
+            len(self.tokenizer("")["input_ids"]) > 0
+            and self.tokenizer("")["input_ids"][0] == self.tokenizer.bos_token_id
+        )
 
     def to_tokens(
         self,
         input: Union[str, List[str]],
-        prepend_bos: Optional[bool] = None,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         move_to_device: bool = True,
         truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
@@ -492,9 +615,9 @@ class HookedTransformer(HookedRootModule):
 
         Args:
             input (Union[str, List[str]]). The input to tokenize
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
-                Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-                Pass True or False to override the default.
+            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only applies when input is a string).
+                Defaults to None, implying usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+                Pass True or False to locally override the default.
             move_to_device (bool): Whether to move the output tensor of tokens to the device the model lives on.
             Defaults to True
             truncate (bool): If the output tokens are too long, whether to truncate the output tokens to the model's
@@ -508,32 +631,32 @@ class HookedTransformer(HookedRootModule):
         Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is
         capitalized. It's easy to shoot yourself in the foot here if you're not careful!
         """
-        assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
+        with utils.LocallyOverridenDefaults(
+            self, prepend_bos=prepend_bos, padding_side=padding_side
+        ):
+            assert (
+                self.tokenizer is not None
+            ), "Cannot use to_tokens without a tokenizer"
+            assert (
+                self.cfg.add_special_tokens is not None
+            ), "Set the tokenizer for the model by calling set_tokenizer"
 
-        # Use the provided prepend_bos as an override if it's not None;
-        # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
-        prepend_bos = utils.override_or_use_default_flag(
-            self.prepend_bos, override=prepend_bos
-        )
-
-        if prepend_bos:
-            if isinstance(input, str):
-                input = self.tokenizer.bos_token + input
-            else:
-                input = [self.tokenizer.bos_token + string for string in input]
-        tokens = self.tokenizer(
-            input,
-            return_tensors="pt",
-            padding=True,
-            truncation=truncate,
-            max_length=self.cfg.n_ctx if truncate else None,
-            add_special_tokens=False
-            if self.tokenizer.name_or_path.startswith("facebook/opt")
-            else True,  # As we manually add the BOS token
-        )["input_ids"]
-        if move_to_device:
-            tokens = tokens.to(self.cfg.device)
-        return tokens
+            if self.cfg.default_prepend_bos:
+                if isinstance(input, str):
+                    input = self.tokenizer.bos_token + input
+                else:
+                    input = [self.tokenizer.bos_token + string for string in input]
+            tokens = self.tokenizer(
+                input,
+                return_tensors="pt",
+                padding=True,
+                truncation=truncate,
+                max_length=self.cfg.n_ctx if truncate else None,
+                add_special_tokens=self.cfg.add_special_tokens,
+            )["input_ids"]
+            if move_to_device:
+                tokens = tokens.to(self.cfg.device)
+            return tokens
 
     def to_string(
         self,
@@ -578,14 +701,15 @@ class HookedTransformer(HookedRootModule):
             Int[np.ndarray, "1 pos"],
             list,
         ],
-        prepend_bos: Optional[bool] = None,
-    ) -> List[str]:
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+    ) -> Union[List[str], List[List[str]]]:
         """Method to map text, a list of text or tokens to a list of tokens as strings
 
         Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when inputting a prompt
         to the model as the first token is often treated weirdly, but should only be done at the START of the prompt.
-        If prepend_bos=None is passed, it implies the usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-        Therefore, make sure to turn it off by passing prepend_bos=False if you're looking at the tokenization of part of
+        If prepend_bos=None is passed, it implies the usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+        Therefore, make sure to locally turn it off by passing prepend_bos=False if you're looking at the tokenization of part of
         the prompt! (Note: some models eg GPT-2 were not trained with a BOS token, others (OPT and my models) were)
 
         Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether the first letter is
@@ -596,43 +720,53 @@ class HookedTransformer(HookedRootModule):
         Args:
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of tokens. If tokens, should
             be a tensor of shape [pos] or [1, pos]
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
-                Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-                Pass True or False to override the default.
+            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only applies when input is a string).
+                Defaults to None, implying usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+                Pass True or False to locally override the default.
 
         Returns:
             str_tokens: List of individual tokens as strings
         """
-        if isinstance(input, list):
-            return list(
-                map(lambda tokens: self.to_str_tokens(tokens, prepend_bos), input)
-            )  # type: ignore
-        elif isinstance(input, str):
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)[0]
-        elif isinstance(input, torch.Tensor):
-            tokens = input
-            tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
-            if tokens.dim() == 0:
-                # Don't pass dimensionless tensor
-                tokens = tokens.unsqueeze(0)
-            assert (
-                tokens.dim() == 1
-            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
-        elif isinstance(input, np.ndarray):
-            tokens = input
-            tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
-            if tokens.ndim == 0:
-                # Don't pass dimensionless tensor
-                tokens = np.expand_dims(tokens, axis=0)
-            assert (
-                tokens.ndim == 1
-            ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
-        else:
-            raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-        str_tokens = self.tokenizer.batch_decode(
-            tokens, clean_up_tokenization_spaces=False
-        )
-        return str_tokens
+        with utils.LocallyOverridenDefaults(
+            self, prepend_bos=prepend_bos, padding_side=padding_side
+        ):
+            if isinstance(input, list):
+                return list(
+                    map(
+                        lambda tokens: self.to_str_tokens(
+                            tokens, prepend_bos, padding_side
+                        ),
+                        input,
+                    )
+                )  # type: ignore
+            elif isinstance(input, str):
+                tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, padding_side=padding_side
+                )[0]
+            elif isinstance(input, torch.Tensor):
+                tokens = input
+                tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+                if tokens.dim() == 0:
+                    # Don't pass dimensionless tensor
+                    tokens = tokens.unsqueeze(0)
+                assert (
+                    tokens.dim() == 1
+                ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+            elif isinstance(input, np.ndarray):
+                tokens = input
+                tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
+                if tokens.ndim == 0:
+                    # Don't pass dimensionless tensor
+                    tokens = np.expand_dims(tokens, axis=0)
+                assert (
+                    tokens.ndim == 1
+                ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
+            else:
+                raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
+            str_tokens = self.tokenizer.batch_decode(
+                tokens, clean_up_tokenization_spaces=False
+            )
+            return str_tokens
 
     def to_single_token(self, string):
         """Maps a string that makes up a single token to the id for that token. Raises an error for strings that are
@@ -658,7 +792,8 @@ class HookedTransformer(HookedRootModule):
             str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]]
         ],
         mode="first",
-        prepend_bos: Optional[bool] = None,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
     ):
         """
         Get the position of a single_token in a string or sequence of tokens. Raises an error if the token is not
@@ -666,7 +801,7 @@ class HookedTransformer(HookedRootModule):
 
         Gotcha: If you're inputting a string, it'll automatically be tokenized. Be careful about the setting for prepend_bos!
         When a string is input to the model, a BOS (beginning of sequence) token is prepended by default when the
-        string is tokenized because self.prepend_bos is set as True by set_default_prepend_bos() in the initializer. But this
+        string is tokenized because self.cfg.default_prepend_bos is set to True unless specified otherwise. But this
         should only be done at the START of the input, not when inputting part of the prompt. If you're getting weird
         off-by-one errors, check carefully for what the setting should be!
 
@@ -679,13 +814,15 @@ class HookedTransformer(HookedRootModule):
                 dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports "first" or "last".
                 Defaults to "first".
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
-                Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
-                Pass True or False to override the default.
+            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only applies when input is a string).
+                Defaults to None, implying usage of self.cfg.default_prepend_bos which is set to True unless specified otherwise.
+                Pass True or False to locally override the default.
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
+            tokens = self.to_tokens(
+                input, prepend_bos=prepend_bos, padding_side=padding_side
+            )
         else:
             tokens = input
 
@@ -815,6 +952,9 @@ class HookedTransformer(HookedRootModule):
         n_devices=1,
         tokenizer=None,
         move_to_device=True,
+        fold_value_biases=True,
+        default_prepend_bos=True,
+        default_padding_side="right",
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Class method to load in a pretrained model weights to the HookedTransformer format and optionally to do some
@@ -864,11 +1004,30 @@ class HookedTransformer(HookedRootModule):
             move_to_device (bool, optional): Whether to move the model to the device specified in cfg.
                 device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
                 will be split across multiple devices.
+            default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
+                methods of HookedTransformer process input text to tokenize (only when input is a string).
+                Defaults to True - even for models not explicitly trained with this, heads often use the
+                first position as a resting position and accordingly lose information from the first token,
+                so this empirically seems to give better results. To change the default behavior to False, pass in
+                default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+                in prepend_bos=True/False when you call a method that processes the input string.
             from_pretrained_kwargs (dict, optional): Any other optional argument passed to HuggingFace's
                 from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to other HuggingFace
                 functions when compatible. For some models or arguments it doesn't work, especially for
                 models that are not internally loaded with HuggingFace's from_pretrained (e.g. SoLU models).
+            default_padding_side (str, optional): Which side to pad on when tokenizing. Defaults to "right".
         """
+        assert not (
+            from_pretrained_kwargs.get("load_in_8bit", False)
+            or from_pretrained_kwargs.get("load_in_4bit", False)
+        ), "Quantization not supported"
+
+        if from_pretrained_kwargs.get(
+            "torch_dtype", None
+        ) == torch.float16 and device in ["cpu", None]:
+            logging.warning(
+                "float16 models may not work on CPU. Consider using a GPU or bfloat16."
+            )
 
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
@@ -883,6 +1042,7 @@ class HookedTransformer(HookedRootModule):
             fold_ln=fold_ln,
             device=device,
             n_devices=n_devices,
+            default_prepend_bos=default_prepend_bos,
             **from_pretrained_kwargs,
         )
 
@@ -913,17 +1073,19 @@ class HookedTransformer(HookedRootModule):
         )
 
         # Create the HookedTransformer object
-        model = cls(cfg, tokenizer, move_to_device=False)
-
-        dtype = from_pretrained_kwargs.get("torch_dtype", None)
-        if dtype is not None:
-            model = model.to(dtype)
+        model = cls(
+            cfg,
+            tokenizer,
+            move_to_device=False,
+            default_padding_side=default_padding_side,
+        )
 
         model.load_and_process_state_dict(
             state_dict,
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
         )
 
@@ -942,6 +1104,7 @@ class HookedTransformer(HookedRootModule):
         center_writing_weights=False,
         center_unembed=False,
         refactor_factored_attn_matrices=False,
+        fold_value_biases=False,
         **from_pretrained_kwargs,
     ):
         """Wrapper for from_pretrained with all boolean flags related to simplifying the model set to False. Refer to
@@ -951,6 +1114,7 @@ class HookedTransformer(HookedRootModule):
             fold_ln=fold_ln,
             center_writing_weights=center_writing_weights,
             center_unembed=center_unembed,
+            fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             **from_pretrained_kwargs,
         )
@@ -1019,6 +1183,10 @@ class HookedTransformer(HookedRootModule):
             model_name (str, optional): checks the model name for special cases of state dict loading. Only used for
                 Redwood 2L model currently
         """
+        if self.cfg.dtype not in [torch.float32, torch.float64] and fold_ln:
+            logging.warning(
+                "With reduced precision, it is advised to use `from_pretrained_no_processing` instead of `from_pretrained`."
+            )
 
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
@@ -1357,6 +1525,8 @@ class HookedTransformer(HookedRootModule):
         """
         Toggles whether to allow storing and editing inputs to each MLP layer.
         """
+
+        assert not self.cfg.attn_only, "Can't use hook_mlp_in with attn_only model"
         self.cfg.use_hook_mlp_in = use_hook_mlp_in
 
     def process_weights_(
@@ -1397,17 +1567,18 @@ class HookedTransformer(HookedRootModule):
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
         eos_token_id: Optional[int] = None,
-        do_sample: bool = False,
+        do_sample: bool = True,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
         num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
-        prepend_bos: Optional[bool] = None,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
-    ) -> Float[torch.Tensor, "batch pos_plus_new_tokens"]:
+    ) -> Union[Int[torch.Tensor, "batch pos_plus_new_tokens"], str]:
         """
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
 
@@ -1420,10 +1591,11 @@ class HookedTransformer(HookedRootModule):
         instead.
 
         Args:
-            input (int): Either a batch of tokens ([batch, pos]) or a text string (this will be converted to a batch of tokens with batch size 1)
+            input (Union[str, Int[torch.Tensor, "batch pos"])]): Either a batch of tokens ([batch, pos]) or a text string (this will be converted to a batch of tokens with batch size 1)
             max_new_tokens (int): Maximum number of tokens to generate
             stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token
-            eos_token_id (int, *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos
+            eos_token_id (Optional[Union[int, Sequence]], *optional*): The token ID to use for end of sentence. If None, use the tokenizer's eos_token_id - required if using stop_at_eos.
+                It's also possible to provide a list of token IDs (not just the eos_token_id), in which case the generation will stop when any of them are output (useful e.g. for stable_lm).
             do_sample (bool): If True, sample from the model's output distribution. Otherwise, use greedy search (take the max logit each time).
             top_k (int): Number of tokens to sample from. If None, sample from all tokens
             top_p (float): Probability mass to sample from. If 1.0, sample from all tokens. If <1.0, we take the top tokens with cumulative probability >= top_p
@@ -1431,111 +1603,155 @@ class HookedTransformer(HookedRootModule):
             freq_penalty (float): Frequency penalty for sampling - how much to penalise previous tokens. Higher values will make the model more random
             use_past_kv_cache (bool): If True, create and use cache to speed up generation
             prepend_bos (bool, optional): Whether to prepend the BOS token to the input (applicable when input is a string).
-                Defaults to None, implying usage of self.prepend_bos (default is True set by set_default_prepend_bos()).
+                Defaults to None, implying usage of self.cfg.default_prepend_bos (default is True unless specified otherwise).
                 Pass True or False to override the default.
             return_type (str, *optional*): The type of the output to return - either a string (str), a tensor of tokens (tensor) or whatever the format of the input was (input).
             verbose (bool): If True, show tqdm progress bars for generation
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens - by default returns same type as input
         """
-        if type(input) == str:
-            # If text, convert to tokens (batch_size=1)
-            assert (
-                self.tokenizer is not None
-            ), "Must provide a tokenizer if passing a string to the model"
-            tokens = self.to_tokens(input, prepend_bos=prepend_bos)
-        else:
-            tokens = input
 
-        if return_type == "input":
+        with utils.LocallyOverridenDefaults(
+            self, prepend_bos=prepend_bos, padding_side=padding_side
+        ):
             if type(input) == str:
-                return_type = "str"
+                # If text, convert to tokens (batch_size=1)
+                assert (
+                    self.tokenizer is not None
+                ), "Must provide a tokenizer if passing a string to the model"
+                tokens = self.to_tokens(
+                    input, prepend_bos=prepend_bos, padding_side=padding_side
+                )
             else:
-                return_type = "tensor"
+                tokens = input
 
-        assert isinstance(tokens, torch.Tensor)
-        batch_size, ctx_length = tokens.shape
-        tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
-        if use_past_kv_cache:
-            past_kv_cache = HookedTransformerKeyValueCache.init_cache(
-                self.cfg, self.cfg.device, batch_size
-            )
-        else:
-            past_kv_cache = None
-
-        if stop_at_eos and eos_token_id is None:
-            assert (
-                self.tokenizer is not None and self.tokenizer.eos_token_id is not None
-            ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
-
-            eos_token_id = self.tokenizer.eos_token_id
-
-        # An array to track which sequences in the batch have finished.
-        finished_sequences = torch.zeros(
-            batch_size, dtype=torch.bool, device=self.cfg.device
-        )
-
-        # Currently nothing in HookedTransformer changes with eval, but this is here in case that changes in the future
-        self.eval()
-        for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
-            # While generating, we keep generating logits, throw away all but the final logits, and then use those logits to sample from the distribution
-            # We keep adding the sampled tokens to the end of tokens.
-            if use_past_kv_cache:
-                # We just take the final tokens, as a [batch, 1] tensor
-                if index > 0:
-                    logits = self.forward(
-                        tokens[:, -1:],
-                        return_type="logits",
-                        past_kv_cache=past_kv_cache,
-                    )
+            if return_type == "input":
+                if type(input) == str:
+                    return_type = "str"
                 else:
-                    logits = self.forward(
-                        tokens, return_type="logits", past_kv_cache=past_kv_cache
+                    return_type = "tensor"
+
+            assert isinstance(tokens, torch.Tensor)
+            batch_size, ctx_length = tokens.shape
+            device = devices.get_device_for_block_index(0, self.cfg)
+            tokens = tokens.to(device)
+            if use_past_kv_cache:
+                past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+                    self.cfg, self.cfg.device, batch_size
+                )
+            else:
+                past_kv_cache = None
+
+            stop_tokens = []
+            eos_token_for_padding = 0
+            if stop_at_eos:
+                tokenizer_has_eos_token = (
+                    self.tokenizer is not None
+                    and self.tokenizer.eos_token_id is not None
+                )
+                if eos_token_id is None:
+                    assert (
+                        tokenizer_has_eos_token
+                    ), "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+
+                    eos_token_id = self.tokenizer.eos_token_id
+
+                if isinstance(eos_token_id, int):
+                    stop_tokens = [eos_token_id]
+                    eos_token_for_padding = eos_token_id
+                else:
+                    # eos_token_id is a Sequence (e.g. list or tuple)
+                    stop_tokens = eos_token_id
+                    eos_token_for_padding = (
+                        self.tokenizer.eos_token_id
+                        if tokenizer_has_eos_token
+                        else eos_token_id[0]
                     )
 
-            else:
-                # We input the entire sequence, as a [batch, pos] tensor, since we aren't using the cache
-                logits = self.forward(tokens, return_type="logits")
-            final_logits = logits[:, -1, :]
-
-            sampled_tokens = utils.sample_logits(
-                final_logits,
-                top_k=top_k,
-                top_p=top_p,
-                temperature=temperature,
-                freq_penalty=freq_penalty,
-                tokens=tokens,
-            ).to(devices.get_device_for_block_index(0, self.cfg))
-
-            if stop_at_eos:
-                # For all unfinished sequences, add on the next token. If a sequence finished, we throw away the generated token and instead add an EOS token to pad.
-                sampled_tokens[finished_sequences] = eos_token_id
-                finished_sequences.logical_or_(sampled_tokens == eos_token_id)
-
-            tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
-
-            if stop_at_eos and finished_sequences.all():
-                break
-
-        if return_type == "str":
-            # Use the provided prepend_bos as an override if it's not None;
-            # otherwise use self.prepend_bos (defaults to True) set by set_default_prepend_bos().
-            prepend_bos = utils.override_or_use_default_flag(
-                self.prepend_bos, override=prepend_bos
+            # An array to track which sequences in the batch have finished.
+            finished_sequences = torch.zeros(
+                batch_size, dtype=torch.bool, device=self.cfg.device
             )
 
-            if prepend_bos:
-                # If we prepended a BOS token, remove it when returning output.
-                return self.tokenizer.decode(tokens[0, 1:])
-            else:
-                return self.tokenizer.decode(tokens[0])
+            # Currently nothing in HookedTransformer changes with eval, but this is here in case that changes in the future
+            self.eval()
+            for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
+                # While generating, we keep generating logits, throw away all but the final logits, and then use those logits to sample from the distribution
+                # We keep adding the sampled tokens to the end of tokens.
+                if use_past_kv_cache:
+                    # We just take the final tokens, as a [batch, 1] tensor
+                    if index > 0:
+                        past_left_attention_mask = utils.get_attention_mask(
+                            self.tokenizer,
+                            tokens[:, :-1],
+                            self.cfg.default_prepend_bos,
+                        )
+                        logits = self.forward(
+                            tokens[:, -1:],
+                            return_type="logits",
+                            prepend_bos=prepend_bos,
+                            padding_side=padding_side,
+                            past_kv_cache=past_kv_cache,
+                            past_left_attention_mask=past_left_attention_mask,
+                        )
+                    else:
+                        logits = self.forward(
+                            tokens,
+                            return_type="logits",
+                            prepend_bos=prepend_bos,
+                            padding_side=padding_side,
+                            past_kv_cache=past_kv_cache,
+                            past_left_attention_mask=None,
+                        )
+                else:
+                    # We input the entire sequence, as a [batch, pos] tensor, since we aren't using the cache
+                    logits = self.forward(
+                        tokens,
+                        return_type="logits",
+                        prepend_bos=prepend_bos,
+                        padding_side=padding_side,
+                    )
+                final_logits = logits[:, -1, :]
 
-        else:
-            return tokens
+                if do_sample:
+                    sampled_tokens = utils.sample_logits(
+                        final_logits,
+                        top_k=top_k,
+                        top_p=top_p,
+                        temperature=temperature,
+                        freq_penalty=freq_penalty,
+                        tokens=tokens,
+                    ).to(devices.get_device_for_block_index(0, self.cfg))
+                else:
+                    sampled_tokens = final_logits.argmax(-1).to(
+                        devices.get_device_for_block_index(0, self.cfg)
+                    )
+
+                if stop_at_eos:
+                    # For all unfinished sequences, add on the next token.
+                    # If a sequence was finished, throw away the generated token and add eos_token_for_padding instead.
+                    sampled_tokens[finished_sequences] = eos_token_for_padding
+                    finished_sequences.logical_or_(
+                        torch.isin(sampled_tokens, torch.tensor(stop_tokens).to(device))
+                    )
+
+                tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
+
+                if stop_at_eos and finished_sequences.all():
+                    break
+
+            if return_type == "str":
+                if self.cfg.default_prepend_bos:
+                    # If we prepended a BOS token, remove it when returning output.
+                    return self.tokenizer.decode(tokens[0, 1:])
+                else:
+                    return self.tokenizer.decode(tokens[0])
+
+            else:
+                return tokens
 
     # Give access to all weights as properties.
     @property
-    @typeguard_ignore
     def W_U(self) -> Float[torch.Tensor, "d_model d_vocab"]:
         """
         Convenience to get the unembedding matrix (ie the linear map from the final residual stream to the output logits)
@@ -1543,12 +1759,10 @@ class HookedTransformer(HookedRootModule):
         return self.unembed.W_U
 
     @property
-    @typeguard_ignore
     def b_U(self) -> Float[torch.Tensor, "d_vocab"]:
         return self.unembed.b_U
 
     @property
-    @typeguard_ignore
     def W_E(self) -> Float[torch.Tensor, "d_vocab d_model"]:
         """
         Convenience to get the embedding matrix
@@ -1556,7 +1770,6 @@ class HookedTransformer(HookedRootModule):
         return self.embed.W_E
 
     @property
-    @typeguard_ignore
     def W_pos(self) -> Float[torch.Tensor, "n_ctx d_model"]:
         """
         Convenience function to get the positional embedding. Only works on models with absolute positional embeddings!
@@ -1564,7 +1777,6 @@ class HookedTransformer(HookedRootModule):
         return self.pos_embed.W_pos
 
     @property
-    @typeguard_ignore
     def W_E_pos(self) -> Float[torch.Tensor, "d_vocab+n_ctx d_model"]:
         """
         Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
@@ -1576,96 +1788,80 @@ class HookedTransformer(HookedRootModule):
     # If GPU memory is a bottleneck, don't use these properties!
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the key weights across all layers"""
         return torch.stack([block.attn.W_K for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the query weights across all layers"""
         return torch.stack([block.attn.W_Q for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the value weights across all layers"""
         return torch.stack([block.attn.W_V for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stacks the attn output weights across all layers"""
         return torch.stack([block.attn.W_O for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
         return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
+    def W_gate(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
+        """Stacks the MLP gate weights across all layers.
+
+        Only works for models with gated MLPs"""
+        if self.cfg.gated_mlp:
+            return torch.stack([block.mlp.W_gate for block in self.blocks], dim=0)
+        else:
+            return None
+
+    @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
         return torch.stack([block.mlp.W_out for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the key biases across all layers"""
         return torch.stack([block.attn.b_K for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the query biases across all layers"""
         return torch.stack([block.attn.b_Q for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the value biases across all layers"""
         return torch.stack([block.attn.b_V for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the attn output biases across all layers"""
         return torch.stack([block.attn.b_O for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
         return torch.stack([block.mlp.b_in for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
-    @lru_cache(maxsize=None)
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
         return torch.stack([block.mlp.b_out for block in self.blocks], dim=0)
 
     @property
-    @typeguard_ignore
     def QK(self):
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
-    @typeguard_ignore
     def OV(self):
         return FactoredMatrix(self.W_V, self.W_O)
 
@@ -1772,7 +1968,10 @@ class HookedTransformer(HookedRootModule):
         return self.dataset
 
     def sample_datapoint(
-        self, tokenize=False
+        self,
+        tokenize: bool = False,
+        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
+        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
     ) -> Union[str, Float[torch.Tensor, "1 pos"]]:
         """
         Helper function to randomly sample a data point from self.dataset, a small dataset from the data distribution
@@ -1792,4 +1991,9 @@ class HookedTransformer(HookedRootModule):
         if not tokenize:
             return self.dataset[index]["text"]
         else:
-            return self.to_tokens(self.dataset[index]["text"], truncate=True)
+            return self.to_tokens(
+                self.dataset[index]["text"],
+                prepend_bos=prepend_bos,
+                padding_side=padding_side,
+                truncate=True,
+            )

@@ -54,3 +54,28 @@ def test_index_dimension_get_element(sample_factored_matrix):
 def test_index_dimension_too_big(sample_factored_matrix):
     with pytest.raises(Exception):
         _ = sample_factored_matrix[1, 1, 1, 1, 1, 1]
+
+
+def test_getitem_sequences(sample_factored_matrix):
+    A_idx = [0, 1]
+    B_idx = [0]
+    result = sample_factored_matrix[:, :, :, A_idx, B_idx]
+    assert_close(result.A, sample_factored_matrix.A[:, :, :, A_idx, :])
+    assert_close(result.B, sample_factored_matrix.B[:, :, :, :, B_idx])
+
+
+def test_getitem_sequences_and_ints(sample_factored_matrix):
+    A_idx = [0, 1]
+    B_idx = 0
+    result = sample_factored_matrix[:, :, :, A_idx, B_idx]
+    assert_close(result.A, sample_factored_matrix.A[:, :, :, A_idx, :])
+    # we squeeze result.B, because indexing by ints is designed not to delete dimensions
+    assert_close(result.B.squeeze(-1), sample_factored_matrix.B[:, :, :, :, B_idx])
+
+
+def test_getitem_tensors(sample_factored_matrix):
+    A_idx = torch.tensor([0, 1])
+    B_idx = torch.tensor([0])
+    result = sample_factored_matrix[:, :, :, A_idx, B_idx]
+    assert_close(result.A, sample_factored_matrix.A[:, :, :, A_idx, :])
+    assert_close(result.B, sample_factored_matrix.B[:, :, :, :, B_idx])

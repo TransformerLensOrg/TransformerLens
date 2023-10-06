@@ -5,7 +5,6 @@ from typing import List, Tuple, Union
 
 import torch
 from jaxtyping import Float
-from typeguard import typeguard_ignore
 
 import transformer_lens.utils as utils
 
@@ -41,9 +40,9 @@ class FactoredMatrix:
         other: Union[
             Float[torch.Tensor, "... rdim new_rdim"],
             Float[torch.Tensor, "rdim"],
-            FactoredMatrix,
+            "FactoredMatrix",
         ],
-    ) -> Union[FactoredMatrix, Float[torch.Tensor, "... ldim"]]:
+    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... ldim"]]:
         if isinstance(other, torch.Tensor):
             if other.ndim < 2:
                 # It's a vector, so we collapse the factorisation and just return a vector
@@ -65,9 +64,9 @@ class FactoredMatrix:
         other: Union[
             Float[torch.Tensor, "... new_rdim ldim"],
             Float[torch.Tensor, "ldim"],
-            FactoredMatrix,
+            "FactoredMatrix",
         ],
-    ) -> Union[FactoredMatrix, Float[torch.Tensor, "... rdim"]]:
+    ) -> Union["FactoredMatrix", Float[torch.Tensor, "... rdim"]]:
         if isinstance(other, torch.Tensor):
             assert (
                 other.size(-1) == self.ldim
@@ -82,14 +81,28 @@ class FactoredMatrix:
         elif isinstance(other, FactoredMatrix):
             return other.A @ (other.B @ self)
 
+    def __mul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:
+        """
+        Left scalar multiplication. Scalar multiplication distributes over matrix multiplication, so we can just multiply one of the factor matrices by the scalar.
+        """
+        if isinstance(scalar, torch.Tensor):
+            assert (
+                scalar.numel() == 1
+            ), f"Tensor must be a scalar for use with * but was of shape {scalar.shape}. For matrix multiplication, use @ instead."
+        return FactoredMatrix(self.A * scalar, self.B)
+
+    def __rmul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:
+        """
+        Right scalar multiplication. For scalar multiplication from the right, we can reuse the __mul__ method.
+        """
+        return self * scalar
+
     @property
-    @typeguard_ignore
     def AB(self) -> Float[torch.Tensor, "*leading_dims ldim rdim"]:
         """The product matrix - expensive to compute, and can consume a lot of GPU memory"""
         return self.A @ self.B
 
     @property
-    @typeguard_ignore
     def BA(self) -> Float[torch.Tensor, "*leading_dims rdim ldim"]:
         """The reverse product. Only makes sense when ldim==rdim"""
         assert (
@@ -98,7 +111,6 @@ class FactoredMatrix:
         return self.B @ self.A
 
     @property
-    @typeguard_ignore
     def T(self) -> FactoredMatrix:
         return FactoredMatrix(self.B.transpose(-2, -1), self.A.transpose(-2, -1))
 
@@ -125,33 +137,30 @@ class FactoredMatrix:
         return U, S, Vh
 
     @property
-    @typeguard_ignore
     def U(self) -> Float[torch.Tensor, "*leading_dims ldim mdim"]:
         return self.svd()[0]
 
     @property
-    @typeguard_ignore
     def S(self) -> Float[torch.Tensor, "*leading_dims mdim"]:
         return self.svd()[1]
 
     @property
-    @typeguard_ignore
     def Vh(self) -> Float[torch.Tensor, "*leading_dims rdim mdim"]:
         return self.svd()[2]
 
     @property
-    @typeguard_ignore
     def eigenvalues(self) -> Float[torch.Tensor, "*leading_dims mdim"]:
         """Eigenvalues of AB are the same as for BA (apart from trailing zeros), because if BAv=kv ABAv = A(BAv)=kAv, so Av is an eigenvector of AB with eigenvalue k."""
         return torch.linalg.eig(self.BA).eigenvalues
 
     def _convert_to_slice(self, sequence: Union[Tuple, List], idx: int) -> Tuple:
         """
-        e.g. if sequence = (1, 2, 3) and idx = 1, return (1, slice(2, 3), 3)
+        e.g. if sequence = (1, 2, 3) and idx = 1, return (1, slice(2, 3), 3). This only edits elements if they are ints.
         """
         if isinstance(idx, int):
             sequence = list(sequence)
-            sequence[idx] = slice(sequence[idx], sequence[idx] + 1)
+            if isinstance(sequence[idx], int):
+                sequence[idx] = slice(sequence[idx], sequence[idx] + 1)
             sequence = tuple(sequence)
 
         return sequence
@@ -199,7 +208,6 @@ class FactoredMatrix:
         return utils.get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
 
     @property
-    @typeguard_ignore
     def ndim(self) -> int:
         return len(self.shape)
 
@@ -219,7 +227,6 @@ class FactoredMatrix:
         return FactoredMatrix(self.A.unsqueeze(k), self.B.unsqueeze(k))
 
     @property
-    @typeguard_ignore
     def pair(
         self,
     ) -> Tuple[
