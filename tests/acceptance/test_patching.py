@@ -64,7 +64,7 @@ def test_get_act_patch_attn_out(model, corrupt_input, clean_input):
         patching_metric=patching_metric
     )
     
-    assert scan.shape == [12,10] # GPT2 has 12 layers, there are 10 attention heads
+    assert scan.shape == torch.Size([12,10]) # GPT2 has 12 layers, there are 10 attention heads
 
     # Plotting this 
     # px.imshow(scan, color_continuous_scale="RdBu", color_continuous_midpoint=0).show()
