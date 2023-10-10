@@ -62,3 +62,26 @@ addopts = "--jaxtyping-packages=transformer_lens,beartype.beartype"
 [tool.isort]
 profile = "black"
 extend_skip = ["__init__.py"]
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[tool.pylint.TYPECHECK]
+# Fix for Pytorch member existence checks
+generated-members = "torch.*"
+
+[tool.pylint.DESIGN]
+max-args = 10
+max-locals = 30
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = "redefined-builtin" # Disable redefined builtin functions
+
+[tool.black]
+# Exclude snapshot tests
+exclude = '''
+(
+/snapshots/
+)
+'''

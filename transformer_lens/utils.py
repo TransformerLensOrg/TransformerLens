@@ -1042,3 +1042,84 @@ def extend_tensor_with_ones(tensor, dim=1):
         (tensor.shape[0], 1), dtype=tensor.dtype, device=tensor.device
     )
     return torch.cat([tensor, new_elements], dim=dim)
+
+
+def get_tokenizer_with_bos(tokenizer):
+    """
+    Returns the tokenizer initialized with add_bos_token=True.
+    Such a tokenizer should be set as the default tokenizer because the tokenization of some
+    tokenizers like LlamaTokenizer are different when bos token is automatically/manually
+    prepended.
+
+    Args:
+        tokenizer (AutoTokenizer): The tokenizer to initialize with add_bos_token=True.
+
+    Returns:
+        AutoTokenizer: The tokenizer initialized with add_bos_token=True.
+    """
+    init_kwargs = deepcopy(tokenizer.init_kwargs)
+    pretrained_model_name_or_path = init_kwargs.pop("name_or_path")
+    add_bos_token = init_kwargs.pop("add_bos_token", None)
+    if add_bos_token is None:
+        add_bos_token = getattr(tokenizer, "add_bos_token", False)
+
+    if add_bos_token:
+        tokenizer_with_bos = tokenizer
+    else:
+        tokenizer_with_bos = AutoTokenizer.from_pretrained(
+            pretrained_model_name_or_path, add_bos_token=True, **init_kwargs
+        )
+
+    return tokenizer_with_bos
+
+
+def get_input_with_manually_prepended_bos(tokenizer, input):
+    """
+    Manually prepends the bos token to the input.
+
+    Args:
+        tokenizer (AutoTokenizer): The tokenizer to use for prepending the bos token.
+        input (Union[str, List[str]]): The input to prepend the bos token to.
+
+    Returns:
+        Union[str, List[str]]: The input with the bos token manually prepended.
+    """
+    if isinstance(input, str):
+        input = tokenizer.bos_token + input
+    else:
+        input = [tokenizer.bos_token + string for string in input]
+    return input
+
+
+def get_tokens_with_bos_removed(tokenizer, tokens):
+    """
+    Removes the bos token from the beginning of each sequence in `tokens`.
+    The last dimension of `tokens` must be the sequence length.
+
+    Args:
+        tokenizer (AutoTokenizer): The tokenizer used to tokenize the input.
+        tokens (torch.Tensor): The tokenized input.
+
+    Returns:
+        torch.Tensor: The tokenized input with the bos token removed.
+    """
+    if tokenizer.padding_side == "right":
+        return tokens[..., 1:]
+
+    else:
+        bos_removed_shape = list(tokens.shape)
+        bos_removed_shape[-1] -= 1
+
+        if tokenizer.bos_token_id == tokenizer.pad_token_id:
+            is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
+            is_leading_pad = (
+                get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
+            )
+            real_bos_positions = is_leading_pad.sum(-1) - 1
+        else:
+            real_bos_positions = (tokens == tokenizer.bos_token_id).int().argmax(-1)
+
+        tokens = tokens.scatter(
+            dim=1, index=real_bos_positions.unsqueeze(-1), value=-100
+        )
+        return tokens[tokens != -100].view(*bos_removed_shape)

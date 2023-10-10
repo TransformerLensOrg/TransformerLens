@@ -95,10 +95,12 @@ class HookedTransformer(HookedRootModule):
             # If we have a tokenizer name, we can load it from HuggingFace
             if "llama" in self.cfg.tokenizer_name.lower():
                 # llama tokenizer requires special handling
-                print("Warning: LLaMA tokenizer not loaded. Please load manually.")
+                logging.warning("LLaMA tokenizer not loaded. Please load manually.")
             else:
                 self.set_tokenizer(
-                    AutoTokenizer.from_pretrained(self.cfg.tokenizer_name),
+                    AutoTokenizer.from_pretrained(
+                        self.cfg.tokenizer_name, add_bos_token=True
+                    ),
                     default_padding_side=default_padding_side,
                 )
         else:
@@ -108,6 +110,10 @@ class HookedTransformer(HookedRootModule):
                 self.cfg.d_vocab != -1
             ), "Must provide a tokenizer if d_vocab is not provided"
             self.tokenizer = None
+            if default_padding_side != "right":
+                logging.warning(
+                    "default_padding_side is explictly given but ignored because tokenizer is not set."
+                )
 
         self.embed = Embed(self.cfg)
         self.hook_embed = HookPoint()  # [batch, pos, d_model]
@@ -594,11 +600,29 @@ class HookedTransformer(HookedRootModule):
         Args:
             tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer.
             default_padding_side (str): "right" or "left", which side to pad on.
+
         """
         assert isinstance(
             tokenizer, PreTrainedTokenizerBase
         ), f"{type(tokenizer)} is not a supported tokenizer, please use PreTrainedTokenizer or PreTrainedTokenizerFast"
-        self.tokenizer = tokenizer
+
+        assert default_padding_side in [
+            "right",
+            "left",
+        ], f"padding_side must be 'right' or 'left', got {default_padding_side}"
+
+        # Use a tokenizer that is initialized with add_bos_token=True as the default tokenizer.
+        # Such a tokenizer should be set as the default tokenizer because the tokenization of some
+        # tokenizers like LlamaTokenizer are different when bos token is automatically/manually
+        # prepended, and add_bos_token cannot be dynamically controlled after initialization
+        # (https://github.com/huggingface/transformers/issues/25886).
+        tokenizer_with_bos = utils.get_tokenizer_with_bos(tokenizer)
+        self.tokenizer = tokenizer_with_bos
+        self.tokenizer.padding_side = default_padding_side
+
+        # Some tokenizers doesn't automatically prepend the BOS token even when they are initialized
+        # with add_bos_token=True. Therefore, we need this information to dynamically control prepend_bos.
+        self.cfg.tokenizer_prepends_bos = len(self.tokenizer.encode("")) > 0
 
         if self.tokenizer.eos_token is None:
             self.tokenizer.eos_token = "<|endoftext|>"
@@ -612,19 +636,6 @@ class HookedTransformer(HookedRootModule):
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
-
-        assert default_padding_side in [
-            "right",
-            "left",
-        ], f"padding_side must be 'right' or 'left', got {default_padding_side}"
-        self.tokenizer.padding_side = default_padding_side
-
-        # If the tokenizer prepends the BOS token to the input by default, turn it off.
-        # We manually control whether or not to prepend BOS tokens.
-        self.cfg.add_special_tokens = not (
-            len(self.tokenizer("")["input_ids"]) > 0
-            and self.tokenizer("")["input_ids"][0] == self.tokenizer.bos_token_id
-        )
 
     def to_tokens(
         self,
@@ -667,22 +678,27 @@ class HookedTransformer(HookedRootModule):
                 self.tokenizer is not None
             ), "Cannot use to_tokens without a tokenizer"
             assert (
-                self.cfg.add_special_tokens is not None
+                self.cfg.tokenizer_prepends_bos is not None
             ), "Set the tokenizer for the model by calling set_tokenizer"
 
-            if self.cfg.default_prepend_bos:
-                if isinstance(input, str):
-                    input = self.tokenizer.bos_token + input
-                else:
-                    input = [self.tokenizer.bos_token + string for string in input]
+            if self.cfg.default_prepend_bos and not self.cfg.tokenizer_prepends_bos:
+                # We want to prepend bos but the tokenizer doesn't automatically do it, so we add it manually
+                input = utils.get_input_with_manually_prepended_bos(
+                    self.tokenizer, input
+                )
+
             tokens = self.tokenizer(
                 input,
                 return_tensors="pt",
                 padding=True,
                 truncation=truncate,
                 max_length=self.cfg.n_ctx if truncate else None,
-                add_special_tokens=self.cfg.add_special_tokens,
             )["input_ids"]
+
+            if not self.cfg.default_prepend_bos and self.cfg.tokenizer_prepends_bos:
+                # We don't want to prepend bos but the tokenizer does it automatically, so we remove it manually
+                tokens = utils.get_tokens_with_bos_removed(self.tokenizer, tokens)
+
             if move_to_device:
                 tokens = tokens.to(self.cfg.device)
             return tokens
@@ -1152,6 +1168,8 @@ class HookedTransformer(HookedRootModule):
         center_unembed=False,
         refactor_factored_attn_matrices=False,
         fold_value_biases=False,
+        default_prepend_bos=True,
+        default_padding_side="right",
         **from_pretrained_kwargs,
     ):
         """Wrapper for from_pretrained.
@@ -1166,6 +1184,8 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            default_prepend_bos=default_prepend_bos,
+            default_padding_side=default_padding_side,
             **from_pretrained_kwargs,
         )
 
