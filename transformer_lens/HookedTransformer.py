@@ -47,9 +47,9 @@ class Output(NamedTuple):
 
 class HookedTransformer(HookedRootModule):
     """Hooked Transformer.
-    
+
     This class implements a full Transformer using the components in ./components.py, with
-    HookPoints on every interesting activation. It inherits from HookedRootModule. 
+    HookPoints on every interesting activation. It inherits from HookedRootModule.
 
     It can have a pretrained Transformer's weights automatically loaded in via the
     HookedTransformer.from_pretrained class method. It can also be instantiated with randomly
@@ -64,7 +64,7 @@ class HookedTransformer(HookedRootModule):
         default_padding_side="right",
     ):
         """Model initialization.
-        
+
         Note that if you want to load the model from pretrained weights, you should use the
         `HookedTransformer.from_pretrained()` class method instead of this one.
 
@@ -412,7 +412,7 @@ class HookedTransformer(HookedRootModule):
         Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss],
     ]:
         """Forward Pass.
-        
+
         Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically
         tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a
         text string.
@@ -481,7 +481,7 @@ class HookedTransformer(HookedRootModule):
                 start_at_layer = 0
             # If we explicitly want to start or stop at a layer, we only iterate through the blocks
             # between those indices. Note that start_at_layer is inclusive and stop_at_layer is
-            # exclusive. 
+            # exclusive.
             # Eg: start_at_layer==None + stop_at_layer==0 means to only run the embed.
             # Eg: start_at_layer==3 + stop_at_layer==-1 means to run from layer 3 until the end of
             # the PENULTIMATE layer
@@ -501,7 +501,9 @@ class HookedTransformer(HookedRootModule):
                     residual,
                     # Cache contains a list of HookedTransformerKeyValueCache objects, one for each
                     # block
-                    past_kv_cache_entry=past_kv_cache[i] if past_kv_cache is not None else None,  
+                    past_kv_cache_entry=past_kv_cache[i]
+                    if past_kv_cache is not None
+                    else None,
                     shortformer_pos_embed=shortformer_pos_embed,
                     left_attention_mask=left_attention_mask,
                 )  # [batch, pos, d_model]
@@ -535,7 +537,7 @@ class HookedTransformer(HookedRootModule):
         per_token: bool = False,
     ):
         """Wrapper around `utils.lm_cross_entropy_loss`.
-        
+
         Used in forward() with return_type=="loss" or "both".
         """
         if tokens.device != logits.device:
@@ -566,7 +568,7 @@ class HookedTransformer(HookedRootModule):
         Union[ActivationCache, Dict[str, torch.Tensor]],
     ]:
         """Wrapper around `run_with_cache` in HookedRootModule.
-        
+
         If return_cache_object is True, this will return an ActivationCache object, with a bunch of
         useful HookedTransformer specific methods, otherwise it will return a dictionary of
         activations as in HookedRootModule.
@@ -588,7 +590,7 @@ class HookedTransformer(HookedRootModule):
         default_padding_side="right",
     ):
         """Set the tokenizer to use for this model.
-        
+
         Args:
             tokenizer (PreTrainedTokenizer): a pretrained HuggingFace tokenizer.
             default_padding_side (str): "right" or "left", which side to pad on.
@@ -633,7 +635,7 @@ class HookedTransformer(HookedRootModule):
         truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
         """Converts a string to a tensor of tokens.
-        
+
         If prepend_bos is True, prepends the BOS token to the input - this is recommended when
         creating a sequence of tokens to be input to a model.
 
@@ -696,7 +698,7 @@ class HookedTransformer(HookedRootModule):
         ],
     ) -> Union[str, List[str]]:
         """Tokens to String(s).
-        
+
         Converts a tensor of tokens to a string (if rank 1) or a list of strings (if rank 2).
 
         Accepts lists of tokens and numpy arrays as inputs too (and converts to tensors internally)
@@ -803,7 +805,7 @@ class HookedTransformer(HookedRootModule):
 
     def to_single_token(self, string):
         """Map a string that makes up a single token to the id for that token.
-        
+
         Raises an error for strings that are not a single token! If uncertain use to_tokens.
         """
 
@@ -831,7 +833,7 @@ class HookedTransformer(HookedRootModule):
         padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
     ):
         """Get the position of a single_token in a string or sequence of tokens.
-        
+
         Raises an error if the token is not present.
 
         Gotcha: If you're inputting a string, it'll automatically be tokenized. Be careful about the
@@ -901,7 +903,7 @@ class HookedTransformer(HookedRootModule):
         Float[torch.Tensor, "batch pos d_model"],
     ]:
         """Map tokens to a tensor with the unembedding vector for those tokens.
-        
+
         I.e. the vector in the residual stream that we dot with to the get the logit for that token.
 
         WARNING: If you use this without folding in LayerNorm, the results will be misleading and
@@ -999,7 +1001,7 @@ class HookedTransformer(HookedRootModule):
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Load in pretrained model weights.
-        
+
         Load in pretrained model weights to the HookedTransformer format and optionally to do some
         processing to make the model easier to interpret. Currently supports loading from most
         autoregressive HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models
@@ -1153,7 +1155,7 @@ class HookedTransformer(HookedRootModule):
         **from_pretrained_kwargs,
     ):
         """Wrapper for from_pretrained.
-        
+
         Wrapper for from_pretrained with all boolean flags related to simplifying the model set to
         False. Refer to from_pretrained for details.
         """
@@ -1169,8 +1171,8 @@ class HookedTransformer(HookedRootModule):
 
     def init_weights(self):
         """Initialize weights.
-        
-        
+
+
         Initialize weights matrices with a normal of std=initializer_range (default=0.02). This
         roughly follows the GPT-2 paper's scheme (but with truncation, and not halving the std for
         W_pos).
@@ -1211,7 +1213,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices: bool = False,
     ):
         """Load & Process State Dict.
-        
+
         Load a state dict into the model, and to apply processing to simplify it. The state dict is
         assumed to be in the HookedTransformer format.
 
@@ -1277,7 +1279,7 @@ class HookedTransformer(HookedRootModule):
 
     def fold_layer_norm(self, state_dict: Dict[str, torch.Tensor]):
         """Fold Layer Norm.
-        
+
         Takes in a state dict from a pretrained model, formatted to be consistent with
         HookedTransformer but with LayerNorm weights and biases. Folds these into the neighbouring
         weights. See further_comments.md for more details.
@@ -1414,7 +1416,7 @@ class HookedTransformer(HookedRootModule):
 
     def center_writing_weights(self, state_dict: Dict[str, torch.Tensor]):
         """Center Writing Weights.
-        
+
         Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and
         W_out. This is done by subtracting the mean of the weights from the weights themselves. This
         is done in-place. See fold_layer_norm for more details.
@@ -1448,7 +1450,7 @@ class HookedTransformer(HookedRootModule):
 
     def center_unembed(self, state_dict: Dict[str, torch.Tensor]):
         """Center the unembedding weights W_U.
-        
+
         This is done by subtracting the mean of the weights from the weights themselves. This is
         done in-place. As softmax is translation invariant, this changes the logits but not the log
         probs, and makes the model logits (slightly) more interpretable - when trying to understand
@@ -1465,7 +1467,7 @@ class HookedTransformer(HookedRootModule):
 
     def fold_value_biases(self, state_dict: Dict[str, torch.Tensor]):
         """Fold the value biases into the output bias.
-        
+
         Because attention patterns add up to 1, the value biases always have a constant effect on a
         head's output. Further, as the outputs of each head in a layer add together, each head's
         value bias has a constant effect on the *layer's* output, which can make it harder to
@@ -1491,8 +1493,8 @@ class HookedTransformer(HookedRootModule):
         return state_dict
 
     def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
-        """Experimental method for managing queries, keys and values. 
-        
+        """Experimental method for managing queries, keys and values.
+
         As argued in [A Mathematical Framework for Transformer
         Circuits](https://transformer-circuits.pub/2021/framework/index.html), queries, keys and
         values are somewhat arbitrary intermediate terms when computing with the low rank factored
@@ -1583,7 +1585,7 @@ class HookedTransformer(HookedRootModule):
 
     def set_use_attn_result(self, use_attn_result: bool):
         """Toggle whether to explicitly calculate and expose the result for each attention head.
-        
+
         Useful for interpretability but can easily burn through GPU memory.
         """
         self.cfg.use_attn_result = use_attn_result
@@ -1608,7 +1610,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices: bool = False,
     ):
         """Wrapper around `load_and_process_state_dict`.
-        
+
         Wrapper around load_and_process_state_dict to allow for in-place processing of the weights.
         This is useful if using HookedTransformer for training, if we then want to analyse a cleaner
         version of the same model.
@@ -1654,7 +1656,7 @@ class HookedTransformer(HookedRootModule):
         verbose: bool = True,
     ) -> Union[Int[torch.Tensor, "batch pos_plus_new_tokens"], str]:
         """Sample Tokens from the Model.
-        
+
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
 
         To avoid fiddling with ragged tensors, if we input a batch of text and some sequences finish
@@ -1680,21 +1682,21 @@ class HookedTransformer(HookedRootModule):
                 greedy search (take the max logit each time).
             top_k (int): Number of tokens to sample from. If None, sample from all tokens.
             top_p (float): Probability mass to sample from. If 1.0, sample from all tokens. If <1.0,
-                we take the top tokens with cumulative probability >= top_p. 
+                we take the top tokens with cumulative probability >= top_p.
             temperature (float): Temperature for sampling. Higher values will make the model more
                 random (limit of temp -> 0 is just taking the top token, limit of temp -> inf is
-                sampling from a uniform distribution). 
+                sampling from a uniform distribution).
             freq_penalty (float): Frequency penalty for sampling - how much to penalise previous
-                tokens. Higher values will make the model more random. 
+                tokens. Higher values will make the model more random.
             use_past_kv_cache (bool): If True, create and use cache to speed up generation.
             prepend_bos (Optional[bool]): Whether to prepend the BOS token to the input (applicable
                 when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos (default is True unless specified otherwise). Pass True 
+                self.cfg.default_prepend_bos (default is True unless specified otherwise). Pass True
                 or False to override the default.
             return_type (Optional[str]): The type of the output to return - either a string (str),
-                a tensor of tokens (tensor) or whatever the format of the input was (input). 
+                a tensor of tokens (tensor) or whatever the format of the input was (input).
             verbose (bool): If True, show tqdm progress bars for generation.
-            
+
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
                 (by default returns same type as input).
@@ -1847,7 +1849,7 @@ class HookedTransformer(HookedRootModule):
     @property
     def W_U(self) -> Float[torch.Tensor, "d_model d_vocab"]:
         """Convenience to get the unembedding matrix.
-        
+
         I.e. the linear map from the final residual stream to the output logits).
         """
         return self.unembed.W_U
@@ -1864,7 +1866,7 @@ class HookedTransformer(HookedRootModule):
     @property
     def W_pos(self) -> Float[torch.Tensor, "n_ctx d_model"]:
         """Convenience function to get the positional embedding.
-        
+
         Only works on models with absolute positional embeddings!
         """
         return self.pos_embed.W_pos
@@ -1872,7 +1874,7 @@ class HookedTransformer(HookedRootModule):
     @property
     def W_E_pos(self) -> Float[torch.Tensor, "d_vocab+n_ctx d_model"]:
         """Concatenated W_E and W_pos.
-        
+
         Used as a full (overcomplete) basis of the input space, useful for full QK and full OV
         circuits.
         """
@@ -1967,7 +1969,7 @@ class HookedTransformer(HookedRootModule):
         self, layer: int, mlp_input: bool = False, include_mlp_biases=True
     ) -> Float[torch.Tensor, "layers_accumulated_over d_model"]:
         """Accumulated Bias.
-        
+
         Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the
         input of layer L.
 
@@ -2001,14 +2003,14 @@ class HookedTransformer(HookedRootModule):
         self, mode
     ) -> Float[torch.Tensor, "n_layers n_heads n_layers n_heads"]:
         """All Composition Scores.
-        
+
         Returns the Composition scores for all pairs of heads, as a L1, H1, L2, H2 tensor (which is
         upper triangular on the first and third axes).
 
         See
         https://transformer-circuits.pub/2021/framework/index.html#:~:text=The%20above%20diagram%20shows%20Q%2D%2C%20K%2D%2C%20and%20V%2DComposition
         for three metrics used.
-        
+
         Args:
             mode (str): One of ["Q", "K", "V"], the mode to use for the composition score.
         """
@@ -2043,7 +2045,7 @@ class HookedTransformer(HookedRootModule):
 
     def load_sample_training_dataset(self, **kwargs):
         """Load Sample Training Dataset.
-        
+
         Helper function to load in a 10K-20K dataset of elements from the model's training data
         distribution.
 
@@ -2054,7 +2056,7 @@ class HookedTransformer(HookedRootModule):
         Kwargs will be passed to utils.get_dataset (e.g. cache_dir to set download location)
 
         Notes:
-        
+
         - PT-2's training data is not open source. OpenWebText is a replication (links with
             >3 karma on Reddit)
         - OPT's training data is not open source, and is a mess of different things that is hard to
@@ -2089,7 +2091,7 @@ class HookedTransformer(HookedRootModule):
         padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
     ) -> Union[str, Float[torch.Tensor, "1 pos"]]:
         """Sample Data Point from Dataset.
-        
+
         Helper function to randomly sample a data point from self.dataset, a small dataset from the
         data distribution the model was trained on.
 

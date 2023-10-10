@@ -553,7 +553,7 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
     ) -> Float[torch.Tensor, "*batch_and_pos_dims num_neurons d_model"]:
         """Get Neuron Results.
-        
+
         Get the results of for neurons in a specific layer (i.e, how much each neuron contributes to
         the residual stream). Does it for the subset of neurons specified by neuron_slice, defaults
         to all of them. Does *not* cache these because it's expensive in space and cheap to compute.
