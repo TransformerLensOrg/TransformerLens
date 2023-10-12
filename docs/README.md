@@ -8,20 +8,21 @@ The documentation uses Sphinx. However, the documentation is written in regular 
 
 ## Build the Documentation
 
-First install the docs packages:
+First install the docs packages & build the model properties table:
 
 ```bash
 poetry install --with docs
+poetry run make-docs
 ```
 
-Then for hot-reloading, run:
+Then for hot-reloading (excluding the model properties table), run:
 
 ```bash
-poetry run autobuild
+poetry run docs-hot-reload
 ```
 
 Alternatively to build once, run:
 
 ```bash
-poetry run docs
+poetry run build-docs
 ```
