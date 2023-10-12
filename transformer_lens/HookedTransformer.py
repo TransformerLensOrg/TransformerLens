@@ -1063,8 +1063,7 @@ class HookedTransformer(HookedRootModule):
 
         >>> from transformer_lens import HookedTransformer
         >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
-        >>> print(model.cfg.n_layers)
-        8
+        Loaded pretrained model tiny-stories-1M into HookedTransformer
 
         Args:
             model_name: The model name - must be an element of
