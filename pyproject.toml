@@ -12,8 +12,8 @@ python = ">=3.7.4,<4.0"
 einops = ">=0.6.0"
 numpy = [{ version = ">=1.21", python = "<3.10" },
          { version = ">=1.23", python = ">=3.10" }]
-torch = [{version = ">=1.10", python = "<3.8"},
-         {version = "^2.1", python = ">=3.8"}]
+torch = [{version = ">=1.10, <2.0.0", python = "<3.8"}, # PyTorch 2 requires Python 3.8+
+         { version = ">=1.10", python = ">=3.8" }] # See PyTorch 2 fix below
 datasets = ">=2.7.1"
 transformers = ">=4.25.1"
 tqdm = ">=4.64.1"
@@ -29,6 +29,28 @@ furo = {version = ">=2022.12.7", optional = true, python = ">=3.8,<3.10"}
 myst-parser = {version = ">=0.18.1", optional = true, python = ">=3.8,<3.10"}
 tabulate= {version = ">=0.9.0", optional = true, python = ">=3.8,<3.10"}
 beartype = "^0.14.1"
+# PyTorch 2.1.0 Bug Fix PyTorch didn't put their dependencies metadata into all wheels for 2.1.0, so
+# it doesn't work with Poetry. This is a known bug - the workaround is to place them manually here
+# (from the one wheel that did correctly list them). This was broken in 2.0.1 and the fix wasn't
+# made for 2.1.0, however Meta are aware of the issue and once it is fixed (and the torch version
+# requirement bumped) this should be removed. Note also the python version is used to specify that
+# this is only added where v2 torch is installed (as per the torch version requirement above).
+# https://github.com/pytorch/pytorch/issues/100974
+# https://github.com/python-poetry/poetry/issues/7902#issuecomment-1583078794
+nvidia-cublas-cu11 = { version = ">=11.10.3.66", platform = 'linux' }
+nvidia-cuda-cupti-cu11 = { version = ">=11.7.101", platform = 'linux' }
+nvidia-cuda-nvrtc-cu11 = { version = ">=11.7.99", platform = 'linux' }
+nvidia-cuda-runtime-cu11 = { version = ">=11.7.99", platform = 'linux' }
+nvidia-cudnn-cu11 = { version = ">=8.5.0.96", platform = 'linux' }
+nvidia-cufft-cu11 = { version = ">=10.9.0.58", platform = 'linux' }
+nvidia-curand-cu11 = { version = ">=10.2.10.91", platform = 'linux' }
+nvidia-cusolver-cu11 = { version = ">=11.4.0.1", platform = 'linux' }
+nvidia-cusparse-cu11 = { version = ">=11.7.4.91", platform = 'linux' }
+nvidia-nccl-cu11 = { version = ">=2.14.3", platform = 'linux' }
+nvidia-nvtx-cu11 = { version = ">=11.7.91", platform = 'linux' }
+triton = { version = ">=2.0.0", platform = 'linux' }
+# End PyTorch 2.1.0 Bug Fix
+
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.2.0"
