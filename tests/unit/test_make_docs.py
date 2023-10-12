@@ -2,7 +2,7 @@
 import pytest
 
 from transformer_lens import HookedTransformerConfig
-from transformer_lens.make_docs import get_config, get_property
+from docs.make_docs import get_config, get_property
 
 
 def test_get_config():
