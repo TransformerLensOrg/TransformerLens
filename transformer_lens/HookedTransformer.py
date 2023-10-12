@@ -195,6 +195,10 @@ class HookedTransformer(HookedRootModule):
             assert (
                 self.cfg.use_hook_mlp_in
             ), f"Cannot add hook {hook_point_name} if use_hook_mlp_in is False"
+        if hook_point_name.endswith("attn_in"):
+            assert (
+                self.cfg.use_attn_in
+            ), f"Cannot add hook {hook_point_name} if use_attn_in is False"
 
     def input_to_embed(
         self,
@@ -1621,6 +1625,12 @@ class HookedTransformer(HookedRootModule):
 
         assert not self.cfg.attn_only, "Can't use hook_mlp_in with attn_only model"
         self.cfg.use_hook_mlp_in = use_hook_mlp_in
+
+    def set_use_attn_in(self, use_attn_in: bool):
+        """
+        Toggles whether to allow editing of inputs to each attention head.
+        """
+        self.cfg.use_attn_in = use_attn_in
 
     def process_weights_(
         self,
