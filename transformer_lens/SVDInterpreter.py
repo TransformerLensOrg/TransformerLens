@@ -38,19 +38,19 @@ class SVDInterpreter:
 
         Example:
         .. code-block:: python
-            >>> from transformer_lens import HookedTransformer, SVDInterpreter
-            >>> model = HookedTransformer.from_pretrained('gpt2-medium')
-            >>> svd_interpreter = SVDInterpreter(model)
+            build-docsfrom transformer_lens import HookedTransformer, SVDInterpreter
+            build-docsmodel = HookedTransformer.from_pretrained('gpt2-medium')
+            build-docssvd_interpreter = SVDInterpreter(model)
 
-            >>> ov = svd_interpreter.get_singular_vectors('OV', layer_index=22, head_index=10)
+            build-docsov = svd_interpreter.get_singular_vectors('OV', layer_index=22, head_index=10)
 
-            >>> all_tokens = [model.to_str_tokens(np.array([i])) for i in range(model.cfg.d_vocab)]
-            >>> all_tokens = [all_tokens[i][0] for i in range(model.cfg.d_vocab)]
+            build-docsall_tokens = [model.to_str_tokens(np.array([i])) for i in range(model.cfg.d_vocab)]
+            build-docsall_tokens = [all_tokens[i][0] for i in range(model.cfg.d_vocab)]
 
-            >>> def plot_matrix(matrix, tokens, k=10, filter="topk"):
-            >>>     pysvelte.TopKTable(tokens=all_tokens, activations=matrix, obj_type="SVD direction", k=k, filter=filter).show()
+            build-docsdef plot_matrix(matrix, tokens, k=10, filter="topk"):
+            build-docs    pysvelte.TopKTable(tokens=all_tokens, activations=matrix, obj_type="SVD direction", k=k, filter=filter).show()
 
-            >>> plot_matrix(ov, all_tokens)"""
+            build-docsplot_matrix(ov, all_tokens)"""
 
         if head_index is None:
             assert vector_type in [

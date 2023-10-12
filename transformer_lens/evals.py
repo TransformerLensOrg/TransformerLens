@@ -179,21 +179,22 @@ class IOIDataset(Dataset):
         >>> from transformer_lens.HookedTransformer import HookedTransformer
 
         >>> model = HookedTransformer.from_pretrained('gpt2-small')
+        Loaded pretrained model gpt2-small into HookedTransformer
 
         >>> # Eval like this
         >>> print(ioi_eval(model, num_samples=100))
-        {'Logit Difference': 3.655226745605469, 'Accuracy': 1.0}
+        {'Logit Difference': 5.475627899169922, 'Accuracy': 1.0}
 
         >>> # Can use custom dataset
         >>> ds = IOIDataset(
-            tokenizer=model.tokenizer,
-            num_samples=100,
-            templates=['[A] met with [B]. [B] gave the [OBJECT] to [A]'],
-            names=['Alice', 'Bob', 'Charlie'],
-            nouns={'OBJECT': ['ball', 'book']},
-            )
+        ...     tokenizer=model.tokenizer,
+        ...     num_samples=100,
+        ...     templates=['[A] met with [B]. [B] gave the [OBJECT] to [A]'],
+        ...     names=['Alice', 'Bob', 'Charlie'],
+        ...     nouns={'OBJECT': ['ball', 'book']},
+        ... )
         >>> print(ioi_eval(model, dataset=ds))
-        {'Logit Difference': 3.7498160457611083, 'Accuracy': 1.0}
+        {'Logit Difference': 5.397392272949219, 'Accuracy': 1.0}
     """
 
     def __init__(
@@ -236,6 +237,7 @@ class IOIDataset(Dataset):
         }
 
     def get_sample(self, symmetric=False) -> List[Dict[str, str]]:
+        random.seed(42)
         template: str = random.choice(self.templates)
         for noun_type, noun_list in self.nouns.items():
             template = template.replace(f"[{noun_type}]", random.choice(noun_list))
