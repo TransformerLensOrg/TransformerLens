@@ -8,7 +8,30 @@ Recursively break down the logit attribution of each component.
 
 The model residual directions are simply the logits un-embedded.
 
-$$ logits * W_U $$
+$$ \text{logits} * W_U $$
+
+### MLPs
+
+The MLPs are just the neurons from the MLP output.
+
+```
+mlp_layer = cache[("mlp_out", layer)]
+```
+
+### Attention
+
+The attention heads must be calculated:
+
+```
+attn_out = cache[f"blocks.{layer}.attn.hook_result"]
+W_O = model.blocks[layer].attn.W_O
+```
+
+$$ \text{attn_out} @ W_O $$
+
+### Attention by source
+
+
 
 """
 from __future__ import annotations
