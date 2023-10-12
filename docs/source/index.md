@@ -5,8 +5,8 @@ lastpage:
 ---
 
 # TransformerLens
-(Formerly known as EasyTransformer) [![Pypi](https://img.shields.io/pypi/v/transformer-lens)](https://pypi.org/project/transformer-lens/)
 
+(Formerly known as EasyTransformer) [![Pypi](https://img.shields.io/pypi/v/transformer-lens)](https://pypi.org/project/transformer-lens/)
 
 ## A Library for Mechanistic Interpretability of Generative Language Models
 
@@ -41,16 +41,12 @@ content/citation
 generated/code/modules
 ```
 
-
 ```{toctree}
 :hidden:
 :caption: Models
 
 generated/model_properties_table.md
 ```
-
-
-
 
 ```{toctree}
 :hidden:
@@ -59,4 +55,3 @@ generated/model_properties_table.md
 content/development
 Github <https://github.com/neelnanda-io/TransformerLens>
 ```
-
