@@ -17,3 +17,4 @@ docs/build
 .coverage*
 .Ds_Store
 .pylintrc
+docs/source/model_properties_table.md
