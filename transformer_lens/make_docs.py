@@ -104,7 +104,7 @@ def generate_model_table():
     markdown_string = "# Model Properties Table\n\n" + markdown_string
 
     # Save to the docs directory
-    file_path = CURRENT_DIR / "../docs/source/model_properties_table.md"
+    file_path = CURRENT_DIR / "../docs/source/generated/model_properties_table.md"
     with open(file_path, "w", encoding="utf-8") as file:
         file.write(markdown_string)
 

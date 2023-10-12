@@ -38,15 +38,17 @@ content/citation
 :hidden:
 :caption: Code
 
-transformer_lens.rst
+generated/code/modules
 ```
+
 
 ```{toctree}
 :hidden:
 :caption: Models
 
-model_properties_table.md
+generated/model_properties_table.md
 ```
+
 
 
 
