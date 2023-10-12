@@ -1,6 +1,15 @@
 """Recursive Logit Attribution.
 
 Recursively break down the logit attribution of each component.
+
+## Components
+
+### Model
+
+The model residual directions are simply the logits un-embedded.
+
+$$ logits * W_U $$
+
 """
 from __future__ import annotations
 
@@ -8,7 +17,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 
+from jaxtyping import Float
+from torch import Tensor
+
 from transformer_lens import ActivationCache, HookedTransformerConfig
+from transformer_lens.attribution.logit_attribution import logit_attribution
 
 
 class ComponentType(Enum):
@@ -17,13 +30,13 @@ class ComponentType(Enum):
     Type of a component, that we have calculated the direct logit attribution for.
     """
 
-    MODEL = "model"
-    EMBED = "embed"
-    POSITIONAL_EMBED = "positional_embed"
     ATTENTION = "attention"
+    EMBED = "embed"
     MLP = "mlp"
-    SOURCE_TOKEN = "source_token"
     MLP_NEURON = "mlp_neuron"
+    MODEL = "model"
+    POSITIONAL_EMBED = "positional_embed"
+    SOURCE_TOKEN = "source_token"
 
 
 @dataclass
@@ -37,22 +50,24 @@ class ComponentLabel:
     parent component).
     """
 
-    type: ComponentType
-    layer: Optional[int] = None
+    depth: int
     head: Optional[int] = None
-    position: Optional[int] = None
+    layer: Optional[int] = None
     neuron: Optional[int] = None
-    depth: int = 0
     parent_component: Optional[ComponentLabel] = None
+    position: Optional[int] = None
+    type: ComponentType
 
 
 def get_component_labels_recursively(
-    model_config: HookedTransformerConfig,
     cache: ActivationCache,
+    model_config: HookedTransformerConfig,
     number_tokens: int,
-    current_depth: int,
-    depth_remaining: int = 5,
-    current_component: ComponentLabel = ComponentLabel(type=ComponentType.MODEL),
+    depth_remaining: int,
+    current_depth: int = 0,
+    current_component: ComponentLabel = ComponentLabel(
+        type=ComponentType.MODEL, depth=0
+    ),
 ) -> List[ComponentLabel]:
     """Get the component labels recursively.
 
@@ -71,19 +86,19 @@ def get_component_labels_recursively(
             if cache.has_embed:
                 recursive_sub_component_labels.append(
                     ComponentLabel(
-                        type=ComponentType.EMBED,
-                        position=number_tokens - 1,
                         depth=sub_component_depth,
                         parent_component=current_component,
+                        position=number_tokens - 1,
+                        type=ComponentType.EMBED,
                     )
                 )
             if cache.has_pos_embed:
                 recursive_sub_component_labels.append(
                     ComponentLabel(
-                        type=ComponentType.POSITIONAL_EMBED,
-                        position=number_tokens - 1,
                         depth=sub_component_depth,
                         parent_component=current_component,
+                        position=number_tokens - 1,
+                        type=ComponentType.POSITIONAL_EMBED,
                     )
                 )
 
@@ -97,22 +112,22 @@ def get_component_labels_recursively(
                 for head in range(model_config.n_heads):
                     recursive_sub_component_labels.append(
                         ComponentLabel(
-                            type=ComponentType.ATTENTION,
-                            position=number_tokens - 1,
-                            layer=layer,
-                            head=head,
                             depth=sub_component_depth,
+                            head=head,
+                            layer=layer,
                             parent_component=current_component,
+                            position=number_tokens - 1,
+                            type=ComponentType.ATTENTION,
                         )
                     )
                 if not model_config.attn_only:
                     recursive_sub_component_labels.append(
                         ComponentLabel(
-                            type=ComponentType.MLP,
-                            position=number_tokens - 1,
-                            layer=layer,
                             depth=sub_component_depth,
+                            layer=layer,
                             parent_component=current_component,
+                            position=number_tokens - 1,
+                            type=ComponentType.MLP,
                         )
                     )
 
@@ -121,11 +136,11 @@ def get_component_labels_recursively(
             for pos in range(number_tokens):
                 recursive_sub_component_labels.append(
                     ComponentLabel(
-                        type=ComponentType.SOURCE_TOKEN,
-                        position=pos,
-                        layer=current_component.layer,
                         depth=sub_component_depth,
+                        layer=current_component.layer,
                         parent_component=current_component,
+                        position=pos,
+                        type=ComponentType.SOURCE_TOKEN,
                     )
                 )
 
@@ -134,12 +149,12 @@ def get_component_labels_recursively(
             for neuron in range(model_config.d_mlp):
                 recursive_sub_component_labels.append(
                     ComponentLabel(
-                        type=ComponentType.MLP_NEURON,
-                        position=current_component.position,
+                        depth=sub_component_depth,
                         layer=current_component.layer,
                         neuron=neuron,
-                        depth=sub_component_depth,
                         parent_component=current_component,
+                        position=current_component.position,
+                        type=ComponentType.MLP_NEURON,
                     )
                 )
 
@@ -168,3 +183,23 @@ def get_component_labels_recursively(
             recursive_sub_component_labels.extend(recursive_labels)
 
     return recursive_sub_component_labels
+
+
+def recursive_logit_attribution(
+    cache: ActivationCache,
+    model_config: HookedTransformerConfig,
+    token_residual_directions: Float[Tensor, "token d_model"],
+    number_tokens: int,
+    search_depth: int = 3,
+):
+    # Get the component labels recursively
+    component_labels = get_component_labels_recursively(
+        cache=cache,
+        model_config=model_config,
+        number_tokens=number_tokens,
+        depth_remaining=search_depth,
+    )
+
+    # For each component label, get the residual decomposition
+
+    # Multiply these in batches by the token_residual_directions
