@@ -38,6 +38,15 @@ SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
 Loss = Union[SingleLoss, LossPerToken]
 
+DTYPE_FROM_STRING = {
+    "float32": torch.float32,
+    "fp32": torch.float32,
+    "float16": torch.float16,
+    "fp16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "bf16": torch.bfloat16,
+}
+
 
 # Named tuple object for if we want to output both logits and loss
 class Output(NamedTuple):
@@ -1018,6 +1027,7 @@ class HookedTransformer(HookedRootModule):
         fold_value_biases=True,
         default_prepend_bos=True,
         default_padding_side="right",
+        dtype="float32",
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Load in pretrained model weights.
@@ -1063,35 +1073,44 @@ class HookedTransformer(HookedRootModule):
             n_devices (int, optional): The number of devices to split the model
                 across. Defaults to 1. If greater than 1, `device` must be cuda.
             tokenizer (*optional): The tokenizer to use for the model. If not
-                provided, it is inferred from cfg.tokenizer_name or initialized to None. If None,
-                then the model cannot be passed strings, and d_vocab must be explicitly set.
-            move_to_device (bool, optional): Whether to move the model to the device specified in
-                cfg. device. Must be true if `n_devices` in the config is greater than 1, since the
-                model's layers will be split across multiple devices.
-            default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS
-                token when the methods of HookedTransformer process input text to tokenize (only
-                when input is a string). Defaults to True - even for models not explicitly trained
-                with this, heads often use the first position as a resting position and accordingly
-                lose information from the first token, so this empirically seems to give better
-                results. To change the default behavior to False, pass in default_prepend_bos=False.
-                Note that you can also locally override the default behavior by passing in
-                prepend_bos=True/False when you call a method that processes the input string.
-            from_pretrained_kwargs (dict, optional): Any other optional argument passed to
-                HuggingFace's from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to
-                other HuggingFace functions when compatible. For some models or arguments it doesn't
-                work, especially for models that are not internally loaded with HuggingFace's
-                from_pretrained (e.g. SoLU models).
-            default_padding_side (str, optional): Which side to pad on when tokenizing. Defaults to
-                "right".
+                provided, it is inferred from cfg.tokenizer_name or initialized to None.
+                If None, then the model cannot be passed strings, and d_vocab must be explicitly set.
+            move_to_device (bool, optional): Whether to move the model to the device specified in cfg.
+                device. Must be true if `n_devices` in the config is greater than 1, since the model's layers
+                will be split across multiple devices.
+            default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
+                methods of HookedTransformer process input text to tokenize (only when input is a string).
+                Defaults to True - even for models not explicitly trained with this, heads often use the
+                first position as a resting position and accordingly lose information from the first token,
+                so this empirically seems to give better results. To change the default behavior to False, pass in
+                default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+                in prepend_bos=True/False when you call a method that processes the input string.
+            dtype (str | torch.dtype, optional): What data type to load the model in (also sets the dtype of
+                the HuggingFace model). Set to bfloat16 or float16 if you get out of memory errors when loading
+                the model.
+            from_pretrained_kwargs (dict, optional): Any other optional argument passed to HuggingFace's
+                from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to other HuggingFace
+                functions when compatible. For some models or arguments it doesn't work, especially for
+                models that are not internally loaded with HuggingFace's from_pretrained (e.g. SoLU models).
+            default_padding_side (str, optional): Which side to pad on when tokenizing. Defaults to "right".
         """
         assert not (
             from_pretrained_kwargs.get("load_in_8bit", False)
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
 
-        if from_pretrained_kwargs.get(
-            "torch_dtype", None
-        ) == torch.float16 and device in ["cpu", None]:
+        if isinstance(dtype, str):
+            # Convert from string to a torch dtype
+            dtype = DTYPE_FROM_STRING[dtype]
+        if "torch_dtype" in from_pretrained_kwargs:
+            # For backwards compatibility with the previous way to do low precision loading
+            # This should maybe check the user did not explicitly set dtype *and* torch_dtype
+            dtype = from_pretrained_kwargs["torch_dtype"]
+
+        if (
+            (from_pretrained_kwargs.get("torch_dtype", None) == torch.float16)
+            or dtype == torch.float16
+        ) and device in ["cpu", None]:
             logging.warning(
                 "float16 models may not work on CPU. Consider using a GPU or bfloat16."
             )
@@ -1110,6 +1129,7 @@ class HookedTransformer(HookedRootModule):
             device=device,
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
+            dtype=dtype,
             **from_pretrained_kwargs,
         )
 
@@ -1136,7 +1156,7 @@ class HookedTransformer(HookedRootModule):
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to
         # match the HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model, **from_pretrained_kwargs
+            official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
         # Create the HookedTransformer object
@@ -1172,6 +1192,7 @@ class HookedTransformer(HookedRootModule):
         center_unembed=False,
         refactor_factored_attn_matrices=False,
         fold_value_biases=False,
+        dtype=torch.float32,
         default_prepend_bos=True,
         default_padding_side="right",
         **from_pretrained_kwargs,
@@ -1188,6 +1209,7 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            dtype=dtype,
             default_prepend_bos=default_prepend_bos,
             default_padding_side=default_padding_side,
             **from_pretrained_kwargs,
@@ -1508,9 +1530,7 @@ class HookedTransformer(HookedRootModule):
             # [d_model]
             b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
 
-            folded_b_O = b_O_original + einsum(
-                "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
-            )
+            folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
             state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
