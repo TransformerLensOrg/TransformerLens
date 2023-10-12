@@ -24,17 +24,13 @@ jobs:
           python-version: "3.9"
           cache: "poetry"
       - name: Install dependencies
-        run: poetry install --extras docs
+        run: poetry install --with docs
+      - name: Create model properties table
+        run: poetry run make-docs
       - name: Build
-        run: poetry run sphinx-build docs/source docs/build
-      - name: Add model table
-        run: |
-          poetry run python -m transformer_lens.make_docs
-          mv model_properties_table.md docs/source/
-          sed -i '1s/^/# Model Properties Table\n\n/' docs/source/model_properties_table.md
+        run: poetry run build-docs
       - name: Remove .doctrees
         run: rm -r docs/build/.doctrees
-
       - name: Upload to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
