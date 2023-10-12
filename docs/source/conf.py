@@ -32,7 +32,19 @@ source_suffix = {
 }
 
 templates_path = ["_templates"]
-exclude_patterns = []
+
+
+# -- Napoleon Extension Configuration -----------------------------------------
+
+napoleon_include_init_with_doc = True
+napoleon_use_admonition_for_notes = True
+napoleon_custom_sections = [
+    "Motivation:",
+    "Background:",
+    "Context:",
+    "Getting Started:",
+]
+
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -92,6 +104,9 @@ def run_apidoc(_):
     # Path to the package codebase
     package_path = Path(__file__).resolve().parents[2] / "transformer_lens"
 
+    # Template directory
+    template_dir = Path(__file__).resolve().parent / "apidoc_templates"
+
     # Output path for the generated reStructuredText files
     generated_path = Path(__file__).resolve().parent / "generated"
     output_path = generated_path / "code"
@@ -102,7 +117,7 @@ def run_apidoc(_):
     args = [
         "--force",  # Overwrite existing files
         "--separate",  # Put documentation for each module on its own page.
-        "--module-first",  # Put module documentation before submodule documentation.
+        "--templatedir=" + str(template_dir),  # Use custom templates
         "-o",
         str(output_path),
         str(package_path),
@@ -110,6 +125,9 @@ def run_apidoc(_):
 
     # Call sphinx-apidoc
     apidoc.main(args)
+
+
+# -- Sphinx Setup Overrides --------------------------------------------------
 
 
 def setup(app):
