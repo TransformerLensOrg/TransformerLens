@@ -115,6 +115,7 @@ If adding a feature, please add unit tests for it to the tests folder, and check
 - All tests via `make test`
 - Unit tests only via `make unit-test`
 - Acceptance tests only via `make acceptance-test`
+- Docstring tests only via `make docstring-test`
 
 ### Formatting
 
