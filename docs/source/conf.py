@@ -4,8 +4,8 @@ https://www.sphinx-doc.org/en/master/usage/configuration.html
 """
 # pylint: disable=invalid-name
 from pathlib import Path
-from sphinx.ext import apidoc
 
+from sphinx.ext import apidoc
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -75,9 +75,9 @@ functions_to_ignore = [
     "select_compatible_kwargs",
 ]
 
+# Default AutoDoc Options
+# https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_default_options
 autodoc_default_options = {
-    "members": None,
-    "undoc-members": None,
     "exclude-members": ", ".join(functions_to_ignore),
 }
 
