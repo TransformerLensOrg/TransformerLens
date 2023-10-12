@@ -13,39 +13,30 @@ def test_get_config():
 
 def test_get_property():
     """Test get property with attn-only-1l model."""
-    # Test act_fn property
     act_fn = get_property("act_fn", "attn-only-1l")
     assert act_fn == "attn_only"
 
-    # Test n_params property
     n_params = get_property("n_params", "attn-only-1l")
     assert n_params == "1.0M"
 
-    # Test n_layers property
     n_layers = get_property("n_layers", "attn-only-1l")
     assert n_layers == 1
 
-    # Test d_model property
     d_model = get_property("d_model", "attn-only-1l")
     assert d_model == 512
 
-    # Test n_heads property
     n_heads = get_property("n_heads", "attn-only-1l")
     assert n_heads == 8
 
-    # Test n_ctx property
     n_ctx = get_property("n_ctx", "attn-only-1l")
     assert n_ctx == 1024
 
-    # Test d_vocab property
     d_vocab = get_property("d_vocab", "attn-only-1l")
     assert d_vocab == 48262
 
-    # Test d_head property
     d_head = get_property("d_head", "attn-only-1l")
     assert d_head == 64
 
-    # Test d_mlp property
     d_mlp = get_property("d_mlp", "attn-only-1l")
     assert d_mlp == 2048
 
