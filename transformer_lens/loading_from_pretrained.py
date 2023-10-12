@@ -12,7 +12,6 @@ from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
-# %% The model names used to access the models on the HuggingFace Hub.
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
     "gpt2-medium",
@@ -135,6 +134,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-3b",
     "stabilityai/stablelm-tuned-alpha-7b",
 ]
+"""Official model names for models on HuggingFace."""
 
 # Model Aliases:
 MODEL_ALIASES = {
@@ -492,6 +492,7 @@ MODEL_ALIASES = {
         "stablelm-tuned-7b",
     ],
 }
+"""Model aliases for models on HuggingFace."""
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
 DEFAULT_MODEL_ALIASES = [
