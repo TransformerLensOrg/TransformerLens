@@ -45,6 +45,8 @@ class HookedTransformerConfig:
             each head separately, with a hook. Defaults to false to save memory.
         use_hook_mlp_in (bool): whether to use a hook to get the input to the
             MLP layer. Defaults to false to save memory.
+        use_attn_in (bool): whether to explicitly calculate the input of each
+            attention head separately, with a hook. Defaults to false to save memory
         use_attn_scale (bool): whether to scale the attention weights by
             1/sqrt(d_head)
         model_name (str): the name of the model, used to load
@@ -137,6 +139,9 @@ class HookedTransformerConfig:
             default_prepend_bos=False. Note that you can also locally override the default behavior by passing
             in prepend_bos=True/False when you call a method that processes the input string.
         dtype (torch.dtype, *optional*): The model's dtype. Defaults to torch.float32.
+        tokenizer_prepends_bos (bool, *optional*): This flag is set by set_tokenizer. It is set to True only
+            when the tokenizer automatically prepends the BOS token if initialized with add_bos_token=True.
+            We need this information to dynamically control bos prepending.
     """
 
     n_layers: int
@@ -153,6 +158,7 @@ class HookedTransformerConfig:
     use_attn_scale: bool = True
     use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
+    use_attn_in: bool = False
     use_local_attn: bool = False
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
@@ -182,7 +188,7 @@ class HookedTransformerConfig:
     gated_mlp: bool = False
     default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
-    add_special_tokens: Optional[bool] = None  # will be set by set_tokenizer
+    tokenizer_prepends_bos: Optional[bool] = None
 
     def __post_init__(self):
         if self.n_heads == -1:

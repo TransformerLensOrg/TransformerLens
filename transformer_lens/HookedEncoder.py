@@ -118,11 +118,15 @@ class HookedEncoder(HookedRootModule):
 
         resid = self.hook_full_embed(self.embed(tokens, token_type_ids))
 
-        large_negative_number = -1e5
-        additive_attention_mask = (
-            large_negative_number
-            * repeat(1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos")
+        large_negative_number = -torch.inf
+        mask = (
+            repeat(1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos")
             if one_zero_attention_mask is not None
+            else None
+        )
+        additive_attention_mask = (
+            torch.where(mask == 1, large_negative_number, 0)
+            if mask is not None
             else None
         )
 

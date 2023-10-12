@@ -1,4 +1,5 @@
 import pytest
+from transformers import AutoTokenizer
 
 from transformer_lens import HookedTransformer
 
@@ -8,12 +9,11 @@ class TestPrependBos:
 
     # helper functions
     def get_num_tokens_in_prompt(self, model, prompt, intended_prepend_bos):
-        tokenizer = model.tokenizer
-
-        # copied from HookedTransformer.to_tokens()
+        tokenizer = AutoTokenizer.from_pretrained(
+            model.tokenizer.name_or_path, add_bos_token=False
+        )
         tokens = tokenizer(
             prompt,
-            add_special_tokens=model.cfg.add_special_tokens,
         )["input_ids"]
 
         return len(tokens) + int(intended_prepend_bos)
@@ -125,3 +125,28 @@ class TestPrependBos:
             model.tokenizer.bos_token_id, self.prompt, prepend_bos=True
         )
         assert bos_position == 0
+
+    def test_same_tokenization(self, model):
+        prompt = self.prompt
+        prompts = [
+            "Italy is in Europe.",
+            "Pyeongchang Olympics was held in 2018",
+            "2023-09-09",
+            "287594812673495",
+        ]
+
+        model.tokenizer.padding_side = "right"
+
+        for input in [prompt, prompts]:
+            tokens_with_bos = model.to_tokens(input, prepend_bos=True)
+            tokens_without_bos = model.to_tokens(input, prepend_bos=False)
+            assert tokens_with_bos[..., 1:].equal(tokens_without_bos)
+
+            str_tokens_with_bos = model.to_str_tokens(input, prepend_bos=True)
+            str_tokens_without_bos = model.to_str_tokens(input, prepend_bos=False)
+
+            if isinstance(str_tokens_with_bos[0], list):
+                for i in range(len(str_tokens_with_bos)):
+                    assert str_tokens_with_bos[i][1:] == str_tokens_without_bos[i]
+            else:
+                assert str_tokens_with_bos[1:] == str_tokens_without_bos

@@ -1,0 +1,23 @@
+{
+    "recommendations": [
+        "christian-kohler.path-intellisense",
+        "davidanson.vscode-markdownlint",
+        "donjayamanne.githistory",
+        "donjayamanne.python-extension-pack",
+        "github.copilot",
+        "github.vscode-pull-request-github",
+        "ionutvmi.path-autocomplete",
+        "mikoz.autoflake-extension",
+        "ms-python.isort",
+        "ms-python.pylint",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-toolsai.jupyter-keymap",
+        "ms-toolsai.jupyter-renderers",
+        "ms-toolsai.jupyter",
+        "richie5um2.vscode-sort-json",
+        "stkb.rewrap",
+        "streetsidesoftware.code-spell-checker",
+        "yzhang.markdown-all-in-one",
+    ]
+}

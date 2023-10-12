@@ -24,7 +24,7 @@ jobs:
           python-version: "3.9"
           cache: "poetry"
       - name: Install dependencies
-        run: poetry lock && poetry install --extras docs
+        run: poetry install --extras docs
       - name: Build
         run: poetry run sphinx-build docs/source docs/build
       - name: Add model table
