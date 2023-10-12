@@ -6,12 +6,18 @@ This script extracts various properties of pretrained models from the
 among others, and generates a markdown table. This table is saved to the 
 docs directory.
 """
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
 
 from transformer_lens import loading
+
+# Docs Directories
+CURRENT_DIR = Path(__file__).parent
+SOURCE_PATH = CURRENT_DIR / "../docs/source"
+BUILD_PATH = CURRENT_DIR / "../docs/build"
 
 
 @lru_cache(maxsize=None)
@@ -67,7 +73,7 @@ def get_property(name, model_name):
     return cfg.to_dict()[name]
 
 
-def main():
+def generate_model_table():
     """Generate a markdown table summarizing properties of pretrained models."""
 
     # Create the table
@@ -98,11 +104,20 @@ def main():
     markdown_string = "# Model Properties Table\n\n" + markdown_string
 
     # Save to the docs directory
-    current_dir = Path(__file__).parent
-    file_path = current_dir / "../docs/source/model_properties_table.md"
+    file_path = CURRENT_DIR / "../docs/source/model_properties_table.md"
     with open(file_path, "w", encoding="utf-8") as file:
         file.write(markdown_string)
 
 
-if __name__ == "__main__":
-    main()
+def build_docs():
+    """Build the docs."""
+    generate_model_table()
+    subprocess.run(["sphinx-build", SOURCE_PATH, BUILD_PATH], check=True)
+
+
+def docs_hot_reload():
+    """Hot reload the docs."""
+    generate_model_table()
+    subprocess.run(
+        ["sphinx-autobuild", "--open-browser", SOURCE_PATH, BUILD_PATH], check=True
+    )

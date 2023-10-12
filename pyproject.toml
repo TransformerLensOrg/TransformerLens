@@ -87,6 +87,6 @@ exclude = '''
 '''
 
 [tool.poetry.scripts]
-make-docs = "transformer_lens.make_docs:main"
-build-docs = "sphinx-build docs/source docs/build"
-docs-hot-reload = "sphinx-autobuild docs/source docs/build"
+make-model-properties-table = "transformer_lens.make_docs:generate_model_table"
+build-docs = "transformer_lens.make_docs:build_docs"
+docs-hot-reload = "transformer_lens.make_docs:docs_hot_reload"

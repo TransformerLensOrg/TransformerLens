@@ -25,8 +25,6 @@ jobs:
           cache: "poetry"
       - name: Install dependencies
         run: poetry install --with docs
-      - name: Create model properties table
-        run: poetry run make-docs
       - name: Build
         run: poetry run build-docs
       - name: Remove .doctrees
