@@ -18,6 +18,7 @@ from transformer_lens import loading
 CURRENT_DIR = Path(__file__).parent
 SOURCE_PATH = CURRENT_DIR / "../docs/source"
 BUILD_PATH = CURRENT_DIR / "../docs/build"
+PACKAGE_DIR = CURRENT_DIR.parent
 
 
 @lru_cache(maxsize=None)
@@ -119,5 +120,13 @@ def docs_hot_reload():
     """Hot reload the docs."""
     generate_model_table()
     subprocess.run(
-        ["sphinx-autobuild", "--open-browser", SOURCE_PATH, BUILD_PATH], check=True
+        [
+            "sphinx-autobuild",
+            "--watch",
+            str(PACKAGE_DIR),
+            "--open-browser",
+            SOURCE_PATH,
+            BUILD_PATH,
+        ],
+        check=True,
     )
