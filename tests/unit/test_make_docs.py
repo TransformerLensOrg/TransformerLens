@@ -1,8 +1,8 @@
 """Make Docs Tests."""
 import pytest
 
-from transformer_lens import HookedTransformerConfig
 from docs.make_docs import get_config, get_property
+from transformer_lens import HookedTransformerConfig
 
 
 def test_get_config():
