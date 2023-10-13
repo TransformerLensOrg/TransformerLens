@@ -1,3 +1,8 @@
+"""SVD Interpreter.
+
+Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
+:class:`transformer_lens.HookedTransformer`.
+"""
 from typing import Optional, Union
 
 import fancy_einsum as einsum
