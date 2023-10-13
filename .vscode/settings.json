@@ -14,4 +14,8 @@
     "pylint.importStrategy": "fromEnvironment",
     "notebook.formatOnCellExecution": true,
     "notebook.formatOnSave.enabled": true,
+    "cSpell.words": [
+        "autoregressive",
+        "evals"
+    ],
 }
