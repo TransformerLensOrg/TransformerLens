@@ -1,0 +1,37 @@
+transformer\_lens package
+=========================
+
+.. automodule:: transformer_lens
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.utilities
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 4
+
+   transformer_lens.ActivationCache
+   transformer_lens.FactoredMatrix
+   transformer_lens.HookedEncoder
+   transformer_lens.HookedTransformer
+   transformer_lens.HookedTransformerConfig
+   transformer_lens.SVDInterpreter
+   transformer_lens.components
+   transformer_lens.evals
+   transformer_lens.head_detector
+   transformer_lens.hook_points
+   transformer_lens.loading_from_pretrained
+   transformer_lens.past_key_value_caching
+   transformer_lens.patching
+   transformer_lens.train
+   transformer_lens.utils

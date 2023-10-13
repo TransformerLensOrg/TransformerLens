@@ -1,0 +1,460 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.head_detector module" href="transformer_lens.head_detector.html" /><link rel="prev" title="transformer_lens.components module" href="transformer_lens.components.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+        <title>transformer_lens.evals module - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.evals module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.evals">
+<span id="transformer-lens-evals-module"></span><h1>transformer_lens.evals module<a class="headerlink" href="#module-transformer_lens.evals" title="Permalink to this heading">#</a></h1>
+<p>Evaluation Helpers.</p>
+<p>This module contains some rough evals for models, but you are likely better off using the
+HuggingFace evaluate library if you want to do anything properly. This is however here if you want
+it and want to eg cheaply and roughly compare models you’ve trained to baselines.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.evals.IOIDataset">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">IOIDataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">templates</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nouns</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symmetric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.IOIDataset" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Dataset</span></code></p>
+<p>Dataset for Indirect Object Identification tasks.
+Paper: <a class="reference external" href="https://arxiv.org/pdf/2211.00593.pdf">https://arxiv.org/pdf/2211.00593.pdf</a></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens.evals</span> <span class="kn">import</span> <span class="n">ioi_eval</span><span class="p">,</span> <span class="n">IOIDataset</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens.HookedTransformer</span> <span class="kn">import</span> <span class="n">HookedTransformer</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s1">&#39;gpt2-small&#39;</span><span class="p">)</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Eval like this</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">ioi_eval</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">num_samples</span><span class="o">=</span><span class="mi">100</span><span class="p">))</span>
+<span class="go">{&#39;Logit Difference&#39;: 3.655226745605469, &#39;Accuracy&#39;: 1.0}</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Can use custom dataset</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">IOIDataset</span><span class="p">(</span>
+<span class="go">    tokenizer=model.tokenizer,</span>
+<span class="go">    num_samples=100,</span>
+<span class="go">    templates=[&#39;[A] met with [B]. [B] gave the [OBJECT] to [A]&#39;],</span>
+<span class="go">    names=[&#39;Alice&#39;, &#39;Bob&#39;, &#39;Charlie&#39;],</span>
+<span class="go">    nouns={&#39;OBJECT&#39;: [&#39;ball&#39;, &#39;book&#39;]},</span>
+<span class="go">    )</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">ioi_eval</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">dataset</span><span class="o">=</span><span class="n">ds</span><span class="p">))</span>
+<span class="go">{&#39;Logit Difference&#39;: 3.7498160457611083, &#39;Accuracy&#39;: 1.0}</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.evals.IOIDataset.get_default_names">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_default_names</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.IOIDataset.get_default_names" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.evals.IOIDataset.get_default_nouns">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_default_nouns</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.IOIDataset.get_default_nouns" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.evals.IOIDataset.get_default_templates">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_default_templates</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.IOIDataset.get_default_templates" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.evals.IOIDataset.get_sample">
+<span class="sig-name descname"><span class="pre">get_sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">symmetric</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.evals.IOIDataset.get_sample" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.evaluate">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">evaluate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">truncate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.evaluate" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.evaluate_on_dataset">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">evaluate_on_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_loader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">truncate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cuda'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.evaluate_on_dataset" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.induction_loss">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">induction_loss</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subseq_len</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">384</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cuda'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.induction_loss" title="Permalink to this definition">#</a></dt>
+<dd><p>Generates a batch of random sequences repeated twice, and measures model performance on the second half. Tests whether a model has induction heads.</p>
+<p>By default, prepends a beginning of string token (when prepend_bos flag defaults to None, model.cfg.default_prepend_bos is used
+whose default is True unless specified otherwise), which is useful to give models a resting position, and sometimes models were trained with this.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.ioi_eval">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">ioi_eval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symmetric</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.ioi_eval" title="Permalink to this definition">#</a></dt>
+<dd><p>Evaluates the model on the Indirect Object Identification task.</p>
+<dl>
+<dt>dataset must be a torch Dataset that returns a dict:</dt><dd><dl class="simple">
+<dt>{</dt><dd><p>‘prompt’: torch.LongTensor,
+‘IO’: torch.LongTensor,
+‘S’: torch.LongTensor</p>
+</dd>
+</dl>
+<p>}</p>
+</dd>
+</dl>
+<p>Returns average logit difference and accuracy.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.make_code_data_loader">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">make_code_data_loader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.make_code_data_loader" title="Permalink to this definition">#</a></dt>
+<dd><p>Evaluate on the CodeParrot dataset, a dump of Python code.</p>
+<p>All models seem to get significantly lower loss here (even non-code trained models like GPT-2),
+presumably code is much easier to predict than natural language?</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.make_owt_data_loader">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">make_owt_data_loader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.make_owt_data_loader" title="Permalink to this definition">#</a></dt>
+<dd><p>Evaluate on OpenWebText an open source replication of the GPT-2 training corpus (Reddit links with &gt;3 karma)</p>
+<p>I think the Mistral models were trained on this dataset, so they get very good performance.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.make_pile_data_loader">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">make_pile_data_loader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.make_pile_data_loader" title="Permalink to this definition">#</a></dt>
+<dd><p>Evaluate on the first 10k texts from The Pile.</p>
+<p>The Pile is EleutherAI’s general-purpose english dataset, made of 22 subsets
+including academic papers, books, internet content…</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.make_wiki_data_loader">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">make_wiki_data_loader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.make_wiki_data_loader" title="Permalink to this definition">#</a></dt>
+<dd><p>Evaluate on Wikitext 2, a dump of Wikipedia articles. (Using the train set because it’s larger, I don’t really expect anyone to bother with quarantining the validation set nowadays.)</p>
+<p>Note there’s likely to be dataset leakage into training data (though I believe GPT-2 was explicitly trained on non-Wikipedia data)</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.evals.sanity_check">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">sanity_check</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.sanity_check" title="Permalink to this definition">#</a></dt>
+<dd><p>Very basic eval - just feeds a string into the model (in this case, the first paragraph of Circuits: Zoom In), and returns the loss. It’s a rough and quick sanity check - if the loss is &lt;5 the model is probably OK, if the loss is &gt;7 something’s gone wrong.</p>
+<p>Note that this is a very basic eval, and doesn’t really tell you much about the model’s performance.</p>
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.head_detector.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens.head_detector module</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.components.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.components module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.evals module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.evals.IOIDataset"><code class="docutils literal notranslate"><span class="pre">IOIDataset</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.evals.IOIDataset.get_default_names"><code class="docutils literal notranslate"><span class="pre">IOIDataset.get_default_names()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.IOIDataset.get_default_nouns"><code class="docutils literal notranslate"><span class="pre">IOIDataset.get_default_nouns()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.IOIDataset.get_default_templates"><code class="docutils literal notranslate"><span class="pre">IOIDataset.get_default_templates()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.IOIDataset.get_sample"><code class="docutils literal notranslate"><span class="pre">IOIDataset.get_sample()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.evals.evaluate"><code class="docutils literal notranslate"><span class="pre">evaluate()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.evaluate_on_dataset"><code class="docutils literal notranslate"><span class="pre">evaluate_on_dataset()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.induction_loss"><code class="docutils literal notranslate"><span class="pre">induction_loss()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.ioi_eval"><code class="docutils literal notranslate"><span class="pre">ioi_eval()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.make_code_data_loader"><code class="docutils literal notranslate"><span class="pre">make_code_data_loader()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.make_owt_data_loader"><code class="docutils literal notranslate"><span class="pre">make_owt_data_loader()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.make_pile_data_loader"><code class="docutils literal notranslate"><span class="pre">make_pile_data_loader()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.make_wiki_data_loader"><code class="docutils literal notranslate"><span class="pre">make_wiki_data_loader()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.evals.sanity_check"><code class="docutils literal notranslate"><span class="pre">sanity_check()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/scripts/furo.js"></script>
+    </body>
+</html>

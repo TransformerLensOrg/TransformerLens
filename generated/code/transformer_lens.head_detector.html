@@ -1,0 +1,430 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.hook_points module" href="transformer_lens.hook_points.html" /><link rel="prev" title="transformer_lens.evals module" href="transformer_lens.evals.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+        <title>transformer_lens.head_detector module - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.head_detector">
+<span id="transformer-lens-head-detector-module"></span><h1>transformer_lens.head_detector module<a class="headerlink" href="#module-transformer_lens.head_detector" title="Permalink to this heading">#</a></h1>
+<p>Head Detector.</p>
+<p>Utilities for detecting specific types of heads (e.g. previous token heads).</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.head_detector.compute_head_attention_similarity_score">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.head_detector.</span></span><span class="sig-name descname"><span class="pre">compute_head_attention_similarity_score</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attention_pattern</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detection_pattern</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_current_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error_measure</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'abs'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mul'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#transformer_lens.head_detector.compute_head_attention_similarity_score" title="Permalink to this definition">#</a></dt>
+<dd><p>Compute the similarity between <cite>attention_pattern</cite> and <cite>detection_pattern</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>attention_pattern</strong> – Lower triangular matrix (Tensor) representing the attention pattern of a particular attention head.</p></li>
+<li><p><strong>detection_pattern</strong> – Lower triangular matrix (Tensor) representing the attention pattern we are looking for.</p></li>
+<li><p><strong>exclude_bos</strong> – <cite>True</cite> if the beginning-of-sentence (BOS) token should be omitted from comparison. <cite>False</cite> otherwise.</p></li>
+<li><p><strong>exclude_bcurrent_token</strong> – <cite>True</cite> if the current token at each position should be omitted from comparison. <cite>False</cite> otherwise.</p></li>
+<li><p><strong>error_measure</strong> – “abs” for using absolute values of element-wise differences as the error measure. “mul” for using element-wise multiplication (legacy code).</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.head_detector.detect_head">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.head_detector.</span></span><span class="sig-name descname"><span class="pre">detect_head</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer" title="transformer_lens.HookedTransformer.HookedTransformer"><span class="pre">HookedTransformer</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detection_pattern</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'previous_token_head'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'duplicate_token_head'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'induction_head'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_current_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error_measure</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'abs'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mul'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'mul'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.head_detector.detect_head" title="Permalink to this definition">#</a></dt>
+<dd><p>Searches the model (or a set of specific heads, for circuit analysis) for a particular type of attention head.
+This head is specified by a detection pattern, a (sequence_length, sequence_length) tensor representing the attention pattern we expect that type of attention head to show.
+The detection pattern can be also passed not as a tensor, but as a name of one of pre-specified types of attention head (see <cite>HeadName</cite> for available patterns), in which case the tensor is computed within the function itself.</p>
+<p>There are two error measures available for quantifying the match between the detection pattern and the actual attention pattern.</p>
+<p>1. <cite>“mul”</cite> (default) multiplies both tensors element-wise and divides the sum of the result by the sum of the attention pattern.
+Typically, the detection pattern should in this case contain only ones and zeros, which allows a straightforward interpretation of the score:
+how big fraction of this head’s attention is allocated to these specific query-key pairs?
+Using values other than 0 or 1 is not prohibited but will raise a warning (which can be disabled, of course).
+2. <cite>“abs”</cite> calculates the mean element-wise absolute difference between the detection pattern and the actual attention pattern.
+The “raw result” ranges from 0 to 2 where lower score corresponds to greater accuracy. Subtracting it from 1 maps that range to (-1, 1) interval,
+with 1 being perfect match and -1 perfect mismatch.</p>
+<p><strong>Which one should you use?</strong> <cite>“mul”</cite> is likely better for quick or exploratory investigations. For precise examinations where you’re trying to
+reproduce as much functionality as possible or really test your understanding of the attention head, you probably want to switch to <cite>“abs”</cite>.</p>
+<p>The advantage of <cite>“abs”</cite> is that you can make more precise predictions, and have that measured in the score.
+You can predict, for instance, 0.2 attention to X, and 0.8 attention to Y, and your score will be better if your prediction is closer.
+The “mul” metric does not allow this, you’ll get the same score if attention is 0.2, 0.8 or 0.5, 0.5 or 0.8, 0.2.</p>
+<blockquote>
+<div><p>model: Model being used.
+seq: String or list of strings being fed to the model.
+head_name: Name of an existing head in HEAD_NAMES we want to check. Must pass either a head_name or a detection_pattern, but not both!
+detection_pattern: (sequence_length, sequence_length) Tensor representing what attention pattern corresponds to the head we’re looking for <strong>or</strong> the name of a pre-specified head. Currently available heads are: <cite>[“previous_token_head”, “duplicate_token_head”, “induction_head”]</cite>.
+heads: If specific attention heads is given here, all other heads’ score is set to -1. Useful for IOI-style circuit analysis. Heads can be spacified as a list tuples (layer, head) or a dictionary mapping a layer to heads within that layer that we want to analyze.
+cache: Include the cache to save time if you want.
+exclude_bos: Exclude attention paid to the beginning of sequence token.
+exclude_current_token: Exclude attention paid to the current token.
+error_measure: <cite>“mul”</cite> for using element-wise multiplication (default). <cite>“abs”</cite> for using absolute values of element-wise differences as the error measure.</p>
+</div></blockquote>
+<p>A (n_layers, n_heads) Tensor representing the score for each attention head.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens</span> <span class="kn">import</span> <span class="n">HookedTransformer</span><span class="p">,</span>  <span class="n">utils</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens.head_detector</span> <span class="kn">import</span> <span class="n">detect_head</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">plotly.express</span> <span class="k">as</span> <span class="nn">px</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">imshow</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">renderer</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xaxis</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">yaxis</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">px</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">utils</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">tensor</span><span class="p">),</span> <span class="n">color_continuous_midpoint</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">color_continuous_scale</span><span class="o">=</span><span class="s2">&quot;RdBu&quot;</span><span class="p">,</span> <span class="n">labels</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span><span class="n">xaxis</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">:</span><span class="n">yaxis</span><span class="p">},</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="n">renderer</span><span class="p">)</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;gpt2-small&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sequence</span> <span class="o">=</span> <span class="s2">&quot;This is a test sequence. This is a test sequence.&quot;</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">attention_score</span> <span class="o">=</span> <span class="n">detect_head</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">sequence</span><span class="p">,</span> <span class="s2">&quot;previous_token_head&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">imshow</span><span class="p">(</span><span class="n">attention_score</span><span class="p">,</span> <span class="n">zmin</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">xaxis</span><span class="o">=</span><span class="s2">&quot;Head&quot;</span><span class="p">,</span> <span class="n">yaxis</span><span class="o">=</span><span class="s2">&quot;Layer&quot;</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="s2">&quot;Previous Head Matches&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.head_detector.get_duplicate_token_head_detection_pattern">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.head_detector.</span></span><span class="sig-name descname"><span class="pre">get_duplicate_token_head_detection_pattern</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.head_detector.get_duplicate_token_head_detection_pattern" title="Permalink to this definition">#</a></dt>
+<dd><p>Outputs a detection score for [duplicate token heads](<a class="reference external" href="https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo">https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=2UkvedzOnghL5UHUgVhROxeo</a>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>sequence</strong> – String being fed to the model.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.head_detector.get_induction_head_detection_pattern">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.head_detector.</span></span><span class="sig-name descname"><span class="pre">get_induction_head_detection_pattern</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.head_detector.get_induction_head_detection_pattern" title="Permalink to this definition">#</a></dt>
+<dd><p>Outputs a detection score for [induction heads](<a class="reference external" href="https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY">https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=_tFVuP5csv5ORIthmqwj0gSY</a>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>sequence</strong> – String being fed to the model.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.head_detector.get_previous_token_head_detection_pattern">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.head_detector.</span></span><span class="sig-name descname"><span class="pre">get_previous_token_head_detection_pattern</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.head_detector.get_previous_token_head_detection_pattern" title="Permalink to this definition">#</a></dt>
+<dd><p>Outputs a detection score for [previous token heads](<a class="reference external" href="https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc">https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=0O5VOHe9xeZn8Ertywkh7ioc</a>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tokens</strong> – Tokens being fed to the model.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.head_detector.get_supported_heads">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.head_detector.</span></span><span class="sig-name descname"><span class="pre">get_supported_heads</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.head_detector.get_supported_heads" title="Permalink to this definition">#</a></dt>
+<dd><p>Returns a list of supported heads.</p>
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.hook_points.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens.hook_points module</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.evals.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.evals module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.head_detector module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.head_detector.compute_head_attention_similarity_score"><code class="docutils literal notranslate"><span class="pre">compute_head_attention_similarity_score()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.head_detector.detect_head"><code class="docutils literal notranslate"><span class="pre">detect_head()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.head_detector.get_duplicate_token_head_detection_pattern"><code class="docutils literal notranslate"><span class="pre">get_duplicate_token_head_detection_pattern()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.head_detector.get_induction_head_detection_pattern"><code class="docutils literal notranslate"><span class="pre">get_induction_head_detection_pattern()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.head_detector.get_previous_token_head_detection_pattern"><code class="docutils literal notranslate"><span class="pre">get_previous_token_head_detection_pattern()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.head_detector.get_supported_heads"><code class="docutils literal notranslate"><span class="pre">get_supported_heads()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/scripts/furo.js"></script>
+    </body>
+</html>

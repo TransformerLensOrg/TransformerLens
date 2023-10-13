@@ -1,0 +1,821 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="Model Properties Table" href="../model_properties_table.html" /><link rel="prev" title="transformer_lens.train module" href="transformer_lens.train.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+        <title>transformer_lens.utils module - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.utils">
+<span id="transformer-lens-utils-module"></span><h1>transformer_lens.utils module<a class="headerlink" href="#module-transformer_lens.utils" title="Permalink to this heading">#</a></h1>
+<p>Utils.</p>
+<p>This module contains varied utility functions used throughout the library.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.utils.LocallyOverridenDefaults">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">LocallyOverridenDefaults</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">overrides</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.LocallyOverridenDefaults" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Context manager that allows temporary overriding of default values within a model.
+Once the context is exited, the default values are restored.</p>
+<p>WARNING: This context manager must be used for any function/method that directly accesses
+default values which may be overridden by the user using the function/method’s arguments,
+e.g., <cite>model.cfg.default_prepend_bos</cite> and <cite>model.tokenizer.padding_side</cite> which can be
+overriden by <cite>prepend_bos</cite> and <cite>padding_side</cite> arguments, respectively, in the <cite>to_tokens</cite>.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.utils.Slice">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">Slice</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.Slice" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>We use a custom slice syntax because Python/Torch’s don’t let us reduce the number of dimensions:</p>
+<p>Note that slicing with input_slice=None means do nothing, NOT add an extra dimension (use unsqueeze for that)</p>
+<p>There are several modes:
+int - just index with that integer (decreases number of dimensions)
+slice - Input is a tuple converted to a slice ((k,) means :k, (k, m) means m:k, (k, m, n) means m:k:n)
+array - Input is a list or tensor or numpy array, converted to a numpy array, and we take the stack of values at those indices
+identity - Input is None, leave it unchanged.</p>
+<p>Examples for dim=0:
+if input_slice=0, tensor -&gt; tensor[0]
+elif input_slice = (1, 5), tensor -&gt; tensor[1:5]
+elif input_slice = (1, 5, 2), tensor -&gt; tensor[1:5:2] (ie indexing with [1, 3])
+elif input_slice = [1, 4, 5], tensor -&gt; tensor[[1, 4, 5]] (ie changing the first axis to have length 3, and taking the indices 1, 4, 5 out).
+elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Class<span class="colon">:</span></dt>
+<dd class="field-odd"><p><cite>Slice</cite>
+An object that represents a slice input. It can be a tuple of integers or a slice object.</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.utils.Slice.apply">
+<span class="sig-name descname"><span class="pre">apply</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.utils.Slice.apply" title="Permalink to this definition">#</a></dt>
+<dd><p>Takes in a tensor and a slice, and applies the slice to the given dimension (supports positive and negative dimension syntax). Returns the sliced tensor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tensor</strong> (<em>torch.Tensor</em>) – The tensor to slice.</p></li>
+<li><p><strong>dim</strong> (<em>int</em><em>, </em><em>optional</em>) – The dimension to slice along. Supports positive and negative dimension syntax.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The sliced tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.utils.Slice.indices">
+<span class="sig-name descname"><span class="pre">indices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int32</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int64</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.Slice.indices" title="Permalink to this definition">#</a></dt>
+<dd><p>Returns the indices when this slice is applied to an axis of size max_ctx. Returns them as a numpy array, for integer slicing it is eg array([4])</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>max_ctx</strong> (<em>int</em><em>, </em><em>optional</em>) – The size of the axis to slice. Only used if the slice is not an integer.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The indices that this slice will select.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>np.ndarray</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the slice is not an integer and max_ctx is not specified.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="transformer_lens.utils.SliceInput">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">SliceInput</span></span><a class="headerlink" href="#transformer_lens.utils.SliceInput" title="Permalink to this definition">#</a></dt>
+<dd><p>An optional type alias for a slice input used in the <cite>ActivationCache</cite> module.</p>
+<dl class="simple">
+<dt>A <cite>SliceInput</cite> can be one of the following types:</dt><dd><ul class="simple">
+<li><p><cite>int</cite>: an integer representing a single position</p></li>
+<li><p><cite>Tuple[int, int]</cite>: a tuple of two integers representing a range of positions</p></li>
+<li><p><cite>Tuple[int, int, int]</cite>: a tuple of three integers representing a range of positions with a step size</p></li>
+<li><p><cite>List[int]</cite>: a list of integers representing multiple positions</p></li>
+<li><p><cite>torch.Tensor</cite>: a tensor containing a boolean mask or a list of indices to be selected from the input tensor.</p></li>
+</ul>
+</dd>
+</dl>
+<p><cite>SliceInput</cite> is used in the <cite>apply_ln_to_stack</cite> method in the <cite>ActivationCache</cite> module.</p>
+<dl class="simple">
+<dt><a class="reference internal" href="#transformer_lens.utils.SliceInput" title="transformer_lens.utils.SliceInput"><code class="xref py py-class docutils literal notranslate"><span class="pre">SliceInput</span></code></a></dt><dd><p>An object that represents a slice input. It can be a tuple of integers or a slice object.</p>
+</dd>
+</dl>
+<p>alias of <code class="xref py py-obj docutils literal notranslate"><span class="pre">Optional</span></code>[<code class="xref py py-obj docutils literal notranslate"><span class="pre">Union</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">List</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>], <code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ndarray</span></code>]]</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.composition_scores">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">composition_scores</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">left</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.FactoredMatrix.html#transformer_lens.FactoredMatrix.FactoredMatrix" title="transformer_lens.FactoredMatrix.FactoredMatrix"><span class="pre">FactoredMatrix</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">right</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.FactoredMatrix.html#transformer_lens.FactoredMatrix.FactoredMatrix" title="transformer_lens.FactoredMatrix.FactoredMatrix"><span class="pre">FactoredMatrix</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">broadcast_dims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'*leading_dims'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'*leading_dims_left_and_right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.composition_scores" title="Permalink to this definition">#</a></dt>
+<dd><p>See <cite>HookedTransformer.all_composition_scores</cite> for documentation.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.download_file_from_hf">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">download_file_from_hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">repo_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">subfolder</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'.'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/home/runner/.cache/huggingface/hub'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_is_torch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.download_file_from_hf" title="Permalink to this definition">#</a></dt>
+<dd><p>Helper function to download files from the HuggingFace Hub, from subfolder/file_name in repo_name, saving locally to cache_dir and returning the loaded file (if a json or Torch object) and the file path otherwise.</p>
+<p>If it’s a Torch file without the “.pth” extension, set force_is_torch=True to load it as a Torch object.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.extend_tensor_with_ones">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">extend_tensor_with_ones</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.extend_tensor_with_ones" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.gelu_fast">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">gelu_fast</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.gelu_fast" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.gelu_new">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">gelu_new</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.gelu_new" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_act_name">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_act_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_act_name" title="Permalink to this definition">#</a></dt>
+<dd><p>Helper function to convert shorthand to an activation name. Pretty hacky, intended to be useful for short feedback
+loop hacking stuff together, more so than writing good, readable code. But it is deterministic!</p>
+<p>Returns a name corresponding to an activation point in a TransformerLens model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – Takes in the name of the activation. This can be used to specify any activation name by itself.</p></li>
+<li><p><strong>it</strong> (<em>The code assumes the first sequence</em><em> of </em><em>digits passed to</em>) – </p></li>
+<li><p><strong>type.</strong> (<em>that is the layer</em>) – </p></li>
+<li><p><strong>number</strong> (<em>Given only a word and</em>) – </p></li>
+<li><p><strong>is.</strong> (<em>it leaves layer and layer_type as</em>) – </p></li>
+<li><p><strong>word</strong> (<em>Given only a</em>) – </p></li>
+<li><p><strong>is.</strong> – </p></li>
+<li><p><strong>Examples</strong> – get_act_name(‘embed’) = get_act_name(‘embed’, None, None)
+get_act_name(‘k6’) = get_act_name(‘k’, 6, None)
+get_act_name(‘scale4ln1’) = get_act_name(‘scale’, 4, ‘ln1’)</p></li>
+<li><p><strong>layer</strong> (<em>int</em><em>, </em><em>optional</em>) – Takes in the layer number. Used for activations that appear in every block.</p></li>
+<li><p><strong>layer_type</strong> (<em>string</em><em>, </em><em>optional</em>) – Used to distinguish between activations that appear multiple times in one block.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Full Examples:</p>
+<p>get_act_name(‘k’, 6, ‘a’)==’blocks.6.attn.hook_k’
+get_act_name(‘pre’, 2)==’blocks.2.mlp.hook_pre’
+get_act_name(‘embed’)==’hook_embed’
+get_act_name(‘normalized’, 27, ‘ln2’)==’blocks.27.ln2.hook_normalized’
+get_act_name(‘k6’)==’blocks.6.attn.hook_k’
+get_act_name(‘scale4ln1’)==’blocks.4.ln1.hook_scale’
+get_act_name(‘pre5’)==’blocks.5.mlp.hook_pre’</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_attention_mask">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_attention_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.utils.get_attention_mask" title="Permalink to this definition">#</a></dt>
+<dd><p>Computes the attention mask for the tokenized input.
+NOTE: Only the leftmost leading pads (when <cite>padding_side == left</cite>)
+or rightmost trailing pads (when <cite>padding_side == right</cite>) are
+considered as real pad tokens that should not be attended.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tokenizer</strong> – The tokenizer used for tokenization.</p></li>
+<li><p><strong>tokens</strong> (<em>torch.Tensor</em>) – The tokenized input.</p></li>
+<li><p><strong>prepend_bos</strong> (<em>bool</em>) – If True, a BOS token is prepended to the input.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The attention mask for the input.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_causal_mask_for_left_padding">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_causal_mask_for_left_padding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.utils.get_causal_mask_for_left_padding" title="Permalink to this definition">#</a></dt>
+<dd><p>Generate a causal mask for left padded sequences.</p>
+<p>The generated mask will have dimensions [batch_size, pos, pos], and its purpose is to prevent each token from
+attending to future tokens in the sequence. Additionally, this mask prevents each token from attending to
+padding tokens in the past positions for left-padded sequences.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>left_attention_mask</strong> (<em>torch.Tensor</em>) – The left attention mask, indicating which tokens are
+not padding tokens. Shape: [batch_size, pos]</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The causal attention mask for left padded sequences. Shape: [batch_size, pos, pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_corner">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_corner</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_corner" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_cumsum_along_dim">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_cumsum_along_dim</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reverse</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_cumsum_along_dim" title="Permalink to this definition">#</a></dt>
+<dd><p>Returns the cumulative sum of a tensor along a given dimension.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_dataset">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dataset</span></span></span><a class="headerlink" href="#transformer_lens.utils.get_dataset" title="Permalink to this definition">#</a></dt>
+<dd><p>Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), <em>not</em> a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader.</p>
+<p>Each dataset has a ‘text’ field, which contains the relevant info, some also have several meta data fields</p>
+<p>Kwargs will be passed to the huggingface dataset loading function, e.g. “data_dir”</p>
+<p>Possible inputs:
+* openwebtext (approx the GPT-2 training data <a class="reference external" href="https://huggingface.co/datasets/openwebtext">https://huggingface.co/datasets/openwebtext</a>)
+* pile (The Pile, a big mess of tons of diverse data <a class="reference external" href="https://pile.eleuther.ai/">https://pile.eleuther.ai/</a>)
+* c4 (Colossal, Cleaned, Common Crawl - basically openwebtext but bigger <a class="reference external" href="https://huggingface.co/datasets/c4">https://huggingface.co/datasets/c4</a>)
+* code (Codeparrot Clean, a Python code dataset <a class="reference external" href="https://huggingface.co/datasets/codeparrot/codeparrot-clean">https://huggingface.co/datasets/codeparrot/codeparrot-clean</a> )
+* c4_code (c4 + code - the 20K data points from c4-10k and code-10k. This is the mix of datasets used to train my interpretability-friendly models, though note that they are <em>not</em> in the correct ratio! There’s 10K texts for each, but about 22M tokens of code and 5M tokens of C4)
+* wiki (Wikipedia, generated from the 20220301.en split of <a class="reference external" href="https://huggingface.co/datasets/wikipedia">https://huggingface.co/datasets/wikipedia</a> )</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_device">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_device" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_input_with_manually_prepended_bos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_input_with_manually_prepended_bos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_input_with_manually_prepended_bos" title="Permalink to this definition">#</a></dt>
+<dd><p>Manually prepends the bos token to the input.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tokenizer</strong> (<em>AutoTokenizer</em>) – The tokenizer to use for prepending the bos token.</p></li>
+<li><p><strong>input</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>List</em><em>[</em><em>str</em><em>]</em><em>]</em>) – The input to prepend the bos token to.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The input with the bos token manually prepended.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Union[str, List[str]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_nested_attr">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_nested_attr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attr_str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_nested_attr" title="Permalink to this definition">#</a></dt>
+<dd><p>Retrieves a nested attribute from an object based on a dot-separated string.</p>
+<p>For example, if <cite>attr_str</cite> is “a.b.c”, this function will return <cite>obj.a.b.c</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obj</strong> (<em>Any</em>) – The object from which to retrieve the attribute.</p></li>
+<li><p><strong>attr_str</strong> (<em>str</em>) – A dot-separated string representing the attribute hierarchy.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The value of the nested attribute.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Any</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_tokenizer_with_bos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_tokenizer_with_bos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_tokenizer_with_bos" title="Permalink to this definition">#</a></dt>
+<dd><p>Returns the tokenizer initialized with add_bos_token=True.
+Such a tokenizer should be set as the default tokenizer because the tokenization of some
+tokenizers like LlamaTokenizer are different when bos token is automatically/manually
+prepended.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tokenizer</strong> (<em>AutoTokenizer</em>) – The tokenizer to initialize with add_bos_token=True.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tokenizer initialized with add_bos_token=True.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>AutoTokenizer</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_tokens_with_bos_removed">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_tokens_with_bos_removed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.get_tokens_with_bos_removed" title="Permalink to this definition">#</a></dt>
+<dd><p>Removes the bos token from the beginning of each sequence in <cite>tokens</cite>.
+The last dimension of <cite>tokens</cite> must be the sequence length.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tokenizer</strong> (<em>AutoTokenizer</em>) – The tokenizer used to tokenize the input.</p></li>
+<li><p><strong>tokens</strong> (<em>torch.Tensor</em>) – The tokenized input.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tokenized input with the bos token removed.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.is_lower_triangular">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">is_lower_triangular</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#transformer_lens.utils.is_lower_triangular" title="Permalink to this definition">#</a></dt>
+<dd><p>Checks if <cite>x</cite> is a lower triangular matrix.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.is_square">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">is_square</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#transformer_lens.utils.is_square" title="Permalink to this definition">#</a></dt>
+<dd><p>Checks if <cite>x</cite> is a square matrix.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.keep_single_column">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">keep_single_column</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">col_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.keep_single_column" title="Permalink to this definition">#</a></dt>
+<dd><p>Acts on a HuggingFace dataset to delete all columns apart from a single column name - useful when we want to tokenize and mix together different strings</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.lm_accuracy">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">lm_accuracy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">logits</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.lm_accuracy" title="Permalink to this definition">#</a></dt>
+<dd><p>Cross-Entropy Accuracy for Language Modelling. We measure the accuracy on the logits for predicting the NEXT token.</p>
+<p>If per_token is True, returns the boolean for top 1 accuracy for each token in the batch. Note that this has size [batch, seq_len-1], as we cannot predict the first token.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.lm_cross_entropy_loss">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">lm_cross_entropy_loss</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">logits</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.lm_cross_entropy_loss" title="Permalink to this definition">#</a></dt>
+<dd><p>Cross entropy loss for the language model, gives the loss for predicting the NEXT token.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>logits</strong> (<em>torch.Tensor</em>) – Logits. Shape [batch, pos, d_vocab]</p></li>
+<li><p><strong>tokens</strong> (<em>torch.Tensor</em><em>[</em><em>int64</em><em>]</em>) – Input tokens. Shape [batch, pos]</p></li>
+<li><p><strong>per_token</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return the log probs predicted for the correct token, or the loss (ie mean of the predicted log probs). Note that the returned array has shape [batch, seq-1] as we cannot predict the first token (alternately, we ignore the final logit). Defaults to False.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.override_or_use_default_value">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">override_or_use_default_value</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">default_flag</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">override</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#transformer_lens.utils.override_or_use_default_value" title="Permalink to this definition">#</a></dt>
+<dd><p>Determines which flag to return based on whether an overriding flag is provided.
+If a not-None overriding flag is provided, it is returned.
+Otherwise, the global flag is returned.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.print_gpu_mem">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">print_gpu_mem</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">step_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.print_gpu_mem" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.remove_batch_dim">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">remove_batch_dim</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'1</span> <span class="pre">...'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'...'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.remove_batch_dim" title="Permalink to this definition">#</a></dt>
+<dd><p>Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.sample_logits">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">sample_logits</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">final_logits</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_penalty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.sample_logits" title="Permalink to this definition">#</a></dt>
+<dd><p>Sample from the logits, in order to generate text</p>
+<p>final_logits has shape [batch, vocab_size]
+We divide the logits by temperature before softmaxing and sampling - high temperature = more uniform, low = more argmaxy. Temp = 0.0 is greedy sampling
+We apply top_k and top_p filtering to the logits, to encourage diversity. top_k = 10 means we only sample from the 10 most likely tokens. top_p = 0.9 means we only sample from the top 90% of tokens, and then renormalise the distribution. top_k and top_p are mutually exclusive. By default we apply neither and just sample from the full distribution.</p>
+<p>Frequency penalty is a penalty on the probability of a token, proportional to the number of times it has been generated so far. This encourages the model to generate new tokens, rather than repeating itself. It is a hyperparameter, and should be tuned. It is applied to the logits before sampling. If this is non-zero it is required to input the input_tokens</p>
+<p>#! TODO: Finish testing all the edge cases here. Useful testing code:
+logits = torch.randn(4)
+print(logits)
+np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)]), return_counts=True)</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.set_nested_attr">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">set_nested_attr</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attr_str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.set_nested_attr" title="Permalink to this definition">#</a></dt>
+<dd><p>Sets a nested attribute of an object based on a dot-separated string.</p>
+<p>For example, if <cite>attr_str</cite> is “a.b.c”, this function will set the value of <cite>obj.a.b.c</cite> to <cite>value</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obj</strong> (<em>Any</em>) – The object on which to set the attribute.</p></li>
+<li><p><strong>attr_str</strong> (<em>str</em>) – A dot-separated string representing the attribute hierarchy.</p></li>
+<li><p><strong>value</strong> (<em>Any</em>) – The value to set for the nested attribute.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.solu">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">solu</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.solu" title="Permalink to this definition">#</a></dt>
+<dd><p>SoLU activation function as described by
+<a class="reference external" href="https://transformer-circuits.pub/2022/solu/index.html">https://transformer-circuits.pub/2022/solu/index.html</a>.</p>
+<p>LayerNorm implemented by the MLP class.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.test_prompt">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">test_prompt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">answer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_space_to_answer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_details</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.test_prompt" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to test whether a model can give the correct answer to a prompt. Intended for exploratory analysis, so it prints things out rather than returning things.</p>
+<p>Works for multi-token answers and multi-token prompts.</p>
+<p>Will always print the ranks of the answer tokens, and if print_details will print the logit and prob for the answer tokens and the top k tokens returned for each answer position.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.to_numpy">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">to_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.to_numpy" title="Permalink to this definition">#</a></dt>
+<dd><p>Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.tokenize_and_concatenate">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">tokenize_and_concatenate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dataset</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">AutoTokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">streaming</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_length</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1024</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">column_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'text'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">add_bos_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_proc</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dataset</span></span></span><a class="headerlink" href="#transformer_lens.utils.tokenize_and_concatenate" title="Permalink to this definition">#</a></dt>
+<dd><p>Helper function to tokenizer and concatenate a dataset of text. This converts the text to tokens, concatenates them (separated by EOS tokens) and then reshapes them into a 2D array of shape (____, sequence_length), dropping the last batch. Tokenizers are much faster if parallelised, so we chop the string into 20, feed it into the tokenizer, in parallel with padding, then remove padding at the end.</p>
+<p>This tokenization is useful for training language models, as it allows us to efficiently train on a large corpus of text of varying lengths (without, eg, a lot of truncation or padding). Further, for models with absolute positional encodings, this avoids privileging early tokens (eg, news articles often begin with CNN, and models may learn to use early positional encodings to predict these)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dataset</strong> (<em>Dataset</em>) – The dataset to tokenize, assumed to be a HuggingFace text dataset.</p></li>
+<li><p><strong>tokenizer</strong> (<em>AutoTokenizer</em>) – The tokenizer. Assumed to have a bos_token_id and an eos_token_id.</p></li>
+<li><p><strong>streaming</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether the dataset is being streamed. If True, avoids using parallelism. Defaults to False.</p></li>
+<li><p><strong>max_length</strong> (<em>int</em><em>, </em><em>optional</em>) – The length of the context window of the sequence. Defaults to 1024.</p></li>
+<li><p><strong>column_name</strong> (<em>str</em><em>, </em><em>optional</em>) – The name of the text column in the dataset. Defaults to ‘text’.</p></li>
+<li><p><strong>add_bos_token</strong> (<em>bool</em><em>, </em><em>optional</em>) – . Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Returns the tokenized dataset, as a dataset of tensors, with a single column called “tokens”</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Dataset</p>
+</dd>
+</dl>
+<p>Note: There is a bug when inputting very small datasets (eg, &lt;1 batch per process) where it just outputs nothing. I’m not super sure why</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.transpose">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">transpose</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'...</span> <span class="pre">a</span> <span class="pre">b'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'...</span> <span class="pre">b</span> <span class="pre">a'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.transpose" title="Permalink to this definition">#</a></dt>
+<dd><p>Utility to swap the last two dimensions of a tensor, regardless of the number of leading dimensions</p>
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../model_properties_table.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Model Properties Table</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.train.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.train module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.utils module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.utils.LocallyOverridenDefaults"><code class="docutils literal notranslate"><span class="pre">LocallyOverridenDefaults</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.Slice"><code class="docutils literal notranslate"><span class="pre">Slice</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.utils.Slice.apply"><code class="docutils literal notranslate"><span class="pre">Slice.apply()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.Slice.indices"><code class="docutils literal notranslate"><span class="pre">Slice.indices()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.utils.SliceInput"><code class="docutils literal notranslate"><span class="pre">SliceInput</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.composition_scores"><code class="docutils literal notranslate"><span class="pre">composition_scores()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.download_file_from_hf"><code class="docutils literal notranslate"><span class="pre">download_file_from_hf()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.extend_tensor_with_ones"><code class="docutils literal notranslate"><span class="pre">extend_tensor_with_ones()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.gelu_fast"><code class="docutils literal notranslate"><span class="pre">gelu_fast()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.gelu_new"><code class="docutils literal notranslate"><span class="pre">gelu_new()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_act_name"><code class="docutils literal notranslate"><span class="pre">get_act_name()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_attention_mask"><code class="docutils literal notranslate"><span class="pre">get_attention_mask()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_causal_mask_for_left_padding"><code class="docutils literal notranslate"><span class="pre">get_causal_mask_for_left_padding()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_corner"><code class="docutils literal notranslate"><span class="pre">get_corner()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_cumsum_along_dim"><code class="docutils literal notranslate"><span class="pre">get_cumsum_along_dim()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_dataset"><code class="docutils literal notranslate"><span class="pre">get_dataset()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_device"><code class="docutils literal notranslate"><span class="pre">get_device()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_input_with_manually_prepended_bos"><code class="docutils literal notranslate"><span class="pre">get_input_with_manually_prepended_bos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_nested_attr"><code class="docutils literal notranslate"><span class="pre">get_nested_attr()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_tokenizer_with_bos"><code class="docutils literal notranslate"><span class="pre">get_tokenizer_with_bos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_tokens_with_bos_removed"><code class="docutils literal notranslate"><span class="pre">get_tokens_with_bos_removed()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.is_lower_triangular"><code class="docutils literal notranslate"><span class="pre">is_lower_triangular()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.is_square"><code class="docutils literal notranslate"><span class="pre">is_square()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.keep_single_column"><code class="docutils literal notranslate"><span class="pre">keep_single_column()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.lm_accuracy"><code class="docutils literal notranslate"><span class="pre">lm_accuracy()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.lm_cross_entropy_loss"><code class="docutils literal notranslate"><span class="pre">lm_cross_entropy_loss()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.override_or_use_default_value"><code class="docutils literal notranslate"><span class="pre">override_or_use_default_value()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.print_gpu_mem"><code class="docutils literal notranslate"><span class="pre">print_gpu_mem()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.remove_batch_dim"><code class="docutils literal notranslate"><span class="pre">remove_batch_dim()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.sample_logits"><code class="docutils literal notranslate"><span class="pre">sample_logits()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.set_nested_attr"><code class="docutils literal notranslate"><span class="pre">set_nested_attr()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.solu"><code class="docutils literal notranslate"><span class="pre">solu()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.test_prompt"><code class="docutils literal notranslate"><span class="pre">test_prompt()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.to_numpy"><code class="docutils literal notranslate"><span class="pre">to_numpy()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.tokenize_and_concatenate"><code class="docutils literal notranslate"><span class="pre">tokenize_and_concatenate()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.transpose"><code class="docutils literal notranslate"><span class="pre">transpose()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/scripts/furo.js"></script>
+    </body>
+</html>

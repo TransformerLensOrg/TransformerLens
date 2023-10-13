@@ -1,0 +1,748 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.SVDInterpreter module" href="transformer_lens.SVDInterpreter.html" /><link rel="prev" title="transformer_lens.HookedTransformer module" href="transformer_lens.HookedTransformer.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+        <title>transformer_lens.HookedTransformerConfig module - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer module</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.HookedTransformerConfig module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.HookedTransformerConfig">
+<span id="transformer-lens-hookedtransformerconfig-module"></span><h1>transformer_lens.HookedTransformerConfig module<a class="headerlink" href="#module-transformer_lens.HookedTransformerConfig" title="Permalink to this heading">#</a></h1>
+<p>Hooked Transformer Config.</p>
+<p>Module with a dataclass for storing the configuration of a
+<a class="reference internal" href="transformer_lens.HookedTransformer.html#module-transformer_lens.HookedTransformer" title="transformer_lens.HookedTransformer"><code class="xref py py-class docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer</span></code></a> model.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.HookedTransformerConfig.</span></span><span class="sig-name descname"><span class="pre">HookedTransformerConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d_model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d_head</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'custom'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d_mlp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">act_fn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d_vocab</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_attn_result</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_attn_scale</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_split_qkv_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_hook_mlp_in</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_attn_in</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_local_attn</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">original_architecture</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">from_checkpoint</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_label_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window_size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attn_types</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'gpt2'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalization_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'LN'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_dir</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'causal'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attn_only</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">initializer_range</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">-1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_attn_by_inverse_layer_idx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">positional_embedding_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'standard'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">final_rms</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d_vocab_out</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel_attn_mlp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rotary_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_hook_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gated_mlp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dtype</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer_prepends_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Configuration class to store the configuration of a HookedTransformer model.</p>
+<p>See further_comments.md for more details on the more complex arguments.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>d_model</strong> (<em>int</em>) – The dimensionality of the embeddings.</p></li>
+<li><p><strong>d_head</strong> (<em>int</em>) – The dimensionality of each attention head.</p></li>
+<li><p><strong>n_layers</strong> (<em>int</em>) – The number of transformer blocks (one block = one attn layer AND one MLP layer).</p></li>
+<li><p><strong>n_ctx</strong> (<em>int</em>) – The maximum sequence length.</p></li>
+<li><p><strong>n_heads</strong> (<em>int</em>) – The number of attention heads. If not
+specified, will be set to d_model // d_head. (This is represented by a default value of -1)</p></li>
+<li><p><strong>d_mlp</strong> (int, <em>optional</em>) – The dimensionality of the feedforward mlp
+network. Defaults to 4 * d_model, and in an attn-only model is None.</p></li>
+<li><p><strong>d_vocab</strong> (<em>int</em>) – The size of the vocabulary. Defaults to -1, which means not set. If not set, will be
+automatically set from the tokenizer’s vocab size.</p></li>
+<li><p><strong>act_fn</strong> (str, <em>optional</em>) – The activation function to use. Always
+lowercase. Supports [‘relu’, ‘gelu’, ‘silu’, ‘gelu_new’, ‘solu_ln’,
+‘gelu_fast’]. Must be set unless using an attn-only model.</p></li>
+<li><p><strong>eps</strong> (<em>float</em>) – The epsilon value to use for layer normalization. Defaults
+to 1e-5</p></li>
+<li><p><strong>use_attn_result</strong> (<em>bool</em>) – whether to explicitly calculate the amount
+each head adds to the residual stream (with a hook) and THEN add it
+up, vs just calculating the sum. This can be very memory intensive
+for large models, so defaults to False</p></li>
+<li><p><strong>use_split_qkv_input</strong> (<em>bool</em>) – whether to explicitly calculate the input of
+each head separately, with a hook. Defaults to false to save memory.</p></li>
+<li><p><strong>use_hook_mlp_in</strong> (<em>bool</em>) – whether to use a hook to get the input to the
+MLP layer. Defaults to false to save memory.</p></li>
+<li><p><strong>use_attn_in</strong> (<em>bool</em>) – whether to explicitly calculate the input of each
+attention head separately, with a hook. Defaults to false to save memory</p></li>
+<li><p><strong>use_attn_scale</strong> (<em>bool</em>) – whether to scale the attention weights by
+1/sqrt(d_head)</p></li>
+<li><p><strong>model_name</strong> (<em>str</em>) – the name of the model, used to load
+weights from HuggingFace or initialized to “custom” if not passed</p></li>
+<li><p><strong>original_architecture</strong> (str, <em>optional</em>) – the family of the model, used</p></li>
+<li><p><strong>load</strong> (<em>to help</em>) – weights from HuggingFace or initialized to “custom” if not passed</p></li>
+<li><p><strong>from_checkpoint</strong> (<em>bool</em>) – Whether the model weights were
+loaded from a checkpoint (only applies to pretrained models)</p></li>
+<li><p><strong>checkpoint_index</strong> (int, <em>optional</em>) – The index of the
+checkpoint loaded (only applies to pretrained models).</p></li>
+<li><p><strong>checkpoint_label_type</strong> (str, <em>optional</em>) – Whether
+checkpoints are labelled by the number of steps or number of tokens.</p></li>
+<li><p><strong>checkpoint_value</strong> (int, <em>optional</em>) – The value of the
+checkpoint label (whether of steps or tokens).</p></li>
+<li><p><strong>tokenizer_name</strong> (str, <em>optional</em>) – the full name of the model, passed into
+HuggingFace to access the tokenizer. Only used when passing in
+custom config, if loading from pretrained then this is not needed.</p></li>
+<li><p><strong>use_local_attn</strong> (<em>bool</em>) – whether to use local attention - ie each
+destination token can only attend to source tokens a certain distance back.</p></li>
+<li><p><strong>window_size</strong> (int, <em>optional</em>) – the size of the window for local
+attention</p></li>
+<li><p><strong>attn_types</strong> (List[str], <em>optional</em>) – the types of attention to use for
+local attention</p></li>
+<li><p><strong>weight_init_mode</strong> (<em>str</em>) – the initialization mode to use for the
+weights. Only relevant for custom models, ignored for pre-trained.
+Currently the only supported mode is ‘gpt2’, where biases are
+initialized to 0 and weights are standard normals of range
+initializer_range.</p></li>
+<li><p><strong>normalization_type</strong> (str, <em>optional</em>) – the type of normalization to use.
+Options are None (no normalization), ‘LN’ (use LayerNorm, including weights
+&amp; biases) and ‘LNPre’ (use LayerNorm, but no weights &amp; biases).
+Defaults to LN</p></li>
+<li><p><strong>device</strong> (<em>str</em>) – The device to use for the model. Defaults to ‘cuda’ if
+available, else ‘cpu’. Must be ‘cuda’ if <cite>n_devices</cite> &gt; 1.</p></li>
+<li><p><strong>n_devices</strong> (<em>int</em>) – The number of devices to use for the model. Defaults to 1. Layers are loaded
+to support “pipeline parallelism”, where each device is responsible for a subset of the layers.</p></li>
+<li><p><strong>attention_dir</strong> (<em>str</em>) – Whether to use causal (aka unidirectional aka GPT-2
+style) or bidirectional attention. Options are ‘causal’ and
+‘bidirectional’. Defaults to ‘causal’</p></li>
+<li><p><strong>attn_only</strong> (<em>bool</em>) – Whether to only use attention layers, no feedforward
+layers. Defaults to False</p></li>
+<li><p><strong>seed</strong> (int, <em>optional</em>) – The seed to use for the model.
+Used to set sources of randomness (Python, PyTorch and
+NumPy) and to initialize weights. Defaults to None. We recommend setting a seed, so your experiments are reproducible.</p></li>
+<li><p><strong>initializer_range</strong> (<em>float</em>) – The standard deviation of the normal used to
+initialise the weights, initialized to 0.8 / sqrt(d_model) .</p></li>
+<li><p><strong>init_weights</strong> (<em>bool</em>) – Whether to initialize the weights. Defaults to
+True. If False, does not initialize weights.</p></li>
+<li><p><strong>scale_attn_by_inverse_layer_idx</strong> (<em>bool</em>) – Whether to scale the attention
+weights by 1/(layer_id+1), used by Mistral (Stanford) models for numerical stability when
+training in FP16. Defaults to False.</p></li>
+<li><p><strong>positional_embedding_type</strong> (<em>str</em>) – The positional embedding used. Options
+are ‘standard’ (ie GPT-2 style, absolute, randomly initialized learned positional
+embeddings, directly added to the residual stream), ‘rotary’
+(described here: <a class="reference external" href="https://blog.eleuther.ai/rotary-embeddings/">https://blog.eleuther.ai/rotary-embeddings/</a> ) and
+‘shortformer’ (GPT-2 style absolute &amp; learned, but rather than being
+added to the residual stream they’re only added to the inputs to the
+keys and the queries (ie key = W_K(res_stream + pos_embed), but
+values and MLPs don’t get any positional info)). Sinusoidal are not
+currently supported. Defaults to ‘standard’.</p></li>
+<li><p><strong>final_rms</strong> (<em>bool</em>) – Whether to replace the final normalization (just
+before the unembed) with RMSNorm (ie no centering or bias, just
+scaling + weights). Only included because of a dumb bug in my
+original SoLU code. Defaults to False.</p></li>
+<li><p><strong>d_vocab_out</strong> (int, <em>optional</em>) – The size of the output vocabulary. Defaults to -1, which means not set. If not
+set, will be equal to d_vocab. Mainly useful for algorithmic tasks
+where the input and output vocabularies may be different.</p></li>
+<li><p><strong>parallel_attn_mlp</strong> (<em>bool</em>) – Whether to parallelize the attention and MLP
+layers - a weird cursed thing done by GPT-J. Means that
+mlp_out=MLP(ln1(resid_pre)) and resid_post=resid_pre+attn_out+mlp_out. Defaults to False.</p></li>
+<li><p><strong>rotary_dim</strong> (int, <em>optional</em>) – The dimensionality of the rotary
+embeddings, may be d_head in which case only the first rotary_dim
+dimensions of each head are rotated. Defaults to None, if
+positional_embedding_type==”rotary” it defaults to d_head.</p></li>
+<li><p><strong>n_params</strong> (int, <em>optional</em>) – The number of (hidden weight)
+parameters in the model. This is automatically calculated and not
+intended to be set by the user. (Non embedding parameters, because
+the [scaling laws paper](<a class="reference external" href="https://arxiv.org/pdf/2001.08361.pdf">https://arxiv.org/pdf/2001.08361.pdf</a>) found
+that that was a more meaningful number. Ignoring biases and layer
+norms, for convenience)</p></li>
+<li><p><strong>use_hook_tokens</strong> (<em>bool</em>) – Will add a hook point on the token input to
+HookedTransformer.forward, which lets you cache or intervene on the tokens.
+Defaults to False.</p></li>
+<li><p><strong>default_prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Default behavior of whether to prepend the BOS token when the
+methods of HookedTransformer process input text to tokenize (only when input is a string).
+Defaults to True - even for models not explicitly trained with this, heads often use the
+first position as a resting position and accordingly lose information from the first token,
+so this empirically seems to give better results. To change the default behavior to False, pass in
+default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+in prepend_bos=True/False when you call a method that processes the input string.</p></li>
+<li><p><strong>dtype</strong> (torch.dtype, <em>optional</em>) – The model’s dtype. Defaults to torch.float32.</p></li>
+<li><p><strong>tokenizer_prepends_bos</strong> (bool, <em>optional</em>) – This flag is set by set_tokenizer. It is set to True only
+when the tokenizer automatically prepends the BOS token if initialized with add_bos_token=True.
+We need this information to dynamically control bos prepending.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.act_fn">
+<span class="sig-name descname"><span class="pre">act_fn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.act_fn" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attention_dir">
+<span class="sig-name descname"><span class="pre">attention_dir</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'causal'</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attention_dir" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attn_only">
+<span class="sig-name descname"><span class="pre">attn_only</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attn_only" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attn_types">
+<span class="sig-name descname"><span class="pre">attn_types</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attn_types" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_index">
+<span class="sig-name descname"><span class="pre">checkpoint_index</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_index" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_label_type">
+<span class="sig-name descname"><span class="pre">checkpoint_label_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_label_type" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_value">
+<span class="sig-name descname"><span class="pre">checkpoint_value</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_value" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_head">
+<span class="sig-name descname"><span class="pre">d_head</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_head" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_mlp">
+<span class="sig-name descname"><span class="pre">d_mlp</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_mlp" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_model">
+<span class="sig-name descname"><span class="pre">d_model</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_model" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_vocab">
+<span class="sig-name descname"><span class="pre">d_vocab</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">-1</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_vocab" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_vocab_out">
+<span class="sig-name descname"><span class="pre">d_vocab_out</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">-1</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_vocab_out" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.default_prepend_bos">
+<span class="sig-name descname"><span class="pre">default_prepend_bos</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.default_prepend_bos" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.device">
+<span class="sig-name descname"><span class="pre">device</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.device" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.dtype">
+<span class="sig-name descname"><span class="pre">dtype</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dtype</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">torch.float32</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.dtype" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.eps">
+<span class="sig-name descname"><span class="pre">eps</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1e-05</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.eps" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.final_rms">
+<span class="sig-name descname"><span class="pre">final_rms</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.final_rms" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.from_checkpoint">
+<span class="sig-name descname"><span class="pre">from_checkpoint</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.from_checkpoint" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.from_dict">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig" title="transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><span class="pre">HookedTransformerConfig</span></a></span></span><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.from_dict" title="Permalink to this definition">#</a></dt>
+<dd><p>Instantiates a <cite>HookedTransformerConfig</cite> from a Python dictionary of
+parameters.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.gated_mlp">
+<span class="sig-name descname"><span class="pre">gated_mlp</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.gated_mlp" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_mode">
+<span class="sig-name descname"><span class="pre">init_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'gpt2'</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_mode" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_weights">
+<span class="sig-name descname"><span class="pre">init_weights</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_weights" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.initializer_range">
+<span class="sig-name descname"><span class="pre">initializer_range</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">-1.0</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.initializer_range" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.model_name">
+<span class="sig-name descname"><span class="pre">model_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'custom'</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.model_name" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_ctx">
+<span class="sig-name descname"><span class="pre">n_ctx</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_ctx" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_devices">
+<span class="sig-name descname"><span class="pre">n_devices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_devices" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_heads">
+<span class="sig-name descname"><span class="pre">n_heads</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">-1</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_heads" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_layers">
+<span class="sig-name descname"><span class="pre">n_layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_layers" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_params">
+<span class="sig-name descname"><span class="pre">n_params</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_params" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.normalization_type">
+<span class="sig-name descname"><span class="pre">normalization_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'LN'</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.normalization_type" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.original_architecture">
+<span class="sig-name descname"><span class="pre">original_architecture</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.original_architecture" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.parallel_attn_mlp">
+<span class="sig-name descname"><span class="pre">parallel_attn_mlp</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.parallel_attn_mlp" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.positional_embedding_type">
+<span class="sig-name descname"><span class="pre">positional_embedding_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'standard'</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.positional_embedding_type" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.rotary_dim">
+<span class="sig-name descname"><span class="pre">rotary_dim</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.rotary_dim" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.scale_attn_by_inverse_layer_idx">
+<span class="sig-name descname"><span class="pre">scale_attn_by_inverse_layer_idx</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.scale_attn_by_inverse_layer_idx" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.seed">
+<span class="sig-name descname"><span class="pre">seed</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.seed" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.set_seed_everywhere">
+<span class="sig-name descname"><span class="pre">set_seed_everywhere</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.set_seed_everywhere" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.to_dict" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.tokenizer_name">
+<span class="sig-name descname"><span class="pre">tokenizer_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.tokenizer_name" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.tokenizer_prepends_bos">
+<span class="sig-name descname"><span class="pre">tokenizer_prepends_bos</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.tokenizer_prepends_bos" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_in">
+<span class="sig-name descname"><span class="pre">use_attn_in</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_in" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_result">
+<span class="sig-name descname"><span class="pre">use_attn_result</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_result" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_scale">
+<span class="sig-name descname"><span class="pre">use_attn_scale</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_scale" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_hook_mlp_in">
+<span class="sig-name descname"><span class="pre">use_hook_mlp_in</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_hook_mlp_in" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_hook_tokens">
+<span class="sig-name descname"><span class="pre">use_hook_tokens</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_hook_tokens" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_local_attn">
+<span class="sig-name descname"><span class="pre">use_local_attn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_local_attn" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_split_qkv_input">
+<span class="sig-name descname"><span class="pre">use_split_qkv_input</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_split_qkv_input" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformerConfig.HookedTransformerConfig.window_size">
+<span class="sig-name descname"><span class="pre">window_size</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.window_size" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.SVDInterpreter.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens.SVDInterpreter module</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.HookedTransformer.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.HookedTransformer module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.HookedTransformerConfig module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.act_fn"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.act_fn</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attention_dir"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.attention_dir</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attn_only"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.attn_only</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.attn_types"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.attn_types</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_index"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.checkpoint_index</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_label_type"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.checkpoint_label_type</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.checkpoint_value"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.checkpoint_value</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_head"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.d_head</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_mlp"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.d_mlp</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_model"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.d_model</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_vocab"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.d_vocab</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.d_vocab_out"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.d_vocab_out</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.default_prepend_bos"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.default_prepend_bos</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.device"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.device</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.dtype"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.dtype</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.eps"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.eps</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.final_rms"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.final_rms</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.from_checkpoint"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.from_checkpoint</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.from_dict"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.from_dict()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.gated_mlp"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.gated_mlp</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_mode"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.init_mode</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.init_weights"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.init_weights</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.initializer_range"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.initializer_range</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.model_name"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.model_name</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_ctx"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.n_ctx</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_devices"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.n_devices</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_heads"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.n_heads</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_layers"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.n_layers</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.n_params"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.n_params</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.normalization_type"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.normalization_type</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.original_architecture"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.original_architecture</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.parallel_attn_mlp"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.parallel_attn_mlp</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.positional_embedding_type"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.positional_embedding_type</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.rotary_dim"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.rotary_dim</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.scale_attn_by_inverse_layer_idx"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.scale_attn_by_inverse_layer_idx</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.seed"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.seed</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.set_seed_everywhere"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.set_seed_everywhere()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.to_dict"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.to_dict()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.tokenizer_name"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.tokenizer_name</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.tokenizer_prepends_bos"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.tokenizer_prepends_bos</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.use_attn_in</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_result"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.use_attn_result</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_attn_scale"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.use_attn_scale</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_hook_mlp_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.use_hook_mlp_in</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_hook_tokens"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.use_hook_tokens</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_local_attn"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.use_local_attn</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.use_split_qkv_input"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.use_split_qkv_input</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.window_size"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig.window_size</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/scripts/furo.js"></script>
+    </body>
+</html>

@@ -1,0 +1,672 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.loading_from_pretrained module" href="transformer_lens.loading_from_pretrained.html" /><link rel="prev" title="transformer_lens.head_detector module" href="transformer_lens.head_detector.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+        <title>transformer_lens.hook_points module - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.hook_points">
+<span id="transformer-lens-hook-points-module"></span><h1>transformer_lens.hook_points module<a class="headerlink" href="#module-transformer_lens.hook_points" title="Permalink to this heading">#</a></h1>
+<p>Hook Points.</p>
+<p>Helpers to access activations in models.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookPoint">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.hook_points.</span></span><span class="sig-name descname"><span class="pre">HookPoint</span></span><a class="headerlink" href="#transformer_lens.hook_points.HookPoint" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
+<p>A helper class to access intermediate activations in a PyTorch model (inspired by Garcon).</p>
+<p>HookPoint is a dummy module that acts as an identity function by default. By wrapping any
+intermediate activation in a HookPoint, it provides a convenient way to add PyTorch hooks.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookPoint.add_hook">
+<span class="sig-name descname"><span class="pre">add_hook</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hook</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fwd'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_permanent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookPoint.add_hook" title="Permalink to this definition">#</a></dt>
+<dd><p>Hook format is fn(activation, hook_name)
+Change it into PyTorch hook format (this includes input and output,
+which are the same for a HookPoint)
+If prepend is True, add this hook before all other hooks</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookPoint.add_perma_hook">
+<span class="sig-name descname"><span class="pre">add_perma_hook</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hook</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fwd'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookPoint.add_perma_hook" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookPoint.clear_context">
+<span class="sig-name descname"><span class="pre">clear_context</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookPoint.clear_context" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookPoint.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookPoint.forward" title="Permalink to this definition">#</a></dt>
+<dd><p>Defines the computation performed at every call.</p>
+<p>Should be overridden by all subclasses.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Although the recipe for forward pass needs to be defined within
+this function, one should call the <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code> instance afterwards
+instead of this since the former takes care of running the
+registered hooks while the latter silently ignores them.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookPoint.layer">
+<span class="sig-name descname"><span class="pre">layer</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookPoint.layer" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookPoint.remove_hooks">
+<span class="sig-name descname"><span class="pre">remove_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fwd'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">including_permanent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookPoint.remove_hooks" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.hook_points.</span></span><span class="sig-name descname"><span class="pre">HookedRootModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
+<p>A class building on nn.Module to interface nicely with HookPoints
+Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks, and run_with_cache to run the model on some input and return a cache of all activations</p>
+<p>WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the end by default, and I recommend using the API of this and run_with_cache. If you want to add hooks into global state, I recommend being intentional about this, and I recommend using reset_hooks liberally in your code to remove any accidentally remaining global state.</p>
+<p>The main time this goes wrong is when you want to use backward hooks (to cache or intervene on gradients). In this case, you need to keep the hooks around as global state until you’ve run loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.add_caching_hooks">
+<span class="sig-name descname"><span class="pre">add_caching_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">names_filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_bwd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_batch_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.add_caching_hooks" title="Permalink to this definition">#</a></dt>
+<dd><p>Adds hooks to the model to cache activations. Note: It does NOT actually run the model to get activations, that must be done separately.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>names_filter</strong> (<em>NamesFilter</em><em>, </em><em>optional</em>) – Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.</p></li>
+<li><p><strong>incl_bwd</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to also do backwards hooks. Defaults to False.</p></li>
+<li><p><strong>device</strong> (<em>_type_</em><em>, </em><em>optional</em>) – The device to store on. Defaults to same device as model.</p></li>
+<li><p><strong>remove_batch_dim</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.</p></li>
+<li><p><strong>cache</strong> (<em>Optional</em><em>[</em><em>dict</em><em>]</em><em>, </em><em>optional</em>) – The cache to store activations in, a new dict is created by default. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The cache where activations will be stored.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>cache (dict)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.add_hook">
+<span class="sig-name descname"><span class="pre">add_hook</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hook</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fwd'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_permanent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.add_hook" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.add_perma_hook">
+<span class="sig-name descname"><span class="pre">add_perma_hook</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hook</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fwd'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.add_perma_hook" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.cache_all">
+<span class="sig-name descname"><span class="pre">cache_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_bwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_batch_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.cache_all" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.cache_some">
+<span class="sig-name descname"><span class="pre">cache_some</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_bwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_batch_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.cache_some" title="Permalink to this definition">#</a></dt>
+<dd><p>Cache a list of hook provided by names, Boolean function on names</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.check_and_add_hook">
+<span class="sig-name descname"><span class="pre">check_and_add_hook</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hook_point</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hook_point_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hook</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fwd'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_permanent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.check_and_add_hook" title="Permalink to this definition">#</a></dt>
+<dd><p>Runs checks on the hook, and then adds it to the hook point</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.check_hooks_to_add">
+<span class="sig-name descname"><span class="pre">check_hooks_to_add</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hook_point</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hook_point_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hook</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fwd'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_permanent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.check_hooks_to_add" title="Permalink to this definition">#</a></dt>
+<dd><p>Override this function to add checks on which hooks should be added</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.clear_contexts">
+<span class="sig-name descname"><span class="pre">clear_contexts</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.clear_contexts" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.get_caching_hooks">
+<span class="sig-name descname"><span class="pre">get_caching_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">names_filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_bwd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_batch_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.get_caching_hooks" title="Permalink to this definition">#</a></dt>
+<dd><p>Creates hooks to cache activations. Note: It does not add the hooks to the model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>names_filter</strong> (<em>NamesFilter</em><em>, </em><em>optional</em>) – Which activations to cache. Can be a list of strings (hook names) or a filter function mapping hook names to booleans. Defaults to lambda name: True.</p></li>
+<li><p><strong>incl_bwd</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to also do backwards hooks. Defaults to False.</p></li>
+<li><p><strong>device</strong> (<em>_type_</em><em>, </em><em>optional</em>) – The device to store on. Keeps on the same device as the layer if None.</p></li>
+<li><p><strong>remove_batch_dim</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.</p></li>
+<li><p><strong>cache</strong> (<em>Optional</em><em>[</em><em>dict</em><em>]</em><em>, </em><em>optional</em>) – The cache to store activations in, a new dict is created by default. Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The cache where activations will be stored.
+fwd_hooks (list): The forward hooks.
+bwd_hooks (list): The backward hooks. Empty if incl_bwd is False.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>cache (dict)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.hook_points">
+<span class="sig-name descname"><span class="pre">hook_points</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.hook_points" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.hooks">
+<span class="sig-name descname"><span class="pre">hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fwd_hooks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bwd_hooks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reset_hooks_end</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clear_contexts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.hooks" title="Permalink to this definition">#</a></dt>
+<dd><p>A context manager for adding temporary hooks to the model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fwd_hooks</strong> – List[Tuple[name, hook]], where name is either the name of a hook point or a
+Boolean function on hook names and hook is the function to add to that hook point.</p></li>
+<li><p><strong>bwd_hooks</strong> – Same as fwd_hooks, but for the backward pass.</p></li>
+<li><p><strong>reset_hooks_end</strong> (<em>bool</em>) – If True, removes all hooks added by this context manager when the context manager exits.</p></li>
+<li><p><strong>clear_contexts</strong> (<em>bool</em>) – If True, clears hook contexts whenever hooks are reset.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">model</span><span class="o">.</span><span class="n">hooks</span><span class="p">(</span><span class="n">fwd_hooks</span><span class="o">=</span><span class="n">my_hooks</span><span class="p">):</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">hooked_loss</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">return_type</span><span class="o">=</span><span class="s2">&quot;loss&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.remove_all_hook_fns">
+<span class="sig-name descname"><span class="pre">remove_all_hook_fns</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'both'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">including_permanent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.remove_all_hook_fns" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.reset_hooks">
+<span class="sig-name descname"><span class="pre">reset_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">clear_contexts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'both'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">including_permanent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.reset_hooks" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.run_with_cache">
+<span class="sig-name descname"><span class="pre">run_with_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">model_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">names_filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_batch_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_bwd</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reset_hooks_end</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clear_contexts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">model_kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.run_with_cache" title="Permalink to this definition">#</a></dt>
+<dd><p>Runs the model and returns the model output and a Cache object.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>*model_args</strong> – Positional arguments for the model.</p></li>
+<li><p><strong>names_filter</strong> (<em>NamesFilter</em><em>, </em><em>optional</em>) – A filter for which activations to cache. Accepts None, str,
+list of str, or a function that takes a string and returns a bool. Defaults to None, which
+means cache everything.</p></li>
+<li><p><strong>device</strong> (<em>str</em><em> or </em><em>torch.Device</em><em>, </em><em>optional</em>) – The device to cache activations on. Defaults to the
+model device. WARNING: Setting a different device than the one used by the model leads to
+significant performance degradation.</p></li>
+<li><p><strong>remove_batch_dim</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, removes the batch dimension when caching. Only
+makes sense with batch_size=1 inputs. Defaults to False.</p></li>
+<li><p><strong>incl_bwd</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, calls backward on the model output and caches gradients
+as well. Assumes that the model outputs a scalar (e.g., return_type=”loss”). Custom loss
+functions are not supported. Defaults to False.</p></li>
+<li><p><strong>reset_hooks_end</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, removes all hooks added by this function at the
+end of the run. Defaults to True.</p></li>
+<li><p><strong>clear_contexts</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, clears hook contexts whenever hooks are reset.
+Defaults to False.</p></li>
+<li><p><strong>**model_kwargs</strong> – Keyword arguments for the model.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple containing the model output and a Cache object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.run_with_hooks">
+<span class="sig-name descname"><span class="pre">run_with_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">model_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fwd_hooks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bwd_hooks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reset_hooks_end</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clear_contexts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">model_kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.run_with_hooks" title="Permalink to this definition">#</a></dt>
+<dd><p>Runs the model with specified forward and backward hooks.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fwd_hooks</strong> (<em>List</em><em>[</em><em>Tuple</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><em>Callable</em><em>]</em><em>, </em><em>Callable</em><em>]</em><em>]</em>) – A list of (name, hook), where name is
+either the name of a hook point or a boolean function on hook names, and hook is the
+function to add to that hook point. Hooks with names that evaluate to True are added
+respectively.</p></li>
+<li><p><strong>bwd_hooks</strong> (<em>List</em><em>[</em><em>Tuple</em><em>[</em><em>Union</em><em>[</em><em>str</em><em>, </em><em>Callable</em><em>]</em><em>, </em><em>Callable</em><em>]</em><em>]</em>) – Same as fwd_hooks, but for the
+backward pass.</p></li>
+<li><p><strong>reset_hooks_end</strong> (<em>bool</em>) – If True, all hooks are removed at the end, including those added
+during this run. Default is True.</p></li>
+<li><p><strong>clear_contexts</strong> (<em>bool</em>) – If True, clears hook contexts whenever hooks are reset. Default is
+False.</p></li>
+<li><p><strong>*model_args</strong> – Positional arguments for the model.</p></li>
+<li><p><strong>**model_kwargs</strong> – Keyword arguments for the model.</p></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If you want to use backward hooks, set <cite>reset_hooks_end</cite> to False, so the backward hooks
+remain active. This function only runs a forward pass.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.setup">
+<span class="sig-name descname"><span class="pre">setup</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.setup" title="Permalink to this definition">#</a></dt>
+<dd><p>Sets up model.</p>
+<p>This function must be called in the model’s <cite>__init__</cite> method AFTER defining all layers. It
+adds a parameter to each module containing its name, and builds a dictionary mapping module
+names to the module instances. It also initializes a hook dictionary for modules of type
+“HookPoint”.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.hook_points.</span></span><span class="sig-name descname"><span class="pre">LensHandle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hook</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RemovableHandle</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_permanent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_level</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.LensHandle" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A dataclass that holds information about a PyTorch hook.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle.hook">
+<span class="sig-name descname"><span class="pre">hook</span></span><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.hook" title="Permalink to this definition">#</a></dt>
+<dd><p>Reference to the hook’s RemovableHandle.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>hooks.RemovableHandle</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle.is_permanent">
+<span class="sig-name descname"><span class="pre">is_permanent</span></span><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.is_permanent" title="Permalink to this definition">#</a></dt>
+<dd><p>Indicates if the hook is permanent. Defaults to False.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool, optional</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle.context_level">
+<span class="sig-name descname"><span class="pre">context_level</span></span><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.context_level" title="Permalink to this definition">#</a></dt>
+<dd><p>Context level associated with the hooks context
+manager for the given hook. Defaults to None.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Optional[int], optional</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id0">
+<span class="sig-name descname"><span class="pre">context_level</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id0" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id1">
+<span class="sig-name descname"><span class="pre">hook</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">RemovableHandle</span></em><a class="headerlink" href="#id1" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="id2">
+<span class="sig-name descname"><span class="pre">is_permanent</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#id2" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.loading_from_pretrained.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens.loading_from_pretrained module</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.head_detector.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.head_detector module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.hook_points module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookPoint"><code class="docutils literal notranslate"><span class="pre">HookPoint</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookPoint.add_hook"><code class="docutils literal notranslate"><span class="pre">HookPoint.add_hook()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookPoint.add_perma_hook"><code class="docutils literal notranslate"><span class="pre">HookPoint.add_perma_hook()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookPoint.clear_context"><code class="docutils literal notranslate"><span class="pre">HookPoint.clear_context()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookPoint.forward"><code class="docutils literal notranslate"><span class="pre">HookPoint.forward()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookPoint.layer"><code class="docutils literal notranslate"><span class="pre">HookPoint.layer()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookPoint.remove_hooks"><code class="docutils literal notranslate"><span class="pre">HookPoint.remove_hooks()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule"><code class="docutils literal notranslate"><span class="pre">HookedRootModule</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.add_caching_hooks"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.add_caching_hooks()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.add_hook"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.add_hook()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.add_perma_hook"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.add_perma_hook()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.cache_all"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.cache_all()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.cache_some"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.cache_some()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.check_and_add_hook"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.check_and_add_hook()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.check_hooks_to_add"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.check_hooks_to_add()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.clear_contexts"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.clear_contexts()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.get_caching_hooks"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.get_caching_hooks()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.hook_points"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.hook_points()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.hooks"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.hooks()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.remove_all_hook_fns"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.remove_all_hook_fns()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.reset_hooks"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.reset_hooks()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.run_with_cache"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.run_with_cache()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.run_with_hooks"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.run_with_hooks()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.HookedRootModule.setup"><code class="docutils literal notranslate"><span class="pre">HookedRootModule.setup()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle"><code class="docutils literal notranslate"><span class="pre">LensHandle</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle.hook"><code class="docutils literal notranslate"><span class="pre">LensHandle.hook</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle.is_permanent"><code class="docutils literal notranslate"><span class="pre">LensHandle.is_permanent</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle.context_level"><code class="docutils literal notranslate"><span class="pre">LensHandle.context_level</span></code></a></li>
+<li><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">LensHandle.context_level</span></code></a></li>
+<li><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">LensHandle.hook</span></code></a></li>
+<li><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">LensHandle.is_permanent</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/scripts/furo.js"></script>
+    </body>
+</html>

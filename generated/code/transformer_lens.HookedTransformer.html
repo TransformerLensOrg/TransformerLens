@@ -1,0 +1,1306 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.HookedTransformerConfig module" href="transformer_lens.HookedTransformerConfig.html" /><link rel="prev" title="transformer_lens.HookedEncoder module" href="transformer_lens.HookedEncoder.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+        <title>transformer_lens.HookedTransformer module - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.HookedTransformer module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.HookedTransformer">
+<span id="transformer-lens-hookedtransformer-module"></span><h1>transformer_lens.HookedTransformer module<a class="headerlink" href="#module-transformer_lens.HookedTransformer" title="Permalink to this heading">#</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.HookedTransformer.</span></span><span class="sig-name descname"><span class="pre">HookedTransformer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">move_to_device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_padding_side</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'right'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <a class="reference internal" href="transformer_lens.hook_points.html#transformer_lens.hook_points.HookedRootModule" title="transformer_lens.hook_points.HookedRootModule"><code class="xref py py-class docutils literal notranslate"><span class="pre">HookedRootModule</span></code></a></p>
+<p>Hooked Transformer.</p>
+<p>This class implements a full Transformer using the components in ./components.py, with
+HookPoints on every interesting activation. It inherits from HookedRootModule.</p>
+<p>It can have a pretrained Transformer’s weights automatically loaded in via the
+HookedTransformer.from_pretrained class method. It can also be instantiated with randomly
+initialized weights via __init__ and being passed a dict or HookedTransformerConfig object.</p>
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.OV">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">OV</span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.OV" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.QK">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">QK</span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.QK" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_E">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_E</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_vocab</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_E" title="Permalink to this definition">#</a></dt>
+<dd><p>Convenience to get the embedding matrix.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_E_pos">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_E_pos</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_vocab+n_ctx</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_E_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Concatenated W_E and W_pos.</p>
+<p>Used as a full (overcomplete) basis of the input space, useful for full QK and full OV
+circuits.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_K">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_K</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">d_model</span> <span class="pre">d_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_K" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the key weights across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_O">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_O</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">d_head</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_O" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the attn output weights across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_Q">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_Q</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">d_model</span> <span class="pre">d_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_Q" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the query weights across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_U">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_U</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_U" title="Permalink to this definition">#</a></dt>
+<dd><p>Convenience to get the unembedding matrix.</p>
+<p>I.e. the linear map from the final residual stream to the output logits).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_V">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_V</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">d_model</span> <span class="pre">d_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_V" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the value weights across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_gate">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_gate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">d_model</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_gate" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the MLP gate weights across all layers.</p>
+<p>Only works for models with gated MLPs.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_in">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_in</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">d_model</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_in" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the MLP input weights across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_out">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_out</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">d_mlp</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_out" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the MLP output weights across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.W_pos">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_pos</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_ctx</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Convenience function to get the positional embedding.</p>
+<p>Only works on models with absolute positional embeddings!</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.accumulated_bias">
+<span class="sig-name descname"><span class="pre">accumulated_bias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">include_mlp_biases</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'layers_accumulated_over</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.accumulated_bias" title="Permalink to this definition">#</a></dt>
+<dd><p>Accumulated Bias.</p>
+<p>Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the
+input of layer L.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>layer</strong> (<em>int</em>) – Layer number, in [0, n_layers]. layer==0 means no layers, layer==n_layers
+means all layers.</p></li>
+<li><p><strong>mlp_input</strong> (<em>bool</em>) – If True, we take the bias up to the input of the MLP
+of layer L (ie we include the bias from the attention output of the current layer,
+otherwise just biases from previous layers)</p></li>
+<li><p><strong>include_mlp_biases</strong> (<em>bool</em>) – Whether to include the biases of MLP layers. Often useful to
+have as False if we’re expanding attn_out into individual heads, but keeping mlp_out
+as is.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>[d_model], accumulated bias</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bias (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.all_composition_scores">
+<span class="sig-name descname"><span class="pre">all_composition_scores</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">n_layers</span> <span class="pre">n_heads'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.all_composition_scores" title="Permalink to this definition">#</a></dt>
+<dd><p>All Composition Scores.</p>
+<p>Returns the Composition scores for all pairs of heads, as a L1, H1, L2, H2 tensor (which is
+upper triangular on the first and third axes).</p>
+<p>See
+<a class="reference external" href="https://transformer-circuits.pub/2021/framework/index.html#:~:text=The%20above%20diagram%20shows%20Q%2D%2C%20K%2D%2C%20and%20V%2DComposition">https://transformer-circuits.pub/2021/framework/index.html#:~:text=The%20above%20diagram%20shows%20Q%2D%2C%20K%2D%2C%20and%20V%2DComposition</a>
+for three metrics used.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mode</strong> (<em>str</em>) – One of [“Q”, “K”, “V”], the mode to use for the composition score.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.all_head_labels">
+<span class="sig-name descname"><span class="pre">all_head_labels</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.all_head_labels" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.b_K">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">b_K</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">d_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.b_K" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the key biases across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.b_O">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">b_O</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.b_O" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the attn output biases across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.b_Q">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">b_Q</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">d_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.b_Q" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the query biases across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.b_U">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">b_U</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_vocab'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.b_U" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.b_V">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">b_V</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">n_heads</span> <span class="pre">d_head'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.b_V" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the value biases across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.b_in">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">b_in</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.b_in" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the MLP input biases across all layers.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.b_out">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">b_out</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_layers</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.b_out" title="Permalink to this definition">#</a></dt>
+<dd><p>Stack the MLP output biases across all layers.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.center_unembed">
+<span class="sig-name descname"><span class="pre">center_unembed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.center_unembed" title="Permalink to this definition">#</a></dt>
+<dd><p>Center the unembedding weights W_U.</p>
+<p>This is done by subtracting the mean of the weights from the weights themselves. This is
+done in-place. As softmax is translation invariant, this changes the logits but not the log
+probs, and makes the model logits (slightly) more interpretable - when trying to understand
+how components contribute to the logits, we’ll be less misled by components that just add
+something to every logit.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.center_writing_weights">
+<span class="sig-name descname"><span class="pre">center_writing_weights</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.center_writing_weights" title="Permalink to this definition">#</a></dt>
+<dd><p>Center Writing Weights.</p>
+<p>Centers the weights of the model that write to the residual stream - W_out, W_E, W_pos and
+W_out. This is done by subtracting the mean of the weights from the weights themselves. This
+is done in-place. See fold_layer_norm for more details.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.check_hooks_to_add">
+<span class="sig-name descname"><span class="pre">check_hooks_to_add</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hook_point</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hook_point_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hook</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fwd'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_permanent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.check_hooks_to_add" title="Permalink to this definition">#</a></dt>
+<dd><p>Override this function to add checks on which hooks should be added</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.cpu">
+<span class="sig-name descname"><span class="pre">cpu</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.cpu" title="Permalink to this definition">#</a></dt>
+<dd><p>Wrapper around cuda that also changes <cite>self.cfg.device</cite>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.cuda">
+<span class="sig-name descname"><span class="pre">cuda</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.cuda" title="Permalink to this definition">#</a></dt>
+<dd><p>Wrapper around cuda that also changes <cite>self.cfg.device</cite>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.fold_layer_norm">
+<span class="sig-name descname"><span class="pre">fold_layer_norm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.fold_layer_norm" title="Permalink to this definition">#</a></dt>
+<dd><p>Fold Layer Norm.</p>
+<p>Takes in a state dict from a pretrained model, formatted to be consistent with
+HookedTransformer but with LayerNorm weights and biases. Folds these into the neighbouring
+weights. See further_comments.md for more details.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>state_dict</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>torch.Tensor</em><em>]</em>) – State dict of pretrained model.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.fold_value_biases">
+<span class="sig-name descname"><span class="pre">fold_value_biases</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.fold_value_biases" title="Permalink to this definition">#</a></dt>
+<dd><p>Fold the value biases into the output bias.</p>
+<p>Because attention patterns add up to 1, the value biases always have a constant effect on a
+head’s output. Further, as the outputs of each head in a layer add together, each head’s
+value bias has a constant effect on the <em>layer’s</em> output, which can make it harder to
+interpret the effect of any given head, and it doesn’t matter which head a bias is
+associated with. We can factor this all into a single output bias to the layer, and make it
+easier to interpret the head’s output. Formally, we take b_O_new = b_O_original +
+sum_head(b_V_head &#64; W_O_head).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'logits'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_per_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">USE_DEFAULT_VALUE</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">USE_DEFAULT_VALUE</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_at_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shortformer_pos_embed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_at_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_kv_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache" title="transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache"><span class="pre">HookedTransformerKeyValueCache</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos-1'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.forward" title="Permalink to this definition">#</a></dt>
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'loss'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_per_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">USE_DEFAULT_VALUE</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">USE_DEFAULT_VALUE</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_at_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shortformer_pos_embed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_at_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_kv_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache" title="transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache"><span class="pre">HookedTransformerKeyValueCache</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos-1'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'both'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_per_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">USE_DEFAULT_VALUE</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">USE_DEFAULT_VALUE</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_at_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shortformer_pos_embed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_at_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_kv_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache" title="transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache"><span class="pre">HookedTransformerKeyValueCache</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos-1'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_per_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">USE_DEFAULT_VALUE</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">USE_DEFAULT_VALUE</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start_at_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shortformer_pos_embed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_at_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_kv_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache" title="transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache"><span class="pre">HookedTransformerKeyValueCache</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span></dt>
+<dd><p>Forward Pass.</p>
+<p>Input is either a batch of tokens ([batch, pos]) or a text string, a string is automatically
+tokenized to a batch of a single element. The prepend_bos flag only applies when inputting a
+text string.</p>
+<p>Note that loss is the standard “predict the next token” cross-entropy loss for GPT-2 style
+language models - if you want a custom loss function, the recommended behaviour is returning
+the logits and then applying your custom loss function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Optional</strong><strong>[</strong><strong>str</strong><strong>]</strong> (<em>return_type</em>) – The type of output to return. Can be one of: None (return
+nothing, don’t calculate logits), ‘logits’ (return logits), ‘loss’ (return
+cross-entropy loss), ‘both’ (return logits and loss).</p></li>
+<li><p><strong>bool</strong> (<em>loss_per_token</em>) – Whether to return the (next token prediction) loss per token (True)
+or average (False). Average loss is a scalar (averaged over position <em>and</em> batch),
+per-token loss is a tensor ([batch, position-1]) - position-1 because we’re
+predicting the next token, and there’s no specified next token for the final token.
+Defaults to False.</p></li>
+<li><p><strong>Optional</strong><strong>[</strong><strong>bool</strong><strong>]</strong> (<em>prepend_bos</em>) – Whether to prepend the BOS token to the input (only applies
+when input is a string). Defaults to None, implying usage of
+self.cfg.default_prepend_bos which is set to True unless specified otherwise. (Even
+for models not explicitly trained with a prepended BOS token, heads often use the
+first position as a resting position and accordingly lose information from the first
+token, so this empirically seems to give better results.) Pass True or False to
+locally override the default.</p></li>
+<li><p><strong>Optional</strong><strong>[</strong><strong>int</strong><strong>]</strong> (<em>stop_at_layer</em>) – If not None, start the forward pass at the specified
+layer. Requires input to be the residual stream before the specified layer with
+shape [batch, pos, d_model]. Inclusive - ie, start_at_layer = 0 skips the embedding
+then runs the rest of the model. Supports negative indexing. start_at_layer = -1
+only runs the final block and the unembedding. Defaults to None (run the full
+model).</p></li>
+<li><p><strong>tokens</strong> – Optional[Int[torch.Tensor, “batch pos”]]: Tokenized input. Only use if
+start_at_layer is not None and return type is “loss” or “both”.</p></li>
+<li><p><strong>shortformer_pos_embed</strong> – Optional[Float[torch.Tensor, “batch pos d_model”]]: Positional
+embedding for shortformer models. Only use if start_at_layer is not None and
+self.cfg.positional_embedding_type == “shortformer”.</p></li>
+<li><p><strong>left_attention_mask</strong> – Optional[torch.Tensor]: The attention mask for left padded tokens.
+Only use if start_at_layer is not None and self.tokenizer.padding_side == “left”.</p></li>
+<li><p><strong>Optional</strong><strong>[</strong><strong>int</strong><strong>]</strong> – If not None, stop the forward pass at the specified layer.
+Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer =
+1 will run the embedding layer and the first transformer block, etc. Supports
+negative indexing. Useful for analysis of intermediate layers, eg finding neuron
+activations in layer 3 of a 24 layer model. Defaults to None (run the full model).</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.from_pretrained">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_ln</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_writing_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_unembed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">refactor_factored_attn_matrices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">checkpoint_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_devices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">move_to_device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_value_biases</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_prepend_bos</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_padding_side</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'right'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'float32'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">from_pretrained_kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer" title="transformer_lens.HookedTransformer.HookedTransformer"><span class="pre">HookedTransformer</span></a></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.from_pretrained" title="Permalink to this definition">#</a></dt>
+<dd><p>Load in pretrained model weights.</p>
+<p>Load in pretrained model weights to the HookedTransformer format and optionally to do some
+processing to make the model easier to interpret. Currently supports loading from most
+autoregressive HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models
+and SoLU models trained by me (Neel Nanda).</p>
+<p>Also supports loading from a checkpoint for checkpointed models (currently, models trained
+by me (NeelNanda) and the stanford-crfm models). These can either be determined by the
+checkpoint index (the index of the checkpoint in the checkpoint list) or by the checkpoint
+value (the value of the checkpoint, eg 1000 for a checkpoint taken at step 1000 or after
+1000 tokens. Each model has checkpoints labelled with exactly one of labels and steps). If
+neither is specified the final model is loaded. If both are specified, the checkpoint index
+is used.</p>
+<p>See load_and_process_state_dict for details on the processing (folding layer norm, centering
+the unembedding and centering the writing weights)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_name</strong> (<em>str</em>) – The model name - must be an element of OFFICIAL_MODEL_NAMES or an
+alias of one. fold_ln (bool, optional): Whether to fold in the LayerNorm weights to
+the subsequent linear layer. This does not change the computation. Defaults to True.</p></li>
+<li><p><strong>center_writing_weights</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to center weights
+writing to the residual stream (ie set mean to be zero). Due to LayerNorm this
+doesn’t change the computation. Defaults to True.</p></li>
+<li><p><strong>center_unembed</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to center W_U (ie set mean
+to be zero). Softmax is translation invariant so this doesn’t affect log probs or
+loss, but does change logits. Defaults to True.</p></li>
+<li><p><strong>refactor_factored_attn_matrices</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to convert the factored
+matrices (W_Q &amp; W_K, and W_O &amp; W_V) to be “even”. Defaults to False</p></li>
+<li><p><strong>checkpoint_index</strong> (<em>int</em><em>, </em><em>optional</em>) – If loading from a checkpoint, the index of
+the checkpoint to load. Defaults to None.</p></li>
+<li><p><strong>checkpoint_value</strong> (<em>int</em><em>, </em><em>optional</em>) – If loading from a checkpoint, the value of
+the checkpoint to load, ie the step or token number (each model has checkpoints
+labelled with exactly one of these). Defaults to None.</p></li>
+<li><p><strong>hf_model</strong> (<em>AutoModelForCausalLM</em><em>, </em><em>optional</em>) – If you have already loaded in the
+HuggingFace model, you can pass it in here rather than needing to recreate the
+object. Defaults to None.</p></li>
+<li><p><strong>device</strong> (<em>str</em><em>, </em><em>optional</em>) – The device to load the model onto. By
+default will load to CUDA if available, else CPU.</p></li>
+<li><p><strong>n_devices</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of devices to split the model
+across. Defaults to 1. If greater than 1, <cite>device</cite> must be cuda.</p></li>
+<li><p><strong>tokenizer</strong> (<a href="#id1"><span class="problematic" id="id2">*</span></a>optional) – The tokenizer to use for the model. If not
+provided, it is inferred from cfg.tokenizer_name or initialized to None.
+If None, then the model cannot be passed strings, and d_vocab must be explicitly set.</p></li>
+<li><p><strong>move_to_device</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to move the model to the device specified in cfg.
+device. Must be true if <cite>n_devices</cite> in the config is greater than 1, since the model’s layers
+will be split across multiple devices.</p></li>
+<li><p><strong>default_prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Default behavior of whether to prepend the BOS token when the
+methods of HookedTransformer process input text to tokenize (only when input is a string).
+Defaults to True - even for models not explicitly trained with this, heads often use the
+first position as a resting position and accordingly lose information from the first token,
+so this empirically seems to give better results. To change the default behavior to False, pass in
+default_prepend_bos=False. Note that you can also locally override the default behavior by passing
+in prepend_bos=True/False when you call a method that processes the input string.</p></li>
+<li><p><strong>dtype</strong> (<em>str</em><em> | </em><em>torch.dtype</em><em>, </em><em>optional</em>) – What data type to load the model in (also sets the dtype of
+the HuggingFace model). Set to bfloat16 or float16 if you get out of memory errors when loading
+the model.</p></li>
+<li><p><strong>from_pretrained_kwargs</strong> (<em>dict</em><em>, </em><em>optional</em>) – Any other optional argument passed to HuggingFace’s
+from_pretrained (e.g. “cache_dir” or “torch_dtype”). Also passed to other HuggingFace
+functions when compatible. For some models or arguments it doesn’t work, especially for
+models that are not internally loaded with HuggingFace’s from_pretrained (e.g. SoLU models).</p></li>
+<li><p><strong>default_padding_side</strong> (<em>str</em><em>, </em><em>optional</em>) – Which side to pad on when tokenizing. Defaults to “right”.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.from_pretrained_no_processing">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_pretrained_no_processing</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_ln</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_writing_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_unembed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">refactor_factored_attn_matrices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_value_biases</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_prepend_bos</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_padding_side</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'right'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">from_pretrained_kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.from_pretrained_no_processing" title="Permalink to this definition">#</a></dt>
+<dd><p>Wrapper for from_pretrained.</p>
+<p>Wrapper for from_pretrained with all boolean flags related to simplifying the model set to
+False. Refer to from_pretrained for details.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.generate">
+<span class="sig-name descname"><span class="pre">generate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_new_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_at_eos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eos_token_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">do_sample</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_k</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">freq_penalty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_return_sequences</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_past_kv_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'input'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos_plus_new_tokens'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.generate" title="Permalink to this definition">#</a></dt>
+<dd><p>Sample Tokens from the Model.</p>
+<p>Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.</p>
+<p>To avoid fiddling with ragged tensors, if we input a batch of text and some sequences finish
+(by producing an EOT token), we keep running the model on the entire batch, but throw away
+the output for a finished sequence and just keep adding EOTs to pad.</p>
+<p>This supports entering a single string, but not a list of strings - if the strings don’t
+tokenize to exactly the same length, this gets messy. If that functionality is needed,
+convert them to a batch of tokens and input that instead.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>Int</em><em>[</em><em>torch.Tensor</em><em>, </em><em>&quot;batch pos&quot;</em><em>]</em><em>)</em><em>]</em>) – Either a batch of tokens ([batch,
+pos]) or a text string (this will be converted to a batch of tokens with batch size
+1).</p></li>
+<li><p><strong>max_new_tokens</strong> (<em>int</em>) – Maximum number of tokens to generate.</p></li>
+<li><p><strong>stop_at_eos</strong> (<em>bool</em>) – If True, stop generating tokens when the model outputs eos_token.</p></li>
+<li><p><strong>eos_token_id</strong> (<em>Optional</em><em>[</em><em>Union</em><em>[</em><em>int</em><em>, </em><em>Sequence</em><em>]</em><em>]</em>) – The token ID to use for end
+of sentence. If None, use the tokenizer’s eos_token_id - required if using
+stop_at_eos. It’s also possible to provide a list of token IDs (not just the
+eos_token_id), in which case the generation will stop when any of them are output
+(useful e.g. for stable_lm).</p></li>
+<li><p><strong>do_sample</strong> (<em>bool</em>) – If True, sample from the model’s output distribution. Otherwise, use
+greedy search (take the max logit each time).</p></li>
+<li><p><strong>top_k</strong> (<em>int</em>) – Number of tokens to sample from. If None, sample from all tokens.</p></li>
+<li><p><strong>top_p</strong> (<em>float</em>) – Probability mass to sample from. If 1.0, sample from all tokens. If &lt;1.0,
+we take the top tokens with cumulative probability &gt;= top_p.</p></li>
+<li><p><strong>temperature</strong> (<em>float</em>) – Temperature for sampling. Higher values will make the model more
+random (limit of temp -&gt; 0 is just taking the top token, limit of temp -&gt; inf is
+sampling from a uniform distribution).</p></li>
+<li><p><strong>freq_penalty</strong> (<em>float</em>) – Frequency penalty for sampling - how much to penalise previous
+tokens. Higher values will make the model more random.</p></li>
+<li><p><strong>use_past_kv_cache</strong> (<em>bool</em>) – If True, create and use cache to speed up generation.</p></li>
+<li><p><strong>prepend_bos</strong> (<em>Optional</em><em>[</em><em>bool</em><em>]</em>) – Whether to prepend the BOS token to the input (applicable
+when input is a string). Defaults to None, implying usage of
+self.cfg.default_prepend_bos (default is True unless specified otherwise). Pass True
+or False to override the default.</p></li>
+<li><p><strong>return_type</strong> (<em>Optional</em><em>[</em><em>str</em><em>]</em>) – The type of the output to return - either a string (str),
+a tensor of tokens (tensor) or whatever the format of the input was (input).</p></li>
+<li><p><strong>verbose</strong> (<em>bool</em>) – If True, show tqdm progress bars for generation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>[batch, pos + max_new_tokens], generated sequence of new tokens</dt><dd><p>(by default returns same type as input).</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>outputs (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.get_token_position">
+<span class="sig-name descname"><span class="pre">get_token_position</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">single_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'1</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'first'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.get_token_position" title="Permalink to this definition">#</a></dt>
+<dd><p>Get the position of a single_token in a string or sequence of tokens.</p>
+<p>Raises an error if the token is not present.</p>
+<p>Gotcha: If you’re inputting a string, it’ll automatically be tokenized. Be careful about the
+setting for prepend_bos! When a string is input to the model, a BOS (beginning of sequence)
+token is prepended by default when the string is tokenized because
+self.cfg.default_prepend_bos is set to True unless specified otherwise. But this should only
+be done at the START of the input, not when inputting part of the prompt. If you’re getting
+weird off-by-one errors, check carefully for what the setting should be!</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>single_token</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>int</em><em>]</em>) – The token to search for. Can
+be a token index, or a string (but the string must correspond to a single token).</p></li>
+<li><p><strong>input</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>torch.Tensor</em><em>]</em>) – The sequence to
+search in. Can be a string or a rank 1 tensor of tokens or a rank 2 tensor of tokens
+with a dummy batch dimension.</p></li>
+<li><p><strong>mode</strong> (<em>str</em><em>, </em><em>optional</em>) – If there are multiple matches, which match to return. Supports
+“first” or “last”. Defaults to “first”.</p></li>
+<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (only
+applies when input is a string). Defaults to None, implying usage of
+self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
+True or False to locally override the default.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.init_weights">
+<span class="sig-name descname"><span class="pre">init_weights</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.init_weights" title="Permalink to this definition">#</a></dt>
+<dd><p>Initialize weights.</p>
+<p>Initialize weights matrices with a normal of std=initializer_range (default=0.02). This
+roughly follows the GPT-2 paper’s scheme (but with truncation, and not halving the std for
+W_pos).</p>
+<p>LayerNorm weights are already initialized to 1.0, and all biases are initialized to 0.0
+(including LayerNorm), so this just initializes weight matrices.</p>
+<p>Weight matrices are set to empty by default (to save space + compute, since they’re the bulk
+of the parameters), so it is important to call this if you are not loading in pretrained
+weights! Note that this function assumes that weight names being with <a href="#id3"><span class="problematic" id="id4">W_</span></a></p>
+<p>Set seed here to ensure determinism.</p>
+<p>This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but
+no one has gotten round to updating it? <a class="reference external" href="https://github.com/pytorch/pytorch/issues/18182">https://github.com/pytorch/pytorch/issues/18182</a></p>
+<p>PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the
+exact same weights?! <a class="reference external" href="https://github.com/pytorch/pytorch/issues/72253">https://github.com/pytorch/pytorch/issues/72253</a></p>
+<p>The best paper I’ve found on transformer initialization is the muP paper, but haven’t
+integrated those ideas yet: <a class="reference external" href="https://arxiv.org/abs/2203.03466">https://arxiv.org/abs/2203.03466</a></p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.input_to_embed">
+<span class="sig-name descname"><span class="pre">input_to_embed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_kv_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache" title="transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache"><span class="pre">HookedTransformerKeyValueCache</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.input_to_embed" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.load_and_process_state_dict">
+<span class="sig-name descname"><span class="pre">load_and_process_state_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_writing_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_unembed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_value_biases</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">refactor_factored_attn_matrices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.load_and_process_state_dict" title="Permalink to this definition">#</a></dt>
+<dd><p>Load &amp; Process State Dict.</p>
+<p>Load a state dict into the model, and to apply processing to simplify it. The state dict is
+assumed to be in the HookedTransformer format.</p>
+<p>See the relevant method (same name as the flag) for more details on the folding, centering
+and processing flags.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>state_dict</strong> (<em>dict</em>) – The state dict of the model, in HookedTransformer format. fold_ln</p></li>
+<li><p><strong>(</strong><strong>bool</strong> – Whether to fold in the LayerNorm weights to the
+subsequent linear layer. This does not change the computation. Defaults to True.</p></li>
+<li><p><strong>optional</strong><strong>)</strong> – Whether to fold in the LayerNorm weights to the
+subsequent linear layer. This does not change the computation. Defaults to True.</p></li>
+<li><p><strong>center_writing_weights</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to center weights writing to the
+residual stream (ie set mean to be zero). Due to LayerNorm this doesn’t change the
+computation. Defaults to True.</p></li>
+<li><p><strong>center_unembed</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to center W_U (ie set mean to be zero).
+Softmax is translation invariant so this doesn’t affect log probs or loss, but does
+change logits. Defaults to True.</p></li>
+<li><p><strong>fold_value_biases</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to fold the value biases into the output
+bias. Because attention patterns add up to 1, the value biases always have a
+constant effect on a layer’s output, and it doesn’t matter which head a bias is
+associated with. We can factor this all into a single output bias to the layer, and
+make it easier to interpret the head’s output.</p></li>
+<li><p><strong>refactor_factored_attn_matrices</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to convert the factored
+matrices (W_Q &amp; W_K, and W_O &amp; W_V) to be “even”. Defaults to False.</p></li>
+<li><p><strong>model_name</strong> (<em>str</em><em>, </em><em>optional</em>) – checks the model name for special cases of state dict
+loading. Only used for Redwood 2L model currently.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.load_sample_training_dataset">
+<span class="sig-name descname"><span class="pre">load_sample_training_dataset</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.load_sample_training_dataset" title="Permalink to this definition">#</a></dt>
+<dd><p>Load Sample Training Dataset.</p>
+<p>Helper function to load in a 10K-20K dataset of elements from the model’s training data
+distribution.</p>
+<p>Wrapper around utils.get_dataset, which identifies the appropriate dataset the pretrained
+models. Each dataset has a ‘text’ field, which contains the relevant info, some have several
+meta data fields.</p>
+<p>Kwargs will be passed to utils.get_dataset (e.g. cache_dir to set download location)</p>
+<p>Notes:</p>
+<ul class="simple">
+<li><dl class="simple">
+<dt>PT-2’s training data is not open source. OpenWebText is a replication (links with</dt><dd><p>&gt;3 karma on Reddit)</p>
+</dd>
+</dl>
+</li>
+<li><p>OPT’s training data is not open source, and is a mess of different things that is hard to
+replicate. I default to the Pile, which covers some of it, but imperfectly.</p></li>
+</ul>
+<p>(Some models will have actually been trained on the data supplied here, for some it’s from
+the validation set).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.loss_fn">
+<span class="sig-name descname"><span class="pre">loss_fn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">logits</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.loss_fn" title="Permalink to this definition">#</a></dt>
+<dd><p>Wrapper around <cite>utils.lm_cross_entropy_loss</cite>.</p>
+<p>Used in forward() with return_type==”loss” or “both”.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.move_model_modules_to_device">
+<span class="sig-name descname"><span class="pre">move_model_modules_to_device</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.move_model_modules_to_device" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.mps">
+<span class="sig-name descname"><span class="pre">mps</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.mps" title="Permalink to this definition">#</a></dt>
+<dd><p>Wrapper around mps that also changes <cite>self.cfg.device</cite>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.process_weights_">
+<span class="sig-name descname"><span class="pre">process_weights_</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fold_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_writing_weights</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_unembed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">refactor_factored_attn_matrices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.process_weights_" title="Permalink to this definition">#</a></dt>
+<dd><p>Wrapper around <cite>load_and_process_state_dict</cite>.</p>
+<p>Wrapper around load_and_process_state_dict to allow for in-place processing of the weights.
+This is useful if using HookedTransformer for training, if we then want to analyse a cleaner
+version of the same model.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.refactor_factored_attn_matrices">
+<span class="sig-name descname"><span class="pre">refactor_factored_attn_matrices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.refactor_factored_attn_matrices" title="Permalink to this definition">#</a></dt>
+<dd><p>Experimental method for managing queries, keys and values.</p>
+<p>As argued in [A Mathematical Framework for Transformer
+Circuits](<a class="reference external" href="https://transformer-circuits.pub/2021/framework/index.html">https://transformer-circuits.pub/2021/framework/index.html</a>), queries, keys and
+values are somewhat arbitrary intermediate terms when computing with the low rank factored
+matrices W_QK = W_Q &#64; W_K.T and W_OV = W_V &#64; W_O, and these matrices are the only thing
+determining head behaviour. But there are many ways to find a low rank factorization to a
+given matrix, and hopefully some of these are more interpretable than others! This method is
+one attempt, which makes all of the matrices have orthogonal rows or columns, W_O into a
+rotation and W_Q and W_K having the nth column in each having the same norm. The formula is
+$W_V = U &#64; S,W_O=Vh.T,W_Q=U&#64;S.sqrt(),W_K=Vh&#64;S.sqrt()$.</p>
+<p>More details:</p>
+<p>If W_OV = U &#64; S &#64; Vh.T in its singular value decomposition, (where S is in R^d_head not
+R^d_model, as W_OV is low rank), W_OV = (U &#64; S) &#64; (Vh.T) is an equivalent low rank
+factorisation, where rows/columns of each matrix are orthogonal! So setting $W_V=US$ and
+$W_O=Vh.T$ works just as well. I <em>think</em> this is a more interpretable setup, because now
+$W_O$ is just a rotation, and doesn’t change the norm, so $z$ has the same norm as the
+result of the head.</p>
+<p>For $W_QK = W_Q &#64; W_K.T$ we use the refactor $W_Q = U &#64; S.sqrt()$ and $W_K = Vh &#64; S.sqrt()$,
+which is also equivalent ($S==S.sqrt() &#64; S.sqrt()$ as $S$ is diagonal). Here we keep the
+matrices as having the same norm, since there’s not an obvious asymmetry between the keys
+and queries.</p>
+<p>Biases are more fiddly to deal with. For OV it’s pretty easy - we just need (x &#64; W_V + b_V)
+&#64; W_O + b_O to be preserved, so we can set b_V’ = 0. and b_O’ = b_V &#64; W_O + b_O (note that
+b_V in R^{head_index x d_head} while b_O in R^{d_model}, so we need to sum b_V &#64; W_O along
+the head_index dimension too).</p>
+<p>For QK it’s messy - we need to preserve the bilinear form of (x &#64; W_Q + b_Q) * (y &#64; W_K +
+b_K), which is fairly messy. To deal with the biases, we concatenate them to W_Q and W_K to
+simulate a d_model+1 dimensional input (whose final coordinate is always 1), do the SVD
+factorization on this effective matrix, then separate out into final weights and biases.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.run_with_cache">
+<span class="sig-name descname"><span class="pre">run_with_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">model_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_cache_object</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="k"><span class="pre">True</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.HookedTransformer.Output" title="transformer_lens.HookedTransformer.Output"><span class="pre">Output</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.run_with_cache" title="Permalink to this definition">#</a></dt>
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">run_with_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">model_args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_cache_object</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="k"><span class="pre">False</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.HookedTransformer.Output" title="transformer_lens.HookedTransformer.Output"><span class="pre">Output</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span></dt>
+<dd><p>Wrapper around <cite>run_with_cache</cite> in HookedRootModule.</p>
+<p>If return_cache_object is True, this will return an ActivationCache object, with a bunch of
+useful HookedTransformer specific methods, otherwise it will return a dictionary of
+activations as in HookedRootModule.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.sample_datapoint">
+<span class="sig-name descname"><span class="pre">sample_datapoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenize</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'1</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.sample_datapoint" title="Permalink to this definition">#</a></dt>
+<dd><p>Sample Data Point from Dataset.</p>
+<p>Helper function to randomly sample a data point from self.dataset, a small dataset from the
+data distribution the model was trained on.</p>
+<p>Implicitly calls self.load_sample_training_dataset if it hasn’t already been called. Only
+works for pretrained models with an associated dataset. But you can manually replace
+self.dataset with a dataset of your choice if you want.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tokenize</strong> (<em>bool</em>) – Whether to return tokens (instead of text). Defaults to False. Note
+that the returned tokens will be automatically truncated to the model’s max context
+size.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.set_tokenizer">
+<span class="sig-name descname"><span class="pre">set_tokenizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_padding_side</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'right'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.set_tokenizer" title="Permalink to this definition">#</a></dt>
+<dd><p>Set the tokenizer to use for this model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizer</em>) – a pretrained HuggingFace tokenizer.</p></li>
+<li><p><strong>default_padding_side</strong> (<em>str</em>) – “right” or “left”, which side to pad on.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_in">
+<span class="sig-name descname"><span class="pre">set_use_attn_in</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">use_attn_in</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_in" title="Permalink to this definition">#</a></dt>
+<dd><p>Toggles whether to allow editing of inputs to each attention head.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_result">
+<span class="sig-name descname"><span class="pre">set_use_attn_result</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">use_attn_result</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_result" title="Permalink to this definition">#</a></dt>
+<dd><p>Toggle whether to explicitly calculate and expose the result for each attention head.</p>
+<p>Useful for interpretability but can easily burn through GPU memory.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.set_use_hook_mlp_in">
+<span class="sig-name descname"><span class="pre">set_use_hook_mlp_in</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">use_hook_mlp_in</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_hook_mlp_in" title="Permalink to this definition">#</a></dt>
+<dd><p>Toggles whether to allow storing and editing inputs to each MLP layer.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.set_use_split_qkv_input">
+<span class="sig-name descname"><span class="pre">set_use_split_qkv_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">use_split_qkv_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_split_qkv_input" title="Permalink to this definition">#</a></dt>
+<dd><p>Toggles whether to allow editing of inputs to each attention head.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.to">
+<span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device_or_dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">device</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_details</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.to" title="Permalink to this definition">#</a></dt>
+<dd><p>Moves and/or casts the parameters and buffers.</p>
+<p>This can be called as</p>
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">non_blocking</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dtype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">non_blocking</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">non_blocking</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">memory_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.channels_last</span></span></em><span class="sig-paren">)</span></dt>
+<dd></dd></dl>
+
+<p>Its signature is similar to <code class="xref py py-meth docutils literal notranslate"><span class="pre">torch.Tensor.to()</span></code>, but only accepts
+floating point or complex <code class="xref py py-attr docutils literal notranslate"><span class="pre">dtype</span></code>s. In addition, this method will
+only cast the floating point or complex parameters and buffers to <code class="xref py py-attr docutils literal notranslate"><span class="pre">dtype</span></code>
+(if given). The integral parameters and buffers will be moved
+<code class="xref py py-attr docutils literal notranslate"><span class="pre">device</span></code>, if that is given, but with dtypes unchanged. When
+<code class="xref py py-attr docutils literal notranslate"><span class="pre">non_blocking</span></code> is set, it tries to convert/move asynchronously
+with respect to the host if possible, e.g., moving CPU Tensors with
+pinned memory to CUDA devices.</p>
+<p>See below for examples.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This method modifies the module in-place.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>device</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">torch.device</span></code>) – the desired device of the parameters
+and buffers in this module</p></li>
+<li><p><strong>dtype</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">torch.dtype</span></code>) – the desired floating point or complex dtype of
+the parameters and buffers in this module</p></li>
+<li><p><strong>tensor</strong> (<em>torch.Tensor</em>) – Tensor whose dtype and device are the desired
+dtype and device for all parameters and buffers in this module</p></li>
+<li><p><strong>memory_format</strong> (<code class="xref py py-class docutils literal notranslate"><span class="pre">torch.memory_format</span></code>) – the desired memory
+format for 4D parameters and buffers in this module (keyword
+only argument)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>self</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Module</p>
+</dd>
+</dl>
+<p>Examples:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># xdoctest: +IGNORE_WANT(&quot;non-deterministic&quot;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="o">.</span><span class="n">weight</span>
+<span class="go">Parameter containing:</span>
+<span class="go">tensor([[ 0.1913, -0.3420],</span>
+<span class="go">        [-0.5113, -0.2325]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">double</span><span class="p">)</span>
+<span class="go">Linear(in_features=2, out_features=2, bias=True)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="o">.</span><span class="n">weight</span>
+<span class="go">Parameter containing:</span>
+<span class="go">tensor([[ 0.1913, -0.3420],</span>
+<span class="go">        [-0.5113, -0.2325]], dtype=torch.float64)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># xdoctest: +REQUIRES(env:TORCH_DOCTEST_CUDA1)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">gpu1</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s2">&quot;cuda:1&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">gpu1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">half</span><span class="p">,</span> <span class="n">non_blocking</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="go">Linear(in_features=2, out_features=2, bias=True)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="o">.</span><span class="n">weight</span>
+<span class="go">Parameter containing:</span>
+<span class="go">tensor([[ 0.1914, -0.3420],</span>
+<span class="go">        [-0.5112, -0.2324]], dtype=torch.float16, device=&#39;cuda:1&#39;)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cpu</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">cpu</span><span class="p">)</span>
+<span class="go">Linear(in_features=2, out_features=2, bias=True)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="o">.</span><span class="n">weight</span>
+<span class="go">Parameter containing:</span>
+<span class="go">tensor([[ 0.1914, -0.3420],</span>
+<span class="go">        [-0.5112, -0.2324]], dtype=torch.float16)</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">cdouble</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="o">.</span><span class="n">weight</span>
+<span class="go">Parameter containing:</span>
+<span class="go">tensor([[ 0.3741+0.j,  0.2382+0.j],</span>
+<span class="go">        [ 0.5593+0.j, -0.4443+0.j]], dtype=torch.complex128)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">linear</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">cdouble</span><span class="p">))</span>
+<span class="go">tensor([[0.6122+0.j, 0.1150+0.j],</span>
+<span class="go">        [0.6122+0.j, 0.1150+0.j],</span>
+<span class="go">        [0.6122+0.j, 0.1150+0.j]], dtype=torch.complex128)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.to_single_str_token">
+<span class="sig-name descname"><span class="pre">to_single_str_token</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">int_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.to_single_str_token" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.to_single_token">
+<span class="sig-name descname"><span class="pre">to_single_token</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">string</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.to_single_token" title="Permalink to this definition">#</a></dt>
+<dd><p>Map a string that makes up a single token to the id for that token.</p>
+<p>Raises an error for strings that are not a single token! If uncertain use to_tokens.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.to_str_tokens">
+<span class="sig-name descname"><span class="pre">to_str_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'1</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'1</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.to_str_tokens" title="Permalink to this definition">#</a></dt>
+<dd><p>Map text, a list of text or tokens to a list of tokens as strings.</p>
+<p>Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when
+inputting a prompt to the model as the first token is often treated weirdly, but should only
+be done at the START of the prompt. If prepend_bos=None is passed, it implies the usage of
+self.cfg.default_prepend_bos which is set to True unless specified otherwise. Therefore,
+make sure to locally turn it off by passing prepend_bos=False if you’re looking at the
+tokenization of part of the prompt! (Note: some models eg GPT-2 were not trained with a BOS
+token, others (OPT and my models) were)</p>
+<p>Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether
+the first letter is capitalized. It’s easy to shoot yourself in the foot here if you’re not
+careful!</p>
+<p>Gotcha3: If passing a string that exceeds the model’s context length (model.cfg.n_ctx), it
+will be truncated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>list</em><em>, </em><em>torch.Tensor</em><em>]</em>) – The input - either a string or a tensor of
+tokens. If tokens, should be a tensor of shape [pos] or [1, pos].</p></li>
+<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (only
+applies when input is a string). Defaults to None, implying usage of
+self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
+True or False to locally override the default.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of individual tokens as strings</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str_tokens</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.to_string">
+<span class="sig-name descname"><span class="pre">to_string</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.to_string" title="Permalink to this definition">#</a></dt>
+<dd><p>Tokens to String(s).</p>
+<p>Converts a tensor of tokens to a string (if rank 1) or a list of strings (if rank 2).</p>
+<p>Accepts lists of tokens and numpy arrays as inputs too (and converts to tensors internally)</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.to_tokens">
+<span class="sig-name descname"><span class="pre">to_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepend_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">move_to_device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">truncate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.to_tokens" title="Permalink to this definition">#</a></dt>
+<dd><p>Converts a string to a tensor of tokens.</p>
+<p>If prepend_bos is True, prepends the BOS token to the input - this is recommended when
+creating a sequence of tokens to be input to a model.</p>
+<p>Gotcha: prepend_bos prepends a beginning of string token. This is a recommended default when
+inputting a prompt to the model as the first token is often treated weirdly, but should only
+be done at the START of the prompt. Make sure to turn it off if you’re looking at the
+tokenization of part of the prompt! (Note: some models eg GPT-2 were not trained with a BOS
+token, others (OPT and my models) were)</p>
+<p>Gotcha2: Tokenization of a string depends on whether there is a preceding space and whether
+the first letter is capitalized. It’s easy to shoot yourself in the foot here if you’re not
+careful!</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>List</em><em>[</em><em>str</em><em>]</em><em>]</em>) – The input to tokenize.</p></li>
+<li><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to prepend the BOS token to the input (only
+applies when input is a string). Defaults to None, implying usage of
+self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
+True or False to locally override the default.</p></li>
+<li><p><strong>move_to_device</strong> (<em>bool</em>) – Whether to move the output tensor of tokens to the device the
+model lives on. Defaults to True truncate (bool): If the output tokens are too long,
+whether to truncate the output tokens to the model’s max context window. Does nothing
+for shorter inputs. Defaults to True.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.tokens_to_residual_directions">
+<span class="sig-name descname"><span class="pre">tokens_to_residual_directions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.tokens_to_residual_directions" title="Permalink to this definition">#</a></dt>
+<dd><p>Map tokens to a tensor with the unembedding vector for those tokens.</p>
+<p>I.e. the vector in the residual stream that we dot with to the get the logit for that token.</p>
+<p>WARNING: If you use this without folding in LayerNorm, the results will be misleading and
+may be incorrect, as the LN weights change the unembed map. This is done automatically with
+the fold_ln flag on from_pretrained</p>
+<p>WARNING 2: LayerNorm scaling will scale up or down the effective direction in the residual
+stream for each output token on any given input token position.
+ActivationCache.apply_ln_to_stack will apply the appropriate scaling to these directions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tokens</strong> (<em>Union</em><em>[</em><em>str</em><em>, </em><em>int</em><em>, </em><em>torch.Tensor</em><em>]</em>) – The token(s). If a single token, can be a single
+element tensor, an integer, or string. If string, will be mapped to a single token
+using to_single_token, and an error raised if it’s multiple tokens. The method also
+works for a batch of input tokens.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>The unembedding vector for the token(s), a stack of</dt><dd><p>[d_model] tensor.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>residual_direction torch.Tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.Output">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.HookedTransformer.</span></span><span class="sig-name descname"><span class="pre">Output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">logits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.Output" title="Permalink to this definition">#</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.Output.logits">
+<span class="sig-name descname"><span class="pre">logits</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.Output.logits" title="Permalink to this definition">#</a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.Output.loss">
+<span class="sig-name descname"><span class="pre">loss</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos-1'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.Output.loss" title="Permalink to this definition">#</a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.HookedTransformerConfig.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens.HookedTransformerConfig module</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.HookedEncoder.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.HookedEncoder module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.HookedTransformer module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer"><code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.OV"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.OV</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.QK"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.QK</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_E"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_E</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_E_pos"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_E_pos</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_K"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_K</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_O"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_O</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_Q"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_Q</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_U"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_U</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_V"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_V</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_gate"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_gate</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_in</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_out"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_out</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_pos"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_pos</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.accumulated_bias"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.accumulated_bias()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.all_composition_scores"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.all_composition_scores()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.all_head_labels"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.all_head_labels()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.b_K"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.b_K</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.b_O"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.b_O</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.b_Q"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.b_Q</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.b_U"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.b_U</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.b_V"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.b_V</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.b_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.b_in</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.b_out"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.b_out</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.center_unembed"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.center_unembed()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.center_writing_weights"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.center_writing_weights()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.check_hooks_to_add"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.check_hooks_to_add()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.cpu"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.cpu()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.cuda"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.cuda()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.fold_layer_norm"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.fold_layer_norm()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.fold_value_biases"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.fold_value_biases()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.forward"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.forward()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.from_pretrained"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.from_pretrained()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.from_pretrained_no_processing"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.from_pretrained_no_processing()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.generate"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.generate()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.get_token_position"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.get_token_position()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.init_weights"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.init_weights()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.input_to_embed"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.input_to_embed()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.load_and_process_state_dict"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.load_and_process_state_dict()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.load_sample_training_dataset"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.load_sample_training_dataset()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.loss_fn"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.loss_fn()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.move_model_modules_to_device"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.move_model_modules_to_device()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.mps"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.mps()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.process_weights_"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.process_weights_()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.refactor_factored_attn_matrices"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.refactor_factored_attn_matrices()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.run_with_cache"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.run_with_cache()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.sample_datapoint"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.sample_datapoint()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_tokenizer"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_tokenizer()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_use_attn_in()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_result"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_use_attn_result()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_hook_mlp_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_use_hook_mlp_in()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.set_use_split_qkv_input"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.set_use_split_qkv_input()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.to"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.to()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.to_single_str_token"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.to_single_str_token()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.to_single_token"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.to_single_token()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.to_str_tokens"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.to_str_tokens()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.to_string"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.to_string()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.to_tokens"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.to_tokens()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.tokens_to_residual_directions"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.tokens_to_residual_directions()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.Output"><code class="docutils literal notranslate"><span class="pre">Output</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.Output.logits"><code class="docutils literal notranslate"><span class="pre">Output.logits</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.Output.loss"><code class="docutils literal notranslate"><span class="pre">Output.loss</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/scripts/furo.js"></script>
+    </body>
+</html>

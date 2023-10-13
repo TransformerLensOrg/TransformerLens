@@ -1,0 +1,7 @@
+transformer\_lens.head\_detector module
+=======================================
+
+.. automodule:: transformer_lens.head_detector
+   :members:
+   :undoc-members:
+   :show-inheritance:

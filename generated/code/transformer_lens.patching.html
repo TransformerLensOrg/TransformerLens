@@ -1,0 +1,880 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.train module" href="transformer_lens.train.html" /><link rel="prev" title="transformer_lens.past_key_value_caching module" href="transformer_lens.past_key_value_caching.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+        <title>transformer_lens.patching module - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.patching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="module-transformer_lens.patching">
+<span id="transformer-lens-patching-module"></span><h1>transformer_lens.patching module<a class="headerlink" href="#module-transformer_lens.patching" title="Permalink to this heading">#</a></h1>
+<p>Patching.</p>
+<p>A module for patching activations in a transformer model, and measuring the effect of the patch on
+the output. This implements the activation patching technique for a range of types of activation.
+The structure is to have a single <a class="reference internal" href="#transformer_lens.patching.generic_activation_patch" title="transformer_lens.patching.generic_activation_patch"><code class="xref py py-func docutils literal notranslate"><span class="pre">generic_activation_patch()</span></code></a> function that does everything,
+and to have a range of specialised functions for specific types of activation.</p>
+<p>Context:</p>
+<p>Activation Patching is technique introduced in the <a href="#id1"><span class="problematic" id="id2">`ROME paper&lt;http://rome.baulab.info/&gt;`_</span></a>, which
+uses a causal intervention to identify which activations in a model matter for producing some
+output. It runs the model on input A, replaces (patches) an activation with that same activation on
+input B, and sees how much that shifts the answer from A to B.</p>
+<p>More details: The setup of activation patching is to take two runs of the model on two different
+inputs, the clean run and the corrupted run. The clean run outputs the correct answer and the
+corrupted run does not. The key idea is that we give the model the corrupted input, but then
+intervene on a specific activation and patch in the corresponding activation from the clean run (ie
+replace the corrupted activation with the clean activation), and then continue the run. And we then
+measure how much the output has updated towards the correct answer.</p>
+<ul class="simple">
+<li><dl class="simple">
+<dt>We can then iterate over many</dt><dd><p>possible activations and look at how much they affect the corrupted run. If patching in an
+activation significantly increases the probability of the correct answer, this allows us to
+localise which activations matter.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>A key detail is that we move a single activation __from__ the clean run __to __the corrupted run.</dt><dd><p>So if this changes the answer from incorrect to correct, we can be confident that the activation
+moved was important.</p>
+</dd>
+</dl>
+</li>
+</ul>
+<p>Intuition:</p>
+<p>The ability to <strong>localise</strong> is a key move in mechanistic interpretability - if the computation is
+diffuse and spread across the entire model, it is likely much harder to form a clean mechanistic
+story for what’s going on. But if we can identify precisely which parts of the model matter, we can
+then zoom in and determine what they represent and how they connect up with each other, and
+ultimately reverse engineer the underlying circuit that they represent. And, empirically, on at
+least some tasks activation patching tends to find that computation is extremely localised:</p>
+<ul class="simple">
+<li><dl class="simple">
+<dt>This technique helps us precisely identify which parts of the model matter for a certain</dt><dd><p>part of a task. Eg, answering “The Eiffel Tower is in” with “Paris” requires figuring out that
+the Eiffel Tower is in Paris, and that it’s a factual recall task and that the output is a
+location. Patching to “The Colosseum is in” controls for everything other than the “Eiffel Tower
+is located in Paris” feature.</p>
+</dd>
+</dl>
+</li>
+<li><p>It helps a lot if the corrupted prompt has the same number of tokens</p></li>
+</ul>
+<p>This, unlike direct logit attribution, can identify meaningful parts of a circuit from anywhere
+within the model, rather than just the end.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.generic_activation_patch">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">generic_activation_patch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer" title="transformer_lens.HookedTransformer.HookedTransformer"><span class="pre">HookedTransformer</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">patching_metric</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">patch_setter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">activation_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_axis_names</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'layer'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pos'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'head_index'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'head'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'src_pos'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dest_pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index_df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">DataFrame</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_index_df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.generic_activation_patch" title="Permalink to this definition">#</a></dt>
+<dd><p>A generic function to do activation patching, will be specialised to specific use cases.</p>
+<p>Activation patching is about studying the counterfactual effect of a specific activation between a clean run and a corrupted run. The idea is have two inputs, clean and corrupted, which have two different outputs, and differ in some key detail. Eg “The Eiffel Tower is in” vs “The Colosseum is in”. Then to take a cached set of activations from the “clean” run, and a set of corrupted.</p>
+<p>Internally, the key function comes from three things: A list of tuples of indices (eg (layer, position, head_index)), a index_to_act_name function which identifies the right activation for each index, a patch_setter function which takes the corrupted activation, the index and the clean cache, and a metric for how well the patched model has recovered.</p>
+<p>The indices can either be given explicitly as a pandas dataframe, or by listing the relevant axis names and having them inferred from the tokens and the model config. It is assumed that the first column is always layer.</p>
+<p>This function then iterates over every tuple of indices, does the relevant patch, and stores it</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> – The input tokens for the corrupted run</p></li>
+<li><p><strong>clean_cache</strong> – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+<li><p><strong>patch_setter</strong> – A function which acts on (corrupted_activation, index, clean_cache) to edit the activation and patch in the relevant chunk of the clean activation</p></li>
+<li><p><strong>activation_name</strong> – The name of the activation being patched</p></li>
+<li><p><strong>index_axis_names</strong> – The names of the axes to (fully) iterate over, implicitly fills in index_df</p></li>
+<li><p><strong>index_df</strong> – The dataframe of indices, columns are axis names and each row is a tuple of indices. Will be inferred from index_axis_names if not given. When this is input, the output will be a flattened tensor with an element per row of index_df</p></li>
+<li><p><strong>return_index_df</strong> – A Boolean flag for whether to return the dataframe of indices too</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. By default it has one dimension for each index dimension, via index_df set explicitly it is flattened with one element per row.
+index_df <em>optional</em>: The dataframe of indices</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_all_pos_every">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_all_pos_every</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_cache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metric</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'patch_type</span> <span class="pre">layer</span> <span class="pre">head'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_all_pos_every" title="Permalink to this definition">#</a></dt>
+<dd><p>Helper function to get activation patching results for every head (across all positions) for every act type (output, query, key, value, pattern). Wrapper around each’s patching function, returns a stacked tensor of shape [5, n_layers, n_heads]</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [5, n_layers, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_by_pos_every">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_by_pos_every</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_cache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metric</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'patch_type</span> <span class="pre">layer</span> <span class="pre">pos</span> <span class="pre">head'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_by_pos_every" title="Permalink to this definition">#</a></dt>
+<dd><p>Helper function to get activation patching results for every head (by position) for every act type (output, query, key, value, pattern). Wrapper around each’s patching function, returns a stacked tensor of shape [5, n_layers, pos, n_heads]</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [5, n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_k_all_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_k_all_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'k',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_k_all_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the keys of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_k_by_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_k_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'k',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_k_by_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the keys of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_out_all_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_out_all_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'z',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_out_all_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the outputs of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_out_by_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_out_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'z',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_out_by_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the output of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_pattern_all_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_pattern_all_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_pattern_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'pattern',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head_index'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_pattern_all_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the attention pattern of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_pattern_by_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_pattern_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_pos_pattern_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'pattern',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head_index',</span> <span class="pre">'dest_pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_pattern_by_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the attention pattern of each Attention Head (by destination position). Returns a tensor of shape [n_layers, n_heads, dest_pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads, dest_pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_pattern_dest_src_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_pattern_dest_src_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_dest_src_pos_pattern_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'pattern',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head_index',</span> <span class="pre">'dest_pos',</span> <span class="pre">'src_pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_pattern_dest_src_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for each destination, source entry of the attention pattern for each Attention Head. Returns a tensor of shape [n_layers, n_heads, dest_pos, src_pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads, dest_pos, src_pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_q_all_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_q_all_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'q',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_q_all_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the queries of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_q_by_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_q_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'q',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_q_by_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the queries of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_v_all_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_v_all_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'v',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_v_all_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the values of each Attention Head (across all positions). Returns a tensor of shape [n_layers, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_head_v_by_pos">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_head_v_by_pos</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_head_vector_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'v',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos',</span> <span class="pre">'head'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_head_v_by_pos" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the values of each Attention Head (by position). Returns a tensor of shape [n_layers, pos, n_heads]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos, n_heads]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_attn_out">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_attn_out</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'attn_out',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_attn_out" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the output of each Attention layer (by position). Returns a tensor of shape [n_layers, pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_block_every">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_block_every</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">corrupted_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_cache</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metric</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'patch_type</span> <span class="pre">layer</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_block_every" title="Permalink to this definition">#</a></dt>
+<dd><p>Helper function to get activation patching results for the residual stream (at the start of each block), output of each Attention layer and output of each MLP layer. Wrapper around each’s patching function, returns a stacked tensor of shape [3, n_layers, pos]</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [3, n_layers, pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_mlp_out">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_mlp_out</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'mlp_out',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_mlp_out" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the output of each MLP layer (by position). Returns a tensor of shape [n_layers, pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_resid_mid">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_resid_mid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'resid_mid',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_resid_mid" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the residual stream (between the attn and MLP layer of each block) (by position). Returns a tensor of shape [n_layers, pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each patch. Has shape [n_layers, pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.get_act_patch_resid_pre">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">get_act_patch_resid_pre</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">model:</span> <span class="pre">HookedTransformer,</span> <span class="pre">corrupted_tokens:</span> <span class="pre">Int[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos'],</span> <span class="pre">clean_cache:</span> <span class="pre">ActivationCache,</span> <span class="pre">patching_metric:</span> <span class="pre">Callable[[Float[torch.Tensor,</span> <span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_vocab']],</span> <span class="pre">Float[torch.Tensor,</span> <span class="pre">'']],</span> <span class="pre">*,</span> <span class="pre">patch_setter:</span> <span class="pre">Callable[[CorruptedActivation,</span> <span class="pre">Sequence[int],</span> <span class="pre">ActivationCache],</span> <span class="pre">PatchedActivation]</span> <span class="pre">=</span> <span class="pre">&lt;function</span> <span class="pre">layer_pos_patch_setter&gt;,</span> <span class="pre">activation_name:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'resid_pre',</span> <span class="pre">index_axis_names:</span> <span class="pre">Optional[Sequence[AxisNames]]</span> <span class="pre">=</span> <span class="pre">('layer',</span> <span class="pre">'pos'),</span> <span class="pre">index_df:</span> <span class="pre">Optional[pd.DataFrame]</span> <span class="pre">=</span> <span class="pre">None,</span> <span class="pre">return_index_df:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">torch.Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.patching.get_act_patch_resid_pre" title="Permalink to this definition">#</a></dt>
+<dd><p>Function to get activation patching results for the residual stream (at the start of each block) (by position). Returns a tensor of shape [n_layers, pos]</p>
+<p>See generic_activation_patch for a more detailed explanation of activation patching</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The relevant model</p></li>
+<li><p><strong>corrupted_tokens</strong> (<em>torch.Tensor</em>) – The input tokens for the corrupted run. Has shape [batch, pos]</p></li>
+<li><p><strong>clean_cache</strong> (<a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><em>ActivationCache</em></a>) – The cached activations from the clean run</p></li>
+<li><p><strong>patching_metric</strong> – A function from the model’s output logits to some metric (eg loss, logit diff, etc)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The tensor of the patching metric for each resid_pre patch. Has shape [n_layers, pos]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>patched_output (torch.Tensor)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.layer_head_dest_src_pos_pattern_patch_setter">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_head_dest_src_pos_pattern_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_head_dest_src_pos_pattern_patch_setter" title="Permalink to this definition">#</a></dt>
+<dd><p>Applies the activation patch where index = [layer,  head_index, dest_pos, src_pos]</p>
+<p>Implicitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.layer_head_pattern_patch_setter">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_head_pattern_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_head_pattern_patch_setter" title="Permalink to this definition">#</a></dt>
+<dd><p>Applies the activation patch where index = [layer,  head_index]</p>
+<p>Implicitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.layer_head_pos_pattern_patch_setter">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_head_pos_pattern_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_head_pos_pattern_patch_setter" title="Permalink to this definition">#</a></dt>
+<dd><p>Applies the activation patch where index = [layer,  head_index, dest_pos]</p>
+<p>Implicitly assumes that the activation axis order is [batch, head_index, dest_pos, src_pos], which is true of attention scores and patterns.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.layer_head_vector_patch_setter">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_head_vector_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_head_vector_patch_setter" title="Permalink to this definition">#</a></dt>
+<dd><p>Applies the activation patch where index = [layer,  head_index]</p>
+<p>Implicitly assumes that the activation axis order is [batch, pos, head_index, …], which is true of all attention head vector activations (q, k, v, z, result) but <em>not</em> of attention patterns.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.layer_pos_head_vector_patch_setter">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_pos_head_vector_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_pos_head_vector_patch_setter" title="Permalink to this definition">#</a></dt>
+<dd><p>Applies the activation patch where index = [layer, pos, head_index]</p>
+<p>Implicitly assumes that the activation axis order is [batch, pos, head_index, …], which is true of all attention head vector activations (q, k, v, z, result) but <em>not</em> of attention patterns.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.patching.layer_pos_patch_setter">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.patching.</span></span><span class="sig-name descname"><span class="pre">layer_pos_patch_setter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corrupted_activation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clean_activation</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.patching.layer_pos_patch_setter" title="Permalink to this definition">#</a></dt>
+<dd><p>Applies the activation patch where index = [layer, pos]</p>
+<p>Implicitly assumes that the activation axis order is [batch, pos, …], which is true of everything that is not an attention pattern shaped tensor.</p>
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.train.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens.train module</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="transformer_lens.past_key_value_caching.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">transformer_lens.past_key_value_caching module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">transformer_lens.patching module</a><ul>
+<li><a class="reference internal" href="#transformer_lens.patching.generic_activation_patch"><code class="docutils literal notranslate"><span class="pre">generic_activation_patch()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_all_pos_every"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_all_pos_every()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_by_pos_every"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_by_pos_every()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_k_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_k_all_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_k_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_k_by_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_out_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_out_all_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_out_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_out_by_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_pattern_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_pattern_all_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_pattern_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_pattern_by_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_pattern_dest_src_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_pattern_dest_src_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_q_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_q_all_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_q_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_q_by_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_v_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_v_all_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_head_v_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_v_by_pos()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_attn_out"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_out()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_block_every"><code class="docutils literal notranslate"><span class="pre">get_act_patch_block_every()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_mlp_out"><code class="docutils literal notranslate"><span class="pre">get_act_patch_mlp_out()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_resid_mid"><code class="docutils literal notranslate"><span class="pre">get_act_patch_resid_mid()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.get_act_patch_resid_pre"><code class="docutils literal notranslate"><span class="pre">get_act_patch_resid_pre()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.layer_head_dest_src_pos_pattern_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_head_dest_src_pos_pattern_patch_setter()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.layer_head_pattern_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_head_pattern_patch_setter()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.layer_head_pos_pattern_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_head_pos_pattern_patch_setter()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.layer_head_vector_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_head_vector_patch_setter()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.layer_pos_head_vector_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_pos_head_vector_patch_setter()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.patching.layer_pos_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_pos_patch_setter()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/scripts/furo.js"></script>
+    </body>
+</html>

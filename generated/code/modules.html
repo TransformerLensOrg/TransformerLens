@@ -1,0 +1,471 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens package" href="transformer_lens.html" /><link rel="prev" title="Citation" href="../../content/citation.html" />
+
+    <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
+        <title>transformer_lens - TransformerLens Documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
+    <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f8f8f8;
+  --color-code-foreground: black;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-half" viewBox="0 0 24 24">
+    <title>Auto light/dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-shadow">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M13 12h5" />
+      <path d="M13 15h4" />
+      <path d="M13 18h1" />
+      <path d="M13 9h4" />
+      <path d="M13 6h1" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../index.html"><div class="brand">TransformerLens Documentation</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand centered" href="../../index.html">
+  
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../_static/transformer_lens_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">TransformerLens Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Introduction</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/getting_started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/gallery.html">Gallery</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Resources</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/tutorials.html">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../content/citation.html">Citation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Code</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children current-page"><a class="current reference internal" href="#">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Models</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../model_properties_table.html">Model Properties Table</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../content/development.html">Local Development</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/neelnanda-io/TransformerLens">Github</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto"><use href="#svg-sun-half"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main">
+          <section id="transformer-lens">
+<h1>transformer_lens<a class="headerlink" href="#transformer-lens" title="Permalink to this heading">#</a></h1>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.html#subpackages">Subpackages</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.html#submodules">Submodules</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="transformer_lens.html#submodules">Submodules</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache"><code class="docutils literal notranslate"><span class="pre">ActivationCache</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.FactoredMatrix.html#transformer_lens.FactoredMatrix.FactoredMatrix"><code class="docutils literal notranslate"><span class="pre">FactoredMatrix</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.HookedEncoder.html#transformer_lens.HookedEncoder.HookedEncoder"><code class="docutils literal notranslate"><span class="pre">HookedEncoder</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer"><code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.Output"><code class="docutils literal notranslate"><span class="pre">Output</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><code class="docutils literal notranslate"><span class="pre">HookedTransformerConfig</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.SVDInterpreter.html#transformer_lens.SVDInterpreter.SVDInterpreter"><code class="docutils literal notranslate"><span class="pre">SVDInterpreter</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.Attention"><code class="docutils literal notranslate"><span class="pre">Attention</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.BertBlock"><code class="docutils literal notranslate"><span class="pre">BertBlock</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.BertEmbed"><code class="docutils literal notranslate"><span class="pre">BertEmbed</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.BertMLMHead"><code class="docutils literal notranslate"><span class="pre">BertMLMHead</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.Embed"><code class="docutils literal notranslate"><span class="pre">Embed</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.GatedMLP"><code class="docutils literal notranslate"><span class="pre">GatedMLP</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.LayerNorm"><code class="docutils literal notranslate"><span class="pre">LayerNorm</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.LayerNormPre"><code class="docutils literal notranslate"><span class="pre">LayerNormPre</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.MLP"><code class="docutils literal notranslate"><span class="pre">MLP</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.PosEmbed"><code class="docutils literal notranslate"><span class="pre">PosEmbed</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.RMSNorm"><code class="docutils literal notranslate"><span class="pre">RMSNorm</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.RMSNormPre"><code class="docutils literal notranslate"><span class="pre">RMSNormPre</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.TokenTypeEmbed"><code class="docutils literal notranslate"><span class="pre">TokenTypeEmbed</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.TransformerBlock"><code class="docutils literal notranslate"><span class="pre">TransformerBlock</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.html#transformer_lens.components.Unembed"><code class="docutils literal notranslate"><span class="pre">Unembed</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.IOIDataset"><code class="docutils literal notranslate"><span class="pre">IOIDataset</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.evaluate"><code class="docutils literal notranslate"><span class="pre">evaluate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.evaluate_on_dataset"><code class="docutils literal notranslate"><span class="pre">evaluate_on_dataset()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.induction_loss"><code class="docutils literal notranslate"><span class="pre">induction_loss()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.ioi_eval"><code class="docutils literal notranslate"><span class="pre">ioi_eval()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.make_code_data_loader"><code class="docutils literal notranslate"><span class="pre">make_code_data_loader()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.make_owt_data_loader"><code class="docutils literal notranslate"><span class="pre">make_owt_data_loader()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.make_pile_data_loader"><code class="docutils literal notranslate"><span class="pre">make_pile_data_loader()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.make_wiki_data_loader"><code class="docutils literal notranslate"><span class="pre">make_wiki_data_loader()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.evals.html#transformer_lens.evals.sanity_check"><code class="docutils literal notranslate"><span class="pre">sanity_check()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.head_detector.html#transformer_lens.head_detector.compute_head_attention_similarity_score"><code class="docutils literal notranslate"><span class="pre">compute_head_attention_similarity_score()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.head_detector.html#transformer_lens.head_detector.detect_head"><code class="docutils literal notranslate"><span class="pre">detect_head()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.head_detector.html#transformer_lens.head_detector.get_duplicate_token_head_detection_pattern"><code class="docutils literal notranslate"><span class="pre">get_duplicate_token_head_detection_pattern()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.head_detector.html#transformer_lens.head_detector.get_induction_head_detection_pattern"><code class="docutils literal notranslate"><span class="pre">get_induction_head_detection_pattern()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.head_detector.html#transformer_lens.head_detector.get_previous_token_head_detection_pattern"><code class="docutils literal notranslate"><span class="pre">get_previous_token_head_detection_pattern()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.head_detector.html#transformer_lens.head_detector.get_supported_heads"><code class="docutils literal notranslate"><span class="pre">get_supported_heads()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.hook_points.html#transformer_lens.hook_points.HookPoint"><code class="docutils literal notranslate"><span class="pre">HookPoint</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.hook_points.html#transformer_lens.hook_points.HookedRootModule"><code class="docutils literal notranslate"><span class="pre">HookedRootModule</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.hook_points.html#transformer_lens.hook_points.LensHandle"><code class="docutils literal notranslate"><span class="pre">LensHandle</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html#transformer_lens.loading_from_pretrained.Config"><code class="docutils literal notranslate"><span class="pre">Config</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html#transformer_lens.loading_from_pretrained.get_checkpoint_labels"><code class="docutils literal notranslate"><span class="pre">get_checkpoint_labels()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html#transformer_lens.loading_from_pretrained.get_num_params_of_pretrained"><code class="docutils literal notranslate"><span class="pre">get_num_params_of_pretrained()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html#transformer_lens.loading_from_pretrained.get_pretrained_model_config"><code class="docutils literal notranslate"><span class="pre">get_pretrained_model_config()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache"><code class="docutils literal notranslate"><span class="pre">HookedTransformerKeyValueCache</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCacheEntry"><code class="docutils literal notranslate"><span class="pre">HookedTransformerKeyValueCacheEntry</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.generic_activation_patch"><code class="docutils literal notranslate"><span class="pre">generic_activation_patch()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_all_pos_every"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_all_pos_every()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_by_pos_every"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_by_pos_every()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_k_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_k_all_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_k_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_k_by_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_out_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_out_all_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_out_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_out_by_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_pattern_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_pattern_all_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_pattern_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_pattern_by_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_pattern_dest_src_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_pattern_dest_src_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_q_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_q_all_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_q_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_q_by_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_v_all_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_v_all_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_head_v_by_pos"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_head_v_by_pos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_attn_out"><code class="docutils literal notranslate"><span class="pre">get_act_patch_attn_out()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_block_every"><code class="docutils literal notranslate"><span class="pre">get_act_patch_block_every()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_mlp_out"><code class="docutils literal notranslate"><span class="pre">get_act_patch_mlp_out()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_resid_mid"><code class="docutils literal notranslate"><span class="pre">get_act_patch_resid_mid()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.get_act_patch_resid_pre"><code class="docutils literal notranslate"><span class="pre">get_act_patch_resid_pre()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.layer_head_dest_src_pos_pattern_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_head_dest_src_pos_pattern_patch_setter()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.layer_head_pattern_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_head_pattern_patch_setter()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.layer_head_pos_pattern_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_head_pos_pattern_patch_setter()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.layer_head_vector_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_head_vector_patch_setter()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.layer_pos_head_vector_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_pos_head_vector_patch_setter()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.patching.html#transformer_lens.patching.layer_pos_patch_setter"><code class="docutils literal notranslate"><span class="pre">layer_pos_patch_setter()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.train.html#transformer_lens.train.HookedTransformerTrainConfig"><code class="docutils literal notranslate"><span class="pre">HookedTransformerTrainConfig</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.train.html#transformer_lens.train.train"><code class="docutils literal notranslate"><span class="pre">train()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.LocallyOverridenDefaults"><code class="docutils literal notranslate"><span class="pre">LocallyOverridenDefaults</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice"><code class="docutils literal notranslate"><span class="pre">Slice</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.SliceInput"><code class="docutils literal notranslate"><span class="pre">SliceInput</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.composition_scores"><code class="docutils literal notranslate"><span class="pre">composition_scores()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.download_file_from_hf"><code class="docutils literal notranslate"><span class="pre">download_file_from_hf()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.extend_tensor_with_ones"><code class="docutils literal notranslate"><span class="pre">extend_tensor_with_ones()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.gelu_fast"><code class="docutils literal notranslate"><span class="pre">gelu_fast()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.gelu_new"><code class="docutils literal notranslate"><span class="pre">gelu_new()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_act_name"><code class="docutils literal notranslate"><span class="pre">get_act_name()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_attention_mask"><code class="docutils literal notranslate"><span class="pre">get_attention_mask()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_causal_mask_for_left_padding"><code class="docutils literal notranslate"><span class="pre">get_causal_mask_for_left_padding()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_corner"><code class="docutils literal notranslate"><span class="pre">get_corner()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_cumsum_along_dim"><code class="docutils literal notranslate"><span class="pre">get_cumsum_along_dim()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_dataset"><code class="docutils literal notranslate"><span class="pre">get_dataset()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_device"><code class="docutils literal notranslate"><span class="pre">get_device()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_input_with_manually_prepended_bos"><code class="docutils literal notranslate"><span class="pre">get_input_with_manually_prepended_bos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_nested_attr"><code class="docutils literal notranslate"><span class="pre">get_nested_attr()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_tokenizer_with_bos"><code class="docutils literal notranslate"><span class="pre">get_tokenizer_with_bos()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.get_tokens_with_bos_removed"><code class="docutils literal notranslate"><span class="pre">get_tokens_with_bos_removed()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.is_lower_triangular"><code class="docutils literal notranslate"><span class="pre">is_lower_triangular()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.is_square"><code class="docutils literal notranslate"><span class="pre">is_square()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.keep_single_column"><code class="docutils literal notranslate"><span class="pre">keep_single_column()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.lm_accuracy"><code class="docutils literal notranslate"><span class="pre">lm_accuracy()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.lm_cross_entropy_loss"><code class="docutils literal notranslate"><span class="pre">lm_cross_entropy_loss()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.override_or_use_default_value"><code class="docutils literal notranslate"><span class="pre">override_or_use_default_value()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.print_gpu_mem"><code class="docutils literal notranslate"><span class="pre">print_gpu_mem()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.remove_batch_dim"><code class="docutils literal notranslate"><span class="pre">remove_batch_dim()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.sample_logits"><code class="docutils literal notranslate"><span class="pre">sample_logits()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.set_nested_attr"><code class="docutils literal notranslate"><span class="pre">set_nested_attr()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.solu"><code class="docutils literal notranslate"><span class="pre">solu()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.test_prompt"><code class="docutils literal notranslate"><span class="pre">test_prompt()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.to_numpy"><code class="docutils literal notranslate"><span class="pre">to_numpy()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.tokenize_and_concatenate"><code class="docutils literal notranslate"><span class="pre">tokenize_and_concatenate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.transpose"><code class="docutils literal notranslate"><span class="pre">transpose()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="transformer_lens.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">transformer_lens package</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../../content/citation.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Citation</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2023, Neel Nanda
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script data-url_root="../../" id="documentation_options" src="../../_static/documentation_options.js"></script>
+    <script src="../../_static/jquery.js"></script>
+    <script src="../../_static/underscore.js"></script>
+    <script src="../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../_static/doctools.js"></script>
+    <script src="../../_static/sphinx_highlight.js"></script>
+    <script src="../../_static/scripts/furo.js"></script>
+    </body>
+</html>

@@ -1,0 +1,7 @@
+transformer\_lens.patching module
+=================================
+
+.. automodule:: transformer_lens.patching
+   :members:
+   :undoc-members:
+   :show-inheritance:
