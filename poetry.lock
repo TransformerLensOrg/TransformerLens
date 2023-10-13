@@ -3182,6 +3182,25 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "six", "virtualenv"]
 
 [[package]]
+name = "pytest-doctestplus"
+version = "1.0.0"
+description = "Pytest plugin with advanced doctest features."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pytest-doctestplus-1.0.0.tar.gz", hash = "sha256:f650440dcaede13ed6d7da73bfb4ac585d40a80444ba3542d3e6eecdb275d49f"},
+    {file = "pytest_doctestplus-1.0.0-py3-none-any.whl", hash = "sha256:dcba88e1e38bc4871c355e44b778ccfd49b25e33f6aa5393eed6b56440decb2a"},
+]
+
+[package.dependencies]
+packaging = ">=17.0"
+pytest = ">=4.6"
+setuptools = ">=30.3.0"
+
+[package.extras]
+test = ["numpy", "pytest-remotedata (>=0.3.2)", "sphinx"]
+
+[[package]]
 name = "python-dateutil"
 version = "2.8.2"
 description = "Extensions to the standard Python datetime module"
@@ -5101,4 +5120,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.7.4,<4.0"
-content-hash = "16459964a4158f418e77acf128de6fd3f4f616f6231acd5e83f3daed26ec5bf1"
+content-hash = "e8e33cc9a59032acaf013d89d82ddac765972e6cdab4eb9954a61d53459258e8"

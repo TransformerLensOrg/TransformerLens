@@ -61,6 +61,8 @@ jobs:
         run: make check-format
       - name: Unit test
         run: make unit-test
+      - name: Docstring test
+        run: make docstring-test
       - name: Acceptance test
         run: make acceptance-test
       # - name: Type check

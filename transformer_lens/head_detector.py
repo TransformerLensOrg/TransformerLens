@@ -83,18 +83,32 @@ def detect_head(
     --------
     .. code-block:: python
 
-        >>> from transformer_lens import HookedTransformer,  utils
-        >>> from transformer_lens.head_detector import detect_head
-        >>> import plotly.express as px
+        from transformer_lens import HookedTransformer,  utils
+        from transformer_lens.head_detector import detect_head
+        import plotly.express as px
 
-        >>> def imshow(tensor, renderer=None, xaxis="", yaxis="", **kwargs):
-        >>>     px.imshow(utils.to_numpy(tensor), color_continuous_midpoint=0.0, color_continuous_scale="RdBu", labels={"x":xaxis, "y":yaxis}, **kwargs).show(renderer)
+        def imshow(tensor, renderer=None, xaxis="", yaxis="", **kwargs):
+            px.imshow(
+                    utils.to_numpy(tensor),
+                    color_continuous_midpoint=0.0,
+                    color_continuous_scale="RdBu",
+                    labels={"x":xaxis, "y":yaxis},
+                    **kwargs
+                ).show(renderer)
 
-        >>> model = HookedTransformer.from_pretrained("gpt2-small")
-        >>> sequence = "This is a test sequence. This is a test sequence."
+        model = HookedTransformer.from_pretrained("gpt2-small")
+        sequence = "This is a test sequence. This is a test sequence."
 
-        >>> attention_score = detect_head(model, sequence, "previous_token_head")
-        >>> imshow(attention_score, zmin=-1, zmax=1, xaxis="Head", yaxis="Layer", title="Previous Head Matches")
+        attention_score = detect_head(model, sequence, "previous_token_head")
+        imshow(
+                attention_score,
+                zmin=-1, zmax=1,
+                xaxis="Head",
+                yaxis="Layer",
+                title="Previous Head
+                Matches"
+            )
+
     """
 
     cfg = model.cfg

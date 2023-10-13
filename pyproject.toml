@@ -57,6 +57,7 @@ plotly = ">=5.12.0"
 isort = "5.8.0"
 black = "^23.3.0"
 pycln = "^2.1.3"
+pytest-doctestplus = "^1.0.0"
 
 [tool.poetry.group.jupyter.dependencies]
 jupyterlab = ">=3.5.0"
@@ -75,13 +76,14 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
+doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
 filterwarnings = [
     "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
     # Ignore numpy.distutils deprecation warning caused by pandas
     # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
     "ignore:distutils Version classes are deprecated:DeprecationWarning"
 ]
-addopts = "--jaxtyping-packages=transformer_lens,beartype.beartype"
+addopts = "--jaxtyping-packages=transformer_lens,beartype.beartype --doctest-modules --doctest-plus"
 
 [tool.isort]
 profile = "black"
