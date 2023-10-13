@@ -43,6 +43,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-docs
     steps:
+      - uses: actions/checkout@v2
       - name: Download Docs Artifact
         uses: actions/download-artifact@v2
         with:
