@@ -18,8 +18,10 @@
     "notebook.formatOnCellExecution": true,
     "notebook.formatOnSave.enabled": true,
     "cSpell.words": [
+        "autoregressive",
         "docstrings",
         "Elhage",
+        "evals",
         "firstpage",
         "furo",
         "gelu",

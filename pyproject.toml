@@ -23,6 +23,8 @@ fancy-einsum = ">=0.0.3"
 rich = ">=12.6.0"
 jaxtyping = ">=0.2.11"
 beartype = "^0.14.1"
+accelerate = {version = ">=0.23.0", python = ">=3.8"} # Needed for Llama Models
+typing-extensions = "*"
 # PyTorch 2.1.0 Bug Fix PyTorch didn't put their dependencies metadata into all wheels for 2.1.0, so
 # it doesn't work with Poetry. This is a known bug - the workaround is to place them manually here
 # (from the one wheel that did correctly list them). This was broken in 2.0.1 and the fix wasn't
@@ -44,7 +46,6 @@ nvidia-nccl-cu12 = { version = "==2.18.1", markers = "platform_system == 'Linux'
 nvidia-nvtx-cu12 = { version = "==12.1.105", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'", python = ">=3.8" }
 triton = { version = "==2.1.0", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'", python = ">=3.8" }
 # End PyTorch 2.1.0 Bug Fix
-
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.2.0"
@@ -100,6 +101,11 @@ max-locals = 30
 
 [tool.pylint."MESSAGES CONTROL"]
 disable = "redefined-builtin" # Disable redefined builtin functions
+
+[tool.pylint.'MASTER']
+disable = [
+    "C0103", # Disable invalid file name (as we use PascalCase for classes)
+]
 
 [tool.black]
 # Exclude snapshot tests & .venv
