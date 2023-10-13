@@ -3167,6 +3167,25 @@ pytest = ">=4.6"
 testing = ["fields", "hunter", "process-tests", "pytest-xdist", "six", "virtualenv"]
 
 [[package]]
+name = "pytest-doctestplus"
+version = "1.0.0"
+description = "Pytest plugin with advanced doctest features."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pytest-doctestplus-1.0.0.tar.gz", hash = "sha256:f650440dcaede13ed6d7da73bfb4ac585d40a80444ba3542d3e6eecdb275d49f"},
+    {file = "pytest_doctestplus-1.0.0-py3-none-any.whl", hash = "sha256:dcba88e1e38bc4871c355e44b778ccfd49b25e33f6aa5393eed6b56440decb2a"},
+]
+
+[package.dependencies]
+packaging = ">=17.0"
+pytest = ">=4.6"
+setuptools = ">=30.3.0"
+
+[package.extras]
+test = ["numpy", "pytest-remotedata (>=0.3.2)", "sphinx"]
+
+[[package]]
 name = "python-dateutil"
 version = "2.8.2"
 description = "Extensions to the standard Python datetime module"
@@ -5170,4 +5189,4 @@ docs = ["furo", "myst-parser", "sphinx", "sphinx-autobuild", "sphinxcontrib-napo
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.7.4,<4.0"
-content-hash = "7ce29534d97215677e5fafd59edb0522d312e09733f88fbb037bd59df004231d"
+content-hash = "eb174bed836fd5403e47b3cea4761fd9114bb164908d487da1861befc68cd006"
