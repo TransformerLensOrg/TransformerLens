@@ -182,8 +182,8 @@ class IOIDataset(Dataset):
         Loaded pretrained model gpt2-small into HookedTransformer
 
         >>> # Evaluate like this, printing the logit difference
-        >>> print(ioi_eval(model, num_samples=100)["Logit Difference"])
-        5.475627899169922
+        >>> print(round(ioi_eval(model, num_samples=100)["Logit Difference"], 3))
+        5.476
 
         >>> # Can use custom dataset
         >>> ds = IOIDataset(
@@ -193,8 +193,8 @@ class IOIDataset(Dataset):
         ...     names=['Alice', 'Bob', 'Charlie'],
         ...     nouns={'OBJECT': ['ball', 'book']},
         ... )
-        >>> print(ioi_eval(model, dataset=ds)["Logit Difference"])
-        5.397392272949219
+        >>> print(round(ioi_eval(model, dataset=ds)["Logit Difference"], 3))
+        5.397
     """
 
     def __init__(
