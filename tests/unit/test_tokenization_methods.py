@@ -17,14 +17,21 @@ def test_set_tokenizer_during_initialization():
 
 
 def test_set_tokenizer_lazy():
-    cfg = HookedTransformerConfig(1, 10, 1, 1, act_fn="relu", d_vocab=50256)
+    cfg = HookedTransformerConfig(
+        n_layers=1, d_model=10, n_ctx=1024, d_head=1, act_fn="relu", d_vocab=50256
+    )
     model2 = HookedTransformer(cfg)
     original_tokenizer = model2.tokenizer
     assert original_tokenizer is None, "initialize without tokenizer"
     model2.set_tokenizer(AutoTokenizer.from_pretrained("gpt2"))
     tokenizer = model2.tokenizer
     assert tokenizer is not None and tokenizer.name_or_path == "gpt2", "set tokenizer"
-    assert model2.to_single_token(" SolidGoldMagicarp") == 15831, "glitch token"
+    assert (
+        model2.to_single_token(" SolidGoldMagikarp") == 43453
+    ), "Glitch token didn't tokenize properly"
+    assert (
+        model2.to_string([43453]) == " SolidGoldMagikarp"
+    ), "Glitch token didn't detokenize properly"
 
 
 def test_to_tokens_default():

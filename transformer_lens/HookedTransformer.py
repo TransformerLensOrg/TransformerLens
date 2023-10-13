@@ -735,6 +735,7 @@ class HookedTransformer(HookedRootModule):
     def to_string(
         self,
         tokens: Union[
+            List[int],
             Int[torch.Tensor, ""],
             Int[torch.Tensor, "batch pos"],
             Int[torch.Tensor, "pos"],

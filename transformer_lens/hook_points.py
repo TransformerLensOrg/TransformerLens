@@ -1,4 +1,7 @@
-# Import stuff
+"""Hook Points.
+
+Helpers to access activations in models.
+"""
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass

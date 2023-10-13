@@ -1,5 +1,8 @@
 {
     "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
@@ -15,8 +18,12 @@
     "notebook.formatOnCellExecution": true,
     "notebook.formatOnSave.enabled": true,
     "cSpell.words": [
+        "autoregressive",
+        "docstrings",
         "docstrings",
         "Elhage",
+        "Elhage",
+        "evals",
         "firstpage",
         "furo",
         "gelu",
