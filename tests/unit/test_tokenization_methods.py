@@ -204,5 +204,7 @@ for placeholder in placeholder_list:
 
 def test_correct_tokenization(snapshot):
     # Assuming model and my_test_string are defined and accessible
-    token_output = model.to_tokens([my_test_string, "hello"], padding_side="right", prepend_bos=True).tolist()
+    token_output = model.to_tokens(
+        [my_test_string, "hello"], padding_side="right", prepend_bos=True
+    ).tolist()
     snapshot.assert_match(token_output)
