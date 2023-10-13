@@ -748,15 +748,15 @@ def convert_neel_model_config(official_model_name: str, **kwargs):
         "n_heads": cfg_json["n_heads"],
         "n_ctx": cfg_json["n_ctx"],
         "d_vocab": cfg_json["d_vocab"],
-        "tokenizer_name": cfg_json.get("tokenizer_name", None).replace(
-            "NeelNanda/gpt-neox-tokenizer-digits",
-            "ArthurConmy/alternative-neel-tokenizer",
-        ),
+        "tokenizer_name": cfg_json.get("tokenizer_name", None),
         "act_fn": cfg_json["act_fn"],
         "attn_only": cfg_json["attn_only"],
         "final_rms": cfg_json.get("final_rms", False),
         "original_architecture": cfg_arch,
     }
+    if cfg_dict["tokenizer_name"] == "NeelNanda/gpt-neox-tokenizer-digits":
+        # See https://github.com/neelnanda-io/TransformerLens/issues/404 for why we need to update this
+        cfg_dict["tokenizer_name"] = "ArthurConmy/alternative-neel-tokenizer"
     if "normalization" in cfg_json:
         cfg_dict["normalization_type"] = cfg_json["normalization"]
     else:
