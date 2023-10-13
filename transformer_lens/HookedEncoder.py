@@ -1,3 +1,8 @@
+"""Hooked Encoder.
+
+Contains a BERT style model. This is separate from :class:`transformer_lens.HookedTransformer`
+because it has a significantly different architecture to e.g. GPT style transformers.
+"""
 from __future__ import annotations
 
 import logging

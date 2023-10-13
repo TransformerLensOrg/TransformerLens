@@ -1,7 +1,11 @@
-# Configuration file for the Sphinx documentation builder.
-#
-# For the full list of built-in configuration values, see the documentation:
-# https://www.sphinx-doc.org/en/master/usage/configuration.html
+"""Sphinx configuration.
+
+https://www.sphinx-doc.org/en/master/usage/configuration.html
+"""
+# pylint: disable=invalid-name
+from pathlib import Path
+
+from sphinx.ext import apidoc
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -19,6 +23,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx.ext.githubpages",
+    "sphinx.ext.apidoc",
 ]
 
 source_suffix = {
@@ -27,8 +32,18 @@ source_suffix = {
 }
 
 templates_path = ["_templates"]
-exclude_patterns = []
 
+
+# -- Napoleon Extension Configuration -----------------------------------------
+
+napoleon_include_init_with_doc = True
+napoleon_use_admonition_for_notes = True
+napoleon_custom_sections = [
+    "Motivation:",
+    "Background:",
+    "Context:",
+    "Getting Started:",
+]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -36,14 +51,12 @@ exclude_patterns = []
 html_theme = "furo"
 html_title = "TransformerLens Documentation"
 html_static_path = ["_static"]
-
 html_logo = "_static/transformer_lens_logo.png"
-
 html_favicon = "favicon.ico"
 
+# -- Sphinx-Apidoc Configuration ---------------------------------------------
 
-# -- Ignore some functions that are not interesting for end users ------------
-
+# Functions to ignore as they're not interesting to the end user
 functions_to_ignore = [
     # functions from load_from_pretrained.py
     "convert_hf_model_config",
@@ -73,4 +86,50 @@ functions_to_ignore = [
     "select_compatible_kwargs",
 ]
 
-autodoc_default_options = {"exclude-members": ", ".join(functions_to_ignore)}
+# Default AutoDoc Options
+# https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_default_options
+autodoc_default_options = {
+    "exclude-members": ", ".join(functions_to_ignore),
+}
+
+
+def run_apidoc(_):
+    """Run Sphinx-Apidoc.
+
+    Allows us to automatically generate API documentation from docstrings, every time we build the
+    docs.
+    """
+
+    # Path to the package codebase
+    package_path = Path(__file__).resolve().parents[2] / "transformer_lens"
+
+    # Template directory
+    template_dir = Path(__file__).resolve().parent / "apidoc_templates"
+
+    # Output path for the generated reStructuredText files
+    generated_path = Path(__file__).resolve().parent / "generated"
+    output_path = generated_path / "code"
+    generated_path.mkdir(parents=True, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Arguments for sphinx-apidoc
+    args = [
+        "--force",  # Overwrite existing files
+        "--separate",  # Put documentation for each module on its own page.
+        "--templatedir=" + str(template_dir),  # Use custom templates
+        "-o",
+        str(output_path),
+        str(package_path),
+    ]
+
+    # Call sphinx-apidoc
+    apidoc.main(args)
+
+
+# -- Sphinx Setup Overrides --------------------------------------------------
+
+
+def setup(app):
+    """Sphinx setup overrides."""
+    # Connect the run_apidoc function to the builder-inited event
+    app.connect("builder-inited", run_apidoc)
