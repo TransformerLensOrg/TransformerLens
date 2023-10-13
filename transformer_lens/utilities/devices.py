@@ -1,3 +1,8 @@
+"""Devices.
+
+Utilities to get the correct device, and assist in distributing model layers across multiple
+devices.
+"""
 from __future__ import annotations
 
 from typing import Optional, Union

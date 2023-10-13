@@ -1,3 +1,8 @@
+"""Train.
+
+Utilities for training :class:`transformer_lens.HookedTransformer` models on autoregressive language
+modeling tasks.
+"""
 from dataclasses import dataclass
 from typing import Optional
 

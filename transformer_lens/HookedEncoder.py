@@ -1,3 +1,8 @@
+"""Hooked Encoder.
+
+Contains a BERT style model. This is separate from :class:`transformer_lens.HookedTransformer`
+because it has a significantly different architecture to e.g. GPT style transformers.
+"""
 from __future__ import annotations
 
 import logging
@@ -205,6 +210,7 @@ class HookedEncoder(HookedRootModule):
         device: Optional[str] = None,
         tokenizer=None,
         move_to_device=True,
+        dtype=torch.float32,
         **from_pretrained_kwargs,
     ) -> HookedEncoder:
         """Loads in the pretrained weights from huggingface. Currently supports loading weight from HuggingFace BertForMaskedLM. Unlike HookedTransformer, this does not yet do any preprocessing on the model."""
@@ -224,6 +230,9 @@ class HookedEncoder(HookedRootModule):
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
 
+        if "torch_dtype" in from_pretrained_kwargs:
+            dtype = from_pretrained_kwargs["torch_dtype"]
+
         official_model_name = loading.get_official_model_name(model_name)
 
         cfg = loading.get_pretrained_model_config(
@@ -233,11 +242,12 @@ class HookedEncoder(HookedRootModule):
             fold_ln=False,
             device=device,
             n_devices=1,
+            dtype=dtype,
             **from_pretrained_kwargs,
         )
 
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model, **from_pretrained_kwargs
+            official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
         model = cls(cfg, tokenizer, move_to_device=False)
