@@ -68,7 +68,7 @@ jupyterlab = ">=3.5.0"
 
 [tool.poetry.group.demos.dependencies]
 jupyterlab = ">=3.5.0"
-typing-extensions = { version = ">=3.0.0", python = ">=3.8" }
+typing-extensions = { version = ">=4.0.0", python = ">=3.8" }
 
 [build-system]
 requires = ["poetry-core"]
