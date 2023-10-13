@@ -4,7 +4,7 @@
 name = "accelerate"
 version = "0.23.0"
 description = "Accelerate"
-optional = false
+optional = true
 python-versions = ">=3.8.0"
 files = [
     {file = "accelerate-0.23.0-py3-none-any.whl", hash = "sha256:fba5065ff4e7c8f0a39df50785023703cd9bf8388073aa13c6457920f3bc5225"},
@@ -5103,4 +5103,4 @@ docs = ["furo", "myst-parser", "sphinx", "sphinx-autobuild", "sphinxcontrib-napo
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.7.4,<4.0"
-content-hash = "2e087d6af74aee6d758d9f42e740ce7ff385b5310dc1bc05dfbc724da2a6db77"
+content-hash = "ed68e84ac64c00a5e0780c4c7bb3c7a3df673f236c4192b4a093dc23aacf8b54"
