@@ -4,19 +4,34 @@ Recursively break down the logit attribution of each component.
 
 ## Components
 
-### Model
-
-The model residual directions are simply the logits un-embedded.
-
-$$ \text{logits} * W_U $$
-
-### MLPs
-
-The MLPs are just the neurons from the MLP output.
+### Available weights and activations
 
 ```
-mlp_layer = cache[("mlp_out", layer)]
+mlp_output = cache[("mlp_out", layer)] # [batch, pos, d_model]
+attention_value = cache[f"blocks.{layer}.attn.hook_v"] # [batch, pos, head, d_head]
+attention_pattern = cache[f"blocks.{layer}.attn.hook_pattern"] # [batch, head, query_pos, key_pos]
+W_O = model.blocks[layer].attn.W_O # [head, d_head, d_model]
 ```
+
+### Residual decomposition
+
+#### final_token_layer
+
+final_token_layer = layer_activations[-1] # [layer, d_model]
+
+#### final_token_attention_head
+
+for layer in layers:
+    attention_value, attention_pattern[:,:, -1] => z [batch head d_head]
+    z, W_O => final_token_layer_attention_head [batch head d_model]
+=> final_token_attention_head [batch layer head d_model]
+
+#### final_token_attention_source_token
+
+for layer in layers:
+    attention_value, attention_pattern => z [batch, q, k, head, d_head]
+    z, W0 => pos  [q, k, head, d_model]
+    
 
 ### Attention
 
@@ -27,7 +42,7 @@ attn_out = cache[f"blocks.{layer}.attn.hook_result"]
 W_O = model.blocks[layer].attn.W_O
 ```
 
-$$ \text{attn_out} @ W_O $$
+$$ \\text{attn_out} @ W_O $$
 
 ### Attention by source
 
@@ -226,3 +241,4 @@ def recursive_logit_attribution(
     # For each component label, get the residual decomposition
 
     # Multiply these in batches by the token_residual_directions
+
