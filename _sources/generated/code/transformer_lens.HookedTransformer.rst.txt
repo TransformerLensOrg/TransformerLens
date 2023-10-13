@@ -1,5 +1,5 @@
-transformer\_lens.HookedTransformer module
-==========================================
+transformer\_lens.HookedTransformer
+===================================
 
 .. automodule:: transformer_lens.HookedTransformer
    :members:

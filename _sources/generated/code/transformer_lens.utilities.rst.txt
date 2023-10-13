@@ -1,15 +1,10 @@
-transformer\_lens.utilities package
-===================================
-
-.. automodule:: transformer_lens.utilities
-   :members:
-   :undoc-members:
-   :show-inheritance:
+transformer\_lens.utilities
+===========================
 
 Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    transformer_lens.utilities.devices

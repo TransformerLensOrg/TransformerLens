@@ -1,24 +1,11 @@
-transformer\_lens package
-=========================
-
-.. automodule:: transformer_lens
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Subpackages
------------
-
-.. toctree::
-   :maxdepth: 4
-
-   transformer_lens.utilities
+transformer\_lens
+=================
 
 Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    transformer_lens.ActivationCache
    transformer_lens.FactoredMatrix
@@ -35,3 +22,11 @@ Submodules
    transformer_lens.patching
    transformer_lens.train
    transformer_lens.utils
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 1
+
+   transformer_lens.utilities

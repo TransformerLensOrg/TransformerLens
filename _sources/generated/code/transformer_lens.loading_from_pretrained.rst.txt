@@ -1,5 +1,5 @@
-transformer\_lens.loading\_from\_pretrained module
-==================================================
+transformer\_lens.loading\_from\_pretrained
+===========================================
 
 .. automodule:: transformer_lens.loading_from_pretrained
    :members:

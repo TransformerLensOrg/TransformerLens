@@ -1,5 +1,5 @@
-transformer\_lens.head\_detector module
-=======================================
+transformer\_lens.head\_detector
+================================
 
 .. automodule:: transformer_lens.head_detector
    :members:

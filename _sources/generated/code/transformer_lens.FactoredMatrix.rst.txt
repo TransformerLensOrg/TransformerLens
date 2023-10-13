@@ -1,5 +1,5 @@
-transformer\_lens.FactoredMatrix module
-=======================================
+transformer\_lens.FactoredMatrix
+================================
 
 .. automodule:: transformer_lens.FactoredMatrix
    :members:

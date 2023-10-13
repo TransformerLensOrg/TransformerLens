@@ -1,5 +1,5 @@
-transformer\_lens.HookedEncoder module
-======================================
+transformer\_lens.HookedEncoder
+===============================
 
 .. automodule:: transformer_lens.HookedEncoder
    :members:

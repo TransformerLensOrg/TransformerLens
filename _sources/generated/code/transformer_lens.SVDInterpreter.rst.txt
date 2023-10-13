@@ -1,5 +1,5 @@
-transformer\_lens.SVDInterpreter module
-=======================================
+transformer\_lens.SVDInterpreter
+================================
 
 .. automodule:: transformer_lens.SVDInterpreter
    :members:

@@ -1,5 +1,5 @@
-transformer\_lens.patching module
-=================================
+transformer\_lens.patching
+==========================
 
 .. automodule:: transformer_lens.patching
    :members:

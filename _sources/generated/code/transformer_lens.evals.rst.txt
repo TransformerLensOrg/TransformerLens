@@ -1,5 +1,5 @@
-transformer\_lens.evals module
-==============================
+transformer\_lens.evals
+=======================
 
 .. automodule:: transformer_lens.evals
    :members:

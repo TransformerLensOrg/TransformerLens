@@ -3,10 +3,10 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.HookedTransformerConfig module" href="transformer_lens.HookedTransformerConfig.html" /><link rel="prev" title="transformer_lens.HookedEncoder module" href="transformer_lens.HookedEncoder.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.HookedTransformerConfig" href="transformer_lens.HookedTransformerConfig.html" /><link rel="prev" title="transformer_lens.HookedEncoder" href="transformer_lens.HookedEncoder.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
-        <title>transformer_lens.HookedTransformer module - TransformerLens Documentation</title>
+        <title>transformer_lens.HookedTransformer - TransformerLens Documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
@@ -169,27 +169,27 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Code</span></p>
 <ul class="current">
-<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
-<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens package</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
-<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities package</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
-<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices module</a></li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">Transformer Lens API</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder</a></li>
+<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.HookedTransformer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils</a></li>
+<li class="toctree-l3 has-children"><a class="reference internal" href="transformer_lens.utilities.html">transformer_lens.utilities</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.utilities.devices.html">transformer_lens.utilities.devices</a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.ActivationCache.html">transformer_lens.ActivationCache module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder module</a></li>
-<li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.HookedTransformer module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.components.html">transformer_lens.components module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.evals.html">transformer_lens.evals module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.head_detector.html">transformer_lens.head_detector module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.hook_points.html">transformer_lens.hook_points module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.loading_from_pretrained.html">transformer_lens.loading_from_pretrained module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.past_key_value_caching.html">transformer_lens.past_key_value_caching module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.patching.html">transformer_lens.patching module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.train.html">transformer_lens.train module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="transformer_lens.utils.html">transformer_lens.utils module</a></li>
 </ul>
 </li>
 </ul>
@@ -238,7 +238,7 @@
         </div>
         <article role="main">
           <section id="module-transformer_lens.HookedTransformer">
-<span id="transformer-lens-hookedtransformer-module"></span><h1>transformer_lens.HookedTransformer module<a class="headerlink" href="#module-transformer_lens.HookedTransformer" title="Permalink to this heading">#</a></h1>
+<span id="transformer-lens-hookedtransformer"></span><h1>transformer_lens.HookedTransformer<a class="headerlink" href="#module-transformer_lens.HookedTransformer" title="Permalink to this heading">#</a></h1>
 <p>Hooked Transformer.</p>
 <p>The Hooked Transformer is the core part of TransformerLens.</p>
 <p>In common PyTorch model implementations (e.g. ones from HuggingFace) it’s fairly easy to extract
@@ -255,7 +255,7 @@ a deeper understanding of the internal workings of transformers like GPT-2.</p>
 with a <a class="reference internal" href="transformer_lens.hook_points.html#transformer_lens.hook_points.HookPoint" title="transformer_lens.hook_points.HookPoint"><code class="xref py py-class docutils literal notranslate"><span class="pre">transformer_lens.hook_points.HookPoint</span></code></a> on every interesting activation.</p>
 <p>TransformerLens comes loaded with &gt;50 GPT-style models. Typically you initialise it with one of
 these via <a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.from_pretrained" title="transformer_lens.HookedTransformer.HookedTransformer.from_pretrained"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_pretrained()</span></code></a>, although it can also be instantiated with randomly
-initialized weights via <code class="xref py py-meth docutils literal notranslate"><span class="pre">__init__()</span></code>.</p>
+initialized weights via <a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.__init__" title="transformer_lens.HookedTransformer.HookedTransformer.__init__"><code class="xref py py-meth docutils literal notranslate"><span class="pre">__init__()</span></code></a>.</p>
 <p>Once you’ve initialized the model, a common next step is to test it can do the task you’re
 investigating. This can be done with <a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.test_prompt" title="transformer_lens.utils.test_prompt"><code class="xref py py-func docutils literal notranslate"><span class="pre">transformer_lens.utils.test_prompt()</span></code></a>.</p>
 <dl class="py property">
@@ -337,6 +337,28 @@ circuits.</p>
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">W_pos</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'n_ctx</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.W_pos" title="Permalink to this definition">#</a></dt>
 <dd><p>Convenience function to get the positional embedding.</p>
 <p>Only works on models with absolute positional embeddings!</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig" title="transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><span class="pre">HookedTransformerConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">PreTrainedTokenizerBase</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">move_to_device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">default_padding_side</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'left'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'right'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'right'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.__init__" title="Permalink to this definition">#</a></dt>
+<dd><p>Model initialization.</p>
+<p>Note that if you want to load the model from pretrained weights, you should use
+<a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.from_pretrained" title="transformer_lens.HookedTransformer.HookedTransformer.from_pretrained"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_pretrained()</span></code></a> instead.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cfg</strong> – The config to use for the model.</p></li>
+<li><p><strong>tokenizer</strong> – The tokenizer to use for the model. If not provided, it is inferred from
+<cite>cfg.tokenizer_name</cite> or initialized to <cite>None</cite>. If <cite>None</cite>, then the model cannot be
+passed strings, and d_vocab must be explicitly set.</p></li>
+<li><p><strong>move_to_device</strong> – Whether to move the model to the device specified in cfg.
+device. Must be true if <cite>n_devices</cite> in the config is greater than 1, since the
+model’s layers will be split across multiple devices.</p></li>
+<li><p><strong>default_padding_side</strong> – Which side to pad on.</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -1243,7 +1265,7 @@ works for a batch of input tokens.</p>
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.HookedTransformerConfig module</div>
+                <div class="title">transformer_lens.HookedTransformerConfig</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -1254,7 +1276,7 @@ works for a batch of input tokens.</p>
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">transformer_lens.HookedEncoder module</div>
+                <div class="title">transformer_lens.HookedEncoder</div>
                 
               </div>
             </a>
@@ -1288,7 +1310,7 @@ works for a batch of input tokens.</p>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">transformer_lens.HookedTransformer module</a><ul>
+<li><a class="reference internal" href="#">transformer_lens.HookedTransformer</a><ul>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer"><code class="docutils literal notranslate"><span class="pre">HookedTransformer</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.OV"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.OV</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.QK"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.QK</span></code></a></li>
@@ -1303,6 +1325,7 @@ works for a batch of input tokens.</p>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_in"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_in</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_out"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_out</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.W_pos"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.W_pos</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.__init__"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.__init__()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.accumulated_bias"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.accumulated_bias()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.all_composition_scores"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.all_composition_scores()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.HookedTransformer.HookedTransformer.all_head_labels"><code class="docutils literal notranslate"><span class="pre">HookedTransformer.all_head_labels()</span></code></a></li>
