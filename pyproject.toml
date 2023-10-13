@@ -22,13 +22,9 @@ wandb = ">=0.13.5"
 fancy-einsum = ">=0.0.3"
 rich = ">=12.6.0"
 jaxtyping = ">=0.2.11"
-sphinx = {version = "5.2.3", optional = true, python = ">=3.8,<3.10"}
-sphinxcontrib-napoleon = {version = ">=0.7", optional = true, python = ">=3.8,<3.10"}
-sphinx-autobuild = {version = ">=2021.3.14", optional = true, python = ">=3.8,<3.10"}
-furo = {version = ">=2022.12.7", optional = true, python = ">=3.8,<3.10"}
-myst-parser = {version = ">=0.18.1", optional = true, python = ">=3.8,<3.10"}
-tabulate= {version = ">=0.9.0", optional = true, python = ">=3.8,<3.10"}
 beartype = "^0.14.1"
+accelerate = {version = ">=0.23.0", python = ">=3.8"} # Needed for Llama Models
+typing-extensions = "*"
 # PyTorch 2.1.0 Bug Fix PyTorch didn't put their dependencies metadata into all wheels for 2.1.0, so
 # it doesn't work with Poetry. This is a known bug - the workaround is to place them manually here
 # (from the one wheel that did correctly list them). This was broken in 2.0.1 and the fix wasn't
@@ -51,7 +47,6 @@ nvidia-nvtx-cu12 = { version = "==12.1.105", markers = "platform_system == 'Linu
 triton = { version = "==2.1.0", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'", python = ">=3.8" }
 # End PyTorch 2.1.0 Bug Fix
 
-
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.2.0"
 pytest-cov = ">=4.0.0"
@@ -62,25 +57,33 @@ plotly = ">=5.12.0"
 isort = "5.8.0"
 black = "^23.3.0"
 pycln = "^2.1.3"
+pytest-doctestplus = "^1.0.0"
 
 [tool.poetry.group.jupyter.dependencies]
 jupyterlab = ">=3.5.0"
+
+[tool.poetry.group.docs.dependencies]
+sphinx = {version = "5.2.3" }
+sphinxcontrib-napoleon = {version = ">=0.7" }
+sphinx-autobuild = {version = ">=2021.3.14" }
+furo = {version = ">=2022.12.7" }
+myst-parser = {version = ">=0.18.1" }
+tabulate= {version = ">=0.9.0" }
+snowballstemmer = "*"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.extras]
-docs = ["Sphinx", "sphinx-autobuild", "sphinxcontrib-napoleon", "furo", "myst_parser","tabulate"]
-
 [tool.pytest.ini_options]
+doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
 filterwarnings = [
     "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
     # Ignore numpy.distutils deprecation warning caused by pandas
     # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
     "ignore:distutils Version classes are deprecated:DeprecationWarning"
 ]
-addopts = "--jaxtyping-packages=transformer_lens,beartype.beartype"
+addopts = "--jaxtyping-packages=transformer_lens,beartype.beartype --doctest-modules --doctest-plus"
 
 [tool.isort]
 profile = "black"
@@ -101,6 +104,11 @@ max-locals = 30
 [tool.pylint."MESSAGES CONTROL"]
 disable = "redefined-builtin" # Disable redefined builtin functions
 
+[tool.pylint.'MASTER']
+disable = [
+    "C0103", # Disable invalid file name (as we use PascalCase for classes)
+]
+
 [tool.black]
 # Exclude snapshot tests & .venv
 exclude = '''
@@ -109,3 +117,8 @@ exclude = '''
 | .venv/
 )
 '''
+
+[tool.poetry.scripts]
+make-model-properties-table = "docs.make_docs:generate_model_table"
+build-docs = "docs.make_docs:build_docs"
+docs-hot-reload = "docs.make_docs:docs_hot_reload"

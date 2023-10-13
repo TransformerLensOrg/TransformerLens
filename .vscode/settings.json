@@ -1,5 +1,8 @@
 {
     "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
@@ -16,6 +19,37 @@
     "notebook.formatOnSave.enabled": true,
     "cSpell.words": [
         "jaxtyping",
-        "unembed"
+        "unembed",
+        "autoregressive",
+        "checkpointed",
+        "docstrings",
+        "doctree",
+        "Elhage",
+        "evals",
+        "firstpage",
+        "furo",
+        "gelu",
+        "githubpages",
+        "gptj",
+        "huggingface",
+        "interpretability",
+        "keepdim",
+        "lastpage",
+        "layernorm",
+        "maxdepth",
+        "mingpt",
+        "Nanda",
+        "neel",
+        "neox",
+        "Olah",
+        "pagename",
+        "probs",
+        "Softmax",
+        "solu",
+        "templatedir",
+        "templatename",
+        "toctree",
+        "Unembed",
+        "unembedding",
     ],
 }

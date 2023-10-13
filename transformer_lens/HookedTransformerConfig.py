@@ -1,3 +1,8 @@
+"""Hooked Transformer Config.
+
+Module with a dataclass for storing the configuration of a
+:class:`transformer_lens.HookedTransformer` model.
+"""
 from __future__ import annotations
 
 import logging

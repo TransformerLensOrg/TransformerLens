@@ -17,3 +17,6 @@ unit-test:
 
 acceptance-test:
 	poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/acceptance
+
+docstring-test:
+	poetry run pytest transformer_lens/

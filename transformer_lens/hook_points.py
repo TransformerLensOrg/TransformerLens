@@ -1,4 +1,7 @@
-# Import stuff
+"""Hook Points.
+
+Helpers to access activations in models.
+"""
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -282,8 +285,8 @@ class HookedRootModule(nn.Module):
         --------
         .. code-block:: python
 
-            >>> with model.hooks(fwd_hooks=my_hooks):
-            >>>     hooked_loss = model(text, return_type="loss")
+            with model.hooks(fwd_hooks=my_hooks):
+                hooked_loss = model(text, return_type="loss")
         """
         try:
             self.context_level += 1

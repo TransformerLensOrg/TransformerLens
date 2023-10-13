@@ -17,3 +17,4 @@ docs/build
 .coverage*
 .Ds_Store
 .pylintrc
+docs/source/generated
