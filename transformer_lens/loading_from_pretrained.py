@@ -1,4 +1,7 @@
-# %%
+"""Loading Pretrained Models Utilities.
+
+This module contains functions for loading pretrained models from the Hugging Face Hub.
+"""
 import dataclasses
 import logging
 import re
