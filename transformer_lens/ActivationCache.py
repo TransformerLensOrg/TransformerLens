@@ -1,3 +1,9 @@
+"""Activation Cache.
+
+The core functionality of TransformerLens is to cache and edit the activations of a model. The
+:class:`ActivationCache` is designed to help do the caching part of this - storing all activations
+in a single place.
+"""
 from __future__ import annotations
 
 import logging
