@@ -181,9 +181,9 @@ class IOIDataset(Dataset):
         >>> model = HookedTransformer.from_pretrained('gpt2-small')
         Loaded pretrained model gpt2-small into HookedTransformer
 
-        >>> # Eval like this
-        >>> print(ioi_eval(model, num_samples=100))
-        {'Logit Difference': 5.475627899169922, 'Accuracy': 1.0}
+        >>> # Evaluate like this, printing the logit difference
+        >>> print(ioi_eval(model, num_samples=100)["Logit Difference"])
+        5.475627899169922
 
         >>> # Can use custom dataset
         >>> ds = IOIDataset(
@@ -193,8 +193,8 @@ class IOIDataset(Dataset):
         ...     names=['Alice', 'Bob', 'Charlie'],
         ...     nouns={'OBJECT': ['ball', 'book']},
         ... )
-        >>> print(ioi_eval(model, dataset=ds))
-        {'Logit Difference': 5.397392272949219, 'Accuracy': 1.0}
+        >>> print(ioi_eval(model, dataset=ds)["Logit Difference"])
+        5.397392272949219
     """
 
     def __init__(
