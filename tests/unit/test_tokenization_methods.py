@@ -11,7 +11,7 @@ model = HookedTransformer.from_pretrained("solu-1l")
 def test_set_tokenizer_during_initialization():
     assert (
         model.tokenizer is not None
-        and model.tokenizer.name_or_path == "NeelNanda/gpt-neox-tokenizer-digits"
+        and model.tokenizer.name_or_path == "ArthurConmy/alternative-neel-tokenizer"
     ), "initialized with expected tokenizer"
     assert model.cfg.d_vocab == 48262, "expected d_vocab"
 
@@ -163,3 +163,113 @@ def test_get_token_position_int_1_pos():
 def test_tokens_to_residual_directions():
     res_dir = model.tokens_to_residual_directions(model.to_tokens(""))
     assert res_dir.shape == Size([512]), ""
+
+
+my_test_string = """# This is placeholder code to test tokenization
+
+def placeholder_function_1(param1, param2):
+    # This is placeholder code to test tokenization
+    if param1 > param2:
+        for i in range(param1):
+            # This is placeholder code to test tokenization
+            while param2 < i:
+                param2 += 1  # This is placeholder code to test tokenization
+                try:
+                    # This is placeholder code to test tokenization
+                    param1 = param2 / i
+                except ZeroDivisionError:
+                    # This is placeholder code to test tokenization
+                    print("Cannot divide by zero")
+                finally:
+                    # This is placeholder code to test tokenization
+                    print("Iteration", i)
+
+def placeholder_function_2():
+    # This is placeholder code to test tokenization
+    with open('placeholder.txt', 'w') as file:
+        # This is placeholder code to test tokenization
+        file.write("This is placeholder code to test tokenization\n")
+
+# This is placeholder code to test tokenization
+placeholder_list = [placeholder_function_1, placeholder_function_2]
+
+for placeholder in placeholder_list:
+    # This is placeholder code to test tokenization
+    if callable(placeholder):
+        # This is placeholder code to test tokenization
+        placeholder(10, 5)  # assuming this input is valid for all placeholder functions
+
+# This is placeholder code to test tokenization"""
+
+
+def test_correct_tokenization():
+    # fmt: off
+    assert model.to_tokens([my_test_string, "hello"], padding_side="right", prepend_bos=True).tolist() == torch.LongTensor(
+        [[    1,     5,   826,   311, 29229,  2063,   282,  1056, 10391,  1296, 
+           188,   188,  1510, 29229,    65,  3578,    65,    19,    10,  3457,
+            19,    14,  2167,    20,  2192,   477,  1800,   826,   311, 29229,
+          2063,   282,  1056, 10391,  1296,   477,   603,  2167,    19,  2170,
+          2167,    20,    28,   647,   324,   883,   276,  2413,    10,  3457,
+            19,  2192,   926,  1800,   826,   311, 29229,  2063,   282,  1056,
+         10391,  1296,   926,  1205,  2167,    20,   653,   883,    28,  1003,
+          2167,    20,  6892,   338,   210,  1800,   826,   311, 29229,  2063,
+           282,  1056, 10391,  1296,  1003,  1574,    28,  2498,  1800,   826,
+           311, 29229,  2063,   282,  1056, 10391,  1296,  2498,  2167,    19,
+           426,  2167,    20,  1209,   883,  1003,  3584, 25449, 14765,  1273,
+          4608,    28,  2498,  1800,   826,   311, 29229,  2063,   282,  1056,
+         10391,  1296,  2498,  3270,  1551, 40271, 10673,   407,  4907,  2719,
+          1003,  4574,    28,  2498,  1800,   826,   311, 29229,  2063,   282,
+          1056, 10391,  1296,  2498,  3270,  1551, 15194,   319,   985,   883,
+            11,   188,   188,  1510, 29229,    65,  3578,    65,    20, 14439,
+           477,  1800,   826,   311, 29229,  2063,   282,  1056, 10391,  1296,
+           477,   343,  1493,  2012, 40501,    16,  9867,  1358,   684,    89,
+          3291,   348,  1819,    28,   647,  1800,   826,   311, 29229,  2063,
+           282,  1056, 10391,  1296,   647,  1819,    16,  6171,  1551,  1516,
+           311, 29229,  2063,   282,  1056, 10391,  1296,   188,  2719,   188,
+           188,     5,   826,   311, 29229,  2063,   282,  1056, 10391,  1296,
+           188, 40501,    65,  3434,   426,   543, 40501,    65,  3578,    65,
+            19,    14, 29229,    65,  3578,    65,    20,    63,   188,   188,
+          1507, 29229,   276, 29229,    65,  3434,    28,   477,  1800,   826,
+           311, 29229,  2063,   282,  1056, 10391,  1296,   477,   603,  1052,
+           494,    10, 40501,  2192,   647,  1800,   826,   311, 29229,  2063,
+           282,  1056, 10391,  1296,   647, 29229,    10,    19,    18,    14,
+           607,    11,   210,  1800,  7189,   436,  3175,   311,  3469,   324,
+           512, 29229,  3357,   188,   188,     5,   826,   311, 29229,  2063,
+           282,  1056, 10391,  1296],
+        [    1, 24684,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2,     2,     2,     2,     2,     2,     2,
+             2,     2,     2,     2]]).tolist()
+    # fmt: on
+
+
+# # Code used to generate the correct tokenization: (Using transformer-lens 1.6.1, built from source to ensure poetry select exact versions)
+# tokens = model.to_tokens([my_test_string, "hello"], padding_side="right", prepend_bos=True)
+# print(tokens)

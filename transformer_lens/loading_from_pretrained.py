@@ -748,7 +748,10 @@ def convert_neel_model_config(official_model_name: str, **kwargs):
         "n_heads": cfg_json["n_heads"],
         "n_ctx": cfg_json["n_ctx"],
         "d_vocab": cfg_json["d_vocab"],
-        "tokenizer_name": cfg_json.get("tokenizer_name", None),
+        "tokenizer_name": cfg_json.get("tokenizer_name", None).replace(
+            "NeelNanda/gpt-neox-tokenizer-digits",
+            "ArthurConmy/alternative-neel-tokenizer",
+        ),
         "act_fn": cfg_json["act_fn"],
         "attn_only": cfg_json["attn_only"],
         "final_rms": cfg_json.get("final_rms", False),

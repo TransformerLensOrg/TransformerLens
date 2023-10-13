@@ -23,7 +23,7 @@ def test_d_vocab_from_tokenizer():
     # Test tokenizers for different models
     for model_name in MODEL_TESTING_LIST:
         if model_name == "solu-1l":
-            tokenizer_name = "NeelNanda/gpt-neox-tokenizer-digits"
+            tokenizer_name = "ArthurConmy/alternative-neel-tokenizer"
         else:
             tokenizer_name = loading.get_official_model_name(model_name)
 

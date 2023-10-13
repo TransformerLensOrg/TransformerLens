@@ -282,7 +282,7 @@ def tokenize_and_concatenate(
 Test ^
 
 data = Dataset.from_dict({"text":[str(i) for i in range(1000)]})
-tokenizer = AutoTokenizer.from_pretrained("NeelNanda/gpt-neox-tokenizer-digits")
+tokenizer = AutoTokenizer.from_pretrained("ArthurConmy/alternative-neel-tokenizer")
 print(data)
 tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
 """
