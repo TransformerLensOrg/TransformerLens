@@ -1,5 +1,8 @@
 {
     "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
@@ -14,4 +17,37 @@
     "pylint.importStrategy": "fromEnvironment",
     "notebook.formatOnCellExecution": true,
     "notebook.formatOnSave.enabled": true,
+    "cSpell.words": [
+        "autoregressive",
+        "checkpointed",
+        "docstrings",
+        "doctree",
+        "Elhage",
+        "evals",
+        "firstpage",
+        "furo",
+        "gelu",
+        "githubpages",
+        "gptj",
+        "huggingface",
+        "interpretability",
+        "keepdim",
+        "lastpage",
+        "layernorm",
+        "maxdepth",
+        "mingpt",
+        "Nanda",
+        "neel",
+        "neox",
+        "Olah",
+        "pagename",
+        "probs",
+        "Softmax",
+        "solu",
+        "templatedir",
+        "templatename",
+        "toctree",
+        "Unembed",
+        "unembedding"
+    ],
 }

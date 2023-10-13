@@ -1,3 +1,7 @@
+"""Head Detector.
+
+Utilities for detecting specific types of heads (e.g. previous token heads).
+"""
 import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union, cast

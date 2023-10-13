@@ -1,3 +1,7 @@
+"""Utils.
+
+This module contains varied utility functions used throughout the library.
+"""
 from __future__ import annotations
 
 import inspect
