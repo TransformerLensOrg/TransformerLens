@@ -258,25 +258,17 @@
 <p>This tensor can then be plotted using Neel’s PySvelte, as demonstrated in the demo for this feature. The demo also points out some “gotchas” in this feature - numerical instability means inconsistency across devices, and the default HookedTransformer parameters don’t replicate the original SVD post very well. So I’d recommend checking out the demo if you want to use this!</p>
 <p>Example:
 .. code-block:: python</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens</span> <span class="kn">import</span> <span class="n">HookedTransformer</span><span class="p">,</span> <span class="n">SVDInterpreter</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s1">&#39;gpt2-medium&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">svd_interpreter</span> <span class="o">=</span> <span class="n">SVDInterpreter</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
-</pre></div>
-</div>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ov</span> <span class="o">=</span> <span class="n">svd_interpreter</span><span class="o">.</span><span class="n">get_singular_vectors</span><span class="p">(</span><span class="s1">&#39;OV&#39;</span><span class="p">,</span> <span class="n">layer_index</span><span class="o">=</span><span class="mi">22</span><span class="p">,</span> <span class="n">head_index</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
-</pre></div>
-</div>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">all_tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">model</span><span class="o">.</span><span class="n">to_str_tokens</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">i</span><span class="p">]))</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">d_vocab</span><span class="p">)]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">all_tokens</span> <span class="o">=</span> <span class="p">[</span><span class="n">all_tokens</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">cfg</span><span class="o">.</span><span class="n">d_vocab</span><span class="p">)]</span>
-</pre></div>
-</div>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">def</span> <span class="nf">plot_matrix</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">tokens</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="nb">filter</span><span class="o">=</span><span class="s2">&quot;topk&quot;</span><span class="p">):</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">pysvelte</span><span class="o">.</span><span class="n">TopKTable</span><span class="p">(</span><span class="n">tokens</span><span class="o">=</span><span class="n">all_tokens</span><span class="p">,</span> <span class="n">activations</span><span class="o">=</span><span class="n">matrix</span><span class="p">,</span> <span class="n">obj_type</span><span class="o">=</span><span class="s2">&quot;SVD direction&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="nb">filter</span><span class="o">=</span><span class="nb">filter</span><span class="p">)</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
-</pre></div>
-</div>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">plot_matrix</span><span class="p">(</span><span class="n">ov</span><span class="p">,</span> <span class="n">all_tokens</span><span class="p">)</span>
-</pre></div>
-</div>
+<blockquote>
+<div><p>build-docsfrom transformer_lens import HookedTransformer, SVDInterpreter
+build-docsmodel = HookedTransformer.from_pretrained(‘gpt2-medium’)
+build-docssvd_interpreter = SVDInterpreter(model)</p>
+<p>build-docsov = svd_interpreter.get_singular_vectors(‘OV’, layer_index=22, head_index=10)</p>
+<p>build-docsall_tokens = [model.to_str_tokens(np.array([i])) for i in range(model.cfg.d_vocab)]
+build-docsall_tokens = [all_tokens[i][0] for i in range(model.cfg.d_vocab)]</p>
+<p>build-docsdef plot_matrix(matrix, tokens, k=10, filter=”topk”):
+build-docs    pysvelte.TopKTable(tokens=all_tokens, activations=matrix, obj_type=”SVD direction”, k=k, filter=filter).show()</p>
+<p>build-docsplot_matrix(ov, all_tokens)</p>
+</div></blockquote>
 </dd></dl>
 
 </dd></dl>

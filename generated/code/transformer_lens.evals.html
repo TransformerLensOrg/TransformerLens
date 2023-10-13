@@ -253,21 +253,22 @@ Paper: <a class="reference external" href="https://arxiv.org/pdf/2211.00593.pdf"
 <span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens.HookedTransformer</span> <span class="kn">import</span> <span class="n">HookedTransformer</span>
 
 <span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s1">&#39;gpt2-small&#39;</span><span class="p">)</span>
+<span class="go">Loaded pretrained model gpt2-small into HookedTransformer</span>
 
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Eval like this</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">ioi_eval</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">num_samples</span><span class="o">=</span><span class="mi">100</span><span class="p">))</span>
-<span class="go">{&#39;Logit Difference&#39;: 3.655226745605469, &#39;Accuracy&#39;: 1.0}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Evaluate like this, printing the logit difference</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">ioi_eval</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">num_samples</span><span class="o">=</span><span class="mi">100</span><span class="p">)[</span><span class="s2">&quot;Logit Difference&quot;</span><span class="p">],</span> <span class="mi">3</span><span class="p">))</span>
+<span class="go">5.476</span>
 
 <span class="gp">&gt;&gt;&gt; </span><span class="c1"># Can use custom dataset</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span> <span class="o">=</span> <span class="n">IOIDataset</span><span class="p">(</span>
-<span class="go">    tokenizer=model.tokenizer,</span>
-<span class="go">    num_samples=100,</span>
-<span class="go">    templates=[&#39;[A] met with [B]. [B] gave the [OBJECT] to [A]&#39;],</span>
-<span class="go">    names=[&#39;Alice&#39;, &#39;Bob&#39;, &#39;Charlie&#39;],</span>
-<span class="go">    nouns={&#39;OBJECT&#39;: [&#39;ball&#39;, &#39;book&#39;]},</span>
-<span class="go">    )</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">ioi_eval</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">dataset</span><span class="o">=</span><span class="n">ds</span><span class="p">))</span>
-<span class="go">{&#39;Logit Difference&#39;: 3.7498160457611083, &#39;Accuracy&#39;: 1.0}</span>
+<span class="gp">... </span>    <span class="n">tokenizer</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">num_samples</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">templates</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;[A] met with [B]. [B] gave the [OBJECT] to [A]&#39;</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;Alice&#39;</span><span class="p">,</span> <span class="s1">&#39;Bob&#39;</span><span class="p">,</span> <span class="s1">&#39;Charlie&#39;</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">nouns</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;OBJECT&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;ball&#39;</span><span class="p">,</span> <span class="s1">&#39;book&#39;</span><span class="p">]},</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">ioi_eval</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">dataset</span><span class="o">=</span><span class="n">ds</span><span class="p">)[</span><span class="s2">&quot;Logit Difference&quot;</span><span class="p">],</span> <span class="mi">3</span><span class="p">))</span>
+<span class="go">5.397</span>
 </pre></div>
 </div>
 <dl class="py method">

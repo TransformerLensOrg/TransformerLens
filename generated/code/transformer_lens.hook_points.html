@@ -407,8 +407,8 @@ Boolean function on hook names and hook is the function to add to that hook poin
 </ul>
 </dd>
 </dl>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">model</span><span class="o">.</span><span class="n">hooks</span><span class="p">(</span><span class="n">fwd_hooks</span><span class="o">=</span><span class="n">my_hooks</span><span class="p">):</span>
-<span class="gp">&gt;&gt;&gt; </span>    <span class="n">hooked_loss</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">return_type</span><span class="o">=</span><span class="s2">&quot;loss&quot;</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">model</span><span class="o">.</span><span class="n">hooks</span><span class="p">(</span><span class="n">fwd_hooks</span><span class="o">=</span><span class="n">my_hooks</span><span class="p">):</span>
+    <span class="n">hooked_loss</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">return_type</span><span class="o">=</span><span class="s2">&quot;loss&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 </dd></dl>
