@@ -1,7 +1,6 @@
 __pycache__
 Testing_Notebook.ipynb
 transformer_lens/scratch.py
-.vscode/
 .idea/
 wandb*
 transformer_lens\.egg*
@@ -18,3 +17,4 @@ docs/build
 .coverage*
 .Ds_Store
 .pylintrc
+docs/source/generated

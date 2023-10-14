@@ -1,0 +1,15 @@
+Transformer Lens API
+--------------------
+
+If browsing the docs for the first time, we recommend initially looking at :doc:`HookedTransformer
+</generated/code/transformer_lens.HookedTransformer>` and :doc:`ActivationCache
+</generated/code/transformer_lens.ActivationCache>` modules.
+
+Contents
+^^^^^^^^
+
+.. toctree::
+   :maxdepth: 3
+{% for docname in docnames %}
+   {{ docname }}
+{%- endfor %}

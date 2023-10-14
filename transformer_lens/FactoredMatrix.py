@@ -1,3 +1,8 @@
+"""Factored Matrix.
+
+Utilities for representing a matrix as a product of two matrices, and for efficient calculation of
+eigenvalues, norm and SVD.
+"""
 from __future__ import annotations
 
 from functools import lru_cache
