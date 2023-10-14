@@ -1,4 +1,4 @@
-from unittest.mock import call, patch
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -244,7 +244,7 @@ class Test_lower_triangular:
         ),
     ],
 )
-@patch("builtins.print")
+@mock.patch("builtins.print")
 def test_test_prompt(
     mocked_print,
     prepend_space_to_answer,
@@ -263,8 +263,8 @@ def test_test_prompt(
         prepend_space_to_answer=prepend_space_to_answer,
     )
 
-    printed_tokenized_prompt = call("Tokenized prompt:", tokenized_prompt)
-    printed_tokenized_answer = call("Tokenized answer:", tokenized_answer)
+    printed_tokenized_prompt = mock.call("Tokenized prompt:", tokenized_prompt)
+    printed_tokenized_answer = mock.call("Tokenized answer:", tokenized_answer)
 
     assert mocked_print.mock_calls[0] == printed_tokenized_prompt
     assert mocked_print.mock_calls[1] == printed_tokenized_answer
