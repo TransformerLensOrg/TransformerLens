@@ -1,3 +1,5 @@
+from unittest import mock
+
 import numpy as np
 import pytest
 import torch
@@ -205,6 +207,67 @@ class Test_lower_triangular:
     )
     def test_fail(self, x: torch.Tensor):
         assert not utils.is_lower_triangular(x)
+
+
+@pytest.mark.parametrize(
+    "prepend_space_to_answer, tokenized_prompt, tokenized_answer",
+    [
+        (
+            True,
+            [
+                "<|BOS|>",
+                "The",
+                " circumference",
+                " is",
+                " the",
+                " perimeter",
+                " of",
+                " the",
+                " circ",
+            ],
+            [" le", "."],
+        ),
+        (
+            False,
+            [
+                "<|BOS|>",
+                "The",
+                " circumference",
+                " is",
+                " the",
+                " perimeter",
+                " of",
+                " the",
+                " circ",
+            ],
+            ["le", "."],
+        ),
+    ],
+)
+@mock.patch("builtins.print")
+def test_test_prompt(
+    mocked_print,
+    prepend_space_to_answer,
+    tokenized_prompt,
+    tokenized_answer,
+):
+    """
+    Tests that utils.test_prompt produces the correct tokenization. In particular, when prepend_space_to_answer = False, the last token of the prompt
+    and the first answer token should not be turned into one token (e.g. 'circ' and 'le' don't become 'circle'). See https://github.com/neelnanda-io/TransformerLens/issues/271
+    for a more detailed explanation.
+    """
+    utils.test_prompt(
+        "The circumference is the perimeter of the circ",
+        "le.",
+        model,
+        prepend_space_to_answer=prepend_space_to_answer,
+    )
+
+    printed_tokenized_prompt = mock.call("Tokenized prompt:", tokenized_prompt)
+    printed_tokenized_answer = mock.call("Tokenized answer:", tokenized_answer)
+
+    assert mocked_print.mock_calls[0] == printed_tokenized_prompt
+    assert mocked_print.mock_calls[1] == printed_tokenized_answer
 
 
 def test_override_or_use_default_value():
