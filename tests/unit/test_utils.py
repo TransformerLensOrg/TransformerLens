@@ -210,117 +210,52 @@ class Test_lower_triangular:
 
 
 @pytest.mark.parametrize(
-    "prepend_space_to_answer, expected_print_calls, expected_rprint_calls",
+    "prepend_space_to_answer, tokenized_prompt, tokenized_answer",
     [
         (
             True,
             [
-                call(
-                    "Tokenized prompt:",
-                    [
-                        "<|BOS|>",
-                        "The",
-                        " circumference",
-                        " is",
-                        " the",
-                        " perimeter",
-                        " of",
-                        " the",
-                        " circ",
-                    ],
-                ),
-                call("Tokenized answer:", [" le", "."]),
-                call("Top 0th token. Logit: 16.69 Prob: 38.00% Token: |a|"),
-                call("Top 1th token. Logit: 15.71 Prob: 14.30% Token: |let|"),
-                call("Top 2th token. Logit: 15.48 Prob: 11.37% Token: |ump|"),
-                call("Top 3th token. Logit: 14.94 Prob:  6.64% Token: |u|"),
-                call("Top 4th token. Logit: 13.96 Prob:  2.49% Token: |lets|"),
-                call("Top 5th token. Logit: 13.23 Prob:  1.19% Token: |ut|"),
-                call("Top 6th token. Logit: 13.17 Prob:  1.13% Token: |umn|"),
-                call("Top 7th token. Logit: 13.01 Prob:  0.96% Token: |us|"),
-                call("Top 8th token. Logit: 12.96 Prob:  0.91% Token: | is|"),
-                call("Top 9th token. Logit: 12.89 Prob:  0.85% Token: |umb|"),
-                call("Top 0th token. Logit: 16.19 Prob: 16.71% Token: |vy|"),
-                call("Top 1th token. Logit: 15.80 Prob: 11.24% Token: |vers|"),
-                call("Top 2th token. Logit: 15.33 Prob:  7.03% Token: |aps|"),
-                call("Top 3th token. Logit: 14.63 Prob:  3.48% Token: |vens|"),
-                call("Top 4th token. Logit: 14.62 Prob:  3.45% Token: |av|"),
-                call("Top 5th token. Logit: 14.43 Prob:  2.87% Token: |opard|"),
-                call("Top 6th token. Logit: 14.30 Prob:  2.52% Token: |as|"),
-                call("Top 7th token. Logit: 14.26 Prob:  2.41% Token: |ew|"),
-                call("Top 8th token. Logit: 14.23 Prob:  2.33% Token: |on|"),
-                call("Top 9th token. Logit: 13.98 Prob:  1.82% Token: |gged|"),
+                "<|BOS|>",
+                "The",
+                " circumference",
+                " is",
+                " the",
+                " perimeter",
+                " of",
+                " the",
+                " circ",
             ],
-            [
-                call(
-                    "Performance on answer token:\n[b]Rank: 5284     Logit:  3.81 Prob:  0.00% Token: | le|[/b]"
-                ),
-                call(
-                    "Performance on answer token:\n[b]Rank: 340      Logit:  8.94 Prob:  0.01% Token: |.|[/b]"
-                ),
-                call("[b]Ranks of the answer tokens:[/b] [(' le', 5284), ('.', 340)]"),
-            ],
+            [" le", "."],
         ),
         (
             False,
             [
-                call(
-                    "Tokenized prompt:",
-                    [
-                        "<|BOS|>",
-                        "The",
-                        " circumference",
-                        " is",
-                        " the",
-                        " perimeter",
-                        " of",
-                        " the",
-                        " circ",
-                    ],
-                ),
-                call("Tokenized answer:", ["le", "."]),
-                call("Top 0th token. Logit: 16.69 Prob: 38.00% Token: |a|"),
-                call("Top 1th token. Logit: 15.71 Prob: 14.30% Token: |let|"),
-                call("Top 2th token. Logit: 15.48 Prob: 11.37% Token: |ump|"),
-                call("Top 3th token. Logit: 14.94 Prob:  6.64% Token: |u|"),
-                call("Top 4th token. Logit: 13.96 Prob:  2.49% Token: |lets|"),
-                call("Top 5th token. Logit: 13.23 Prob:  1.19% Token: |ut|"),
-                call("Top 6th token. Logit: 13.17 Prob:  1.13% Token: |umn|"),
-                call("Top 7th token. Logit: 13.01 Prob:  0.96% Token: |us|"),
-                call("Top 8th token. Logit: 12.96 Prob:  0.91% Token: | is|"),
-                call("Top 9th token. Logit: 12.89 Prob:  0.85% Token: |umb|"),
-                call("Top 0th token. Logit: 15.30 Prob: 44.91% Token: |th|"),
-                call("Top 1th token. Logit: 12.67 Prob:  3.22% Token: | 1|"),
-                call("Top 2th token. Logit: 12.46 Prob:  2.60% Token: |.|"),
-                call("Top 3th token. Logit: 12.33 Prob:  2.30% Token: | 2|"),
-                call("Top 4th token. Logit: 11.98 Prob:  1.62% Token: |,|"),
-                call("Top 5th token. Logit: 11.85 Prob:  1.41% Token: |-|"),
-                call("Top 6th token. Logit: 11.79 Prob:  1.33% Token: | and|"),
-                call("Top 7th token. Logit: 11.62 Prob:  1.13% Token: | 3|"),
-                call("Top 8th token. Logit: 11.56 Prob:  1.06% Token: |thal|"),
-                call("Top 9th token. Logit: 11.48 Prob:  0.98% Token: |an|"),
+                "<|BOS|>",
+                "The",
+                " circumference",
+                " is",
+                " the",
+                " perimeter",
+                " of",
+                " the",
+                " circ",
             ],
-            [
-                call(
-                    "Performance on answer token:\n[b]Rank: 93       Logit:  9.99 Prob:  0.05% Token: |le|[/b]"
-                ),
-                call(
-                    "Performance on answer token:\n[b]Rank: 2        Logit: 12.46 Prob:  2.60% Token: |.|[/b]"
-                ),
-                call("[b]Ranks of the answer tokens:[/b] [('le', 93), ('.', 2)]"),
-            ],
+            ["le", "."],
         ),
     ],
 )
 @patch("builtins.print")
-@patch("transformer_lens.utils.rprint")
 def test_test_prompt(
-    mocked_rprint,
     mocked_print,
     prepend_space_to_answer,
-    expected_print_calls,
-    expected_rprint_calls,
+    tokenized_prompt,
+    tokenized_answer,
 ):
+    """
+    Tests that utils.test_prompt produces the correct tokenization. In particular, when prepend_space_to_answer = False, the last token of the prompt
+    and the first answer token should not be turned into one token (e.g. 'circ' and 'le' don't become 'circle'). See https://github.com/neelnanda-io/TransformerLens/issues/271
+    for a more detailed explanation.
+    """
     utils.test_prompt(
         "The circumference is the perimeter of the circ",
         "le.",
@@ -328,14 +263,11 @@ def test_test_prompt(
         prepend_space_to_answer=prepend_space_to_answer,
     )
 
-    for received_call, expected_call in zip(
-        mocked_print.mock_calls, expected_print_calls
-    ):
-        assert received_call == expected_call
-    for received_call, expected_call in zip(
-        mocked_rprint.mock_calls, expected_rprint_calls
-    ):
-        assert received_call == expected_call
+    printed_tokenized_prompt = call("Tokenized prompt:", tokenized_prompt)
+    printed_tokenized_answer = call("Tokenized answer:", tokenized_answer)
+
+    assert mocked_print.mock_calls[0] == printed_tokenized_prompt
+    assert mocked_print.mock_calls[1] == printed_tokenized_answer
 
 
 def test_override_or_use_default_value():
