@@ -181,19 +181,19 @@ def test_start_at_layer_kwargs():
         rand_embed,
         tokens,
         shortformer_pos_embed,
-        left_attention_mask,
+        attention_mask,
     ) = model.input_to_embed(input)
     assert (
         tokens is not None
         and shortformer_pos_embed is not None
-        and left_attention_mask is not None
+        and attention_mask is not None
     )
 
     start_at_layer_output = model(
         rand_embed,
         tokens=tokens,
         shortformer_pos_embed=shortformer_pos_embed,
-        left_attention_mask=left_attention_mask,
+        attention_mask=attention_mask,
         start_at_layer=0,
         return_type="loss",
     )

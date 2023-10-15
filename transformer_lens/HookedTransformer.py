@@ -233,12 +233,11 @@ class HookedTransformer(HookedRootModule):
             Union[Literal["left", "right"], None]
         ] = USE_DEFAULT_VALUE,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
         Optional[Int[torch.Tensor, "batch pos"]],  # tokens
         Optional[Float[torch.Tensor, "batch pos d_model"]],  # shortformer_pos_embed
-        Optional[torch.Tensor],  # left_attention_mask [batch pos]
+        Optional[torch.Tensor],  # attention_mask [batch pos]
     ]:
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
@@ -257,35 +256,27 @@ class HookedTransformer(HookedRootModule):
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
-        if self.tokenizer and self.tokenizer.padding_side == "left":
-            # If the padding side is left, we need to compute the attention mask for the adjustment
-            # of absolute positional embeddings and attention masking so that the pad tokens are not
-            # attended.
+        if (
+            self.tokenizer and self.tokenizer.padding_side == "left"
+        ) or past_kv_cache is not None:
+            # If the padding side is left or we are using caching, we need to compute the attention mask
+            # for the adjustment of absolute positional embeddings and attention masking so that pad
+            # tokens are not attended.
 
-            if past_left_attention_mask is None:
-                left_attention_mask = utils.get_attention_mask(
-                    self.tokenizer, tokens, self.cfg.default_prepend_bos
-                )
-            else:
-                assert (
-                    past_kv_cache is not None
-                ), "If past_left_attention_mask is not None, past_kv_cache must not be None"
-                assert (
-                    tokens.shape[1] == 1
-                ), "If past_left_attention_mask is not None, tokens must be a single token along the sequence dimension"
+            if prepend_bos is USE_DEFAULT_VALUE:
+                prepend_bos = self.cfg.default_prepend_bos
+            attention_mask = utils.get_attention_mask(
+                self.tokenizer, tokens, prepend_bos
+            )
+
+            if past_kv_cache is not None:
                 # past_kv_cache is not None, so we're doing caching.
-                # We need to extend the past_left_attention_mask.
-                # Append '1' to the right of the past_left_attention_mask to account for the new
-                # tokens
-                left_attention_mask = utils.extend_tensor_with_ones(
-                    past_left_attention_mask
-                )
-
+                # We need to extend the previous attention_mask.
+                # Update the past_kv_cache with the new attention_mask (unless it's frozen)
+                attention_mask = past_kv_cache.append_attention_mask(attention_mask)
         else:
-            # If tokenizer is not set, we assume that the input is right-padded.
-            # If the padding side is right, we don't need to compute the attention mask.
-            # We separate this case from left padding for computational efficiency.
-            left_attention_mask = None
+            # We separate this case from for computational efficiency.
+            attention_mask = None
 
         # If we're doing caching, then we reuse keys and values from previous runs, as that's the
         # only way that past activations will affect the final logits. The cache contains those so
@@ -306,18 +297,13 @@ class HookedTransformer(HookedRootModule):
             assert cached_batch_size == batch_size
             assert num_heads_in_cache == self.cfg.n_heads
             assert d_head_in_cache == self.cfg.d_head
-            # If we want to generate from the empty string, we'd pass in an empty cache, so we need
-            # to handle that case
-            assert (
-                cache_ctx_length == 0 or ctx_length == 1
-            ), "Pass in one token at a time after loading cache"
             pos_offset = cache_ctx_length
         if self.cfg.use_hook_tokens:
             tokens = self.hook_tokens(tokens)
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         if self.cfg.positional_embedding_type == "standard":
             pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset, left_attention_mask)
+                self.pos_embed(tokens, pos_offset, attention_mask)
             )  # [batch, pos, d_model]
             residual = embed + pos_embed  # [batch, pos, d_model]
             shortformer_pos_embed = None
@@ -325,7 +311,7 @@ class HookedTransformer(HookedRootModule):
             # If we're using shortformer style attention, we don't add the positional embedding to
             # the residual stream. See HookedTransformerConfig for details
             pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset, left_attention_mask)
+                self.pos_embed(tokens, pos_offset, attention_mask)
             )  # [batch, pos, d_model]
             residual = embed
             shortformer_pos_embed = pos_embed
@@ -338,7 +324,7 @@ class HookedTransformer(HookedRootModule):
             raise ValueError(
                 f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"
             )
-        return residual, tokens, shortformer_pos_embed, left_attention_mask
+        return residual, tokens, shortformer_pos_embed, attention_mask
 
     @overload
     def forward(
@@ -355,10 +341,9 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Loss:
         ...
 
@@ -377,10 +362,9 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Loss:
         ...
 
@@ -399,10 +383,9 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
         ...
 
@@ -421,10 +404,9 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> None:
         ...
 
@@ -447,10 +429,9 @@ class HookedTransformer(HookedRootModule):
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Union[
         None,
         Float[torch.Tensor, "batch pos d_vocab"],
@@ -494,13 +475,24 @@ class HookedTransformer(HookedRootModule):
             shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]]: Positional
                 embedding for shortformer models. Only use if start_at_layer is not None and
                 self.cfg.positional_embedding_type == "shortformer".
-            left_attention_mask: Optional[torch.Tensor]: The attention mask for left padded tokens.
-                Only use if start_at_layer is not None and self.tokenizer.padding_side == "left".
+            attention_mask: Optional[torch.Tensor]: The attention mask for padded tokens. Only use
+                if start_at_layer is not None and (self.tokenizer.padding_side == "left" or
+                past_kv_cache is not None).
             stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer.
                 Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer =
                 1 will run the embedding layer and the first transformer block, etc. Supports
                 negative indexing. Useful for analysis of intermediate layers, eg finding neuron
                 activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
+            past_kv_cache Optional[HookedTransformerKeyValueCache]: If not None, keys and values
+                will be stored for every attention head (unless the cache is frozen). If there are
+                keys and values already in the cache, these will be prepended to the keys and values
+                for the new input, so that the new tokens can pay attention to previous tokens. This
+                is useful for generating text, because we don't need to repeat computation for
+                tokens that have already been through the model. Also caches attention_mask so
+                previous tokens are masked correctly (unless frozen). Padding should be ignored in
+                all cases, so it's okay to eg. pass in left padded tokens twice in a row.
+                Warning: Don't accidently prepend_bos to the second half of a prompt.
+                Defaults to None (don't use caching).
         """
 
         with utils.LocallyOverridenDefaults(
@@ -511,13 +503,12 @@ class HookedTransformer(HookedRootModule):
                     residual,
                     tokens,
                     shortformer_pos_embed,
-                    left_attention_mask,
+                    attention_mask,
                 ) = self.input_to_embed(
                     input,
                     prepend_bos=prepend_bos,
                     padding_side=padding_side,
                     past_kv_cache=past_kv_cache,
-                    past_left_attention_mask=past_left_attention_mask,
                 )
             else:
                 assert type(input) == torch.Tensor
@@ -529,14 +520,12 @@ class HookedTransformer(HookedRootModule):
             # between those indices. Note that start_at_layer is inclusive and stop_at_layer is
             # exclusive.
             # Eg: start_at_layer==None + stop_at_layer==0 means to only run the embed.
-            # Eg: start_at_layer==3 + stop_at_layer==-1 means to run from layer 3 until the end of
-            # the PENULTIMATE layer
-            transformer_block_list = self.blocks[start_at_layer:stop_at_layer]  # type: ignore
-
-            for i, block in enumerate(transformer_block_list):  # type: ignore
-                # Note that each block includes skip connections, so we don't need residual +
-                # block(residual). If we're using multiple GPUs, we need to send the residual and
-                # shortformer_pos_embed to the correct GPU
+            # Eg: start_at_layer==3 + stop_at_layer==-1 means to run from layer 3 until the end of the PENULTIMATE layer
+            blocks_and_idxs = list(zip(range(self.cfg.n_layers), self.blocks))
+            for i, block in blocks_and_idxs[start_at_layer:stop_at_layer]:  # type: ignore
+                # Note that each block includes skip connections, so we don't need
+                # residual + block(residual)
+                # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
                 residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
                 if shortformer_pos_embed is not None:
                     shortformer_pos_embed = shortformer_pos_embed.to(
@@ -551,7 +540,7 @@ class HookedTransformer(HookedRootModule):
                     if past_kv_cache is not None
                     else None,
                     shortformer_pos_embed=shortformer_pos_embed,
-                    left_attention_mask=left_attention_mask,
+                    attention_mask=attention_mask,
                 )  # [batch, pos, d_model]
 
             if stop_at_layer is not None:
@@ -567,6 +556,9 @@ class HookedTransformer(HookedRootModule):
                 if return_type == "logits":
                     return logits
                 else:
+                    assert (
+                        tokens is not None
+                    ), "tokens must be passed in if return_type is 'loss' or 'both'"
                     loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
                     if return_type == "loss":
                         return loss
@@ -1929,18 +1921,12 @@ class HookedTransformer(HookedRootModule):
                 if use_past_kv_cache:
                     # We just take the final tokens, as a [batch, 1] tensor
                     if index > 0:
-                        past_left_attention_mask = utils.get_attention_mask(
-                            self.tokenizer,
-                            tokens[:, :-1],
-                            self.cfg.default_prepend_bos,
-                        )
                         logits = self.forward(
                             tokens[:, -1:],
                             return_type="logits",
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
-                            past_left_attention_mask=past_left_attention_mask,
                         )
                     else:
                         logits = self.forward(
@@ -1949,7 +1935,6 @@ class HookedTransformer(HookedRootModule):
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
-                            past_left_attention_mask=None,
                         )
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using

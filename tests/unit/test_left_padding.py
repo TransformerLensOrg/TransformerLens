@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from transformer_lens import HookedTransformer, utils
+from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 
 
 class TestLeftPadding:
@@ -65,12 +66,12 @@ class TestLeftPadding:
         tokens = model.to_tokens(prompts, prepend_bos=prepend_bos)
         str_tokens = model.to_str_tokens(prompts, prepend_bos=prepend_bos)
 
-        left_attention_mask = utils.get_attention_mask(
+        attention_mask = utils.get_attention_mask(
             model.tokenizer, tokens, prepend_bos
         )  # [batch pos]
 
         output_pos_embed = model.pos_embed(
-            tokens, 0, left_attention_mask=left_attention_mask
+            tokens, 0, attention_mask=attention_mask
         )  # [batch pos d_model]
 
         # check if the output pos_embeds have the correct shape
@@ -86,14 +87,66 @@ class TestLeftPadding:
         )
         target_output_pos_embed = model.pos_embed.W_pos[target_position_ids, :]
 
-        attended_output_pos_embed = output_pos_embed[left_attention_mask.bool()]
+        attended_output_pos_embed = output_pos_embed[attention_mask.bool()]
 
         assert torch.allclose(
             attended_output_pos_embed, target_output_pos_embed, atol=1e-4
         )
 
         # padded positions should have zero pos_embed
-        assert output_pos_embed[~left_attention_mask.bool()].sum() == 0
+        assert output_pos_embed[~attention_mask.bool()].sum() == 0
+
+    @pytest.mark.parametrize("padding_side", ["left", "right"])
+    @pytest.mark.parametrize("prepend_bos", [True, False])
+    def test_pos_embed_with_cache(self, model, padding_side, prepend_bos):
+        # setup
+        model.tokenizer.padding_side = padding_side
+
+        prompts = self.prompts
+        tokens = model.to_tokens(prompts, prepend_bos=prepend_bos)
+        tokens_2 = model.to_tokens(prompts, prepend_bos=False)
+
+        past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+            model.cfg, model.cfg.device, tokens.shape[0]
+        )
+
+        str_tokens = model.to_str_tokens(prompts, prepend_bos=prepend_bos)
+        str_tokens_2 = model.to_str_tokens(prompts, prepend_bos=False)
+
+        attention_mask = utils.get_attention_mask(
+            model.tokenizer, tokens, prepend_bos
+        )  # [batch pos]
+        past_kv_cache.append_attention_mask(attention_mask)
+        attention_mask_2 = utils.get_attention_mask(
+            model.tokenizer, tokens_2, False
+        )  # [batch pos]
+        cached_attention_mask = past_kv_cache.append_attention_mask(attention_mask_2)
+
+        output_pos_embed = model.pos_embed(
+            tokens_2, tokens.shape[1], attention_mask=cached_attention_mask
+        )  # [batch pos d_model]
+
+        # check if the target pos_embeds are the same as the output pos_embeds
+        target_position_ids = torch.tensor(
+            sum(
+                [
+                    list(range(len(t1), len(t1) + len(t2)))
+                    for t1, t2 in zip(str_tokens, str_tokens_2)
+                ],
+                [],
+            ),
+            device=tokens.device,
+        )
+        target_output_pos_embed = model.pos_embed.W_pos[target_position_ids, :]
+
+        attended_output_pos_embed = output_pos_embed[attention_mask_2.bool()]
+
+        assert torch.allclose(
+            attended_output_pos_embed, target_output_pos_embed, atol=1e-4
+        )
+
+        # padded positions should have zero pos_embed
+        assert output_pos_embed[~attention_mask_2.bool()].sum() == 0
 
     def test_left_padding_by_comparing_outputs(self, model):
         prompts = self.prompts
