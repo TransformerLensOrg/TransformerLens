@@ -1,4 +1,4 @@
-name: Docs Workflow
+name: Docs
 on:
   push:
     branches: 
