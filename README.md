@@ -2,7 +2,12 @@
 
 ![TransformerLens](assets/rm_transformer_lens_logo.png)
 
-[![Pypi](https://img.shields.io/pypi/v/transformer-lens)](https://pypi.org/project/transformer-lens/)
+<!-- Status Icons -->
+[![Pypi](https://img.shields.io/pypi/v/transformer-lens?color=blue)](https://pypi.org/project/transformer-lens/)
+![Pepy Total Downlods](https://img.shields.io/pepy/dt/transformer_lens?color=blue) ![PyPI -
+License](https://img.shields.io/pypi/l/transformer_lens?color=blue)
+[![Release CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/release.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/release.yml)
+[![Tests CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/checks.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/checks.yml) [![Docs CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/gh-pages.yml)
 
 This library is maintained by **Joseph Bloom** and was created by **[Neel Nanda](https://neelnanda.io)**
 
