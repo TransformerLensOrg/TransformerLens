@@ -388,11 +388,6 @@ An object that represents a slice input. It can be a tuple of integers or a slic
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="transformer_lens.utils.extend_tensor_with_ones">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">extend_tensor_with_ones</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.extend_tensor_with_ones" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utils.gelu_fast">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">gelu_fast</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_mlp'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.gelu_fast" title="Permalink to this definition">#</a></dt>
 <dd></dd></dl>
@@ -453,27 +448,6 @@ considered as real pad tokens that should not be attended.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>The attention mask for the input.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="transformer_lens.utils.get_causal_mask_for_left_padding">
-<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_causal_mask_for_left_padding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">left_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tensor</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.utils.get_causal_mask_for_left_padding" title="Permalink to this definition">#</a></dt>
-<dd><p>Generate a causal mask for left padded sequences.</p>
-<p>The generated mask will have dimensions [batch_size, pos, pos], and its purpose is to prevent each token from
-attending to future tokens in the sequence. Additionally, this mask prevents each token from attending to
-padding tokens in the past positions for left-padded sequences.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>left_attention_mask</strong> (<em>torch.Tensor</em>) – The left attention mask, indicating which tokens are
-not padding tokens. Shape: [batch_size, pos]</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The causal attention mask for left padded sequences. Shape: [batch_size, pos, pos]</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>torch.Tensor</p>
@@ -551,6 +525,12 @@ not padding tokens. Shape: [batch_size, pos]</p>
 <dd class="field-odd"><p>Any</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.get_offset_position_ids">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">get_offset_position_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">past_kv_pos_offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">offset_pos'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.get_offset_position_ids" title="Permalink to this definition">#</a></dt>
+<dd><p>Returns the indices of non-padded tokens, offset by the position of the first attended token.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -808,18 +788,17 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 <li><a class="reference internal" href="#transformer_lens.utils.SliceInput"><code class="docutils literal notranslate"><span class="pre">SliceInput</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.composition_scores"><code class="docutils literal notranslate"><span class="pre">composition_scores()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.download_file_from_hf"><code class="docutils literal notranslate"><span class="pre">download_file_from_hf()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.utils.extend_tensor_with_ones"><code class="docutils literal notranslate"><span class="pre">extend_tensor_with_ones()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.gelu_fast"><code class="docutils literal notranslate"><span class="pre">gelu_fast()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.gelu_new"><code class="docutils literal notranslate"><span class="pre">gelu_new()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_act_name"><code class="docutils literal notranslate"><span class="pre">get_act_name()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_attention_mask"><code class="docutils literal notranslate"><span class="pre">get_attention_mask()</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.utils.get_causal_mask_for_left_padding"><code class="docutils literal notranslate"><span class="pre">get_causal_mask_for_left_padding()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_corner"><code class="docutils literal notranslate"><span class="pre">get_corner()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_cumsum_along_dim"><code class="docutils literal notranslate"><span class="pre">get_cumsum_along_dim()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_dataset"><code class="docutils literal notranslate"><span class="pre">get_dataset()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_device"><code class="docutils literal notranslate"><span class="pre">get_device()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_input_with_manually_prepended_bos"><code class="docutils literal notranslate"><span class="pre">get_input_with_manually_prepended_bos()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_nested_attr"><code class="docutils literal notranslate"><span class="pre">get_nested_attr()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.get_offset_position_ids"><code class="docutils literal notranslate"><span class="pre">get_offset_position_ids()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_tokenizer_with_bos"><code class="docutils literal notranslate"><span class="pre">get_tokenizer_with_bos()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_tokens_with_bos_removed"><code class="docutils literal notranslate"><span class="pre">get_tokens_with_bos_removed()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.is_lower_triangular"><code class="docutils literal notranslate"><span class="pre">is_lower_triangular()</span></code></a></li>
