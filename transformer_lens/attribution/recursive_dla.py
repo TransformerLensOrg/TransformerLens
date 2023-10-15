@@ -10,17 +10,32 @@ from transformer_lens import ActivationCache, HookedTransformer
 def dla_mlp_breakdown_source_component(
     cache: ActivationCache, model: HookedTransformer, tokens: Int[Tensor, "token"]
 ) -> Float[Tensor, "batch token dest_l src_comp"]:
-    """Direct Logit Attribution (DLA) Breakdown of MLP Layers by Source Component."""
+    """Direct Logit Attribution (DLA) Breakdown of MLP Layers by Source Component.
+
+    Gets the DLA breakdown backwards through a token's MLP layers, to the source components
+    (earlier components and the embedding/pos encoding).
+
+    Args:
+        cache: Activation Cache
+        model: Hooked Transformer
+        tokens: Single next tokens (answers) to get the DLA breakdown for.
+
+    Returns:
+        DLA breakdown by source components.
+    """
     pass
 
 
 def dla_attn_head_breakdown_source_component(
     cache: ActivationCache, model: HookedTransformer, tokens
-) -> Float[Tensor, "batch token dest_l dest_h src_pos src_comp"]:
+) -> Float[Tensor, "token batch dest_l dest_h src_pos src_comp"]:
     """Direct Logit Attribution (DLA) Breakdown of Attention Heads by Source Component.
 
-    Gets the DLA breakdown backwards through the last layer's attention heads -> source tokens ->
-    source components. Note this is only an OV breakdown and not a QK breakdown.
+    Gets the DLA breakdown backwards through the last token's attention heads -> source tokens ->
+    source components. Note this is only an OV breakdown (freezes QK).
+
+    TODO: Enable batching along dest_l, dest_h, src_pos and src_comp dimensions. This will allow
+    running this function recursively to get the breakdown going back many components.
 
     Args:
         cache: Activation Cache
@@ -153,7 +168,7 @@ def dla_attn_head_breakdown_source_component(
     rearranged = rearrange(
         layers_tensor,
         "dest_l batch src_comp src_pos dest_h token -> \
-            token batch (dest_l dest_h) src_pos src_comp",
+            token batch dest_l dest_h src_pos src_comp",
     )
 
     return rearranged
