@@ -504,12 +504,7 @@ class HookedTransformer(HookedRootModule):
                     tokens,
                     shortformer_pos_embed,
                     attention_mask,
-                ) = self.input_to_embed(
-                    input,
-                    prepend_bos=prepend_bos,
-                    padding_side=padding_side,
-                    past_kv_cache=past_kv_cache,
-                )
+                ) = self.input_to_embed(input, past_kv_cache=past_kv_cache)
             else:
                 assert type(input) == torch.Tensor
                 residual = input
@@ -828,9 +823,7 @@ class HookedTransformer(HookedRootModule):
                     )
                 )  # type: ignore
             elif isinstance(input, str):
-                tokens = self.to_tokens(
-                    input, prepend_bos=prepend_bos, padding_side=padding_side
-                )[0]
+                tokens = self.to_tokens(input)[0]
             elif isinstance(input, torch.Tensor):
                 tokens = input
                 tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
@@ -1857,9 +1850,7 @@ class HookedTransformer(HookedRootModule):
                 assert (
                     self.tokenizer is not None
                 ), "Must provide a tokenizer if passing a string to the model"
-                tokens = self.to_tokens(
-                    input, prepend_bos=prepend_bos, padding_side=padding_side
-                )
+                tokens = self.to_tokens(input)
             else:
                 tokens = input
 
@@ -1924,16 +1915,12 @@ class HookedTransformer(HookedRootModule):
                         logits = self.forward(
                             tokens[:, -1:],
                             return_type="logits",
-                            prepend_bos=prepend_bos,
-                            padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
                         )
                     else:
                         logits = self.forward(
                             tokens,
                             return_type="logits",
-                            prepend_bos=prepend_bos,
-                            padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
                         )
                 else:
@@ -1942,8 +1929,6 @@ class HookedTransformer(HookedRootModule):
                     logits = self.forward(
                         tokens,
                         return_type="logits",
-                        prepend_bos=prepend_bos,
-                        padding_side=padding_side,
                     )
                 final_logits = logits[:, -1, :]
 
