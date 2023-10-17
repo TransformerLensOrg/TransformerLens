@@ -5,6 +5,51 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from transformer_lens import ActivationCache, HookedTransformer
+from transformer_lens.components import LayerNormPre
+
+
+def expand_tensor_dimension(
+    input: Tensor, expand_dimension: int, expand_to_size: int, expand_value: float = 0
+) -> Tensor:
+    """Expand a Tensor Along a Specific Dimension.
+
+    Args:
+        input: The input tensor to be expanded.
+        expand_dimension: The dimension to expand (can be negative for indexing from the end of the
+            input tensor).
+        expand_to_size: The size that the input tensors expansion dimension should be resized to.
+        expand_value: The value to assign to the expansion space.
+
+    Returns:
+        The input tensor expanded along a specified dimension.
+    """
+    # Calculate the expansion space size (along the expansion dimension)
+    current_size = input.shape[expand_dimension]
+    expand_by = expand_to_size - current_size
+
+    # Check the amount to expand by is positive
+    if expand_by < 0:
+        raise AttributeError(
+            f"Expansion to size {expand_to_size} not possible. "
+            + "Dimension {expand_dimension} is already of size {current_size}."
+        )
+
+    # Just return he tensor if it's the correct size
+    if expand_by == 0:
+        return input
+
+    # Otherwise expand
+    expand_space: Tensor = torch.empty(
+        # Keep the other dimensions the same, and set the expand dimension size to be the amount
+        # needed to expand by
+        [
+            *input.shape[: expand_dimension - 1],
+            expand_by,
+            *input.shape[expand_dimension + 1 :],
+        ]
+    )
+    expand_space = torch.fill(expand_space, expand_value)
+    return torch.cat((input, expand_space), dim=expand_dimension)
 
 
 def dla_mlp_breakdown_source_component(
@@ -35,6 +80,9 @@ def dla_mlp_breakdown_source_component(
     if logit_directions.ndim == 1:
         logit_directions = logit_directions.unsqueeze(0)
 
+    def forward_cache_hook(act, hook):
+        cache[hook.name] = act.detach()
+
     # For each destination layer, get the sum of all source levels
     for dest_l in range(model.cfg.n_layers):
         # Note we need to keep the dimensions the same for all destination layers (even though the
@@ -44,41 +92,36 @@ def dla_mlp_breakdown_source_component(
         source_residuals: Float[
             Tensor, "src_comp batch d_model"
         ] = cache.decompose_resid(layer=dest_l, pos_slice=-1)
-        extra_empty_needed = model.cfg.n_layers - dest_l
+
+        max_source_components = model.cfg.n_layers - dest_l
         if not model.cfg.attn_only:
-            extra_empty_needed *= 2
+            max_source_components *= 2
 
-        if extra_empty_needed > 0:
-            empty_residuals = torch.zeros(
-                (
-                    extra_empty_needed,
-                    source_residuals.shape[-2],
-                    source_residuals.shape[-1],
-                ),
-                device=source_residuals.device,
-            )
-            source_residuals = torch.cat((source_residuals, empty_residuals), dim=0)
-
-        norm_scale: Float[Tensor, "batch 1"] = (
-            1 / cache[f"blocks.{dest_l}.ln2.hook_scale"]
-        )[:, -1, :]
-        centered: Float[
-            Tensor, "src_comp batch d_model"
-        ] = source_residuals - source_residuals.mean(dim=-1, keepdim=True)
-        mlp_input = einsum(
-            centered,
-            norm_scale.squeeze(-1),
-            "src_comp batch d_model, \
-                batch -> \
-                batch src_comp d_model",
+        # Expand across the source components dimension to the max number of components, for easy
+        # concatenation of all destination components later.
+        source_residuals = expand_tensor_dimension(
+            source_residuals, 0, max_source_components, 0.0
         )
 
-        # Hacky approach - we can just use the modules forward pass as src_component replaces pos in
-        # the dimensions
+        # Apply LN to the stack
+        ln_2: LayerNormPre = model.blocks[dest_l].ln2
+        ln_2_hook = ln_2.hook_scale
+        ln_2_hook_handle = ln_2_hook.add_hook(forward_cache_hook)
+        mlp_input: Float[Tensor, "src_comp batch d_model"] = ln_2.forward(
+            source_residuals
+        )
+        ln_2_hook_handle.remove()
+
+        # Approximate MLP non-linearity with the gradient at this point.
+        # To do this we can run the MLP forward and backward, and get the gradient of the input
+
+        # Apply MLP
         mlp_module = model.blocks[dest_l].mlp
         mlp_out: Float[Tensor, "batch src_comp d_model"] = mlp_module.forward(mlp_input)
 
-        # Scale
+        # Apply non-linearity
+
+        # Apply final LN
         if model.cfg.normalization_type not in ["LN", "LNPre"]:
             scaled_result = mlp_out
         else:
@@ -152,21 +195,13 @@ def dla_attn_head_breakdown_source_component(
         source_residuals: Float[
             Tensor, "src_comp batch src_pos d_model"
         ] = cache.decompose_resid(layer=dest_l)
-        extra_empty_needed = model.cfg.n_layers - dest_l
+        max_source_components = model.cfg.n_layers - dest_l
         if not model.cfg.attn_only:
-            extra_empty_needed *= 2
+            max_source_components *= 2
 
-        if extra_empty_needed > 0:
-            empty_residuals = torch.zeros(
-                (
-                    extra_empty_needed,
-                    source_residuals.shape[-3],
-                    source_residuals.shape[-2],
-                    source_residuals.shape[-1],
-                ),
-                device=source_residuals.device,
-            )
-            source_residuals = torch.cat((source_residuals, empty_residuals), dim=0)
+        source_residuals = expand_tensor_dimension(
+            source_residuals, 0, max_source_components, 0.0
+        )
 
         norm_scale: Float[Tensor, "batch src_pos 1"] = (
             1 / cache[f"blocks.{dest_l}.ln1.hook_scale"]
