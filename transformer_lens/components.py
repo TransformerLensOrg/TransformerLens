@@ -248,11 +248,14 @@ class LayerNormPre(nn.Module):
         x: Union[
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "*logit_attribution_dims d_model"],
         ],
     ) -> Union[
         Float[torch.Tensor, "batch pos d_model"],
         Float[torch.Tensor, "batch pos head_index d_model"],
+        Float[torch.Tensor, "*logit_attribution_dims d_model"],
     ]:
+        """Layer Norm Pre Forward Pass."""
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
@@ -260,6 +263,7 @@ class LayerNormPre(nn.Module):
         scale: Union[
             Float[torch.Tensor, "batch pos 1"],
             Float[torch.Tensor, "batch pos head_index 1"],
+            Float[torch.Tensor, "*logit_attribution_dim 1"],
         ] = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt())
         return self.hook_normalized(x / scale).to(self.cfg.dtype)
 
@@ -387,7 +391,7 @@ class Attention(nn.Module):
     ):
         """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
 
-        Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+        Convention: All attention pattern-style matrices have shape [batch, head_index, dest_pos, src_pos]
 
         Args:
             cfg (Union[Dict, HookedTransformerConfig]): Config
@@ -461,8 +465,8 @@ class Attention(nn.Module):
         self.hook_q = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_v = HookPoint()  # [batch, pos, head_index, d_head]
         self.hook_z = HookPoint()  # [batch, pos, head_index, d_head]
-        self.hook_attn_scores = HookPoint()  # [batch, head_index, query_pos, key_pos]
-        self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
+        self.hook_attn_scores = HookPoint()  # [batch, head_index, dest_pos, src_pos]
+        self.hook_pattern = HookPoint()  # [batch, head_index, dest_pos, src_pos]
         self.hook_result = HookPoint()  # [batch, pos, head_index, d_model]
 
         # See HookedTransformerConfig for more details.
@@ -521,12 +525,33 @@ class Attention(nn.Module):
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
-    ) -> Float[torch.Tensor, "batch pos d_model"]:
-        """
-        shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
-        past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
-        additive_attention_mask is an optional mask to add to the attention weights. Defaults to None.
-        attention_mask is the attention mask for padded tokens. Defaults to None.
+        keep_src_pos_dim: Optional[bool] = False,
+    ) -> Union[
+        Float[torch.Tensor, "batch pos d_model"],
+        Float[torch.Tensor, "batch src_pos dest_pos d_model"],
+    ]:
+        """Attention Head Forward Pass.
+
+        Note: Shortformer positional embedding is only used if self.cfg.positional_embedding_type ==
+        "shortformer", else defaults to None and is irrelevant.See HookedTransformerConfig for more
+        details past_kv_cache_entry is an optional entry of past keys and values for this layer,
+        only relevant if generating text. Defaults to None additive_attention_mask is an optional
+        mask to add to the attention weights. Defaults to None. attention_mask is the attention mask
+        for padded tokens. Defaults to None.
+
+        Args:
+            query_input: Query Input key_input: Key Input value_input: Value Input
+            past_kv_cache_entry: Optional entry of past keys and values for this layer, which is
+                only relevant if generating text.
+            additive_attention_mask: Optional mask to add to the weights.
+            attention_mask: Attention mask for padded tokens.
+            keep_src_pos_dim: Flag to keep the source position (key) dimension when calculating
+                the result. Otherwise just the destination position dimension is kept. This is
+                useful when using the forward pass to calculate logit attribution, broken down by
+                source component.
+
+        Returns:
+            Result of the forward pass.
         """
 
         if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
@@ -585,43 +610,47 @@ class Attention(nn.Module):
 
         attn_scores = (
             einsum(
-                "batch query_pos head_index d_head, \
-                    batch key_pos head_index d_head \
-                    -> batch head_index query_pos key_pos",
+                "batch dest_pos head_index d_head, \
+                    batch src_pos head_index d_head \
+                    -> batch head_index dest_pos src_pos",
                 q,
                 k,
             )
             / self.attn_scale
-        )  # [batch, head_index, query_pos, key_pos]
+        )  # [batch, head_index, dest_pos, src_pos]
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
                 attn_scores, kv_cache_pos_offset, attention_mask
-            )  # [batch, head_index, query_pos, key_pos]
+            )  # [batch, head_index, dest_pos, src_pos]
         if additive_attention_mask is not None:
             attn_scores += additive_attention_mask
 
         attn_scores = self.hook_attn_scores(attn_scores)
         pattern = F.softmax(attn_scores, dim=-1)
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
-        pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
+        pattern = self.hook_pattern(pattern)  # [batch, head_index, dest_pos, src_pos]
         pattern = pattern.to(self.cfg.dtype)
+
+        pos_einsum_str: str = "dest_pos src_pos" if keep_src_pos_dim else "dest_pos"
+
         z = self.hook_z(
             einsum(
-                "batch key_pos head_index d_head, \
-                batch head_index query_pos key_pos -> \
-                batch query_pos head_index d_head",
+                f"batch src_pos head_index d_head, \
+                batch head_index dest_pos src_pos -> \
+                batch {pos_einsum_str} head_index d_head",
                 v,
                 pattern,
             )
         )  # [batch, pos, head_index, d_head]
+
         if not self.cfg.use_attn_result:
             out = (
                 (
                     einsum(
-                        "batch pos head_index d_head, \
+                        f"batch {pos_einsum_str} head_index d_head, \
                             head_index d_head d_model -> \
-                            batch pos d_model",
+                            batch {pos_einsum_str} d_model",
                         z,
                         self.W_O,
                     )
@@ -633,16 +662,18 @@ class Attention(nn.Module):
             # This is off by default because it can easily eat through your GPU memory.
             result = self.hook_result(
                 einsum(
-                    "batch pos head_index d_head, \
+                    f"batch {pos_einsum_str} head_index d_head, \
                         head_index d_head d_model -> \
-                        batch pos head_index d_model",
+                        batch {pos_einsum_str} head_index d_model",
                     z,
                     self.W_O,
                 )
             )  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(
-                    result, "batch position index model->batch position model", "sum"
+                    result,
+                    f"batch {pos_einsum_str} index model -> batch {pos_einsum_str} model",
+                    "sum",
                 )
                 + self.b_O
             )  # [batch, pos, d_model]

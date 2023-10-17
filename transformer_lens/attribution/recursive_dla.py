@@ -5,7 +5,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from transformer_lens import ActivationCache, HookedTransformer
-from transformer_lens.components import LayerNormPre
+from transformer_lens.components import Attention, LayerNormPre
 
 
 def expand_tensor_dimension(
@@ -31,7 +31,7 @@ def expand_tensor_dimension(
     if expand_by < 0:
         raise AttributeError(
             f"Expansion to size {expand_to_size} not possible. "
-            + "Dimension {expand_dimension} is already of size {current_size}."
+            + f"Dimension {expand_dimension} is already of size {current_size}."
         )
 
     # Just return he tensor if it's the correct size
@@ -43,11 +43,13 @@ def expand_tensor_dimension(
         # Keep the other dimensions the same, and set the expand dimension size to be the amount
         # needed to expand by
         [
-            *input.shape[: expand_dimension - 1],
+            *input.shape[:expand_dimension],
             expand_by,
             *input.shape[expand_dimension + 1 :],
-        ]
+        ],
+        device=input.device,
     )
+
     expand_space = torch.fill(expand_space, expand_value)
     return torch.cat((input, expand_space), dim=expand_dimension)
 
@@ -73,6 +75,7 @@ def dla_mlp_breakdown_source_component(
 
     layers = []
 
+    # Get the logit directions
     logit_directions: Float[
         Tensor, "token d_model"
     ] = model.tokens_to_residual_directions(Tensor(tokens))
@@ -187,35 +190,50 @@ def dla_attn_head_breakdown_source_component(
     if logit_directions.ndim == 1:
         logit_directions = logit_directions.unsqueeze(0)
 
+    def patch_with_cache_hook(_activations, hook):
+        print(hook.name)
+        return cache[hook.name]
+
+    # Get the max number of source components (i.e. number for the last destination component)
+    source_residuals_all: Float[
+        Tensor, "src_comp batch src_pos d_model"
+    ] = cache.decompose_resid()
+    max_src_components: int = source_residuals_all.shape[0]
+
+    # Check the model config is setup so that we get the breakdown of attention result by head
+    if not model.cfg.use_attn_result:
+        raise AttributeError(
+            "Model config parameter `use_attn_result` must be set to `True`."
+        )
+
+    model.remove_all_hook_fns()
+
     for dest_l in range(model.cfg.n_layers):
-        # Note we need to keep the dimensions the same for all destination layers (even though the
-        # first destination layer only looks at the source embed + pos encoding, whereas the last
-        # one also looks at n-1 layers). To solve this we just add some zeros to fill to the largest
-        # dimension size.
         source_residuals: Float[
             Tensor, "src_comp batch src_pos d_model"
         ] = cache.decompose_resid(layer=dest_l)
-        max_source_components = model.cfg.n_layers - dest_l
-        if not model.cfg.attn_only:
-            max_source_components *= 2
 
         source_residuals = expand_tensor_dimension(
-            source_residuals, 0, max_source_components, 0.0
+            source_residuals, 0, max_src_components, 0.0
         )
 
-        norm_scale: Float[Tensor, "batch src_pos 1"] = (
-            1 / cache[f"blocks.{dest_l}.ln1.hook_scale"]
+        # Apply LN to the stack
+        ln_1: LayerNormPre = model.blocks[dest_l].ln2
+        ln_1_hook = ln_1.hook_scale
+        ln_1_hook.add_hook(patch_with_cache_hook)
+        value_input: Float[Tensor, "batch src_comp src_pos d_model"] = ln_1.forward(
+            source_residuals
         )
-        centered: Float[
-            Tensor, "src_comp batch src_pos d_model"
-        ] = source_residuals - source_residuals.mean(dim=-1, keepdim=True)
-        value_input = einsum(
-            centered,
-            norm_scale.squeeze(-1),
-            "src_comp batch src_pos d_model, \
-                batch src_pos -> \
-                batch src_comp src_pos d_model",
-        )
+        ln_1_hook.remove_hooks()
+
+        # Apply attention layer
+        attn_module: Attention = model.blocks[dest_l].attn
+        attn_pattern_hook = attn_module.hook_pattern
+        attn_pattern_hook.add_hook(patch_with_cache_hook)
+        query_key_input = cache[f"blocks.{dest_l}.hook_attn_in"]
+        attn_out: Float[
+            Tensor, "batch src_comp src_pos dest_h d_model"
+        ] = attn_module.forward(query_key_input, query_key_input, value_input)
 
         W_V: Float[Tensor, "dest_h d_model d_head"] = model.state_dict()[
             f"blocks.{dest_l}.attn.W_V"
