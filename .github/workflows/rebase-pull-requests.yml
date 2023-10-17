@@ -1,0 +1,13 @@
+name: Rebase
+on:
+  push:
+    branches: [main]
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: peter-evans/rebase@v2
+        with:
+          base: main
+          exclude-labels: |
+            no-rebase
