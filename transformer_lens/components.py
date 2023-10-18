@@ -263,7 +263,7 @@ class LayerNormPre(nn.Module):
         scale: Union[
             Float[torch.Tensor, "batch pos 1"],
             Float[torch.Tensor, "batch pos head_index 1"],
-            Float[torch.Tensor, "*logit_attribution_dim 1"],
+            Float[torch.Tensor, "*logit_attribution_dims 1"],
         ] = self.hook_scale((x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt())
         return self.hook_normalized(x / scale).to(self.cfg.dtype)
 
@@ -511,24 +511,27 @@ class Attention(nn.Module):
     def forward(
         self,
         query_input: Union[
-            Float[torch.Tensor, "batch pos d_model"],
-            Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch dest_pos d_model"],
+            Float[torch.Tensor, "batch dest_pos head_index d_model"],
+            Float[torch.Tensor, "*attribution_dims dest_pos head_index d_model"],
         ],
         key_input: Union[
-            Float[torch.Tensor, "batch pos d_model"],
-            Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch dest_pos d_model"],
+            Float[torch.Tensor, "batch dest_pos head_index d_model"],
+            Float[torch.Tensor, "*attribution_dims dest_pos head_index d_model"],
         ],
         value_input: Union[
-            Float[torch.Tensor, "batch pos d_model"],
-            Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch src_pos d_model"],
+            Float[torch.Tensor, "batch src_pos head_index d_model"],
+            Float[torch.Tensor, "*attribution_dims src_pos head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
-        keep_src_pos_dim: Optional[bool] = False,
+        keep_src_and_head_dim: Optional[bool] = False,
     ) -> Union[
-        Float[torch.Tensor, "batch pos d_model"],
-        Float[torch.Tensor, "batch src_pos dest_pos d_model"],
+        Float[torch.Tensor, "batch dest_pos d_model"],
+        Float[torch.Tensor, "*attribution_dims dest_pos src_pos d_model"],
     ]:
         """Attention Head Forward Pass.
 
@@ -545,10 +548,10 @@ class Attention(nn.Module):
                 only relevant if generating text.
             additive_attention_mask: Optional mask to add to the weights.
             attention_mask: Attention mask for padded tokens.
-            keep_src_pos_dim: Flag to keep the source position (key) dimension when calculating
-                the result. Otherwise just the destination position dimension is kept. This is
-                useful when using the forward pass to calculate logit attribution, broken down by
-                source component.
+            keep_src_and_head_dim: Flag to keep the source position (key) dimension as well as the
+                head index dimension, in the result. Otherwise just the destination position
+                dimension is kept. This is useful when using the forward pass to calculate logit
+                attribution, broken down by source component.
 
         Returns:
             Result of the forward pass.
@@ -557,35 +560,35 @@ class Attention(nn.Module):
         if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
             qkv_einops_string = "batch pos head_index d_model"
         else:
-            qkv_einops_string = "batch pos d_model"
+            qkv_einops_string = "... batch pos d_model"
 
         q = self.hook_q(
             einsum(
                 f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
+                -> ... batch pos head_index d_head",
                 query_input,
                 self.W_Q,
             )
             + self.b_Q
-        )  # [batch, pos, head_index, d_head]
+        )  # [batch, dest_pos, head_index, d_head]
         k = self.hook_k(
             einsum(
                 f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
+                -> ... batch pos head_index d_head",
                 key_input,
                 self.W_K,
             )
             + self.b_K
-        )  # [batch, pos, head_index, d_head]
+        )  # [batch, dest_pos, head_index, d_head]
         v = self.hook_v(
             einsum(
                 f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
+                -> ... batch pos head_index d_head",
                 value_input,
                 self.W_V,
             )
             + self.b_V
-        )  # [batch, pos, head_index, d_head]
+        )  # [*attribute_dims/batch, src_pos, head_index, d_head]
 
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
@@ -610,14 +613,14 @@ class Attention(nn.Module):
 
         attn_scores = (
             einsum(
-                "batch dest_pos head_index d_head, \
-                    batch src_pos head_index d_head \
-                    -> batch head_index dest_pos src_pos",
+                "... batch dest_pos head_index d_head, \
+                    ... batch src_pos head_index d_head \
+                    -> ... batch head_index dest_pos src_pos",
                 q,
                 k,
             )
             / self.attn_scale
-        )  # [batch, head_index, dest_pos, src_pos]
+        )  # [*attribution_dims/batch, head_index, dest_pos, src_pos]
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
@@ -632,25 +635,30 @@ class Attention(nn.Module):
         pattern = self.hook_pattern(pattern)  # [batch, head_index, dest_pos, src_pos]
         pattern = pattern.to(self.cfg.dtype)
 
-        pos_einsum_str: str = "dest_pos src_pos" if keep_src_pos_dim else "dest_pos"
+        pos_einsum_str: str = (
+            "dest_pos src_pos" if keep_src_and_head_dim else "dest_pos"
+        )
+        einsum_out: str = (
+            "dest_pos src_pos head_index" if keep_src_and_head_dim else "dest_pos"
+        )
 
         z = self.hook_z(
             einsum(
-                f"batch src_pos head_index d_head, \
+                f"... batch src_pos head_index d_head, \
                 batch head_index dest_pos src_pos -> \
-                batch {pos_einsum_str} head_index d_head",
+                ... batch {pos_einsum_str} head_index d_head",
                 v,
                 pattern,
             )
-        )  # [batch, pos, head_index, d_head]
+        )  # [*attribution_dims/batch, dest_pos, *src_pos, head_index, d_head]
 
         if not self.cfg.use_attn_result:
             out = (
                 (
                     einsum(
-                        f"batch {pos_einsum_str} head_index d_head, \
+                        f"... batch {pos_einsum_str} head_index d_head, \
                             head_index d_head d_model -> \
-                            batch {pos_einsum_str} d_model",
+                            ... batch {einsum_out} d_model",
                         z,
                         self.W_O,
                     )
@@ -662,21 +670,24 @@ class Attention(nn.Module):
             # This is off by default because it can easily eat through your GPU memory.
             result = self.hook_result(
                 einsum(
-                    f"batch {pos_einsum_str} head_index d_head, \
+                    f"... batch {pos_einsum_str} head_index d_head, \
                         head_index d_head d_model -> \
-                        batch {pos_einsum_str} head_index d_model",
+                        ... batch {pos_einsum_str} head_index d_model",
                     z,
                     self.W_O,
                 )
             )  # [batch, pos, head_index, d_model]
-            out = (
-                einops.reduce(
-                    result,
-                    f"batch {pos_einsum_str} index model -> batch {pos_einsum_str} model",
-                    "sum",
-                )
-                + self.b_O
-            )  # [batch, pos, d_model]
+            if keep_src_and_head_dim:
+                out = result + self.b_O
+            else:
+                out = (
+                    einops.reduce(
+                        result,
+                        "batch dest_pos index model -> batch dest_pos model",
+                        "sum",
+                    )
+                    + self.b_O
+                )  # [batch, pos, d_model]
         return out
 
     def apply_causal_mask(

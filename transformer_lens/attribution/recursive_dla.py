@@ -1,6 +1,5 @@
 """Recursive Direct Logit Attribution."""
 import torch
-import torch.nn.functional as F
 from einops import einsum, rearrange
 from jaxtyping import Float, Int
 from torch import Tensor
@@ -208,8 +207,10 @@ def dla_attn_head_breakdown_source_component(
         logit_directions = logit_directions.unsqueeze(0)
 
     def patch_with_cache_hook(_activations, hook):
-        print(hook.name)
         return cache[hook.name]
+
+    def patch_with_cache_hook_final_token(_activations, hook):
+        return cache[hook.name][:, -1]
 
     # Get the max number of source components (i.e. number for the last destination component)
     source_residuals_all: Float[
@@ -238,7 +239,7 @@ def dla_attn_head_breakdown_source_component(
         ln_1: LayerNormPre = model.blocks[dest_l].ln2
         ln_1_hook = ln_1.hook_scale
         ln_1_hook.add_hook(patch_with_cache_hook)
-        value_input: Float[Tensor, "batch src_comp src_pos d_model"] = ln_1.forward(
+        value_input: Float[Tensor, "src_comp batch src_pos d_model"] = ln_1.forward(
             source_residuals
         )
         ln_1_hook.remove_hooks()
@@ -247,74 +248,42 @@ def dla_attn_head_breakdown_source_component(
         attn_module: Attention = model.blocks[dest_l].attn
         attn_pattern_hook = attn_module.hook_pattern
         attn_pattern_hook.add_hook(patch_with_cache_hook)
-        query_key_input = cache[f"blocks.{dest_l}.hook_attn_in"]
-        # attn_out: Float[
-        #     Tensor, "batch src_comp src_pos dest_h d_model"
-        # ] = attn_module.forward(query_key_input, query_key_input, value_input)
 
-        W_V: Float[Tensor, "dest_h d_model d_head"] = model.state_dict()[
-            f"blocks.{dest_l}.attn.W_V"
-        ]
+        # Hooks to keep dimensions
 
-        # b_V = model.state_dict()[f"blocks.{dest_l}.attn.b_V"]
-
-        value: Float[Tensor, "src_pos src_comp dest_h d_head"] = (
-            einsum(
-                value_input,
-                W_V,
-                "batch src_comp src_pos d_model, \
-                    dest_h d_model d_head -> \
-                    batch src_comp src_pos dest_h d_head",
-            )
-            # + b_V
-        )
-
-        pattern_post_softmax: Float[Tensor, "batch dest_h dest_pos src_pos"] = cache[
-            f"blocks.{dest_l}.attn.hook_pattern"
-        ]
-
-        # Z is usually calculated as values * attention, summed across keys
-        z = einsum(
-            value,
-            pattern_post_softmax,
-            "batch src_comp src_pos dest_h d_head, \
-                batch dest_h dest_pos src_pos -> \
-                batch dest_pos src_comp src_pos dest_h d_head",
-        )
-
-        weights_output: Float[Tensor, "dest_h d_head d_model"] = model.blocks[
-            dest_l
-        ].attn.W_O
-
-        # bias_output: Float[Tensor, "d_model"] = model.blocks[dest_l].attn.b_O
-
-        result = einsum(
-            z,
-            weights_output,
-            "batch dest_pos src_comp src_pos dest_h d_head, \
-                    dest_h d_head d_model -> \
-                    batch dest_pos src_comp src_pos dest_h d_model",
+        # Note the QK inputs are ignored (as we patch the attention pattern, so they can be any
+        # tensor input here)
+        attn_out: Float[
+            Tensor, "src_comp batch dest_pos src_pos dest_h d_model"
+        ] = attn_module.forward(
+            value_input, value_input, value_input, keep_src_and_head_dim=True
         )
 
         # Stacked head result (pos slice on last token)
         result_on_final_token: Float[
-            Tensor, "batch src_comp src_pos dest_h d_model"
-        ] = result[:, -1]
+            Tensor, "src_comp batch src_pos dest_h d_model"
+        ] = attn_out[:, :, -1]
 
-        # Scale
-        if model.cfg.normalization_type not in ["LN", "LNPre"]:
-            scaled_result = result_on_final_token
-        else:
-            center_stack = result_on_final_token - result_on_final_token.mean(
-                dim=-1, keepdim=True
-            )
-            scale = cache["ln_final.hook_scale"][0, -1, :]  # first batch, last token
-            scaled_result = center_stack / scale
+        # Rearrange
+        result_on_final_token_rearranged: Float[
+            Tensor, "src_comp dest_h batch src_pos d_model"
+        ] = rearrange(
+            result_on_final_token,
+            "src_comp batch src_pos dest_h d_model -> \
+                    src_comp dest_h batch src_pos d_model",
+        )
+
+        # Apply final ln
+        ln_final: LayerNormPre = model.ln_final
+        ln_final_hook = ln_final.hook_scale
+        ln_final_hook.add_hook(patch_with_cache_hook_final_token)
+        result_post_ln_final = ln_final.forward(result_on_final_token_rearranged)
+        ln_final_hook.remove_hooks()
 
         logit_attrs = einsum(
-            scaled_result,
+            result_post_ln_final,
             logit_directions,
-            "batch src_comp src_pos dest_h d_model, \
+            "src_comp dest_h batch src_pos d_model, \
                 token d_model -> \
                 batch src_comp src_pos dest_h token",
         )
