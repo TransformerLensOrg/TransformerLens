@@ -2,8 +2,14 @@
 # pylint: disable=missing-function-docstring,missing-class-docstring
 import pytest
 import torch
+from jaxtyping import Float
+from torch import Tensor
 
-from transformer_lens.attribution.recursive_dla import pad_tensor_dimension
+from transformer_lens import HookedTransformer
+from transformer_lens.attribution.recursive_dla import (
+    dla_attn_head_breakdown_source_component,
+    pad_tensor_dimension,
+)
 
 
 class TestPadTensorDimension:
@@ -37,3 +43,35 @@ class TestPadTensorDimension:
             [[[1, 2, 0, 0], [3, 4, 0, 0]], [[5, 6, 0, 0], [7, 8, 0, 0]]]
         )
         assert torch.equal(expanded, expected)
+
+
+class TestAttentionHeadBreakdownSourceComponent:
+    def matches_current_lib_dla(self):
+        # Load model
+        torch.set_grad_enabled(False)
+        model = HookedTransformer.from_pretrained("tiny-stories-instruct-1M")
+        model.set_use_attn_result(True)
+        model.eval()
+
+        # Run
+        prompt = "Why did the elephant cross the"
+        answer = " road"
+        _logits, cache = model.run_with_cache(prompt)
+
+        # Get DLA using existing functionality (for all attention heads)
+        stacked_heads: Float[
+            Tensor, "head batch pos d_model"
+        ] = cache.stack_head_results()
+        dla_heads: Float[Tensor, "head_idx batch pos"] = cache.logit_attrs(
+            stacked_heads, tokens=answer
+        )
+        existing_dla = dla_heads[:, 0, -1].sum()  # Batch 0, last token
+
+        # Get DLA using new functionality (for all attention heads)
+        answer_token = model.tokenizer.encode(answer)
+        dla_breakdown = dla_attn_head_breakdown_source_component(
+            cache, model, answer_token
+        )
+        new_dla = dla_breakdown[0].sum(dim=-1).sum()
+
+        assert existing_dla == new_dla
