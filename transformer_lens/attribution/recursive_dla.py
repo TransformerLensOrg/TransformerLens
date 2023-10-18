@@ -1,10 +1,13 @@
 """Recursive Direct Logit Attribution."""
+from typing import List
+
 import torch
 from einops import einsum, rearrange
 from jaxtyping import Float, Int
 from torch import Tensor
 
 from transformer_lens import ActivationCache, HookedTransformer
+from transformer_lens.attribution.dla import direct_logit_attribution
 from transformer_lens.components import Attention, LayerNormPre
 
 
@@ -90,14 +93,6 @@ def dla_mlp_breakdown_source_component(
     """
 
     layers = []
-
-    # Get the logit directions
-    logit_directions: Float[
-        Tensor, "token d_model"
-    ] = model.tokens_to_residual_directions(Tensor(tokens))
-
-    if logit_directions.ndim == 1:
-        logit_directions = logit_directions.unsqueeze(0)
 
     def forward_cache_hook(act, hook):
         cache[hook.name] = act.detach()
@@ -197,7 +192,7 @@ def dla_attn_head_breakdown_source_component(
         get dla breakdown by source token instead.
     """
 
-    layers = []
+    dla: List[Float[Tensor, "batch src_comp src_pos dest_h token"]] = []
 
     logit_directions: Float[
         Tensor, "token d_model"
@@ -249,8 +244,6 @@ def dla_attn_head_breakdown_source_component(
         attn_pattern_hook = attn_module.hook_pattern
         attn_pattern_hook.add_hook(patch_with_cache_hook)
 
-        # Hooks to keep dimensions
-
         # Note the QK inputs are ignored (as we patch the attention pattern, so they can be any
         # tensor input here)
         attn_out: Float[
@@ -270,32 +263,23 @@ def dla_attn_head_breakdown_source_component(
         ] = rearrange(
             result_on_final_token,
             "src_comp batch src_pos dest_h d_model -> \
-                    src_comp dest_h batch src_pos d_model",
+                    batch src_comp src_pos dest_h d_model",
         )
 
-        # Apply final ln
-        ln_final: LayerNormPre = model.ln_final
-        ln_final_hook = ln_final.hook_scale
-        ln_final_hook.add_hook(patch_with_cache_hook_final_token)
-        result_post_ln_final = ln_final.forward(result_on_final_token_rearranged)
-        ln_final_hook.remove_hooks()
-
-        logit_attrs = einsum(
-            result_post_ln_final,
-            logit_directions,
-            "src_comp dest_h batch src_pos d_model, \
-                token d_model -> \
-                batch src_comp src_pos dest_h token",
+        logit_attrs: Float[
+            Tensor, "batch src_comp src_pos dest_h token"
+        ] = direct_logit_attribution(
+            cache, model, result_on_final_token_rearranged, tokens
         )
 
-        layers.append(logit_attrs)
+        dla.append(logit_attrs)
 
-    layers_tensor: Float[
+    dla_tensor: Float[
         Tensor, "dest_l batch src_comp src_pos dest_h token"
-    ] = torch.stack(layers, dim=0)
+    ] = torch.stack(dla, dim=0)
 
     rearranged = rearrange(
-        layers_tensor,
+        dla_tensor,
         "dest_l batch src_comp src_pos dest_h token -> \
             token batch dest_l dest_h src_pos src_comp",
     )
