@@ -20,7 +20,7 @@ def pad_tensor_dimension(
 
     Example:
         >>> x = torch.tensor([[1, 2], [3, 4]])
-        >>> expand_tensor_dimension(x, expand_dimension=1, expand_to_size=5)
+        >>> pad_tensor_dimension(x, expand_dimension=1, expand_to_size=5)
         tensor([[1, 2, 0, 0, 0],
                 [3, 4, 0, 0, 0]])
 
@@ -47,15 +47,28 @@ def pad_tensor_dimension(
             + f"Dimension {expand_dimension} is already of size {current_size}."
         )
 
+    # Convert negative indexing to positive indexing
+    if expand_dimension < 0:
+        expand_dimension += len(input_tensor.shape)
+
     # Just return he tensor if it's the correct size
     if expand_by == 0:
         return input_tensor
 
-    # Only pad at the end of the specified dimension
-    padding = [0] * (2 * len(input_tensor.shape))
-    padding[-(expand_dimension * 2 + 1)] = expand_by
+    # Otherwise expand
+    expand_space: Tensor = torch.full(
+        # Keep the other dimensions the same, and set the expand dimension size to be the amount
+        # needed to expand by
+        size=[
+            *input_tensor.shape[:expand_dimension],
+            expand_by,
+            *input_tensor.shape[expand_dimension + 1 :],
+        ],
+        fill_value=0.0,
+        device=input_tensor.device,
+    )
 
-    return F.pad(input_tensor, padding)
+    return torch.cat((input_tensor, expand_space), dim=expand_dimension)
 
 
 def dla_mlp_breakdown_source_component(
@@ -106,7 +119,7 @@ def dla_mlp_breakdown_source_component(
 
         # Expand across the source components dimension to the max number of components, for easy
         # concatenation of all destination components later.
-        source_residuals = expand_tensor_dimension(
+        source_residuals = pad_tensor_dimension(
             source_residuals, 0, max_source_components, 0.0
         )
 
@@ -217,8 +230,8 @@ def dla_attn_head_breakdown_source_component(
             Tensor, "src_comp batch src_pos d_model"
         ] = cache.decompose_resid(layer=dest_l)
 
-        source_residuals = expand_tensor_dimension(
-            source_residuals, 0, max_src_components, 0.0
+        source_residuals = pad_tensor_dimension(
+            source_residuals, expand_dimension=0, expand_to_size=max_src_components
         )
 
         # Apply LN to the stack
@@ -235,9 +248,9 @@ def dla_attn_head_breakdown_source_component(
         attn_pattern_hook = attn_module.hook_pattern
         attn_pattern_hook.add_hook(patch_with_cache_hook)
         query_key_input = cache[f"blocks.{dest_l}.hook_attn_in"]
-        attn_out: Float[
-            Tensor, "batch src_comp src_pos dest_h d_model"
-        ] = attn_module.forward(query_key_input, query_key_input, value_input)
+        # attn_out: Float[
+        #     Tensor, "batch src_comp src_pos dest_h d_model"
+        # ] = attn_module.forward(query_key_input, query_key_input, value_input)
 
         W_V: Float[Tensor, "dest_h d_model d_head"] = model.state_dict()[
             f"blocks.{dest_l}.attn.W_V"
