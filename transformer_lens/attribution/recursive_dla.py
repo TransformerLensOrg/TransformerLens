@@ -1,5 +1,6 @@
-"""DLA by source token"""
+"""Recursive Direct Logit Attribution."""
 import torch
+import torch.nn.functional as F
 from einops import einsum, rearrange
 from jaxtyping import Float, Int
 from torch import Tensor
@@ -8,50 +9,53 @@ from transformer_lens import ActivationCache, HookedTransformer
 from transformer_lens.components import Attention, LayerNormPre
 
 
-def expand_tensor_dimension(
-    input: Tensor, expand_dimension: int, expand_to_size: int, expand_value: float = 0
+def pad_tensor_dimension(
+    input_tensor: Tensor, expand_dimension: int, expand_to_size: int
 ) -> Tensor:
-    """Expand a Tensor Along a Specific Dimension.
+    """Pad a tensor with zeros on a specified dimension.
+
+    Appends zeros to the end of the specified dimension until the desired size is reached. If the
+    tensor's size along the specified dimension is already equal to the desired size, the function
+    returns the tensor unchanged.
+
+    Example:
+        >>> x = torch.tensor([[1, 2], [3, 4]])
+        >>> expand_tensor_dimension(x, expand_dimension=1, expand_to_size=5)
+        tensor([[1, 2, 0, 0, 0],
+                [3, 4, 0, 0, 0]])
 
     Args:
-        input: The input tensor to be expanded.
+        input_tensor: The input tensor to be expanded.
         expand_dimension: The dimension to expand (can be negative for indexing from the end of the
             input tensor).
         expand_to_size: The size that the input tensors expansion dimension should be resized to.
-        expand_value: The value to assign to the expansion space.
 
     Returns:
-        The input tensor expanded along a specified dimension.
+        The expanded tensor.
+
+    Raises:
+        ValueError: If `expand_to_size` is less than the current size of the specified dimension.
     """
     # Calculate the expansion space size (along the expansion dimension)
-    current_size = input.shape[expand_dimension]
+    current_size = input_tensor.shape[expand_dimension]
     expand_by = expand_to_size - current_size
 
     # Check the amount to expand by is positive
     if expand_by < 0:
-        raise AttributeError(
+        raise ValueError(
             f"Expansion to size {expand_to_size} not possible. "
             + f"Dimension {expand_dimension} is already of size {current_size}."
         )
 
     # Just return he tensor if it's the correct size
     if expand_by == 0:
-        return input
+        return input_tensor
 
-    # Otherwise expand
-    expand_space: Tensor = torch.empty(
-        # Keep the other dimensions the same, and set the expand dimension size to be the amount
-        # needed to expand by
-        [
-            *input.shape[:expand_dimension],
-            expand_by,
-            *input.shape[expand_dimension + 1 :],
-        ],
-        device=input.device,
-    )
+    # Only pad at the end of the specified dimension
+    padding = [0] * (2 * len(input_tensor.shape))
+    padding[-(expand_dimension * 2 + 1)] = expand_by
 
-    expand_space = torch.fill(expand_space, expand_value)
-    return torch.cat((input, expand_space), dim=expand_dimension)
+    return F.pad(input_tensor, padding)
 
 
 def dla_mlp_breakdown_source_component(
