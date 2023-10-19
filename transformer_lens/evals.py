@@ -174,7 +174,7 @@ class IOIDataset(Dataset):
     Paper: https://arxiv.org/pdf/2211.00593.pdf
 
     Example:
-    --------
+
     .. code-block:: python
 
         >>> from transformer_lens.evals import ioi_eval, IOIDataset
@@ -281,22 +281,22 @@ class IOIDataset(Dataset):
         }
 
 
-# %%
 @torch.inference_mode()
 def ioi_eval(
     model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None, symmetric=False
 ):
-    """
-    Evaluates the model on the Indirect Object Identification task.
+    """Evaluate the Model on the Indirect Object Identification Task.
 
-    dataset must be a torch Dataset that returns a dict:
-        {
-            'prompt': torch.LongTensor,
-            'IO': torch.LongTensor,
-            'S': torch.LongTensor
-        }
+    Args:
+        model: HookedTransformer model.
+        dataset: PyTorch Dataset that returns a dict with keys "prompt", "IO", and "S".
+        batch_size: Batch size to use.
+        num_samples: Number of samples to use.
+        tokenizer: Tokenizer to use.
+        symmetric: Whether to use the symmetric version of the task.
 
-    Returns average logit difference and accuracy.
+    Returns:
+        Average logit difference and accuracy.
     """
     if tokenizer is None:
         tokenizer = model.tokenizer

@@ -1338,7 +1338,6 @@ class HookedTransformer(HookedRootModule):
     def init_weights(self):
         """Initialize weights.
 
-
         Initialize weights matrices with a normal of std=initializer_range (default=0.02). This
         roughly follows the GPT-2 paper's scheme (but with truncation, and not halving the std for
         W_pos).
@@ -1348,7 +1347,7 @@ class HookedTransformer(HookedRootModule):
 
         Weight matrices are set to empty by default (to save space + compute, since they're the bulk
         of the parameters), so it is important to call this if you are not loading in pretrained
-        weights! Note that this function assumes that weight names being with W_
+        weights! Note that this function assumes that weight names being with `W_`.
 
         Set seed here to ensure determinism.
 
