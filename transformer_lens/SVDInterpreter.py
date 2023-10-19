@@ -7,7 +7,6 @@ from typing import Optional, Union
 
 import fancy_einsum as einsum
 import torch
-from jaxtyping import Float
 from typeguard import typechecked
 from typing_extensions import Literal
 
