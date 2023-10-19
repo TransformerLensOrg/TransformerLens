@@ -498,6 +498,7 @@ class HookedTransformer(HookedRootModule):
                 1 will run the embedding layer and the first transformer block, etc. Supports
                 negative indexing. Useful for analysis of intermediate layers, eg finding neuron
                 activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
+                If not None, we return the last residual stream computed.
             past_kv_cache Optional[HookedTransformerKeyValueCache]: If not None, keys and values
                 will be stored for every attention head (unless the cache is frozen). If there are
                 keys and values already in the cache, these will be prepended to the keys and values
@@ -560,7 +561,7 @@ class HookedTransformer(HookedRootModule):
 
             if stop_at_layer is not None:
                 # When we stop at an early layer, we end here rather than doing further computation
-                return None
+                return residual
 
             if self.cfg.normalization_type is not None:
                 residual = self.ln_final(residual)  # [batch, pos, d_model]
