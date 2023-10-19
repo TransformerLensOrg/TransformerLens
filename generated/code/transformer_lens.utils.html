@@ -677,6 +677,14 @@ np.unique(np.array([sample_logits(logits, top_k=2).item() for i in range(1000)])
 <dd><p>Function to test whether a model can give the correct answer to a prompt. Intended for exploratory analysis, so it prints things out rather than returning things.</p>
 <p>Works for multi-token answers and multi-token prompts.</p>
 <p>Will always print the ranks of the answer tokens, and if print_details will print the logit and prob for the answer tokens and the top k tokens returned for each answer position.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>prepend_bos</strong> (<em>bool</em><em>, </em><em>optional</em>) – Overrides self.cfg.default_prepend_bos. Whether to prepend
+the BOS token to the input (applicable when input is a string). Defaults to None,
+implying usage of self.cfg.default_prepend_bos (default is True unless specified
+otherwise). Pass True or False to override the default.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
