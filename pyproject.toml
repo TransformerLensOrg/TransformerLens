@@ -108,7 +108,6 @@ disable = "redefined-builtin" # Disable redefined builtin functions
 disable = [
     "C0103", # Disable invalid file name (as we use PascalCase for classes)
 ]
-load-plugins = ["pylint.extensions.docparams"]
 
 [tool.black]
 # Exclude snapshot tests & .venv
