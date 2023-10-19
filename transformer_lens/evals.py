@@ -174,7 +174,7 @@ class IOIDataset(Dataset):
     Paper: https://arxiv.org/pdf/2211.00593.pdf
 
     Example:
-    --------
+
     .. code-block:: python
 
         >>> from transformer_lens.evals import ioi_eval, IOIDataset
