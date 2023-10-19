@@ -298,10 +298,19 @@ registered hooks while the latter silently ignores them.</p>
 <dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.hook_points.</span></span><span class="sig-name descname"><span class="pre">HookedRootModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule" title="Permalink to this definition">#</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
-<p>A class building on nn.Module to interface nicely with HookPoints
-Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks, and run_with_cache to run the model on some input and return a cache of all activations</p>
-<p>WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the end by default, and I recommend using the API of this and run_with_cache. If you want to add hooks into global state, I recommend being intentional about this, and I recommend using reset_hooks liberally in your code to remove any accidentally remaining global state.</p>
-<p>The main time this goes wrong is when you want to use backward hooks (to cache or intervene on gradients). In this case, you need to keep the hooks around as global state until you’ve run loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)</p>
+<p>A class building on nn.Module to interface nicely with HookPoints.</p>
+<p>Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks,
+and run_with_cache to run the model on some input and return a cache of all activations.</p>
+<p>Notes:</p>
+<p>The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the
+module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add
+the fixed version, the broken one is still there. To solve this, run_with_hooks will remove
+hooks at the end by default, and I recommend using the API of this and run_with_cache. If you
+want to add hooks into global state, I recommend being intentional about this, and I recommend
+using reset_hooks liberally in your code to remove any accidentally remaining global state.</p>
+<p>The main time this goes wrong is when you want to use backward hooks (to cache or intervene on
+gradients). In this case, you need to keep the hooks around as global state until you’ve run
+loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.hook_points.HookedRootModule.add_caching_hooks">
 <span class="sig-name descname"><span class="pre">add_caching_hooks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">names_filter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_bwd</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_batch_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">dict</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#transformer_lens.hook_points.HookedRootModule.add_caching_hooks" title="Permalink to this definition">#</a></dt>
@@ -408,6 +417,7 @@ Boolean function on hook names and hook is the function to add to that hook poin
 </ul>
 </dd>
 </dl>
+<p>Example:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">model</span><span class="o">.</span><span class="n">hooks</span><span class="p">(</span><span class="n">fwd_hooks</span><span class="o">=</span><span class="n">my_hooks</span><span class="p">):</span>
     <span class="n">hooked_loss</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">return_type</span><span class="o">=</span><span class="s2">&quot;loss&quot;</span><span class="p">)</span>
 </pre></div>
@@ -504,55 +514,24 @@ names to the module instances. It also initializes a hook dictionary for modules
 <dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.hook_points.</span></span><span class="sig-name descname"><span class="pre">LensHandle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hook</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">RemovableHandle</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_permanent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">context_level</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.hook_points.LensHandle" title="Permalink to this definition">#</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
-<p>A dataclass that holds information about a PyTorch hook.</p>
+<p>Dataclass that holds information about a PyTorch hook.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle.context_level">
+<span class="sig-name descname"><span class="pre">context_level</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.context_level" title="Permalink to this definition">#</a></dt>
+<dd><p>Context level associated with the hooks context manager for the given hook.</p>
+</dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle.hook">
-<span class="sig-name descname"><span class="pre">hook</span></span><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.hook" title="Permalink to this definition">#</a></dt>
-<dd><p>Reference to the hook’s RemovableHandle.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>hooks.RemovableHandle</p>
-</dd>
-</dl>
+<span class="sig-name descname"><span class="pre">hook</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">RemovableHandle</span></em><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.hook" title="Permalink to this definition">#</a></dt>
+<dd><p>Reference to the Hook’s Removable Handle.</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle.is_permanent">
-<span class="sig-name descname"><span class="pre">is_permanent</span></span><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.is_permanent" title="Permalink to this definition">#</a></dt>
-<dd><p>Indicates if the hook is permanent. Defaults to False.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>bool, optional</p>
-</dd>
-</dl>
+<span class="sig-name descname"><span class="pre">is_permanent</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.is_permanent" title="Permalink to this definition">#</a></dt>
+<dd><p>Indicates if the Hook is Permanent.</p>
 </dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="transformer_lens.hook_points.LensHandle.context_level">
-<span class="sig-name descname"><span class="pre">context_level</span></span><a class="headerlink" href="#transformer_lens.hook_points.LensHandle.context_level" title="Permalink to this definition">#</a></dt>
-<dd><p>Context level associated with the hooks context
-manager for the given hook. Defaults to None.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Optional[int], optional</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="id0">
-<span class="sig-name descname"><span class="pre">context_level</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#id0" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="id1">
-<span class="sig-name descname"><span class="pre">hook</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">RemovableHandle</span></em><a class="headerlink" href="#id1" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="id2">
-<span class="sig-name descname"><span class="pre">is_permanent</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#id2" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
 
 </dd></dl>
 
@@ -643,12 +622,9 @@ manager for the given hook. Defaults to None.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle"><code class="docutils literal notranslate"><span class="pre">LensHandle</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle.context_level"><code class="docutils literal notranslate"><span class="pre">LensHandle.context_level</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle.hook"><code class="docutils literal notranslate"><span class="pre">LensHandle.hook</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle.is_permanent"><code class="docutils literal notranslate"><span class="pre">LensHandle.is_permanent</span></code></a></li>
-<li><a class="reference internal" href="#transformer_lens.hook_points.LensHandle.context_level"><code class="docutils literal notranslate"><span class="pre">LensHandle.context_level</span></code></a></li>
-<li><a class="reference internal" href="#id0"><code class="docutils literal notranslate"><span class="pre">LensHandle.context_level</span></code></a></li>
-<li><a class="reference internal" href="#id1"><code class="docutils literal notranslate"><span class="pre">LensHandle.hook</span></code></a></li>
-<li><a class="reference internal" href="#id2"><code class="docutils literal notranslate"><span class="pre">LensHandle.is_permanent</span></code></a></li>
 </ul>
 </li>
 </ul>

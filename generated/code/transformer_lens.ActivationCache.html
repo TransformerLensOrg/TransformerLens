@@ -373,24 +373,25 @@ useful for attributing model behaviour to different components of the residual s
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>layer</strong> (<em>int</em>) – The layer to take components up to - by default includes
+<li><p><strong>layer</strong> – The layer to take components up to - by default includes
 resid_pre for that layer and excludes resid_mid and resid_post for that layer.
 layer==n_layers means to return all layer outputs incl in the final layer, layer==0
 means just embed and pos_embed. The indices are taken such that this gives the
 accumulated streams up to the input to layer l</p></li>
-<li><p><strong>incl_mid</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return resid_mid for all previous
+<li><p><strong>incl_mid</strong> – Whether to return resid_mid for all previous
 layers. Defaults to False.</p></li>
-<li><p><strong>mlp_input</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to include attn_out for the current
+<li><p><strong>mlp_input</strong> – Whether to include attn_out for the current
 layer - essentially decomposing the residual stream that’s input to the MLP input
 rather than the Attn input. Defaults to False.</p></li>
-<li><p><strong>mode</strong> (<em>str</em>) – Values are “all”, “mlp” or “attn”. “all” returns all
+<li><p><strong>mode</strong> – Values are “all”, “mlp” or “attn”. “all” returns all
 components, “mlp” returns only the MLP components, and “attn” returns only the
 attention components. Defaults to “all”.</p></li>
-<li><p><strong>apply_ln</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to apply LayerNorm to the stack. Defaults to False.</p></li>
-<li><p><strong>pos_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a>) – A slice object to apply to the pos dimension.
+<li><p><strong>apply_ln</strong> – Whether to apply LayerNorm to the stack. Defaults to False.</p></li>
+<li><p><strong>pos_slice</strong> – A slice object to apply to the pos dimension.
 Defaults to None, do nothing.</p></li>
-<li><p><strong>incl_embeds</strong> (<em>bool</em>) – Whether to include embed &amp; pos_embed return_labels (bool, optional):</p></li>
-<li><p><strong>for</strong> (<em>Whether to return a list</em><em> of </em><em>labels</em>) – the residual stream components. Useful for labelling graphs. Defaults to True.</p></li>
+<li><p><strong>incl_embeds</strong> – Whether to include embed &amp; pos_embed</p></li>
+<li><p><strong>return_labels</strong> – Whether to return a list of labels for the residual stream components.
+Useful for labelling graphs. Defaults to True.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -477,65 +478,22 @@ difference attributions for the residual stack if incorrect_tokens is provided.<
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>residual_stack</strong> (Float[torch.Tensor, “num_components <a href="#id1"><span class="problematic" id="id2">*</span></a>batch_and_pos_dims d_model”]) – stack of components of residual stream to get logit attributions for.</p></li>
-<li><p><strong>(</strong><strong>Union</strong><strong>[</strong><strong>str</strong> (<em>tokens</em>) – Int[torch.Tensor, “batch position”]]): tokens to compute logit attributions on.</p></li>
-<li><p><strong>int</strong> – Int[torch.Tensor, “batch position”]]): tokens to compute logit attributions on.</p></li>
-<li><p><strong>Int</strong><strong>[</strong><strong>torch.Tensor</strong> – Int[torch.Tensor, “batch position”]]): tokens to compute logit attributions on.</p></li>
-<li><p><strong>&quot;&quot;</strong><strong>]</strong> – Int[torch.Tensor, “batch position”]]): tokens to compute logit attributions on.</p></li>
-<li><p><strong>Int</strong><strong>[</strong><strong>torch.Tensor</strong> – Int[torch.Tensor, “batch position”]]): tokens to compute logit attributions on.</p></li>
-<li><p><strong>&quot;batch&quot;</strong><strong>]</strong> – Int[torch.Tensor, “batch position”]]): tokens to compute logit attributions on.</p></li>
-</ul>
-</dd>
-</dl>
-<p>:param : Int[torch.Tensor, “batch position”]]): tokens to compute logit attributions on.
-:param incorrect_tokens (Union[str: Int[torch.Tensor, “batch position”]], optional): if provided, compute attributions</p>
-<blockquote>
-<div><p>on logit difference between tokens and incorrect_tokens. Must have the same shape as
-tokens.</p>
-</div></blockquote>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>int</strong> – Int[torch.Tensor, “batch position”]], optional): if provided, compute attributions
+<li><p><strong>residual_stack</strong> – Stack of components of residual stream to get logit attributions for.</p></li>
+<li><p><strong>tokens</strong> – tokens to compute logit attributions on.</p></li>
+<li><p><strong>incorrect_tokens</strong> – if provided, compute attributions
 on logit difference between tokens and incorrect_tokens. Must have the same shape as
 tokens.</p></li>
-<li><p><strong>Int</strong><strong>[</strong><strong>torch.Tensor</strong> – Int[torch.Tensor, “batch position”]], optional): if provided, compute attributions
-on logit difference between tokens and incorrect_tokens. Must have the same shape as
-tokens.</p></li>
-<li><p><strong>&quot;&quot;</strong><strong>]</strong> – Int[torch.Tensor, “batch position”]], optional): if provided, compute attributions
-on logit difference between tokens and incorrect_tokens. Must have the same shape as
-tokens.</p></li>
-<li><p><strong>Int</strong><strong>[</strong><strong>torch.Tensor</strong> – Int[torch.Tensor, “batch position”]], optional): if provided, compute attributions
-on logit difference between tokens and incorrect_tokens. Must have the same shape as
-tokens.</p></li>
-<li><p><strong>&quot;batch&quot;</strong><strong>]</strong> – Int[torch.Tensor, “batch position”]], optional): if provided, compute attributions
-on logit difference between tokens and incorrect_tokens. Must have the same shape as
-tokens.</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="simple">
-<dt>:param<span class="classifier">Int[torch.Tensor, “batch position”]], optional): if provided, compute attributions</span></dt><dd><p>on logit difference between tokens and incorrect_tokens. Must have the same shape as
-tokens.</p>
-</dd>
-</dl>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>pos_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a><em>, </em><em>optional</em>) – The slice to apply layer norm scaling on. Defaults to None,
+<li><p><strong>pos_slice</strong> – The slice to apply layer norm scaling on. Defaults to None,
 do nothing.</p></li>
-<li><p><strong>batch_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a><em>, </em><em>optional</em>) – The slice to take on the batch dimension during layer
+<li><p><strong>batch_slice</strong> – The slice to take on the batch dimension during layer
 norm scaling. Defaults to None, do nothing.</p></li>
-<li><p><strong>has_batch_dim</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether residual_stack has a batch dimension. Defaults
+<li><p><strong>has_batch_dim</strong> – Whether residual_stack has a batch dimension. Defaults
 to True.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>A [num_components, <a href="#id3"><span class="problematic" id="id4">*</span></a>batch_and_pos_dims] tensor of the logit attributions or</dt><dd><p>logit difference attributions if incorrect_tokens was provided.</p>
-</dd>
-</dl>
-</p>
+<dd class="field-even"><p>A tensor of the logit attributions or logit difference attributions if
+incorrect_tokens was provided.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>Components</p>

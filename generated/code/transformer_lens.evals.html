@@ -250,6 +250,7 @@ it and want to eg cheaply and roughly compare models you’ve trained to baselin
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Dataset</span></code></p>
 <p>Dataset for Indirect Object Identification tasks.
 Paper: <a class="reference external" href="https://arxiv.org/pdf/2211.00593.pdf">https://arxiv.org/pdf/2211.00593.pdf</a></p>
+<p>Example:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens.evals</span> <span class="kn">import</span> <span class="n">ioi_eval</span><span class="p">,</span> <span class="n">IOIDataset</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens.HookedTransformer</span> <span class="kn">import</span> <span class="n">HookedTransformer</span>
 
@@ -315,18 +316,22 @@ whose default is True unless specified otherwise), which is useful to give model
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.evals.ioi_eval">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.evals.</span></span><span class="sig-name descname"><span class="pre">ioi_eval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dataset</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">symmetric</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.evals.ioi_eval" title="Permalink to this definition">#</a></dt>
-<dd><p>Evaluates the model on the Indirect Object Identification task.</p>
-<dl>
-<dt>dataset must be a torch Dataset that returns a dict:</dt><dd><dl class="simple">
-<dt>{</dt><dd><p>‘prompt’: torch.LongTensor,
-‘IO’: torch.LongTensor,
-‘S’: torch.LongTensor</p>
+<dd><p>Evaluate the Model on the Indirect Object Identification Task.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – HookedTransformer model.</p></li>
+<li><p><strong>dataset</strong> – PyTorch Dataset that returns a dict with keys “prompt”, “IO”, and “S”.</p></li>
+<li><p><strong>batch_size</strong> – Batch size to use.</p></li>
+<li><p><strong>num_samples</strong> – Number of samples to use.</p></li>
+<li><p><strong>tokenizer</strong> – Tokenizer to use.</p></li>
+<li><p><strong>symmetric</strong> – Whether to use the symmetric version of the task.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Average logit difference and accuracy.</p>
 </dd>
 </dl>
-<p>}</p>
-</dd>
-</dl>
-<p>Returns average logit difference and accuracy.</p>
 </dd></dl>
 
 <dl class="py function">

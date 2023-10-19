@@ -246,7 +246,7 @@ the output. This implements the activation patching technique for a range of typ
 The structure is to have a single <a class="reference internal" href="#transformer_lens.patching.generic_activation_patch" title="transformer_lens.patching.generic_activation_patch"><code class="xref py py-func docutils literal notranslate"><span class="pre">generic_activation_patch()</span></code></a> function that does everything,
 and to have a range of specialised functions for specific types of activation.</p>
 <p>Context:</p>
-<p>Activation Patching is technique introduced in the <a href="#id1"><span class="problematic" id="id2">`ROME paper&lt;http://rome.baulab.info/&gt;`_</span></a>, which
+<p>Activation Patching is technique introduced in the <cite>ROME paper &lt;http://rome.baulab.info/&gt;</cite>, which
 uses a causal intervention to identify which activations in a model matter for producing some
 output. It runs the model on input A, replaces (patches) an activation with that same activation on
 input B, and sees how much that shifts the answer from A to B.</p>

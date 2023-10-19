@@ -833,7 +833,7 @@ W_pos).</p>
 (including LayerNorm), so this just initializes weight matrices.</p>
 <p>Weight matrices are set to empty by default (to save space + compute, since they’re the bulk
 of the parameters), so it is important to call this if you are not loading in pretrained
-weights! Note that this function assumes that weight names being with <a href="#id1"><span class="problematic" id="id2">W_</span></a></p>
+weights! Note that this function assumes that weight names being with <cite>W_</cite>.</p>
 <p>Set seed here to ensure determinism.</p>
 <p>This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but
 no one has gotten round to updating it? <a class="reference external" href="https://github.com/pytorch/pytorch/issues/18182">https://github.com/pytorch/pytorch/issues/18182</a></p>

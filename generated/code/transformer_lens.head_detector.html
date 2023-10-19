@@ -262,61 +262,66 @@
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.head_detector.detect_head">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.head_detector.</span></span><span class="sig-name descname"><span class="pre">detect_head</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer" title="transformer_lens.HookedTransformer.HookedTransformer"><span class="pre">HookedTransformer</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detection_pattern</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'previous_token_head'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'duplicate_token_head'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'induction_head'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cache</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_bos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_current_token</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">error_measure</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'abs'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mul'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'mul'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tensor</span></span></span><a class="headerlink" href="#transformer_lens.head_detector.detect_head" title="Permalink to this definition">#</a></dt>
-<dd><p>Searches the model (or a set of specific heads, for circuit analysis) for a particular type of attention head.
-This head is specified by a detection pattern, a (sequence_length, sequence_length) tensor representing the attention pattern we expect that type of attention head to show.
-The detection pattern can be also passed not as a tensor, but as a name of one of pre-specified types of attention head (see <cite>HeadName</cite> for available patterns), in which case the tensor is computed within the function itself.</p>
-<p>There are two error measures available for quantifying the match between the detection pattern and the actual attention pattern.</p>
-<p>1. <cite>“mul”</cite> (default) multiplies both tensors element-wise and divides the sum of the result by the sum of the attention pattern.
-Typically, the detection pattern should in this case contain only ones and zeros, which allows a straightforward interpretation of the score:
-how big fraction of this head’s attention is allocated to these specific query-key pairs?
-Using values other than 0 or 1 is not prohibited but will raise a warning (which can be disabled, of course).
-2. <cite>“abs”</cite> calculates the mean element-wise absolute difference between the detection pattern and the actual attention pattern.
-The “raw result” ranges from 0 to 2 where lower score corresponds to greater accuracy. Subtracting it from 1 maps that range to (-1, 1) interval,
+<dd><p>Search for a Particular Type of Attention Head.</p>
+<p>Searches the model (or a set of specific heads, for circuit analysis) for a particular type of
+attention head. This head is specified by a detection pattern, a (sequence_length,
+sequence_length) tensor representing the attention pattern we expect that type of attention head
+to show. The detection pattern can be also passed not as a tensor, but as a name of one of
+pre-specified types of attention head (see <cite>HeadName</cite> for available patterns), in which case the
+tensor is computed within the function itself.</p>
+<p>There are two error measures available for quantifying the match between the detection pattern
+and the actual attention pattern.</p>
+<ol class="arabic simple">
+<li><dl class="simple">
+<dt><cite>“mul”</cite> (default) multiplies both tensors element-wise and divides the sum of the result by</dt><dd><p>the sum of the attention pattern. Typically, the detection pattern should in this case
+contain only ones and zeros, which allows a straightforward interpretation of the score: how
+big fraction of this head’s attention is allocated to these specific query-key pairs? Using
+values other than 0 or 1 is not prohibited but will raise a warning (which can be disabled,
+of course).</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><cite>“abs”</cite> calculates the mean element-wise absolute difference between the detection pattern</dt><dd><p>and the actual attention pattern. The “raw result” ranges from 0 to 2 where lower score
+corresponds to greater accuracy. Subtracting it from 1 maps that range to (-1, 1) interval,
 with 1 being perfect match and -1 perfect mismatch.</p>
-<p><strong>Which one should you use?</strong> <cite>“mul”</cite> is likely better for quick or exploratory investigations. For precise examinations where you’re trying to
-reproduce as much functionality as possible or really test your understanding of the attention head, you probably want to switch to <cite>“abs”</cite>.</p>
-<p>The advantage of <cite>“abs”</cite> is that you can make more precise predictions, and have that measured in the score.
-You can predict, for instance, 0.2 attention to X, and 0.8 attention to Y, and your score will be better if your prediction is closer.
-The “mul” metric does not allow this, you’ll get the same score if attention is 0.2, 0.8 or 0.5, 0.5 or 0.8, 0.2.</p>
-<blockquote>
-<div><p>model: Model being used.
-seq: String or list of strings being fed to the model.
-head_name: Name of an existing head in HEAD_NAMES we want to check. Must pass either a head_name or a detection_pattern, but not both!
-detection_pattern: (sequence_length, sequence_length) Tensor representing what attention pattern corresponds to the head we’re looking for <strong>or</strong> the name of a pre-specified head. Currently available heads are: <cite>[“previous_token_head”, “duplicate_token_head”, “induction_head”]</cite>.
-heads: If specific attention heads is given here, all other heads’ score is set to -1. Useful for IOI-style circuit analysis. Heads can be spacified as a list tuples (layer, head) or a dictionary mapping a layer to heads within that layer that we want to analyze.
-cache: Include the cache to save time if you want.
-exclude_bos: Exclude attention paid to the beginning of sequence token.
-exclude_current_token: Exclude attention paid to the current token.
-error_measure: <cite>“mul”</cite> for using element-wise multiplication (default). <cite>“abs”</cite> for using absolute values of element-wise differences as the error measure.</p>
-</div></blockquote>
-<p>A (n_layers, n_heads) Tensor representing the score for each attention head.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">transformer_lens</span> <span class="kn">import</span> <span class="n">HookedTransformer</span><span class="p">,</span>  <span class="n">utils</span>
-<span class="kn">from</span> <span class="nn">transformer_lens.head_detector</span> <span class="kn">import</span> <span class="n">detect_head</span>
-<span class="kn">import</span> <span class="nn">plotly.express</span> <span class="k">as</span> <span class="nn">px</span>
-
-<span class="k">def</span> <span class="nf">imshow</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">renderer</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">xaxis</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">yaxis</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-    <span class="n">px</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span>
-            <span class="n">utils</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">tensor</span><span class="p">),</span>
-            <span class="n">color_continuous_midpoint</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-            <span class="n">color_continuous_scale</span><span class="o">=</span><span class="s2">&quot;RdBu&quot;</span><span class="p">,</span>
-            <span class="n">labels</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span><span class="n">xaxis</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">:</span><span class="n">yaxis</span><span class="p">},</span>
-            <span class="o">**</span><span class="n">kwargs</span>
-        <span class="p">)</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="n">renderer</span><span class="p">)</span>
-
-<span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;gpt2-small&quot;</span><span class="p">)</span>
-<span class="n">sequence</span> <span class="o">=</span> <span class="s2">&quot;This is a test sequence. This is a test sequence.&quot;</span>
-
-<span class="n">attention_score</span> <span class="o">=</span> <span class="n">detect_head</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">sequence</span><span class="p">,</span> <span class="s2">&quot;previous_token_head&quot;</span><span class="p">)</span>
-<span class="n">imshow</span><span class="p">(</span>
-        <span class="n">attention_score</span><span class="p">,</span>
-        <span class="n">zmin</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span> <span class="n">zmax</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-        <span class="n">xaxis</span><span class="o">=</span><span class="s2">&quot;Head&quot;</span><span class="p">,</span>
-        <span class="n">yaxis</span><span class="o">=</span><span class="s2">&quot;Layer&quot;</span><span class="p">,</span>
-        <span class="n">title</span><span class="o">=</span><span class="s2">&quot;Previous Head</span>
-        <span class="n">Matches</span><span class="s2">&quot;</span>
-    <span class="p">)</span>
-</pre></div>
-</div>
+</dd>
+</dl>
+</li>
+</ol>
+<p>Which one should you use?</p>
+<p><cite>“mul”</cite> is likely better for quick or exploratory investigations. For precise examinations where
+you’re trying to reproduce as much functionality as possible or really test your understanding
+of the attention head, you probably want to switch to <cite>“abs”</cite>.</p>
+<p>The advantage of <cite>“abs”</cite> is that you can make more precise predictions, and have that measured
+in the score. You can predict, for instance, 0.2 attention to X, and 0.8 attention to Y, and
+your score will be better if your prediction is closer. The “mul” metric does not allow this,
+you’ll get the same score if attention is 0.2, 0.8 or 0.5, 0.5 or 0.8, 0.2.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – Model being used.</p></li>
+<li><p><strong>seq</strong> – String or list of strings being fed to the model.</p></li>
+<li><p><strong>head_name</strong> – Name of an existing head in HEAD_NAMES we want to check. Must pass either a
+head_name or a detection_pattern, but not both!</p></li>
+<li><p><strong>detection_pattern</strong> – (sequence_length, sequence_length)nTensor representing what attention
+pattern corresponds to the head we’re looking for or the name of a pre-specified head.
+Currently available heads are: <cite>[“previous_token_head”, “duplicate_token_head”,
+“induction_head”]</cite>.</p></li>
+<li><p><strong>heads</strong> – If specific attention heads is given here, all other heads’ score is set to -1.
+Useful for IOI-style circuit analysis. Heads can be spacified as a list tuples (layer,
+head) or a dictionary mapping a layer to heads within that layer that we want to
+analyze. cache: Include the cache to save time if you want.</p></li>
+<li><p><strong>exclude_bos</strong> – Exclude attention paid to the beginning of sequence token.</p></li>
+<li><p><strong>exclude_current_token</strong> – Exclude attention paid to the current token.</p></li>
+<li><p><strong>error_measure</strong> – <cite>“mul”</cite> for using element-wise multiplication. <cite>“abs”</cite> for using absolute
+values of element-wise differences as the error measure.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tensor representing the score for each attention head.</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
