@@ -574,7 +574,8 @@ past_kv_cache is not None).</p></li>
 Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer =
 1 will run the embedding layer and the first transformer block, etc. Supports
 negative indexing. Useful for analysis of intermediate layers, eg finding neuron
-activations in layer 3 of a 24 layer model. Defaults to None (run the full model).</p></li>
+activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
+If not None, we return the last residual stream computed.</p></li>
 <li><p><strong>Optional</strong><strong>[</strong><strong>HookedTransformerKeyValueCache</strong><strong>]</strong> (<em>past_kv_cache</em>) – If not None, keys and values
 will be stored for every attention head (unless the cache is frozen). If there are
 keys and values already in the cache, these will be prepended to the keys and values
