@@ -10,8 +10,9 @@ packages = [{include = "transformer_lens"}]
 [tool.poetry.dependencies]
 python = ">=3.8,<4.0"
 einops = ">=0.6.0"
-numpy = [{ version = ">=1.21", python = "<3.10" },
-         { version = ">=1.23", python = ">=3.10" }]
+numpy = [{ version = ">=1.20,<1.25", python = ">=3.8,<3.9" },
+         { version = ">=1.24", python = ">=3.9,<3.12" },
+         { version = ">=1.26", python = ">=3.12,<3.13" }]
 torch = ">=1.10" # See PyTorch 2 fix below
 datasets = ">=2.7.1"
 transformers = ">=4.25.1"
