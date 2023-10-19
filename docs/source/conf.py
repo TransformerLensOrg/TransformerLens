@@ -38,12 +38,7 @@ templates_path = ["_templates"]
 
 napoleon_include_init_with_doc = True
 napoleon_use_admonition_for_notes = True
-napoleon_custom_sections = [
-    "Motivation:",
-    "Background:",
-    "Context:",
-    "Getting Started:",
-]
+napoleon_custom_sections = ["Motivation:"]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

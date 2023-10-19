@@ -33,6 +33,7 @@ content/gallery
 content/getting_started_mech_interp
 content/tutorials
 content/citation
+content/contributing
 ```
 
 ```{toctree}

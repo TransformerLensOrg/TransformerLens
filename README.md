@@ -62,3 +62,16 @@ research!
 ### Creator's Note (Neel Nanda)
 
 I (Neel Nanda) used to work for the [Anthropic interpretability team](transformer-circuits.pub), and I wrote this library because after I left and tried doing independent research, I got extremely frustrated by the state of open source tooling. There's a lot of excellent infrastructure like HuggingFace and DeepSpeed to _use_ or _train_ models, but very little to dig into their internals and reverse engineer how they work. **This library tries to solve that**, and to make it easy to get into the field even if you don't work at an industry org with real infrastructure! One of the great things about mechanistic interpretability is that you don't need large models or tons of compute. There are lots of important open problems that can be solved with a small model in a Colab notebook!
+
+## Citation
+
+Please cite this library as:
+
+```BibTeX
+@misc{nanda2022transformerlens,
+    title = {TransformerLens},
+    author = {Neel Nanda and Joseph Bloom},
+    year = {2022},
+    howpublished = {\url{https://github.com/neelnanda-io/TransformerLens}},
+}
+```
