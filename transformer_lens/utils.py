@@ -625,6 +625,12 @@ def test_prompt(
     Works for multi-token answers and multi-token prompts.
 
     Will always print the ranks of the answer tokens, and if print_details will print the logit and prob for the answer tokens and the top k tokens returned for each answer position.
+
+    Args:
+        prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+            the BOS token to the input (applicable when input is a string). Defaults to None,
+            implying usage of self.cfg.default_prepend_bos (default is True unless specified
+            otherwise). Pass True or False to override the default.
     """
     if prepend_space_to_answer and not answer.startswith(" "):
         answer = " " + answer
