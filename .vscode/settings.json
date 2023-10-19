@@ -30,6 +30,7 @@
         "gelu",
         "githubpages",
         "gptj",
+        "howpublished",
         "huggingface",
         "interpretability",
         "isort",
@@ -42,6 +43,7 @@
         "Nanda",
         "neel",
         "neox",
+        "Nitpicky",
         "Olah",
         "pagename",
         "probs",
@@ -52,6 +54,7 @@
         "templatedir",
         "templatename",
         "toctree",
+        "transformerlens",
         "Unembed",
         "unembedding"
     ],

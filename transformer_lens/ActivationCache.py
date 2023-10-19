@@ -268,24 +268,21 @@ class ActivationCache:
         difference attributions for the residual stack if incorrect_tokens is provided.
 
         Args:
-            residual_stack (Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]):
-                stack of components of residual stream to get logit attributions for.
-
-            tokens (Union[str, int, Int[torch.Tensor, ""], Int[torch.Tensor, "batch"],
-                Int[torch.Tensor, "batch position"]]): tokens to compute logit attributions on.
-            incorrect_tokens (Union[str, int, Int[torch.Tensor, ""], Int[torch.Tensor, "batch"],
-                Int[torch.Tensor, "batch position"]], optional): if provided, compute attributions
+            residual_stack: Stack of components of residual stream to get logit attributions for.
+            tokens: tokens to compute logit attributions on.
+            incorrect_tokens: if provided, compute attributions
                 on logit difference between tokens and incorrect_tokens. Must have the same shape as
                 tokens.
-            pos_slice (Slice, optional): The slice to apply layer norm scaling on. Defaults to None,
+            pos_slice: The slice to apply layer norm scaling on. Defaults to None,
                 do nothing.
-            batch_slice (Slice, optional): The slice to take on the batch dimension during layer
+            batch_slice: The slice to take on the batch dimension during layer
                 norm scaling. Defaults to None, do nothing.
-            has_batch_dim (bool, optional): Whether residual_stack has a batch dimension. Defaults
+            has_batch_dim: Whether residual_stack has a batch dimension. Defaults
                 to True.
+
         Returns:
-            Components: A [num_components, *batch_and_pos_dims] tensor of the logit attributions or
-                logit difference attributions if incorrect_tokens was provided.
+            Components: A tensor of the logit attributions or logit difference attributions if
+            incorrect_tokens was provided.
         """
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
@@ -352,25 +349,25 @@ class ActivationCache:
         useful for attributing model behaviour to different components of the residual stream
 
         Args:
-            layer (int): The layer to take components up to - by default includes
+            layer: The layer to take components up to - by default includes
                 resid_pre for that layer and excludes resid_mid and resid_post for that layer.
                 layer==n_layers means to return all layer outputs incl in the final layer, layer==0
                 means just embed and pos_embed. The indices are taken such that this gives the
                 accumulated streams up to the input to layer l
-            incl_mid (bool, optional): Whether to return resid_mid for all previous
+            incl_mid: Whether to return resid_mid for all previous
                 layers. Defaults to False.
-            mlp_input (bool, optional): Whether to include attn_out for the current
+            mlp_input: Whether to include attn_out for the current
                 layer - essentially decomposing the residual stream that's input to the MLP input
                 rather than the Attn input. Defaults to False.
-            mode (str): Values are "all", "mlp" or "attn". "all" returns all
+            mode: Values are "all", "mlp" or "attn". "all" returns all
                 components, "mlp" returns only the MLP components, and "attn" returns only the
                 attention components. Defaults to "all".
-            apply_ln (bool, optional): Whether to apply LayerNorm to the stack. Defaults to False.
-            pos_slice (Slice): A slice object to apply to the pos dimension.
+            apply_ln: Whether to apply LayerNorm to the stack. Defaults to False.
+            pos_slice: A slice object to apply to the pos dimension.
                 Defaults to None, do nothing.
-            incl_embeds (bool): Whether to include embed & pos_embed return_labels (bool, optional):
-            Whether to return a list of labels for
-                the residual stream components. Useful for labelling graphs. Defaults to True.
+            incl_embeds: Whether to include embed & pos_embed
+            return_labels: Whether to return a list of labels for the residual stream components.
+                Useful for labelling graphs. Defaults to True.
 
         Returns:
             Components: A [num_components, batch_size, pos, d_model] tensor of the accumulated

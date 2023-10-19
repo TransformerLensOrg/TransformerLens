@@ -1,14 +1,14 @@
-## Tutorials
+# Tutorials
 
 - **Start with the [main demo](https://neelnanda.io/transformer-lens-demo) to learn how the library works, and the basic features**.
 
-### Where To Start
+## Where To Start
 
 - To see what using it for exploratory analysis in practice looks like, check out [my notebook analysing Indirect Objection Identification](https://neelnanda.io/exploratory-analysis-demo) or [my recording of myself doing research](https://www.youtube.com/watch?v=yo4QvDn-vsU)!
 
 - [What is a Transformer tutorial](https://neelnanda.io/transformer-tutorial)
 
-### Demos
+## Demos
 
 - [**Activation Patching in TransformerLens**](https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Activation_Patching_in_TL_Demo.ipynb) - Accompanies the [Exploratory Analysis Demo](https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Exploratory Analysis Demo.ipynb). This demo explains how to use [Activation Patching](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=qeWBvs-R-taFfcCq-S_hgMqx) in TransformerLens, a mechanistic interpretability technique that uses causal intervention to identify which activations in a model matter for producing an output.
 

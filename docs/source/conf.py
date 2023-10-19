@@ -23,7 +23,6 @@ extensions = [
     "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx.ext.githubpages",
-    "sphinx.ext.apidoc",
 ]
 
 source_suffix = {

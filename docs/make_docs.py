@@ -1,11 +1,4 @@
-""" 
-Generate a markdown table summarizing properties of pretrained models.
-
-This script extracts various properties of pretrained models from the 
-`easy_transformer` library, such as the number of parameters, layers, and heads, 
-among others, and generates a markdown table. This table is saved to the 
-docs directory.
-"""
+"""Build the API Documentation."""
 import subprocess
 from functools import lru_cache
 from pathlib import Path
@@ -76,7 +69,12 @@ def get_property(name, model_name):
 
 
 def generate_model_table():
-    """Generate a markdown table summarizing properties of pretrained models."""
+    """Generate a markdown table summarizing properties of pretrained models.
+
+    This script extracts various properties of pretrained models from the `easy_transformer`
+    library, such as the number of parameters, layers, and heads, among others, and generates a
+    markdown table.
+    """
 
     # Create the table
     column_names = [
@@ -115,7 +113,17 @@ def generate_model_table():
 def build_docs():
     """Build the docs."""
     generate_model_table()
-    subprocess.run(["sphinx-build", SOURCE_PATH, BUILD_PATH], check=True)
+
+    subprocess.run(
+        [
+            "sphinx-build",
+            SOURCE_PATH,
+            BUILD_PATH,
+            # "-n",  # Nitpicky mode (warn about all missing references)
+            "-W",  # Turn warnings into errors
+        ],
+        check=True,
+    )
 
 
 def docs_hot_reload():
