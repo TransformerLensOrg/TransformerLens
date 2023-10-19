@@ -8,7 +8,6 @@ from typing import Dict, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import torch
-from jaxtyping import Float
 from typing_extensions import Literal, get_args
 
 from transformer_lens import ActivationCache, HookedTransformer
@@ -42,7 +41,7 @@ def detect_head(
     exclude_bos: bool = False,
     exclude_current_token: bool = False,
     error_measure: ErrorMeasure = "mul",
-) -> Float[torch.Tensor, "n_layers n_layers"]:
+) -> torch.Tensor:
     """Search for a Particular Type of Attention Head.
 
     Searches the model (or a set of specific heads, for circuit analysis) for a particular type of
@@ -97,7 +96,7 @@ def detect_head(
             values of element-wise differences as the error measure.
 
     Returns:
-        A (n_layers, n_heads) Tensor representing the score for each attention head.
+        Tensor representing the score for each attention head.
     """
 
     cfg = model.cfg
