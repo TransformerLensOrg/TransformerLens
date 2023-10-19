@@ -30,7 +30,7 @@ class SVDInterpreter:
         layer_index: int,
         num_vectors: int = 10,
         head_index: Optional[int] = None,
-    ) -> Float[torch.Tensor, "d_vocab 1 num_vectors"]:
+    ) -> Float[torch.Tensor, "d_vocab one num_vectors"]:
         """Gets the singular vectors for a given vector type, layer, and optionally head.
 
         This tensor can then be plotted using Neel's PySvelte, as demonstrated in the demo for this
