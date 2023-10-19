@@ -178,9 +178,6 @@ def dla_attn_head_breakdown_source_component(
     TODO: Enable batching along dest_l, dest_h, src_pos and src_comp dimensions. This will allow
     running this function recursively to get the breakdown going back many components.
 
-    TODO: Support all architectures, possibly by having a "keep_dimensions" flag to the forward
-    pass of the underlying components.
-
     Args:
         cache: Activation Cache
         model: Hooked Transformer

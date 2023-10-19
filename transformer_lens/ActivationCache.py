@@ -344,7 +344,12 @@ class ActivationCache:
         pos_slice: Union[Slice, SliceInput] = None,
         incl_embeds: bool = True,
         return_labels: bool = False,
-    ) -> Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"]:
+    ) -> Union[
+        Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"],
+        Tuple[
+            Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]
+        ],
+    ]:
         """Decompose the Residual Stream.
 
         Decomposes the residual stream input to layer L into a stack of the output of previous
