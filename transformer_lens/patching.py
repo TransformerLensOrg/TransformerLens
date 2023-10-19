@@ -7,7 +7,7 @@ and to have a range of specialised functions for specific types of activation.
 
 Context:
 
-Activation Patching is technique introduced in the `ROME paper<http://rome.baulab.info/>`_, which
+Activation Patching is technique introduced in the `ROME paper <http://rome.baulab.info/>`, which
 uses a causal intervention to identify which activations in a model matter for producing some
 output. It runs the model on input A, replaces (patches) an activation with that same activation on
 input B, and sees how much that shifts the answer from A to B.
