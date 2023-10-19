@@ -34,6 +34,7 @@
         "keepdim",
         "lastpage",
         "layernorm",
+        "logits",
         "maxdepth",
         "mingpt",
         "Nanda",

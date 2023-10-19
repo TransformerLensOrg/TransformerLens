@@ -30,6 +30,7 @@ content/gallery
 :hidden:
 :caption: Resources
 
+content/getting_started_mech_interp
 content/tutorials
 content/citation
 ```
