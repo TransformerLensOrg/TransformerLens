@@ -3,10 +3,10 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
-<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Citation" href="citation.html" /><link rel="prev" title="Gallery" href="gallery.html" />
+<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Transformer Lens API" href="../generated/code/modules.html" /><link rel="prev" title="Citation" href="citation.html" />
 
     <link rel="shortcut icon" href="../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
-        <title>Tutorials - TransformerLens Documentation</title>
+        <title>Contributing - TransformerLens Documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?digest=fad236701ea90a88636c2a8c73b44ae642ed2a53" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?digest=30d1aed668e5c3a91c3e3bf6a60b675221979f0e" />
@@ -164,9 +164,9 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Resources</span></p>
 <ul class="current">
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tutorials.html">Tutorials</a></li>
 <li class="toctree-l1"><a class="reference internal" href="citation.html">Citation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="contributing.html">Contributing</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Contributing</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Code</span></p>
 <ul>
@@ -238,34 +238,138 @@
           </label>
         </div>
         <article role="main">
-          <section id="tutorials">
-<h1>Tutorials<a class="headerlink" href="#tutorials" title="Permalink to this heading">#</a></h1>
+          <section id="contributing">
+<h1>Contributing<a class="headerlink" href="#contributing" title="Permalink to this heading">#</a></h1>
+<section id="setup">
+<h2>Setup<a class="headerlink" href="#setup" title="Permalink to this heading">#</a></h2>
+<section id="devcontainer">
+<h3>DevContainer<a class="headerlink" href="#devcontainer" title="Permalink to this heading">#</a></h3>
+<p>For a one-click setup of your development environment, this project includes a
+<a class="reference external" href="https://containers.dev/">DevContainer</a>. It can be used locally with <a class="reference external" href="https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers">VS
+Code</a> or
+with <a class="reference external" href="https://github.com/features/codespaces">GitHub Codespaces</a>.</p>
+</section>
+<section id="manual-setup">
+<h3>Manual Setup<a class="headerlink" href="#manual-setup" title="Permalink to this heading">#</a></h3>
+<p>This project uses <a class="reference external" href="https://python-poetry.org/docs/#installation">Poetry</a> for package management.
+Install as follows (this will also setup your virtual environment):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>config<span class="w"> </span>virtualenvs.in-project<span class="w"> </span><span class="nb">true</span>
+poetry<span class="w"> </span>install<span class="w"> </span>--with<span class="w"> </span>dev,docs,jupyter
+</pre></div>
+</div>
+</section>
+</section>
+<section id="testing">
+<h2>Testing<a class="headerlink" href="#testing" title="Permalink to this heading">#</a></h2>
+<p>If adding a feature, please add unit tests for it.</p>
+<section id="running-the-tests">
+<h3>Running the tests<a class="headerlink" href="#running-the-tests" title="Permalink to this heading">#</a></h3>
 <ul class="simple">
-<li><p><strong>Start with the <a class="reference external" href="https://neelnanda.io/transformer-lens-demo">main demo</a> to learn how the library works, and the basic features</strong>.</p></li>
-</ul>
-<section id="where-to-start">
-<h2>Where To Start<a class="headerlink" href="#where-to-start" title="Permalink to this heading">#</a></h2>
-<ul class="simple">
-<li><p>To see what using it for exploratory analysis in practice looks like, check out <a class="reference external" href="https://neelnanda.io/exploratory-analysis-demo">my notebook analysing Indirect Objection Identification</a> or <a class="reference external" href="https://www.youtube.com/watch?v=yo4QvDn-vsU">my recording of myself doing research</a>!</p></li>
-<li><p><a class="reference external" href="https://neelnanda.io/transformer-tutorial">What is a Transformer tutorial</a></p></li>
+<li><p>All tests via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">test</span></code></p></li>
+<li><p>Unit tests only via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">unit-test</span></code></p></li>
+<li><p>Acceptance tests only via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">acceptance-test</span></code></p></li>
+<li><p>Docstring tests only via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">docstring-test</span></code></p></li>
 </ul>
 </section>
-<section id="demos">
-<h2>Demos<a class="headerlink" href="#demos" title="Permalink to this heading">#</a></h2>
+</section>
+<section id="formatting">
+<h2>Formatting<a class="headerlink" href="#formatting" title="Permalink to this heading">#</a></h2>
+<p>This project uses <code class="docutils literal notranslate"><span class="pre">pycln</span></code>, <code class="docutils literal notranslate"><span class="pre">isort</span></code> and <code class="docutils literal notranslate"><span class="pre">black</span></code> for formatting, pull requests are checked in github
+actions.</p>
 <ul class="simple">
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Activation_Patching_in_TL_Demo.ipynb"><strong>Activation Patching in TransformerLens</strong></a> - Accompanies the [Exploratory Analysis Demo](https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Exploratory Analysis Demo.ipynb). This demo explains how to use <a class="reference external" href="https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=qeWBvs-R-taFfcCq-S_hgMqx">Activation Patching</a> in TransformerLens, a mechanistic interpretability technique that uses causal intervention to identify which activations in a model matter for producing an output.</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Attribution_Patching_Demo.ipynb"><strong>Attribution Patching</strong></a> - <a class="reference external" href="https://www.neelnanda.io/mechanistic-interpretability/attribution-patching">Attribution Patching</a> is an incomplete project that uses gradients to take a linear approximation to activation patching. It’s a good approximation when patching in small activations like the outputs of individual attention heads, and bad when patching in large activations like a residual stream.</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Exploratory_Analysis_Demo.ipynb"><strong>Exploratory Analysis</strong></a> - Probably the best place to start, after the Main Demo. Demonstrates how to use TransformerLens to perform exploratory analysis - focuses less on rigor and more on getting a grasp of what’s going on quickly. Uses a lot of useful interpretability techniques like logit attribution and activation patching. Steal liberally from this!</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Grokking_Demo.ipynb"><strong>Grokking</strong></a> - “Grokking” is a phenomenon where a model can learn to memorise the training data (minimising training loss) but then, if trained for a lot longer, can learn to generalise, leading to a sharp decrease in test loss as well. This demo shows training a model on the task of modular addition, verifying that it groks, and doing analysis. The demo is light on explanation, so you’ll probably want to pair it with <a class="reference external" href="https://www.youtube.com/watch?v=ob4vuiqG2Go">Neel’s video series</a> on the paper it’s based on.</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Head_Detector_Demo.ipynb"><strong>Head Detector</strong></a> - Shows how to use TransformerLens to automatically detect several common types of attention head, as well as create your own custom detection algorithms to find your own!</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Interactive_Neuroscope.ipynb"><strong>Interactive Neuroscope</strong></a> - Very hacky demo, but this is a feature, not a bug. Shows how to quickly create useful web-based visualisations of data, even if you’re not a professional front-end developer. This demo creates an interactive Neuroscope - a visualization of a neuron’s activations on text that will dynamically update as you edit the text.</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/LLaMA.ipynb"><strong>LLaMA</strong></a> - Converts Meta’s LLaMA model (7B parameter version for now until multi-GPU support is added) to TransformerLens.</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Main_Demo.ipynb"><strong>Main Demo</strong></a> - The main demo. This is where to start if you’re new to TransformerLens. Shows a lot of great features for getting started, including available models, how to access model activations, and generally useful features you should know about.</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/No_Position_Experiment.ipynb"><strong>No Position Experiment</strong></a> - The accompanying notebook to Neel’s <a class="reference external" href="https://www.youtube.com/watch?v=yo4QvDn-vsU">real-time research video</a>. Trains a model with no positional embeddings to predict the previous token, and makes a start at analysing what’s going on there!</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Othello_GPT.ipynb"><strong>Othello-GPT</strong></a> - This is a demo notebook porting the weights of the Othello-GPT Model from the excellent <a class="reference external" href="https://arxiv.org/pdf/2210.13382.pdf">Emergent World Representations</a> paper to TransformerLens. Neel’s <a class="reference external" href="https://www.lesswrong.com/s/nhGNHyJHbrofpPbRG">sequence on investigating this</a> is also well worth reading if you’re interested in this topic!</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/SVD_Interpreter_demo.ipynb"><strong>SVD Interpreter Demo</strong></a> - Based on the <a class="reference external" href="https://www.lesswrong.com/posts/mkbGjzxD8d8XqKHzA/the-singular-value-decompositions-of-transformer-weight#Directly_editing_SVD_representations">Conjecture post</a> about how the singular value decompositions of transformer matrices are surprisingly interpretable, this demo shows how to use TransformerLens to reproduce this and investigate further.</p></li>
-<li><p><a class="reference external" href="https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/main/demos/Tracr_to_Transformer_Lens_Demo.ipynb"><strong>Tracr to TransformerLens</strong></a> - <a class="reference external" href="https://github.com/deepmind/tracr">Tracr</a> is a cool new DeepMind tool that compiles a written program in <a class="reference external" href="https://arxiv.org/abs/2106.06981">RASP</a> to transformer weights.This is a (hacky!) script to convert Tracr weights from the JAX form to a TransformerLens HookedTransformer in PyTorch.</p></li>
+<li><p>Format all files via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">format</span></code></p></li>
+<li><p>Only check the formatting via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">check-format</span></code></p></li>
 </ul>
+</section>
+<section id="documentation">
+<h2>Documentation<a class="headerlink" href="#documentation" title="Permalink to this heading">#</a></h2>
+<p>Please make sure to add thorough documentation for any features you add. You should do this directly
+in the docstring, and this will then automatically generate the API docs when merged into <code class="docutils literal notranslate"><span class="pre">main</span></code>.
+They will also be automatically checked with <a class="reference external" href="https://docs.pytest.org/">pytest</a> (via
+<a class="reference external" href="https://docs.python.org/3/library/doctest.html">doctest</a>).</p>
+<section id="docstring-style-guide">
+<h3>Docstring Style Guide<a class="headerlink" href="#docstring-style-guide" title="Permalink to this heading">#</a></h3>
+<p>We follow the Google Python Docstring Style for writing docstrings, with some added features from
+reStructuredText (reST).</p>
+<section id="sections-and-order">
+<h4>Sections and Order<a class="headerlink" href="#sections-and-order" title="Permalink to this heading">#</a></h4>
+<p>You should follow this order:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="sd">&quot;&quot;&quot;Title In Title Case.</span>
+
+<span class="sd">A description of what the function/class does, including as much detail as is necessary to fully understand it.</span>
+
+<span class="sd">Examples:</span>
+
+<span class="sd">Include any examples here. They will be checked with doctest.</span>
+
+<span class="sd">  &gt;&gt;&gt; print(1 + 2)</span>
+<span class="sd">  3</span>
+
+<span class="sd">Args:</span>
+<span class="sd">    param_without_type_signature:</span>
+<span class="sd">        Each description should be indented once more.</span>
+<span class="sd">    param_2:</span>
+<span class="sd">        Another example parameter.</span>
+
+<span class="sd">Returns:</span>
+<span class="sd">    Returns description without type signature.</span>
+
+<span class="sd">Raises:</span>
+<span class="sd">    Information about the error it may raise (if any).</span>
+<span class="sd">&quot;&quot;&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="supported-sphinx-properties">
+<h4>Supported Sphinx Properties<a class="headerlink" href="#supported-sphinx-properties" title="Permalink to this heading">#</a></h4>
+<section id="references-to-other-functions-classes">
+<h5>References to Other Functions/Classes<a class="headerlink" href="#references-to-other-functions-classes" title="Permalink to this heading">#</a></h5>
+<p>You can reference other parts of the codebase using
+<a class="reference external" href="https://www.sphinx-doc.org/en/master/usage/domains/python.html#cross-referencing-python-objects">cross-referencing</a>
+(noting that you can omit the full path if it is in the same file).</p>
+<div class="highlight-reStructuredText notranslate"><div class="highlight"><pre><span></span>:mod:transformer_lens # Function or module
+
+<span class="na">:const:</span><span class="nv">`transformer_lens.loading_from_pretrained.OFFICIAL_MODEL_NAMES`</span>
+
+<span class="na">:class:</span><span class="nv">`transformer_lens.HookedTransformer`</span>
+
+<span class="na">:meth:</span><span class="nv">`transformer_lens.HookedTransformer.from_pretrained`</span>
+
+<span class="na">:attr:</span><span class="nv">`transformer_lens.HookedTransformer.cfg`</span>
+</pre></div>
+</div>
+</section>
+<section id="maths">
+<h5>Maths<a class="headerlink" href="#maths" title="Permalink to this heading">#</a></h5>
+<p>You can use LaTeX, but note that as you’re placing this in python strings the backwards slash (<code class="docutils literal notranslate"><span class="pre">\</span></code>)
+must be repeated (i.e. <code class="docutils literal notranslate"><span class="pre">\\</span></code>). You can write LaTeX inline, or in “display mode”.</p>
+<div class="highlight-reStructuredText notranslate"><div class="highlight"><pre><span></span><span class="p">..</span> <span class="ow">math</span><span class="p">::</span> (a + b)^2 = a^2 + 2ab + b^2
+</pre></div>
+</div>
+<div class="highlight-reStructuredText notranslate"><div class="highlight"><pre><span></span><span class="p">..</span> <span class="ow">math</span><span class="p">::</span>
+   <span class="nc">:nowrap:</span>
+
+   \\begin{eqnarray}
+      y    &amp; = &amp; ax^2 + bx + c \\
+      f(x) &amp; = &amp; x^2 + 2xy + y^2
+   \\end{eqnarray}
+</pre></div>
+</div>
+</section>
+</section>
+<section id="markup">
+<h4>Markup<a class="headerlink" href="#markup" title="Permalink to this heading">#</a></h4>
+<ul class="simple">
+<li><p>Italics - <code class="docutils literal notranslate"><span class="pre">*text*</span></code></p></li>
+<li><p>Bold - <code class="docutils literal notranslate"><span class="pre">**text**</span></code></p></li>
+<li><p>Code - <code class="docutils literal notranslate"><span class="pre">``code``</span></code></p></li>
+<li><p>List items - <code class="docutils literal notranslate"><span class="pre">*item</span></code></p></li>
+<li><p>Numbered items - <code class="docutils literal notranslate"><span class="pre">1.</span> <span class="pre">Item</span></code></p></li>
+<li><p>Quotes - indent one level</p></li>
+<li><p>External links = <code class="docutils literal notranslate"><span class="pre">`Link</span> <span class="pre">text</span> <span class="pre">&lt;https://domain.invalid/&gt;`</span></code></p></li>
+</ul>
+</section>
+</section>
 </section>
 </section>
 
@@ -274,23 +378,23 @@
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="citation.html">
+          <a class="next-page" href="../generated/code/modules.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Citation</div>
+                <div class="title">Transformer Lens API</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="gallery.html">
+          <a class="prev-page" href="citation.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Gallery</div>
+                <div class="title">Citation</div>
                 
               </div>
             </a>
@@ -324,9 +428,30 @@
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Tutorials</a><ul>
-<li><a class="reference internal" href="#where-to-start">Where To Start</a></li>
-<li><a class="reference internal" href="#demos">Demos</a></li>
+<li><a class="reference internal" href="#">Contributing</a><ul>
+<li><a class="reference internal" href="#setup">Setup</a><ul>
+<li><a class="reference internal" href="#devcontainer">DevContainer</a></li>
+<li><a class="reference internal" href="#manual-setup">Manual Setup</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#testing">Testing</a><ul>
+<li><a class="reference internal" href="#running-the-tests">Running the tests</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#formatting">Formatting</a></li>
+<li><a class="reference internal" href="#documentation">Documentation</a><ul>
+<li><a class="reference internal" href="#docstring-style-guide">Docstring Style Guide</a><ul>
+<li><a class="reference internal" href="#sections-and-order">Sections and Order</a></li>
+<li><a class="reference internal" href="#supported-sphinx-properties">Supported Sphinx Properties</a><ul>
+<li><a class="reference internal" href="#references-to-other-functions-classes">References to Other Functions/Classes</a></li>
+<li><a class="reference internal" href="#maths">Maths</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#markup">Markup</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
