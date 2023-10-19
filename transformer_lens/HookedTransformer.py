@@ -239,6 +239,20 @@ class HookedTransformer(HookedRootModule):
         Optional[Float[torch.Tensor, "batch pos d_model"]],  # shortformer_pos_embed
         Optional[torch.Tensor],  # attention_mask [batch pos]
     ]:
+        """Convert input to first residual stream.
+
+        Args:
+            input (Union[str, List[str], Int[torch.Tensor, "batch pos"]]): The input to the model.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. Pass True or False to locally override the default.
+            padding_side ([Literal["left", "right"], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing
+                multiple strings of different lengths.
+            past_kv_cache (HookedTransformerKeyValueCache, optional): If passed, we're doing caching
+                and attention_mask will be stored in the cache.
+        """
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
             assert (
@@ -421,9 +435,7 @@ class HookedTransformer(HookedRootModule):
         return_type: Optional[str] = "logits",
         loss_per_token: Optional[bool] = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
-        padding_side: Optional[
-            Union[Literal["left", "right"], None]
-        ] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         start_at_layer: Optional[int] = None,
         tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
         shortformer_pos_embed: Optional[
@@ -457,13 +469,16 @@ class HookedTransformer(HookedRootModule):
                 per-token loss is a tensor ([batch, position-1]) - position-1 because we're
                 predicting the next token, and there's no specified next token for the final token.
                 Defaults to False.
-            prepend_bos Optional[bool]: Whether to prepend the BOS token to the input (only applies
-                when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos which is set to True unless specified otherwise. (Even
-                for models not explicitly trained with a prepended BOS token, heads often use the
-                first position as a resting position and accordingly lose information from the first
-                token, so this empirically seems to give better results.) Pass True or False to
-                locally override the default.
+            prepend_bos Optional[bool]: Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. (Even for models not explicitly trained with a prepended BOS token, heads
+                often use the first position as a resting position and accordingly lose information
+                from the first token, so this empirically seems to give better results.) Pass True
+                or False to locally override the default.
+            padding_side Optional[Literal["left", "right"]]: Overrides self.tokenizer.padding_side.
+                Specifies which side to pad on when tokenizing multiple strings of different
+                lengths.
             start_at_layer Optional[int]: If not None, start the forward pass at the specified
                 layer. Requires input to be the residual stream before the specified layer with
                 shape [batch, pos, d_model]. Inclusive - ie, start_at_layer = 0 skips the embedding
@@ -696,10 +711,13 @@ class HookedTransformer(HookedRootModule):
 
         Args:
             input (Union[str, List[str]]): The input to tokenize.
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only
-                applies when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
-                True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. Pass True or False to locally override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing
+                multiple strings of different lengths.
             move_to_device (bool): Whether to move the output tensor of tokens to the device the
                 model lives on. Defaults to True truncate (bool): If the output tokens are too long,
                 whether to truncate the output tokens to the model's max context window. Does nothing
@@ -807,10 +825,13 @@ class HookedTransformer(HookedRootModule):
         Args:
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of
                 tokens. If tokens, should be a tensor of shape [pos] or [1, pos].
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only
-                applies when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
-                True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. Pass True or False to locally override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
 
         Returns:
             str_tokens: List of individual tokens as strings
@@ -906,10 +927,13 @@ class HookedTransformer(HookedRootModule):
                 with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports
                 "first" or "last". Defaults to "first".
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only
-                applies when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
-                True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. Pass True or False to locally override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
@@ -1363,7 +1387,7 @@ class HookedTransformer(HookedRootModule):
 
         Args:
             state_dict (dict): The state dict of the model, in HookedTransformer format. fold_ln
-            (bool, optional): Whether to fold in the LayerNorm weights to the
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the
                 subsequent linear layer. This does not change the computation. Defaults to True.
             center_writing_weights (bool, optional): Whether to center weights writing to the
                 residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the
@@ -1793,12 +1817,9 @@ class HookedTransformer(HookedRootModule):
         top_p: Optional[float] = None,
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
-        num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
-        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
-        padding_side: Optional[
-            Union[Literal["left", "right"], None]
-        ] = USE_DEFAULT_VALUE,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
     ) -> Union[Int[torch.Tensor, "batch pos_plus_new_tokens"], str]:
@@ -1836,10 +1857,13 @@ class HookedTransformer(HookedRootModule):
             freq_penalty (float): Frequency penalty for sampling - how much to penalise previous
                 tokens. Higher values will make the model more random.
             use_past_kv_cache (bool): If True, create and use cache to speed up generation.
-            prepend_bos (Optional[bool]): Whether to prepend the BOS token to the input (applicable
-                when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos (default is True unless specified otherwise). Pass True
-                or False to override the default.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (applicable when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos (default is True unless specified
+                otherwise). Pass True or False to override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
             return_type (Optional[str]): The type of the output to return - either a string (str),
                 a tensor of tokens (tensor) or whatever the format of the input was (input).
             verbose (bool): If True, show tqdm progress bars for generation.
@@ -2228,9 +2252,7 @@ class HookedTransformer(HookedRootModule):
         self,
         tokenize: Optional[bool] = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
-        padding_side: Optional[
-            Union[Literal["left", "right"], None]
-        ] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
     ) -> Union[str, Float[torch.Tensor, "1 pos"]]:
         """Sample Data Point from Dataset.
 
@@ -2245,6 +2267,13 @@ class HookedTransformer(HookedRootModule):
             tokenize (bool): Whether to return tokens (instead of text). Defaults to False. Note
                 that the returned tokens will be automatically truncated to the model's max context
                 size.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (applicable when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos (default is True unless specified
+                otherwise). Pass True or False to override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
         """
         if self.dataset is None:
             self.load_sample_training_dataset()
