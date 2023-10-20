@@ -48,6 +48,9 @@ html_title = "TransformerLens Documentation"
 html_static_path = ["_static"]
 html_logo = "_static/transformer_lens_logo.png"
 html_favicon = "favicon.ico"
+html_js_files = [
+    "https://cdn.plot.ly/plotly-2.26.0.min.js",
+]
 
 # -- Sphinx-Apidoc Configuration ---------------------------------------------
 
