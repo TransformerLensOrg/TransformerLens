@@ -126,7 +126,7 @@ def run_apidoc(_):
 
 # -- Sphinx Notebook Demo Config ---------------------------------------------
 
-nbsphinx_execute = "never"  # Don't re-run
+nbsphinx_execute = "always"  # Always re-run so Plotly charts are created correctly.
 
 # -- Sphinx Setup Overrides --------------------------------------------------
 

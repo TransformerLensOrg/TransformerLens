@@ -116,11 +116,15 @@ def copy_demos():
     """Copy demos notebooks to the generated directory."""
     copy_to_dir = GENERATED_DIR / "demos"
 
+    notebooks_to_copy = ["Exploratory_Analysis_Demo.ipynb"]
+
     if copy_to_dir.exists():
         shutil.rmtree(copy_to_dir)
+    copy_to_dir.mkdir()
 
-    path = shutil.copytree(DEMOS_DIR, copy_to_dir)
-    print(path)
+    for filename in notebooks_to_copy:
+        path = DEMOS_DIR / filename
+        shutil.copy(path, copy_to_dir)
 
 
 def build_docs():
