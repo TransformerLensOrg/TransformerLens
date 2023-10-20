@@ -4,8 +4,11 @@ https://www.sphinx-doc.org/en/master/usage/configuration.html
 """
 # pylint: disable=invalid-name
 from pathlib import Path
+from typing import Any, Optional
 
 from sphinx.ext import apidoc
+
+from docs.make_docs import copy_demos
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -103,7 +106,7 @@ autodoc_default_options = {
 }
 
 
-def run_apidoc(_):
+def run_apidoc(_app: Optional[Any] = None):
     """Run Sphinx-Apidoc.
 
     Allows us to automatically generate API documentation from docstrings, every time we build the
@@ -145,5 +148,6 @@ nbsphinx_execute = "always"  # Always re-run so Plotly charts are created correc
 
 def setup(app):
     """Sphinx setup overrides."""
-    # Connect the run_apidoc function to the builder-inited event
+    # Connect functions to run when watch detects a file change
     app.connect("builder-inited", run_apidoc)
+    app.connect("builder-inited", copy_demos)

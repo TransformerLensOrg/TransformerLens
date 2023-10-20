@@ -3,6 +3,7 @@ import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -70,7 +71,7 @@ def get_property(name, model_name):
     return cfg.to_dict()[name]
 
 
-def generate_model_table():
+def generate_model_table(_app: Optional[Any] = None):
     """Generate a markdown table summarizing properties of pretrained models.
 
     This script extracts various properties of pretrained models from the `easy_transformer`
@@ -112,19 +113,14 @@ def generate_model_table():
         file.write(markdown_string)
 
 
-def copy_demos():
-    """Copy demos notebooks to the generated directory."""
+def copy_demos(_app: Optional[Any] = None):
+    """Copy demo notebooks to the generated directory."""
     copy_to_dir = GENERATED_DIR / "demos"
-
     notebooks_to_copy = ["Exploratory_Analysis_Demo.ipynb"]
 
-    if copy_to_dir.exists():
-        shutil.rmtree(copy_to_dir)
-    copy_to_dir.mkdir()
-
+    copy_to_dir.mkdir(exist_ok=True)
     for filename in notebooks_to_copy:
-        path = DEMOS_DIR / filename
-        shutil.copy(path, copy_to_dir)
+        shutil.copy(DEMOS_DIR / filename, copy_to_dir)
 
 
 def build_docs():
@@ -154,7 +150,7 @@ def docs_hot_reload():
         [
             "sphinx-autobuild",
             "--watch",
-            str(PACKAGE_DIR),
+            str(PACKAGE_DIR) + "," + str(DEMOS_DIR),
             "--open-browser",
             SOURCE_PATH,
             BUILD_PATH,

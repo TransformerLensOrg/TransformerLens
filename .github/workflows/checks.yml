@@ -76,7 +76,7 @@ jobs:
       - name: Build check
         run: poetry build
   notebook-checks:
-    name: Check Notebook Outputs are Consistant
+    name: Notebook Checks
     runs-on: ubuntu-latest
     strategy:
       matrix:

@@ -33,7 +33,7 @@ content/gallery
 content/tutorials
 content/citation
 content/contributing
-content/generated/demos/Exploratory_Analysis_Demo
+generated/demos/Exploratory_Analysis_Demo
 ```
 
 ```{toctree}
