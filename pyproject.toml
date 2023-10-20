@@ -71,6 +71,9 @@ furo = {version = ">=2022.12.7" }
 myst-parser = {version = ">=0.18.1" }
 tabulate= {version = ">=0.9.0" }
 snowballstemmer = "*"
+nbsphinx = "^0.9.3"
+pandoc = "^2.3"
+nbconvert = "^7.9.2"
 
 [build-system]
 requires = ["poetry-core"]

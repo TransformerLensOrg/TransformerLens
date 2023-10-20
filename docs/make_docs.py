@@ -1,4 +1,5 @@
 """Build the API Documentation."""
+import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
@@ -12,6 +13,7 @@ CURRENT_DIR = Path(__file__).parent
 SOURCE_PATH = CURRENT_DIR / "../docs/source"
 BUILD_PATH = CURRENT_DIR / "../docs/build"
 PACKAGE_DIR = CURRENT_DIR.parent
+DEMOS_DIR = CURRENT_DIR.parent / "demos"
 GENERATED_DIR = CURRENT_DIR.parent / "docs/source/generated"
 
 
@@ -110,10 +112,23 @@ def generate_model_table():
         file.write(markdown_string)
 
 
+def copy_demos():
+    """Copy demos notebooks to the generated directory."""
+    copy_to_dir = GENERATED_DIR / "demos"
+
+    if copy_to_dir.exists():
+        shutil.rmtree(copy_to_dir)
+
+    path = shutil.copytree(DEMOS_DIR, copy_to_dir)
+    print(path)
+
+
 def build_docs():
     """Build the docs."""
     generate_model_table()
+    copy_demos()
 
+    # Generating docs
     subprocess.run(
         [
             "sphinx-build",
@@ -129,6 +144,8 @@ def build_docs():
 def docs_hot_reload():
     """Hot reload the docs."""
     generate_model_table()
+    copy_demos()
+
     subprocess.run(
         [
             "sphinx-autobuild",

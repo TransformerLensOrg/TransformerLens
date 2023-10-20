@@ -23,6 +23,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx.ext.githubpages",
+    "nbsphinx",
 ]
 
 source_suffix = {
@@ -119,6 +120,10 @@ def run_apidoc(_):
     # Call sphinx-apidoc
     apidoc.main(args)
 
+
+# -- Sphinx Notebook Demo Config ---------------------------------------------
+
+nbsphinx_execute = "never"  # Don't re-run
 
 # -- Sphinx Setup Overrides --------------------------------------------------
 
