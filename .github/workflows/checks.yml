@@ -110,4 +110,4 @@ jobs:
           version: 1.0
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
-        run: poetry run pytest --nbval demos/Exploratory_Analysis_Demo.ipynb
+        run: make notebook-test

@@ -21,3 +21,6 @@ acceptance-test:
 
 docstring-test:
 	poetry run pytest transformer_lens/
+
+notebook-test:
+	poetry run pytest demos/Exploratory_Analysis_Demo.ipynb --nbval
