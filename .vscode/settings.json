@@ -20,9 +20,12 @@
     "cSpell.words": [
         "autoregressive",
         "checkpointed",
+        "circuitsvis",
+        "colour",
         "docstrings",
         "doctest",
         "doctree",
+        "einops",
         "Elhage",
         "evals",
         "firstpage",
@@ -34,6 +37,7 @@
         "huggingface",
         "interpretability",
         "isort",
+        "jaxtyping",
         "keepdim",
         "lastpage",
         "layernorm",
@@ -55,6 +59,7 @@
         "toctree",
         "transformerlens",
         "Unembed",
-        "unembedding"
+        "unembedding",
+        "visualisation"
     ],
 }
