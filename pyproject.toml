@@ -87,7 +87,11 @@ filterwarnings = [
     # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
     "ignore:distutils Version classes are deprecated:DeprecationWarning"
 ]
-addopts = "--jaxtyping-packages=transformer_lens,beartype.beartype"
+addopts = """--jaxtyping-packages=transformer_lens,beartype.beartype \ 
+-W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning \ 
+--deselect transformer_lens/utils.py::test_prompt \
+--doctest-modules --doctest-plus \
+--nbval"""
 
 [tool.isort]
 profile = "black"
