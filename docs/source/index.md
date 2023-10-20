@@ -28,31 +28,25 @@ content/gallery
 
 ```{toctree}
 :hidden:
-:caption: Resources
-
-content/tutorials
-content/citation
-content/contributing
-```
-
-```{toctree}
-:hidden:
-:caption: Code
+:caption: Documentation
 
 generated/code/modules
+generated/model_properties_table.md
 ```
 
 ```{toctree}
 :hidden:
-:caption: Models
+:caption: Resources
 
-generated/model_properties_table.md
+content/getting_started_mech_interp
+content/tutorials
+content/citation
 ```
 
 ```{toctree}
 :hidden:
 :caption: Development
 
-content/development
+content/contributing
 Github <https://github.com/neelnanda-io/TransformerLens>
 ```
