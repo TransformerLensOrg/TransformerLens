@@ -1,7 +1,9 @@
 """Build the API Documentation."""
+import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -12,6 +14,7 @@ CURRENT_DIR = Path(__file__).parent
 SOURCE_PATH = CURRENT_DIR / "../docs/source"
 BUILD_PATH = CURRENT_DIR / "../docs/build"
 PACKAGE_DIR = CURRENT_DIR.parent
+DEMOS_DIR = CURRENT_DIR.parent / "demos"
 GENERATED_DIR = CURRENT_DIR.parent / "docs/source/generated"
 
 
@@ -68,7 +71,7 @@ def get_property(name, model_name):
     return cfg.to_dict()[name]
 
 
-def generate_model_table():
+def generate_model_table(_app: Optional[Any] = None):
     """Generate a markdown table summarizing properties of pretrained models.
 
     This script extracts various properties of pretrained models from the `easy_transformer`
@@ -110,10 +113,25 @@ def generate_model_table():
         file.write(markdown_string)
 
 
+def copy_demos(_app: Optional[Any] = None):
+    """Copy demo notebooks to the generated directory."""
+    copy_to_dir = GENERATED_DIR / "demos"
+    notebooks_to_copy = ["Exploratory_Analysis_Demo.ipynb"]
+
+    if copy_to_dir.exists():
+        shutil.rmtree(copy_to_dir)
+
+    copy_to_dir.mkdir()
+    for filename in notebooks_to_copy:
+        shutil.copy(DEMOS_DIR / filename, copy_to_dir)
+
+
 def build_docs():
     """Build the docs."""
     generate_model_table()
+    copy_demos()
 
+    # Generating docs
     subprocess.run(
         [
             "sphinx-build",
@@ -129,11 +147,13 @@ def build_docs():
 def docs_hot_reload():
     """Hot reload the docs."""
     generate_model_table()
+    copy_demos()
+
     subprocess.run(
         [
             "sphinx-autobuild",
             "--watch",
-            str(PACKAGE_DIR),
+            str(PACKAGE_DIR) + "," + str(DEMOS_DIR),
             "--open-browser",
             SOURCE_PATH,
             BUILD_PATH,

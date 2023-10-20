@@ -23,6 +23,7 @@ The core features were heavily inspired by the interface to [Anthropic's excelle
 :caption: Introduction
 
 content/getting_started
+content/getting_started_mech_interp
 content/gallery
 ```
 
@@ -38,9 +39,10 @@ generated/model_properties_table.md
 :hidden:
 :caption: Resources
 
-content/getting_started_mech_interp
 content/tutorials
 content/citation
+content/contributing
+generated/demos/Exploratory_Analysis_Demo
 ```
 
 ```{toctree}
