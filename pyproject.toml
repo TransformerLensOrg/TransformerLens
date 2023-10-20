@@ -7,6 +7,10 @@ license = "MIT"
 readme = "README.md"
 packages = [{include = "transformer_lens"}]
 
+[tool.poetry.scripts]
+build-docs = "docs.make_docs:build_docs"
+docs-hot-reload = "docs.make_docs:docs_hot_reload"
+
 [tool.poetry.dependencies]
 python = ">=3.8,<4.0"
 einops = ">=0.6.0"
@@ -75,10 +79,6 @@ nbsphinx = "^0.9.3"
 pandoc = "^2.3"
 nbconvert = "^7.9.2"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
 [tool.pytest.ini_options]
 doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
 filterwarnings = [
@@ -87,7 +87,7 @@ filterwarnings = [
     # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
     "ignore:distutils Version classes are deprecated:DeprecationWarning"
 ]
-addopts = "--jaxtyping-packages=transformer_lens,beartype.beartype --doctest-modules --doctest-plus"
+addopts = "--jaxtyping-packages=transformer_lens,beartype.beartype"
 
 [tool.isort]
 profile = "black"
@@ -96,22 +96,6 @@ extend_skip = ["__init__.py", ".venv/"]
 [tool.mypy]
 ignore_missing_imports = true
 check_untyped_defs = true
-
-[tool.pylint.TYPECHECK]
-# Fix for Pytorch member existence checks
-generated-members = "torch.*"
-
-[tool.pylint.DESIGN]
-max-args = 10
-max-locals = 30
-
-[tool.pylint."MESSAGES CONTROL"]
-disable = "redefined-builtin" # Disable redefined builtin functions
-
-[tool.pylint.'MASTER']
-disable = [
-    "C0103", # Disable invalid file name (as we use PascalCase for classes)
-]
 
 [tool.black]
 # Exclude snapshot tests & .venv
@@ -122,7 +106,23 @@ exclude = '''
 )
 '''
 
-[tool.poetry.scripts]
-make-model-properties-table = "docs.make_docs:generate_model_table"
-build-docs = "docs.make_docs:build_docs"
-docs-hot-reload = "docs.make_docs:docs_hot_reload"
+[tool.pylint]
+    [tool.pylint.TYPECHECK]
+    # Fix for Pytorch member existence checks
+    generated-members = "torch.*"
+
+    [tool.pylint.DESIGN]
+    max-args = 10
+    max-locals = 30
+
+    [tool.pylint."MESSAGES CONTROL"]
+    disable = "redefined-builtin" # Disable redefined builtin functions
+
+    [tool.pylint.'MASTER']
+    disable = [
+        "C0103", # Disable invalid file name (as we use PascalCase for classes)
+    ]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
