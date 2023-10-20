@@ -48,6 +48,8 @@ html_title = "TransformerLens Documentation"
 html_static_path = ["_static"]
 html_logo = "_static/transformer_lens_logo.png"
 html_favicon = "favicon.ico"
+
+# Fix to get Plotly Working
 nbsphinx_prolog = r"""
 .. raw:: html
 
