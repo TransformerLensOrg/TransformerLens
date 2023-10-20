@@ -58,6 +58,7 @@ isort = "5.8.0"
 black = "^23.3.0"
 pycln = "^2.1.3"
 pytest-doctestplus = "^1.0.0"
+nbval = "^0.10.0"
 
 [tool.poetry.group.jupyter.dependencies]
 jupyterlab = ">=3.5.0"

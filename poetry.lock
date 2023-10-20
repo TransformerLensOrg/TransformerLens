@@ -2277,6 +2277,24 @@ docs = ["myst-parser", "pydata-sphinx-theme", "sphinx", "sphinxcontrib-github-al
 test = ["pep440", "pre-commit", "pytest", "testpath"]
 
 [[package]]
+name = "nbval"
+version = "0.10.0"
+description = "A py.test plugin to validate Jupyter notebooks"
+optional = false
+python-versions = ">=3.6, <4"
+files = [
+    {file = "nbval-0.10.0-py2.py3-none-any.whl", hash = "sha256:427e42caabeae39f493d8baca629b03816269fc11f1b7e2046e10929a3149a73"},
+    {file = "nbval-0.10.0.tar.gz", hash = "sha256:b4acefdc1132aef8a1b5b62bf9a93d128eba52839b2854ea3e42598f4db7beb3"},
+]
+
+[package.dependencies]
+coverage = "*"
+ipykernel = "*"
+jupyter-client = "*"
+nbformat = "*"
+pytest = ">=2.8"
+
+[[package]]
 name = "nest-asyncio"
 version = "1.5.8"
 description = "Patch asyncio to allow nested event loops"
@@ -2623,8 +2641,8 @@ files = [
 [package.dependencies]
 numpy = [
     {version = ">=1.20.3", markers = "python_version < \"3.10\""},
-    {version = ">=1.21.0", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
     {version = ">=1.23.2", markers = "python_version >= \"3.11\""},
+    {version = ">=1.21.0", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
 ]
 python-dateutil = ">=2.8.2"
 pytz = ">=2020.1"
@@ -4935,4 +4953,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "87ef75f805be45761ef3cac64e79e27924c1edd3f1ca7bfdeee21f4d9b09da57"
+content-hash = "a9f84593a64030d4efbb1f428a4b926f68faee43ce8a84b39877986a4715d14a"
