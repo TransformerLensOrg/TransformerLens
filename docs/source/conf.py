@@ -8,8 +8,6 @@ from typing import Any, Optional
 
 from sphinx.ext import apidoc
 
-from docs.make_docs import copy_demos
-
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
@@ -150,4 +148,4 @@ def setup(app):
     """Sphinx setup overrides."""
     # Connect functions to run when watch detects a file change
     app.connect("builder-inited", run_apidoc)
-    app.connect("builder-inited", copy_demos)
+    # app.connect("builder-inited", copy_demos) # Don't run as too slow

@@ -118,7 +118,10 @@ def copy_demos(_app: Optional[Any] = None):
     copy_to_dir = GENERATED_DIR / "demos"
     notebooks_to_copy = ["Exploratory_Analysis_Demo.ipynb"]
 
-    copy_to_dir.mkdir(exist_ok=True)
+    if copy_to_dir.exists():
+        shutil.rmtree(copy_to_dir)
+
+    copy_to_dir.mkdir()
     for filename in notebooks_to_copy:
         shutil.copy(DEMOS_DIR / filename, copy_to_dir)
 
