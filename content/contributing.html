@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
-<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Transformer Lens API" href="../generated/code/modules.html" /><link rel="prev" title="Citation" href="citation.html" />
+<link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Exploratory Analysis Demo" href="../generated/demos/Exploratory_Analysis_Demo.html" /><link rel="prev" title="Citation" href="citation.html" />
 
     <link rel="shortcut icon" href="../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
         <title>Contributing - TransformerLens Documentation</title>
@@ -167,6 +167,7 @@
 <li class="toctree-l1"><a class="reference internal" href="tutorials.html">Tutorials</a></li>
 <li class="toctree-l1"><a class="reference internal" href="citation.html">Citation</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../generated/demos/Exploratory_Analysis_Demo.html">Exploratory Analysis Demo</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Code</span></p>
 <ul>
@@ -261,11 +262,14 @@ poetry<span class="w"> </span>install<span class="w"> </span>--with<span class="
 </section>
 <section id="testing">
 <h2>Testing<a class="headerlink" href="#testing" title="Permalink to this heading">#</a></h2>
-<p>If adding a feature, please add unit tests for it.</p>
+<p>If adding a feature, please add unit tests for it. If you need a model, please use one of the ones
+that are cached by GitHub Actions (so that it runs quickly on the CD). These are <code class="docutils literal notranslate"><span class="pre">gpt2</span></code>,
+<code class="docutils literal notranslate"><span class="pre">attn-only-1l</span></code>, <code class="docutils literal notranslate"><span class="pre">attn-only-2l</span></code>, <code class="docutils literal notranslate"><span class="pre">attn-only-3l</span></code>, <code class="docutils literal notranslate"><span class="pre">attn-only-4l</span></code>, <code class="docutils literal notranslate"><span class="pre">tiny-stories-1M</span></code>. Note <code class="docutils literal notranslate"><span class="pre">gpt2</span></code> is
+quite slow (as we only have CPU actions) so the smaller models like <code class="docutils literal notranslate"><span class="pre">attn-only-1l</span></code> and
+<code class="docutils literal notranslate"><span class="pre">tiny-stories-1M</span></code> are preferred if possible.</p>
 <section id="running-the-tests">
 <h3>Running the tests<a class="headerlink" href="#running-the-tests" title="Permalink to this heading">#</a></h3>
 <ul class="simple">
-<li><p>All tests via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">test</span></code></p></li>
 <li><p>Unit tests only via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">unit-test</span></code></p></li>
 <li><p>Acceptance tests only via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">acceptance-test</span></code></p></li>
 <li><p>Docstring tests only via <code class="docutils literal notranslate"><span class="pre">make</span> <span class="pre">docstring-test</span></code></p></li>
@@ -378,12 +382,12 @@ must be repeated (i.e. <code class="docutils literal notranslate"><span class="p
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="../generated/code/modules.html">
+          <a class="next-page" href="../generated/demos/Exploratory_Analysis_Demo.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Transformer Lens API</div>
+                <div class="title">Exploratory Analysis Demo</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -470,5 +474,7 @@ must be repeated (i.e. <code class="docutils literal notranslate"><span class="p
     <script src="../_static/doctools.js"></script>
     <script src="../_static/sphinx_highlight.js"></script>
     <script src="../_static/scripts/furo.js"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
     </body>
 </html>
