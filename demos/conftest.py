@@ -4,4 +4,5 @@ def pytest_collectstart(collector):
         collector.skip_compare += (
             "text/html",
             "application/javascript",
+            "application/vnd.plotly.v1+json",  # Plotly
         )
