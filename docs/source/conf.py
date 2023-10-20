@@ -4,6 +4,7 @@ https://www.sphinx-doc.org/en/master/usage/configuration.html
 """
 # pylint: disable=invalid-name
 from pathlib import Path
+from typing import Any, Optional
 
 from sphinx.ext import apidoc
 
@@ -23,6 +24,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx.ext.githubpages",
+    "nbsphinx",
 ]
 
 source_suffix = {
@@ -47,6 +49,21 @@ html_title = "TransformerLens Documentation"
 html_static_path = ["_static"]
 html_logo = "_static/transformer_lens_logo.png"
 html_favicon = "favicon.ico"
+
+# Fix to get Plotly Working
+nbsphinx_prolog = r"""
+.. raw:: html
+
+    <script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js"></script>
+    <script>
+    require=requirejs;
+    require.config({
+        paths: {
+            plotly: 'https://cdn.plot.ly/plotly-latest.min.js'
+        }
+    });
+    </script>
+"""
 
 # -- Sphinx-Apidoc Configuration ---------------------------------------------
 
@@ -87,7 +104,7 @@ autodoc_default_options = {
 }
 
 
-def run_apidoc(_):
+def run_apidoc(_app: Optional[Any] = None):
     """Run Sphinx-Apidoc.
 
     Allows us to automatically generate API documentation from docstrings, every time we build the
@@ -120,10 +137,15 @@ def run_apidoc(_):
     apidoc.main(args)
 
 
+# -- Sphinx Notebook Demo Config ---------------------------------------------
+
+nbsphinx_execute = "always"  # Always re-run so Plotly charts are created correctly.
+
 # -- Sphinx Setup Overrides --------------------------------------------------
 
 
 def setup(app):
     """Sphinx setup overrides."""
-    # Connect the run_apidoc function to the builder-inited event
+    # Connect functions to run when watch detects a file change
     app.connect("builder-inited", run_apidoc)
+    # app.connect("builder-inited", copy_demos) # Don't run as too slow

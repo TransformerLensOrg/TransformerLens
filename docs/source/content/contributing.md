@@ -21,11 +21,14 @@ poetry install --with dev,docs,jupyter
 
 ## Testing
 
-If adding a feature, please add unit tests for it.
+If adding a feature, please add unit tests for it. If you need a model, please use one of the ones
+that are cached by GitHub Actions (so that it runs quickly on the CD). These are `gpt2`,
+`attn-only-1l`, `attn-only-2l`, `attn-only-3l`, `attn-only-4l`, `tiny-stories-1M`. Note `gpt2` is
+quite slow (as we only have CPU actions) so the smaller models like `attn-only-1l` and
+`tiny-stories-1M` are preferred if possible.
 
 ### Running the tests
 
-- All tests via `make test`
 - Unit tests only via `make unit-test`
 - Acceptance tests only via `make acceptance-test`
 - Docstring tests only via `make docstring-test`
