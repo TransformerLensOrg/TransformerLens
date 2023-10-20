@@ -239,10 +239,12 @@ class ActivationCache:
             >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
             Loaded pretrained model tiny-stories-1M into HookedTransformer
             >>> _logits, cache = model.run_with_cache("Some prompt")
-            >>> for key, value in cache:
-            ...     if key == "hook_embed":
-            ...         print(key, value.shape)
-            hook_embed torch.Size([1, 1024, 768])
+            >>> cache_interesting_names = []
+            >>> for key in cache:
+            ...     if not key.startswith("blocks.") or key.startswith("blocks.0"):
+            ...         cache_interesting_names.append(key)
+            >>> print(cache_interesting_names[0:3])
+            ['hook_embed', 'hook_pos_embed', 'blocks.0.hook_resid_pre']
 
         Returns:
             Iterator over the cache.
