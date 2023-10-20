@@ -49,8 +49,24 @@ html_static_path = ["_static"]
 html_logo = "_static/transformer_lens_logo.png"
 html_favicon = "favicon.ico"
 html_js_files = [
-    "https://cdn.plot.ly/plotly-2.26.0.min.js",
+    # "https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js"
+    # "https://cdn.plot.ly/plotly-2.26.0.min.js",
 ]
+nbsphinx_prolog = r"""
+.. raw:: html
+
+    <script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js"></script>
+    <script>
+    require=requirejs;
+    require.config({
+        paths: {
+        d3: '/static/scripts/plotly/dependencies/d3.v3.min',
+        plotly: '/static/scripts/plotly/plotly.min'
+        }
+    })
+    </script>
+}); 
+"""
 
 # -- Sphinx-Apidoc Configuration ---------------------------------------------
 
