@@ -356,7 +356,6 @@ def sample_logits(
         return torch.distributions.categorical.Categorical(logits=final_logits).sample()
 
 
-# %%
 # Type alias
 SliceInput: Type = Optional[
     Union[
@@ -369,7 +368,8 @@ SliceInput: Type = Optional[
         np.ndarray,
     ]
 ]
-"""
+"""An object that represents a slice input. It can be a tuple of integers or a slice object.
+
 An optional type alias for a slice input used in the `ActivationCache` module.
 
 A `SliceInput` can be one of the following types:
@@ -380,14 +380,12 @@ A `SliceInput` can be one of the following types:
     - `torch.Tensor`: a tensor containing a boolean mask or a list of indices to be selected from the input tensor.
 
 `SliceInput` is used in the `apply_ln_to_stack` method in the `ActivationCache` module.
-
-:class:`SliceInput`
-    An object that represents a slice input. It can be a tuple of integers or a slice object.
 """
 
 
 class Slice:
-    """
+    """An object that represents a slice input. It can be a tuple of integers or a slice object.
+
     We use a custom slice syntax because Python/Torch's don't let us reduce the number of dimensions:
 
     Note that slicing with input_slice=None means do nothing, NOT add an extra dimension (use unsqueeze for that)
@@ -404,9 +402,6 @@ class Slice:
     elif input_slice = (1, 5, 2), tensor -> tensor[1:5:2] (ie indexing with [1, 3])
     elif input_slice = [1, 4, 5], tensor -> tensor[[1, 4, 5]] (ie changing the first axis to have length 3, and taking the indices 1, 4, 5 out).
     elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.
-
-    :class: `Slice`
-        An object that represents a slice input. It can be a tuple of integers or a slice object.
     """
 
     def __init__(
@@ -418,9 +413,6 @@ class Slice:
 
         Args:
             input_slice (SliceInput): The slice to apply. Can be an int, a tuple, a list, a torch.Tensor, or None. If None, do nothing.
-
-        Returns:
-            Slice: A Slice object that can be applied to a tensor.
 
         Raises:
             ValueError: If the input_slice is not one of the above types.
@@ -490,9 +482,6 @@ class Slice:
         self,
     ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
-
-
-# %%
 
 
 def get_act_name(
@@ -610,27 +599,76 @@ def remove_batch_dim(
         return tensor
 
 
+# Note: Docstring won't be tested with PyTest (it's ignored), as it thinks this is a regular unit
+# test (because it's name is prefixed `test_`).
 def test_prompt(
     prompt: str,
     answer: str,
-    model,
-    prepend_space_to_answer: bool = True,
-    print_details: bool = True,
-    prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-    top_k: int = 10,
-):
-    """
-    Function to test whether a model can give the correct answer to a prompt. Intended for exploratory analysis, so it prints things out rather than returning things.
+    model,  # Can't give type hint due to circular imports
+    prepend_space_to_answer: Optional[bool] = True,
+    print_details: Optional[bool] = True,
+    prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+    top_k: Optional[int] = 10,
+) -> None:
+    """Test if the Model Can Give the Correct Answer to a Prompt.
 
-    Works for multi-token answers and multi-token prompts.
+    Intended for exploratory analysis. Prints out the performance on the answer (rank, logit, prob),
+    as well as the top k tokens. Works for multi-token prompts and multi-token answers.
 
-    Will always print the ranks of the answer tokens, and if print_details will print the logit and prob for the answer tokens and the top k tokens returned for each answer position.
+    Warning:
+
+    This will print the results (it does not return them).
+
+    Examples:
+
+    >>> from transformer_lens import HookedTransformer, utils
+    >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
+    Loaded pretrained model tiny-stories-1M into HookedTransformer
+
+    >>> prompt = "Why did the elephant cross the"
+    >>> answer = "road"
+    >>> utils.test_prompt(prompt, answer, model)
+    Tokenized prompt: ['<|endoftext|>', 'Why', ' did', ' the', ' elephant', ' cross', ' the']
+    Tokenized answer: [' road']
+    Performance on answer token:
+    Rank: 2        Logit: 14.24 Prob:  3.51% Token: | road|
+    Top 0th token. Logit: 14.51 Prob:  4.59% Token: | ground|
+    Top 1th token. Logit: 14.41 Prob:  4.18% Token: | tree|
+    Top 2th token. Logit: 14.24 Prob:  3.51% Token: | road|
+    Top 3th token. Logit: 14.22 Prob:  3.45% Token: | car|
+    Top 4th token. Logit: 13.92 Prob:  2.55% Token: | river|
+    Top 5th token. Logit: 13.79 Prob:  2.25% Token: | street|
+    Top 6th token. Logit: 13.77 Prob:  2.21% Token: | k|
+    Top 7th token. Logit: 13.75 Prob:  2.16% Token: | hill|
+    Top 8th token. Logit: 13.64 Prob:  1.92% Token: | swing|
+    Top 9th token. Logit: 13.46 Prob:  1.61% Token: | park|
+    Ranks of the answer tokens: [(' road', 2)]
 
     Args:
-        prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
-            the BOS token to the input (applicable when input is a string). Defaults to None,
-            implying usage of self.cfg.default_prepend_bos (default is True unless specified
-            otherwise). Pass True or False to override the default.
+        prompt:
+            The prompt string, e.g. "Why did the elephant cross the".
+        answer:
+            The answer, e.g. "road". Note that if you set prepend_space_to_answer to False, you need
+            to think about if you have a space before the answer here (as e.g. in this example the
+            answer may really be " road" if the prompt ends without a trailing space).
+        model:
+            The model.
+        prepend_space_to_answer:
+            Whether or not to prepend a space to the answer. Note this will only ever prepend a
+            space if the answer doesn't already start with one.
+        print_details:
+            Print the prompt (as a string but broken up by token), answer and top k tokens (all
+            with logit, rank and probability).
+        prepend_bos:
+            Overrides self.cfg.default_prepend_bos if set. Whether to prepend
+            the BOS token to the input (applicable when input is a string). Models generally learn
+            to use the BOS token as a resting place for attention heads (i.e. a way for them to be
+            "turned off"). This therefore often improves performance slightly.
+        top_k:
+            Top k tokens to print details of (when print_details is set to True).
+
+    Returns:
+        None (just prints the results directly).
     """
     if prepend_space_to_answer and not answer.startswith(" "):
         answer = " " + answer
@@ -672,7 +710,6 @@ def test_prompt(
     rprint(f"[b]Ranks of the answer tokens:[/b] {answer_ranks}")
 
 
-# %%
 def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "... b a"]:
     """
     Utility to swap the last two dimensions of a tensor, regardless of the number of leading dimensions
@@ -708,7 +745,6 @@ def composition_scores(
     return comp_norms / r_norms / l_norms
 
 
-# %%
 def get_dataset(dataset_name: str, **kwargs) -> Dataset:
     """
     Returns a small HuggingFace dataset, for easy testing and exploration. Accesses several convenience datasets with 10,000 elements (dealing with the enormous 100GB - 2TB datasets is a lot of effort!). Note that it returns a dataset (ie a dictionary containing all the data), *not* a DataLoader (iterator over the data + some fancy features). But you can easily convert it to a DataLoader.
