@@ -113,7 +113,7 @@ You can use LaTeX, but note that as you're placing this in python strings the ba
 must be repeated (i.e. `\\`). You can write LaTeX inline, or in "display mode".
 
 ```reStructuredText
-.. math:: (a + b)^2 = a^2 + 2ab + b^2
+:math:`(a + b)^2 = a^2 + 2ab + b^2`
 ```
 
 ```reStructuredText
