@@ -62,6 +62,10 @@ You should follow this order:
 
 A description of what the function/class does, including as much detail as is necessary to fully understand it.
 
+Warning:
+
+Any warnings to the user (e.g. common pitfalls).
+
 Examples:
 
 Include any examples here. They will be checked with doctest.
