@@ -1,6 +1,8 @@
-# %%
-""" 
-A file with some rough evals for models - I expect you to be likely better off using the HuggingFace evaluate library if you want to do anything properly, but this is here if you want it and want to eg cheaply and roughly compare models you've trained to baselines.
+"""Evaluation Helpers.
+
+This module contains some rough evals for models, but you are likely better off using the
+HuggingFace evaluate library if you want to do anything properly. This is however here if you want
+it and want to eg cheaply and roughly compare models you've trained to baselines.
 """
 
 import random
@@ -172,28 +174,29 @@ class IOIDataset(Dataset):
     Paper: https://arxiv.org/pdf/2211.00593.pdf
 
     Example:
-    --------
+
     .. code-block:: python
 
         >>> from transformer_lens.evals import ioi_eval, IOIDataset
         >>> from transformer_lens.HookedTransformer import HookedTransformer
 
         >>> model = HookedTransformer.from_pretrained('gpt2-small')
+        Loaded pretrained model gpt2-small into HookedTransformer
 
-        >>> # Eval like this
-        >>> print(ioi_eval(model, num_samples=100))
-        {'Logit Difference': 3.655226745605469, 'Accuracy': 1.0}
+        >>> # Evaluate like this, printing the logit difference
+        >>> print(round(ioi_eval(model, num_samples=100)["Logit Difference"], 3))
+        5.476
 
         >>> # Can use custom dataset
         >>> ds = IOIDataset(
-            tokenizer=model.tokenizer,
-            num_samples=100,
-            templates=['[A] met with [B]. [B] gave the [OBJECT] to [A]'],
-            names=['Alice', 'Bob', 'Charlie'],
-            nouns={'OBJECT': ['ball', 'book']},
-            )
-        >>> print(ioi_eval(model, dataset=ds))
-        {'Logit Difference': 3.7498160457611083, 'Accuracy': 1.0}
+        ...     tokenizer=model.tokenizer,
+        ...     num_samples=100,
+        ...     templates=['[A] met with [B]. [B] gave the [OBJECT] to [A]'],
+        ...     names=['Alice', 'Bob', 'Charlie'],
+        ...     nouns={'OBJECT': ['ball', 'book']},
+        ... )
+        >>> print(round(ioi_eval(model, dataset=ds)["Logit Difference"], 3))
+        5.397
     """
 
     def __init__(
@@ -236,6 +239,7 @@ class IOIDataset(Dataset):
         }
 
     def get_sample(self, symmetric=False) -> List[Dict[str, str]]:
+        random.seed(42)
         template: str = random.choice(self.templates)
         for noun_type, noun_list in self.nouns.items():
             template = template.replace(f"[{noun_type}]", random.choice(noun_list))
@@ -277,22 +281,22 @@ class IOIDataset(Dataset):
         }
 
 
-# %%
 @torch.inference_mode()
 def ioi_eval(
     model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None, symmetric=False
 ):
-    """
-    Evaluates the model on the Indirect Object Identification task.
+    """Evaluate the Model on the Indirect Object Identification Task.
 
-    dataset must be a torch Dataset that returns a dict:
-        {
-            'prompt': torch.LongTensor,
-            'IO': torch.LongTensor,
-            'S': torch.LongTensor
-        }
+    Args:
+        model: HookedTransformer model.
+        dataset: PyTorch Dataset that returns a dict with keys "prompt", "IO", and "S".
+        batch_size: Batch size to use.
+        num_samples: Number of samples to use.
+        tokenizer: Tokenizer to use.
+        symmetric: Whether to use the symmetric version of the task.
 
-    Returns average logit difference and accuracy.
+    Returns:
+        Average logit difference and accuracy.
     """
     if tokenizer is None:
         tokenizer = model.tokenizer

@@ -1,3 +1,8 @@
+"""SVD Interpreter.
+
+Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
+:class:`transformer_lens.HookedTransformer`.
+"""
 from typing import Optional, Union
 
 import fancy_einsum as einsum
@@ -27,30 +32,46 @@ class SVDInterpreter:
     ) -> torch.Tensor:
         """Gets the singular vectors for a given vector type, layer, and optionally head.
 
-        Options:
-        - OV: Get the singular vectors of the OV matrix for a particular layer and head.
-        - w_in: Get the singular vectors of the w_in matrix for a particular layer.
-        - w_out: Get the singular vectors of the w_out matrix for a particular layer.
-
-        Returns a (d_vocab, 1, num_vectors) tensor.
-
-        This tensor can then be plotted using Neel's PySvelte, as demonstrated in the demo for this feature. The demo also points out some "gotchas" in this feature - numerical instability means inconsistency across devices, and the default HookedTransformer parameters don't replicate the original SVD post very well. So I'd recommend checking out the demo if you want to use this!
+        This tensor can then be plotted using Neel's PySvelte, as demonstrated in the demo for this
+        feature. The demo also points out some "gotchas" in this feature - numerical instability
+        means inconsistency across devices, and the default HookedTransformer parameters don't
+        replicate the original SVD post very well. So I'd recommend checking out the demo if you
+        want to use this!
 
         Example:
+
         .. code-block:: python
-            >>> from transformer_lens import HookedTransformer, SVDInterpreter
-            >>> model = HookedTransformer.from_pretrained('gpt2-medium')
-            >>> svd_interpreter = SVDInterpreter(model)
 
-            >>> ov = svd_interpreter.get_singular_vectors('OV', layer_index=22, head_index=10)
+            from transformer_lens import HookedTransformer, SVDInterpreter
 
-            >>> all_tokens = [model.to_str_tokens(np.array([i])) for i in range(model.cfg.d_vocab)]
-            >>> all_tokens = [all_tokens[i][0] for i in range(model.cfg.d_vocab)]
+            model = HookedTransformer.from_pretrained('gpt2-medium')
+            svd_interpreter = SVDInterpreter(model)
 
-            >>> def plot_matrix(matrix, tokens, k=10, filter="topk"):
-            >>>     pysvelte.TopKTable(tokens=all_tokens, activations=matrix, obj_type="SVD direction", k=k, filter=filter).show()
+            ov = svd_interpreter.get_singular_vectors('OV', layer_index=22, head_index=10)
 
-            >>> plot_matrix(ov, all_tokens)"""
+            all_tokens = [model.to_str_tokens(np.array([i])) for i in range(model.cfg.d_vocab)]
+            all_tokens = [all_tokens[i][0] for i in range(model.cfg.d_vocab)]
+
+            def plot_matrix(matrix, tokens, k=10, filter="topk"):
+                pysvelte.TopKTable(
+                    tokens=all_tokens,
+                    activations=matrix,
+                    obj_type="SVD direction",
+                    k=k,
+                    filter=filter
+                ).show()
+
+            plot_matrix(ov, all_tokens)
+
+        Args:
+            vector_type: Type of the vector:
+                - "OV": Singular vectors of the OV matrix for a particular layer and head.
+                - "w_in": Singular vectors of the w_in matrix for a particular layer.
+                - "w_out": Singular vectors of the w_out matrix for a particular layer.
+            layer_index: The index of the layer.
+            num_vectors: Number of vectors.
+            head_index: Index of the head.
+        """
 
         if head_index is None:
             assert vector_type in [

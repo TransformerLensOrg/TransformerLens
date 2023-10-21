@@ -1,4 +1,7 @@
-# Import stuff
+"""Hook Points.
+
+Helpers to access activations in models.
+"""
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -10,27 +13,22 @@ import torch.utils.hooks as hooks
 
 @dataclass
 class LensHandle:
-    """
-    A dataclass that holds information about a PyTorch hook.
-
-    Attributes:
-        hook (hooks.RemovableHandle): Reference to the hook's RemovableHandle.
-        is_permanent (bool, optional): Indicates if the hook is permanent. Defaults to False.
-        context_level (Optional[int], optional): Context level associated with the hooks context
-            manager for the given hook. Defaults to None.
-    """
+    """Dataclass that holds information about a PyTorch hook."""
 
     hook: hooks.RemovableHandle
+    """Reference to the Hook's Removable Handle."""
+
     is_permanent: bool = False
+    """Indicates if the Hook is Permanent."""
+
     context_level: Optional[int] = None
+    """Context level associated with the hooks context manager for the given hook."""
 
 
-# %%
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
 
 
-# %%
 class HookPoint(nn.Module):
     """
     A helper class to access intermediate activations in a PyTorch model (inspired by Garcon).
@@ -141,13 +139,23 @@ class HookPoint(nn.Module):
 
 # %%
 class HookedRootModule(nn.Module):
-    """
-    A class building on nn.Module to interface nicely with HookPoints
-    Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks, and run_with_cache to run the model on some input and return a cache of all activations
+    """A class building on nn.Module to interface nicely with HookPoints.
 
-    WARNING: The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add the fixed version, the broken one is still there. To solve this, run_with_hooks will remove hooks at the end by default, and I recommend using the API of this and run_with_cache. If you want to add hooks into global state, I recommend being intentional about this, and I recommend using reset_hooks liberally in your code to remove any accidentally remaining global state.
+    Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks,
+    and run_with_cache to run the model on some input and return a cache of all activations.
 
-    The main time this goes wrong is when you want to use backward hooks (to cache or intervene on gradients). In this case, you need to keep the hooks around as global state until you've run loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
+    Notes:
+
+    The main footgun with PyTorch hooking is that hooks are GLOBAL state. If you add a hook to the
+    module, and then run it a bunch of times, the hooks persist. If you debug a broken hook and add
+    the fixed version, the broken one is still there. To solve this, run_with_hooks will remove
+    hooks at the end by default, and I recommend using the API of this and run_with_cache. If you
+    want to add hooks into global state, I recommend being intentional about this, and I recommend
+    using reset_hooks liberally in your code to remove any accidentally remaining global state.
+
+    The main time this goes wrong is when you want to use backward hooks (to cache or intervene on
+    gradients). In this case, you need to keep the hooks around as global state until you've run
+    loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
     """
 
     def __init__(self, *args):
@@ -279,11 +287,11 @@ class HookedRootModule(nn.Module):
             clear_contexts (bool): If True, clears hook contexts whenever hooks are reset.
 
         Example:
-        --------
+
         .. code-block:: python
 
-            >>> with model.hooks(fwd_hooks=my_hooks):
-            >>>     hooked_loss = model(text, return_type="loss")
+            with model.hooks(fwd_hooks=my_hooks):
+                hooked_loss = model(text, return_type="loss")
         """
         try:
             self.context_level += 1

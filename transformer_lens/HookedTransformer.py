@@ -1,3 +1,13 @@
+"""Hooked Transformer.
+
+The Hooked Transformer is the core part of TransformerLens.
+
+In common PyTorch model implementations (e.g. ones from HuggingFace) it's fairly easy to extract
+model weights, but much harder to extract activations. TransformerLens aims to simplify this task by
+attaching hooks to every notable activation within the model. This enables the inspection and/or
+alteration of activations in individual components like attention heads and MLP layers, facilitating
+a deeper understanding of the internal workings of transformers like GPT-2.
+"""
 import logging
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload
 
@@ -8,7 +18,7 @@ import torch.nn as nn
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
@@ -38,9 +48,22 @@ SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
 Loss = Union[SingleLoss, LossPerToken]
 
+DTYPE_FROM_STRING = {
+    "float32": torch.float32,
+    "fp32": torch.float32,
+    "float16": torch.float16,
+    "fp16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "bf16": torch.bfloat16,
+}
 
-# Named tuple object for if we want to output both logits and loss
+
 class Output(NamedTuple):
+    """Output Named Tuple.
+
+    Named tuple object for if we want to output both logits and loss.
+    """
+
     logits: Float[torch.Tensor, "batch pos d_vocab"]
     loss: Loss
 
@@ -48,36 +71,38 @@ class Output(NamedTuple):
 class HookedTransformer(HookedRootModule):
     """Hooked Transformer.
 
-    This class implements a full Transformer using the components in ./components.py, with
-    HookPoints on every interesting activation. It inherits from HookedRootModule.
+    Implements a full Transformer using the components :doc:`here <transformer_lens.components>`,
+    with a :class:`transformer_lens.hook_points.HookPoint` on every interesting activation.
 
-    It can have a pretrained Transformer's weights automatically loaded in via the
-    HookedTransformer.from_pretrained class method. It can also be instantiated with randomly
-    initialized weights via __init__ and being passed a dict or HookedTransformerConfig object.
+    TransformerLens comes loaded with >50 GPT-style models. Typically you initialise it with one of
+    these via :meth:`from_pretrained`, although it can also be instantiated with randomly
+    initialized weights via :meth:`__init__`.
+
+    Once you've initialized the model, a common next step is to test it can do the task you're
+    investigating. This can be done with :func:`transformer_lens.utils.test_prompt`.
     """
 
     def __init__(
         self,
-        cfg,
-        tokenizer=None,
-        move_to_device=True,
-        default_padding_side="right",
+        cfg: Union[HookedTransformerConfig, Dict],
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
+        move_to_device: bool = True,
+        default_padding_side: Literal["left", "right"] = "right",
     ):
         """Model initialization.
 
-        Note that if you want to load the model from pretrained weights, you should use the
-        `HookedTransformer.from_pretrained()` class method instead of this one.
+        Note that if you want to load the model from pretrained weights, you should use
+        :meth:`from_pretrained` instead.
 
         Args:
-            cfg Union[HookedTransformerConfig, Dict]: The config to use for the
-                model.
-            tokenizer (*optional): The tokenizer to use for the model. If not
-                provided, it is inferred from cfg.tokenizer_name or initialized to None. If None,
-                then the model cannot be passed strings, and d_vocab must be explicitly set.
-            move_to_device (bool): Whether to move the model to the device specified in cfg.
+            cfg: The config to use for the model.
+            tokenizer: The tokenizer to use for the model. If not provided, it is inferred from
+                `cfg.tokenizer_name` or initialized to `None`. If `None`, then the model cannot be
+                passed strings, and d_vocab must be explicitly set.
+            move_to_device: Whether to move the model to the device specified in cfg.
                 device. Must be true if `n_devices` in the config is greater than 1, since the
                 model's layers will be split across multiple devices.
-            default_padding_side (str): Which side to pad on. Must be "right" or "left".
+            default_padding_side: Which side to pad on.
         """
         super().__init__()
         if isinstance(cfg, Dict):
@@ -195,20 +220,39 @@ class HookedTransformer(HookedRootModule):
             assert (
                 self.cfg.use_hook_mlp_in
             ), f"Cannot add hook {hook_point_name} if use_hook_mlp_in is False"
+        if hook_point_name.endswith("attn_in"):
+            assert (
+                self.cfg.use_attn_in
+            ), f"Cannot add hook {hook_point_name} if use_attn_in is False"
 
     def input_to_embed(
         self,
         input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[
+            Union[Literal["left", "right"], None]
+        ] = USE_DEFAULT_VALUE,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
         Optional[Int[torch.Tensor, "batch pos"]],  # tokens
         Optional[Float[torch.Tensor, "batch pos d_model"]],  # shortformer_pos_embed
-        Optional[torch.Tensor],  # left_attention_mask [batch pos]
+        Optional[torch.Tensor],  # attention_mask [batch pos]
     ]:
+        """Convert input to first residual stream.
+
+        Args:
+            input (Union[str, List[str], Int[torch.Tensor, "batch pos"]]): The input to the model.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. Pass True or False to locally override the default.
+            padding_side ([Literal["left", "right"], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing
+                multiple strings of different lengths.
+            past_kv_cache (HookedTransformerKeyValueCache, optional): If passed, we're doing caching
+                and attention_mask will be stored in the cache.
+        """
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
             assert (
@@ -226,35 +270,27 @@ class HookedTransformer(HookedRootModule):
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
-        if self.tokenizer and self.tokenizer.padding_side == "left":
-            # If the padding side is left, we need to compute the attention mask for the adjustment
-            # of absolute positional embeddings and attention masking so that the pad tokens are not
-            # attended.
+        if (
+            self.tokenizer and self.tokenizer.padding_side == "left"
+        ) or past_kv_cache is not None:
+            # If the padding side is left or we are using caching, we need to compute the attention mask
+            # for the adjustment of absolute positional embeddings and attention masking so that pad
+            # tokens are not attended.
 
-            if past_left_attention_mask is None:
-                left_attention_mask = utils.get_attention_mask(
-                    self.tokenizer, tokens, self.cfg.default_prepend_bos
-                )
-            else:
-                assert (
-                    past_kv_cache is not None
-                ), "If past_left_attention_mask is not None, past_kv_cache must not be None"
-                assert (
-                    tokens.shape[1] == 1
-                ), "If past_left_attention_mask is not None, tokens must be a single token along the sequence dimension"
+            if prepend_bos is USE_DEFAULT_VALUE:
+                prepend_bos = self.cfg.default_prepend_bos
+            attention_mask = utils.get_attention_mask(
+                self.tokenizer, tokens, prepend_bos
+            )
+
+            if past_kv_cache is not None:
                 # past_kv_cache is not None, so we're doing caching.
-                # We need to extend the past_left_attention_mask.
-                # Append '1' to the right of the past_left_attention_mask to account for the new
-                # tokens
-                left_attention_mask = utils.extend_tensor_with_ones(
-                    past_left_attention_mask
-                )
-
+                # We need to extend the previous attention_mask.
+                # Update the past_kv_cache with the new attention_mask (unless it's frozen)
+                attention_mask = past_kv_cache.append_attention_mask(attention_mask)
         else:
-            # If tokenizer is not set, we assume that the input is right-padded.
-            # If the padding side is right, we don't need to compute the attention mask.
-            # We separate this case from left padding for computational efficiency.
-            left_attention_mask = None
+            # We separate this case from for computational efficiency.
+            attention_mask = None
 
         # If we're doing caching, then we reuse keys and values from previous runs, as that's the
         # only way that past activations will affect the final logits. The cache contains those so
@@ -275,18 +311,13 @@ class HookedTransformer(HookedRootModule):
             assert cached_batch_size == batch_size
             assert num_heads_in_cache == self.cfg.n_heads
             assert d_head_in_cache == self.cfg.d_head
-            # If we want to generate from the empty string, we'd pass in an empty cache, so we need
-            # to handle that case
-            assert (
-                cache_ctx_length == 0 or ctx_length == 1
-            ), "Pass in one token at a time after loading cache"
             pos_offset = cache_ctx_length
         if self.cfg.use_hook_tokens:
             tokens = self.hook_tokens(tokens)
         embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
         if self.cfg.positional_embedding_type == "standard":
             pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset, left_attention_mask)
+                self.pos_embed(tokens, pos_offset, attention_mask)
             )  # [batch, pos, d_model]
             residual = embed + pos_embed  # [batch, pos, d_model]
             shortformer_pos_embed = None
@@ -294,7 +325,7 @@ class HookedTransformer(HookedRootModule):
             # If we're using shortformer style attention, we don't add the positional embedding to
             # the residual stream. See HookedTransformerConfig for details
             pos_embed = self.hook_pos_embed(
-                self.pos_embed(tokens, pos_offset, left_attention_mask)
+                self.pos_embed(tokens, pos_offset, attention_mask)
             )  # [batch, pos, d_model]
             residual = embed
             shortformer_pos_embed = pos_embed
@@ -311,25 +342,26 @@ class HookedTransformer(HookedRootModule):
             raise ValueError(
                 f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"
             )
-        return residual, tokens, shortformer_pos_embed, left_attention_mask
+        return residual, tokens, shortformer_pos_embed, attention_mask
 
     @overload
     def forward(
         self,
         input,
         return_type: Literal["logits"],
-        loss_per_token: bool = False,
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        loss_per_token: Optional[bool] = False,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[
+            Union[Literal["left", "right"], None]
+        ] = USE_DEFAULT_VALUE,
         start_at_layer: Optional[int] = None,
         tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Loss:
         ...
 
@@ -338,18 +370,19 @@ class HookedTransformer(HookedRootModule):
         self,
         input,
         return_type: Literal["loss"],
-        loss_per_token: bool = False,
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        loss_per_token: Optional[bool] = False,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[
+            Union[Literal["left", "right"], None]
+        ] = USE_DEFAULT_VALUE,
         start_at_layer: Optional[int] = None,
         tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Loss:
         ...
 
@@ -358,18 +391,19 @@ class HookedTransformer(HookedRootModule):
         self,
         input,
         return_type: Literal["both"],
-        loss_per_token: bool = False,
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        loss_per_token: Optional[bool] = False,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[
+            Union[Literal["left", "right"], None]
+        ] = USE_DEFAULT_VALUE,
         start_at_layer: Optional[int] = None,
         tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
         ...
 
@@ -378,22 +412,22 @@ class HookedTransformer(HookedRootModule):
         self,
         input,
         return_type: Literal[None],
-        loss_per_token: bool = False,
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        loss_per_token: Optional[bool] = False,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[
+            Union[Literal["left", "right"], None]
+        ] = USE_DEFAULT_VALUE,
         start_at_layer: Optional[int] = None,
         tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,
     ) -> None:
         ...
 
-    # TODO make sure type assertions are provided
     def forward(
         self,
         input: Union[
@@ -403,18 +437,17 @@ class HookedTransformer(HookedRootModule):
             Float[torch.Tensor, "batch pos d_model"],
         ],
         return_type: Optional[str] = "logits",
-        loss_per_token: bool = False,
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        loss_per_token: Optional[bool] = False,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         start_at_layer: Optional[int] = None,
         tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
         shortformer_pos_embed: Optional[
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
-        left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-        past_left_attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Union[
         None,
         Float[torch.Tensor, "batch pos d_vocab"],
@@ -440,13 +473,16 @@ class HookedTransformer(HookedRootModule):
                 per-token loss is a tensor ([batch, position-1]) - position-1 because we're
                 predicting the next token, and there's no specified next token for the final token.
                 Defaults to False.
-            prepend_bos Optional[bool]: Whether to prepend the BOS token to the input (only applies
-                when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos which is set to True unless specified otherwise. (Even
-                for models not explicitly trained with a prepended BOS token, heads often use the
-                first position as a resting position and accordingly lose information from the first
-                token, so this empirically seems to give better results.) Pass True or False to
-                locally override the default.
+            prepend_bos Optional[bool]: Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. (Even for models not explicitly trained with a prepended BOS token, heads
+                often use the first position as a resting position and accordingly lose information
+                from the first token, so this empirically seems to give better results.) Pass True
+                or False to locally override the default.
+            padding_side Optional[Literal["left", "right"]]: Overrides self.tokenizer.padding_side.
+                Specifies which side to pad on when tokenizing multiple strings of different
+                lengths.
             start_at_layer Optional[int]: If not None, start the forward pass at the specified
                 layer. Requires input to be the residual stream before the specified layer with
                 shape [batch, pos, d_model]. Inclusive - ie, start_at_layer = 0 skips the embedding
@@ -458,13 +494,25 @@ class HookedTransformer(HookedRootModule):
             shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]]: Positional
                 embedding for shortformer models. Only use if start_at_layer is not None and
                 self.cfg.positional_embedding_type == "shortformer".
-            left_attention_mask: Optional[torch.Tensor]: The attention mask for left padded tokens.
-                Only use if start_at_layer is not None and self.tokenizer.padding_side == "left".
+            attention_mask: Optional[torch.Tensor]: The attention mask for padded tokens. Only use
+                if start_at_layer is not None and (self.tokenizer.padding_side == "left" or
+                past_kv_cache is not None).
             stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer.
                 Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer =
                 1 will run the embedding layer and the first transformer block, etc. Supports
                 negative indexing. Useful for analysis of intermediate layers, eg finding neuron
                 activations in layer 3 of a 24 layer model. Defaults to None (run the full model).
+                If not None, we return the last residual stream computed.
+            past_kv_cache Optional[HookedTransformerKeyValueCache]: If not None, keys and values
+                will be stored for every attention head (unless the cache is frozen). If there are
+                keys and values already in the cache, these will be prepended to the keys and values
+                for the new input, so that the new tokens can pay attention to previous tokens. This
+                is useful for generating text, because we don't need to repeat computation for
+                tokens that have already been through the model. Also caches attention_mask so
+                previous tokens are masked correctly (unless frozen). Padding should be ignored in
+                all cases, so it's okay to eg. pass in left padded tokens twice in a row.
+                Warning: Don't accidently prepend_bos to the second half of a prompt.
+                Defaults to None (don't use caching).
         """
 
         with utils.LocallyOverridenDefaults(
@@ -475,13 +523,12 @@ class HookedTransformer(HookedRootModule):
                     residual,
                     tokens,
                     shortformer_pos_embed,
-                    left_attention_mask,
+                    attention_mask,
                 ) = self.input_to_embed(
                     input,
                     prepend_bos=prepend_bos,
                     padding_side=padding_side,
                     past_kv_cache=past_kv_cache,
-                    past_left_attention_mask=past_left_attention_mask,
                 )
             else:
                 assert type(input) == torch.Tensor
@@ -493,14 +540,12 @@ class HookedTransformer(HookedRootModule):
             # between those indices. Note that start_at_layer is inclusive and stop_at_layer is
             # exclusive.
             # Eg: start_at_layer==None + stop_at_layer==0 means to only run the embed.
-            # Eg: start_at_layer==3 + stop_at_layer==-1 means to run from layer 3 until the end of
-            # the PENULTIMATE layer
-            transformer_block_list = self.blocks[start_at_layer:stop_at_layer]  # type: ignore
-
-            for i, block in enumerate(transformer_block_list):  # type: ignore
-                # Note that each block includes skip connections, so we don't need residual +
-                # block(residual). If we're using multiple GPUs, we need to send the residual and
-                # shortformer_pos_embed to the correct GPU
+            # Eg: start_at_layer==3 + stop_at_layer==-1 means to run from layer 3 until the end of the PENULTIMATE layer
+            blocks_and_idxs = list(zip(range(self.cfg.n_layers), self.blocks))
+            for i, block in blocks_and_idxs[start_at_layer:stop_at_layer]:  # type: ignore
+                # Note that each block includes skip connections, so we don't need
+                # residual + block(residual)
+                # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
                 residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
                 if shortformer_pos_embed is not None:
                     shortformer_pos_embed = shortformer_pos_embed.to(
@@ -515,12 +560,12 @@ class HookedTransformer(HookedRootModule):
                     if past_kv_cache is not None
                     else None,
                     shortformer_pos_embed=shortformer_pos_embed,
-                    left_attention_mask=left_attention_mask,
+                    attention_mask=attention_mask,
                 )  # [batch, pos, d_model]
 
             if stop_at_layer is not None:
                 # When we stop at an early layer, we end here rather than doing further computation
-                return None
+                return residual
 
             if self.cfg.normalization_type is not None:
                 residual = self.ln_final(residual)  # [batch, pos, d_model]
@@ -531,6 +576,9 @@ class HookedTransformer(HookedRootModule):
                 if return_type == "logits":
                     return logits
                 else:
+                    assert (
+                        tokens is not None
+                    ), "tokens must be passed in if return_type is 'loss' or 'both'"
                     loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
                     if return_type == "loss":
                         return loss
@@ -644,10 +692,12 @@ class HookedTransformer(HookedRootModule):
     def to_tokens(
         self,
         input: Union[str, List[str]],
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
-        move_to_device: bool = True,
-        truncate: bool = True,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[
+            Union[Literal["left", "right"], None]
+        ] = USE_DEFAULT_VALUE,
+        move_to_device: Optional[bool] = True,
+        truncate: Optional[bool] = True,
     ) -> Int[torch.Tensor, "batch pos"]:
         """Converts a string to a tensor of tokens.
 
@@ -666,10 +716,13 @@ class HookedTransformer(HookedRootModule):
 
         Args:
             input (Union[str, List[str]]): The input to tokenize.
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only
-                applies when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
-                True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. Pass True or False to locally override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing
+                multiple strings of different lengths.
             move_to_device (bool): Whether to move the output tensor of tokens to the device the
                 model lives on. Defaults to True truncate (bool): If the output tokens are too long,
                 whether to truncate the output tokens to the model's max context window. Does nothing
@@ -710,6 +763,7 @@ class HookedTransformer(HookedRootModule):
     def to_string(
         self,
         tokens: Union[
+            List[int],
             Int[torch.Tensor, ""],
             Int[torch.Tensor, "batch pos"],
             Int[torch.Tensor, "pos"],
@@ -751,8 +805,10 @@ class HookedTransformer(HookedRootModule):
             Int[np.ndarray, "1 pos"],
             list,
         ],
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[
+            Union[Literal["left", "right"], None]
+        ] = USE_DEFAULT_VALUE,
     ) -> Union[List[str], List[List[str]]]:
         """Map text, a list of text or tokens to a list of tokens as strings.
 
@@ -774,10 +830,13 @@ class HookedTransformer(HookedRootModule):
         Args:
             input (Union[str, list, torch.Tensor]): The input - either a string or a tensor of
                 tokens. If tokens, should be a tensor of shape [pos] or [1, pos].
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only
-                applies when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
-                True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. Pass True or False to locally override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
 
         Returns:
             str_tokens: List of individual tokens as strings
@@ -849,8 +908,10 @@ class HookedTransformer(HookedRootModule):
             str, Union[Float[torch.Tensor, "pos"], Float[torch.Tensor, "1 pos"]]
         ],
         mode="first",
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[
+            Union[Literal["left", "right"], None]
+        ] = USE_DEFAULT_VALUE,
     ):
         """Get the position of a single_token in a string or sequence of tokens.
 
@@ -871,10 +932,13 @@ class HookedTransformer(HookedRootModule):
                 with a dummy batch dimension.
             mode (str, optional): If there are multiple matches, which match to return. Supports
                 "first" or "last". Defaults to "first".
-            prepend_bos (bool, optional): Whether to prepend the BOS token to the input (only
-                applies when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos which is set to True unless specified otherwise. Pass
-                True or False to locally override the default.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (only applies when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos which is set to True unless specified
+                otherwise. Pass True or False to locally override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
         """
         if isinstance(input, str):
             # If the input is a string, convert to tensor
@@ -968,7 +1032,7 @@ class HookedTransformer(HookedRootModule):
     def to(
         self,
         device_or_dtype: Union[torch.device, str, torch.dtype],
-        print_details: bool = True,
+        print_details: Optional[bool] = True,
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
@@ -1004,71 +1068,138 @@ class HookedTransformer(HookedRootModule):
     def from_pretrained(
         cls,
         model_name: str,
-        fold_ln=True,
-        center_writing_weights=True,
-        center_unembed=True,
-        refactor_factored_attn_matrices=False,
-        checkpoint_index=None,
-        checkpoint_value=None,
-        hf_model=None,
-        device=None,
-        n_devices=1,
-        tokenizer=None,
-        move_to_device=True,
-        fold_value_biases=True,
-        default_prepend_bos=True,
-        default_padding_side="right",
+        fold_ln: Optional[bool] = True,
+        center_writing_weights: Optional[bool] = True,
+        center_unembed: Optional[bool] = True,
+        refactor_factored_attn_matrices: Optional[bool] = False,
+        checkpoint_index: Optional[int] = None,
+        checkpoint_value: Optional[int] = None,
+        hf_model: Optional[AutoModelForCausalLM] = None,
+        device: Optional[Union[str, torch.device]] = None,
+        n_devices: Optional[int] = 1,
+        tokenizer: Optional[PreTrainedTokenizerBase] = None,
+        move_to_device: Optional[bool] = True,
+        fold_value_biases: Optional[bool] = True,
+        default_prepend_bos: Optional[bool] = True,
+        default_padding_side: Optional[Literal["left", "right"]] = "right",
+        dtype="float32",
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
-        """Load in pretrained model weights.
+        """Load in a Pretrained Model.
 
         Load in pretrained model weights to the HookedTransformer format and optionally to do some
         processing to make the model easier to interpret. Currently supports loading from most
-        autoregressive HuggingFace models (GPT2, GPTNeo, GPTJ, OPT) and from a range of toy models
-        and SoLU models trained by me (Neel Nanda).
+        autoregressive HuggingFace models (``gpt2``, ``neo``, ``gptj``, ``opt``...) and from a range
+        of toy models and SoLU models trained by Neel Nanda. The full list is available in the docs
+        under :doc:`model properties</generated/model_properties_table>`. Also supports loading from
+        a checkpoint for checkpointed models (currently, models trained by NeelNanda and the
+        stanford-crfm models (using parameters ``checkpoint_index`` and ``checkpoint_value``).
 
-        Also supports loading from a checkpoint for checkpointed models (currently, models trained
-        by me (NeelNanda) and the stanford-crfm models). These can either be determined by the
-        checkpoint index (the index of the checkpoint in the checkpoint list) or by the checkpoint
-        value (the value of the checkpoint, eg 1000 for a checkpoint taken at step 1000 or after
-        1000 tokens. Each model has checkpoints labelled with exactly one of labels and steps). If
-        neither is specified the final model is loaded. If both are specified, the checkpoint index
-        is used.
+        See :meth:`load_and_process_state_dict` for details on the processing (folding layer norm,
+        centering the unembedding and centering the writing weights).
 
-        See load_and_process_state_dict for details on the processing (folding layer norm, centering
-        the unembedding and centering the writing weights)
+        Example:
+
+        >>> from transformer_lens import HookedTransformer
+        >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
+        Loaded pretrained model tiny-stories-1M into HookedTransformer
 
         Args:
-            model_name (str): The model name - must be an element of OFFICIAL_MODEL_NAMES or an
-                alias of one. fold_ln (bool, optional): Whether to fold in the LayerNorm weights to
-                the subsequent linear layer. This does not change the computation. Defaults to True.
-            center_writing_weights (bool, optional): Whether to center weights
+            model_name: The model name - must be an element of
+                :const:`transformer_lens.loading_from_pretrained.OFFICIAL_MODEL_NAMES` or an alias
+                of one. The full list of available models can be found in the docs under :doc:`model
+                properties</generated/model_properties_table>`.
+            fold_ln: Whether to fold in the LayerNorm weights to the
+                subsequent linear layer. This does not change the computation.
+
+                `LayerNorm
+                <https://wandb.ai/wandb_fc/LayerNorm/reports/Layer-Normalization-in-Pytorch-With-Examples---VmlldzoxMjk5MTk1>`_
+                is a common regularization technique used in transformers. Unlike BatchNorm, it
+                cannot be turned off at inference time, as it significantly alters the mathematical
+                function implemented by the transformer.
+
+                When `fold_ln` is set to True, LayerNorm (with weights :math:`w_{ln}` and
+                :math:`b_{ln}`) followed by a linear layer (:math:`W + b`) is optimized to
+                LayerNormPre (just centering & normalizing) followed by a new linear layer with
+                :math:`W_{eff} = w[:, \text{None}] * W` (element-wise multiplication) and
+                :math:`b_{eff} = b + b_{ln} @ W`. This transformation is computationally equivalent
+                and simplifies the model's interpretability. It essentially merges LayerNorm weights
+                into the subsequent linear layer's weights, which is handled by HookedTransformer
+                when loading pre-trained weights. Set `fold_ln` to False when loading a state dict
+                if you wish to turn this off.
+
+                Mathematically, LayerNorm is defined as follows:
+
+                .. math::
+                    x_1 &= x_0 - \\text{mean}(x_0)
+
+                    x_2 &= \\frac{x_1}{\\sqrt{\\text{mean}(x_1^2)}}
+
+                    x_3 &= x_2 \\cdot w
+
+                    x_4 &= x_3 + b
+
+                For further details, refer to `this document
+                <https://transformer-circuits.pub/2021/framework/index.html#:~:text=Handling%20Layer%20Normalization>`_.
+            center_writing_weights: Whether to center weights
                 writing to the residual stream (ie set mean to be zero). Due to LayerNorm this
-                doesn't change the computation. Defaults to True.
-            center_unembed (bool, optional): Whether to center W_U (ie set mean
+                doesn't change the computation.
+
+                A related idea to folding layernorm (``fold_ln``) - *every* component reading an
+                input from the residual stream is preceded by a LayerNorm, which means that the mean
+                of a residual stream vector (ie the component in the direction of all ones) never
+                matters. This means we can remove the all ones component of weights and biases whose
+                output *writes* to the residual stream. Mathematically, ``W_writing -=
+                W_writing.mean(dim=1, keepdim=True)``.
+            center_unembed: Whether to center W_U (ie set mean
                 to be zero). Softmax is translation invariant so this doesn't affect log probs or
-                loss, but does change logits. Defaults to True.
-            refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
+                loss, but does change logits.
+
+                The logits are fed into a softmax. Softmax is translation invariant (eg, adding 1 to
+                every logit doesn't change the output), so we can simplify things by setting the
+                mean of the logits to be zero. This is equivalent to setting the mean of every
+                output vector of ``W_U`` to zero. In code, ``W_U -= W_U.mean(dim=-1,
+                keepdim=True)``.
+            refactor_factored_attn_matrices: Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
-            checkpoint_index (int, optional): If loading from a checkpoint, the index of
-                the checkpoint to load. Defaults to None.
-            checkpoint_value (int, optional): If loading from a checkpoint, the value of
+            checkpoint_index: If loading from a checkpoint, the index of
+                the checkpoint to load.
+            checkpoint_value: If loading from a checkpoint, the value of
                 the checkpoint to load, ie the step or token number (each model has checkpoints
-                labelled with exactly one of these). Defaults to None.
-            hf_model (AutoModelForCausalLM, optional): If you have already loaded in the
+                labelled with exactly one of these). E.g. ``1000`` for a checkpoint taken at step
+                1000 or after 1000 tokens. If `checkpoint_index` is also specified, this will be
+                ignored.
+            hf_model: If you have already loaded in the
                 HuggingFace model, you can pass it in here rather than needing to recreate the
                 object. Defaults to None.
-            device (str, optional): The device to load the model onto. By
+            device: The device to load the model onto. By
                 default will load to CUDA if available, else CPU.
-            n_devices (int, optional): The number of devices to split the model
+            n_devices: The number of devices to split the model
                 across. Defaults to 1. If greater than 1, `device` must be cuda.
-            tokenizer (*optional): The tokenizer to use for the model. If not
+            tokenizer: The tokenizer to use for the model. If not
                 provided, it is inferred from cfg.tokenizer_name or initialized to None. If None,
                 then the model cannot be passed strings, and d_vocab must be explicitly set.
-            move_to_device (bool, optional): Whether to move the model to the device specified in
+            move_to_device: Whether to move the model to the device specified in
                 cfg. device. Must be true if `n_devices` in the config is greater than 1, since the
                 model's layers will be split across multiple devices.
-            default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS
+            fold_value_biases: Each attention head has a value bias. Values are averaged to create
+                mixed values (``z``), weighted by the attention pattern, but as the bias is
+                constant, its contribution to ``z`` is exactly the same. The output of a head is ``z
+                @ W_O``, and so the value bias just linearly adds to the output of the head. This
+                means that the value bias of a head has nothing to do with the head, and is just a
+                constant added to the attention layer outputs. We can take the sum across these and
+                b_O to get an "effective bias" for the layer. In code, we set ``b_V=0``. and ``b_O =
+                (b_V @ W_O).sum(dim=0) + b_O``.
+
+                The technical derivation of this is as follows. ``v = residual @ W_V[h] +
+                broadcast_b_V[h]`` for each head ``h`` (where ``b_V`` is broadcast up from shape
+                ``d_head`` to shape ``[position, d_head]``). And ``z = pattern[h] @ v = pattern[h] @
+                residual @ W_V[h] + pattern[h] @ broadcast_b_V[h]``. Because ``pattern[h]`` is
+                ``[destination_position, source_position]`` and ``broadcast_b_V`` is constant along
+                the ``(source_)position`` dimension, we're basically just multiplying it by the sum
+                of the pattern across the ``source_position`` dimension, which is just ``1``. So it
+                remains exactly the same, and so is just broadcast across the destination positions.
+            default_prepend_bos: Default behavior of whether to prepend the BOS
                 token when the methods of HookedTransformer process input text to tokenize (only
                 when input is a string). Defaults to True - even for models not explicitly trained
                 with this, heads often use the first position as a resting position and accordingly
@@ -1076,12 +1207,15 @@ class HookedTransformer(HookedRootModule):
                 results. To change the default behavior to False, pass in default_prepend_bos=False.
                 Note that you can also locally override the default behavior by passing in
                 prepend_bos=True/False when you call a method that processes the input string.
-            from_pretrained_kwargs (dict, optional): Any other optional argument passed to
+            from_pretrained_kwargs: Any other optional argument passed to
                 HuggingFace's from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to
                 other HuggingFace functions when compatible. For some models or arguments it doesn't
                 work, especially for models that are not internally loaded with HuggingFace's
                 from_pretrained (e.g. SoLU models).
-            default_padding_side (str, optional): Which side to pad on when tokenizing. Defaults to
+            dtype: What data type to load the model in (also sets the dtype of
+                the HuggingFace model). Set to bfloat16 or float16 if you get out of memory errors when loading
+                the model.
+            default_padding_side: Which side to pad on when tokenizing. Defaults to
                 "right".
         """
         assert not (
@@ -1089,9 +1223,18 @@ class HookedTransformer(HookedRootModule):
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
 
-        if from_pretrained_kwargs.get(
-            "torch_dtype", None
-        ) == torch.float16 and device in ["cpu", None]:
+        if isinstance(dtype, str):
+            # Convert from string to a torch dtype
+            dtype = DTYPE_FROM_STRING[dtype]
+        if "torch_dtype" in from_pretrained_kwargs:
+            # For backwards compatibility with the previous way to do low precision loading
+            # This should maybe check the user did not explicitly set dtype *and* torch_dtype
+            dtype = from_pretrained_kwargs["torch_dtype"]
+
+        if (
+            (from_pretrained_kwargs.get("torch_dtype", None) == torch.float16)
+            or dtype == torch.float16
+        ) and device in ["cpu", None]:
             logging.warning(
                 "float16 models may not work on CPU. Consider using a GPU or bfloat16."
             )
@@ -1110,6 +1253,7 @@ class HookedTransformer(HookedRootModule):
             device=device,
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
+            dtype=dtype,
             **from_pretrained_kwargs,
         )
 
@@ -1136,7 +1280,7 @@ class HookedTransformer(HookedRootModule):
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to
         # match the HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model, **from_pretrained_kwargs
+            official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
         # Create the HookedTransformer object
@@ -1172,6 +1316,7 @@ class HookedTransformer(HookedRootModule):
         center_unembed=False,
         refactor_factored_attn_matrices=False,
         fold_value_biases=False,
+        dtype=torch.float32,
         default_prepend_bos=True,
         default_padding_side="right",
         **from_pretrained_kwargs,
@@ -1188,6 +1333,7 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            dtype=dtype,
             default_prepend_bos=default_prepend_bos,
             default_padding_side=default_padding_side,
             **from_pretrained_kwargs,
@@ -1195,7 +1341,6 @@ class HookedTransformer(HookedRootModule):
 
     def init_weights(self):
         """Initialize weights.
-
 
         Initialize weights matrices with a normal of std=initializer_range (default=0.02). This
         roughly follows the GPT-2 paper's scheme (but with truncation, and not halving the std for
@@ -1206,7 +1351,7 @@ class HookedTransformer(HookedRootModule):
 
         Weight matrices are set to empty by default (to save space + compute, since they're the bulk
         of the parameters), so it is important to call this if you are not loading in pretrained
-        weights! Note that this function assumes that weight names being with W_
+        weights! Note that this function assumes that weight names being with `W_`.
 
         Set seed here to ensure determinism.
 
@@ -1230,11 +1375,11 @@ class HookedTransformer(HookedRootModule):
     def load_and_process_state_dict(
         self,
         state_dict: Dict[str, torch.Tensor],
-        fold_ln: bool = True,
-        center_writing_weights: bool = True,
-        center_unembed: bool = True,
-        fold_value_biases: bool = True,
-        refactor_factored_attn_matrices: bool = False,
+        fold_ln: Optional[bool] = True,
+        center_writing_weights: Optional[bool] = True,
+        center_unembed: Optional[bool] = True,
+        fold_value_biases: Optional[bool] = True,
+        refactor_factored_attn_matrices: Optional[bool] = False,
     ):
         """Load & Process State Dict.
 
@@ -1246,7 +1391,7 @@ class HookedTransformer(HookedRootModule):
 
         Args:
             state_dict (dict): The state dict of the model, in HookedTransformer format. fold_ln
-            (bool, optional): Whether to fold in the LayerNorm weights to the
+            fold_ln (bool, optional): Whether to fold in the LayerNorm weights to the
                 subsequent linear layer. This does not change the computation. Defaults to True.
             center_writing_weights (bool, optional): Whether to center weights writing to the
                 residual stream (ie set mean to be zero). Due to LayerNorm this doesn't change the
@@ -1508,9 +1653,7 @@ class HookedTransformer(HookedRootModule):
             # [d_model]
             b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
 
-            folded_b_O = b_O_original + einsum(
-                "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
-            )
+            folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
             state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
@@ -1626,6 +1769,12 @@ class HookedTransformer(HookedRootModule):
         assert not self.cfg.attn_only, "Can't use hook_mlp_in with attn_only model"
         self.cfg.use_hook_mlp_in = use_hook_mlp_in
 
+    def set_use_attn_in(self, use_attn_in: bool):
+        """
+        Toggles whether to allow editing of inputs to each attention head.
+        """
+        self.cfg.use_attn_in = use_attn_in
+
     def process_weights_(
         self,
         fold_ln: bool = True,
@@ -1672,10 +1821,9 @@ class HookedTransformer(HookedRootModule):
         top_p: Optional[float] = None,
         temperature: float = 1.0,
         freq_penalty: float = 0.0,
-        num_return_sequences: int = 1,
         use_past_kv_cache: bool = True,
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
     ) -> Union[Int[torch.Tensor, "batch pos_plus_new_tokens"], str]:
@@ -1713,10 +1861,13 @@ class HookedTransformer(HookedRootModule):
             freq_penalty (float): Frequency penalty for sampling - how much to penalise previous
                 tokens. Higher values will make the model more random.
             use_past_kv_cache (bool): If True, create and use cache to speed up generation.
-            prepend_bos (Optional[bool]): Whether to prepend the BOS token to the input (applicable
-                when input is a string). Defaults to None, implying usage of
-                self.cfg.default_prepend_bos (default is True unless specified otherwise). Pass True
-                or False to override the default.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (applicable when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos (default is True unless specified
+                otherwise). Pass True or False to override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
             return_type (Optional[str]): The type of the output to return - either a string (str),
                 a tensor of tokens (tensor) or whatever the format of the input was (input).
             verbose (bool): If True, show tqdm progress bars for generation.
@@ -1798,18 +1949,12 @@ class HookedTransformer(HookedRootModule):
                 if use_past_kv_cache:
                     # We just take the final tokens, as a [batch, 1] tensor
                     if index > 0:
-                        past_left_attention_mask = utils.get_attention_mask(
-                            self.tokenizer,
-                            tokens[:, :-1],
-                            self.cfg.default_prepend_bos,
-                        )
                         logits = self.forward(
                             tokens[:, -1:],
                             return_type="logits",
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
-                            past_left_attention_mask=past_left_attention_mask,
                         )
                     else:
                         logits = self.forward(
@@ -1818,7 +1963,6 @@ class HookedTransformer(HookedRootModule):
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
-                            past_left_attention_mask=None,
                         )
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using
@@ -2110,9 +2254,9 @@ class HookedTransformer(HookedRootModule):
 
     def sample_datapoint(
         self,
-        tokenize: bool = False,
-        prepend_bos: Union[bool, None] = USE_DEFAULT_VALUE,
-        padding_side: Union[Literal["left", "right"], None] = USE_DEFAULT_VALUE,
+        tokenize: Optional[bool] = False,
+        prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
     ) -> Union[str, Float[torch.Tensor, "1 pos"]]:
         """Sample Data Point from Dataset.
 
@@ -2127,6 +2271,13 @@ class HookedTransformer(HookedRootModule):
             tokenize (bool): Whether to return tokens (instead of text). Defaults to False. Note
                 that the returned tokens will be automatically truncated to the model's max context
                 size.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (applicable when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos (default is True unless specified
+                otherwise). Pass True or False to override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
         """
         if self.dataset is None:
             self.load_sample_training_dataset()

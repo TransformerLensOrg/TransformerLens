@@ -1,4 +1,7 @@
-# %%
+"""Loading Pretrained Models Utilities.
+
+This module contains functions for loading pretrained models from the Hugging Face Hub.
+"""
 import dataclasses
 import logging
 import re
@@ -12,7 +15,6 @@ from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
-# %% The model names used to access the models on the HuggingFace Hub.
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
     "gpt2-medium",
@@ -136,6 +138,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "bigscience/bloom-560m",
 ]
+"""Official model names for models on HuggingFace."""
 
 # Model Aliases:
 MODEL_ALIASES = {
@@ -496,6 +499,7 @@ MODEL_ALIASES = {
         "bloom-560m"
     ],
 }
+"""Model aliases for models on HuggingFace."""
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
 DEFAULT_MODEL_ALIASES = [
@@ -796,6 +800,7 @@ def get_pretrained_model_config(
     device: Optional[str] = None,
     n_devices: int = 1,
     default_prepend_bos: bool = True,
+    dtype: torch.dtype = torch.float32,
     **kwargs,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -827,6 +832,7 @@ def get_pretrained_model_config(
             so this empirically seems to give better results. To change the default behavior to False, pass in
             default_prepend_bos=False. Note that you can also locally override the default behavior by passing
             in prepend_bos=True/False when you call a method that processes the input string.
+        dtype (torch.dtype, optional): The dtype to load the TransformerLens model in.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
             Also given to other HuggingFace functions when compatible.
 
@@ -859,10 +865,7 @@ def get_pretrained_model_config(
     if device is not None:
         cfg_dict["device"] = device
 
-    if kwargs.get("torch_dtype", None) is not None:
-        cfg_dict["dtype"] = kwargs["torch_dtype"]
-    elif "dtype" in cfg_dict:
-        kwargs["torch_dtype"] = cfg_dict["dtype"]
+    cfg_dict["dtype"] = dtype
 
     if fold_ln:
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
@@ -964,6 +967,7 @@ def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
     hf_model=None,
+    dtype: torch.dtype = torch.float32,
     **kwargs,
 ) -> Dict[str, torch.Tensor]:
     """
@@ -973,9 +977,13 @@ def get_pretrained_state_dict(
 
     hf_model: Optionally, a HuggingFace model object. If provided, we will use
         these weights rather than reloading the model.
+    dtype: The dtype to load the HuggingFace model in.
     kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
         Also given to other HuggingFace functions when compatible.
     """
+    if "torch_dtype" in kwargs:
+        dtype = kwargs["torch_dtype"]
+        del kwargs["torch_dtype"]
     official_model_name = get_official_model_name(official_model_name)
     if (
         official_model_name.startswith("NeelNanda")
@@ -996,9 +1004,9 @@ def get_pretrained_state_dict(
         state_dict = utils.download_file_from_hf(
             official_model_name, file_name, **kwargs
         )
-        dtype = kwargs.get("torch_dtype", None)
-        if dtype is not None:
-            state_dict = {k: v.to(dtype) for k, v in state_dict.items()}
+
+        # Convert to dtype
+        state_dict = {k: v.to(dtype) for k, v in state_dict.items()}
 
         if cfg.original_architecture == "neel-solu-old":
             state_dict = convert_neel_solu_old_weights(state_dict, cfg)
@@ -1011,12 +1019,14 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
+                    torch_dtype=dtype,
                     **kwargs,
                 )
             elif official_model_name.startswith("EleutherAI/pythia"):
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"step{cfg.checkpoint_value}",
+                    torch_dtype=dtype,
                     **kwargs,
                 )
             else:
@@ -1028,11 +1038,11 @@ def get_pretrained_state_dict(
                 raise NotImplementedError("Must pass in hf_model for LLaMA models")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
-                    official_model_name, **kwargs
+                    official_model_name, torch_dtype=dtype, **kwargs
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name, **kwargs
+                    official_model_name, torch_dtype=dtype, **kwargs
                 )
 
             # Load model weights, and fold in layer norm weights

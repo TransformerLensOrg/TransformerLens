@@ -1,14 +1,13 @@
 
-## Citation
+# Citation
 
 Please cite this library as:
-```
-@misc{nandatransformerlens2022,
-    title  = {TransformerLens},
-    author = {Nanda, Neel},
-    url    = {https://github.com/neelnanda-io/TransformerLens},
-    year   = {2022}
+
+```BibTeX
+@misc{nanda2022transformerlens,
+    title = {TransformerLens},
+    author = {Neel Nanda and Joseph Bloom},
+    year = {2022},
+    howpublished = {\url{https://github.com/neelnanda-io/TransformerLens}},
 }
 ```
-(This is my best guess for how citing software works, feel free to send a correction!)
-Also, if you're actually using this for your research, I'd love to chat! Reach out at neelnanda27@gmail.com

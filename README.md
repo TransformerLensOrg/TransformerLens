@@ -2,7 +2,12 @@
 
 ![TransformerLens](assets/rm_transformer_lens_logo.png)
 
-[![Pypi](https://img.shields.io/pypi/v/transformer-lens)](https://pypi.org/project/transformer-lens/)
+<!-- Status Icons -->
+[![Pypi](https://img.shields.io/pypi/v/transformer-lens?color=blue)](https://pypi.org/project/transformer-lens/)
+![Pepy Total Downlods](https://img.shields.io/pepy/dt/transformer_lens?color=blue) ![PyPI -
+License](https://img.shields.io/pypi/l/transformer_lens?color=blue)
+[![Release CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/release.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/release.yml)
+[![Tests CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/checks.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/checks.yml) [![Docs CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/gh-pages.yml)
 
 This library is maintained by **Joseph Bloom** and was created by **[Neel Nanda](https://neelnanda.io)**
 
@@ -83,59 +88,19 @@ I (Neel Nanda) used to work for the [Anthropic interpretability team](transforme
 The core features were heavily inspired by the interface to [Anthropic's excellent Garcon tool](https://transformer-circuits.pub/2021/garcon/index.html). Credit to Nelson Elhage and Chris Olah for building Garcon and showing me the value of good infrastructure for enabling exploratory research!
 
 
-## Interacting with the code / Contributing
+## Contributing
 
-### Advice for Reading the Code
-
-One significant design decision made was to have a single transformer implementation that could support a range of subtly different GPT-style models. This has the upside of interpretability code just working for arbitrary models when you change the model name in `HookedTransformer.from_pretrained`! But it has the significant downside that the code implementing the model (in `HookedTransformer.py` and `components.py`) can be difficult to read. I recommend starting with my [Clean Transformer Demo](https://neelnanda.io/transformer-solution), which is a clean, minimal implementation of GPT-2 with the same internal architecture and activation names as HookedTransformer, but is significantly clearer and better documented.
-
-### DevContainer
-
-For a one-click setup of your development environment, this project includes a [DevContainer](https://containers.dev/). It can be used locally with [VS Code](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) or with [GitHub Codespaces](https://github.com/features/codespaces).
-
-### Manual Setup
-
-This project uses [Poetry](https://python-poetry.org/docs/#installation) for package management. Install as follows (this will also setup your virtual environment):
-
-```bash
-poetry config virtualenvs.in-project true
-poetry install --with dev
-```
-
-Optionally, if you want Jupyter Lab you can run `poetry run pip install jupyterlab` (to install in the same virtual environment), and then run with `poetry run jupyter lab`.
-
-Then the library can be imported as `import transformer_lens`.
-
-### Testing
-
-If adding a feature, please add unit tests for it to the tests folder, and check that it hasn't broken anything major using the existing tests (install pytest and run it in the root TransformerLens/ directory).
-
-#### Running the tests
-
-- All tests via `make test`
-- Unit tests only via `make unit-test`
-- Acceptance tests only via `make acceptance-test`
-
-### Formatting
-
-This project uses `pycln`, `isort` and `black` for formatting, pull requests are checked in github actions.
-
-- Format all files via `make format`
-- Only check the formatting via `make check-format`
-
-### Demos
-
-If adding a feature, please add it to the demo notebook in the `demos` folder, and check that it works in the demo format. This can be tested by replacing `pip install git+https://github.com/neelnanda-io/TransformerLens.git` with `pip install git+https://github.com/<YOUR_USERNAME_HERE>/TransformerLens.git` in the demo notebook, and running it in a fresh environment.
+See https://neelnanda-io.github.io/TransformerLens/content/contributing.html
 
 ## Citation
 
 Please cite this library as:
 
-```
-@misc{nandatransformerlens2022,
-    title  = {TransformerLens},
-    author = {Nanda, Neel and Bloom, Joseph},
-    url    = {https://github.com/neelnanda-io/TransformerLens},
-    year   = {2022}
+```BibTeX
+@misc{nanda2022transformerlens,
+    title = {TransformerLens},
+    author = {Neel Nanda and Joseph Bloom},
+    year = {2022},
+    howpublished = {\url{https://github.com/neelnanda-io/TransformerLens}},
 }
 ```

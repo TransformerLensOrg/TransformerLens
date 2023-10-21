@@ -1,11 +1,50 @@
-# %%
-"""
-A module for patching activations in a transformer model, and measuring the effect of the patch on the output.
-This implements the activation patching technique for a range of types of activation. 
-The structure is to have a single generic_activation_patch function that does everything, and to have a range of specialised functions for specific types of activation.
+"""Patching.
 
-See this explanation for more https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=qeWBvs-R-taFfcCq-S_hgMqx
-And check out the Activation Patching in TransformerLens Demo notebook for a demo of how to use this module.
+A module for patching activations in a transformer model, and measuring the effect of the patch on
+the output. This implements the activation patching technique for a range of types of activation.
+The structure is to have a single :func:`generic_activation_patch` function that does everything,
+and to have a range of specialised functions for specific types of activation.
+
+Context:
+
+Activation Patching is technique introduced in the `ROME paper <http://rome.baulab.info/>`, which
+uses a causal intervention to identify which activations in a model matter for producing some
+output. It runs the model on input A, replaces (patches) an activation with that same activation on
+input B, and sees how much that shifts the answer from A to B.
+
+More details: The setup of activation patching is to take two runs of the model on two different
+inputs, the clean run and the corrupted run. The clean run outputs the correct answer and the
+corrupted run does not. The key idea is that we give the model the corrupted input, but then
+intervene on a specific activation and patch in the corresponding activation from the clean run (ie
+replace the corrupted activation with the clean activation), and then continue the run. And we then
+measure how much the output has updated towards the correct answer.
+
+- We can then iterate over many
+    possible activations and look at how much they affect the corrupted run. If patching in an
+    activation significantly increases the probability of the correct answer, this allows us to
+    localise which activations matter. 
+- A key detail is that we move a single activation __from__ the clean run __to __the corrupted run.
+    So if this changes the answer from incorrect to correct, we can be confident that the activation
+    moved was important. 
+
+Intuition:
+
+The ability to **localise** is a key move in mechanistic interpretability - if the computation is
+diffuse and spread across the entire model, it is likely much harder to form a clean mechanistic
+story for what's going on. But if we can identify precisely which parts of the model matter, we can
+then zoom in and determine what they represent and how they connect up with each other, and
+ultimately reverse engineer the underlying circuit that they represent. And, empirically, on at
+least some tasks activation patching tends to find that computation is extremely localised:
+
+- This technique helps us precisely identify which parts of the model matter for a certain
+    part of a task. Eg, answering “The Eiffel Tower is in” with “Paris” requires figuring out that
+    the Eiffel Tower is in Paris, and that it’s a factual recall task and that the output is a
+    location. Patching to “The Colosseum is in” controls for everything other than the “Eiffel Tower
+    is located in Paris” feature.
+- It helps a lot if the corrupted prompt has the same number of tokens
+
+This, unlike direct logit attribution, can identify meaningful parts of a circuit from anywhere
+within the model, rather than just the end.
 """
 
 from __future__ import annotations
