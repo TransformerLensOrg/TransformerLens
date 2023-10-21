@@ -298,6 +298,11 @@ class ActivationCache:
         style analysis, where it can be thought of as what the model "believes" at each point in the
         residual stream.
 
+        To project this into the vocabulary space, remember that there is a final layer norm in most
+        decoder-only transformers. Therefore, you need to first apply the final layer norm (which
+        can be done with :meth:`apply_ln_to_stack`), and then multiply by the unembedding matrix
+        (:math:`W_U`).
+
         If you instead want to look at contributions to the residual stream from each component
         (e.g. for direct logit attribution), see :meth:`decompose_resid` instead, or
         :meth:`get_full_resid_decomposition` if you want contributions broken down further into each
