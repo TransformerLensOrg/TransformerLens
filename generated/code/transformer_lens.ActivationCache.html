@@ -240,20 +240,65 @@
           <section id="module-transformer_lens.ActivationCache">
 <span id="transformer-lens-activationcache"></span><h1>transformer_lens.ActivationCache<a class="headerlink" href="#module-transformer_lens.ActivationCache" title="Permalink to this heading">#</a></h1>
 <p>Activation Cache.</p>
-<p>The core functionality of TransformerLens is to cache and edit the activations of a model. The
-<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActivationCache</span></code></a> is designed to help do the caching part of this - storing all activations
-in a single place.</p>
+<p>The <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActivationCache</span></code></a> is at the core of Transformer Lens. It is a wrapper that stores all
+important activations from a forward pass of the model, and provides a variety of helper functions
+to investigate them.</p>
+<p>Getting Started:</p>
+<p>When reading these docs for the first time, we recommend reading the main <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActivationCache</span></code></a>
+class first, including the examples, and then skimming the available methods. You can then refer
+back to these docs depending on what you need to do.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.ActivationCache.</span></span><span class="sig-name descname"><span class="pre">ActivationCache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cache_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">has_batch_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache" title="Permalink to this definition">#</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Activation Cache.</p>
-<p>A wrapper around a dictionary of cached activations from a model run, with a variety of helper
-functions.</p>
-<p>This is designed to be used with <a class="reference internal" href="transformer_lens.HookedTransformer.html#module-transformer_lens.HookedTransformer" title="transformer_lens.HookedTransformer"><code class="xref py py-class docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer</span></code></a>, and will not
-work with other models. It’s also designed to be used with all activations of
-<a class="reference internal" href="transformer_lens.HookedTransformer.html#module-transformer_lens.HookedTransformer" title="transformer_lens.HookedTransformer"><code class="xref py py-class docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer</span></code></a> being cached, and some internal methods will break
-without that.</p>
+<p>A wrapper that stores all important activations from a forward pass of the model, and provides a
+variety of helper functions to investigate them.</p>
+<p>The <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActivationCache</span></code></a> is at the core of Transformer Lens. It is a wrapper that stores all
+important activations from a forward pass of the model, and provides a variety of helper
+functions to investigate them. The common way to access it is to run the model with
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer.run_with_cache()</span></code>.</p>
+<p>Examples:</p>
+<p>When investigating a particular behaviour of a modal, a very common first step is to try and
+understand which components of the model are most responsible for that behaviour. For example,
+if you’re investigating the prompt “Why did the chicken cross the” -&gt; “ road”, you might want to
+understand if there is a specific sublayer (mlp or multi-head attention) that is responsible for
+the model predicting “road”. This kind of analysis commonly falls under the category of “logit
+attribution” or “direct logit attribution” (DLA).</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens</span> <span class="kn">import</span> <span class="n">HookedTransformer</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;tiny-stories-1M&quot;</span><span class="p">)</span>
+<span class="go">Loaded pretrained model tiny-stories-1M into HookedTransformer</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">_logits</span><span class="p">,</span> <span class="n">cache</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">run_with_cache</span><span class="p">(</span><span class="s2">&quot;Why did the chicken cross the&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">residual_stream</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">decompose_resid</span><span class="p">(</span><span class="n">return_labels</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;attn&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">labels</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">])</span>
+<span class="go">[&#39;embed&#39;, &#39;pos_embed&#39;, &#39;0_attn_out&#39;]</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">answer</span> <span class="o">=</span> <span class="s2">&quot; road&quot;</span> <span class="c1"># Note the proceeding space to match the model&#39;s tokenization</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">logit_attrs</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">logit_attrs</span><span class="p">(</span><span class="n">residual_stream</span><span class="p">,</span> <span class="n">answer</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">logit_attrs</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="c1"># Attention layers</span>
+<span class="go">torch.Size([10, 1, 7])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">most_important_component_idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">logit_attrs</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">labels</span><span class="p">[</span><span class="n">most_important_component_idx</span><span class="p">])</span>
+<span class="go">3_attn_out</span>
+</pre></div>
+</div>
+<p>You can also dig in with more granularity, using <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache.get_full_resid_decomposition" title="transformer_lens.ActivationCache.ActivationCache.get_full_resid_decomposition"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_full_resid_decomposition()</span></code></a> to get the
+residual stream by individual component (mlp neurons and individual attention heads). This
+creates a larger residual stack, but the approach of using :meth”<cite>logit_attrs</cite> remains the same.</p>
+<p>Equally you might want to find out if the model struggles to construct such excellent jokes
+until the very last layers, or if it is trivial and the first few layers are enough. This kind
+of analysis is called “logit lens”, and you can find out more about how to do that with
+<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache.accumulated_resid" title="transformer_lens.ActivationCache.ActivationCache.accumulated_resid"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ActivationCache.accumulated_resid()</span></code></a>.</p>
+<p>Warning:</p>
+<p><a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><code class="xref py py-class docutils literal notranslate"><span class="pre">ActivationCache</span></code></a> is designed to be used with
+<a class="reference internal" href="transformer_lens.HookedTransformer.html#module-transformer_lens.HookedTransformer" title="transformer_lens.HookedTransformer"><code class="xref py py-class docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer</span></code></a>, and will not work with other models. It’s also
+designed to be used with all activations of <a class="reference internal" href="transformer_lens.HookedTransformer.html#module-transformer_lens.HookedTransformer" title="transformer_lens.HookedTransformer"><code class="xref py py-class docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer</span></code></a> being
+cached, and some internal methods will break without that.</p>
 <p>The biggest footgun and source of bugs in this code will be keeping track of indexes,
 dimensions, and the numbers of each. There are several kinds of activations:</p>
 <ul class="simple">
@@ -295,12 +340,67 @@ style analysis, where it can be thought of as what the model “believes” at e
 residual stream.</p>
 <p>To project this into the vocabulary space, remember that there is a final layer norm in most
 decoder-only transformers. Therefore, you need to first apply the final layer norm (which
-can be done with <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache.apply_ln_to_stack" title="transformer_lens.ActivationCache.ActivationCache.apply_ln_to_stack"><code class="xref py py-meth docutils literal notranslate"><span class="pre">apply_ln_to_stack()</span></code></a>), and then multiply by the unembedding matrix
-(<span class="math notranslate nohighlight">\(W_U\)</span>).</p>
+can be done with <cite>apply_ln</cite>), and then multiply by the unembedding matrix (<span class="math notranslate nohighlight">\(W_U\)</span>).</p>
 <p>If you instead want to look at contributions to the residual stream from each component
 (e.g. for direct logit attribution), see <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache.decompose_resid" title="transformer_lens.ActivationCache.ActivationCache.decompose_resid"><code class="xref py py-meth docutils literal notranslate"><span class="pre">decompose_resid()</span></code></a> instead, or
 <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache.get_full_resid_decomposition" title="transformer_lens.ActivationCache.ActivationCache.get_full_resid_decomposition"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_full_resid_decomposition()</span></code></a> if you want contributions broken down further into each
 MLP neuron.</p>
+<p>Examples:</p>
+<p>Logit Lens analysis can be done as follows:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens</span> <span class="kn">import</span> <span class="n">HookedTransformer</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">einops</span> <span class="kn">import</span> <span class="n">einsum</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">torch</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;tiny-stories-1M&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">)</span>
+<span class="go">Loaded pretrained model tiny-stories-1M into HookedTransformer</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;Why did the chicken cross the&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">answer</span> <span class="o">=</span> <span class="s2">&quot; road&quot;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">logits</span><span class="p">,</span> <span class="n">cache</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">run_with_cache</span><span class="p">(</span><span class="s2">&quot;Why did the chicken cross the&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">answer_token</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to_single_token</span><span class="p">(</span><span class="n">answer</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">answer_token</span><span class="p">)</span>
+<span class="go">2975</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">accum_resid</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">accumulated_resid</span><span class="p">(</span><span class="n">return_labels</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">apply_ln</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">last_token_accum</span> <span class="o">=</span> <span class="n">accum_resid</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span>  <span class="c1"># layer, batch, pos, d_model</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">last_token_accum</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>  <span class="c1"># layer, d_model</span>
+<span class="go">torch.Size([9, 64])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">W_U</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">W_U</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">W_U</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+<span class="go">torch.Size([64, 50257])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">layers_unembedded</span> <span class="o">=</span> <span class="n">einsum</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="n">last_token_accum</span><span class="p">,</span>
+<span class="gp">... </span>        <span class="n">W_U</span><span class="p">,</span>
+<span class="gp">... </span>        <span class="s2">&quot;layer d_model, d_model d_vocab -&gt; layer d_vocab&quot;</span>
+<span class="gp">... </span>    <span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">layers_unembedded</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+<span class="go">torch.Size([9, 50257])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Get the rank of the correct answer by layer</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">layers_unembedded</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">descending</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rank_answer</span> <span class="o">=</span> <span class="p">(</span><span class="n">sorted_indices</span> <span class="o">==</span> <span class="mi">2975</span><span class="p">)</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">as_tuple</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">rank_answer</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="n">labels</span><span class="p">))</span>
+<span class="go">0_pre         4442</span>
+<span class="go">1_pre          382</span>
+<span class="go">2_pre          982</span>
+<span class="go">3_pre         1160</span>
+<span class="go">4_pre          408</span>
+<span class="go">5_pre          145</span>
+<span class="go">6_pre           78</span>
+<span class="go">7_pre          387</span>
+<span class="go">final_post       6</span>
+<span class="go">dtype: int64</span>
+</pre></div>
+</div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
