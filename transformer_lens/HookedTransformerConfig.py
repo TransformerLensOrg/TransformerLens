@@ -187,6 +187,11 @@ class HookedTransformerConfig:
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
 
+    # bloom flags
+    post_embedding_layer_norm: bool = False
+    
+
+
     def __post_init__(self):
         if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head
