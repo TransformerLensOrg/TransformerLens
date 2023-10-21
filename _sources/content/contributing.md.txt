@@ -62,6 +62,10 @@ You should follow this order:
 
 A description of what the function/class does, including as much detail as is necessary to fully understand it.
 
+Warning:
+
+Any warnings to the user (e.g. common pitfalls).
+
 Examples:
 
 Include any examples here. They will be checked with doctest.
@@ -109,7 +113,7 @@ You can use LaTeX, but note that as you're placing this in python strings the ba
 must be repeated (i.e. `\\`). You can write LaTeX inline, or in "display mode".
 
 ```reStructuredText
-.. math:: (a + b)^2 = a^2 + 2ab + b^2
+:math:`(a + b)^2 = a^2 + 2ab + b^2`
 ```
 
 ```reStructuredText

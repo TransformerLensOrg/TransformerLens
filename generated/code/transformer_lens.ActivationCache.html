@@ -249,64 +249,78 @@ in a single place.</p>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Activation Cache.</p>
 <p>A wrapper around a dictionary of cached activations from a model run, with a variety of helper
-functions. In general, any utility which is specifically about editing/processing activations
-should be a method here, while any utility which is more general should be a function in
-utils.py, and any utility which is specifically about model weights should be in
-HookedTransformer.py or components.py.</p>
-<p>NOTE: This is designed to be used with the HookedTransformer class, and will not work with other
-models. It’s also designed to be used with all activations of HookedTransformer being cached,
-and some internal methods will break without that.</p>
-<p>WARNING: The biggest footgun and source of bugs in this code will be keeping track of indexes,
+functions.</p>
+<p>This is designed to be used with <a class="reference internal" href="transformer_lens.HookedTransformer.html#module-transformer_lens.HookedTransformer" title="transformer_lens.HookedTransformer"><code class="xref py py-class docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer</span></code></a>, and will not
+work with other models. It’s also designed to be used with all activations of
+<a class="reference internal" href="transformer_lens.HookedTransformer.html#module-transformer_lens.HookedTransformer" title="transformer_lens.HookedTransformer"><code class="xref py py-class docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer</span></code></a> being cached, and some internal methods will break
+without that.</p>
+<p>The biggest footgun and source of bugs in this code will be keeping track of indexes,
 dimensions, and the numbers of each. There are several kinds of activations:</p>
-<p>Internal attn head vectors: q, k, v, z. Shape [batch, pos, head_index, d_head] Internal attn
-pattern style results: pattern (post softmax), attn_scores (pre-softmax). Shape [batch,
-head_index, query_pos, key_pos] Attn head results: result. Shape [batch, pos, head_index,
-d_model] Internal MLP vectors: pre, post, mid (only used for solu_ln - the part between
-activation + layernorm). Shape [batch, pos, d_mlp] Residual stream vectors: resid_pre,
-resid_mid, resid_post, attn_out, mlp_out, embed, pos_embed, normalized (output of each LN or
-LNPre). Shape [batch, pos, d_model] LayerNorm Scale: scale. Shape [batch, pos, 1]</p>
-<p>Sometimes the batch dimension will be missing because we applied remove_batch_dim (used when
-batch_size=1), and we need functions to be robust to that. I THINK I’ve got everything working,
-but could easily be wrong!</p>
-<p>Type-Annotations key: layers_covered is the number of layers queried in functions that stack the
-residual stream. batch_and_pos_dims is the set of dimensions from batch and pos - by default
-this is [“batch”, “pos”], but is only [“pos”] if we’ve removed the batch dimension and is [()]
-if we’ve removed batch dimension and are applying a pos slice which indexes a specific position.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.accumulated_resid">
-<span class="sig-name descname"><span class="pre">accumulated_resid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_mid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'layers_covered</span> <span class="pre">*batch_and_pos_dims</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.accumulated_resid" title="Permalink to this definition">#</a></dt>
-<dd><p>Accumulated Residual Stream.</p>
-<p>Returns the accumulated residual stream up to a given layer, ie a stack of previous residual
-streams up to that layer’s input. This can be thought of as a series of partial values of
-the residual stream, where the model gradually accumulates what it wants.</p>
+<ul class="simple">
+<li><p>Internal attn head vectors: q, k, v, z. Shape [batch, pos, head_index, d_head].</p></li>
+<li><p>Internal attn pattern style results: pattern (post softmax), attn_scores (pre-softmax). Shape
+[batch, head_index, query_pos, key_pos].</p></li>
+<li><p>Attn head results: result. Shape [batch, pos, head_index, d_model].</p></li>
+<li><p>Internal MLP vectors: pre, post, mid (only used for solu_ln - the part between activation +
+layernorm). Shape [batch, pos, d_mlp].</p></li>
+<li><p>Residual stream vectors: resid_pre, resid_mid, resid_post, attn_out, mlp_out, embed,
+pos_embed, normalized (output of each LN or LNPre). Shape [batch, pos, d_model].</p></li>
+<li><p>LayerNorm Scale: scale. Shape [batch, pos, 1].</p></li>
+</ul>
+<p>Sometimes the batch dimension will be missing because we applied <cite>remove_batch_dim</cite> (used when
+batch_size=1), and as such all library functions <em>should</em> be robust to that.</p>
+<p>Type annotations are in the following form:</p>
+<ul class="simple">
+<li><p>layers_covered is the number of layers queried in functions that stack the residual stream.</p></li>
+<li><p>batch_and_pos_dims is the set of dimensions from batch and pos - by default this is [“batch”,
+“pos”], but is only [“pos”] if we’ve removed the batch dimension and is [()] if we’ve removed
+batch dimension and are applying a pos slice which indexes a specific position.</p></li>
+</ul>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>layer</strong> (int, <em>optional</em>) – The layer to take components up to - by default includes
-resid_pre for that layer and excludes resid_mid and resid_post for that layer.
-layer==n_layers, -1 or None means to return all residual streams, including the
-final one (ie immediately pre logits). The indices are taken such that this gives
-the accumulated streams up to the input to layer l</p></li>
-<li><p><strong>incl_mid</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return resid_mid for all previous layers. Defaults
-to False.</p></li>
-<li><p><strong>mlp_input</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to include resid_mid for the current layer -
-essentially giving MLP input rather than Attn input. Defaults to False.</p></li>
-<li><p><strong>apply_ln</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to apply LayerNorm to the stack. Defaults to False.</p></li>
-<li><p><strong>pos_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a>) – A slice object to apply to the pos dimension. Defaults to None, do
-nothing.</p></li>
-<li><p><strong>return_labels</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return a list of labels for the residual
-stream components. Useful for labelling graphs. Defaults to True.</p></li>
+<li><p><strong>cache_dict</strong> – A dictionary of cached activations from a model run.</p></li>
+<li><p><strong>model</strong> – The model that the activations are from.</p></li>
+<li><p><strong>has_batch_dim</strong> – Whether the activations have a batch dimension.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.accumulated_resid">
+<span class="sig-name descname"><span class="pre">accumulated_resid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_mid</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'layers_covered</span> <span class="pre">*batch_and_pos_dims</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'layers_covered</span> <span class="pre">*batch_and_pos_dims</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.accumulated_resid" title="Permalink to this definition">#</a></dt>
+<dd><p>Accumulated Residual Stream.</p>
+<p>Returns the accumulated residual stream at each layer/sub-layer. This is useful for <cite>Logit
+Lens &lt;https://www.lesswrong.com/posts/AcKRB8wDpdaN6v6ru/interpreting-gpt-the-logit-lens&gt;</cite>
+style analysis, where it can be thought of as what the model “believes” at each point in the
+residual stream.</p>
+<p>To project this into the vocabulary space, remember that there is a final layer norm in most
+decoder-only transformers. Therefore, you need to first apply the final layer norm (which
+can be done with <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache.apply_ln_to_stack" title="transformer_lens.ActivationCache.ActivationCache.apply_ln_to_stack"><code class="xref py py-meth docutils literal notranslate"><span class="pre">apply_ln_to_stack()</span></code></a>), and then multiply by the unembedding matrix
+(<span class="math notranslate nohighlight">\(W_U\)</span>).</p>
+<p>If you instead want to look at contributions to the residual stream from each component
+(e.g. for direct logit attribution), see <a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache.decompose_resid" title="transformer_lens.ActivationCache.ActivationCache.decompose_resid"><code class="xref py py-meth docutils literal notranslate"><span class="pre">decompose_resid()</span></code></a> instead, or
+<a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache.get_full_resid_decomposition" title="transformer_lens.ActivationCache.ActivationCache.get_full_resid_decomposition"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_full_resid_decomposition()</span></code></a> if you want contributions broken down further into each
+MLP neuron.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>layer</strong> – The layer to take components up to - by default includes resid_pre for that layer
+and excludes resid_mid and resid_post for that layer. If set as <cite>n_layers</cite>, <cite>-1</cite> or
+<cite>None</cite> it will return all residual streams, including the final one (i.e.
+immediately pre logits). The indices are taken such that this gives the accumulated
+streams up to the input to layer l.</p></li>
+<li><p><strong>incl_mid</strong> – Whether to return <cite>resid_mid</cite> for all previous layers.</p></li>
+<li><p><strong>apply_ln</strong> – Whether to apply LayerNorm to the stack.</p></li>
+<li><p><strong>pos_slice</strong> – A slice object to apply to the pos dimension. Defaults to None, do nothing.</p></li>
+<li><p><strong>mlp_input</strong> – Whether to include resid_mid for the current layer. This essentially gives the MLP
+input rather than the attention input.</p></li>
+<li><p><strong>return_labels</strong> – Whether to return a list of labels for the residual stream components. Useful for
+labelling graphs.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>A [num_components, batch_size, pos, d_model] tensor of the accumulated</dt><dd><p>residual streams. (labels): An optional list of labels for the components.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Components</p>
+<dd class="field-even"><p>A tensor of the accumulated residual streams. If <cite>return_labels</cite> is True, also returns a
+list of labels for the components (as a tuple in the form <cite>(components, labels)</cite>).</p>
 </dd>
 </dl>
 </dd></dl>
@@ -326,22 +340,19 @@ applying a new LayerNorm.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>residual_stack</strong> (<em>torch.Tensor</em>) – A tensor, whose final dimension is
-d_model. The other trailing dimensions are assumed to be the same as the stored
-hook_scale - which may or may not include batch or position dimensions.</p></li>
-<li><p><strong>layer</strong> (<em>int</em>) – The layer we’re taking the input to. In [0, n_layers],
-n_layers means the unembed. None maps to the n_layers case, ie the unembed.</p></li>
-<li><p><strong>mlp_input</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether the input is to the MLP or attn
-(ie ln2 vs ln1). Defaults to False, ie ln1. If layer==n_layers, must be False, and
-we use ln_final</p></li>
-<li><p><strong>pos_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a><em>, </em><em>optional</em>) – The slice to take of positions, if residual_stack is not
-over the full context, None means do nothing. It is assumed that pos_slice has
-already been applied to residual_stack, and this is only applied to the scale. See
-utils.Slice for details. Defaults to None, do nothing.</p></li>
-<li><p><strong>batch_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a><em>, </em><em>optional</em>) – The slice to take on the batch dimension.
+<li><p><strong>residual_stack</strong> – A tensor, whose final dimension is d_model. The other trailing dimensions are
+assumed to be the same as the stored hook_scale - which may or may not include batch
+or position dimensions.</p></li>
+<li><p><strong>layer</strong> – The layer we’re taking the input to. In [0, n_layers], n_layers means the unembed.
+None maps to the n_layers case, ie the unembed.</p></li>
+<li><p><strong>mlp_input</strong> – Whether the input is to the MLP or attn (ie ln2 vs ln1). Defaults to False, ie ln1.
+If layer==n_layers, must be False, and we use ln_final</p></li>
+<li><p><strong>pos_slice</strong> – The slice to take of positions, if residual_stack is not over the full context, None
+means do nothing. It is assumed that pos_slice has already been applied to
+residual_stack, and this is only applied to the scale. See utils.Slice for details.
 Defaults to None, do nothing.</p></li>
-<li><p><strong>has_batch_dim</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether residual_stack has a batch dimension.
-Defaults to True.</p></li>
+<li><p><strong>batch_slice</strong> – The slice to take on the batch dimension. Defaults to None, do nothing.</p></li>
+<li><p><strong>has_batch_dim</strong> – Whether residual_stack has a batch dimension.</p></li>
 </ul>
 </dd>
 </dl>
@@ -349,8 +360,17 @@ Defaults to True.</p></li>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.apply_slice_to_batch_dim">
-<span class="sig-name descname"><span class="pre">apply_slice_to_batch_dim</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.apply_slice_to_batch_dim" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">apply_slice_to_batch_dim</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">batch_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.apply_slice_to_batch_dim" title="Permalink to this definition">#</a></dt>
+<dd><p>Apply a Slice to the Batch Dimension.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>batch_slice</strong> – The slice to apply to the batch dimension.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The ActivationCache with the batch dimension sliced.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.compute_head_results">
@@ -364,7 +384,7 @@ be useful if you forget.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.decompose_resid">
-<span class="sig-name descname"><span class="pre">decompose_resid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'all'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mlp'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'attn'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'all'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_embeds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'layers_covered</span> <span class="pre">*batch_and_pos_dims</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.decompose_resid" title="Permalink to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">decompose_resid</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'all'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'mlp'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'attn'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'all'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_ln</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_embeds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'layers_covered</span> <span class="pre">*batch_and_pos_dims</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'layers_covered</span> <span class="pre">*batch_and_pos_dims</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.decompose_resid" title="Permalink to this definition">#</a></dt>
 <dd><p>Decompose the Residual Stream.</p>
 <p>Decomposes the residual stream input to layer L into a stack of the output of previous
 layers. The sum of these is the input to layer L (plus embedding and pos embedding). This is
@@ -378,30 +398,24 @@ layer==n_layers means to return all layer outputs incl in the final layer, layer
 means just embed and pos_embed. The indices are taken such that this gives the
 accumulated streams up to the input to layer l</p></li>
 <li><p><strong>incl_mid</strong> – Whether to return resid_mid for all previous
-layers. Defaults to False.</p></li>
+layers.</p></li>
 <li><p><strong>mlp_input</strong> – Whether to include attn_out for the current
 layer - essentially decomposing the residual stream that’s input to the MLP input
-rather than the Attn input. Defaults to False.</p></li>
+rather than the Attn input.</p></li>
 <li><p><strong>mode</strong> – Values are “all”, “mlp” or “attn”. “all” returns all
 components, “mlp” returns only the MLP components, and “attn” returns only the
 attention components. Defaults to “all”.</p></li>
-<li><p><strong>apply_ln</strong> – Whether to apply LayerNorm to the stack. Defaults to False.</p></li>
+<li><p><strong>apply_ln</strong> – Whether to apply LayerNorm to the stack.</p></li>
 <li><p><strong>pos_slice</strong> – A slice object to apply to the pos dimension.
 Defaults to None, do nothing.</p></li>
 <li><p><strong>incl_embeds</strong> – Whether to include embed &amp; pos_embed</p></li>
 <li><p><strong>return_labels</strong> – Whether to return a list of labels for the residual stream components.
-Useful for labelling graphs. Defaults to True.</p></li>
+Useful for labelling graphs.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>A [num_components, batch_size, pos, d_model] tensor of the accumulated</dt><dd><p>residual streams. (labels): An optional list of labels for the components.</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Components</p>
+<dd class="field-even"><p>A tensor of the accumulated residual streams. If <cite>return_labels</cite> is True, also returns
+a list of labels for the components (as a tuple in the form <cite>(components, labels)</cite>).</p>
 </dd>
 </dl>
 </dd></dl>
@@ -416,17 +430,16 @@ that is input into some layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>layer</strong> (<em>int</em>) – The layer we’re inputting into. layer is in [0, n_layers], if
-layer==n_layers (or None) we’re inputting into the unembed (the entire stream), if
-layer==0 then it’s just embed and pos_embed</p></li>
-<li><p><strong>mlp_input</strong> (<em>bool</em><em>, </em><em>optional</em>) – Are we inputting to the MLP in that layer or the attn? Must
-be False for final layer, since that’s the unembed. Defaults to False.</p></li>
-<li><p><strong>expand_neurons</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to expand the MLP outputs to give every
-neuron’s result or just return the MLP layer outputs. Defaults to True.</p></li>
-<li><p><strong>apply_ln</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to apply LayerNorm to the stack. Defaults to False.</p></li>
-<li><p><strong>pos_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a><em>, </em><em>optional</em>) – Slice of the positions to take. Defaults to None. See
-utils.Slice for details.</p></li>
-<li><p><strong>return_labels</strong> (<em>bool</em>) – Whether to return the labels. Defaults to False.</p></li>
+<li><p><strong>layer</strong> – The layer we’re inputting into. layer is in [0, n_layers], if layer==n_layers (or
+None) we’re inputting into the unembed (the entire stream), if layer==0 then it’s
+just embed and pos_embed</p></li>
+<li><p><strong>mlp_input</strong> – Are we inputting to the MLP in that layer or the attn? Must be False for final
+layer, since that’s the unembed.</p></li>
+<li><p><strong>expand_neurons</strong> – Whether to expand the MLP outputs to give every neuron’s result or just return the
+MLP layer outputs.</p></li>
+<li><p><strong>apply_ln</strong> – Whether to apply LayerNorm to the stack.</p></li>
+<li><p><strong>pos_slice</strong> – Slice of the positions to take.</p></li>
+<li><p><strong>return_labels</strong> – Whether to return the labels.</p></li>
 </ul>
 </dd>
 </dl>
@@ -441,19 +454,14 @@ the residual stream). Does it for the subset of neurons specified by neuron_slic
 to all of them. Does <em>not</em> cache these because it’s expensive in space and cheap to compute.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>layer</strong> (<em>int</em>) – Layer index neuron_slice (Slice, optional): Slice of the neuron. Defaults
-to None. pos_slice (Slice, optional): Slice of the positions. Defaults to None. See
-<cite>utils.Slice</cite> for details.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>layer</strong> – Layer index.</p></li>
+<li><p><strong>neuron_slice</strong> – Slice of the neuron.</p></li>
+<li><p><strong>pos_slice</strong> – Slice of the positions.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>[batch_size, pos, d_mlp, d_model] tensor of the results (d_mlp is the neuron</dt><dd><p>index axis)</p>
-</dd>
-</dl>
-</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tensor</p>
+<dd class="field-even"><p>Tensor of the results.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -461,41 +469,75 @@ to None. pos_slice (Slice, optional): Slice of the positions. Defaults to None. 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.items">
 <span class="sig-name descname"><span class="pre">items</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.items" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Items of the ActivationCache.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of all items ((key, value) tuples).</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.keys">
 <span class="sig-name descname"><span class="pre">keys</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.keys" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Keys of the ActivationCache.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">transformer_lens</span> <span class="kn">import</span> <span class="n">HookedTransformer</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">HookedTransformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;tiny-stories-1M&quot;</span><span class="p">)</span>
+<span class="go">Loaded pretrained model tiny-stories-1M into HookedTransformer</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">_logits</span><span class="p">,</span> <span class="n">cache</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">run_with_cache</span><span class="p">(</span><span class="s2">&quot;Some prompt&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">cache</span><span class="o">.</span><span class="n">keys</span><span class="p">())[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span>
+<span class="go">[&#39;hook_embed&#39;, &#39;hook_pos_embed&#39;, &#39;blocks.0.hook_resid_pre&#39;]</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of all keys.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.logit_attrs">
 <span class="sig-name descname"><span class="pre">logit_attrs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">residual_stack</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'num_components</span> <span class="pre">*batch_and_pos_dims</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">position'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incorrect_tokens</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">''</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">position'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_slice</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">has_batch_dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'num_components</span> <span class="pre">*batch_and_pos_dims_out'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.logit_attrs" title="Permalink to this definition">#</a></dt>
 <dd><p>Logit Attributions.</p>
-<p>Returns the logit attributions for the residual stack on an input of tokens, or the logit
-difference attributions for the residual stack if incorrect_tokens is provided.</p>
+<p>Takes a residual stack (typically the residual stream decomposed by components), and
+calculates how much each item in the stack “contributes” to specific tokens.</p>
+<dl class="simple">
+<dt>It does this by:</dt><dd><ol class="arabic simple">
+<li><p>Getting the residual directions of the tokens (i.e. reversing the unembed)</p></li>
+<li><p>Taking the dot product of each item in the residual stack, with the token residual
+directions.</p></li>
+</ol>
+</dd>
+</dl>
+<p>Note that if incorrect tokens are provided, it instead takes the difference between the
+correct and incorrect tokens (to calculate the residual directions). This is useful as
+sometimes we want to know e.g. which components are most responsible for selecting the
+correct token rather than an incorrect one. For example in the <cite>Interpretability in the Wild
+paper &lt;https://arxiv.org/abs/2211.00593&gt;</cite> prompts such as “John and Mary went to the shops,
+John gave a bag to” were investigated, and it was therefore useful to calculate attribution
+for the <span class="math notranslate nohighlight">\(\text{Mary} - \text{John}\)</span> residual direction.</p>
+<p>Warning:</p>
+<p>Choosing the correct <cite>tokens</cite> and <cite>incorrect_tokens</cite> is both important and difficult. When
+investigating specific components it’s also useful to look at it’s impact on all tokens
+(i.e. <span class="math notranslate nohighlight">\(\text{final_ln}(\text{residual_stack_item}) W_U\)</span>).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>residual_stack</strong> – Stack of components of residual stream to get logit attributions for.</p></li>
-<li><p><strong>tokens</strong> – tokens to compute logit attributions on.</p></li>
-<li><p><strong>incorrect_tokens</strong> – if provided, compute attributions
-on logit difference between tokens and incorrect_tokens. Must have the same shape as
-tokens.</p></li>
-<li><p><strong>pos_slice</strong> – The slice to apply layer norm scaling on. Defaults to None,
-do nothing.</p></li>
-<li><p><strong>batch_slice</strong> – The slice to take on the batch dimension during layer
-norm scaling. Defaults to None, do nothing.</p></li>
-<li><p><strong>has_batch_dim</strong> – Whether residual_stack has a batch dimension. Defaults
-to True.</p></li>
+<li><p><strong>tokens</strong> – Tokens to compute logit attributions on.</p></li>
+<li><p><strong>incorrect_tokens</strong> – If provided, compute attributions on logit difference between tokens and
+incorrect_tokens. Must have the same shape as tokens.</p></li>
+<li><p><strong>pos_slice</strong> – The slice to apply layer norm scaling on. Defaults to None, do nothing.</p></li>
+<li><p><strong>batch_slice</strong> – The slice to take on the batch dimension during layer norm scaling. Defaults to
+None, do nothing.</p></li>
+<li><p><strong>has_batch_dim</strong> – Whether residual_stack has a batch dimension. Defaults to True.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A tensor of the logit attributions or logit difference attributions if
-incorrect_tokens was provided.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Components</p>
+<dd class="field-even"><p>A tensor of the logit attributions or logit difference attributions if incorrect_tokens
+was provided.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -503,26 +545,28 @@ incorrect_tokens was provided.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.remove_batch_dim">
 <span class="sig-name descname"><span class="pre">remove_batch_dim</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.remove_batch_dim" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Remove the Batch Dimension (if a single batch item).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The ActivationCache with the batch dimension removed.</p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.stack_activation">
 <span class="sig-name descname"><span class="pre">stack_activation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">activation_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">-1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sublayer_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'layers_covered</span> <span class="pre">...'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.stack_activation" title="Permalink to this definition">#</a></dt>
 <dd><p>Stack Activations.</p>
-<p>Returns a stack of all head results (ie residual stream contribution) up to layer L. A good
-way to decompose the outputs of attention layers into attribution by specific heads. The
-output shape is exactly the same shape as the activations, just with a leading layers
-dimension.</p>
+<p>Flexible way to stack activations with a given name.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>activation_name</strong> (<em>str</em>) – The name of the activation to be stacked layer (int): ‘Layer
-index - heads’ at all layers strictly before this are included. layer must be in [1,
-n_layers-1], or any of (n_layers, -1, None), which all mean the final layer.</p></li>
-<li><p><strong>sublayer_type</strong> (str, <em>optional</em>) – The sub layer type of the activation, passed to
-utils.get_act_name. Can normally be inferred.</p></li>
-<li><p><strong>incl_remainder</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return a final term which is “the rest of
-the residual stream”. Defaults to False.</p></li>
+<li><p><strong>activation_name</strong> – The name of the activation to be stacked</p></li>
+<li><p><strong>layer</strong> – ‘Layer index - heads’ at all layers strictly before this are included. layer must be
+in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer.</p></li>
+<li><p><strong>sublayer_type</strong> – The sub layer type of the activation, passed to utils.get_act_name. Can normally be
+inferred.</p></li>
+<li><p><strong>incl_remainder</strong> – Whether to return a final term which is “the rest of the residual stream”.</p></li>
 </ul>
 </dd>
 </dl>
@@ -539,16 +583,12 @@ notation).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>layer</strong> (<em>int</em>) – Layer index - heads at all layers strictly before this are included. layer
-must be in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final
-layer</p></li>
-<li><p><strong>return_labels</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to also return a list of labels of the form
-“L0H0” for the heads. Defaults to False.</p></li>
-<li><p><strong>incl_remainder</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return a final term which is “the rest of
-the residual stream”. Defaults to False.</p></li>
-<li><p><strong>pos_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a>) – A slice object to apply to the pos dimension. Defaults to None, do
-nothing.</p></li>
-<li><p><strong>apply_ln</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to apply LayerNorm to the stack. Defaults to False.</p></li>
+<li><p><strong>layer</strong> – Layer index - heads at all layers strictly before this are included. layer must be
+in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer.</p></li>
+<li><p><strong>return_labels</strong> – Whether to also return a list of labels of the form “L0H0” for the heads.</p></li>
+<li><p><strong>incl_remainder</strong> – Whether to return a final term which is “the rest of the residual stream”.</p></li>
+<li><p><strong>pos_slice</strong> – A slice object to apply to the pos dimension. Defaults to None, do nothing.</p></li>
+<li><p><strong>apply_ln</strong> – Whether to apply LayerNorm to the stack.</p></li>
 </ul>
 </dd>
 </dl>
@@ -567,17 +607,13 @@ small models or short inputs.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>layer</strong> (<em>int</em>) – Layer index - heads at all layers strictly before this are included. layer
-must be in [1, n_layers]</p></li>
-<li><p><strong>pos_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a><em>, </em><em>optional</em>) – Slice of the positions. Defaults to None. See utils.Slice
-for details.</p></li>
-<li><p><strong>neuron_slice</strong> (<a class="reference internal" href="transformer_lens.utils.html#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a><em>, </em><em>optional</em>) – Slice of the neurons. Defaults to None. See utils.Slice
-for details.</p></li>
-<li><p><strong>return_labels</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to also return a list of labels of the form
-“L0H0” for the heads. Defaults to False.</p></li>
-<li><p><strong>incl_remainder</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to return a final term which is “the rest of
-the residual stream”. Defaults to False.</p></li>
-<li><p><strong>apply_ln</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to apply LayerNorm to the stack. Defaults to False.</p></li>
+<li><p><strong>layer</strong> – Layer index - heads at all layers strictly before this are included. layer must be
+in [1, n_layers]</p></li>
+<li><p><strong>pos_slice</strong> – Slice of the positions.</p></li>
+<li><p><strong>neuron_slice</strong> – Slice of the neurons.</p></li>
+<li><p><strong>return_labels</strong> – Whether to also return a list of labels of the form “L0H0” for the heads.</p></li>
+<li><p><strong>incl_remainder</strong> – Whether to return a final term which is “the rest of the residual stream”.</p></li>
+<li><p><strong>apply_ln</strong> – Whether to apply LayerNorm to the stack.</p></li>
 </ul>
 </dd>
 </dl>
@@ -587,17 +623,27 @@ the residual stream”. Defaults to False.</p></li>
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.to">
 <span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">device</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">move_model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.ActivationCache.ActivationCache" title="transformer_lens.ActivationCache.ActivationCache"><span class="pre">ActivationCache</span></a></span></span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.to" title="Permalink to this definition">#</a></dt>
 <dd><p>Move the Cache to a Device.</p>
-<p>Mostly useful for moving it to CPU after model computation finishes to save GPU memory.
-Matmuls will be much slower on the CPU.</p>
-<p>Note that some methods will break unless the model is also moved to the same device, eg
-compute_head_results.</p>
+<p>Mostly useful for moving the cache to the CPU after model computation finishes to save GPU
+memory. Note however that operations will be much slower on the CPU. Note also that some
+methods will break unless the model is also moved to the same device, eg
+<cite>compute_head_results</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>device</strong> – The device to move the cache to (e.g. <cite>torch.device.cpu</cite>).</p></li>
+<li><p><strong>move_model</strong> – Whether to also move the model to the same device. &#64;deprecated</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.toggle_autodiff">
 <span class="sig-name descname"><span class="pre">toggle_autodiff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.toggle_autodiff" title="Permalink to this definition">#</a></dt>
-<dd><p>Set Autodiff to Mode (defaults to turning it off).</p>
-<p>WARNING: This is pretty dangerous, since autodiff is global state - this turns off torch’s
+<dd><p>Toggle Autodiff Globally.</p>
+<p>Applies <cite>torch.set_grad_enabled(mode)</cite> to the global state (not just TransformerLens).</p>
+<p>Warning:</p>
+<p>This is pretty dangerous, since autodiff is global state - this turns off torch’s
 ability to take gradients completely and it’s easy to get a bunch of errors if you don’t
 realise what you’re doing.</p>
 <p>But autodiff consumes a LOT of GPU memory (since every intermediate activation is cached
@@ -606,13 +652,25 @@ storing it in a list will keep every activation sticking around!). So often when
 analysing a model’s activations, and don’t need to do any training, autodiff is more trouble
 than its worth.</p>
 <p>If you don’t want to mess with global state, using torch.inference_mode as a context manager
-or decorator achieves similar effects :)</p>
+or decorator achieves similar effects:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">inference_mode</span><span class="p">():</span>
+<span class="gp">... </span>    <span class="n">y</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">([</span><span class="mf">1.</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">y</span><span class="o">.</span><span class="n">requires_grad</span>
+<span class="go">False</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.ActivationCache.ActivationCache.values">
 <span class="sig-name descname"><span class="pre">values</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.ActivationCache.ActivationCache.values" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Values of the ActivationCache.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>List of all values.</p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 
@@ -714,5 +772,7 @@ or decorator achieves similar effects :)</p>
     <script src="../../_static/scripts/furo.js"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     </body>
 </html>
