@@ -615,19 +615,34 @@ def test_prompt(
     Intended for exploratory analysis. Prints out the performance on the answer (rank, logit, prob),
     as well as the top k tokens. Works for multi-token prompts and multi-token answers.
 
+    Warning:
+
+    This will print the results (it does not return them).
+
     Examples:
 
     >>> from transformer_lens import HookedTransformer, utils
-    >>> model = HookedTransformer.from_pretrained("tiny-stories-1M"
+    >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
     Loaded pretrained model tiny-stories-1M into HookedTransformer
 
     >>> prompt = "Why did the elephant cross the"
     >>> answer = "road"
     >>> utils.test_prompt(prompt, answer, model)
-
-    Notes:
-
-    This will print the results (it does not return them).
+    Tokenized prompt: ['<|endoftext|>', 'Why', ' did', ' the', ' elephant', ' cross', ' the']
+    Tokenized answer: [' road']
+    Performance on answer token:
+    Rank: 2        Logit: 14.24 Prob:  3.51% Token: | road|
+    Top 0th token. Logit: 14.51 Prob:  4.59% Token: | ground|
+    Top 1th token. Logit: 14.41 Prob:  4.18% Token: | tree|
+    Top 2th token. Logit: 14.24 Prob:  3.51% Token: | road|
+    Top 3th token. Logit: 14.22 Prob:  3.45% Token: | car|
+    Top 4th token. Logit: 13.92 Prob:  2.55% Token: | river|
+    Top 5th token. Logit: 13.79 Prob:  2.25% Token: | street|
+    Top 6th token. Logit: 13.77 Prob:  2.21% Token: | k|
+    Top 7th token. Logit: 13.75 Prob:  2.16% Token: | hill|
+    Top 8th token. Logit: 13.64 Prob:  1.92% Token: | swing|
+    Top 9th token. Logit: 13.46 Prob:  1.61% Token: | park|
+    Ranks of the answer tokens: [(' road', 2)]
 
     Args:
         prompt:
