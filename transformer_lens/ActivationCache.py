@@ -686,23 +686,20 @@ class ActivationCache:
     ) -> Float[torch.Tensor, "layers_covered ..."]:
         """Stack Activations.
 
-        Returns a stack of all head results (ie residual stream contribution) up to layer L. A good
-        way to decompose the outputs of attention layers into attribution by specific heads. The
-        output shape is exactly the same shape as the activations, just with a leading layers
-        dimension.
+        Flexible way to stack activations with a given name.
 
         Args:
             activation_name:
-                The name of the activation to be stacked layer: 'Layer index - heads' at all
-                layers strictly before this are included. layer must be in [1, n_layers-1], or any
-                of (n_layers, -1, None), which all mean the final layer.
+                The name of the activation to be stacked
+            layer:
+                'Layer index - heads' at all layers strictly before this are included. layer must be
+                in [1, n_layers-1], or any of (n_layers, -1, None), which all mean the final layer.
             sublayer_type:
                 The sub layer type of the activation, passed to utils.get_act_name. Can normally be
                 inferred.
             incl_remainder:
                 Whether to return a final term which is "the rest of the residual stream".
         """
-
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
