@@ -1,8 +1,14 @@
 """Activation Cache.
 
-The core functionality of TransformerLens is to cache and edit the activations of a model. The
-:class:`ActivationCache` is designed to help do the caching part of this - storing all activations
-in a single place.
+The :class:`ActivationCache` is at the core of Transformer Lens. It is a wrapper that stores all
+important activations from a forward pass of the model, and provides a variety of helper functions
+to investigate them.
+
+Getting Started:
+
+When reading these docs for the first time, we recommend reading the main :class:`ActivationCache`
+class first, including the examples, and then skimming the available methods. You can then refer
+back to these docs depending on what you need to do.
 """
 from __future__ import annotations
 
@@ -24,8 +30,47 @@ from transformer_lens.utils import Slice, SliceInput
 class ActivationCache:
     """Activation Cache.
 
-    A wrapper around a dictionary of cached activations from a model run, with a variety of helper
-    functions.
+    A wrapper that stores all important activations from a forward pass of the model, and provides
+    a variety of helper functions to investigate them.
+
+    The :class:`ActivationCache` is at the core of Transformer Lens. It is a wrapper that stores all
+    important activations from a forward pass of the model, and provides a variety of helper functions
+    to investigate them. The common way to access it is to run the model with
+    :meth:`transformer_lens.HookedTransformer.run_with_cache`.
+
+    Examples:
+
+    When investigating a particular behaviour of a modal, a very common first step is to try and
+    understand which components of the model are most responsible for that behaviour. For example, if
+    you're investigating the prompt "Why did the chicken cross the" -> " road", you might want to
+    understand if there is a "dad joke" head that is responsible for the model predicting "road". This
+    kind of analysis commonly falls under the category of "logit attribution" or "direct logit
+    attribution" (DLA).
+
+    >>> from transformer_lens import HookedTransformer
+    >>> model = HookedTransformer.from_pretrained("tiny-stories-1M")
+    Loaded pretrained model tiny-stories-1M into HookedTransformer
+
+    >>> _logits, cache = model.run_with_cache("Why did the chicken cross the")
+    >>> residual_stream, labels = cache.decompose_resid(return_labels=True)
+    >>> print(labels[0:3])
+    ['embed', 'pos_embed', '0_attn_out']
+
+    >>> answer = " road" # Note the proceeding space to match the model's tokenization
+    >>> logit_attrs = cache.logit_attrs(residual_stream, answer)
+    >>> print(logit_attrs.shape)
+    torch.Size([18, 1, 7])
+
+    >>> most_important_component_idx = torch.argmax(logit_attrs)
+    >>> print(labels[most_important_component_idx])
+    1_mlp_out
+
+    Equally you might want to find out if the model struggles to construct such excellent jokes until
+    the very last layers, or if it is trivial and the first few layers are enough. This kind of analysis
+    is called "logit lens", and you can find out more about how to do that with
+    :meth:`ActivationCache.accumulated_resid`.
+
+    Warning:
 
     This is designed to be used with :class:`transformer_lens.HookedTransformer`, and will not
     work with other models. It's also designed to be used with all activations of
