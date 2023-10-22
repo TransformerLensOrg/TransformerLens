@@ -4,21 +4,25 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '.devcontainer/**'
-      - '.github/**'
-      - '.vscode/**'
-      - '.gitignore'
-      - '*.md'
+    paths:
+      - '**' # Include all files by default
+      - '!.devcontainer/**'
+      - '!.vscode/**'
+      - '!.git*'
+      - '!*.md'
+      - '!.github/**'
+      - '.github/workflows/checks.yml' # Still include current workflow
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - '.devcontainer/**'
-      - '.github/**'
-      - '.vscode/**'
-      - '.gitignore'
-      - '*.md'
+    paths:
+      - '**'
+      - '!.devcontainer/**'
+      - '!.vscode/**'
+      - '!.git*'
+      - '!*.md'
+      - '!.github/**'
+      - '.github/workflows/checks.yml'
   # Allow this workflow to be called from other workflows
   workflow_call:
     inputs:
@@ -69,12 +73,39 @@ jobs:
         run: make unit-test
       - name: Docstring test
         run: make docstring-test
-      - name: Acceptance test
-        run: make acceptance-test
       # - name: Type check
       #   run: poetry run mypy transformer_lens
       - name: Build check
         run: poetry build
+  
+  # Acceptance tests are run in parallel with unit checks.
+  acceptance-tests:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "poetry"
+      - name: Cache Models used with Tests
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/huggingface/hub/models--gpt2
+            ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
+            ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
+          key: ${{ runner.os }}-huggingface-models
+      - name: Install dependencies
+        run: |
+          poetry lock --check
+          poetry install --with dev
+      - name: Acceptance test
+        run: make acceptance-test
+
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
