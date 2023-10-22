@@ -48,6 +48,9 @@ in the docstring, and this will then automatically generate the API docs when me
 They will also be automatically checked with [pytest](https://docs.pytest.org/) (via
 [doctest](https://docs.python.org/3/library/doctest.html)).
 
+If you want to view your documentation changes, run `pytest run docs-hot-reload`. This will give you
+hot-reloading docs (they change in real time as you edit docstrings).
+
 ### Docstring Style Guide
 
 We follow the Google Python Docstring Style for writing docstrings, with some added features from
