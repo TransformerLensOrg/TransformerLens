@@ -737,7 +737,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn" : "gelu_fast",
             "eps": hf_config.layer_norm_epsilon,
             "normalization_type": "LN", # double check this
-            "post_embedding_layer_norm": True,
+            "post_embedding_ln": True,
             "positional_embedding_type": 'alibi'
         }
         
@@ -1654,7 +1654,6 @@ def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
 
     # Bloom uses post embedding layer norm
     state_dict["embed.ln.w"] = bloom.transformer.word_embeddings_layernorm.weight
-    print(state_dict['embed.ln.w'][:5])
     state_dict["embed.ln.b"] = bloom.transformer.word_embeddings_layernorm.bias
     
     

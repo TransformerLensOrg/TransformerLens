@@ -34,7 +34,7 @@ class Embed(nn.Module):
             torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=cfg.dtype)
         )
         # bloom needs post embedding layer norm
-        if cfg.post_embedding_layer_norm: 
+        if cfg.post_embedding_ln: 
             self.ln = LayerNorm(cfg)
 
     def forward(
@@ -42,7 +42,7 @@ class Embed(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
-        if self.cfg.post_embedding_layer_norm:
+        if self.cfg.post_embedding_ln:
             return self.ln(self.W_E[tokens, :])
         return self.W_E[tokens, :]
 
@@ -603,9 +603,8 @@ class Attention(nn.Module):
 
         # alibi encoding before applying causal mask
         if self.cfg.positional_embedding_type == 'alibi':
-            #TODO: not sure about the side effect of not using standard, double check
             batch_size = attn_scores.size(0)
-            seq_len = attn_scores.size(-2) 
+            seq_len = attn_scores.size(-1) 
             additive_mask = torch.ones(batch_size, seq_len)
             dtype = self.cfg.dtype if self.cfg.dtype in [torch.float32, torch.float64] else 'torch.float32'
             alibi = self.build_alibi_tensor(
@@ -819,7 +818,7 @@ class Attention(nn.Module):
 
         arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
         alibi = slopes[..., None] * arange_tensor
-        # originally it returns tensor of shape batch * head_index, 1, pos
+        # original hf code returns tensor of shape batch * head_index, 1, pos
         return alibi.reshape(batch_size, num_heads, 1, seq_length).to(dtype)
 
 # MLP Layers

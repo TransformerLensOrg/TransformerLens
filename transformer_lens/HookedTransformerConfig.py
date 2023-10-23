@@ -196,7 +196,7 @@ class HookedTransformerConfig:
     tokenizer_prepends_bos: Optional[bool] = None
 
     # bloom flags
-    post_embedding_layer_norm: bool = False
+    post_embedding_ln: bool = False
     
 
 
