@@ -197,8 +197,6 @@ class HookedTransformerConfig:
 
     # bloom flags
     post_embedding_ln: bool = False
-    
-
 
     def __post_init__(self):
         if self.n_heads == -1:
