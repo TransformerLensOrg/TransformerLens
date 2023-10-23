@@ -641,13 +641,13 @@ files = [
 
 [[package]]
 name = "circuitsvis"
-version = "1.42.0"
+version = "1.43.0"
 description = "Mechanistic Interpretability Visualizations"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "circuitsvis-1.42.0-py3-none-any.whl", hash = "sha256:0f39c513c844d6291d5a12476e17b172c9de6918129b17ae7b72831d9df817b6"},
-    {file = "circuitsvis-1.42.0.tar.gz", hash = "sha256:8fe2d9269dd228d67a401b212425612b1b002fc3eb92356a1838c1421792f879"},
+    {file = "circuitsvis-1.43.0-py3-none-any.whl", hash = "sha256:f680419d9a2c26cb94ee8311ace007214e09b236396be0185e6e45c6b4ae0e3a"},
+    {file = "circuitsvis-1.43.0.tar.gz", hash = "sha256:b4dfd1506b0acc13b859eafbb0a987e7625db6b8c87fd51a4c9254990cff0d58"},
 ]
 
 [package.dependencies]
