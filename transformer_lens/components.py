@@ -5,10 +5,10 @@ needed to create many different types of generative language models. They are us
 :class:`transformer_lens.HookedTransformer`.
 """
 import logging
+import math
 from typing import Dict, Optional, Tuple, Union
 
 import einops
-import math
 import numpy as np
 import torch
 import torch.nn as nn
