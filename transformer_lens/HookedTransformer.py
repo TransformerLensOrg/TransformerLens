@@ -334,8 +334,8 @@ class HookedTransformer(HookedRootModule):
             # keys and queries. See HookedTransformerConfig for details
             residual = embed
             shortformer_pos_embed = None
-        elif self.cfg.positional_embedding_type == 'alibi':
-            residual = embed 
+        elif self.cfg.positional_embedding_type == "alibi":
+            residual = embed
             shortformer_pos_embed = None
         else:
             raise ValueError(

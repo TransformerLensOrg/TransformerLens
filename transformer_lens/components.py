@@ -34,7 +34,7 @@ class Embed(nn.Module):
             torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=cfg.dtype)
         )
         # bloom needs post embedding layer norm
-        if cfg.post_embedding_ln: 
+        if cfg.post_embedding_ln:
             self.ln = LayerNorm(cfg)
 
     def forward(
@@ -309,7 +309,7 @@ class LayerNorm(nn.Module):
     ]:
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
-          
+
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
@@ -484,8 +484,6 @@ class Attention(nn.Module):
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
-        
-
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -602,23 +600,30 @@ class Attention(nn.Module):
         )  # [batch, head_index, query_pos, key_pos]
 
         # alibi encoding before applying causal mask
-        if self.cfg.positional_embedding_type == 'alibi':
+        if self.cfg.positional_embedding_type == "alibi":
             batch_size = attn_scores.size(0)
-            seq_len = attn_scores.size(-1) 
+            seq_len = attn_scores.size(-1)
             additive_mask = torch.ones(batch_size, seq_len)
-            dtype = self.cfg.dtype if self.cfg.dtype in [torch.float32, torch.float64] else 'torch.float32'
+            dtype = (
+                self.cfg.dtype
+                if self.cfg.dtype in [torch.float32, torch.float64]
+                else "torch.float32"
+            )
             alibi = self.build_alibi_tensor(
-                attention_mask=additive_mask,
-                num_heads=self.cfg.n_heads,
-                dtype=dtype
+                attention_mask=additive_mask, num_heads=self.cfg.n_heads, dtype=dtype
             ).to(attn_scores.device)
-            
+
             # Huggingface impl uses torch.Tensor.baddbmm, with alpha = 1/sqrt(d_head), and beta=1
-            # and alibi.baddbmm(q,k) = beta * alibi + alpha * (q@k), 
-            # here the `attn_scores` is already scaled by a factor of self.attn_scale, 
+            # and alibi.baddbmm(q,k) = beta * alibi + alpha * (q@k),
+            # here the `attn_scores` is already scaled by a factor of self.attn_scale,
             # we only need to add alibi matrix to the result
-            assert alibi.shape == (attn_scores.size(0), attn_scores.size(1), 1, attn_scores.size(-1)), f"alibi shape {alibi.shape}, expecting {attn_scores.shape}"
-            attn_scores += alibi # [batch, head_index, query_pos, key_pos]
+            assert alibi.shape == (
+                attn_scores.size(0),
+                attn_scores.size(1),
+                1,
+                attn_scores.size(-1),
+            ), f"alibi shape {alibi.shape}, expecting {attn_scores.shape}"
+            attn_scores += alibi  # [batch, head_index, query_pos, key_pos]
 
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
@@ -783,32 +788,50 @@ class Attention(nn.Module):
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
+
     def build_alibi_tensor(
-            self,
-            attention_mask: torch.Tensor, # batch pos
-            num_heads: int,
-            dtype: torch.dtype
+        self,
+        attention_mask: torch.Tensor,  # batch pos
+        num_heads: int,
+        dtype: torch.dtype,
     ) -> Float[torch.Tensor, "batch head_index 1 pos"]:
         batch_size, seq_length = attention_mask.shape
         closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
         base = torch.tensor(
-            2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
+            2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))),
+            device=attention_mask.device,
+            dtype=torch.float32,
         )
-        powers = torch.arange(1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32)
+        powers = torch.arange(
+            1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32
+        )
         slopes = torch.pow(base, powers)
 
         if closest_power_of_2 != num_heads:
             extra_base = torch.tensor(
-                2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), device=attention_mask.device, dtype=torch.float32
+                2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))),
+                device=attention_mask.device,
+                dtype=torch.float32,
             )
-            num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
-            extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, device=attention_mask.device, dtype=torch.int32)
+            num_remaining_heads = min(
+                closest_power_of_2, num_heads - closest_power_of_2
+            )
+            extra_powers = torch.arange(
+                1,
+                1 + 2 * num_remaining_heads,
+                2,
+                device=attention_mask.device,
+                dtype=torch.int32,
+            )
             slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
 
-        arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[:, None, :]
+        arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[
+            :, None, :
+        ]
         alibi = slopes[..., None] * arange_tensor
         # original hf code returns tensor of shape batch * head_index, 1, pos
         return alibi.reshape(batch_size, num_heads, 1, seq_length).to(dtype)
+
 
 # MLP Layers
 class MLP(nn.Module):

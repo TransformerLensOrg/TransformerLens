@@ -495,9 +495,7 @@ MODEL_ALIASES = {
         "stablelm-tuned-alpha-7b",
         "stablelm-tuned-7b",
     ],
-    "bigscience/bloom-560m": [
-        "bloom-560m"
-    ],
+    "bigscience/bloom-560m": ["bloom-560m"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -725,22 +723,22 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "gelu",
             "attention_dir": "bidirectional",
         }
-    elif architecture == 'BloomForCausalLM':
+    elif architecture == "BloomForCausalLM":
         cfg_dict = {
-            "d_model" : hf_config.hidden_size,
-            "d_head" : hf_config.hidden_size // hf_config.n_head,
-            "n_heads" : hf_config.n_head,
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.n_head,
+            "n_heads": hf_config.n_head,
             "d_mlp": hf_config.hidden_size * 4,
             "n_layers": hf_config.n_layer,
-            "n_ctx": 2048, # is there a variable for this?
+            "n_ctx": 2048,  # is there a variable for this?
             "d_vocab": hf_config.vocab_size,
-            "act_fn" : "gelu_fast",
+            "act_fn": "gelu_fast",
             "eps": hf_config.layer_norm_epsilon,
-            "normalization_type": "LN", # double check this
+            "normalization_type": "LN",  # double check this
             "post_embedding_ln": True,
-            "positional_embedding_type": 'alibi'
+            "positional_embedding_type": "alibi",
         }
-        
+
         # print("bloom config", cfg_dict)
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
@@ -1646,7 +1644,7 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     return state_dict
 
 
-#TODO: bloom weight conversion
+# TODO: bloom weight conversion
 def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
     state_dict = {}
 
@@ -1655,9 +1653,7 @@ def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
     # Bloom uses post embedding layer norm
     state_dict["embed.ln.w"] = bloom.transformer.word_embeddings_layernorm.weight
     state_dict["embed.ln.b"] = bloom.transformer.word_embeddings_layernorm.bias
-    
-    
-    
+
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = bloom.transformer.h[l].input_layernorm.weight
         state_dict[f"blocks.{l}.ln1.b"] = bloom.transformer.h[l].input_layernorm.bias
@@ -1667,8 +1663,8 @@ def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
         W = bloom.transformer.h[l].self_attention.query_key_value.weight
         # First transpose -> (1024, 3072), then split into (d_model, n_heads, 3, d_head)
         W_split = W.T.reshape(cfg.d_model, cfg.n_heads, 3, cfg.d_head)
-        
-        W_Q, W_K, W_V = W_split[...,0,:], W_split[...,1,:], W_split[...,2,:]
+
+        W_Q, W_K, W_V = W_split[..., 0, :], W_split[..., 1, :], W_split[..., 2, :]
         W_Q = einops.rearrange(W_Q, "m n h ->n m h", n=cfg.n_heads)
         W_K = einops.rearrange(W_K, "m n h ->n m h", n=cfg.n_heads)
         W_V = einops.rearrange(W_V, "m n h ->n m h", n=cfg.n_heads)
@@ -1678,31 +1674,44 @@ def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
 
         qkv_bias = bloom.transformer.h[l].self_attention.query_key_value.bias
         qkv_bias = qkv_bias.reshape(cfg.n_heads, 3, cfg.d_head)
- 
+
         state_dict[f"blocks.{l}.attn.b_Q"] = qkv_bias[:, 0, :]
         state_dict[f"blocks.{l}.attn.b_K"] = qkv_bias[:, 1, :]
         state_dict[f"blocks.{l}.attn.b_V"] = qkv_bias[:, 2, :]
 
-        W_O = bloom.transformer.h[l].self_attention.dense.weight.T #[1024, 1024]
-        W_O = einops.rearrange(W_O, "(n h) m->n h m", n=cfg.n_heads) # [n_heads, d_head, d_model]
+        W_O = bloom.transformer.h[l].self_attention.dense.weight.T  # [1024, 1024]
+        W_O = einops.rearrange(
+            W_O, "(n h) m->n h m", n=cfg.n_heads
+        )  # [n_heads, d_head, d_model]
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
-        state_dict[f"blocks.{l}.attn.b_O"] = bloom.transformer.h[l].self_attention.dense.bias
+        state_dict[f"blocks.{l}.attn.b_O"] = bloom.transformer.h[
+            l
+        ].self_attention.dense.bias
 
-        state_dict[f"blocks.{l}.ln2.w"] = bloom.transformer.h[l].post_attention_layernorm.weight
-        state_dict[f"blocks.{l}.ln2.b"] = bloom.transformer.h[l].post_attention_layernorm.bias
+        state_dict[f"blocks.{l}.ln2.w"] = bloom.transformer.h[
+            l
+        ].post_attention_layernorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = bloom.transformer.h[
+            l
+        ].post_attention_layernorm.bias
 
         W_in = bloom.transformer.h[l].mlp.dense_h_to_4h.weight.T
         state_dict[f"blocks.{l}.mlp.W_in"] = W_in
-        state_dict[f"blocks.{l}.mlp.b_in"] = bloom.transformer.h[l].mlp.dense_h_to_4h.bias
+        state_dict[f"blocks.{l}.mlp.b_in"] = bloom.transformer.h[
+            l
+        ].mlp.dense_h_to_4h.bias
 
         W_out = bloom.transformer.h[l].mlp.dense_4h_to_h.weight.T
         state_dict[f"blocks.{l}.mlp.W_out"] = W_out
-        state_dict[f"blocks.{l}.mlp.b_out"] = bloom.transformer.h[l].mlp.dense_4h_to_h.bias
-    state_dict["unembed.W_U"] = bloom.lm_head.weight.T # why transpose? cuz right mult?
+        state_dict[f"blocks.{l}.mlp.b_out"] = bloom.transformer.h[
+            l
+        ].mlp.dense_4h_to_h.bias
+    state_dict["unembed.W_U"] = bloom.lm_head.weight.T  # why transpose? cuz right mult?
 
     state_dict["ln_final.w"] = bloom.transformer.ln_f.weight
     state_dict["ln_final.b"] = bloom.transformer.ln_f.bias
     return state_dict
+
 
 @dataclasses.dataclass
 class Config:
@@ -1741,5 +1750,6 @@ def get_basic_config(model_name: str, **kwargs) -> Config:
             ]
         }
     )
+
 
 # %%
