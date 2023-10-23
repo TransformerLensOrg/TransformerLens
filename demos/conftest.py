@@ -3,7 +3,6 @@ def pytest_collectstart(collector):
     if collector.fspath and collector.fspath.ext == ".ipynb":
         collector.skip_compare += (
             "text/html",
-            "text/plain",
             "application/javascript",
             "application/vnd.plotly.v1+json",  # Plotly
         )
