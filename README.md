@@ -24,6 +24,8 @@ TransformerLens lets you load in 50+ different open source language models, and 
 activations of the model to you. You can cache any internal activation in the model, and add in
 functions to edit, remove or replace these activations as the model runs.
 
+~~ [OCTOBER SURVEY HERE](https://forms.gle/bw7U3PfioacDtFmT8) ~~
+
 ## Quick Start
 
 ### Install
