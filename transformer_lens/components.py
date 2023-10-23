@@ -789,17 +789,6 @@ class Attention(nn.Module):
             num_heads: int,
             dtype: torch.dtype
     ) -> Float[torch.Tensor, "batch head_index 1 pos"]:
-        """
-        https://github.com/huggingface/transformers/blob/21dc5859421cf0d7d82d374b10f533611745a8c5/src/transformers/models/bloom/modeling_bloom.py#L86
-        Args:
-        Returns tensor shaped (batch_size * num_heads, 1, max_seq_len)
-            attention_mask (`torch.Tensor`):
-                Token-wise attention mask, this should be of shape (batch_size, max_seq_len).
-            num_heads (`int`, *required*):
-                number of heads
-            dtype (`torch.dtype`, *optional*, default=`torch.bfloat16`):
-                dtype of the output tensor
-        """
         batch_size, seq_length = attention_mask.shape
         closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
         base = torch.tensor(
