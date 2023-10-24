@@ -136,6 +136,8 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-base-alpha-7b",
     "stabilityai/stablelm-tuned-alpha-3b",
     "stabilityai/stablelm-tuned-alpha-7b",
+    "mistralai/Mistral-7B-v0.1",
+    "mistralai/Mistral-7B-Instruct-v0.1"
 ]
 """Official model names for models on HuggingFace."""
 
@@ -494,6 +496,8 @@ MODEL_ALIASES = {
         "stablelm-tuned-alpha-7b",
         "stablelm-tuned-7b",
     ],
+    "mistralai/Mistral-7B-v0.1": ["mistral-7B"],
+    "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7B-instruct"]
 }
 """Model aliases for models on HuggingFace."""
 
