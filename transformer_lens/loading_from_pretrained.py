@@ -1067,6 +1067,8 @@ def get_pretrained_state_dict(
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "MistralForCausalLM":
+            state_dict = convert_mistral_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -1391,6 +1393,64 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
     state_dict["ln_final.w"] = llama.model.norm.weight
 
     state_dict["unembed.W_U"] = llama.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+    return state_dict
+
+
+def convert_mistral_weights(mistral, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = mistral.model.embed_tokens.weight
+
+    # Mistral has no biases anywhere
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = mistral.model.layers[l].input_layernorm.weight
+
+        W_Q = mistral.model.layers[l].self_attn.q_proj.weight
+        W_K = mistral.model.layers[l].self_attn.k_proj.weight
+        W_V = mistral.model.layers[l].self_attn.v_proj.weight
+        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+
+        W_O = mistral.model.layers[l].self_attn.o_proj.weight
+        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.ln2.w"] = mistral.model.layers[
+            l
+        ].post_attention_layernorm.weight
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = mistral.model.layers[l].mlp.up_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_gate"] = mistral.model.layers[
+            l
+        ].mlp.gate_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.mlp.W_out"] = mistral.model.layers[
+            l
+        ].mlp.down_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+    state_dict["ln_final.w"] = mistral.model.norm.weight
+
+    state_dict["unembed.W_U"] = mistral.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
