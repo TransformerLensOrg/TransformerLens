@@ -788,6 +788,63 @@ class Attention(nn.Module):
         return torch.cat([x_rotated, x_pass], dim=-1)
 
 
+class GroupedQueryAttention(Attention):
+    def __init__(self, cfg: Dict | HookedTransformerConfig, attn_type: str = "global", layer_id: int | None = None):
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        assert cfg.n_key_value_heads is not None
+        super().__init__(cfg, attn_type, layer_id)
+        self.repeat_kv_heads = cfg.n_heads // cfg.n_key_value_heads
+        self._W_K = nn.Parameter(
+            torch.empty(
+                cfg.n_key_value_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            )
+        )
+        self._W_V = nn.Parameter(
+            torch.empty(
+                cfg.n_key_value_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            )
+        )
+        self._b_K = nn.Parameter(
+            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self._b_V = nn.Parameter(
+            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+
+    @property
+    def W_K(self):
+        return torch.repeat_interleave(self._W_K, dim=0, repeats=self.repeat_kv_heads)
+
+    @W_K.setter
+    def W_K(self, value):
+        self._W_K = value
+
+    @property
+    def W_V(self):
+        return torch.repeat_interleave(self._W_V, dim=0, repeats=self.repeat_kv_heads)
+
+    @W_V.setter
+    def W_V(self, value):
+        self._W_V = value
+
+    @property
+    def b_K(self):
+        return torch.repeat_interleave(self._b_K, dim=0, repeats=self.repeat_kv_heads)
+
+    @b_K.setter
+    def b_K(self, value):
+        self._b_K = value
+
+    @property
+    def b_V(self):
+        return torch.repeat_interleave(self._b_V, dim=0, repeats=self.repeat_kv_heads)
+
+    @b_V.setter
+    def b_V(self, value):
+        self._b_V = value
+
+
 # MLP Layers
 class MLP(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
@@ -975,12 +1032,13 @@ class TransformerBlock(nn.Module):
                 f"Invalid normalization_type passed in {self.cfg.normalization_type}"
             )
 
+        attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
         if not self.cfg.use_local_attn:
-            self.attn = Attention(cfg, "global", block_index)
+            self.attn = attention(cfg, "global", block_index)
         else:
             assert self.cfg.attn_types is not None
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = Attention(cfg, attn_type, block_index)
+            self.attn = attention(cfg, attn_type, block_index)
         if not self.cfg.attn_only:
             if self.cfg.gated_mlp:
                 self.mlp = GatedMLP(cfg)
