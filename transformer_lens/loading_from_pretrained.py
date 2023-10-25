@@ -136,6 +136,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-base-alpha-7b",
     "stabilityai/stablelm-tuned-alpha-3b",
     "stabilityai/stablelm-tuned-alpha-7b",
+    "bigcode/santacoder",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -494,6 +495,7 @@ MODEL_ALIASES = {
         "stablelm-tuned-alpha-7b",
         "stablelm-tuned-7b",
     ],
+    "bigcode/santacoder": ["santacoder"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -720,6 +722,24 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "d_vocab": hf_config.vocab_size,
             "act_fn": "gelu",
             "attention_dir": "bidirectional",
+        }
+    elif architecture == "GPT2LMHeadCustomModel":
+        # santacoder
+        cfg_dict = {
+            "d_model": hf_config.n_embd,
+            "d_head": hf_config.n_embd // hf_config.n_head,
+            "n_heads": hf_config.n_head,
+            "d_mlp": hf_config.n_embd * 4,
+            "n_layers": hf_config.n_layer,
+            "n_ctx": hf_config.n_positions,
+            "eps": hf_config.layer_norm_epsilon,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.activation_function,
+            "use_attn_scale": True,
+            "use_local_attn": False,
+            "scale_attn_by_inverse_layer_idx": hf_config.scale_attn_by_inverse_layer_idx,
+            "normalization_type": "LN",
+            "multiquery": hf_config.attention_head_type == "multiquery",
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
@@ -1020,6 +1040,9 @@ def get_pretrained_state_dict(
                     official_model_name, torch_dtype=dtype, **kwargs
                 )
             else:
+                print(
+                    f"AutoModelForCausalLM.from_pretrained {official_model_name} {dtype} {kwargs}"
+                )
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name, torch_dtype=dtype, **kwargs
                 )
@@ -1028,7 +1051,7 @@ def get_pretrained_state_dict(
 
         for param in hf_model.parameters():
             param.requires_grad = False
-
+        print(hf_model)
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoForCausalLM":
@@ -1043,6 +1066,8 @@ def get_pretrained_state_dict(
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GPT2LMHeadCustomModel":
+            state_dict = convert_gpt2_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -1620,6 +1645,69 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     # "unembed.W_U": mlm_head.decoder.weight.T,
     state_dict["unembed.b_U"] = mlm_head.bias
 
+    return state_dict
+
+
+def convert_coder_weights(model: AutoModelForCausalLM, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = model.transformer.wte.weight
+    state_dict["pos_embed.W_pos"] = model.transformer.wpe.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = model.transformer.h[l].ln_1.weight
+        state_dict[f"blocks.{l}.ln1.b"] = model.transformer.h[l].ln_1.bias
+
+        # In GPT-2, q,k,v are produced by one big linear map, whose output is
+        # concat([q, k, v])
+        W_KV = model.transformer.h[l].attn.kv_attn.weight # [d_model, 2 * d_head]
+        W_K, W_V = torch.tensor_split(W_KV, 2, dim=1)
+        W_Q = model.transformer.h[l].attn.q_attn.weight # [d_model, d_model]
+        W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=cfg.n_heads)
+        W_K = einops.repeat(W_K, "m h -> i m h", i=cfg.n_heads)
+        W_V = einops.repeat(W_V, "m h -> i m h", i=cfg.n_heads)
+
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        b_Q = einops.rearrange(
+            model.transformer.h[l].attn.q_attn.bias,
+            "(index head)-> index head",
+            index=cfg.n_heads,
+            head=cfg.d_head,
+        )
+        b_KV = model.transformer.h[l].attn.kv_attn.bias # [2 * d_head]
+        b_K, b_V = torch.tensor_split(b_KV, 2, dim=0)
+        b_K = einops.repeat(
+            b_K, "head -> index head", index=cfg.n_heads
+        )
+        b_V = einops.repeat(
+            b_V, "head -> index head", index=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.b_Q"] = b_Q
+        state_dict[f"blocks.{l}.attn.b_K"] = b_K
+        state_dict[f"blocks.{l}.attn.b_V"] = b_V
+
+        W_O = model.transformer.h[l].attn.c_proj.weight
+        W_O = einops.rearrange(W_O, "(i h) m->i h m", i=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = model.transformer.h[l].attn.c_proj.bias
+
+        state_dict[f"blocks.{l}.ln2.w"] = model.transformer.h[l].ln_2.weight
+        state_dict[f"blocks.{l}.ln2.b"] = model.transformer.h[l].ln_2.bias
+
+        W_in = model.transformer.h[l].mlp.c_fc.weight
+        state_dict[f"blocks.{l}.mlp.W_in"] = W_in
+        state_dict[f"blocks.{l}.mlp.b_in"] = model.transformer.h[l].mlp.c_fc.bias
+
+        W_out = model.transformer.h[l].mlp.c_proj.weight
+        state_dict[f"blocks.{l}.mlp.W_out"] = W_out
+        state_dict[f"blocks.{l}.mlp.b_out"] = model.transformer.h[l].mlp.c_proj.bias
+    state_dict["unembed.W_U"] = model.lm_head.weight.T
+
+    state_dict["ln_final.w"] = model.transformer.ln_f.weight
+    state_dict["ln_final.b"] = model.transformer.ln_f.bias
     return state_dict
 
 
