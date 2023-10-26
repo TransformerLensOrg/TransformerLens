@@ -26,3 +26,9 @@ test:
 	make acceptance-test
 	make docstring-test
 	make notebook-test
+
+docs-hot-reload:
+	poetry run docs-hot-reload
+
+build-docs:
+	poetry run build-docs
