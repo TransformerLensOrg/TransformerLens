@@ -1651,7 +1651,7 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     return state_dict
 
 
-def convert_coder_weights(model: AutoModelForCausalLM, cfg: HookedTransformerConfig):
+def convert_coder_weights(model, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = model.transformer.wte.weight
