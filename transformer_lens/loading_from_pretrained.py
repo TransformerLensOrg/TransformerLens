@@ -984,6 +984,14 @@ def get_pretrained_state_dict(
         del kwargs["torch_dtype"]
     official_model_name = get_official_model_name(official_model_name)
     if (
+        official_model_name == "bigcode/santacoder" and 
+        not kwargs.get("trust_remote_code", False)
+    ):
+        logging.warning(
+            "Loading santacoder model requires setting trust_remote_code=True"
+        )
+        kwargs["trust_remote_code"] = True
+    if (
         official_model_name.startswith("NeelNanda")
         or official_model_name.startswith("ArthurConmy")
         or official_model_name.startswith("Baidicoot")
@@ -1039,12 +1047,6 @@ def get_pretrained_state_dict(
                     official_model_name, torch_dtype=dtype, **kwargs
                 )
             else:
-                assert kwargs.get("trust_remote_code", False) or "santacoder" not in official_model_name, (
-                    "Must set trust_remote_code=True to load santacoder models"
-                )
-                print(
-                    f"AutoModelForCausalLM.from_pretrained {official_model_name} {dtype} {kwargs}"
-                )
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name, torch_dtype=dtype, **kwargs
                 )
@@ -1053,7 +1055,7 @@ def get_pretrained_state_dict(
 
         for param in hf_model.parameters():
             param.requires_grad = False
-        print(hf_model)
+        
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoForCausalLM":
