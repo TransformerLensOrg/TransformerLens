@@ -57,7 +57,6 @@ loss_store = {
     "redwood_attn_2l": 10.530948638916016,
     "solu-1l": 5.256411552429199,
     "tiny-stories-33M": 12.203617095947266,
-    "santacoder": 10.1487,
 }
 
 no_processing = [
