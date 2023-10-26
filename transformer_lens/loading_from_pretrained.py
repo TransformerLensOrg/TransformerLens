@@ -743,7 +743,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": hf_config.num_key_value_heads,
             "final_rms": True,
             "gated_mlp": True,
-            "use_local_attn": True
+            "use_local_attn": True,
+            "rotary_dim": 4096 // 32,
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
@@ -1411,20 +1412,20 @@ def convert_mistral_weights(mistral, cfg: HookedTransformerConfig):
         W_K = mistral.model.layers[l].self_attn.k_proj.weight
         W_V = mistral.model.layers[l].self_attn.v_proj.weight
         W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
-        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_key_value_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_key_value_heads)
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
-        state_dict[f"blocks.{l}.attn.W_K"] = W_K
-        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+        state_dict[f"blocks.{l}.attn._W_K"] = W_K
+        state_dict[f"blocks.{l}.attn._W_V"] = W_V
 
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype
         )
-        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
         )
-        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        state_dict[f"blocks.{l}.attn._b_V"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
         )
 
         W_O = mistral.model.layers[l].self_attn.o_proj.weight

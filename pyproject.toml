@@ -46,6 +46,7 @@ nvidia-nccl-cu12 = { version = "==2.18.1", markers = "platform_system == 'Linux'
 nvidia-nvtx-cu12 = { version = "==12.1.105", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'", python = ">=3.8" }
 triton = { version = "==2.1.0", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'", python = ">=3.8" }
 # End PyTorch 2.1.0 Bug Fix
+better-abc = "^0.0.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.2.0"
