@@ -304,7 +304,10 @@ class HookedTransformer(HookedRootModule):
                 d_head_in_cache,
             ) = past_kv_cache[0].past_keys.shape
             assert cached_batch_size == batch_size
-            assert num_heads_in_cache == self.cfg.n_heads
+            if self.cfg.n_key_value_heads is None:
+                assert num_heads_in_cache == self.cfg.n_heads
+            else:
+                assert num_heads_in_cache == self.cfg.n_key_value_heads
             assert d_head_in_cache == self.cfg.d_head
             # If we want to generate from the empty string, we'd pass in an empty cache, so we need
             # to handle that case

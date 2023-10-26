@@ -26,12 +26,13 @@ class HookedTransformerKeyValueCacheEntry:
         device: Union[torch.device, str, None],
         batch_size: int = 1,
     ):
+        n_heads = cfg.n_key_value_heads if cfg.n_key_value_heads is not None else cfg.n_heads
         return cls(
             past_keys=torch.empty(
-                (batch_size, 0, cfg.n_heads, cfg.d_head), device=device, dtype=cfg.dtype
+                (batch_size, 0, n_heads, cfg.d_head), device=device, dtype=cfg.dtype
             ),
             past_values=torch.empty(
-                (batch_size, 0, cfg.n_heads, cfg.d_head), device=device, dtype=cfg.dtype
+                (batch_size, 0, n_heads, cfg.d_head), device=device, dtype=cfg.dtype
             ),
         )
 
