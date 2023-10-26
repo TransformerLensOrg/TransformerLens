@@ -66,7 +66,7 @@ nbval = "^0.10.0"
 
 [tool.poetry.group.jupyter.dependencies]
 jupyterlab = ">=3.5.0"
-matplotlib = "3.7"
+ipywidgets = "^8.1.1"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = {version = "5.2.3" }
