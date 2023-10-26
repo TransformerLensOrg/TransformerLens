@@ -1039,6 +1039,9 @@ def get_pretrained_state_dict(
                     official_model_name, torch_dtype=dtype, **kwargs
                 )
             else:
+                assert kwargs.get("trust_remote_code", False) or "santacoder" not in official_model_name, (
+                    "Must set trust_remote_code=True to load santacoder models"
+                )
                 print(
                     f"AutoModelForCausalLM.from_pretrained {official_model_name} {dtype} {kwargs}"
                 )
@@ -1066,7 +1069,7 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPT2LMHeadCustomModel":
-            state_dict = convert_gpt2_weights(hf_model, cfg)
+            state_dict = convert_coder_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
