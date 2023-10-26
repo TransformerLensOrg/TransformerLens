@@ -739,7 +739,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "use_local_attn": False,
             "scale_attn_by_inverse_layer_idx": hf_config.scale_attn_by_inverse_layer_idx,
             "normalization_type": "LN",
-            "multiquery": hf_config.attention_head_type == "multiquery",
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
