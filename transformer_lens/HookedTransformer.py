@@ -1630,7 +1630,11 @@ class HookedTransformer(HookedRootModule):
         """
         for layer in range(self.cfg.n_layers):
             # shape [head_index, d_head]
-            b_V = state_dict[f"blocks.{layer}.attn.b_V"]
+            if self.cfg.n_key_value_heads is None:
+                b_V = state_dict[f"blocks.{layer}.attn.b_V"]
+            else:
+                b_V = state_dict[f"blocks.{layer}.attn._b_V"]
+                b_V = torch.repeat_interleave(b_V, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads)
             # [head_index, d_head, d_model]
             W_O = state_dict[f"blocks.{layer}.attn.W_O"]
             # [d_model]
@@ -1639,7 +1643,10 @@ class HookedTransformer(HookedRootModule):
             folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
-            state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
+            if self.cfg.n_key_value_heads is None:
+                state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
+            else:
+                state_dict[f"blocks.{layer}.attn._b_V"] = torch.zeros_like(state_dict[f"blocks.{layer}.attn._b_V"])
         return state_dict
 
     def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
