@@ -983,9 +983,8 @@ def get_pretrained_state_dict(
         dtype = kwargs["torch_dtype"]
         del kwargs["torch_dtype"]
     official_model_name = get_official_model_name(official_model_name)
-    if (
-        official_model_name == "bigcode/santacoder" and 
-        not kwargs.get("trust_remote_code", False)
+    if official_model_name == "bigcode/santacoder" and not kwargs.get(
+        "trust_remote_code", False
     ):
         logging.warning(
             "Loading santacoder model requires setting trust_remote_code=True"
@@ -1055,7 +1054,7 @@ def get_pretrained_state_dict(
 
         for param in hf_model.parameters():
             param.requires_grad = False
-        
+
         if cfg.original_architecture == "GPT2LMHeadModel":
             state_dict = convert_gpt2_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPTNeoForCausalLM":
@@ -1664,9 +1663,9 @@ def convert_coder_weights(model: AutoModelForCausalLM, cfg: HookedTransformerCon
 
         # In GPT-2, q,k,v are produced by one big linear map, whose output is
         # concat([q, k, v])
-        W_KV = model.transformer.h[l].attn.kv_attn.weight # [d_model, 2 * d_head]
+        W_KV = model.transformer.h[l].attn.kv_attn.weight  # [d_model, 2 * d_head]
         W_K, W_V = torch.tensor_split(W_KV, 2, dim=1)
-        W_Q = model.transformer.h[l].attn.q_attn.weight # [d_model, d_model]
+        W_Q = model.transformer.h[l].attn.q_attn.weight  # [d_model, d_model]
         W_Q = einops.rearrange(W_Q, "m (i h)->i m h", i=cfg.n_heads)
         W_K = einops.repeat(W_K, "m h -> i m h", i=cfg.n_heads)
         W_V = einops.repeat(W_V, "m h -> i m h", i=cfg.n_heads)
@@ -1681,14 +1680,10 @@ def convert_coder_weights(model: AutoModelForCausalLM, cfg: HookedTransformerCon
             index=cfg.n_heads,
             head=cfg.d_head,
         )
-        b_KV = model.transformer.h[l].attn.kv_attn.bias # [2 * d_head]
+        b_KV = model.transformer.h[l].attn.kv_attn.bias  # [2 * d_head]
         b_K, b_V = torch.tensor_split(b_KV, 2, dim=0)
-        b_K = einops.repeat(
-            b_K, "head -> index head", index=cfg.n_heads
-        )
-        b_V = einops.repeat(
-            b_V, "head -> index head", index=cfg.n_heads
-        )
+        b_K = einops.repeat(b_K, "head -> index head", index=cfg.n_heads)
+        b_V = einops.repeat(b_V, "head -> index head", index=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.b_Q"] = b_Q
         state_dict[f"blocks.{l}.attn.b_K"] = b_K
         state_dict[f"blocks.{l}.attn.b_V"] = b_V
