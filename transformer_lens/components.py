@@ -4,9 +4,8 @@ This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, 
 needed to create many different types of generative language models. They are used by
 :class:`transformer_lens.HookedTransformer`.
 """
-from abc import ABC, abstractmethod
-from better_abc import abstract_attribute
 import logging
+from abc import ABC
 from typing import Dict, Optional, Tuple, Union
 
 import einops
@@ -14,6 +13,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from better_abc import abstract_attribute
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
 
@@ -541,7 +541,9 @@ class AbstractAttention(ABC, nn.Module):
             q = q.to(torch.float32)
             k = k.to(torch.float32)
 
-        attn_scores = self.calculate_attention_scores(q, k) # [batch, head_index, query_pos, key_pos]
+        attn_scores = self.calculate_attention_scores(
+            q, k
+        )  # [batch, head_index, query_pos, key_pos]
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
@@ -623,7 +625,7 @@ class AbstractAttention(ABC, nn.Module):
             + self.b_V
         )  # [batch, pos, head_index, d_head]
         return q, k, v
-    
+
     def calculate_attention_scores(self, q, k):
         attn_scores = (
             einsum(
@@ -634,9 +636,9 @@ class AbstractAttention(ABC, nn.Module):
                 k,
             )
             / self.attn_scale
-        )  
+        )
         return attn_scores
-    
+
     def calculate_z_scores(self, v, pattern):
         z = self.hook_z(
             einsum(
@@ -699,7 +701,11 @@ class AbstractAttention(ABC, nn.Module):
 
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM", "MistralForCausalLM"]:
+        if self.cfg.original_architecture in [
+            "GPTNeoXForCausalLM",
+            "LlamaForCausalLM",
+            "MistralForCausalLM",
+        ]:
             freq = einops.repeat(freq, "d -> (2 d)")
         else:
             freq = einops.repeat(freq, "d -> (d 2)")
@@ -718,7 +724,11 @@ class AbstractAttention(ABC, nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM", "MistralForCausalLM"]:
+        if self.cfg.original_architecture in [
+            "GPTNeoXForCausalLM",
+            "LlamaForCausalLM",
+            "MistralForCausalLM",
+        ]:
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
@@ -799,7 +809,12 @@ class Attention(AbstractAttention):
 
 
 class GroupedQueryAttention(AbstractAttention):
-    def __init__(self, cfg: Dict | HookedTransformerConfig, attn_type: str = "global", layer_id: int | None = None):
+    def __init__(
+        self,
+        cfg: Dict | HookedTransformerConfig,
+        attn_type: str = "global",
+        layer_id: int | None = None,
+    ):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         assert cfg.n_key_value_heads is not None
@@ -807,12 +822,18 @@ class GroupedQueryAttention(AbstractAttention):
         self.repeat_kv_heads = cfg.n_heads // cfg.n_key_value_heads
         self._W_K = nn.Parameter(
             torch.empty(
-                cfg.n_key_value_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+                cfg.n_key_value_heads,
+                self.cfg.d_model,
+                self.cfg.d_head,
+                dtype=cfg.dtype,
             )
         )
         self._W_V = nn.Parameter(
             torch.empty(
-                cfg.n_key_value_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+                cfg.n_key_value_heads,
+                self.cfg.d_model,
+                self.cfg.d_head,
+                dtype=cfg.dtype,
             )
         )
         self._b_K = nn.Parameter(
@@ -892,7 +913,7 @@ class GroupedQueryAttention(AbstractAttention):
     def calculate_attention_scores(self, q, k):
         k = torch.repeat_interleave(k, dim=2, repeats=self.repeat_kv_heads)
         return super().calculate_attention_scores(q, k)
-    
+
     def calculate_z_scores(self, v, pattern):
         v = torch.repeat_interleave(v, dim=2, repeats=self.repeat_kv_heads)
         return super().calculate_z_scores(v, pattern)
@@ -1085,7 +1106,9 @@ class TransformerBlock(nn.Module):
                 f"Invalid normalization_type passed in {self.cfg.normalization_type}"
             )
 
-        attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
+        attention = (
+            Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
+        )
         if not self.cfg.use_local_attn:
             self.attn = attention(cfg, "global", block_index)
         else:

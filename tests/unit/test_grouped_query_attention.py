@@ -5,12 +5,12 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 def test_grouped_query_attention():
-    d_model=512
-    d_head=32
-    n_heads=16
-    n_ctx=128
-    n_key_value_heads=4
-    n_layers=1
+    d_model = 512
+    d_head = 32
+    n_heads = 16
+    n_ctx = 128
+    n_key_value_heads = 4
+    n_layers = 1
 
     cfg = HookedTransformerConfig(
         d_model=d_model,
@@ -19,7 +19,7 @@ def test_grouped_query_attention():
         n_ctx=n_ctx,
         n_key_value_heads=n_key_value_heads,
         n_layers=n_layers,
-        act_fn="silu"
+        act_fn="silu",
     )
 
     regular_attention = Attention(cfg)
@@ -39,28 +39,28 @@ def test_grouped_query_attention():
     b_O = torch.rand(d_model)
 
     regular_attention_state_dict = {
-        'W_Q': W_Q,
-        'b_Q': b_Q,
-        'W_O': W_O,
-        'b_O': b_O,
-        'W_K': W_K,
-        'b_K': b_K,
-        'W_V': W_V,
-        'b_V': b_V,
-        'mask': regular_attention.state_dict()['mask'],
-        'IGNORE': regular_attention.state_dict()['IGNORE']
+        "W_Q": W_Q,
+        "b_Q": b_Q,
+        "W_O": W_O,
+        "b_O": b_O,
+        "W_K": W_K,
+        "b_K": b_K,
+        "W_V": W_V,
+        "b_V": b_V,
+        "mask": regular_attention.state_dict()["mask"],
+        "IGNORE": regular_attention.state_dict()["IGNORE"],
     }
     grouped_query_attemtion_state_dict = {
-        'W_Q': W_Q,
-        'b_Q': b_Q,
-        'W_O': W_O,
-        'b_O': b_O,
-        '_W_K': _W_K,
-        '_b_K': _b_K,
-        '_W_V': _W_V,
-        '_b_V': _b_V,
-        'mask': grouped_query_attention.state_dict()['mask'],
-        'IGNORE': grouped_query_attention.state_dict()['IGNORE']
+        "W_Q": W_Q,
+        "b_Q": b_Q,
+        "W_O": W_O,
+        "b_O": b_O,
+        "_W_K": _W_K,
+        "_b_K": _b_K,
+        "_W_V": _W_V,
+        "_b_V": _b_V,
+        "mask": grouped_query_attention.state_dict()["mask"],
+        "IGNORE": grouped_query_attention.state_dict()["IGNORE"],
     }
 
     regular_attention.load_state_dict(regular_attention_state_dict)
@@ -71,6 +71,8 @@ def test_grouped_query_attention():
     value_input = torch.rand((1, 5, d_model))
 
     regular_attn_output = regular_attention(query_input, key_input, value_input)
-    grouped_query_attn_output = grouped_query_attention(query_input, key_input, value_input)
+    grouped_query_attn_output = grouped_query_attention(
+        query_input, key_input, value_input
+    )
 
     assert torch.equal(regular_attn_output, grouped_query_attn_output)
