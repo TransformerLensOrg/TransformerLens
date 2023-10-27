@@ -812,9 +812,9 @@ class Attention(AbstractAttention):
 class GroupedQueryAttention(AbstractAttention):
     def __init__(
         self,
-        cfg: Dict | HookedTransformerConfig,
+        cfg: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
-        layer_id: int | None = None,
+        layer_id: Union[int, None] = None,
     ):
         """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245v2 for details.
         Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head] and W_Q has shape [head_index, d_head, d_model].
