@@ -386,9 +386,10 @@ class AbstractAttention(ABC, nn.Module):
         attn_type: str = "global",
         layer_id: Optional[int] = None,
     ):
-        """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
+        """Abstract Base Class of Attention Blocks, featuring common functionality of both Attention and GroupedQueryAttention blocks.
 
-        Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+        Query and Output projections are defined in this class as they are the same for regular and grouped query attention.
+        Attributes related to Key and Value projections are abstract as their implementations may differ.
 
         Args:
             cfg (Union[Dict, HookedTransformerConfig]): Config
@@ -815,6 +816,15 @@ class GroupedQueryAttention(AbstractAttention):
         attn_type: str = "global",
         layer_id: int | None = None,
     ):
+        """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245v2 for details.
+        Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head] and W_Q has shape [head_index, d_head, d_model].
+        However, under the hood the keys and values are stored with shape [n_key_value_heads, d_model, d_head] and are expanded when the corresponding properties' getter is called.
+
+        Args:
+            cfg (Union[Dict, HookedTransformerConfig]): Config
+            attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
+            layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
+        """
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         assert cfg.n_key_value_heads is not None
