@@ -1,3 +1,5 @@
+from unittest import mock
+
 import numpy as np
 import pytest
 import torch
@@ -207,6 +209,67 @@ class Test_lower_triangular:
         assert not utils.is_lower_triangular(x)
 
 
+@pytest.mark.parametrize(
+    "prepend_space_to_answer, tokenized_prompt, tokenized_answer",
+    [
+        (
+            True,
+            [
+                "<|BOS|>",
+                "The",
+                " circumference",
+                " is",
+                " the",
+                " perimeter",
+                " of",
+                " the",
+                " circ",
+            ],
+            [" le", "."],
+        ),
+        (
+            False,
+            [
+                "<|BOS|>",
+                "The",
+                " circumference",
+                " is",
+                " the",
+                " perimeter",
+                " of",
+                " the",
+                " circ",
+            ],
+            ["le", "."],
+        ),
+    ],
+)
+@mock.patch("builtins.print")
+def test_test_prompt(
+    mocked_print,
+    prepend_space_to_answer,
+    tokenized_prompt,
+    tokenized_answer,
+):
+    """
+    Tests that utils.test_prompt produces the correct tokenization. In particular, when prepend_space_to_answer = False, the last token of the prompt
+    and the first answer token should not be turned into one token (e.g. 'circ' and 'le' don't become 'circle'). See https://github.com/neelnanda-io/TransformerLens/issues/271
+    for a more detailed explanation.
+    """
+    utils.test_prompt(
+        "The circumference is the perimeter of the circ",
+        "le.",
+        model,
+        prepend_space_to_answer=prepend_space_to_answer,
+    )
+
+    printed_tokenized_prompt = mock.call("Tokenized prompt:", tokenized_prompt)
+    printed_tokenized_answer = mock.call("Tokenized answer:", tokenized_answer)
+
+    assert mocked_print.mock_calls[0] == printed_tokenized_prompt
+    assert mocked_print.mock_calls[1] == printed_tokenized_answer
+
+
 def test_override_or_use_default_value():
     # Case when override is not None
     assert utils.override_or_use_default_value(default_flag=True, override=True) == True
@@ -314,23 +377,3 @@ class TestAttentionMask:
             else:
                 # otherwise, there should be no attended but non-pad token
                 assert attended_but_non_pad_mask.sum() == 0
-
-    @pytest.mark.parametrize("prepend_bos", [True, False])
-    def test_get_causal_mask_for_left_padding(self, model, prepend_bos):
-        model.tokenizer.padding_side = "left"
-
-        prompts = self.prompts
-        tokens = model.to_tokens(prompts, prepend_bos=prepend_bos)
-
-        left_attention_mask = utils.get_attention_mask(
-            model.tokenizer, tokens, prepend_bos=prepend_bos
-        )  # [batch pos]
-
-        final_mask = utils.get_causal_mask_for_left_padding(left_attention_mask)
-
-        pad_token_mask = ~left_attention_mask.bool()
-        assert final_mask[pad_token_mask].sum() == 0
-
-        attn = model.blocks[0].attn
-        causal_pad_mask = ~attn.mask[: tokens.shape[1], : tokens.shape[1]]
-        assert final_mask[:, causal_pad_mask].sum() == 0

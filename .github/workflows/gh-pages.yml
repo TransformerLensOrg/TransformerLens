@@ -1,4 +1,4 @@
-name: Docs Workflow
+name: Docs
 on:
   push:
     branches: 
@@ -17,21 +17,25 @@ jobs:
     name: ${{ github.event_name == 'pull_request' && 'Check Build Docs' || 'Build Docs' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Install Poetry
         uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.9"
+          python-version: "3.11"
+          cache: "poetry"
+      - name: Install pandoc
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: pandoc
+          version: 1.0
       - name: Install dependencies
         run: poetry install --with docs
       - name: Build Docs
         run: poetry run build-docs
       - name: Upload Docs Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: documentation
           path: docs/build
@@ -43,9 +47,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-docs
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Download Docs Artifact
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: documentation
           path: docs/build

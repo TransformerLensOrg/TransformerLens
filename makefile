@@ -1,22 +1,33 @@
 format:
-	poetry run python -m pycln --all . --exclude "__init__.py"
-	poetry run python -m isort format .
-	poetry run python -m black .
+	poetry run pycln --all . --exclude "__init__.py"
+	poetry run isort format .
+	poetry run black .
 
 check-format:
-	poetry run python -m pycln --check --all . --exclude "__init__.py"
-	poetry run python -m isort --check-only .
-	poetry run python -m black --check .
+	poetry run pycln --check --all . --exclude "__init__.py"
+	poetry run isort --check-only .
+	poetry run black --check .
+
+unit-test:
+	poetry run pytest --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/unit
+
+acceptance-test:
+	poetry run pytest --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/acceptance
+
+docstring-test:
+	poetry run pytest transformer_lens/
+
+notebook-test:
+	poetry run pytest demos/Exploratory_Analysis_Demo.ipynb
 
 test:
 	make unit-test
 	make acceptance-test
+	make docstring-test
+	make notebook-test
 
-unit-test:
-	poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/unit
+docs-hot-reload:
+	poetry run docs-hot-reload
 
-acceptance-test:
-	poetry run pytest -v --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/acceptance
-
-docstring-test:
-	poetry run pytest transformer_lens/
+build-docs:
+	poetry run build-docs

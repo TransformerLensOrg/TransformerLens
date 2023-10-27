@@ -23,9 +23,10 @@ def test_stop_at_embed():
     )
     rand_input = torch.randint(0, 20, (2, 10))
 
+    _, normal_cache = model.run_with_cache(rand_input)
     output, cache = model.run_with_cache(rand_input, stop_at_layer=0)
 
-    assert output is None
+    assert torch.allclose(output, normal_cache["blocks.0.hook_resid_pre"])
     assert "hook_embed" in cache.keys()
     assert "hook_pos_embed" in cache.keys()
     assert "blocks.0.hook_resid_pre" not in cache.keys()
@@ -64,7 +65,8 @@ def test_run_with_hooks():
         ],
     )
 
-    assert output is None
+    _, normal_cache = model.run_with_cache(rand_input, stop_at_layer=1)
+    assert torch.allclose(output, normal_cache["blocks.0.hook_resid_post"])
     assert len(counting_list) == 2
 
 
@@ -83,6 +85,7 @@ def test_manual_hooks():
         cfg=cfg,
     )
     rand_input = torch.randint(0, 20, (2, 10))
+    _, normal_cache = model.run_with_cache(rand_input)
 
     counting_list = []
 
@@ -96,7 +99,7 @@ def test_manual_hooks():
     model.blocks[2].attn.hook_z.add_hook(count_hook)
 
     output = model(rand_input, stop_at_layer=-1)
-    assert output is None
+    assert torch.allclose(output, normal_cache["blocks.1.hook_resid_post"])
     assert len(counting_list) == 3
 
 
@@ -116,9 +119,10 @@ def test_stop_at_layer_1():
     )
     rand_input = torch.randint(0, 20, (2, 10))
 
+    _, normal_cache = model.run_with_cache(rand_input)
     output, cache = model.run_with_cache(rand_input, stop_at_layer=1)
 
-    assert output is None
+    assert torch.allclose(output, normal_cache["blocks.0.hook_resid_post"])
     assert "hook_embed" in cache.keys()
     assert "hook_pos_embed" in cache.keys()
     assert "blocks.0.hook_resid_pre" in cache.keys()
@@ -150,9 +154,10 @@ def test_stop_at_final():
     )
     rand_input = torch.randint(0, 20, (2, 10))
 
+    _, normal_cache = model.run_with_cache(rand_input)
     output, cache = model.run_with_cache(rand_input, stop_at_layer=-1)
 
-    assert output is None
+    assert torch.allclose(output, normal_cache["blocks.2.hook_resid_post"])
     assert "hook_embed" in cache.keys()
     assert "hook_pos_embed" in cache.keys()
     assert "blocks.0.hook_resid_pre" in cache.keys()
@@ -181,9 +186,10 @@ def test_no_stop_logit_output():
     )
     rand_input = torch.randint(0, 20, (2, 10))
 
+    normal_output = model(rand_input)
     output, cache = model.run_with_cache(rand_input, stop_at_layer=None)
 
-    assert output is not None
+    assert torch.allclose(output, normal_output)
     assert isinstance(output, torch.Tensor)
     assert output.shape == (2, 10, 50)
 

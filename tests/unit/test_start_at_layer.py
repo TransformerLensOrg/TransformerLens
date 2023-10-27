@@ -144,7 +144,7 @@ def test_start_and_stop(setup_data: Dict[str, Any]):
     model, rand_embed = setup_data["model"], setup_data["rand_embed"]
     output, cache = model.run_with_cache(rand_embed, start_at_layer=1, stop_at_layer=2)
 
-    assert output is None
+    assert torch.allclose(output, cache["blocks.1.hook_resid_post"])
     assert "hook_embed" not in cache.keys()
     assert "hook_pos_embed" not in cache.keys()
     assert "blocks.0.hook_resid_pre" not in cache.keys()
@@ -181,19 +181,19 @@ def test_start_at_layer_kwargs():
         rand_embed,
         tokens,
         shortformer_pos_embed,
-        left_attention_mask,
+        attention_mask,
     ) = model.input_to_embed(input)
     assert (
         tokens is not None
         and shortformer_pos_embed is not None
-        and left_attention_mask is not None
+        and attention_mask is not None
     )
 
     start_at_layer_output = model(
         rand_embed,
         tokens=tokens,
         shortformer_pos_embed=shortformer_pos_embed,
-        left_attention_mask=left_attention_mask,
+        attention_mask=attention_mask,
         start_at_layer=0,
         return_type="loss",
     )

@@ -23,7 +23,16 @@ The core features were heavily inspired by the interface to [Anthropic's excelle
 :caption: Introduction
 
 content/getting_started
+content/getting_started_mech_interp
 content/gallery
+```
+
+```{toctree}
+:hidden:
+:caption: Documentation
+
+generated/code/modules
+generated/model_properties_table.md
 ```
 
 ```{toctree}
@@ -32,26 +41,14 @@ content/gallery
 
 content/tutorials
 content/citation
-```
-
-```{toctree}
-:hidden:
-:caption: Code
-
-generated/code/modules
-```
-
-```{toctree}
-:hidden:
-:caption: Models
-
-generated/model_properties_table.md
+content/contributing
+generated/demos/Exploratory_Analysis_Demo
 ```
 
 ```{toctree}
 :hidden:
 :caption: Development
 
-content/development
+content/contributing
 Github <https://github.com/neelnanda-io/TransformerLens>
 ```

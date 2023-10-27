@@ -21,12 +21,7 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import (
-    gelu_fast,
-    gelu_new,
-    get_causal_mask_for_left_padding,
-    solu,
-)
+from transformer_lens.utils import gelu_fast, gelu_new, get_offset_position_ids, solu
 
 
 # Embed & Unembed
@@ -90,7 +85,7 @@ class PosEmbed(nn.Module):
         self,
         tokens: Int[torch.Tensor, "batch pos"],
         past_kv_pos_offset: int = 0,
-        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         Forward pass for positional embeddings.
@@ -98,16 +93,15 @@ class PosEmbed(nn.Module):
         Args:
             tokens (Int[torch.Tensor, "batch pos"]): Input tokens.
             past_kv_pos_offset (int, optional): The length of tokens in the past_kv_cache. Defaults to 0.
-            left_attention_mask (Int[torch.Tensor, "batch pos"], optional): The attention mask for left padded tokens.
-                None when right padding is used. Defaults to None.
+            attention_mask (Int[torch.Tensor, "batch pos"], optional): The attention mask for padded tokens.
+                 Defaults to None.
 
         Returns:
             Float[torch.Tensor, "batch pos d_model"]: Absolute position embeddings.
         """
         tokens_length = tokens.size(-1)
 
-        if left_attention_mask is None:
-            # Right padding case
+        if attention_mask is None:
             pos_embed = self.W_pos[
                 past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
             ]  # [pos, d_model]
@@ -116,34 +110,22 @@ class PosEmbed(nn.Module):
             )
 
         else:
-            # Left padding case
-            # Separated from the right padding case for computational efficiency
+            # Separated from the no padding case for computational efficiency
             # (this code is a bit slower than the code above)
 
-            # shift the position ids so that the id at the the first attended token position becomes zero.
-            # The position ids of the prepending pad tokens are shifted to -1.
-            shifted_position_ids = (
-                left_attention_mask.T.cumsum(dim=0) - 1
-            )  # [tokens_length, batch]
+            offset_position_ids = get_offset_position_ids(
+                past_kv_pos_offset, attention_mask
+            )
+            pos_embed = self.W_pos[offset_position_ids]  # [batch, pos, d_model]
 
-            # Set the position ids of all prepending pad tokens to an arbitrary number (zero here)
-            # just to avoid indexing errors.
-            position_ids = shifted_position_ids.masked_fill(shifted_position_ids < 0, 0)
-            offsetted_position_ids = position_ids[
-                past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
-            ]  # [pos, batch]
-            pos_embed = self.W_pos[offsetted_position_ids]  # [pos, batch, d_model]
-
-            # Set the position embeddings to 0 for pad tokens
-            padding_mask = ~left_attention_mask.T.bool()  # [tokens_length, batch]
-            offsetted_padding_mask = padding_mask[
-                past_kv_pos_offset : tokens_length + past_kv_pos_offset, :
+            # Set the position embeddings to 0 for pad tokens (this is an arbitrary choice)
+            padding_mask = ~attention_mask.bool()  # [batch, tokens_length]
+            offset_padding_mask = padding_mask[
+                :, past_kv_pos_offset : tokens_length + past_kv_pos_offset
             ].unsqueeze(
                 -1
-            )  # [pos, batch, 1]
-            batch_pos_embed = torch.where(
-                offsetted_padding_mask, 0, pos_embed
-            ).transpose(0, 1)
+            )  # [batch, pos, 1]
+            batch_pos_embed = torch.where(offset_padding_mask, 0, pos_embed)
 
         return batch_pos_embed.clone()
 
@@ -527,13 +509,13 @@ class AbstractAttention(ABC, nn.Module):
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
-        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
         past_kv_cache_entry is an optional entry of past keys and values for this layer, only relevant if generating text. Defaults to None
         additive_attention_mask is an optional mask to add to the attention weights. Defaults to None.
-        left_attention_mask is the attention mask for left padded tokens. None when right padding is used. Defaults to None.
+        attention_mask is the attention mask for padded tokens. Defaults to None.
         """
 
         q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
@@ -547,7 +529,12 @@ class AbstractAttention(ABC, nn.Module):
             kv_cache_pos_offset = 0
 
         if self.cfg.positional_embedding_type == "rotary":
-            q, k = self.rotary_rotate_qk(q, k, kv_cache_pos_offset)
+            q = self.hook_rot_q(
+                self.apply_rotary(q, kv_cache_pos_offset, attention_mask)
+            )
+            k = self.hook_rot_k(
+                self.apply_rotary(k, 0, attention_mask)
+            )  # keys are cached so no offset
 
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             # If using 16 bits, increase the precision to avoid numerical instabilities
@@ -558,7 +545,7 @@ class AbstractAttention(ABC, nn.Module):
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
-                attn_scores, kv_cache_pos_offset, left_attention_mask
+                attn_scores, kv_cache_pos_offset, attention_mask
             )  # [batch, head_index, query_pos, key_pos]
         if additive_attention_mask is not None:
             attn_scores += additive_attention_mask
@@ -668,9 +655,9 @@ class AbstractAttention(ABC, nn.Module):
             torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"
         ],
         past_kv_pos_offset: int = 0,
-        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ):
-        # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it's just a single token.
+        # The query context length is the number of positions we take queries from - if not using a past_kv_cache this is just the context length (for the current prompt), but if we're caching it can be different.
         query_ctx_length = attn_scores.size(-2)
         # The key context length is the number of positions in the past - this includes all positions in the cache
         # If not caching, query_ctx_length == key_ctx_length
@@ -680,45 +667,16 @@ class AbstractAttention(ABC, nn.Module):
             query_ctx_length + past_kv_pos_offset == key_ctx_length
         ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
 
-        if left_attention_mask is None:
-            # Right padding case
-            # Apply only a causal mask to the attention scores
-            final_mask = self.mask[None, None]  # [1, 1, pos, pos]
-        else:
-            # Left padding case
-            # Apply a causal mask to the attention scores considering the left padding
-            final_mask = get_causal_mask_for_left_padding(left_attention_mask)
-            final_mask = final_mask.unsqueeze(1).to(
-                attn_scores.device
-            )  # [batch, 1, pos, pos]
+        # Index back to front to ensure local attention works
+        final_mask = self.mask[
+            None, None, -query_ctx_length:, -key_ctx_length:
+        ]  # [1, 1, pos, pos]
+        if attention_mask is not None:
+            # Apply a causal mask to the attention scores considering the padding
+            einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
+            final_mask = einops.einsum(final_mask, attention_mask, einsum_str).bool()
 
-        masked_attn_scores = torch.where(
-            final_mask[
-                :,
-                :,
-                past_kv_pos_offset : past_kv_pos_offset + query_ctx_length,
-                :key_ctx_length,
-            ],
-            attn_scores,
-            self.IGNORE,
-        )
-
-        # Return the masked attention scores
-        return masked_attn_scores
-
-    def rotary_rotate_qk(
-        self,
-        q: Float[torch.Tensor, "batch q_pos head_index d_head"],
-        k: Float[torch.Tensor, "batch k_pos head_index d_head"],
-        past_kv_pos_offset,
-    ) -> Tuple[
-        Float[torch.Tensor, "batch q_pos head_index d_head"],
-        Float[torch.Tensor, "batch k_pos head_index d_head"],
-    ]:
-        # We first apply standard q and k calculation
-        q = self.hook_rot_q(self.apply_rotary(q, past_kv_pos_offset))
-        k = self.hook_rot_k(self.apply_rotary(k))
-        return q, k
+        return torch.where(final_mask, attn_scores, self.IGNORE)
 
     def calculate_sin_cos_rotary(
         self,
@@ -774,18 +732,30 @@ class AbstractAttention(ABC, nn.Module):
         self,
         x: Float[torch.Tensor, "batch pos head_index d_head"],
         past_kv_pos_offset=0,
+        attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
         x_pass = x[..., self.cfg.rotary_dim :]
         x_flip = self.rotate_every_two(x_rot)
-        x_rotated = (
-            x_rot
-            * self.rotary_cos[past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :]
-            + x_flip
-            * self.rotary_sin[past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :]
-        )
+
+        if attention_mask is None:
+            rotary_cos = self.rotary_cos[
+                None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
+            ]
+            rotary_sin = self.rotary_sin[
+                None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
+            ]
+            x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
+        else:
+            offset_position_ids = get_offset_position_ids(
+                past_kv_pos_offset, attention_mask
+            )
+            mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
+            mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
+            x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
+
         return torch.cat([x_rotated, x_pass], dim=-1)
 
 
@@ -1149,7 +1119,7 @@ class TransformerBlock(nn.Module):
             Float[torch.Tensor, "batch pos d_model"]
         ] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
-        left_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
 
@@ -1157,7 +1127,7 @@ class TransformerBlock(nn.Module):
             resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
             cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
             shortformer_pos_embed (torch.Tensor, optional): Only used for positional_embeddings_type == "shortformer". The positional embeddings. See HookedTransformerConfig for details. Defaults to None.
-            left_attention_mask (torch.Tensor, optional): The attention mask for left padded tokens. None when right padding is used. Defaults to None.
+            attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
 
         Returns:
             _type_: _description_
@@ -1210,7 +1180,7 @@ class TransformerBlock(nn.Module):
                 + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
                 value_input=self.ln1(value_input),
                 past_kv_cache_entry=past_kv_cache_entry,
-                left_attention_mask=left_attention_mask,
+                attention_mask=attention_mask,
             )
         )  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
