@@ -1137,3 +1137,34 @@ def get_tokens_with_bos_removed(tokenizer, tokens):
             dim=1, index=real_bos_positions.unsqueeze(-1), value=-100
         )
         return tokens[tokens != -100].view(*bos_removed_shape)
+
+
+def expand_alibi_on_query_dim(x, query_pos):
+    """
+    Expand on the query dimention of the linear bias and fill in correct value.
+    Return tensor of shape the same as attention scores tensor, so no implicit
+    broadcasting is needed.
+
+    For example, if `x.shape` is "[batch_size, n_heads, 1, key_pos]", this function will
+    return the linear bias as shape [batch_size, n_heads, query_pos, key_pos], with correct
+    value filled.
+
+    Args:
+        x (torch.Tensor): The linear bias term with query_pos dimension 1.
+        query_pos (int): The size of query dimension
+
+    Returns:
+        torch.Tensor: The linear bias with correct shape and values.
+    """
+    batch, n_heads, _, key_pos = x.size()
+    x = x.squeeze(2)
+    col_indices = torch.arange(key_pos, device=x.device).expand(query_pos, -1)
+    row_indices = (
+        torch.arange(query_pos, device=x.device).unsqueeze(-1).expand(-1, key_pos)
+    )
+    mask = col_indices <= row_indices
+
+    # This will hold the indices from where to pick the elements
+    indices = mask * col_indices + ~mask * row_indices
+    result = x[..., indices]
+    return result

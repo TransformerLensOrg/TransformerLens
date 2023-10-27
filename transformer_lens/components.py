@@ -20,7 +20,13 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import gelu_fast, gelu_new, get_offset_position_ids, solu
+from transformer_lens.utils import (
+    expand_alibi_on_query_dim,
+    gelu_fast,
+    gelu_new,
+    get_offset_position_ids,
+    solu,
+)
 
 
 # Embed & Unembed
@@ -599,30 +605,15 @@ class Attention(nn.Module):
             / self.attn_scale
         )  # [batch, head_index, query_pos, key_pos]
 
-        # alibi encoding before applying causal mask
         if self.cfg.positional_embedding_type == "alibi":
-            batch_size = attn_scores.size(0)
-            seq_len = attn_scores.size(-1)
-            additive_mask = torch.ones(batch_size, seq_len)
-            dtype = (
-                self.cfg.dtype
-                if self.cfg.dtype in [torch.float32, torch.float64]
-                else "torch.float32"
-            )
-            alibi = self.build_alibi_tensor(
-                attention_mask=additive_mask, num_heads=self.cfg.n_heads, dtype=dtype
+            # Compute attention linear bias: check compute_attention_linear_bias documentation
+            alibi = self.compute_attention_linear_bias(
+                batch_size=attn_scores.size(0),
+                query_dim=attn_scores.size(-2),
+                key_dim=attn_scores.size(-1),
+                num_heads=self.cfg.n_heads,
+                device=attn_scores.device,
             ).to(attn_scores.device)
-
-            # Huggingface impl uses torch.Tensor.baddbmm, with alpha = 1/sqrt(d_head), and beta=1
-            # and alibi.baddbmm(q,k) = beta * alibi + alpha * (q@k),
-            # here the `attn_scores` is already scaled by a factor of self.attn_scale,
-            # we only need to add alibi matrix to the result
-            assert alibi.shape == (
-                attn_scores.size(0),
-                attn_scores.size(1),
-                1,
-                attn_scores.size(-1),
-            ), f"alibi shape {alibi.shape}, expecting {attn_scores.shape}"
             attn_scores += alibi  # [batch, head_index, query_pos, key_pos]
 
         if self.cfg.attention_dir == "causal":
@@ -789,13 +780,56 @@ class Attention(nn.Module):
 
         return torch.cat([x_rotated, x_pass], dim=-1)
 
-    def build_alibi_tensor(
+    def compute_attention_linear_bias(
         self,
-        attention_mask: torch.Tensor,  # batch pos
+        batch_size: int,
+        query_dim: int,
+        key_dim: int,
         num_heads: int,
-        dtype: torch.dtype,
-    ) -> Float[torch.Tensor, "batch head_index 1 pos"]:
-        batch_size, seq_length = attention_mask.shape
+        device: torch.device,
+    ) -> Float[torch.Tensor, "batch head_index query_dim key_dim"]:
+        """
+        Implementation of Attention with Linear Biases (ALiBi) as proposed in the paper
+        'Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation'
+        (available at https://arxiv.org/abs/2108.12409).
+
+        Unlike the Hugging Face implementation, which returns a tensor of shape
+        (batch_size, n_heads, 1, key_pos) and relies on implicit broadcasting, this
+        implementation returns a tensor of shape (batch_size, n_heads, query_pos, key_pos),
+        eliminating the need for broadcasting. While the Hugging Face implementation does not
+        provide a 'causal' bias as suggested in the paper, it still achieves the correct `pattern`
+        due to the translation invariance of the softmax operation. However, this implementation
+        adheres to the paper's recommendation by providing a causal bias (after applying causal mask).
+        As a result, the values in `hook_attn_scores` will be accurate.
+        Args:
+            batch_size:
+                Batch size of attention tensors
+            qeury_dim:
+                Dimension of query context
+            key_dim:
+                Dimension of key context. Notice this key_dim will also be the longest sequence length
+                if kv cache is used.
+            num_heads:
+                Number of attention heads, ALiBi output head dependent biases.
+            device:
+                The device used (same as the device attention score is on).
+
+        Returns:
+            Returns the linear bias to be added to attention scores.
+
+        """
+
+        # Set max sequence length to key context length - if not using a past_kv_cache
+        # this is just the context length (for the current prompt), but if we're caching
+        # it will be the context length + cached_kv_pos.
+        max_seq_length = key_dim
+        dtype = (
+            self.cfg.dtype
+            if self.cfg.dtype in [torch.float32, torch.float64]
+            else "torch.float32"
+        )
+        attention_mask = torch.ones(batch_size, max_seq_length).to(device)
+
         closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
         base = torch.tensor(
             2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))),
@@ -829,8 +863,9 @@ class Attention(nn.Module):
             :, None, :
         ]
         alibi = slopes[..., None] * arange_tensor
-        # original hf code returns tensor of shape batch * head_index, 1, pos
-        return alibi.reshape(batch_size, num_heads, 1, seq_length).to(dtype)
+        res = alibi.reshape(batch_size, num_heads, 1, max_seq_length).to(dtype)
+        # explicitly expand the query dimension and make the bias causal.
+        return expand_alibi_on_query_dim(res, res.size(-1)).to(dtype)
 
 
 # MLP Layers
