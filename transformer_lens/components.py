@@ -791,9 +791,7 @@ class Attention(nn.Module):
         """
         Implementation of Attention with Linear Biases (ALiBi) as proposed in the paper
         'Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation'
-        (available at https://arxiv.org/abs/2108.12409).
-
-        Unlike the Hugging Face implementation, which returns a tensor of shape
+        (available at https://arxiv.org/abs/2108.12409). Unlike the Hugging Face implementation, which returns a tensor of shape
         (batch_size, n_heads, 1, key_pos) and relies on implicit broadcasting, this
         implementation returns a tensor of shape (batch_size, n_heads, query_pos, key_pos),
         eliminating the need for broadcasting. While the Hugging Face implementation does not
@@ -801,6 +799,7 @@ class Attention(nn.Module):
         due to the translation invariance of the softmax operation. However, this implementation
         adheres to the paper's recommendation by providing a causal bias (after applying causal mask).
         As a result, the values in `hook_attn_scores` will be accurate.
+
         Args:
             batch_size:
                 Batch size of attention tensors
