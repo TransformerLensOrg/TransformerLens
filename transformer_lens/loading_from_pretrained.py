@@ -730,16 +730,15 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": hf_config.n_head,
             "d_mlp": hf_config.hidden_size * 4,
             "n_layers": hf_config.n_layer,
-            "n_ctx": 2048,  # is there a variable for this?
+            "n_ctx": 2048,
             "d_vocab": hf_config.vocab_size,
             "act_fn": "gelu_fast",
             "eps": hf_config.layer_norm_epsilon,
-            "normalization_type": "LN",  # double check this
+            "normalization_type": "LN",
             "post_embedding_ln": True,
             "positional_embedding_type": "alibi",
         }
 
-        # print("bloom config", cfg_dict)
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
@@ -1644,7 +1643,6 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     return state_dict
 
 
-# TODO: bloom weight conversion
 def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
     state_dict = {}
 

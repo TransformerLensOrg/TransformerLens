@@ -820,7 +820,7 @@ class Attention(nn.Module):
 
         # Set max sequence length to key context length - if not using a past_kv_cache
         # this is just the context length (for the current prompt), but if we're caching
-        # it will be the context length + cached_kv_pos.
+        # it will be the context `length + past_kv_pos_offset``.
         max_seq_length = key_dim
         dtype = (
             self.cfg.dtype
