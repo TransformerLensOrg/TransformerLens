@@ -1145,9 +1145,16 @@ def expand_alibi_on_query_dim(x, query_pos):
     Return tensor of shape the same as attention scores tensor, so no implicit
     broadcasting is needed.
 
-    For example, if `x.shape` is "[batch_size, n_heads, 1, key_pos]", this function will
-    return the linear bias as shape [batch_size, n_heads, query_pos, key_pos], with correct
-    value filled.
+    For example, if `x.shape` is `[batch_size, n_heads, 1, key_pos]`, this function will
+    return the linear bias as shape `[batch_size, n_heads, query_pos, key_pos]`, with correct
+    value filled. The tensor is expanded as such: for a given batch and a given head, the input
+    will be a vector of length key_pos looked like `[a,b,c,d]`, then this vector will be transfered
+    into a matrix of shape (query_pos, key_pos) looked like (assume key_pos = query_pos = 4):
+        [[d,d,d,d],
+         [c,d,d,d],
+         [b,c,d,d],
+         [a,b,c,d],
+        ]]
 
     Args:
         x (torch.Tensor): The linear bias term with query_pos dimension 1.
@@ -1162,9 +1169,8 @@ def expand_alibi_on_query_dim(x, query_pos):
     row_indices = (
         torch.arange(query_pos, device=x.device).unsqueeze(-1).expand(-1, key_pos)
     )
-    mask = col_indices <= row_indices
 
-    # This will hold the indices from where to pick the elements
-    indices = mask * col_indices + ~mask * row_indices
+    # Adjust the mask and indices logic to get the desired pattern
+    indices = torch.clamp(key_pos - 1 - row_indices + col_indices, 0, key_pos - 1)
     result = x[..., indices]
     return result
