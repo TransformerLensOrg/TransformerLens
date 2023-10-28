@@ -5,7 +5,6 @@ needed to create many different types of generative language models. They are us
 :class:`transformer_lens.HookedTransformer`.
 """
 import logging
-import math
 from typing import Dict, Optional, Tuple, Union
 
 import einops
@@ -20,13 +19,7 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import (
-    expand_alibi_on_query_dim,
-    gelu_fast,
-    gelu_new,
-    get_offset_position_ids,
-    solu,
-)
+from transformer_lens.utils import gelu_fast, gelu_new, get_offset_position_ids, solu
 
 
 # Embed & Unembed
@@ -39,7 +32,7 @@ class Embed(nn.Module):
         self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
             torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=cfg.dtype)
         )
-        # bloom needs post embedding layer norm
+        # Some models (e.g. Bloom) need post embedding layer norm
         if cfg.post_embedding_ln:
             self.ln = LayerNorm(cfg)
 
@@ -490,6 +483,12 @@ class Attention(nn.Module):
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
+        elif self.cfg.positional_embedding_type == "alibi":
+            # Create attention linear bias with max allowed context. Index into it during forward pass to increase generation efficiency.
+            alibi = self.create_alibi_bias(
+                self.cfg.n_heads, self.cfg.n_ctx, self.cfg.device
+            )  # [n_heads, n_ctx, n_ctx]
+            self.register_buffer("alibi", alibi)
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -606,15 +605,14 @@ class Attention(nn.Module):
         )  # [batch, head_index, query_pos, key_pos]
 
         if self.cfg.positional_embedding_type == "alibi":
-            # Compute attention linear bias: check compute_attention_linear_bias documentation
-            alibi = self.compute_attention_linear_bias(
-                batch_size=attn_scores.size(0),
-                query_dim=attn_scores.size(-2),
-                key_dim=attn_scores.size(-1),
-                num_heads=self.cfg.n_heads,
-                device=attn_scores.device,
-            ).to(attn_scores.device)
-            attn_scores += alibi  # [batch, head_index, query_pos, key_pos]
+            query_ctx = attn_scores.size(-2)
+            key_ctx = attn_scores.size(-1)
+
+            # crop alibi tensor to shape (n_heads, query_pos, key_pos), broadcast along batch dimension.
+            attention_linear_bias = self.alibi[:, :query_ctx, :key_ctx]
+            attn_scores += (
+                attention_linear_bias  # [batch, head_index, query_pos, key_pos]
+            )
 
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
@@ -780,91 +778,131 @@ class Attention(nn.Module):
 
         return torch.cat([x_rotated, x_pass], dim=-1)
 
-    def compute_attention_linear_bias(
-        self,
-        batch_size: int,
-        query_dim: int,
-        key_dim: int,
-        num_heads: int,
-        device: torch.device,
-    ) -> Float[torch.Tensor, "batch head_index query_dim key_dim"]:
-        """
-        Implementation of Attention with Linear Biases (ALiBi) as proposed in the paper
-        'Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation'
-        (available at https://arxiv.org/abs/2108.12409). Unlike the Hugging Face implementation, which returns a tensor of shape
-        (batch_size, n_heads, 1, key_pos) and relies on implicit broadcasting, this
-        implementation returns a tensor of shape (batch_size, n_heads, query_pos, key_pos),
-        eliminating the need for broadcasting. While the Hugging Face implementation does not
-        provide a 'causal' bias as suggested in the paper, it still achieves the correct `pattern`
-        due to the translation invariance of the softmax operation. However, this implementation
-        adheres to the paper's recommendation by providing a causal bias (after applying causal mask).
-        As a result, the values in `hook_attn_scores` will be accurate.
+    def create_alibi_slope(
+        self, n_ctx: int, device: torch.device = None
+    ) -> Float[torch.Tensor, "query key"]:
+        """Create an ALiBi Slope Matrix.
+
+        Create the slope matrix used in ALiBi, before it is multiplied by the head-specific scalar.
+
+        See :meth:`create_alibi_bias` for the full ALiBi bias calculation.
+
+        Examples:
+
+        >>> Attention.create_alibi_slope(3)
+        tensor([[ 0.,  0.,  0.],
+                [-1.,  0.,  0.],
+                [-2., -1.,  0.]])
+
+        >>> Attention.create_alibi_slope(4)
+        tensor([[ 0.,  0.,  0.,  0.],
+                [-1.,  0.,  0.,  0.],
+                [-2., -1.,  0.,  0.],
+                [-3., -2., -1.,  0.]])
 
         Args:
-            batch_size:
-                Batch size of attention tensors
-            qeury_dim:
-                Dimension of query context
-            key_dim:
-                Dimension of key context. Notice this key_dim will also be the longest sequence length
-                if kv cache is used.
-            num_heads:
-                Number of attention heads, ALiBi output head dependent biases.
-            device:
-                The device used (same as the device attention score is on).
+            n_ctx: The maximum number of tokens in a prompt.
 
         Returns:
-            Returns the linear bias to be added to attention scores.
-
+            A tensor of shape (n_ctx, n_ctx), where the upper triangle is zero and the lower
+            triangle is decreasing by a constant slope of 1 (towards the bottom left corner).
         """
+        # set rows as [[0,1,2...]]
+        rows = torch.arange(n_ctx, device=device).unsqueeze(0)
 
-        # Set max sequence length to key context length - if not using a past_kv_cache
-        # this is just the context length (for the current prompt), but if we're caching
-        # it will be the context `length + past_kv_pos_offset``.
-        max_seq_length = key_dim
-        dtype = (
-            self.cfg.dtype
-            if self.cfg.dtype in [torch.float32, torch.float64]
-            else "torch.float32"
+        # Set cols as [[0],[1],[2]...]
+        cols = torch.arange(n_ctx, device=device).unsqueeze(1)
+
+        # Use broadcasting to create the desired lower triangular part of the matrix
+        slope_matrix = rows - cols
+
+        # Use the clamp method to set all positive values (upper right triangle) to
+        return slope_matrix.clamp(max=0)
+
+    def create_alibi_multipliers(
+        self, n_heads: int, device: torch.device = None
+    ) -> Float[torch.Tensor, "head_idx"]:
+        """Create the ALiBi Scalar Multipliers for each Head.
+
+        For n heads, the set of multipliers (m) is the geometric sequence that starts at 2^(-8/n), and
+        uses that same value as its ratio. For example, with 8 heads the values would be [1/(2^1),
+        1/(2^2), ... , 1/(2^8)]. With 16 heads the values would be [1/(2^0.5), 1/(2^1), ... , 1/(2^8)].
+
+        See :meth:`create_alibi_bias` for the full ALiBi bias calculation.
+
+        Examples:
+
+        >>> Attention.create_alibi_multipliers(8)
+        tensor([0.5000, 0.2500, 0.1250, 0.0625, 0.0312, 0.0156, 0.0078, 0.0039])
+
+        >>> Attention.create_alibi_multipliers(16)
+        tensor([0.7071, 0.5000, 0.3536, 0.2500, 0.1768, 0.1250, 0.0884, 0.0625, 0.0442, 0.0312,
+                0.0221, 0.0156, 0.0110, 0.0078, 0.0055, 0.0039])
+
+        Args:
+            n_heads: The number of heads in a layer.
+            device: The device to create the tensor on.
+
+        Returns:
+            A tensor of shape (n_heads,) containing the scalar multiplier for each head.
+        """
+        # Calculate the starting value
+        start = 2 ** (-8 / n_heads)
+
+        # Generate the indices [0, 1, ..., n_heads-1]
+        indices = torch.arange(n_heads, device=device)
+
+        # Compute the multipliers, with the starting value being the same as the ratio
+        multipliers = start * (start**indices)
+
+        return multipliers
+
+    def create_alibi_bias(
+        self, n_heads: int, n_ctx: int, device: torch.device = None
+    ) -> Float[torch.Tensor, "head_idx query key"]:
+        """Create the ALiBi Bias for all Heads.
+
+        Calculate the ALiBi bias (https://arxiv.org/pdf/2108.12409.pdf) for all heads in a layer.
+
+        The broad idea behind ALiBi is to remove the positional encoding from the original transformer
+        model, and instead apply a bias to each attention score. This bias is proportional to the
+        distance between the query and key (i.e. it encourage paying less attention to more distant
+        tokens), and is added to the attention scores before the softmax. It is used in models such as
+        Bloom.
+
+        Examples:
+
+        >>> Attention.create_alibi_bias(2, 4)
+        tensor([[[ 0.0000,  0.0000,  0.0000,  0.0000],
+            [-0.0625,  0.0000,  0.0000,  0.0000],
+            [-0.1250, -0.0625,  0.0000,  0.0000],
+            [-0.1875, -0.1250, -0.0625,  0.0000]],
+
+            [[ 0.0000,  0.0000,  0.0000,  0.0000],
+            [-0.0039,  0.0000,  0.0000,  0.0000],
+            [-0.0078, -0.0039,  0.0000,  0.0000],
+            [-0.0117, -0.0078, -0.0039,  0.0000]]])
+
+        Args:
+            n_heads: The number of heads in a layer.
+            n_ctx: The maximum number of tokens in a prompt.
+            device: The device to create the tensor on.
+
+        Returns:
+            The ALiBi bias that should be added to the attention scores before the softmax.
+        """
+        # Create the slope matrix
+        slope: Float[torch.Tensor, "query key"] = self.create_alibi_slope(n_ctx, device)
+
+        # Create the scalar multiplier for each head.
+        multipliers: Float[torch.Tensor, "head_idx"] = self.create_alibi_multipliers(
+            n_heads, device
         )
-        attention_mask = torch.ones(batch_size, max_seq_length).to(device)
 
-        closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
-        base = torch.tensor(
-            2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))),
-            device=attention_mask.device,
-            dtype=torch.float32,
-        )
-        powers = torch.arange(
-            1, 1 + closest_power_of_2, device=attention_mask.device, dtype=torch.int32
-        )
-        slopes = torch.pow(base, powers)
+        # The ALiBi bias is then m * slope_matrix
+        alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
 
-        if closest_power_of_2 != num_heads:
-            extra_base = torch.tensor(
-                2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))),
-                device=attention_mask.device,
-                dtype=torch.float32,
-            )
-            num_remaining_heads = min(
-                closest_power_of_2, num_heads - closest_power_of_2
-            )
-            extra_powers = torch.arange(
-                1,
-                1 + 2 * num_remaining_heads,
-                2,
-                device=attention_mask.device,
-                dtype=torch.int32,
-            )
-            slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
-
-        arange_tensor = ((attention_mask.cumsum(dim=-1) - 1) * attention_mask)[
-            :, None, :
-        ]
-        alibi = slopes[..., None] * arange_tensor
-        res = alibi.reshape(batch_size, num_heads, 1, max_seq_length).to(dtype)
-        # explicitly expand the query dimension and make the bias causal.
-        return expand_alibi_on_query_dim(res, res.size(-1)).to(dtype)
+        return alibi_bias
 
 
 # MLP Layers
