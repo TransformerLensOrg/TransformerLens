@@ -11,19 +11,19 @@
 #     return attention
 
 
-def test_create_alibi_slope(attention_instance):
-    pass
-    # n_ctx = 100
+# def test_create_alibi_slope(attention_instance):
+#     pass
+# n_ctx = 100
 
-    # # Expected result computed non-vectorized way
-    # expected = torch.zeros((n_ctx, n_ctx))
-    # for row in range(n_ctx):
-    #     for col in range(n_ctx):
-    #         expected[row, col] = float(min(col - row, 0))
+# # Expected result computed non-vectorized way
+# expected = torch.zeros((n_ctx, n_ctx))
+# for row in range(n_ctx):
+#     for col in range(n_ctx):
+#         expected[row, col] = float(min(col - row, 0))
 
-    # # Check against the method's vectorized version
-    # result = attention_instance.create_alibi_slope(n_ctx)
-    # assert torch.allclose(expected, result)
+# # Check against the method's vectorized version
+# result = attention_instance.create_alibi_slope(n_ctx)
+# assert torch.allclose(expected, result)
 
 
 # def test_create_alibi_multipliers(attention_instance):
