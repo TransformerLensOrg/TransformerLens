@@ -18,7 +18,8 @@ docstring-test:
 	poetry run pytest transformer_lens/
 
 notebook-test:
-	poetry run pytest demos/Exploratory_Analysis_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Main_Demo.ipynb 
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Exploratory_Analysis_Demo.ipynb
 
 test:
 	make unit-test
