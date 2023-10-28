@@ -817,7 +817,7 @@ class Attention(nn.Module):
         slope_matrix = rows - cols
 
         # Use the clamp method to set all positive values (upper right triangle) to
-        return slope_matrix.clamp(max=0)
+        return slope_matrix.clamp(max=0).to(self.cfg.dtype)
 
     def create_alibi_multipliers(
         self, n_heads: int, device: torch.device = None
