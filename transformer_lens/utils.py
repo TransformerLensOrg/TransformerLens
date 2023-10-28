@@ -1150,11 +1150,12 @@ def expand_alibi_on_query_dim(x, query_pos):
     value filled. The tensor is expanded as such: for a given batch and a given head, the input
     will be a vector of length key_pos looked like `[a,b,c,d]`, then this vector will be transfered
     into a matrix of shape (query_pos, key_pos) looked like (assume key_pos = query_pos = 4):
-        [[d,d,d,d],
-         [c,d,d,d],
-         [b,c,d,d],
-         [a,b,c,d],
-        ]]
+    
+    [[d,d,d,d],
+    [c,d,d,d],
+    [b,c,d,d],
+    [a,b,c,d],
+    ]]
 
     Args:
         x (torch.Tensor): The linear bias term with query_pos dimension 1.
