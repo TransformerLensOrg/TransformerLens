@@ -780,7 +780,7 @@ class Attention(nn.Module):
 
     def create_alibi_slope(
         self, n_ctx: int, device: torch.device = None
-    ) -> Float[torch.Tensor, "query key"]:
+    ) -> torch.Tensor:
         """Create an ALiBi Slope Matrix.
 
         Create the slope matrix used in ALiBi, before it is multiplied by the head-specific scalar.
@@ -821,7 +821,7 @@ class Attention(nn.Module):
 
     def create_alibi_multipliers(
         self, n_heads: int, device: torch.device = None
-    ) -> Float[torch.Tensor, "head_idx"]:
+    ) -> torch.Tensor:
         """Create the ALiBi Scalar Multipliers for each Head.
 
         For n heads, the set of multipliers (m) is the geometric sequence that starts at 2^(-8/n), and
@@ -859,7 +859,7 @@ class Attention(nn.Module):
 
     def create_alibi_bias(
         self, n_heads: int, n_ctx: int, device: torch.device = None
-    ) -> Float[torch.Tensor, "head_idx query key"]:
+    ) -> torch.Tensor:
         """Create the ALiBi Bias for all Heads.
 
         Calculate the ALiBi bias (https://arxiv.org/pdf/2108.12409.pdf) for all heads in a layer.
