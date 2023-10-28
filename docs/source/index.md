@@ -42,6 +42,7 @@ generated/model_properties_table.md
 content/tutorials
 content/citation
 content/contributing
+generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
 ```
 
