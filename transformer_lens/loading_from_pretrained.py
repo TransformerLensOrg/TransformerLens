@@ -496,8 +496,8 @@ MODEL_ALIASES = {
         "stablelm-tuned-alpha-7b",
         "stablelm-tuned-7b",
     ],
-    "mistralai/Mistral-7B-v0.1": ["mistral-7B"],
-    "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7B-instruct"],
+    "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
+    "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
 }
 """Model aliases for models on HuggingFace."""
 
