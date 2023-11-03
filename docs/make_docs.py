@@ -116,7 +116,10 @@ def generate_model_table(_app: Optional[Any] = None):
 def copy_demos(_app: Optional[Any] = None):
     """Copy demo notebooks to the generated directory."""
     copy_to_dir = GENERATED_DIR / "demos"
-    notebooks_to_copy = ["Exploratory_Analysis_Demo.ipynb"]
+    notebooks_to_copy = [
+        "Exploratory_Analysis_Demo.ipynb",
+        "Main_Demo.ipynb",
+    ]
 
     if copy_to_dir.exists():
         shutil.rmtree(copy_to_dir)
