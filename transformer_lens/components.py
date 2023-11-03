@@ -484,12 +484,10 @@ class Attention(nn.Module):
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
         elif self.cfg.positional_embedding_type == "alibi":
-            # Create attention linear bias with max allowed context. Index into it during forward pass to increase generation efficiency.
-            # Initialize the attention bias on the CPU to manage memory usage, as it occupies approx. 256 MiB.
-            alibi = Attention.create_alibi_bias(
-                self.cfg.n_heads, self.cfg.n_ctx, torch.device("cpu")
-            )  # [n_heads, n_ctx, n_ctx]
-            self.register_buffer("alibi", alibi)
+            # ALiBi bias is constructed on the first forward pass and computed only when context length surpasses the longest length so far.
+            # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
+
+            self.alibi = None
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -607,15 +605,18 @@ class Attention(nn.Module):
 
         if self.cfg.positional_embedding_type == "alibi":
             query_ctx = attn_scores.size(-2)
+            # The key context length is the number of positions in the past - this includes all positions in the cache
             key_ctx = attn_scores.size(-1)
 
-            # crop alibi tensor to shape (n_heads, query_pos, key_pos), broadcast along batch dimension.
-            attention_linear_bias = self.alibi[:, :query_ctx, :key_ctx].to(
-                self.cfg.device
-            )
-            attn_scores += (
-                attention_linear_bias  # [batch, head_index, query_pos, key_pos]
-            )
+            # only recompute when necessary to increase efficiency.
+            if self.alibi is None or key_ctx > self.alibi.size(-1):
+                self.alibi = Attention.create_alibi_bias(
+                    self.cfg.n_heads, key_ctx, self.cfg.device
+                )
+
+            attn_scores += self.alibi[
+                :, :query_ctx, :key_ctx
+            ]  # [batch, head_index, query_pos, key_pos]
 
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
