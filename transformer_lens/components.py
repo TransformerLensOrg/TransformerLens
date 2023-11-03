@@ -485,8 +485,9 @@ class Attention(nn.Module):
             self.register_buffer("rotary_cos", cos)
         elif self.cfg.positional_embedding_type == "alibi":
             # Create attention linear bias with max allowed context. Index into it during forward pass to increase generation efficiency.
+            # Initialize the attention bias on the CPU to manage memory usage, as it occupies approx. 256 MiB.
             alibi = Attention.create_alibi_bias(
-                self.cfg.n_heads, self.cfg.n_ctx, self.cfg.device
+                self.cfg.n_heads, self.cfg.n_ctx, torch.device("cpu")
             )  # [n_heads, n_ctx, n_ctx]
             self.register_buffer("alibi", alibi)
 
@@ -609,7 +610,9 @@ class Attention(nn.Module):
             key_ctx = attn_scores.size(-1)
 
             # crop alibi tensor to shape (n_heads, query_pos, key_pos), broadcast along batch dimension.
-            attention_linear_bias = self.alibi[:, :query_ctx, :key_ctx]
+            attention_linear_bias = self.alibi[:, :query_ctx, :key_ctx].to(
+                self.cfg.device
+            )
             attn_scores += (
                 attention_linear_bias  # [batch, head_index, query_pos, key_pos]
             )
@@ -779,7 +782,9 @@ class Attention(nn.Module):
         return torch.cat([x_rotated, x_pass], dim=-1)
 
     @staticmethod
-    def create_alibi_slope(n_ctx: int, device: torch.device = None) -> torch.Tensor:
+    def create_alibi_slope(
+        n_ctx: int, device: torch.device = None
+    ) -> Float[torch.Tensor, "query key"]:
         """Create an ALiBi Slope Matrix.
 
         Create the slope matrix used in ALiBi, before it is multiplied by the head-specific scalar.
@@ -821,7 +826,7 @@ class Attention(nn.Module):
     @staticmethod
     def create_alibi_multipliers(
         n_heads: int, device: torch.device = None
-    ) -> torch.Tensor:
+    ) -> Float[torch.Tensor, "head_idx"]:
         """Create the ALiBi Scalar Multipliers for each Head.
 
         For n heads, the set of multipliers (m) is the geometric sequence that starts at 2^(-8/n), and
@@ -860,7 +865,7 @@ class Attention(nn.Module):
     @staticmethod
     def create_alibi_bias(
         n_heads: int, n_ctx: int, device: torch.device = None
-    ) -> torch.Tensor:
+    ) -> Float[torch.Tensor, "head_idx query key"]:
         """Create the ALiBi Bias for all Heads.
 
         Calculate the ALiBi bias (https://arxiv.org/pdf/2108.12409.pdf) for all heads in a layer.
