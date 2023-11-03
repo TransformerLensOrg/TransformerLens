@@ -743,7 +743,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attn_types": ["local"] * 32,
             "eps": 1e-05,
             "n_key_value_heads": 8,
-            "final_rms": True,
             "gated_mlp": True,
             "use_local_attn": True,
             "rotary_dim": 4096 // 32,
