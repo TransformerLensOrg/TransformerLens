@@ -485,7 +485,7 @@ class Attention(nn.Module):
             self.register_buffer("rotary_cos", cos)
         elif self.cfg.positional_embedding_type == "alibi":
             # Create attention linear bias with max allowed context. Index into it during forward pass to increase generation efficiency.
-            alibi = self.create_alibi_bias(
+            alibi = Attention.create_alibi_bias(
                 self.cfg.n_heads, self.cfg.n_ctx, self.cfg.device
             )  # [n_heads, n_ctx, n_ctx]
             self.register_buffer("alibi", alibi)
@@ -778,9 +778,8 @@ class Attention(nn.Module):
 
         return torch.cat([x_rotated, x_pass], dim=-1)
 
-    def create_alibi_slope(
-        self, n_ctx: int, device: torch.device = None
-    ) -> torch.Tensor:
+    @staticmethod
+    def create_alibi_slope(n_ctx: int, device: torch.device = None) -> torch.Tensor:
         """Create an ALiBi Slope Matrix.
 
         Create the slope matrix used in ALiBi, before it is multiplied by the head-specific scalar.
@@ -817,10 +816,11 @@ class Attention(nn.Module):
         slope_matrix = rows - cols
 
         # Use the clamp method to set all positive values (upper right triangle) to
-        return slope_matrix.clamp(max=0).to(self.cfg.dtype)
+        return slope_matrix.clamp(max=0).to(torch.float32)
 
+    @staticmethod
     def create_alibi_multipliers(
-        self, n_heads: int, device: torch.device = None
+        n_heads: int, device: torch.device = None
     ) -> torch.Tensor:
         """Create the ALiBi Scalar Multipliers for each Head.
 
@@ -857,8 +857,9 @@ class Attention(nn.Module):
 
         return multipliers
 
+    @staticmethod
     def create_alibi_bias(
-        self, n_heads: int, n_ctx: int, device: torch.device = None
+        n_heads: int, n_ctx: int, device: torch.device = None
     ) -> torch.Tensor:
         """Create the ALiBi Bias for all Heads.
 
@@ -872,12 +873,11 @@ class Attention(nn.Module):
 
         Examples:
 
-        >>> Attention.create_alibi_bias(2, 4)
+        >>> Attention.create_alibi_bias(2, 4, torch.device('cpu'))
         tensor([[[ 0.0000,  0.0000,  0.0000,  0.0000],
             [-0.0625,  0.0000,  0.0000,  0.0000],
             [-0.1250, -0.0625,  0.0000,  0.0000],
             [-0.1875, -0.1250, -0.0625,  0.0000]],
-
             [[ 0.0000,  0.0000,  0.0000,  0.0000],
             [-0.0039,  0.0000,  0.0000,  0.0000],
             [-0.0078, -0.0039,  0.0000,  0.0000],
@@ -892,12 +892,14 @@ class Attention(nn.Module):
             The ALiBi bias that should be added to the attention scores before the softmax.
         """
         # Create the slope matrix
-        slope: Float[torch.Tensor, "query key"] = self.create_alibi_slope(n_ctx, device)
+        slope: Float[torch.Tensor, "query key"] = Attention.create_alibi_slope(
+            n_ctx, device
+        )
 
         # Create the scalar multiplier for each head.
-        multipliers: Float[torch.Tensor, "head_idx"] = self.create_alibi_multipliers(
-            n_heads, device
-        )
+        multipliers: Float[
+            torch.Tensor, "head_idx"
+        ] = Attention.create_alibi_multipliers(n_heads, device)
 
         # The ALiBi bias is then m * slope_matrix
         alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
