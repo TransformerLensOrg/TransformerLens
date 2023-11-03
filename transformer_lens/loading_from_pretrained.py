@@ -1704,7 +1704,7 @@ def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.b_out"] = bloom.transformer.h[
             l
         ].mlp.dense_4h_to_h.bias
-    state_dict["unembed.W_U"] = bloom.lm_head.weight.T  # why transpose? cuz right mult?
+    state_dict["unembed.W_U"] = bloom.lm_head.weight.T
 
     state_dict["ln_final.w"] = bloom.transformer.ln_f.weight
     state_dict["ln_final.b"] = bloom.transformer.ln_f.bias
