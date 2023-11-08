@@ -32,6 +32,7 @@ model_names = [
     "othello-gpt",
     "tiny-stories-33M",
     "bloom-560m",
+    "santacoder",
 ]
 text = "Hello world!"
 """ 
