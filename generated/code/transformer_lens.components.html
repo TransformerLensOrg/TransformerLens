@@ -302,6 +302,104 @@ To resolve this, I’ve coded it to default to the GPT-J mode, but to explicitly
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.components.Attention.create_alibi_bias">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_bias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">device</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'head_idx</span> <span class="pre">query</span> <span class="pre">key'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.Attention.create_alibi_bias" title="Permalink to this definition">#</a></dt>
+<dd><p>Create the ALiBi Bias for all Heads.</p>
+<p>Calculate the ALiBi bias (<a class="reference external" href="https://arxiv.org/pdf/2108.12409.pdf">https://arxiv.org/pdf/2108.12409.pdf</a>) for all heads in a layer.</p>
+<p>The broad idea behind ALiBi is to remove the positional encoding from the original transformer
+model, and instead apply a bias to each attention score. This bias is proportional to the
+distance between the query and key (i.e. it encourage paying less attention to more distant
+tokens), and is added to the attention scores before the softmax. It is used in models such as
+Bloom.</p>
+<p>Examples:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">Attention</span><span class="o">.</span><span class="n">create_alibi_bias</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s1">&#39;cpu&#39;</span><span class="p">))</span>
+<span class="go">tensor([[[ 0.0000,  0.0000,  0.0000,  0.0000],</span>
+<span class="go">    [-0.0625,  0.0000,  0.0000,  0.0000],</span>
+<span class="go">    [-0.1250, -0.0625,  0.0000,  0.0000],</span>
+<span class="go">    [-0.1875, -0.1250, -0.0625,  0.0000]],</span>
+<span class="go">    [[ 0.0000,  0.0000,  0.0000,  0.0000],</span>
+<span class="go">    [-0.0039,  0.0000,  0.0000,  0.0000],</span>
+<span class="go">    [-0.0078, -0.0039,  0.0000,  0.0000],</span>
+<span class="go">    [-0.0117, -0.0078, -0.0039,  0.0000]]])</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_heads</strong> – The number of heads in a layer.</p></li>
+<li><p><strong>n_ctx</strong> – The maximum number of tokens in a prompt.</p></li>
+<li><p><strong>device</strong> – The device to create the tensor on.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The ALiBi bias that should be added to the attention scores before the softmax.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.components.Attention.create_alibi_multipliers">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_multipliers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">device</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'head_idx'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.Attention.create_alibi_multipliers" title="Permalink to this definition">#</a></dt>
+<dd><p>Create the ALiBi Scalar Multipliers for each Head.</p>
+<p>For n heads, the set of multipliers (m) is the geometric sequence that starts at 2^(-8/n), and
+uses that same value as its ratio. For example, with 8 heads the values would be [1/(2^1),
+1/(2^2), … , 1/(2^8)]. With 16 heads the values would be [1/(2^0.5), 1/(2^1), … , 1/(2^8)].</p>
+<p>See <a class="reference internal" href="#transformer_lens.components.Attention.create_alibi_bias" title="transformer_lens.components.Attention.create_alibi_bias"><code class="xref py py-meth docutils literal notranslate"><span class="pre">create_alibi_bias()</span></code></a> for the full ALiBi bias calculation.</p>
+<p>Examples:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">Attention</span><span class="o">.</span><span class="n">create_alibi_multipliers</span><span class="p">(</span><span class="mi">8</span><span class="p">)</span>
+<span class="go">tensor([0.5000, 0.2500, 0.1250, 0.0625, 0.0312, 0.0156, 0.0078, 0.0039])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">Attention</span><span class="o">.</span><span class="n">create_alibi_multipliers</span><span class="p">(</span><span class="mi">16</span><span class="p">)</span>
+<span class="go">tensor([0.7071, 0.5000, 0.3536, 0.2500, 0.1768, 0.1250, 0.0884, 0.0625, 0.0442, 0.0312,</span>
+<span class="go">        0.0221, 0.0156, 0.0110, 0.0078, 0.0055, 0.0039])</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_heads</strong> – The number of heads in a layer.</p></li>
+<li><p><strong>device</strong> – The device to create the tensor on.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tensor of shape (n_heads,) containing the scalar multiplier for each head.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.components.Attention.create_alibi_slope">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_slope</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">device</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'query</span> <span class="pre">key'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.Attention.create_alibi_slope" title="Permalink to this definition">#</a></dt>
+<dd><p>Create an ALiBi Slope Matrix.</p>
+<p>Create the slope matrix used in ALiBi, before it is multiplied by the head-specific scalar.</p>
+<p>See <a class="reference internal" href="#transformer_lens.components.Attention.create_alibi_bias" title="transformer_lens.components.Attention.create_alibi_bias"><code class="xref py py-meth docutils literal notranslate"><span class="pre">create_alibi_bias()</span></code></a> for the full ALiBi bias calculation.</p>
+<p>Examples:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">Attention</span><span class="o">.</span><span class="n">create_alibi_slope</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">tensor([[ 0.,  0.,  0.],</span>
+<span class="go">        [-1.,  0.,  0.],</span>
+<span class="go">        [-2., -1.,  0.]])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">Attention</span><span class="o">.</span><span class="n">create_alibi_slope</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">tensor([[ 0.,  0.,  0.,  0.],</span>
+<span class="go">        [-1.,  0.,  0.,  0.],</span>
+<span class="go">        [-2., -1.,  0.,  0.],</span>
+<span class="go">        [-3., -2., -1.,  0.]])</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>n_ctx</strong> – The maximum number of tokens in a prompt.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tensor of shape (n_ctx, n_ctx), where the upper triangle is zero and the lower
+triangle is decreasing by a constant slope of 1 (towards the bottom left corner).</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.Attention.forward">
 <span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">query_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">head_index</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">head_index</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">head_index</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_kv_cache_entry</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCacheEntry" title="transformer_lens.past_key_value_caching.HookedTransformerKeyValueCacheEntry"><span class="pre">HookedTransformerKeyValueCacheEntry</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">additive_attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">1</span> <span class="pre">1</span> <span class="pre">pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">offset_pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.Attention.forward" title="Permalink to this definition">#</a></dt>
 <dd><p>shortformer_pos_embed is only used if self.cfg.positional_embedding_type == “shortformer”, else defaults to None and is irrelevant. See HookedTransformerConfig for more details
@@ -720,6 +818,9 @@ registered hooks while the latter silently ignores them.</p>
 <li><a class="reference internal" href="#transformer_lens.components.Attention.apply_causal_mask"><code class="docutils literal notranslate"><span class="pre">Attention.apply_causal_mask()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.Attention.apply_rotary"><code class="docutils literal notranslate"><span class="pre">Attention.apply_rotary()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.Attention.calculate_sin_cos_rotary"><code class="docutils literal notranslate"><span class="pre">Attention.calculate_sin_cos_rotary()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.Attention.create_alibi_bias"><code class="docutils literal notranslate"><span class="pre">Attention.create_alibi_bias()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.Attention.create_alibi_multipliers"><code class="docutils literal notranslate"><span class="pre">Attention.create_alibi_multipliers()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.Attention.create_alibi_slope"><code class="docutils literal notranslate"><span class="pre">Attention.create_alibi_slope()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.Attention.forward"><code class="docutils literal notranslate"><span class="pre">Attention.forward()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.Attention.rotate_every_two"><code class="docutils literal notranslate"><span class="pre">Attention.rotate_every_two()</span></code></a></li>
 </ul>
