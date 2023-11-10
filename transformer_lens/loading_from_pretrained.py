@@ -136,6 +136,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-base-alpha-7b",
     "stabilityai/stablelm-tuned-alpha-3b",
     "stabilityai/stablelm-tuned-alpha-7b",
+    "bigscience/bloom-560m",
     "bigcode/santacoder",
 ]
 """Official model names for models on HuggingFace."""
@@ -495,6 +496,7 @@ MODEL_ALIASES = {
         "stablelm-tuned-alpha-7b",
         "stablelm-tuned-7b",
     ],
+    "bigscience/bloom-560m": ["bloom-560m"],
     "bigcode/santacoder": ["santacoder"],
 }
 """Model aliases for models on HuggingFace."""
@@ -723,6 +725,22 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "gelu",
             "attention_dir": "bidirectional",
         }
+    elif architecture == "BloomForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.n_head,
+            "n_heads": hf_config.n_head,
+            "d_mlp": hf_config.hidden_size * 4,
+            "n_layers": hf_config.n_layer,
+            "n_ctx": 2048,  # Capped due to HF Tokenizer Constraints
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": "gelu_fast",
+            "eps": hf_config.layer_norm_epsilon,
+            "normalization_type": "LN",
+            "post_embedding_ln": True,
+            "positional_embedding_type": "alibi",
+        }
+
     elif architecture == "GPT2LMHeadCustomModel":
         # santacoder
         cfg_dict = {
@@ -1069,6 +1087,8 @@ def get_pretrained_state_dict(
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "BloomForCausalLM":
+            state_dict = convert_bloom_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPT2LMHeadCustomModel":
             state_dict = convert_coder_weights(hf_model, cfg)
         else:
@@ -1648,6 +1668,74 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     # "unembed.W_U": mlm_head.decoder.weight.T,
     state_dict["unembed.b_U"] = mlm_head.bias
 
+    return state_dict
+
+
+def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = bloom.transformer.word_embeddings.weight
+
+    # Bloom uses post embedding layer norm
+    state_dict["embed.ln.w"] = bloom.transformer.word_embeddings_layernorm.weight
+    state_dict["embed.ln.b"] = bloom.transformer.word_embeddings_layernorm.bias
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = bloom.transformer.h[l].input_layernorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = bloom.transformer.h[l].input_layernorm.bias
+
+        # Bloom attn weight is stored as a fused matrx. BloomAttn: Linear(in=1024, out=3072)
+        # The .weight returned matrix will be in shape (3072, 1024)
+        W = bloom.transformer.h[l].self_attention.query_key_value.weight
+        # First transpose -> (1024, 3072), then split into (d_model, n_heads, 3, d_head)
+        W_split = W.T.reshape(cfg.d_model, cfg.n_heads, 3, cfg.d_head)
+
+        W_Q, W_K, W_V = W_split[..., 0, :], W_split[..., 1, :], W_split[..., 2, :]
+        W_Q = einops.rearrange(W_Q, "m n h ->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "m n h ->n m h", n=cfg.n_heads)
+        W_V = einops.rearrange(W_V, "m n h ->n m h", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        qkv_bias = bloom.transformer.h[l].self_attention.query_key_value.bias
+        qkv_bias = qkv_bias.reshape(cfg.n_heads, 3, cfg.d_head)
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = qkv_bias[:, 0, :]
+        state_dict[f"blocks.{l}.attn.b_K"] = qkv_bias[:, 1, :]
+        state_dict[f"blocks.{l}.attn.b_V"] = qkv_bias[:, 2, :]
+
+        W_O = bloom.transformer.h[l].self_attention.dense.weight.T  # [1024, 1024]
+        W_O = einops.rearrange(
+            W_O, "(n h) m->n h m", n=cfg.n_heads
+        )  # [n_heads, d_head, d_model]
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = bloom.transformer.h[
+            l
+        ].self_attention.dense.bias
+
+        state_dict[f"blocks.{l}.ln2.w"] = bloom.transformer.h[
+            l
+        ].post_attention_layernorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = bloom.transformer.h[
+            l
+        ].post_attention_layernorm.bias
+
+        W_in = bloom.transformer.h[l].mlp.dense_h_to_4h.weight.T
+        state_dict[f"blocks.{l}.mlp.W_in"] = W_in
+        state_dict[f"blocks.{l}.mlp.b_in"] = bloom.transformer.h[
+            l
+        ].mlp.dense_h_to_4h.bias
+
+        W_out = bloom.transformer.h[l].mlp.dense_4h_to_h.weight.T
+        state_dict[f"blocks.{l}.mlp.W_out"] = W_out
+        state_dict[f"blocks.{l}.mlp.b_out"] = bloom.transformer.h[
+            l
+        ].mlp.dense_4h_to_h.bias
+    state_dict["unembed.W_U"] = bloom.lm_head.weight.T  # transpose to match shape
+
+    state_dict["ln_final.w"] = bloom.transformer.ln_f.weight
+    state_dict["ln_final.b"] = bloom.transformer.ln_f.bias
     return state_dict
 
 

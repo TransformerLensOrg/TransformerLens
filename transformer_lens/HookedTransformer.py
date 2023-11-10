@@ -334,6 +334,10 @@ class HookedTransformer(HookedRootModule):
             # keys and queries. See HookedTransformerConfig for details
             residual = embed
             shortformer_pos_embed = None
+        elif self.cfg.positional_embedding_type == "alibi":
+            # ALiBi does not add positional embeddings to word embeddings,instead it biases QK attention scores.
+            residual = embed
+            shortformer_pos_embed = None
         else:
             raise ValueError(
                 f"Invalid positional_embedding_type passed in {self.cfg.positional_embedding_type}"

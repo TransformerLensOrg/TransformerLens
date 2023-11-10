@@ -147,6 +147,8 @@ class HookedTransformerConfig:
         tokenizer_prepends_bos (bool, *optional*): This flag is set by set_tokenizer. It is set to True only
             when the tokenizer automatically prepends the BOS token if initialized with add_bos_token=True.
             We need this information to dynamically control bos prepending.
+        post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
+            to False.
     """
 
     n_layers: int
@@ -194,6 +196,7 @@ class HookedTransformerConfig:
     default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
+    post_embedding_ln: bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:
