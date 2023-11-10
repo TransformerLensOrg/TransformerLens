@@ -730,7 +730,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": hf_config.n_head,
             "d_mlp": hf_config.hidden_size * 4,
             "n_layers": hf_config.n_layer,
-            "n_ctx": 2048,
+            "n_ctx": 2048, # Capped due to HF Tokenizer Constraints
             "d_vocab": hf_config.vocab_size,
             "act_fn": "gelu_fast",
             "eps": hf_config.layer_norm_epsilon,
