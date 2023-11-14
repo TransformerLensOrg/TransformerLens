@@ -43,6 +43,7 @@ def test_run_with_hooks():
         n_ctx=20,
         d_vocab=50,
         act_fn="relu",
+        gated_mlp=True,
     )
     model = HookedTransformer(
         cfg=cfg,
