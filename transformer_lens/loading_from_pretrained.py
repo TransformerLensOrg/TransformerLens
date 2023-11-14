@@ -136,7 +136,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-base-alpha-7b",
     "stabilityai/stablelm-tuned-alpha-3b",
     "stabilityai/stablelm-tuned-alpha-7b",
-    "bigscience/bloom-560m",
+    "bigscience/bloom-560m", # TODO: include the other bloom models
     "bigcode/santacoder",
 ]
 """Official model names for models on HuggingFace."""
