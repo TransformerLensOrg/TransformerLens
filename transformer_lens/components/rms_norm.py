@@ -12,8 +12,6 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from typing import Dict, Optional, Union
 
 
-
-
 class RMSNorm(nn.Module):
     def __init__(
         self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None

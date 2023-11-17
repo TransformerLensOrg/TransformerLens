@@ -4,14 +4,11 @@ This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, 
 needed to create many different types of generative language models. They are used by
 :class:`transformer_lens.HookedTransformer`.
 """
-from .embed import Embed
-from .layer_norm import LayerNorm
-from .pos_embed import PosEmbed
-from .token_typed_embed import TokenTypeEmbed
 import einops
 from jaxtyping import Int
 import torch
 import torch.nn as nn
+from transformer_lens.components import Embed, LayerNorm, PosEmbed, TokenTypeEmbed
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from typing import Dict, Optional, Union

@@ -4,7 +4,6 @@ This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, 
 needed to create many different types of generative language models. They are used by
 :class:`transformer_lens.HookedTransformer`.
 """
-
 from fancy_einsum import einsum
 from jaxtyping import Float
 import torch

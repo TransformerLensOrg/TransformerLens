@@ -4,18 +4,12 @@ This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, 
 needed to create many different types of generative language models. They are used by
 :class:`transformer_lens.HookedTransformer`.
 """
-from .attention import Attention
-from .gated_mlp import GatedMLP
-from .layer_norm import LayerNorm
-from .layer_norm_pre import LayerNormPre
-from .mlp import MLP
-from .rms_norm import RMSNorm
-from .rms_norm_pre import RMSNormPre
 import einops
 from jaxtyping import Float, Int
 import logging
 import torch
 import torch.nn as nn
+from transformer_lens.components import Attention, GatedMLP, LayerNorm, LayerNormPre, MLP, RMSNorm, RMSNormPre
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
