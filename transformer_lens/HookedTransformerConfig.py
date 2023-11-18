@@ -149,6 +149,8 @@ class HookedTransformerConfig:
             We need this information to dynamically control bos prepending.
         n_key_value_heads (int, *optional*): The number of groups of heads that use the same key and value matrix.
             Only for models that use Grouped Query Attention.
+        post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
+            to False.
     """
 
     n_layers: int
@@ -197,6 +199,7 @@ class HookedTransformerConfig:
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
     n_key_value_heads: Optional[int] = None
+    post_embedding_ln: bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:

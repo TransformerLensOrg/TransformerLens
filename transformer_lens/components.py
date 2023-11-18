@@ -34,12 +34,17 @@ class Embed(nn.Module):
         self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
             torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=cfg.dtype)
         )
+        # Some models (e.g. Bloom) need post embedding layer norm
+        if cfg.post_embedding_ln:
+            self.ln = LayerNorm(cfg)
 
     def forward(
         self, tokens: Int[torch.Tensor, "batch pos"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
+        if self.cfg.post_embedding_ln:
+            return self.ln(self.W_E[tokens, :])
         return self.W_E[tokens, :]
 
 
@@ -468,6 +473,10 @@ class AbstractAttention(ABC, nn.Module):
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
+        elif self.cfg.positional_embedding_type == "alibi":
+            # ALiBi bias wil be constructed on the first forward pass.
+            # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
+            self.alibi = None
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -545,6 +554,22 @@ class AbstractAttention(ABC, nn.Module):
         attn_scores = self.calculate_attention_scores(
             q, k
         )  # [batch, head_index, query_pos, key_pos]
+
+        if self.cfg.positional_embedding_type == "alibi":
+            query_ctx = attn_scores.size(-2)
+            # The key context length is the number of positions in the past - this includes all positions in the cache
+            key_ctx = attn_scores.size(-1)
+
+            # only recompute when necessary to increase efficiency.
+            if self.alibi is None or key_ctx > self.alibi.size(-1):
+                self.alibi = Attention.create_alibi_bias(
+                    self.cfg.n_heads, key_ctx, self.cfg.device
+                )
+
+            attn_scores += self.alibi[
+                :, :query_ctx, :key_ctx
+            ]  # [batch, head_index, query_pos, key_pos]
+
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
@@ -768,6 +793,136 @@ class AbstractAttention(ABC, nn.Module):
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
+
+    @staticmethod
+    def create_alibi_slope(
+        n_ctx: int, device: torch.device = None
+    ) -> Float[torch.Tensor, "query key"]:
+        """Create an ALiBi Slope Matrix.
+
+        Create the slope matrix used in ALiBi, before it is multiplied by the head-specific scalar.
+
+        See :meth:`create_alibi_bias` for the full ALiBi bias calculation.
+
+        Examples:
+
+        >>> Attention.create_alibi_slope(3)
+        tensor([[ 0.,  0.,  0.],
+                [-1.,  0.,  0.],
+                [-2., -1.,  0.]])
+
+        >>> Attention.create_alibi_slope(4)
+        tensor([[ 0.,  0.,  0.,  0.],
+                [-1.,  0.,  0.,  0.],
+                [-2., -1.,  0.,  0.],
+                [-3., -2., -1.,  0.]])
+
+        Args:
+            n_ctx: The maximum number of tokens in a prompt.
+
+        Returns:
+            A tensor of shape (n_ctx, n_ctx), where the upper triangle is zero and the lower
+            triangle is decreasing by a constant slope of 1 (towards the bottom left corner).
+        """
+        # set rows as [[0,1,2...]]
+        rows = torch.arange(n_ctx, device=device).unsqueeze(0)
+
+        # Set cols as [[0],[1],[2]...]
+        cols = torch.arange(n_ctx, device=device).unsqueeze(1)
+
+        # Use broadcasting to create the desired lower triangular part of the matrix
+        slope_matrix = rows - cols
+
+        # Use the clamp method to set all positive values (upper right triangle) to
+        return slope_matrix.clamp(max=0).to(torch.float32)
+
+    @staticmethod
+    def create_alibi_multipliers(
+        n_heads: int, device: torch.device = None
+    ) -> Float[torch.Tensor, "head_idx"]:
+        """Create the ALiBi Scalar Multipliers for each Head.
+
+        For n heads, the set of multipliers (m) is the geometric sequence that starts at 2^(-8/n), and
+        uses that same value as its ratio. For example, with 8 heads the values would be [1/(2^1),
+        1/(2^2), ... , 1/(2^8)]. With 16 heads the values would be [1/(2^0.5), 1/(2^1), ... , 1/(2^8)].
+
+        See :meth:`create_alibi_bias` for the full ALiBi bias calculation.
+
+        Examples:
+
+        >>> Attention.create_alibi_multipliers(8)
+        tensor([0.5000, 0.2500, 0.1250, 0.0625, 0.0312, 0.0156, 0.0078, 0.0039])
+
+        >>> Attention.create_alibi_multipliers(16)
+        tensor([0.7071, 0.5000, 0.3536, 0.2500, 0.1768, 0.1250, 0.0884, 0.0625, 0.0442, 0.0312,
+                0.0221, 0.0156, 0.0110, 0.0078, 0.0055, 0.0039])
+
+        Args:
+            n_heads: The number of heads in a layer.
+            device: The device to create the tensor on.
+
+        Returns:
+            A tensor of shape (n_heads,) containing the scalar multiplier for each head.
+        """
+        # Calculate the starting value
+        start = 2 ** (-8 / n_heads)
+
+        # Generate the indices [0, 1, ..., n_heads-1]
+        indices = torch.arange(n_heads, device=device)
+
+        # Compute the multipliers, with the starting value being the same as the ratio
+        multipliers = start * (start**indices)
+
+        return multipliers
+
+    @staticmethod
+    def create_alibi_bias(
+        n_heads: int, n_ctx: int, device: torch.device = None
+    ) -> Float[torch.Tensor, "head_idx query key"]:
+        """Create the ALiBi Bias for all Heads.
+
+        Calculate the ALiBi bias (https://arxiv.org/pdf/2108.12409.pdf) for all heads in a layer.
+
+        The broad idea behind ALiBi is to remove the positional encoding from the original transformer
+        model, and instead apply a bias to each attention score. This bias is proportional to the
+        distance between the query and key (i.e. it encourage paying less attention to more distant
+        tokens), and is added to the attention scores before the softmax. It is used in models such as
+        Bloom.
+
+        Examples:
+
+        >>> Attention.create_alibi_bias(2, 4, torch.device('cpu'))
+        tensor([[[ 0.0000,  0.0000,  0.0000,  0.0000],
+            [-0.0625,  0.0000,  0.0000,  0.0000],
+            [-0.1250, -0.0625,  0.0000,  0.0000],
+            [-0.1875, -0.1250, -0.0625,  0.0000]],
+            [[ 0.0000,  0.0000,  0.0000,  0.0000],
+            [-0.0039,  0.0000,  0.0000,  0.0000],
+            [-0.0078, -0.0039,  0.0000,  0.0000],
+            [-0.0117, -0.0078, -0.0039,  0.0000]]])
+
+        Args:
+            n_heads: The number of heads in a layer.
+            n_ctx: The maximum number of tokens in a prompt.
+            device: The device to create the tensor on.
+
+        Returns:
+            The ALiBi bias that should be added to the attention scores before the softmax.
+        """
+        # Create the slope matrix
+        slope: Float[torch.Tensor, "query key"] = Attention.create_alibi_slope(
+            n_ctx, device
+        )
+
+        # Create the scalar multiplier for each head.
+        multipliers: Float[
+            torch.Tensor, "head_idx"
+        ] = Attention.create_alibi_multipliers(n_heads, device)
+
+        # The ALiBi bias is then m * slope_matrix
+        alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
+
+        return alibi_bias
 
 
 # Attention
