@@ -136,7 +136,11 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-base-alpha-7b",
     "stabilityai/stablelm-tuned-alpha-3b",
     "stabilityai/stablelm-tuned-alpha-7b",
-    "bigscience/bloom-560m", # TODO: include the other bloom models
+    "bigscience/bloom-560m",
+    "bigscience/bloom-1b1",
+    "bigscience/bloom-1b7",
+    "bigscience/bloom-3b",
+    "bigscience/bloom-7b1",
     "bigcode/santacoder",
 ]
 """Official model names for models on HuggingFace."""
@@ -497,6 +501,10 @@ MODEL_ALIASES = {
         "stablelm-tuned-7b",
     ],
     "bigscience/bloom-560m": ["bloom-560m"],
+    "bigscience/bloom-1b1": ["bloom-1b1"],
+    "bigscience/bloom-1b7": ["bloom-1b7"],
+    "bigscience/bloom-3b": ["bloom-3b"],
+    "bigscience/bloom-7b1": ["bloom-7b1"],
     "bigcode/santacoder": ["santacoder"],
 }
 """Model aliases for models on HuggingFace."""
@@ -1684,10 +1692,8 @@ def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.ln1.w"] = bloom.transformer.h[l].input_layernorm.weight
         state_dict[f"blocks.{l}.ln1.b"] = bloom.transformer.h[l].input_layernorm.bias
 
-        # Bloom attn weight is stored as a fused matrx. BloomAttn: Linear(in=1024, out=3072)
-        # The .weight returned matrix will be in shape (3072, 1024)
         W = bloom.transformer.h[l].self_attention.query_key_value.weight
-        # First transpose -> (1024, 3072), then split into (d_model, n_heads, 3, d_head)
+
         W_split = W.T.reshape(cfg.d_model, cfg.n_heads, 3, cfg.d_head)
 
         W_Q, W_K, W_V = W_split[..., 0, :], W_split[..., 1, :], W_split[..., 2, :]
@@ -1732,7 +1738,7 @@ def convert_bloom_weights(bloom, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.b_out"] = bloom.transformer.h[
             l
         ].mlp.dense_4h_to_h.bias
-    state_dict["unembed.W_U"] = bloom.lm_head.weight.T  # transpose to match shape
+    state_dict["unembed.W_U"] = bloom.lm_head.weight.T
 
     state_dict["ln_final.w"] = bloom.transformer.ln_f.weight
     state_dict["ln_final.b"] = bloom.transformer.ln_f.bias
