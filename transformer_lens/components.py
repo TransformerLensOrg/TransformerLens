@@ -466,13 +466,15 @@ class Attention(nn.Module):
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
-        self.register_buffer("IGNORE", torch.tensor(torch.finfo(torch.float32).min))
+        self.register_buffer(
+            "IGNORE", torch.tensor(torch.finfo(torch.float32).min).to(torch.float64)
+        )
 
         self.layer_id = layer_id
 
         # attn_scale is a constant that we divide the attention scores by pre-softmax. I'm not entirely sure why it matters, but it's probably a mix of softmax not being scale invariant and numerical stability?
         if self.cfg.use_attn_scale:
-            self.attn_scale = np.sqrt(self.cfg.d_head)
+            self.attn_scale = self.cfg.d_head**0.5
         else:
             self.attn_scale = 1.0
         if self.cfg.scale_attn_by_inverse_layer_idx:
@@ -644,10 +646,10 @@ class Attention(nn.Module):
 
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             # If using 16 bits, increase the precision to avoid numerical instabilities
-            pass
+            assert False
 
-        q = q.to(torch.float64)
-        k = k.to(torch.float64)  # todo remove
+        # q = q.to(torch.float64)
+        # k = k.to(torch.float64)  # TODO remove
 
         attn_scores = (
             torch.matmul(  # Same old shit!
@@ -660,7 +662,9 @@ class Attention(nn.Module):
                     "batch key_pos head_index d_head -> batch head_index d_head key_pos",
                 ),
             )
+
             / self.attn_scale
+
             # * k.transpose((0, 2, 3, 1))
             # einsum(
             #     "batch query_pos head_index d_head, \
@@ -671,7 +675,7 @@ class Attention(nn.Module):
             # )
         )  # [batch, head_index, query_pos, key_pos]
 
-        attn_scores = attn_scores.to(torch.float32)  # todo remove
+        attn_scores = attn_scores.to(torch.float32)  # TODO remove
 
         if self.cfg.positional_embedding_type == "alibi":
             query_ctx = attn_scores.size(-2)
@@ -700,46 +704,94 @@ class Attention(nn.Module):
         pattern = F.softmax(attn_scores, dim=-1)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
-        z = self.hook_z(
-            einsum(
-                "batch key_pos head_index d_head, \
-                batch head_index query_pos key_pos -> \
-                batch query_pos head_index d_head",
-                v,
-                pattern,
-            )
-        )  # [batch, pos, head_index, d_head]
-        if not self.cfg.use_attn_result:  # TODO replace this too...
-            out = (
-                (
-                    einsum(
-                        "batch pos head_index d_head, \
-                            head_index d_head d_model -> \
-                            batch pos d_model",
-                        z,
-                        self.W_O,
-                    )
-                )
-                + self.b_O
-            )  # [batch, pos, d_model]
-        else:
-            # Explicitly calculate the attention result so it can be accessed by a hook
-            # This is off by default because it can easily eat through your GPU memory.
-            result = self.hook_result(
+
+        if True:  # Sadly the else ablation had no effect on FINAL logits # TODO this...
+            z = self.hook_z(
                 einsum(
-                    "batch pos head_index d_head, \
-                        head_index d_head d_model -> \
-                        batch pos head_index d_model",
-                    z,
-                    self.W_O,
+                    "batch key_pos head_index d_head, \
+                    batch head_index query_pos key_pos -> \
+                    batch query_pos head_index d_head",
+                    v,
+                    pattern,
                 )
-            )  # [batch, pos, head_index, d_model]
-            out = (
-                einops.reduce(
-                    result, "batch position index model->batch position model", "sum"
-                )
-                + self.b_O
-            )  # [batch, pos, d_model]
+            )  # [batch, pos, head_index, d_head]
+
+        else:
+            # Rearrange v and pattern for matmul
+            v_rearranged = einops.rearrange(
+                v, "batch key_pos head_index d_head -> batch head_index d_head key_pos"
+            )
+            pattern_rearranged = einops.rearrange(
+                pattern,
+                "batch head_index query_pos key_pos -> batch head_index key_pos query_pos",
+            )
+
+            # Perform batched matrix multiplication
+            z = torch.matmul(v_rearranged, pattern_rearranged)
+
+            # Rearrange back to desired shape
+            z = einops.rearrange(
+                z,
+                "batch head_index d_head query_pos -> batch query_pos head_index d_head",
+            )
+
+        out = (
+            einsum(
+                "batch pos head_index d_head, \
+                head_index d_head d_model -> \
+                batch pos d_model",
+                z,
+                self.W_O,
+            )
+            + self.b_O
+        )  # [batch, pos, d_model]
+        # Assuming z, self.W_O, and self.b_O are already defined
+
+        if not self.cfg.use_attn_result:  # TODO replace this too...
+            # # Rearrange z for matmul: [batch, pos, head_index * d_head]
+
+            z_rearranged = einops.rearrange(
+                z, "batch pos head_index d_head -> (batch pos) (head_index d_head)"
+            )
+
+            o_rearragned = einops.rearrange(
+                self.W_O, "head_index d_head d_model -> (head_index d_head) d_model"
+            )
+
+            # Perform the operation using torch.addmm
+            out = einops.rearrange(
+                torch.addmm(
+                    self.b_O,  # bias term (input in addmm)
+                    z_rearranged,  # mat1
+                    o_rearragned,  # mat2
+                ),
+                "(batch pos) d_model -> batch pos d_model",
+                pos=z.shape[1],
+            )
+
+            print("done")
+            #  # out shape: [batch, pos, d_model]
+
+        else:
+            assert False
+            #  # Explicitly calculate the attention result so it can be accessed by a hook
+            #  # This is off by default because it can easily eat through your GPU memory.
+            #  result = self.hook_result(
+            #  einsum(
+            #  "batch pos head_index d_head, \
+            #  head_index d_head d_model -> \
+            #  batch pos head_index d_model",
+            #  z,
+            #  self.W_O,
+            #  )
+            #  ) # [batch, pos, head_index, d_model]
+            #  out = (
+            #  einops.reduce(
+            #  result, "batch position index model->batch position model", "sum"
+            #  )
+            #  + self.b_O
+            #  ) # [batch, pos, d_model]
+
         return out
 
     def apply_causal_mask(

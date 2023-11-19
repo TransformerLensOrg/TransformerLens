@@ -72,7 +72,7 @@ torch.testing.assert_close(logits, hf_logits, atol=1e-5, rtol=1e-5)
 
 # %%
 
-MODE = "ln2"
+MODE = "mlp_pre"
 
 if MODE == "pattern":
     tl_activation_name = utils.get_act_name("pattern", "{layer_idx}")  # lol
@@ -104,7 +104,7 @@ elif MODE == "ln2":
     tl_activation_name = "blocks.{layer_idx}.ln2.hook_normalized"
     assert "gpt2" in model_name
     hf_activation_name = "transformer.h.{layer_idx}.ln_2"
-elif MODE == "q":
+elif MODE == "qkv":
     tl_activation_name = utils.get_act_name("q", "{layer_idx}")
     assert "gpt2" in model_name
     hf_activation_name = "transformer.h.{layer_idx}.attn.c_attn"
@@ -139,12 +139,22 @@ for i in range(tl_model.cfg.n_layers):
         else:
             raise NotImplementedError()
 
-    torch.testing.assert_close(
-        tl_act.to(torch.float32),
-        hf_act.to(torch.float32),
-        atol=1e-9,  # Wow, embed is super close
-        rtol=1e-9,  # Better, but still failing a lot!
-    )
+    try:  # Supporess
+        torch.testing.assert_close(
+            tl_act.to(torch.float32),
+            hf_act.to(torch.float32),
+            atol=1e-9,  # Wow, embed is super close
+            rtol=1e-9,  # Better, but still failing a lot!
+            # msg="Hello",
+        )
+    except Exception as e:
+        a = str(e)
+    else:
+        a = None
+
+    if a is not None:
+        print(a)
+        assert False
 
 else:
     print("All good!")
@@ -159,3 +169,5 @@ torch.testing.assert_close(
     atol=1e-9,
     rtol=1e-9,  # Weights *are* close.
 )
+
+# %%
