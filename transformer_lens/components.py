@@ -296,7 +296,8 @@ class LayerNorm(nn.Module):
         self.hook_scale = HookPoint()  # [batch, pos, 1]
         # Hook_normalized is on the LN output
         self.hook_normalized = HookPoint()  # [batch, pos, length]
-        self.cast_dtype = torch.float64  # What? This makes things worse?
+
+        self.cast_dtype = torch.float64
 
     def forward(
         self,
@@ -308,28 +309,28 @@ class LayerNorm(nn.Module):
         Float[torch.Tensor, "batch pos d_model"],
         Float[torch.Tensor, "batch pos head_index d_model"],
     ]:
-        # return self.hook_normalized(
-        #     layer_norm(
-        #         input=x,
-        #         normalized_shape=(self.cfg.d_model,),
-        #         weight=self.w,
-        #         bias=self.b,
-        #         eps=self.eps,
-        #     )
-        # )
-
-        # if self.cfg.dtype not in [torch.float32, torch.float64]:
-        x = x.to(self.cast_dtype)  # ...
-        x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
-        scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
-            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
-            # (x.var(dim=-1, keepdim=True, correction=0) + self.eps).sqrt()
-            # Basically the same... :-(
+        return self.hook_normalized(  # This does fix the very first LN...
+            layer_norm(
+                input=x,
+                normalized_shape=(self.cfg.d_model,),
+                weight=self.w,
+                bias=self.b,
+                eps=self.eps,
+            )
         )
-        x = x / scale  # [batch, pos, length]
-        return self.hook_normalized(
-            x * self.w.to(self.cast_dtype) + self.b.to(self.cast_dtype)
-        ).to(self.cfg.dtype)
+
+        # # if self.cfg.dtype not in [torch.float32, torch.float64]:
+        # x = x.to(self.cast_dtype)  # ...
+        # x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
+        # scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
+        #     (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
+        #     # (x.var(dim=-1, keepdim=True, correction=0) + self.eps).sqrt()
+        #     # Basically the same... :-(
+        # )
+        # x = x / scale  # [batch, pos, length]
+        # return self.hook_normalized(
+        #     x * self.w.to(self.cast_dtype) + self.b.to(self.cast_dtype)
+        # ).to(self.cfg.dtype)
 
 
 class RMSNormPre(nn.Module):
@@ -555,35 +556,75 @@ class Attention(nn.Module):
 
         if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
             qkv_einops_string = "batch pos head_index d_model"
+            assert False  # Debugging
         else:
             qkv_einops_string = "batch pos d_model"
+
         q = self.hook_q(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                query_input,
-                self.W_Q,
+            einops.rearrange(
+                torch.addmm(
+                    einops.rearrange(
+                        self.b_Q,
+                        "head_index d_head -> (head_index d_head)",
+                    ),
+                    einops.rearrange(
+                        query_input,
+                        "batch pos d_model -> (batch pos) d_model",
+                    ),
+                    einops.rearrange(
+                        self.W_Q,
+                        "head_index d_model d_head -> d_model (head_index d_head)",
+                    ),
+                ),
+                "(batch pos) (head_index d_head) -> batch pos head_index d_head",
+                head_index=self.cfg.n_heads,
+                batch=query_input.shape[0],
             )
-            + self.b_Q
-        )  # [batch, pos, head_index, d_head]
+        )
+
         k = self.hook_k(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                key_input,
-                self.W_K,
+            einops.rearrange(
+                torch.addmm(
+                    einops.rearrange(
+                        self.b_K,
+                        "head_index d_head -> (head_index d_head)",
+                    ),
+                    einops.rearrange(
+                        key_input,
+                        "batch pos d_model -> (batch pos) d_model",
+                    ),
+                    einops.rearrange(
+                        self.W_K,
+                        "head_index d_model d_head -> d_model (head_index d_head)",
+                    ),
+                ),
+                "(batch pos) (head_index d_head) -> batch pos head_index d_head",
+                head_index=self.cfg.n_heads,
+                batch=key_input.shape[0],
             )
-            + self.b_K
-        )  # [batch, pos, head_index, d_head]
+        )
+
         v = self.hook_v(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                value_input,
-                self.W_V,
+            einops.rearrange(
+                torch.addmm(
+                    einops.rearrange(
+                        self.b_V,
+                        "head_index d_head -> (head_index d_head)",
+                    ),
+                    einops.rearrange(
+                        value_input,
+                        "batch pos d_model -> (batch pos) d_model",
+                    ),
+                    einops.rearrange(
+                        self.W_V,
+                        "head_index d_model d_head -> d_model (head_index d_head)",
+                    ),
+                ),
+                "(batch pos) (head_index d_head) -> batch pos head_index d_head",
+                head_index=self.cfg.n_heads,
+                batch=value_input.shape[0],
             )
-            + self.b_V
-        )  # [batch, pos, head_index, d_head]
+        )
 
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
@@ -603,8 +644,10 @@ class Attention(nn.Module):
 
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             # If using 16 bits, increase the precision to avoid numerical instabilities
-            q = q.to(torch.float32)
-            k = k.to(torch.float32)
+            pass
+
+        q = q.to(torch.float64)
+        k = k.to(torch.float64)  # todo remove
 
         attn_scores = (
             torch.matmul(  # Same old shit!
@@ -627,6 +670,8 @@ class Attention(nn.Module):
             #     k,
             # )
         )  # [batch, head_index, query_pos, key_pos]
+
+        attn_scores = attn_scores.to(torch.float32)  # todo remove
 
         if self.cfg.positional_embedding_type == "alibi":
             query_ctx = attn_scores.size(-2)
@@ -664,7 +709,7 @@ class Attention(nn.Module):
                 pattern,
             )
         )  # [batch, pos, head_index, d_head]
-        if not self.cfg.use_attn_result:
+        if not self.cfg.use_attn_result:  # TODO replace this too...
             out = (
                 (
                     einsum(

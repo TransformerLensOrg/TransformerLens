@@ -30,8 +30,8 @@ hf_model.eval()
 
 # %%
 
-tl_model = tl_model.to(torch.float64)
-hf_model = hf_model.to(torch.float64)
+# tl_model = tl_model.to(torch.float64)
+# hf_model = hf_model.to(torch.float64)
 
 # %%
 
@@ -68,11 +68,11 @@ hf_logits = hf_model(tokens).logits
 
 # %%
 
-torch.testing.assert_close(logits, hf_logits, atol=1e-9, rtol=1e-9)
+torch.testing.assert_close(logits, hf_logits, atol=1e-5, rtol=1e-5)
 
 # %%
 
-MODE = "ln"
+MODE = "ln2"
 
 if MODE == "pattern":
     tl_activation_name = utils.get_act_name("pattern", "{layer_idx}")  # lol
@@ -100,6 +100,10 @@ elif MODE == "ln":
     tl_activation_name = "blocks.{layer_idx}.ln1.hook_normalized"
     assert "gpt2" in model_name
     hf_activation_name = "transformer.h.{layer_idx}.ln_1"
+elif MODE == "ln2":
+    tl_activation_name = "blocks.{layer_idx}.ln2.hook_normalized"
+    assert "gpt2" in model_name
+    hf_activation_name = "transformer.h.{layer_idx}.ln_2"
 elif MODE == "q":
     tl_activation_name = utils.get_act_name("q", "{layer_idx}")
     assert "gpt2" in model_name
