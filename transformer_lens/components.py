@@ -64,14 +64,17 @@ class Unembed(nn.Module):
     def forward(
         self, residual: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
-        return (
-            einsum(
-                "batch pos d_model, d_model vocab -> batch pos vocab",
-                residual,
-                self.W_U,
-            )
-            + self.b_U
-        )
+        return F.linear(residual, self.W_U.T, bias=None)
+
+        # self.b_U.to(torch.float64)
+        # return (
+        #     einsum(
+        #         "batch pos d_model, d_model vocab -> batch pos vocab",
+        #         residual,
+        #         self.W_U,
+        #     )
+        #     + self.b_U
+        # )
 
 
 # Positional Embeddings
@@ -1077,23 +1080,53 @@ class MLP(nn.Module):
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
+
         pre_act = self.hook_pre(
-            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
-            + self.b_in
-        )  # [batch, pos, d_mlp]
+            einops.rearrange(
+                torch.addmm(
+                    self.b_in,
+                    einops.rearrange(x, "batch pos d_model -> (batch pos) d_model"),
+                    self.W_in,
+                ),
+                "(batch pos) d_model -> batch pos d_model",
+                batch=x.shape[0],
+            )
+        )
+        # pre_act = self.hook_pre(
+        #     einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
+        #     + self.b_in
+        # )  # [batch, pos, d_mlp]
+
         if not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+
+            # post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
         else:
+            assert False
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
-        return (
-            einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
+
+        return einops.rearrange(
+            torch.addmm(
+                self.b_out,
+                einops.rearrange(
+                    post_act,
+                    "batch pos d_mlp -> (batch pos) d_mlp",
+                ),
                 self.W_out,
-            )
-            + self.b_out
+            ),
+            "(batch pos) d_model -> batch pos d_model",
+            batch=x.shape[0],
         )
+
+        # (
+        #     einsum(
+        #         "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
+        #         post_act,
+        #         self.W_out,
+        #     )
+        #     + self.b_out
+        # )
 
 
 # TODO

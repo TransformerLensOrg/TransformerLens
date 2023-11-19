@@ -68,13 +68,20 @@ hf_logits = hf_model(tokens).logits
 
 # %%
 
-torch.testing.assert_close(logits, hf_logits, atol=1e-5, rtol=1e-5)
+torch.testing.assert_close(logits, hf_logits, atol=1e-9, rtol=1e-9)
 
 # %%
 
-MODE = "mlp_pre"
+MODE = "ln_f"
 
-if MODE == "pattern":
+if MODE == "attn":
+    tl_activation_name = "blocks.{layer_idx}.hook_attn_out"
+    if "gpt2" in model_name:
+        hf_activation_name = "transformer.h.{layer_idx}.attn"
+    else:
+        raise ValueError(f"Add this please! {activation_cacher.activations.keys()=}")
+
+elif MODE == "pattern":
     tl_activation_name = utils.get_act_name("pattern", "{layer_idx}")  # lol
     if "gpt2" in model_name:
         hf_activation_name = "transformer.h.{layer_idx}.attn.attn_dropout"
@@ -108,6 +115,10 @@ elif MODE == "qkv":
     tl_activation_name = utils.get_act_name("q", "{layer_idx}")
     assert "gpt2" in model_name
     hf_activation_name = "transformer.h.{layer_idx}.attn.c_attn"
+elif MODE == "ln_f":
+    tl_activation_name = "ln_final.hook_normalized"
+    assert "gpt2" in model_name
+    hf_activation_name = "transformer.ln_f"
 
 else:
     raise ValueError(f"Add this please! {MODE=}")
@@ -117,7 +128,6 @@ saved_preln = activation_cacher.activations["transformer.drop"][0]
 
 for i in range(tl_model.cfg.n_layers):
     print(i)
-
     tl_act = cache[
         tl_activation_name.format(layer_idx=i)
         if "{layer_idx}" in tl_activation_name
@@ -138,8 +148,10 @@ for i in range(tl_model.cfg.n_layers):
             )
         else:
             raise NotImplementedError()
+    elif MODE == "attn":
+        hf_act = hf_act[0]
 
-    try:  # Supporess
+    try:  # Suppress
         torch.testing.assert_close(
             tl_act.to(torch.float32),
             hf_act.to(torch.float32),
@@ -162,10 +174,12 @@ else:
 # %%
 
 torch.testing.assert_close(
-    tl_model.W_Q[0, 0],
-    hf_model.transformer.h[0]
-    .attn.c_attn.weight.split(tl_model.cfg.d_model, dim=-1)[0]
-    .split(tl_model.cfg.d_head, dim=-1)[0],
+    # tl_model.W_Q[0, 0],
+    # hf_model.transformer.h[0]
+    # .attn.c_attn.weight.split(tl_model.cfg.d_model, dim=-1)[0]
+    # .split(tl_model.cfg.d_head, dim=-1)[0],
+    tl_model.W_U,
+    hf_model.lm_head.weight.T,  # Gah!
     atol=1e-9,
     rtol=1e-9,  # Weights *are* close.
 )
