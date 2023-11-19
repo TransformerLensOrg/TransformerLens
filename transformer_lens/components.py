@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
+from torch.nn.functional import layer_norm
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
@@ -295,6 +296,7 @@ class LayerNorm(nn.Module):
         self.hook_scale = HookPoint()  # [batch, pos, 1]
         # Hook_normalized is on the LN output
         self.hook_normalized = HookPoint()  # [batch, pos, length]
+        self.cast_dtype = torch.float64  # What? This makes things worse?
 
     def forward(
         self,
@@ -306,15 +308,28 @@ class LayerNorm(nn.Module):
         Float[torch.Tensor, "batch pos d_model"],
         Float[torch.Tensor, "batch pos head_index d_model"],
     ]:
-        if self.cfg.dtype not in [torch.float32, torch.float64]:
-            x = x.to(torch.float32)
+        # return self.hook_normalized(
+        #     layer_norm(
+        #         input=x,
+        #         normalized_shape=(self.cfg.d_model,),
+        #         weight=self.w,
+        #         bias=self.b,
+        #         eps=self.eps,
+        #     )
+        # )
 
+        # if self.cfg.dtype not in [torch.float32, torch.float64]:
+        x = x.to(self.cast_dtype)  # ...
         x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
+            # (x.var(dim=-1, keepdim=True, correction=0) + self.eps).sqrt()
+            # Basically the same... :-(
         )
         x = x / scale  # [batch, pos, length]
-        return self.hook_normalized(x * self.w + self.b).to(self.cfg.dtype)
+        return self.hook_normalized(
+            x * self.w.to(self.cast_dtype) + self.b.to(self.cast_dtype)
+        ).to(self.cfg.dtype)
 
 
 class RMSNormPre(nn.Module):
@@ -450,7 +465,7 @@ class Attention(nn.Module):
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
-        self.register_buffer("IGNORE", torch.tensor(-torch.inf))
+        self.register_buffer("IGNORE", torch.tensor(torch.finfo(torch.float32).min))
 
         self.layer_id = layer_id
 
@@ -592,14 +607,25 @@ class Attention(nn.Module):
             k = k.to(torch.float32)
 
         attn_scores = (
-            einsum(
-                "batch query_pos head_index d_head, \
-                    batch key_pos head_index d_head \
-                    -> batch head_index query_pos key_pos",
-                q,
-                k,
+            torch.matmul(  # Same old shit!
+                einops.rearrange(
+                    q,
+                    "batch query_pos head_index d_head -> batch head_index query_pos d_head",
+                ),
+                einops.rearrange(
+                    k,
+                    "batch key_pos head_index d_head -> batch head_index d_head key_pos",
+                ),
             )
             / self.attn_scale
+            # * k.transpose((0, 2, 3, 1))
+            # einsum(
+            #     "batch query_pos head_index d_head, \
+            #         batch key_pos head_index d_head \
+            #         -> batch head_index query_pos key_pos",
+            #     q,
+            #     k,
+            # )
         )  # [batch, head_index, query_pos, key_pos]
 
         if self.cfg.positional_embedding_type == "alibi":
@@ -627,7 +653,6 @@ class Attention(nn.Module):
 
         attn_scores = self.hook_attn_scores(attn_scores)
         pattern = F.softmax(attn_scores, dim=-1)
-        pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
         z = self.hook_z(
