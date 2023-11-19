@@ -647,7 +647,7 @@ class Attention(nn.Module):
             pass
 
         q = q.to(torch.float64)
-        k = k.to(torch.float64)  # todo remove
+        k = k.to(torch.float64)  # TODO remove...?
 
         attn_scores = (
             torch.matmul(  # Same old shit!
@@ -671,7 +671,7 @@ class Attention(nn.Module):
             # )
         )  # [batch, head_index, query_pos, key_pos]
 
-        attn_scores = attn_scores.to(torch.float32)  # todo remove
+        attn_scores = attn_scores.to(torch.float32)  # TODO remove
 
         if self.cfg.positional_embedding_type == "alibi":
             query_ctx = attn_scores.size(-2)
