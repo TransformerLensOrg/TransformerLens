@@ -646,8 +646,8 @@ class Attention(nn.Module):
             # If using 16 bits, increase the precision to avoid numerical instabilities
             pass
 
-        q = q.to(torch.float64)
-        k = k.to(torch.float64)  # TODO remove...?
+        # q = q.to(torch.float64)
+        # k = k.to(torch.float64)  # todo remove
 
         attn_scores = (
             torch.matmul(  # Same old shit!
@@ -660,7 +660,9 @@ class Attention(nn.Module):
                     "batch key_pos head_index d_head -> batch head_index d_head key_pos",
                 ),
             )
-            / self.attn_scale
+            / torch.full(
+                [], self.attn_scale, dtype=k.dtype, device=k.device
+            )
             # * k.transpose((0, 2, 3, 1))
             # einsum(
             #     "batch query_pos head_index d_head, \
@@ -671,7 +673,7 @@ class Attention(nn.Module):
             # )
         )  # [batch, head_index, query_pos, key_pos]
 
-        attn_scores = attn_scores.to(torch.float32)  # TODO remove
+        attn_scores = attn_scores.to(torch.float32)  # todo remove
 
         if self.cfg.positional_embedding_type == "alibi":
             query_ctx = attn_scores.size(-2)
