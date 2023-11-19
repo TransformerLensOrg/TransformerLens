@@ -662,9 +662,7 @@ class Attention(nn.Module):
                     "batch key_pos head_index d_head -> batch head_index d_head key_pos",
                 ),
             )
-
             / self.attn_scale
-
             # * k.transpose((0, 2, 3, 1))
             # einsum(
             #     "batch query_pos head_index d_head, \
