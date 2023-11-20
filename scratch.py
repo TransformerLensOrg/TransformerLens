@@ -74,13 +74,17 @@ torch.testing.assert_close(logits, hf_logits, atol=1e-9, rtol=1e-9)
 
 MODE = "ln_f"
 
-if MODE == "attn":
+if MODE == "resid_post":
+    raise NotImplementedError()
+    tl_activation_name = utils.get_act_name("resid_post", 11)
+    hf_activation_name = "transformer"  # oh lol not really
+
+elif MODE == "attn":
     tl_activation_name = "blocks.{layer_idx}.hook_attn_out"
     if "gpt2" in model_name:
         hf_activation_name = "transformer.h.{layer_idx}.attn"
     else:
         raise ValueError(f"Add this please! {activation_cacher.activations.keys()=}")
-
 elif MODE == "pattern":
     tl_activation_name = utils.get_act_name("pattern", "{layer_idx}")  # lol
     if "gpt2" in model_name:
@@ -99,6 +103,10 @@ elif MODE == "mlp_pre":
     tl_activation_name = utils.get_act_name("mlp_pre", "{layer_idx}")
     assert "gpt2" in model_name
     hf_activation_name = "transformer.h.{layer_idx}.mlp.c_fc"
+elif MODE == "mlp_post":
+    tl_activation_name = utils.get_act_name("mlp_post", "{layer_idx}")
+    assert "gpt2" in model_name
+    hf_activation_name = "transformer.h.{layer_idx}.mlp.c_proj"
 elif MODE == "embed":
     assert "gpt2" in model_name
     tl_activation_name = utils.get_act_name("resid_pre", 0)
@@ -150,6 +158,8 @@ for i in range(tl_model.cfg.n_layers):
             raise NotImplementedError()
     elif MODE == "attn":
         hf_act = hf_act[0]
+    elif MODE == "resid_post":
+        hf_act = hf_act["last_hidden_state"]
 
     try:  # Suppress
         torch.testing.assert_close(
@@ -183,5 +193,59 @@ torch.testing.assert_close(
     atol=1e-9,
     rtol=1e-9,  # Weights *are* close.
 )
+
+# %%
+
+assert MODE == "ln_f"
+manual_tl_logits = (
+    torch.nn.functional.linear(  # Oh weirdly, works opposite way round to matmul
+        tl_act[0],
+        tl_model.W_U.clone().T,
+        bias=None,
+    )
+)
+manual_hf_logits = torch.nn.functional.linear(
+    hf_act[0],
+    hf_model.lm_head.weight,
+    bias=None,
+)
+
+# %%
+
+torch.testing.assert_close(
+    manual_tl_logits,
+    manual_hf_logits,
+    # tl_act[0],
+    # hf_act[0],
+    # tl_model.W_U.T,
+    # hf_model.lm_head.weight,
+    atol=1e-9,
+    rtol=1e-9,  # Weights *are* close.
+)
+
+# %%
+
+# Ah
+prefixes = ["hf_", "tl_"]
+wus = [torch.load(f"{prefix}wu.pt") for prefix in prefixes]
+residuals = [torch.load(f"{prefix}residual.pt") for prefix in prefixes]
+
+assert torch.abs(wus[0] - wus[1]).max().item() < 1e-9
+assert torch.abs(residuals[0] - residuals[1]).max().item() < 1e-9
+print(wus[0].abs().max(), residuals[1].abs().max())  # There are 1.752 and 225.6747
+
+linears = [
+    torch.nn.functional.linear(  # The linear dimension is 768
+        residual,
+        wu,
+        bias=None,
+    )
+    for residual, wu in zip(residuals, wus)
+]
+
+abs_max = torch.abs(linears[0] - linears[1]).max().item()
+assert abs_max < 1e-4, abs_max  # Fails! How
+
+# Ohhh ...768*224 is >1e5
 
 # %%
