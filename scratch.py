@@ -227,12 +227,34 @@ torch.testing.assert_close(
 
 # Ah
 prefixes = ["hf_", "tl_"]
-wus = [torch.load(f"{prefix}wu.pt") for prefix in prefixes]
-residuals = [torch.load(f"{prefix}residual.pt") for prefix in prefixes]
+import os
+import pickle
+import shutil
 
-assert torch.abs(wus[0] - wus[1]).max().item() < 1e-9
+import torch
+
+wus = [
+    torch.load(f"{prefix}wu.pt").clone().contiguous() for prefix in prefixes
+]  # Completely magic, this just works
+residuals = [torch.load(f"{prefix}residual.pt").clone() for prefix in prefixes]
+
+# for prefix, wu in zip(prefixes, wus):
+#     save_file({"wu": wu}, f"{prefix}wu.safetensors")
+
+# for prefix, residual in zip(prefixes, residuals):
+#     save_file({"residual": residual}, f"{prefix}residual.safetensors")
+
+# wus = [wu / wu.norm(dim=-1, keepdim=True) for wu in wus]
+# residuals = [residual / residual.norm(dim=-1, keepdim=True) for residual in residuals]
+
+assert (
+    torch.abs(wus[0] - wus[1]).max().item() < 1e-9
+)  # Lots some by normalizing: 1e-9 used to work!
 assert torch.abs(residuals[0] - residuals[1]).max().item() < 1e-9
-print(wus[0].abs().max(), residuals[1].abs().max())  # There are 1.752 and 225.6747
+
+# print(
+#     wus[0].abs().max(), residuals[1].abs().max()
+# )  # There are 1.752 and 225.6747. They go as low as 1e-6 too...
 
 linears = [
     torch.nn.functional.linear(  # The linear dimension is 768
@@ -244,7 +266,7 @@ linears = [
 ]
 
 abs_max = torch.abs(linears[0] - linears[1]).max().item()
-assert abs_max < 1e-4, abs_max  # Fails! How
+assert abs_max < 1e-9, abs_max  # Fails! How
 
 # Ohhh ...768*224 is >1e5
 
