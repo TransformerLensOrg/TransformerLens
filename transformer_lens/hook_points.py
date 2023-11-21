@@ -5,8 +5,9 @@ Helpers to access activations in models.
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union, Any
 
+import torch
 import torch.nn as nn
 import torch.utils.hooks as hooks
 
@@ -27,7 +28,7 @@ class LensHandle:
 
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
-
+HookFunction = Callable[[torch.Tensor, 'HookPoint'], Any]
 
 class HookPoint(nn.Module):
     """
@@ -45,13 +46,13 @@ class HookPoint(nn.Module):
 
         # A variable giving the hook's name (from the perspective of the root
         # module) - this is set by the root module at setup.
-        self.name = None
+        self.name: Union[str, None] = None
 
-    def add_perma_hook(self, hook, dir: str="fwd") -> None:
+    def add_perma_hook(self, hook: HookFunction, dir: str="fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
     def add_hook(
-        self, hook, dir: str="fwd", is_permanent=False, level=None, prepend=False
+        self, hook: HookFunction, dir: str="fwd", is_permanent: bool=False, level: Optional[int]=None, prepend: bool=False
     ) -> None:
         """
         Hook format is fn(activation, hook_name)
@@ -59,9 +60,11 @@ class HookPoint(nn.Module):
         which are the same for a HookPoint)
         If prepend is True, add this hook before all other hooks
         """
+        
+        
         if dir == "fwd":
-
-            def full_hook(module, module_input, module_output):
+            # TODO: whats the proper way to type unused variables?
+            def full_hook(module, module_input, module_output: torch.Tensor):
                 return hook(module_output, hook=self)
 
             full_hook.__name__ = (
@@ -101,7 +104,7 @@ class HookPoint(nn.Module):
         else:
             raise ValueError(f"Invalid direction {dir}")
 
-    def remove_hooks(self, dir="fwd", including_permanent=False, level=None) -> None:
+    def remove_hooks(self, dir: str="fwd", including_permanent: bool=False, level: Union[int, None]=None) -> None:
         def _remove_hooks(handles: List[LensHandle]) -> List[LensHandle]:
             output_handles = []
             for handle in handles:
@@ -126,6 +129,7 @@ class HookPoint(nn.Module):
         del self.ctx
         self.ctx = {}
 
+    # TODO: can we assume this will always be a torch.tensor?
     def forward(self, x):
         return x
 
@@ -133,7 +137,7 @@ class HookPoint(nn.Module):
         # Returns the layer index if the name has the form 'blocks.{layer}.{...}'
         # Helper function that's mainly useful on HookedTransformer
         # If it doesn't have this form, raises an error -
-        split_name = self.name.split(".")
+        split_name = self.name.split(".") # TODO; it seems like this code assumes that self.name won't be empty. how to ensure?
         return int(split_name[1])
 
 
@@ -158,10 +162,13 @@ class HookedRootModule(nn.Module):
     loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
     """
 
-    def __init__(self, *args):
+    # TODO: check if adding 'Any' is okay here
+    def __init__(self, *args: Any):
         super().__init__()
         self.is_caching = False
         self.context_level = 0
+        
+        self.name: Union[str, None] # TODO: is this chill? this line isnt here earlier, but we need type annotation
 
     def setup(self):
         """
@@ -186,7 +193,7 @@ class HookedRootModule(nn.Module):
         return self.hook_dict.values()
 
     def remove_all_hook_fns(
-        self, direction="both", including_permanent=False, level=None
+        self, direction: str="both", including_permanent: bool=False, level: Union[int, None]=None
     ):
         for hp in self.hook_points():
             hp.remove_hooks(
@@ -199,10 +206,10 @@ class HookedRootModule(nn.Module):
 
     def reset_hooks(
         self,
-        clear_contexts=True,
-        direction="both",
-        including_permanent=False,
-        level=None,
+        clear_contexts: bool=True,
+        direction: str="both",
+        including_permanent: bool=False,
+        level: Union[int, None]=None,
     ):
         if clear_contexts:
             self.clear_contexts()
@@ -233,7 +240,7 @@ class HookedRootModule(nn.Module):
         )
 
     def check_hooks_to_add(
-        self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False
+        self, hook_point, hook_point_name, hook, dir: str="fwd", is_permanent: bool=False
     ) -> None:
         """Override this function to add checks on which hooks should be added"""
         pass
