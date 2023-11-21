@@ -40,9 +40,11 @@ class Attention(nn.Module):
             layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
         super().__init__()
-        
-        self.cached_alibi  = None
-        self.cfg = HookedTransformerConfig.from_dict(cfg) if isinstance(cfg, Dict) else cfg
+
+        self.cached_alibi = None
+        self.cfg = (
+            HookedTransformerConfig.from_dict(cfg) if isinstance(cfg, Dict) else cfg
+        )
 
         self.W_Q = nn.Parameter(
             torch.empty(
@@ -242,7 +244,7 @@ class Attention(nn.Module):
             query_ctx = attn_scores.size(-2)
             # The key context length is the number of positions in the past - this includes all positions in the cache
             key_ctx = attn_scores.size(-1)
-            
+
             alibi = self.get_cached_alibi(key_ctx=key_ctx)
 
             attn_scores += alibi[
@@ -304,7 +306,6 @@ class Attention(nn.Module):
                 )
                 + self.b_O
             )  # [batch, pos, d_model]
-
 
     def apply_causal_mask(
         self,
@@ -547,14 +548,16 @@ class Attention(nn.Module):
         alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
 
         return alibi_bias
-    
-    def get_cached_alibi(self, key_ctx: int) -> Float[torch.Tensor, "head_idx query key"]:
+
+    def get_cached_alibi(
+        self, key_ctx: int
+    ) -> Float[torch.Tensor, "head_idx query key"]:
         """Get A Cached ALiBi bias For Calculation.
-        
+
         This function will check for if an instance of our ALiBi bias is currently set.
         If the ALiBi bias is not set or if our key context is greater than it's cached size, a new
         instance will be initiated.
-        
+
         The cached ALiBi bias is then returned
 
         Returns:
@@ -565,5 +568,5 @@ class Attention(nn.Module):
             self.cached_alibi = Attention.create_alibi_bias(
                 self.cfg.n_heads, key_ctx, self.cfg.device
             )
-        
+
         return self.cached_alibi

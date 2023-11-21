@@ -68,7 +68,9 @@ class MLP(nn.Module):
             + self.b_in
         )  # [batch, pos, d_mlp]
         if not self.cfg.act_fn.endswith("_ln"):
-            post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp] TODO segmentation fault
+            post_act = self.hook_post(
+                self.act_fn(pre_act)
+            )  # [batch, pos, d_mlp] TODO segmentation fault
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))

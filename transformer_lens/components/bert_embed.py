@@ -58,4 +58,3 @@ class BertEmbed(nn.Module):
         )
         layer_norm_out = self.ln(embeddings_out)
         return layer_norm_out
-
