@@ -5,19 +5,21 @@ needed to create many different types of generative language models. They are us
 :class:`transformer_lens.HookedTransformer`.
 """
 
+from typing import Dict, Optional, Tuple, Union
+
 import einops
-from fancy_einsum import einsum
-from jaxtyping import Float, Int
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from fancy_einsum import einsum
+from jaxtyping import Float, Int
+
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utils import get_offset_position_ids
-from typing import Dict, Optional, Tuple, Union
 
 
 # Attention
@@ -39,6 +41,7 @@ class Attention(nn.Module):
         """
         super().__init__()
         
+        self.cached_alibi  = None
         self.cfg = HookedTransformerConfig.from_dict(cfg) if isinstance(cfg, Dict) else cfg
 
         self.W_Q = nn.Parameter(
