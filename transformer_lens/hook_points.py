@@ -5,7 +5,7 @@ Helpers to access activations in models.
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union, Any
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -169,6 +169,8 @@ class HookedRootModule(nn.Module):
         self.context_level = 0
         
         self.name: Union[str, None] # TODO: is this chill? this line isnt here earlier, but we need type annotation
+        self.mod_dict: Dict[str, nn.Module]
+        self.hook_dict: Dict[str, HookPoint]
 
     def setup(self):
         """
@@ -180,13 +182,14 @@ class HookedRootModule(nn.Module):
         "HookPoint".
         """
         self.mod_dict = {}
-        self.hook_dict: Dict[str, HookPoint] = {}
+        self.hook_dict = {}
         for name, module in self.named_modules():
             if name == "":
                 continue
             module.name = name
             self.mod_dict[name] = module
-            if "HookPoint" in str(type(module)):
+            # TODO: is the bottom line the same as "if "HookPoint" in str(type(module)):"
+            if isinstance(module, HookPoint):
                 self.hook_dict[name] = module
 
     def hook_points(self):
@@ -248,7 +251,7 @@ class HookedRootModule(nn.Module):
     def add_hook(
         self, name, hook, dir="fwd", is_permanent=False, level=None, prepend=False
     ) -> None:
-        if type(name) == str:
+        if isinstance(name, str):
             self.check_and_add_hook(
                 self.mod_dict[name],
                 name,
@@ -304,7 +307,7 @@ class HookedRootModule(nn.Module):
             self.context_level += 1
 
             for name, hook in fwd_hooks:
-                if type(name) == str:
+                if isinstance(name, str):
                     self.mod_dict[name].add_hook(
                         hook, dir="fwd", level=self.context_level
                     )
@@ -314,7 +317,7 @@ class HookedRootModule(nn.Module):
                         if name(hook_name):
                             hp.add_hook(hook, dir="fwd", level=self.context_level)
             for name, hook in bwd_hooks:
-                if type(name) == str:
+                if isinstance(name, str):
                     self.mod_dict[name].add_hook(
                         hook, dir="bwd", level=self.context_level
                     )
@@ -336,8 +339,8 @@ class HookedRootModule(nn.Module):
         *model_args,
         fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
-        reset_hooks_end=True,
-        clear_contexts=False,
+        reset_hooks_end: bool=True,
+        clear_contexts: bool=False,
         **model_kwargs,
     ):
         """
@@ -396,10 +399,10 @@ class HookedRootModule(nn.Module):
 
         if names_filter is None:
             names_filter = lambda name: True
-        elif type(names_filter) == str:
+        elif isinstance(names_filter, str):
             filter_str = names_filter
             names_filter = lambda name: name == filter_str
-        elif type(names_filter) == list:
+        elif isinstance(names_filter, list):
             filter_list = names_filter
             names_filter = lambda name: name in filter_list
 
@@ -504,10 +507,10 @@ class HookedRootModule(nn.Module):
 
         if names_filter is None:
             names_filter = lambda name: True
-        elif type(names_filter) == str:
+        elif isinstance(names_filter, str):
             filter_str = names_filter
             names_filter = lambda name: name == filter_str
-        elif type(names_filter) == list:
+        elif isinstance(names_filter, list):
             filter_list = names_filter
             names_filter = lambda name: name in filter_list
         self.is_caching = True
