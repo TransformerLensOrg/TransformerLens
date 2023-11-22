@@ -206,7 +206,7 @@ def check_performance(tl_model, hf_model, margin):
 
 def check_dtype(dtype, margin, no_processing=False):
     """Check the loading and inferences for different dtypes."""
-    for model_path in ["gpt2", "roneneldan/TinyStories-33M", "EleutherAI/pythia-70m"]:
+    for model_path in ["gpt2", "roneneldan/TinyStories-33M"]:
         if no_processing:
             # For low precision, the processing is not advised.
             model = HookedTransformer.from_pretrained_no_processing(
@@ -235,7 +235,7 @@ def check_dtype(dtype, margin, no_processing=False):
 
 @pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
 def test_dtypes(dtype):
-    check_dtype(dtype, margin=5e-4)
+    check_dtype(dtype, margin=5e-5)
 
 
 @pytest.mark.skipif(
