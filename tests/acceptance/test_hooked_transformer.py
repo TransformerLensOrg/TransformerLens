@@ -206,7 +206,7 @@ def check_performance(tl_model, hf_model, margin):
 
 def check_dtype(dtype, margin, no_processing=False):
     """Check the loading and inferences for different dtypes."""
-    for model_path in ["gpt2"]:
+    for model_path in ["gpt2", "roneneldan/TinyStories-33M", "EleutherAI/pythia-70m"]:
         if no_processing:
             # For low precision, the processing is not advised.
             model = HookedTransformer.from_pretrained_no_processing(
