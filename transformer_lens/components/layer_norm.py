@@ -28,7 +28,10 @@ class LayerNorm(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.eps = self.cfg.eps
-        self.length = self.cfg.d_model if length is None else length
+        if length is None:
+            self.length = self.cfg.d_model
+        else:
+            self.length = length
 
         self.w = nn.Parameter(torch.ones(self.length, dtype=cfg.dtype))
         self.b = nn.Parameter(torch.zeros(self.length, dtype=cfg.dtype))
