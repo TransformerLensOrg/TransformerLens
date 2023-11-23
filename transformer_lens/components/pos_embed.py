@@ -1,8 +1,6 @@
-"""Hooked Transformer Embed Component.
+"""Hooked Transformer POS Embed Component.
 
-This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, :class:`LayerNorm`)
-needed to create many different types of generative language models. They are used by
-:class:`transformer_lens.HookedTransformer`.
+This module contains all the component :class:`PosEmbed`.
 """
 from typing import Dict, Optional, Union
 
