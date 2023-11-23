@@ -23,7 +23,7 @@ from transformer_lens import HookedTransformer, utils
 
 # %%
 
-model_name = "gpt2"  # ??? Why so slow
+model_name = "gpt2"
 tl_model = HookedTransformer.from_pretrained_no_processing(model_name)
 hf_model = AutoModelForCausalLM.from_pretrained(model_name)
 hf_model.eval()
