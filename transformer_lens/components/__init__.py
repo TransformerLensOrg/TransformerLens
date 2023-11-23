@@ -1,3 +1,9 @@
+"""Hooked Transformer Components.
+
+This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, :class:`LayerNorm`)
+needed to create many different types of generative language models. They are used by
+:class:`transformer_lens.HookedTransformer`.
+"""
 # Independent classes
 from .attention import Attention
 from .layer_norm import LayerNorm
