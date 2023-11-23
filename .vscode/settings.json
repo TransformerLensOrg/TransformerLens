@@ -20,4 +20,9 @@
     "cSpell.words": [
         "accum"
     ],
+    "workbench.colorCustomizations": {
+        "activityBar.background": "#27226D",
+        "titleBar.activeBackground": "#372F99",
+        "titleBar.activeForeground": "#FCFCFE"
+    },
 }

@@ -21,3 +21,4 @@ docs/source/generated
 hf_logits.pt
 *.pt
 *.safetensors
+.vscode/**

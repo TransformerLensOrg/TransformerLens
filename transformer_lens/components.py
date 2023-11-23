@@ -64,7 +64,9 @@ class Unembed(nn.Module):
     def forward(
         self, residual: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
-        return F.linear(residual, self.W_U.T, bias=None)
+        return F.linear(
+            residual, self.W_U.T.contiguous(), bias=None
+        )  # TODO I think this needs .contiguous()? Check
 
         # self.b_U.to(torch.float64)
         # return (
