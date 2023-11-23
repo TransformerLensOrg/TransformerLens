@@ -19,3 +19,5 @@ docs/build
 .pylintrc
 docs/source/generated
 hf_logits.pt
+*.pt
+*.safetensors
