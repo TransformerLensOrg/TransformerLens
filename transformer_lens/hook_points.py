@@ -29,6 +29,7 @@ class LensHandle:
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
 HookFunction = Callable[[torch.Tensor, 'HookPoint'], Any]
+DeviceType = Union[torch.device, None] # TODO: should this incldue str?
 
 class HookPoint(nn.Module):
     """
@@ -75,17 +76,15 @@ class HookPoint(nn.Module):
             handle = LensHandle(handle, is_permanent, level)
 
             if prepend:
-                # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
+                # we could just pass this as an argument in PyTorch 2.0, but for now we manually do
+                # this...
                 self._forward_hooks.move_to_end(handle.hook.id, last=False)
                 self.fwd_hooks.insert(0, handle)
-
             else:
                 self.fwd_hooks.append(handle)
-
         elif dir == "bwd":
             # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
-
-            def full_hook(module, module_input, module_output):
+            def full_hook(module, module_input, module_output: torch.Tensor):
                 return hook(module_output[0], hook=self)
 
             full_hook.__name__ = (
@@ -129,7 +128,7 @@ class HookPoint(nn.Module):
         del self.ctx
         self.ctx = {}
 
-    # TODO: can we assume this will always be a torch.tensor?
+    # TODO: can we assume this will always be a torch.Tensor?
     def forward(self, x):
         return x
 
@@ -161,16 +160,17 @@ class HookedRootModule(nn.Module):
     gradients). In this case, you need to keep the hooks around as global state until you've run
     loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
     """
-
+    name: Union[str, None] # TODO: is this chill? this line isnt here earlier, but we need type annotation
+    mod_dict: Dict[str, nn.Module]
+    hook_dict: Dict[str, HookPoint]
+        
     # TODO: check if adding 'Any' is okay here
     def __init__(self, *args: Any):
         super().__init__()
         self.is_caching = False
         self.context_level = 0
         
-        self.name: Union[str, None] # TODO: is this chill? this line isnt here earlier, but we need type annotation
-        self.mod_dict: Dict[str, nn.Module]
-        self.hook_dict: Dict[str, HookPoint]
+        
 
     def setup(self):
         """
@@ -221,15 +221,17 @@ class HookedRootModule(nn.Module):
 
     def check_and_add_hook(
         self,
-        hook_point,
-        hook_point_name,
-        hook,
-        dir="fwd",
-        is_permanent=False,
-        level=None,
-        prepend=False,
+        hook_point: HookPoint,
+        hook_point_name: str,
+        hook: HookFunction,
+        dir: str="fwd",
+        is_permanent: bool=False,
+        level: Union[int, None]=None,
+        prepend: bool=False,
     ) -> None:
         """Runs checks on the hook, and then adds it to the hook point"""
+        
+        
         self.check_hooks_to_add(
             hook_point,
             hook_point_name,
@@ -243,17 +245,19 @@ class HookedRootModule(nn.Module):
         )
 
     def check_hooks_to_add(
-        self, hook_point, hook_point_name, hook, dir: str="fwd", is_permanent: bool=False
+        self, hook_point: HookPoint, hook_point_name: str, hook: HookFunction, dir: str="fwd", is_permanent: bool=False, prepend: bool=False
     ) -> None:
         """Override this function to add checks on which hooks should be added"""
         pass
 
     def add_hook(
-        self, name, hook, dir="fwd", is_permanent=False, level=None, prepend=False
+        self, name: Union[str, Callable[[str], bool]], hook: HookFunction, dir: str="fwd", is_permanent: bool=False, level: Union[int, None]=None, prepend: bool=False
     ) -> None:
         if isinstance(name, str):
+            hook_point = self.mod_dict[name]
+            assert isinstance(hook_point, HookPoint) # TODO does adding asserts ? also are we sure that hookpoint isn't supposed to also be module
             self.check_and_add_hook(
-                self.mod_dict[name],
+                hook_point,
                 name,
                 hook,
                 dir=dir,
@@ -275,7 +279,7 @@ class HookedRootModule(nn.Module):
                         prepend=prepend,
                     )
 
-    def add_perma_hook(self, name, hook, dir="fwd") -> None:
+    def add_perma_hook(self, name: Union[str, Callable[[str], bool]], hook: HookFunction, dir: str="fwd") -> None:
         self.add_hook(name, hook, dir=dir, is_permanent=True)
 
     @contextmanager
@@ -378,7 +382,7 @@ class HookedRootModule(nn.Module):
         self,
         names_filter: NamesFilter = None,
         incl_bwd: bool = False,
-        device=None,
+        device: DeviceType=None, # TODO: unsure about whether or not this device typing is correct or not?
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
     ) -> dict:
@@ -408,13 +412,14 @@ class HookedRootModule(nn.Module):
 
         self.is_caching = True
 
-        def save_hook(tensor, hook):
+        def save_hook(tensor: torch.Tensor, hook: HookPoint):
             if remove_batch_dim:
                 cache[hook.name] = tensor.detach().to(device)[0]
             else:
                 cache[hook.name] = tensor.detach().to(device)
 
-        def save_hook_back(tensor, hook):
+        def save_hook_back(tensor: torch.Tensor, hook: HookPoint):
+            assert hook.name is not None
             if remove_batch_dim:
                 cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
             else:
@@ -484,7 +489,7 @@ class HookedRootModule(nn.Module):
         self,
         names_filter: NamesFilter = None,
         incl_bwd: bool = False,
-        device=None,
+        device: DeviceType=None,
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
     ) -> Tuple[dict, list, list]:
@@ -506,22 +511,29 @@ class HookedRootModule(nn.Module):
             cache = {}
 
         if names_filter is None:
-            names_filter = lambda name: True
+            names_filter: Callable[[str], bool] = lambda name: True
         elif isinstance(names_filter, str):
             filter_str = names_filter
-            names_filter = lambda name: name == filter_str
+            names_filter: Callable[[str], bool] = lambda name: name == filter_str
         elif isinstance(names_filter, list):
             filter_list = names_filter
-            names_filter = lambda name: name in filter_list
+            names_filter: Callable[[str], bool] = lambda name: name in filter_list
+        elif isinstance(names_filter, Callable):
+            names_filter: Callable[[str], bool] = names_filter
+        else:
+            raise ValueError("names_filter must be a string, list of strings, or function")
+           
+            
         self.is_caching = True
 
-        def save_hook(tensor, hook):
+        def save_hook(tensor: torch.Tensor, hook: HookPoint):
             if remove_batch_dim:
                 cache[hook.name] = tensor.detach().to(device)[0]
             else:
                 cache[hook.name] = tensor.detach().to(device)
 
-        def save_hook_back(tensor, hook):
+        def save_hook_back(tensor: torch.Tensor, hook: HookPoint):
+            assert hook.name is not None
             if remove_batch_dim:
                 cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
             else:
@@ -529,7 +541,7 @@ class HookedRootModule(nn.Module):
 
         fwd_hooks = []
         bwd_hooks = []
-        for name, hp in self.hook_dict.items():
+        for name, _ in self.hook_dict.items():
             if names_filter(name):
                 fwd_hooks.append((name, save_hook))
                 if incl_bwd:
@@ -537,7 +549,7 @@ class HookedRootModule(nn.Module):
 
         return cache, fwd_hooks, bwd_hooks
 
-    def cache_all(self, cache, incl_bwd=False, device=None, remove_batch_dim=False):
+    def cache_all(self, cache: Optional[dict], incl_bwd: bool=False, device: DeviceType=None, remove_batch_dim: bool=False):
         logging.warning(
             "cache_all is deprecated and will eventually be removed, use add_caching_hooks or run_with_cache"
         )
@@ -551,11 +563,11 @@ class HookedRootModule(nn.Module):
 
     def cache_some(
         self,
-        cache,
+        cache: Optional[dict],
         names: Callable[[str], bool],
-        incl_bwd=False,
-        device=None,
-        remove_batch_dim=False,
+        incl_bwd: bool=False,
+        device: Optional[dict]=None,
+        remove_batch_dim: bool=False,
     ):
         """Cache a list of hook provided by names, Boolean function on names"""
         logging.warning(
