@@ -17,7 +17,9 @@ einops = ">=0.6.0"
 numpy = [{ version = ">=1.20,<1.25", python = ">=3.8,<3.9" },
          { version = ">=1.24", python = ">=3.9,<3.12" },
          { version = ">=1.26", python = ">=3.12,<3.13" }]
-torch = ">=1.10" # See PyTorch 2 fix below
+torch = ">=1.10,!=2.0,!=2.1.0"
+# See PyTorch 2 fix below. We pin >=2.1.1 due to MPS errors (See our Slack)
+
 datasets = ">=2.7.1"
 transformers = ">=4.25.1"
 tqdm = ">=4.64.1"
@@ -29,7 +31,7 @@ jaxtyping = ">=0.2.11"
 beartype = "^0.14.1"
 accelerate = ">=0.23.0" # Needed for Llama Models
 typing-extensions = "*"
-# PyTorch 2.1.0 Bug Fix PyTorch didn't put their dependencies metadata into all wheels for 2.1.0, so
+# PyTorch 2.0 Bug Fix PyTorch didn't put their dependencies metadata into all wheels for 2.1.0, so
 # it doesn't work with Poetry. This is a known bug - the workaround is to place them manually here
 # (from the one wheel that did correctly list them). This was broken in 2.0.1 and the fix wasn't
 # made for 2.1.0, however Meta are aware of the issue and once it is fixed (and the torch version
