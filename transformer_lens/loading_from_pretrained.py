@@ -111,10 +111,10 @@ OFFICIAL_MODEL_NAMES = [
     "llama-13b-hf",
     "llama-30b-hf",
     "llama-65b-hf",
-    "Llama-2-7b-hf",
-    "Llama-2-7b-chat-hf",
-    "Llama-2-13b-hf",
-    "Llama-2-13b-chat-hf",
+    "meta-llama/Llama-2-7b-hf",
+    "meta-llama/Llama-2-7b-chat-hf",
+    "meta-llama/Llama-2-13b-hf",
+    "meta-llama/Llama-2-13b-chat-hf",
     # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
@@ -460,10 +460,10 @@ MODEL_ALIASES = {
     "llama-13b-hf": ["llama-13b"],
     "llama-30b-hf": ["llama-30b"],
     "llama-65b-hf": ["llama-65b"],
-    "Llama-2-7b-hf": ["Llama-2-7b", "meta-llama/Llama-2-7b-hf"],
-    "Llama-2-7b-chat-hf": ["Llama-2-7b-chat", "meta-llama/Llama-2-7b-chat-hf"],
-    "Llama-2-13b-hf": ["Llama-2-13b", "meta-llama/Llama-2-13b-hf"],
-    "Llama-2-13b-chat-hf": ["Llama-2-13b-chat", "meta-llama/Llama-2-13b-chat-hf"],
+    "meta-llama/Llama-2-7b-hf": ["Llama-2-7b", "meta-llama/Llama-2-7b-hf"],
+    "meta-llama/Llama-2-7b-chat-hf": ["Llama-2-7b-chat", "meta-llama/Llama-2-7b-chat-hf"],
+    "meta-llama/Llama-2-13b-hf": ["Llama-2-13b", "meta-llama/Llama-2-13b-hf"],
+    "meta-llama/Llama-2-13b-chat-hf": ["Llama-2-13b-chat", "meta-llama/Llama-2-13b-chat-hf"],
     # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
@@ -500,6 +500,14 @@ MODEL_ALIASES = {
     "bigcode/santacoder": ["santacoder"],
 }
 """Model aliases for models on HuggingFace."""
+
+NON_HF_HOSTED_MODEL_NAMES= [
+    "llama-7b-hf",
+    "llama-13b-hf",
+    "llama-30b-hf",
+    "llama-65b-hf",
+]
+"""Official model names for models that not hosted on HuggingFace."""
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
 DEFAULT_MODEL_ALIASES = [
@@ -552,7 +560,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
     else:
         architecture = "LlamaForCausalLM"
     if official_model_name.startswith(
-        ("llama-7b", "Llama-2-7b")
+        ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
         cfg_dict = {
             "d_model": 4096,
@@ -561,7 +569,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "d_mlp": 11008,
             "n_layers": 32,
             "n_ctx": 2048 if official_model_name.startswith("llama-7b") else 4096,
-            "eps": 1e-6,
+            "eps": 1e-6 if official_model_name.startswith("llama-7b") else 1e-5,
             "d_vocab": 32000,
             "act_fn": "silu",
             "normalization_type": "RMS",
@@ -571,7 +579,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
         }
     elif official_model_name.startswith(
-        ("llama-13b", "Llama-2-13b")
+        ("llama-13b", "meta-llama/Llama-2-13b")
     ):  # same architecture for LLaMA and Llama-2
         cfg_dict = {
             "d_model": 5120,
@@ -580,7 +588,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "d_mlp": 13824,
             "n_layers": 40,
             "n_ctx": 2048 if official_model_name.startswith("llama-13b") else 4096,
-            "eps": 1e-6,
+            "eps": 1e-6 if official_model_name.startswith("llama-7b") else 1e-5,
             "d_vocab": 32000,
             "act_fn": "silu",
             "normalization_type": "RMS",
@@ -1057,8 +1065,8 @@ def get_pretrained_state_dict(
                     f"Checkpoints for model {official_model_name} are not supported"
                 )
         elif hf_model is None:
-            if "llama" in official_model_name.lower():
-                raise NotImplementedError("Must pass in hf_model for LLaMA models")
+            if official_model_name.lower() in NON_HF_HOSTED_MODEL_NAMES:
+                raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name, torch_dtype=dtype, **kwargs
