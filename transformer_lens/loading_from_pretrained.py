@@ -1065,7 +1065,7 @@ def get_pretrained_state_dict(
                     f"Checkpoints for model {official_model_name} are not supported"
                 )
         elif hf_model is None:
-            if official_model_name.lower() in NON_HF_HOSTED_MODEL_NAMES:
+            if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
                 raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(

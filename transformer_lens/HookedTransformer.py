@@ -119,7 +119,7 @@ class HookedTransformer(HookedRootModule):
             self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            if self.cfg.tokenizer_name.lower() in NON_HF_HOSTED_MODEL_NAMES:
+            if self.cfg.tokenizer_name in NON_HF_HOSTED_MODEL_NAMES:
                 logging.warning(f"{self.cfg.tokenizer_name} tokenizer not loaded. Please load manually.")
             else:
                 self.set_tokenizer(
