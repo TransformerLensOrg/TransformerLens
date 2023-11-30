@@ -588,7 +588,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "d_mlp": 13824,
             "n_layers": 40,
             "n_ctx": 2048 if official_model_name.startswith("llama-13b") else 4096,
-            "eps": 1e-6 if official_model_name.startswith("llama-7b") else 1e-5,
+            "eps": 1e-6 if official_model_name.startswith("llama-13b") else 1e-5,
             "d_vocab": 32000,
             "act_fn": "silu",
             "normalization_type": "RMS",
