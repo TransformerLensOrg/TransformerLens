@@ -461,9 +461,15 @@ MODEL_ALIASES = {
     "llama-30b-hf": ["llama-30b"],
     "llama-65b-hf": ["llama-65b"],
     "meta-llama/Llama-2-7b-hf": ["Llama-2-7b", "meta-llama/Llama-2-7b-hf"],
-    "meta-llama/Llama-2-7b-chat-hf": ["Llama-2-7b-chat", "meta-llama/Llama-2-7b-chat-hf"],
+    "meta-llama/Llama-2-7b-chat-hf": [
+        "Llama-2-7b-chat",
+        "meta-llama/Llama-2-7b-chat-hf",
+    ],
     "meta-llama/Llama-2-13b-hf": ["Llama-2-13b", "meta-llama/Llama-2-13b-hf"],
-    "meta-llama/Llama-2-13b-chat-hf": ["Llama-2-13b-chat", "meta-llama/Llama-2-13b-chat-hf"],
+    "meta-llama/Llama-2-13b-chat-hf": [
+        "Llama-2-13b-chat",
+        "meta-llama/Llama-2-13b-chat-hf",
+    ],
     # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
@@ -501,7 +507,7 @@ MODEL_ALIASES = {
 }
 """Model aliases for models on HuggingFace."""
 
-NON_HF_HOSTED_MODEL_NAMES= [
+NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",
     "llama-13b-hf",
     "llama-30b-hf",
@@ -1066,7 +1072,9 @@ def get_pretrained_state_dict(
                 )
         elif hf_model is None:
             if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
-                raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
+                raise NotImplementedError(
+                    "Model not hosted on HuggingFace, must pass in hf_model"
+                )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name, torch_dtype=dtype, **kwargs
