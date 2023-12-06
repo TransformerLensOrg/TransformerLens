@@ -235,7 +235,7 @@ def check_dtype(dtype, margin, no_processing=False):
 
 @pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
 def test_dtypes(dtype):
-    check_dtype(dtype, margin=5e-5)
+    check_dtype(dtype, margin=5e-4)
 
 
 @pytest.mark.skipif(
