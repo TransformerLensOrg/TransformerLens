@@ -66,7 +66,6 @@
 [tool.pytest]
     [tool.pytest.ini_options]
         addopts=[
-            "--deselect transformer_lens/utils.py::test_prompt",
             "--doctest-modules",
             "--doctest-plus",
             "--jaxtyping-packages=transformer_lens,beartype.beartype",
