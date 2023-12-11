@@ -180,7 +180,7 @@ class HookedRootModule(nn.Module):
     gradients). In this case, you need to keep the hooks around as global state until you've run
     loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
     """
-    name: Union[str, None] # TODO: is this chill? this line isnt here earlier, but we need type annotation
+    name: Union[str, None] 
     mod_dict: Dict[str, nn.Module]
     hook_dict: Dict[str, HookPoint]
         
@@ -275,7 +275,7 @@ class HookedRootModule(nn.Module):
     ) -> None:
         if isinstance(name, str):
             hook_point = self.mod_dict[name]
-            assert isinstance(hook_point, HookPoint) # TODO does adding asserts ? also are we sure that hookpoint isn't supposed to also be module
+            assert isinstance(hook_point, HookPoint) # TODO does adding assert meaningfully slow down performance? I've added them for type checking purposes.
             self.check_and_add_hook(
                 hook_point,
                 name,
@@ -360,7 +360,7 @@ class HookedRootModule(nn.Module):
 
     def run_with_hooks(
         self,
-        *model_args: Any, # TODO: unsure about whether or not this Any typing is correct or not
+        *model_args: Any, # TODO: unsure about whether or not this Any typing is correct or not; may need to be replaced with something more specific?
         fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         reset_hooks_end: bool=True,
