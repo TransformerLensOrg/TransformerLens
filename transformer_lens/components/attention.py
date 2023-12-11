@@ -37,12 +37,9 @@ class Attention(nn.Module):
             layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
         super().__init__()
-
-        self.cached_alibi = None
-        self.cfg = (
-            HookedTransformerConfig.from_dict(cfg) if isinstance(cfg, Dict) else cfg
-        )
-
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
         self.W_Q = nn.Parameter(
             torch.empty(
                 self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
@@ -74,29 +71,31 @@ class Attention(nn.Module):
         )
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
+        self.attn_type = attn_type
         # Create a max_ctx x max_ctx mask, with True iff that query position
         # can attend to that key position (query is first axis, key is second axis)
         causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
-
-        if attn_type == "global":
+        if self.attn_type == "global":
             # For global attention, this is a lower triangular matrix - key <= query
             self.register_buffer("mask", causal_mask)
-        elif attn_type == "local":
+        elif self.attn_type == "local":
             # For local, this is banded, query - window_size < key <= query
             assert isinstance(self.cfg.window_size, int)
             self.register_buffer(
                 "mask", torch.triu(causal_mask, 1 - self.cfg.window_size)
             )
         else:
-            raise ValueError(f"Invalid attention type: {attn_type}")
+            raise ValueError(f"Invalid attention type: {self.attn_type}")
 
         self.register_buffer("IGNORE", torch.tensor(-torch.inf))
 
         self.layer_id = layer_id
 
         # attn_scale is a constant that we divide the attention scores by pre-softmax. I'm not entirely sure why it matters, but it's probably a mix of softmax not being scale invariant and numerical stability?
-        self.attn_scale = np.sqrt(self.cfg.d_head) if self.cfg.use_attn_scale else 1.0
-
+        if self.cfg.use_attn_scale:
+            self.attn_scale = np.sqrt(self.cfg.d_head)
+        else:
+            self.attn_scale = 1.0
         if self.cfg.scale_attn_by_inverse_layer_idx:
             self.attn_scale *= self.layer_id + 1
 
@@ -121,6 +120,10 @@ class Attention(nn.Module):
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
+        elif self.cfg.positional_embedding_type == "alibi":
+            # ALiBi bias wil be constructed on the first forward pass.
+            # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
+            self.alibi = None
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -176,7 +179,6 @@ class Attention(nn.Module):
             qkv_einops_string = "batch pos head_index d_model"
         else:
             qkv_einops_string = "batch pos d_model"
-
         q = self.hook_q(
             einsum(
                 f"{qkv_einops_string}, head_index d_model d_head \
@@ -242,9 +244,13 @@ class Attention(nn.Module):
             # The key context length is the number of positions in the past - this includes all positions in the cache
             key_ctx = attn_scores.size(-1)
 
-            alibi = self.get_cached_alibi(key_ctx=key_ctx)
+            # only recompute when necessary to increase efficiency.
+            if self.alibi is None or key_ctx > self.alibi.size(-1):
+                self.alibi = Attention.create_alibi_bias(
+                    self.cfg.n_heads, key_ctx, self.cfg.device
+                )
 
-            attn_scores += alibi[
+            attn_scores += self.alibi[
                 :, :query_ctx, :key_ctx
             ]  # [batch, head_index, query_pos, key_pos]
 
@@ -253,7 +259,6 @@ class Attention(nn.Module):
             attn_scores = self.apply_causal_mask(
                 attn_scores, kv_cache_pos_offset, attention_mask
             )  # [batch, head_index, query_pos, key_pos]
-
         if additive_attention_mask is not None:
             attn_scores += additive_attention_mask
 
@@ -271,9 +276,8 @@ class Attention(nn.Module):
                 pattern,
             )
         )  # [batch, pos, head_index, d_head]
-
         if not self.cfg.use_attn_result:
-            return (
+            out = (
                 (
                     einsum(
                         "batch pos head_index d_head, \
@@ -297,12 +301,13 @@ class Attention(nn.Module):
                     self.W_O,
                 )
             )  # [batch, pos, head_index, d_model]
-            return (
+            out = (
                 einops.reduce(
                     result, "batch position index model->batch position model", "sum"
                 )
                 + self.b_O
             )  # [batch, pos, d_model]
+        return out
 
     def apply_causal_mask(
         self,
@@ -326,7 +331,6 @@ class Attention(nn.Module):
         final_mask = self.mask[
             None, None, -query_ctx_length:, -key_ctx_length:
         ]  # [1, 1, pos, pos]
-
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
             einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
@@ -359,10 +363,8 @@ class Attention(nn.Module):
             freq = einops.repeat(freq, "d -> (2 d)")
         else:
             freq = einops.repeat(freq, "d -> (d 2)")
-
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
-
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
 
     def rotate_every_two(
@@ -545,25 +547,3 @@ class Attention(nn.Module):
         alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
 
         return alibi_bias
-
-    def get_cached_alibi(
-        self, key_ctx: int
-    ) -> Float[torch.Tensor, "head_idx query key"]:
-        """Get A Cached ALiBi bias For Calculation.
-
-        This function will check for if an instance of our ALiBi bias is currently set.
-        If the ALiBi bias is not set or if our key context is greater than it's cached size, a new
-        instance will be initiated.
-
-        The cached ALiBi bias is then returned
-
-        Returns:
-            The ALiBi bias that should be added to the attention scores before the softmax.
-        """
-        # only recompute when necessary to increase efficiency.
-        if self.cached_alibi is None or key_ctx > self.cached_alibi.size(-1):
-            self.cached_alibi = Attention.create_alibi_bias(
-                self.cfg.n_heads, key_ctx, self.cfg.device
-            )
-
-        return self.cached_alibi
