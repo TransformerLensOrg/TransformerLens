@@ -462,7 +462,11 @@ class HookedRootModule(nn.Module):
             pos_slice = Slice(pos_slice)
 
         cache_dict, fwd, bwd = self.get_caching_hooks(
-            names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim, pos_slice=pos_slice
+            names_filter,
+            incl_bwd,
+            device,
+            remove_batch_dim=remove_batch_dim,
+            pos_slice=pos_slice,
         )
 
         with self.hooks(
@@ -515,15 +519,21 @@ class HookedRootModule(nn.Module):
 
         def save_hook(tensor, hook):
             if remove_batch_dim:
-                cache[hook.name] = pos_slice.apply(tensor.detach().to(device)[0], dim=-2)
+                cache[hook.name] = pos_slice.apply(
+                    tensor.detach().to(device)[0], dim=-2
+                )
             else:
                 cache[hook.name] = pos_slice.apply(tensor.detach().to(device), dim=-2)
 
         def save_hook_back(tensor, hook):
             if remove_batch_dim:
-                cache[hook.name + "_grad"] = pos_slice.apply(tensor.detach().to(device)[0], dim=-2)
+                cache[hook.name + "_grad"] = pos_slice.apply(
+                    tensor.detach().to(device)[0], dim=-2
+                )
             else:
-                cache[hook.name + "_grad"] = pos_slice.apply(tensor.detach().to(device), dim=-2)
+                cache[hook.name + "_grad"] = pos_slice.apply(
+                    tensor.detach().to(device), dim=-2
+                )
 
         fwd_hooks = []
         bwd_hooks = []
