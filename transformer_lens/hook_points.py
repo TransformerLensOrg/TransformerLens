@@ -518,22 +518,24 @@ class HookedRootModule(nn.Module):
         self.is_caching = True
 
         def save_hook(tensor, hook):
+            resid_stream = tensor.detach().to(device)
             if remove_batch_dim:
-                cache[hook.name] = pos_slice.apply(
-                    tensor.detach().to(device)[0], dim=-2
-                )
-            else:
-                cache[hook.name] = pos_slice.apply(tensor.detach().to(device), dim=-2)
+                resid_stream = resid_stream[0]
+            if (
+                tensor.dim() > 1
+            ):  # check if the residual stream has a pos dimension before trying to sline
+                resid_stream = pos_slice.apply(resid_stream, dim=-2)
+            cache[hook.name] = resid_stream
 
         def save_hook_back(tensor, hook):
+            resid_stream = tensor.detach().to(device)
             if remove_batch_dim:
-                cache[hook.name + "_grad"] = pos_slice.apply(
-                    tensor.detach().to(device)[0], dim=-2
-                )
-            else:
-                cache[hook.name + "_grad"] = pos_slice.apply(
-                    tensor.detach().to(device), dim=-2
-                )
+                resid_stream = resid_stream[0]
+            if (
+                tensor.dim() > 1
+            ):  # check if the residual stream has a pos dimension before trying to sline
+                resid_stream = pos_slice.apply(resid_stream, dim=-2)
+            cache[hook.name + "_grad"] = resid_stream
 
         fwd_hooks = []
         bwd_hooks = []
