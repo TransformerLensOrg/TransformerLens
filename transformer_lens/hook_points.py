@@ -10,6 +10,8 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 import torch.nn as nn
 import torch.utils.hooks as hooks
 
+from transformer_lens.utils import Slice
+
 
 @dataclass
 class LensHandle:
@@ -426,6 +428,7 @@ class HookedRootModule(nn.Module):
         incl_bwd=False,
         reset_hooks_end=True,
         clear_contexts=False,
+        pos_slice=None,
         **model_kwargs,
     ):
         """
@@ -454,8 +457,12 @@ class HookedRootModule(nn.Module):
             tuple: A tuple containing the model output and a Cache object.
 
         """
+
+        if not isinstance(pos_slice, Slice):
+            pos_slice = Slice(pos_slice)
+
         cache_dict, fwd, bwd = self.get_caching_hooks(
-            names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim
+            names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim, pos_slice=pos_slice
         )
 
         with self.hooks(
@@ -477,6 +484,7 @@ class HookedRootModule(nn.Module):
         device=None,
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
+        pos_slice: Slice = None,
     ) -> Tuple[dict, list, list]:
         """Creates hooks to cache activations. Note: It does not add the hooks to the model.
 
@@ -507,15 +515,15 @@ class HookedRootModule(nn.Module):
 
         def save_hook(tensor, hook):
             if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
+                cache[hook.name] = pos_slice.apply(tensor.detach().to(device)[0], dim=-2)
             else:
-                cache[hook.name] = tensor.detach().to(device)
+                cache[hook.name] = pos_slice.apply(tensor.detach().to(device), dim=-2)
 
         def save_hook_back(tensor, hook):
             if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
+                cache[hook.name + "_grad"] = pos_slice.apply(tensor.detach().to(device)[0], dim=-2)
             else:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)
+                cache[hook.name + "_grad"] = pos_slice.apply(tensor.detach().to(device), dim=-2)
 
         fwd_hooks = []
         bwd_hooks = []
