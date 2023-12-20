@@ -479,7 +479,10 @@ class Attention(nn.Module):
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
             sin, cos = self.calculate_sin_cos_rotary(
-                self.cfg.rotary_dim, self.cfg.n_ctx, base=self.cfg.rotary_base, dtype=self.cfg.dtype
+                self.cfg.rotary_dim,
+                self.cfg.n_ctx,
+                base=self.cfg.rotary_base,
+                dtype=self.cfg.dtype,
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
