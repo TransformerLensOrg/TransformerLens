@@ -197,6 +197,7 @@ class HookedTransformerConfig:
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
     post_embedding_ln: bool = False
+    rotary_base: int = 10000
 
     def __post_init__(self):
         if self.n_heads == -1:
