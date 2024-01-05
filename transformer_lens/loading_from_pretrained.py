@@ -1609,9 +1609,7 @@ def convert_mingpt_weights(old_state_dict, cfg: HookedTransformerConfig):
     return state_dict
 
 
-def convert_nanogpt_weights(
-    old_state_dict, cfg: HookedTransformerConfig, bias: bool = False
-):
+def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
     """For https://github.com/karpathy/nanoGPT
     There are two complications with converting nanogpt models:
     The first is that some state dicts have an unwanted prefix on keys that needs to be removed.
@@ -1634,7 +1632,9 @@ def convert_nanogpt_weights(
     )
     new_state_dict["unembed.W_U"] = old_state_dict["lm_head.weight"].T
 
-    if bias:
+    bias = False
+    if "transformer.ln_f.bias" in old_state_dict:
+        bias = True
         new_state_dict["ln_final.b"] = old_state_dict["transformer.ln_f.bias"]
 
     for layer in range(cfg.n_layers):
