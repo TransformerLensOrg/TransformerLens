@@ -1416,14 +1416,15 @@ class HookedTransformer(HookedRootModule):
 
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
-            if self.cfg.normalization_type not in ["LN", "LNPre"]:
-                logging.warning(
-                    "You are not using LayerNorm, so the layer norm weights can't be folded! Skipping"
-                )
-            else:
-                # Note - you can run fold_layer_norm while normalization_type is LN, but this is not advised! It mostly
-                # goes wrong when you're training the model.
+            if self.cfg.normalization_type in ["LN", "LNPre"]:
                 state_dict = self.fold_layer_norm(state_dict)
+            elif self.cfg.normalization_type in ["RMS", "RMSPre"]:
+                state_dict = self.fold_rms_norm(state_dict)
+            else:
+                logging.warning(
+                    "You are not using LayerNorm or RMSNorm, so the layer norm weights can't be folded! Skipping"
+                )
+
         if center_writing_weights:
             if self.cfg.normalization_type not in ["LN", "LNPre"]:
                 logging.warning(
@@ -1581,6 +1582,76 @@ class HookedTransformer(HookedRootModule):
         )
 
         del state_dict[f"ln_final.w"]
+        return state_dict
+
+    def fold_rms_norm(self, state_dict: Dict[str, torch.Tensor]):
+        """Fold RMS Layer Norm.
+
+        Takes in a state dict from a pretrained model, formatted to be consistent with
+        HookedTransformer but with LayerNorm weights and biases. Folds these into the neighbouring
+        weights. See further_comments.md for more details.
+
+        Args:
+            state_dict (Dict[str, torch.Tensor]): State dict of pretrained model.
+        """
+        for l in range(self.cfg.n_layers):
+            # Fold ln1 into attention - it's important to fold biases first, since biases depend on
+            # weights but not vice versa The various indexing is just to broadcast ln.b and ln.w
+            # along every axis other than d_model. Each weight matrix right multiplies. To fold in
+            # the bias, we use the W_ matrix to map it to the hidden space of the layer, so we need
+            # to sum along axis -2, which is the residual stream space axis.
+            state_dict[f"blocks.{l}.attn.W_Q"] = (
+                    state_dict[f"blocks.{l}.attn.W_Q"]
+                    * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            )
+            state_dict[f"blocks.{l}.attn.W_K"] = (
+                    state_dict[f"blocks.{l}.attn.W_K"]
+                    * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            )
+            state_dict[f"blocks.{l}.attn.W_V"] = (
+                    state_dict[f"blocks.{l}.attn.W_V"]
+                    * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            )
+
+            # state_dict[f"blocks.{l}.attn.W_Q"] *= state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            # state_dict[f"blocks.{l}.attn.W_K"] *= state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+            # state_dict[f"blocks.{l}.attn.W_V"] *= state_dict[f"blocks.{l}.ln1.w"][None, :, None]
+
+            del state_dict[f"blocks.{l}.ln1.w"]
+
+            # Fold ln2 into MLP
+            if not self.cfg.attn_only:
+                state_dict[f"blocks.{l}.mlp.W_in"] = (
+                        state_dict[f"blocks.{l}.mlp.W_in"]
+                        * state_dict[f"blocks.{l}.ln2.w"][:, None]
+                )
+
+                # todo: add this to fold_layer_norm with a bias fold too
+                if self.cfg.gated_mlp:
+                    state_dict[f"blocks.{l}.mlp.W_gate"] = (
+                            state_dict[f"blocks.{l}.mlp.W_gate"]
+                            * state_dict[f"blocks.{l}.ln2.w"][:, None]
+                    )
+
+                del state_dict[f"blocks.{l}.ln2.w"]
+
+                # todo: is this needed?
+                # on one hand, its an extra case that can break things
+                # on the other, "solu" doesn't seem to be used often, esp. not in models using rms norm, so idk
+                if self.cfg.act_fn.startswith("solu"):
+                    # Fold ln3 into activation
+                    state_dict[f"blocks.{l}.mlp.W_out"] = (
+                            state_dict[f"blocks.{l}.mlp.W_out"]
+                            * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
+                    )
+
+                    del state_dict[f"blocks.{l}.mlp.ln.w"],
+
+        # Fold ln_final into unembedding layer
+        state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
+
+        del state_dict[f"ln_final.w"]
+
         return state_dict
 
     def center_writing_weights(self, state_dict: Dict[str, torch.Tensor]):
