@@ -124,9 +124,9 @@ class HookedTransformer(HookedRootModule):
             else:
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
-                        self.cfg.tokenizer_name, 
-                        add_bos_token=True, 
-                        trust_remote_code=self.cfg.trust_remote_code
+                        self.cfg.tokenizer_name,
+                        add_bos_token=True,
+                        trust_remote_code=self.cfg.trust_remote_code,
                     ),
                     default_padding_side=default_padding_side,
                 )

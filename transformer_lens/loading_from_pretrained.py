@@ -514,13 +514,13 @@ MODEL_ALIASES = {
     ],
     "bigscience/bloom-560m": ["bloom-560m"],
     "bigcode/santacoder": ["santacoder"],
-    "Qwen/Qwen-1_8B": ['qwen-1.8b'],
-    "Qwen/Qwen-7B": ['qwen-7b'],
-    "Qwen/Qwen-14B": ['qwen-14b'],
+    "Qwen/Qwen-1_8B": ["qwen-1.8b"],
+    "Qwen/Qwen-7B": ["qwen-7b"],
+    "Qwen/Qwen-14B": ["qwen-14b"],
     # "Qwen/Qwen-72B": ['qwen-72b'],
-    "Qwen/Qwen-1_8B-Chat": ['qwen-1.8b-chat'],
-    "Qwen/Qwen-7B-Chat": ['qwen-7b-chat'],
-    "Qwen/Qwen-14B-Chat": ['qwen-14b-chat'],
+    "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
+    "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
+    "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
     # "Qwen/Qwen-72B-Chat": ['qwen-72b-chat'],
     # "Qwen/Qwen-1_8B-Chat-Int4": ['qwen-1.8b-chat-int4'],
     # "Qwen/Qwen-7B-Chat-Int4": ['qwen-7b-chat-int4'],
@@ -540,6 +540,7 @@ DEFAULT_MODEL_ALIASES = [
 ]
 
 NEED_REMOTE_CODE_MODELS = ("bigcode/santacoder", "Qwen/Qwen-")
+
 
 def make_model_alias_map():
     """
@@ -802,7 +803,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
-            "d_mlp": hf_config.intermediate_size // 2, 
+            "d_mlp": hf_config.intermediate_size // 2,
             "n_layers": hf_config.num_hidden_layers,
             "n_ctx": hf_config.max_position_embeddings,
             "eps": hf_config.layer_norm_epsilon,
@@ -812,7 +813,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_dim": hf_config.kv_channels, 
+            "rotary_dim": hf_config.kv_channels,
             "rotary_adjacent_pairs": False,
             "tokenizer_prepends_bos": True,
             "trust_remote_code": True,
@@ -922,7 +923,9 @@ def get_pretrained_model_config(
     ):
         cfg_dict = convert_neel_model_config(official_model_name, **kwargs)
     else:
-        if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get("trust_remote_code", False):
+        if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
+            "trust_remote_code", False
+        ):
             logging.warning(
                 f"Loading model {official_model_name} requires setting trust_remote_code=True"
             )
@@ -1041,6 +1044,7 @@ def get_checkpoint_labels(model_name: str, **kwargs):
     else:
         raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
+
 # %% Loading state dicts
 def get_pretrained_state_dict(
     official_model_name: str,
@@ -1064,8 +1068,9 @@ def get_pretrained_state_dict(
         dtype = kwargs["torch_dtype"]
         del kwargs["torch_dtype"]
     official_model_name = get_official_model_name(official_model_name)
-    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) \
-        and not kwargs.get("trust_remote_code", False):
+    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
+        "trust_remote_code", False
+    ):
         logging.warning(
             f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
         )
@@ -1483,6 +1488,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
     return state_dict
 
+
 def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
     state_dict = {}
     model = qwen.transformer
@@ -1491,7 +1497,9 @@ def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = model.h[l].ln_1.weight
 
-        W_Q, W_K, W_V = model.h[l].attn.c_attn.weight.split(split_size=cfg.d_model, dim=0)
+        W_Q, W_K, W_V = model.h[l].attn.c_attn.weight.split(
+            split_size=cfg.d_model, dim=0
+        )
         W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
         W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
         W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
