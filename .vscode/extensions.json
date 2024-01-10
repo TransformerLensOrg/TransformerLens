@@ -17,8 +17,9 @@
         "ms-toolsai.jupyter",
         "richie5um2.vscode-sort-json",
         "stkb.rewrap",
+        "streetsidesoftware.code-spell-checker-british-english",
         "streetsidesoftware.code-spell-checker",
-        "yzhang.markdown-all-in-one",
-        "streetsidesoftware.code-spell-checker-british-english"
+        "tamasfe.even-better-toml",
+        "yzhang.markdown-all-in-one"
     ]
 }
