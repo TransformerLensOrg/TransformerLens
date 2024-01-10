@@ -1083,7 +1083,10 @@ def get_tokenizer_with_bos(tokenizer):
         tokenizer_with_bos = tokenizer
     else:
         tokenizer_with_bos = AutoTokenizer.from_pretrained(
-            pretrained_model_name_or_path, add_bos_token=True, **init_kwargs
+            pretrained_model_name_or_path, 
+            add_bos_token=True, 
+            trust_remote_code=True, # TODO: trust_remote_code shouldn't always be true
+            **init_kwargs
         )
 
     return tokenizer_with_bos
