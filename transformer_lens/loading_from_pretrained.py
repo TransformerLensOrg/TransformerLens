@@ -517,19 +517,11 @@ MODEL_ALIASES = {
     "Qwen/Qwen-1_8B": ['qwen-1.8b'],
     "Qwen/Qwen-7B": ['qwen-7b'],
     "Qwen/Qwen-14B": ['qwen-14b'],
-    "Qwen/Qwen-72B": ['qwen-72b'],
+    # "Qwen/Qwen-72B": ['qwen-72b'],
     "Qwen/Qwen-1_8B-Chat": ['qwen-1.8b-chat'],
     "Qwen/Qwen-7B-Chat": ['qwen-7b-chat'],
     "Qwen/Qwen-14B-Chat": ['qwen-14b-chat'],
-    "Qwen/Qwen-72B-Chat": ['qwen-72b-chat'],
-    "Qwen/Qwen-1_8B-Chat-Int4": ['qwen-1.8b-chat-int4'],
-    "Qwen/Qwen-7B-Chat-Int4": ['qwen-7b-chat-int4'],
-    "Qwen/Qwen-14B-Chat-Int4": ['qwen-14b-chat-int4'],
-    "Qwen/Qwen-72B-Chat-Int4": ['qwen-72b-chat-int4'],
-    "Qwen/Qwen-1_8B-Chat-Int8": ['qwen-1.8b-chat-int8'],
-    "Qwen/Qwen-7B-Chat-Int8": ['qwen-7b-chat-int8'],
-    "Qwen/Qwen-14B-Chat-Int8": ['qwen-14b-chat-int8'],
-    "Qwen/Qwen-72B-Chat-Int8": ['qwen-72b-chat-int8'],
+    # "Qwen/Qwen-72B-Chat": ['qwen-72b-chat'],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -539,6 +531,7 @@ DEFAULT_MODEL_ALIASES = [
     for name in OFFICIAL_MODEL_NAMES
 ]
 
+NEED_REMOTE_CODE_MODELS = ("bigcode/santacoder", "Qwen/Qwen-")
 
 def make_model_alias_map():
     """
@@ -598,6 +591,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "rotary_dim": 4096 // 32,
             "final_rms": True,
             "gated_mlp": True,
@@ -617,6 +611,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "rotary_dim": 5120 // 40,
             "final_rms": True,
             "gated_mlp": True,
@@ -634,6 +629,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "rotary_dim": 6656 // 52,
             "final_rms": True,
             "gated_mlp": True,
@@ -652,6 +648,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_dim": 8192 // 64,
+            "rotary_adjacent_pairs": False,
             "final_rms": True,
             "gated_mlp": True,
         }
@@ -722,6 +719,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "parallel_attn_mlp": True,
             "positional_embedding_type": "rotary",
             "rotary_dim": hf_config.rotary_dim,
+            "rotary_adjacent_pairs": True,
             "normalization_type": "LN",
         }
     elif architecture == "GPTNeoXForCausalLM":
@@ -740,6 +738,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "scale_attn_by_inverse_layer_idx": False,
             "parallel_attn_mlp": True,
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "normalization_type": "LN",
         }
         rotary_pct = hf_config.rotary_pct
@@ -795,7 +794,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
-            "d_mlp": hf_config.intermediate_size // 2, # Not sure why the intermediate size is doubled in the config
+            "d_mlp": hf_config.intermediate_size // 2, 
             "n_layers": hf_config.num_hidden_layers,
             "n_ctx": hf_config.max_position_embeddings,
             "eps": hf_config.layer_norm_epsilon,
@@ -805,8 +804,10 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_dim": hf_config.kv_channels, # TODO: Double check if this is correct
+            "rotary_dim": hf_config.kv_channels, 
+            "rotary_adjacent_pairs": False,
             "tokenizer_prepends_bos": True,
+            "trust_remote_code": True,
             "final_rms": True,
             "gated_mlp": True,
         }
@@ -913,6 +914,11 @@ def get_pretrained_model_config(
     ):
         cfg_dict = convert_neel_model_config(official_model_name, **kwargs)
     else:
+        if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get("trust_remote_code", False):
+            logging.warning(
+                f"Loading model {official_model_name} requires setting trust_remote_code=True"
+            )
+            kwargs["trust_remote_code"] = True
         cfg_dict = convert_hf_model_config(official_model_name, **kwargs)
     # Processing common to both model types
     # Remove any prefix, saying the organization who made a model.
@@ -1027,10 +1033,7 @@ def get_checkpoint_labels(model_name: str, **kwargs):
     else:
         raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
-
 # %% Loading state dicts
-
-
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
@@ -1053,11 +1056,10 @@ def get_pretrained_state_dict(
         dtype = kwargs["torch_dtype"]
         del kwargs["torch_dtype"]
     official_model_name = get_official_model_name(official_model_name)
-    if official_model_name == "bigcode/santacoder" and not kwargs.get(
-        "trust_remote_code", False
-    ):
+    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) \
+        and not kwargs.get("trust_remote_code", False):
         logging.warning(
-            "Loading santacoder model requires setting trust_remote_code=True"
+            f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
         )
         kwargs["trust_remote_code"] = True
     if (

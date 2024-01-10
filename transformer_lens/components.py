@@ -468,7 +468,7 @@ class Attention(nn.Module):
         self.hook_attn_scores = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_pattern = HookPoint()  # [batch, head_index, query_pos, key_pos]
         self.hook_result = HookPoint()  # [batch, pos, head_index, d_model]
-
+    
         # See HookedTransformerConfig for more details.
         if self.cfg.positional_embedding_type == "shortformer":
             # This tracks the input to the keys and queries, which is resid_pre + pos_embeds
@@ -486,6 +486,7 @@ class Attention(nn.Module):
             # ALiBi bias wil be constructed on the first forward pass.
             # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
             self.alibi = None
+            
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -721,10 +722,10 @@ class Attention(nn.Module):
 
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM", "QWenLMHeadModel"]:
-            freq = einops.repeat(freq, "d -> (2 d)")
-        else:
+        if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
+        else:
+            freq = einops.repeat(freq, "d -> (2 d)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
@@ -740,13 +741,13 @@ class Attention(nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM", "QWenLMHeadModel"]:
+        if self.cfg.rotary_adjacent_pairs:
+            rot_x[..., ::2] = -x[..., 1::2]
+            rot_x[..., 1::2] = x[..., ::2]
+        else:
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
-        else:
-            rot_x[..., ::2] = -x[..., 1::2]
-            rot_x[..., 1::2] = x[..., ::2]
 
         return rot_x
 

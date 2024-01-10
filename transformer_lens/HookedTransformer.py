@@ -126,7 +126,7 @@ class HookedTransformer(HookedRootModule):
                     AutoTokenizer.from_pretrained(
                         self.cfg.tokenizer_name, 
                         add_bos_token=True, 
-                        trust_remote_code=True # TODO: trust_remote_code shouldn't always be true
+                        trust_remote_code=self.cfg.trust_remote_code
                     ),
                     default_padding_side=default_padding_side,
                 )
