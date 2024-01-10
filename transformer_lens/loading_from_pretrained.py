@@ -801,7 +801,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "eps": hf_config.layer_norm_epsilon,
             "d_vocab": hf_config.vocab_size,
             "act_fn": "silu",
-            "use_attn_scale": False,#hf_config.scale_attn_weights,
+            "use_attn_scale": hf_config.scale_attn_weights,
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
@@ -1477,9 +1477,6 @@ def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
     state_dict = {}
     model = qwen.transformer
     state_dict["embed.W_E"] = model.wte.weight
-
-    # llama has no biases anywhere and deals with everything else roughly like
-    # GPTNeoX with different names
 
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = model.h[l].ln_1.weight
