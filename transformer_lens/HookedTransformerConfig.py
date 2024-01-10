@@ -197,7 +197,9 @@ class HookedTransformerConfig:
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
     post_embedding_ln: bool = False
-
+    trust_remote_code: bool = False
+    rotary_adjacent_pairs: bool = False
+    
     def __post_init__(self):
         if self.n_heads == -1:
             self.n_heads = self.d_model // self.d_head
