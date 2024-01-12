@@ -795,7 +795,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": hf_config.activation_function,
             "use_attn_scale": True,
             "use_local_attn": False,
-            "trust_remote_code": 'santacoder' in official_model_name, # Only santacoder needs trust_remote_code
+            "trust_remote_code": "santacoder"
+            in official_model_name,  # Only santacoder needs trust_remote_code
             "scale_attn_by_inverse_layer_idx": hf_config.scale_attn_by_inverse_layer_idx,
             "normalization_type": "LN",
         }
@@ -806,7 +807,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size // 2,
             "n_layers": hf_config.num_hidden_layers,
-            "n_ctx": 2048, # Capped bc the actual ctx length is 30k and the attn mask would be too big
+            "n_ctx": 2048,  # Capped bc the actual ctx length is 30k and the attn mask would be too big
             "eps": hf_config.layer_norm_epsilon,
             "d_vocab": hf_config.vocab_size,
             "act_fn": "silu",
