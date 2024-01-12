@@ -141,19 +141,9 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen-1_8B",
     "Qwen/Qwen-7B",
     "Qwen/Qwen-14B",
-    # "Qwen/Qwen-72B",
     "Qwen/Qwen-1_8B-Chat",
     "Qwen/Qwen-7B-Chat",
     "Qwen/Qwen-14B-Chat",
-    # "Qwen/Qwen-72B-Chat",
-    # "Qwen/Qwen-1_8B-Chat-Int4",
-    # "Qwen/Qwen-7B-Chat-Int4",
-    # "Qwen/Qwen-14B-Chat-Int4",
-    # "Qwen/Qwen-72B-Chat-Int4",
-    # "Qwen/Qwen-1_8B-Chat-Int8",
-    # "Qwen/Qwen-7B-Chat-Int8",
-    # "Qwen/Qwen-14B-Chat-Int8",
-    # "Qwen/Qwen-72B-Chat-Int8",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -517,19 +507,9 @@ MODEL_ALIASES = {
     "Qwen/Qwen-1_8B": ["qwen-1.8b"],
     "Qwen/Qwen-7B": ["qwen-7b"],
     "Qwen/Qwen-14B": ["qwen-14b"],
-    # "Qwen/Qwen-72B": ['qwen-72b'],
     "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
     "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
     "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
-    # "Qwen/Qwen-72B-Chat": ['qwen-72b-chat'],
-    # "Qwen/Qwen-1_8B-Chat-Int4": ['qwen-1.8b-chat-int4'],
-    # "Qwen/Qwen-7B-Chat-Int4": ['qwen-7b-chat-int4'],
-    # "Qwen/Qwen-14B-Chat-Int4": ['qwen-14b-chat-int4'],
-    # "Qwen/Qwen-72B-Chat-Int4": ['qwen-72b-chat-int4'],
-    # "Qwen/Qwen-1_8B-Chat-Int8": ['qwen-1.8b-chat-int8'],
-    # "Qwen/Qwen-7B-Chat-Int8": ['qwen-7b-chat-int8'],
-    # "Qwen/Qwen-14B-Chat-Int8": ['qwen-14b-chat-int8'],
-    # "Qwen/Qwen-72B-Chat-Int8": ['qwen-72b-chat-int8'],
 }
 """Model aliases for models on HuggingFace."""
 
