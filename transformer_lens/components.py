@@ -374,7 +374,6 @@ class RMSNorm(nn.Module):
     ) -> Float[torch.Tensor, "batch pos length"]:
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
-
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
@@ -725,10 +724,10 @@ class Attention(nn.Module):
 
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
-            freq = einops.repeat(freq, "d -> (2 d)")
-        else:
+        if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
+        else:
+            freq = einops.repeat(freq, "d -> (2 d)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
@@ -744,13 +743,13 @@ class Attention(nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
+        if self.cfg.rotary_adjacent_pairs:
+            rot_x[..., ::2] = -x[..., 1::2]
+            rot_x[..., 1::2] = x[..., ::2]
+        else:
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
-        else:
-            rot_x[..., ::2] = -x[..., 1::2]
-            rot_x[..., 1::2] = x[..., ::2]
 
         return rot_x
 
