@@ -124,7 +124,9 @@ class HookedTransformer(HookedRootModule):
             else:
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
-                        self.cfg.tokenizer_name, add_bos_token=True
+                        self.cfg.tokenizer_name,
+                        add_bos_token=True,
+                        trust_remote_code=self.cfg.trust_remote_code,
                     ),
                     default_padding_side=default_padding_side,
                 )
@@ -1652,7 +1654,6 @@ class HookedTransformer(HookedRootModule):
             W_O = state_dict[f"blocks.{layer}.attn.W_O"]
             # [d_model]
             b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
-
             folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O

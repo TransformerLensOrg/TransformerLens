@@ -138,6 +138,12 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "bigscience/bloom-560m",
     "bigcode/santacoder",
+    "Qwen/Qwen-1_8B",
+    "Qwen/Qwen-7B",
+    "Qwen/Qwen-14B",
+    "Qwen/Qwen-1_8B-Chat",
+    "Qwen/Qwen-7B-Chat",
+    "Qwen/Qwen-14B-Chat",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -498,6 +504,12 @@ MODEL_ALIASES = {
     ],
     "bigscience/bloom-560m": ["bloom-560m"],
     "bigcode/santacoder": ["santacoder"],
+    "Qwen/Qwen-1_8B": ["qwen-1.8b"],
+    "Qwen/Qwen-7B": ["qwen-7b"],
+    "Qwen/Qwen-14B": ["qwen-14b"],
+    "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
+    "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
+    "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -506,6 +518,8 @@ DEFAULT_MODEL_ALIASES = [
     MODEL_ALIASES[name][0] if name in MODEL_ALIASES else name
     for name in OFFICIAL_MODEL_NAMES
 ]
+
+NEED_REMOTE_CODE_MODELS = ("bigcode/santacoder", "Qwen/Qwen-")
 
 
 def make_model_alias_map():
@@ -566,6 +580,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "rotary_dim": 4096 // 32,
             "final_rms": True,
             "gated_mlp": True,
@@ -585,6 +600,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "rotary_dim": 5120 // 40,
             "final_rms": True,
             "gated_mlp": True,
@@ -602,6 +618,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "rotary_dim": 6656 // 52,
             "final_rms": True,
             "gated_mlp": True,
@@ -620,6 +637,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_dim": 8192 // 64,
+            "rotary_adjacent_pairs": False,
             "final_rms": True,
             "gated_mlp": True,
         }
@@ -690,6 +708,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "parallel_attn_mlp": True,
             "positional_embedding_type": "rotary",
             "rotary_dim": hf_config.rotary_dim,
+            "rotary_adjacent_pairs": True,
             "normalization_type": "LN",
         }
     elif architecture == "GPTNeoXForCausalLM":
@@ -708,6 +727,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "scale_attn_by_inverse_layer_idx": False,
             "parallel_attn_mlp": True,
             "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
             "normalization_type": "LN",
         }
         rotary_pct = hf_config.rotary_pct
@@ -755,8 +775,32 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": hf_config.activation_function,
             "use_attn_scale": True,
             "use_local_attn": False,
+            "trust_remote_code": "santacoder"
+            in official_model_name,  # Only santacoder needs trust_remote_code
             "scale_attn_by_inverse_layer_idx": hf_config.scale_attn_by_inverse_layer_idx,
             "normalization_type": "LN",
+        }
+    elif architecture == "QWenLMHeadModel":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size // 2,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 2048,  # Capped bc the actual ctx length is 30k and the attn mask would be too big
+            "eps": hf_config.layer_norm_epsilon,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": "silu",
+            "use_attn_scale": hf_config.scale_attn_weights,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_dim": hf_config.kv_channels,
+            "rotary_adjacent_pairs": False,
+            "tokenizer_prepends_bos": True,
+            "trust_remote_code": True,
+            "final_rms": True,
+            "gated_mlp": True,
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
@@ -861,6 +905,13 @@ def get_pretrained_model_config(
     ):
         cfg_dict = convert_neel_model_config(official_model_name, **kwargs)
     else:
+        if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
+            "trust_remote_code", False
+        ):
+            logging.warning(
+                f"Loading model {official_model_name} requires setting trust_remote_code=True"
+            )
+            kwargs["trust_remote_code"] = True
         cfg_dict = convert_hf_model_config(official_model_name, **kwargs)
     # Processing common to both model types
     # Remove any prefix, saying the organization who made a model.
@@ -977,8 +1028,6 @@ def get_checkpoint_labels(model_name: str, **kwargs):
 
 
 # %% Loading state dicts
-
-
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,
@@ -1001,11 +1050,11 @@ def get_pretrained_state_dict(
         dtype = kwargs["torch_dtype"]
         del kwargs["torch_dtype"]
     official_model_name = get_official_model_name(official_model_name)
-    if official_model_name == "bigcode/santacoder" and not kwargs.get(
+    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
         "trust_remote_code", False
     ):
         logging.warning(
-            "Loading santacoder model requires setting trust_remote_code=True"
+            f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
         )
         kwargs["trust_remote_code"] = True
     if (
@@ -1091,6 +1140,8 @@ def get_pretrained_state_dict(
             state_dict = convert_bloom_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPT2LMHeadCustomModel":
             state_dict = convert_coder_weights(hf_model, cfg)
+        elif cfg.original_architecture == "QWenLMHeadModel":
+            state_dict = convert_qwen_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -1415,6 +1466,67 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
     state_dict["ln_final.w"] = llama.model.norm.weight
 
     state_dict["unembed.W_U"] = llama.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+    return state_dict
+
+
+def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
+    state_dict = {}
+    model = qwen.transformer
+    state_dict["embed.W_E"] = model.wte.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = model.h[l].ln_1.weight
+
+        W_Q, W_K, W_V = model.h[l].attn.c_attn.weight.split(
+            split_size=cfg.d_model, dim=0
+        )
+        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        b_Q, b_K, b_V = model.h[l].attn.c_attn.bias.split(split_size=cfg.d_model, dim=0)
+        b_Q = einops.rearrange(
+            b_Q,
+            "(n_head d_head) -> n_head d_head",
+            n_head=cfg.n_heads,
+        )
+        b_K = einops.rearrange(
+            b_K,
+            "(n_head d_head) -> n_head d_head",
+            n_head=cfg.n_heads,
+        )
+        b_V = einops.rearrange(
+            b_V,
+            "(n_head d_head) -> n_head d_head",
+            n_head=cfg.n_heads,
+        )
+        state_dict[f"blocks.{l}.attn.b_Q"] = b_Q
+        state_dict[f"blocks.{l}.attn.b_K"] = b_K
+        state_dict[f"blocks.{l}.attn.b_V"] = b_V
+
+        W_O = model.h[l].attn.c_proj.weight
+        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.ln2.w"] = model.h[l].ln_2.weight
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = model.h[l].mlp.w1.weight.T
+        state_dict[f"blocks.{l}.mlp.W_gate"] = model.h[l].mlp.w2.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.mlp.W_out"] = model.h[l].mlp.c_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+    state_dict["ln_final.w"] = model.ln_f.weight
+
+    state_dict["unembed.W_U"] = qwen.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
