@@ -1484,20 +1484,22 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.W_V"] = W_V
 
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
         state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
         state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
         W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
 
-        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
+            cfg.d_model, dtype=cfg.dtype, device=cfg.device
+        )
 
         state_dict[f"blocks.{l}.ln2.w"] = llama.model.layers[
             l
@@ -1507,17 +1509,23 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
             l
         ].mlp.gate_proj.weight.T
-        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(
+            cfg.d_mlp, dtype=cfg.dtype, device=cfg.device
+        )
 
         state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[
             l
         ].mlp.down_proj.weight.T
-        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(
+            cfg.d_model, dtype=cfg.dtype, device=cfg.device
+        )
 
     state_dict["ln_final.w"] = llama.model.norm.weight
 
     state_dict["unembed.W_U"] = llama.lm_head.weight.T
-    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+    state_dict["unembed.b_U"] = torch.zeros(
+        cfg.d_vocab, dtype=cfg.dtype, device=cfg.device
+    )
 
     return state_dict
 
