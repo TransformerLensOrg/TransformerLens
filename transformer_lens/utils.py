@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
 import numpy as np
+import pytest
 import torch
 import torch.nn.functional as F
 import transformers
@@ -601,6 +602,7 @@ def remove_batch_dim(
 
 # Note: Docstring won't be tested with PyTest (it's ignored), as it thinks this is a regular unit
 # test (because it's name is prefixed `test_`).
+@pytest.mark.skip
 def test_prompt(
     prompt: str,
     answer: str,
@@ -1081,7 +1083,9 @@ def get_tokenizer_with_bos(tokenizer):
         tokenizer_with_bos = tokenizer
     else:
         tokenizer_with_bos = AutoTokenizer.from_pretrained(
-            pretrained_model_name_or_path, add_bos_token=True, **init_kwargs
+            pretrained_model_name_or_path,
+            add_bos_token=True,
+            **init_kwargs,
         )
 
     return tokenizer_with_bos

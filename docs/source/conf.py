@@ -80,6 +80,7 @@ functions_to_ignore = [
     "convert_gptj_weights",
     "convert_llama_weights",
     "convert_mingpt_weights",
+    "convert_nanogpt_weights",
     "convert_neel_solu_old_weights",
     "convert_neo_weights",
     "convert_neox_weights",
