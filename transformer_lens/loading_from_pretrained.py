@@ -111,13 +111,13 @@ OFFICIAL_MODEL_NAMES = [
     "llama-13b-hf",
     "llama-30b-hf",
     "llama-65b-hf",
+    "meta-llama/Llama-2-7b-hf",
+    "meta-llama/Llama-2-7b-chat-hf",
+    "meta-llama/Llama-2-13b-hf",
+    "meta-llama/Llama-2-13b-chat-hf",
     "CodeLlama-7b-hf",
     "CodeLlama-7b-Python-hf",
     "CodeLlama-7b-Instruct-hf",
-    "Llama-2-7b-hf",
-    "Llama-2-7b-chat-hf",
-    "Llama-2-13b-hf",
-    "Llama-2-13b-chat-hf",
     # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
@@ -469,6 +469,16 @@ MODEL_ALIASES = {
     "llama-13b-hf": ["llama-13b"],
     "llama-30b-hf": ["llama-30b"],
     "llama-65b-hf": ["llama-65b"],
+    "meta-llama/Llama-2-7b-hf": ["Llama-2-7b", "meta-llama/Llama-2-7b-hf"],
+    "meta-llama/Llama-2-7b-chat-hf": [
+        "Llama-2-7b-chat",
+        "meta-llama/Llama-2-7b-chat-hf",
+    ],
+    "meta-llama/Llama-2-13b-hf": ["Llama-2-13b", "meta-llama/Llama-2-13b-hf"],
+    "meta-llama/Llama-2-13b-chat-hf": [
+        "Llama-2-13b-chat",
+        "meta-llama/Llama-2-13b-chat-hf",
+    ],
     "CodeLlama-7b-hf": ["CodeLlamallama-2-7b", "codellama/CodeLlama-7b-hf"],
     "CodeLlama-7b-Python-hf": [
         "CodeLlama-7b-python",
@@ -478,10 +488,6 @@ MODEL_ALIASES = {
         "CodeLlama-7b-instruct",
         "codellama/CodeLlama-7b-Instruct-hf",
     ],
-    "Llama-2-7b-hf": ["Llama-2-7b", "meta-llama/Llama-2-7b-hf"],
-    "Llama-2-7b-chat-hf": ["Llama-2-7b-chat", "meta-llama/Llama-2-7b-chat-hf"],
-    "Llama-2-13b-hf": ["Llama-2-13b", "meta-llama/Llama-2-13b-hf"],
-    "Llama-2-13b-chat-hf": ["Llama-2-13b-chat", "meta-llama/Llama-2-13b-chat-hf"],
     # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
@@ -524,6 +530,14 @@ MODEL_ALIASES = {
     "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
 }
 """Model aliases for models on HuggingFace."""
+
+NON_HF_HOSTED_MODEL_NAMES = [
+    "llama-7b-hf",
+    "llama-13b-hf",
+    "llama-30b-hf",
+    "llama-65b-hf",
+]
+"""Official model names for models that not hosted on HuggingFace."""
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
 DEFAULT_MODEL_ALIASES = [
@@ -578,7 +592,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
     else:
         architecture = "LlamaForCausalLM"
     if official_model_name.startswith(
-        ("llama-7b", "Llama-2-7b")
+        ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
         cfg_dict = {
             "d_model": 4096,
@@ -621,7 +635,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             # The vocab size of python version of CodeLlama-7b is 32000
             cfg_dict["d_vocab"] = 32000
     elif official_model_name.startswith(
-        ("llama-13b", "Llama-2-13b")
+        ("llama-13b", "meta-llama/Llama-2-13b")
     ):  # same architecture for LLaMA and Llama-2
         cfg_dict = {
             "d_model": 5120,
@@ -1141,8 +1155,10 @@ def get_pretrained_state_dict(
                     f"Checkpoints for model {official_model_name} are not supported"
                 )
         elif hf_model is None:
-            if "llama" in official_model_name.lower():
-                raise NotImplementedError("Must pass in hf_model for LLaMA models")
+            if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
+                raise NotImplementedError(
+                    "Model not hosted on HuggingFace, must pass in hf_model"
+                )
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name, torch_dtype=dtype, **kwargs
