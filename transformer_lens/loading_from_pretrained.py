@@ -111,6 +111,9 @@ OFFICIAL_MODEL_NAMES = [
     "llama-13b-hf",
     "llama-30b-hf",
     "llama-65b-hf",
+    "CodeLlama-7b-hf",
+    "CodeLlama-7b-Python-hf",
+    "CodeLlama-7b-Instruct-hf",
     "Llama-2-7b-hf",
     "Llama-2-7b-chat-hf",
     "Llama-2-13b-hf",
@@ -466,6 +469,15 @@ MODEL_ALIASES = {
     "llama-13b-hf": ["llama-13b"],
     "llama-30b-hf": ["llama-30b"],
     "llama-65b-hf": ["llama-65b"],
+    "CodeLlama-7b-hf": ["CodeLlamallama-2-7b", "codellama/CodeLlama-7b-hf"],
+    "CodeLlama-7b-Python-hf": [
+        "CodeLlama-7b-python",
+        "codellama/CodeLlama-7b-Python-hf",
+    ],
+    "CodeLlama-7b-Instruct-hf": [
+        "CodeLlama-7b-instruct",
+        "codellama/CodeLlama-7b-Instruct-hf",
+    ],
     "Llama-2-7b-hf": ["Llama-2-7b", "meta-llama/Llama-2-7b-hf"],
     "Llama-2-7b-chat-hf": ["Llama-2-7b-chat", "meta-llama/Llama-2-7b-chat-hf"],
     "Llama-2-13b-hf": ["Llama-2-13b", "meta-llama/Llama-2-13b-hf"],
@@ -585,6 +597,29 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "gated_mlp": True,
         }
+    elif official_model_name.startswith(
+        "CodeLlama-7b"
+    ):  # same architecture CodeLlama and Llama-2
+        cfg_dict = {
+            "d_model": 4096,
+            "d_head": 4096 // 32,
+            "n_heads": 32,
+            "d_mlp": 11008,
+            "n_layers": 32,
+            "n_ctx": 4096,
+            "eps": 1e-5,
+            "d_vocab": 32016,
+            "act_fn": "silu",
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_dim": 4096 // 32,
+            "final_rms": True,
+            "gated_mlp": True,
+            "rotary_base": 1000000,
+        }
+        if "python" in official_model_name.lower():
+            # The vocab size of python version of CodeLlama-7b is 32000
+            cfg_dict["d_vocab"] = 32000
     elif official_model_name.startswith(
         ("llama-13b", "Llama-2-13b")
     ):  # same architecture for LLaMA and Llama-2
