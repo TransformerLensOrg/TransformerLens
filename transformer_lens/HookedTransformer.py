@@ -1087,6 +1087,7 @@ class HookedTransformer(HookedRootModule):
         default_prepend_bos: Optional[bool] = True,
         default_padding_side: Optional[Literal["left", "right"]] = "right",
         dtype="float32",
+        hf_model_4bit: Optional[bool] = False,
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Load in a Pretrained Model.
@@ -1258,6 +1259,7 @@ class HookedTransformer(HookedRootModule):
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
             dtype=dtype,
+            hf_model_4bit=hf_model_4bit,
             **from_pretrained_kwargs,
         )
 
@@ -1445,7 +1447,7 @@ class HookedTransformer(HookedRootModule):
             state_dict = self.fold_value_biases(state_dict)
         if refactor_factored_attn_matrices:
             state_dict = self.refactor_factored_attn_matrices(state_dict)
-        self.load_state_dict(state_dict)
+        self.load_state_dict(state_dict, assign=True)
 
     def fill_missing_keys(self, state_dict):
         return loading.fill_missing_keys(self, state_dict)

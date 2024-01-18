@@ -200,6 +200,7 @@ class HookedTransformerConfig:
     rotary_base: int = 10000
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
+    hf_model_4bit: bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:

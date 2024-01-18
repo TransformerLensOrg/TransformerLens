@@ -15,6 +15,8 @@ from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
+from bitsandbytes.nn.modules import Params4bit
+
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
     "gpt2-medium",
@@ -918,6 +920,7 @@ def get_pretrained_model_config(
     n_devices: int = 1,
     default_prepend_bos: bool = True,
     dtype: torch.dtype = torch.float32,
+    hf_model_4bit: bool = False,
     **kwargs,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -1019,6 +1022,7 @@ def get_pretrained_model_config(
     cfg_dict["device"] = device
     cfg_dict["n_devices"] = n_devices
     cfg_dict["default_prepend_bos"] = default_prepend_bos
+    cfg_dict["hf_model_4bit"] = hf_model_4bit
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
@@ -1484,9 +1488,12 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_Q = llama.model.layers[l].self_attn.q_proj.weight
         W_K = llama.model.layers[l].self_attn.k_proj.weight
         W_V = llama.model.layers[l].self_attn.v_proj.weight
-        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
-        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+
+        if not cfg.hf_model_4bit:
+            W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+            W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
+            W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.W_K"] = W_K
         state_dict[f"blocks.{l}.attn.W_V"] = W_V
@@ -1502,7 +1509,9 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         )
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
-        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        if not cfg.hf_model_4bit:
+            W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
@@ -1513,17 +1522,22 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
             l
         ].post_attention_layernorm.weight
 
-        state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
-        state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
-            l
-        ].mlp.gate_proj.weight.T
+        if not cfg.hf_model_4bit:
+            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
+            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
+                l
+            ].mlp.gate_proj.weight.T
+            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[
+                l
+            ].mlp.down_proj.weight.T
+        else:
+            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight
+
         state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(
             cfg.d_mlp, dtype=cfg.dtype, device=cfg.device
         )
-
-        state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[
-            l
-        ].mlp.down_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(
             cfg.d_model, dtype=cfg.dtype, device=cfg.device
         )
