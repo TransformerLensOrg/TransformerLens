@@ -6,7 +6,7 @@
         "editor.defaultFormatter": "tamasfe.even-better-toml"
     },
     "editor.codeActionsOnSave": {
-        "source.organizeImports": true
+        "source.organizeImports": "explicit"
     },
     "editor.formatOnSave": true,
     "evenBetterToml.formatter.allowedBlankLines": 1,
