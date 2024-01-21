@@ -37,6 +37,7 @@ from transformer_lens.components import (
 )
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for
 # generation.
@@ -118,13 +119,16 @@ class HookedTransformer(HookedRootModule):
             self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
-            if "llama" in self.cfg.tokenizer_name.lower():
-                # llama tokenizer requires special handling
-                logging.warning("LLaMA tokenizer not loaded. Please load manually.")
+            if self.cfg.tokenizer_name in NON_HF_HOSTED_MODEL_NAMES:
+                logging.warning(
+                    f"{self.cfg.tokenizer_name} tokenizer not loaded. Please load manually."
+                )
             else:
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
-                        self.cfg.tokenizer_name, add_bos_token=True
+                        self.cfg.tokenizer_name,
+                        add_bos_token=True,
+                        trust_remote_code=self.cfg.trust_remote_code,
                     ),
                     default_padding_side=default_padding_side,
                 )
@@ -1661,7 +1665,6 @@ class HookedTransformer(HookedRootModule):
             W_O = state_dict[f"blocks.{layer}.attn.W_O"]
             # [d_model]
             b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
-
             folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O

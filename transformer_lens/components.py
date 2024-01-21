@@ -376,7 +376,6 @@ class RMSNorm(nn.Module):
     ) -> Float[torch.Tensor, "batch pos length"]:
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
-
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
@@ -469,7 +468,10 @@ class AbstractAttention(ABC, nn.Module):
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
             sin, cos = self.calculate_sin_cos_rotary(
-                self.cfg.rotary_dim, self.cfg.n_ctx, dtype=self.cfg.dtype
+                self.cfg.rotary_dim,
+                self.cfg.n_ctx,
+                base=self.cfg.rotary_base,
+                dtype=self.cfg.dtype,
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
@@ -753,14 +755,10 @@ class AbstractAttention(ABC, nn.Module):
 
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.original_architecture in [
-            "GPTNeoXForCausalLM",
-            "LlamaForCausalLM",
-            "MistralForCausalLM",
-        ]:
-            freq = einops.repeat(freq, "d -> (2 d)")
-        else:
+        if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
+        else:
+            freq = einops.repeat(freq, "d -> (2 d)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
@@ -776,17 +774,13 @@ class AbstractAttention(ABC, nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if self.cfg.original_architecture in [
-            "GPTNeoXForCausalLM",
-            "LlamaForCausalLM",
-            "MistralForCausalLM",
-        ]:
+        if self.cfg.rotary_adjacent_pairs:
+            rot_x[..., ::2] = -x[..., 1::2]
+            rot_x[..., 1::2] = x[..., ::2]
+        else:
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
-        else:
-            rot_x[..., ::2] = -x[..., 1::2]
-            rot_x[..., 1::2] = x[..., ::2]
 
         return rot_x
 
