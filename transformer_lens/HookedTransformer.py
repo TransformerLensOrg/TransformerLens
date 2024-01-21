@@ -20,6 +20,7 @@ from fancy_einsum import einsum
 from jaxtyping import Float, Int
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
 from typing_extensions import Literal
+from packaging import version
 
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
@@ -1087,7 +1088,6 @@ class HookedTransformer(HookedRootModule):
         default_prepend_bos: Optional[bool] = True,
         default_padding_side: Optional[Literal["left", "right"]] = "right",
         dtype="float32",
-        hf_model_4bit: Optional[bool] = False,
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Load in a Pretrained Model.
@@ -1223,10 +1223,29 @@ class HookedTransformer(HookedRootModule):
             default_padding_side: Which side to pad on when tokenizing. Defaults to
                 "right".
         """
+
         assert not (
             from_pretrained_kwargs.get("load_in_8bit", False)
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
+
+        if hf_model is not None:   
+            hf_cfg = hf_model.config.to_dict()
+            qc = hf_cfg.get("quantization_config", {})
+            load_in_4bit = qc.get("load_in_4bit", False)
+            load_in_8bit = qc.get("load_in_8bit", False)
+            quant_method = qc.get("quant_method", "")
+            assert not load_in_8bit, "8-bit quantization is not supported"
+            assert not (
+                load_in_4bit and (version.parse(torch.__version__) < version.parse("2.1.1"))
+            ), "Quantization is only supported for torch versions >= 2.1.1"
+            assert not (
+                load_in_4bit and ("llama" not in model_name.lower())
+            ), "Quantization is only supported for Llama models"
+            if load_in_4bit:
+                assert (qc.get("quant_method", "") == "bitsandbytes"), "Only bitsandbytes quantization is supported"
+        else:
+            hf_cfg = {}
 
         if isinstance(dtype, str):
             # Convert from string to a torch dtype
@@ -1252,6 +1271,7 @@ class HookedTransformer(HookedRootModule):
         # checkpoint
         cfg = loading.get_pretrained_model_config(
             official_model_name,
+            hf_cfg=hf_cfg,
             checkpoint_index=checkpoint_index,
             checkpoint_value=checkpoint_value,
             fold_ln=fold_ln,
@@ -1259,7 +1279,6 @@ class HookedTransformer(HookedRootModule):
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
             dtype=dtype,
-            hf_model_4bit=hf_model_4bit,
             **from_pretrained_kwargs,
         )
 

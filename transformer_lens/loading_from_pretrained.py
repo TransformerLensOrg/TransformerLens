@@ -15,8 +15,6 @@ from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
-from bitsandbytes.nn.modules import Params4bit
-
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
     "gpt2-medium",
@@ -913,6 +911,7 @@ def convert_neel_model_config(official_model_name: str, **kwargs):
 
 def get_pretrained_model_config(
     model_name: str,
+    hf_cfg: Optional[dict] = None,
     checkpoint_index: Optional[int] = None,
     checkpoint_value: Optional[int] = None,
     fold_ln: bool = False,
@@ -920,7 +919,6 @@ def get_pretrained_model_config(
     n_devices: int = 1,
     default_prepend_bos: bool = True,
     dtype: torch.dtype = torch.float32,
-    hf_model_4bit: bool = False,
     **kwargs,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -1022,11 +1020,10 @@ def get_pretrained_model_config(
     cfg_dict["device"] = device
     cfg_dict["n_devices"] = n_devices
     cfg_dict["default_prepend_bos"] = default_prepend_bos
-    cfg_dict["hf_model_4bit"] = hf_model_4bit
+    cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
-
 
 def get_num_params_of_pretrained(model_name):
     """
@@ -1489,7 +1486,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_K = llama.model.layers[l].self_attn.k_proj.weight
         W_V = llama.model.layers[l].self_attn.v_proj.weight
 
-        if not cfg.hf_model_4bit:
+        if not cfg.load_in_4bit:
             W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
             W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
             W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
@@ -1509,7 +1506,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         )
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
-        if not cfg.hf_model_4bit:
+        if not cfg.load_in_4bit:
             W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
 
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
@@ -1522,7 +1519,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
             l
         ].post_attention_layernorm.weight
 
-        if not cfg.hf_model_4bit:
+        if not cfg.load_in_4bit:
             state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
             state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
                 l

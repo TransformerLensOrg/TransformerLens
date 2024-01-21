@@ -21,8 +21,10 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utils import gelu_fast, gelu_new, get_offset_position_ids, solu
 
-import bitsandbytes as bnb
-from bitsandbytes.nn.modules import Params4bit
+from transformers.utils import is_bitsandbytes_available
+if is_bitsandbytes_available():
+    import bitsandbytes as bnb
+    from bitsandbytes.nn.modules import Params4bit, Int8Params
 
 # Embed & Unembed
 class Embed(nn.Module):
@@ -405,7 +407,7 @@ class Attention(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
 
-        if cfg.hf_model_4bit:
+        if cfg.load_in_4bit:
             nq = int((cfg.d_model * cfg.d_model) / 2)
             self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_K = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
@@ -556,11 +558,10 @@ class Attention(nn.Module):
         else:
             qkv_einops_string = "batch pos d_model"
 
-        if self.cfg.hf_model_4bit:
+        if self.cfg.load_in_4bit:
             q = bnb.matmul_4bit(
                 query_input,
                 self.W_Q.t(),
-                # bias=self.b_Q.t(),
                 bias=None,
                 quant_state=self.W_Q.quant_state
             )
@@ -575,7 +576,7 @@ class Attention(nn.Module):
                 )
                 + self.b_Q
             )  # [batch, pos, head_index, d_head]
-        if self.cfg.hf_model_4bit:
+        if self.cfg.load_in_4bit:
             k = bnb.matmul_4bit(
                 key_input,
                 self.W_K.t(),
@@ -595,7 +596,7 @@ class Attention(nn.Module):
                 + self.b_K
             )  # [batch, pos, head_index, d_head]
 
-        if self.cfg.hf_model_4bit:
+        if self.cfg.load_in_4bit:
             v = bnb.matmul_4bit(
                 value_input,
                 self.W_V.t(),
@@ -685,7 +686,7 @@ class Attention(nn.Module):
             )
         )  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
-            if self.cfg.hf_model_4bit:
+            if self.cfg.load_in_4bit:
                 out = bnb.matmul_4bit(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
                     self.W_O.t(),
@@ -1049,7 +1050,7 @@ class GatedMLP(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         
-        if cfg.hf_model_4bit:
+        if cfg.load_in_4bit:
             nq = int((cfg.d_model * cfg.d_mlp) / 2)
             self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
@@ -1101,7 +1102,7 @@ class GatedMLP(nn.Module):
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
-        if self.cfg.hf_model_4bit:
+        if self.cfg.load_in_4bit:
             pre_act = self.hook_pre(
                 bnb.matmul_4bit(
                     x,
@@ -1119,7 +1120,7 @@ class GatedMLP(nn.Module):
 
         if not self.cfg.act_fn.endswith("_ln"):
 
-            if self.cfg.hf_model_4bit:
+            if self.cfg.load_in_4bit:
                 pre_linear = self.hook_pre_linear(
                     bnb.matmul_4bit(
                         x,
@@ -1142,7 +1143,7 @@ class GatedMLP(nn.Module):
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
         
-        if self.cfg.hf_model_4bit:
+        if self.cfg.load_in_4bit:
             return (
                 bnb.matmul_4bit(
                     post_act,
