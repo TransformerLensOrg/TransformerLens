@@ -1085,17 +1085,12 @@ class GroupedQueryAttention(AbstractAttention):
         This function uses the unexpanded weights _W_K and _W_V to calculate K and V.
 
         Args:
-        query_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]):
-            The input tensor for the query projection.
-        key_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]):
-            The input tensor for the key projection. Note that is has as many head dimensions as the GPA block has key-value heads.
-        value_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]):
-            The input tensor for the value projection. Note that is has as many head dimensions as the GPA block has key-value heads.
+        query_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]): The input tensor for the query projection.
+        key_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]): The input tensor for the key projection. Note that is has as many head dimensions as the GPA block has key-value heads.
+        value_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]): The input tensor for the value projection. Note that is has as many head dimensions as the GPA block has key-value heads.
 
         Returns:
-        Tuple[Float[torch.Tensor, "batch pos head_index d_head"],
-              Float[torch.Tensor, "batch pos kv_head_index d_head"],
-              Float[torch.Tensor, "batch pos kv_head_index d_head"]]:
+        Tuple[Float[torch.Tensor, "batch pos head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"]]:
         A tuple containing the Q, K, and V matrices with the specified shapes.
         """
         if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
