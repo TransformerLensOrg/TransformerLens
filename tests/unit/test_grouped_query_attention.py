@@ -4,7 +4,11 @@ from transformer_lens.components import Attention, GroupedQueryAttention
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-def test_grouped_query_attention():
+def test_grouped_query_attention_output_is_correct():
+    """Verifies that grouped query attention (GPA) block behaves correctly - see https://arxiv.org/abs/2305.13245v2 for details on GPA.
+    A GPA block with h query heads, n key-value heads, key parameters _K and value parameters _V should have the same output as a regular attention block
+    with h heads, whose parameters K and V are _K and _V repeated h/n times respectively. This test uses torch.repeat_interleave, which is also used by
+    the GPA block internally, to generate K and V from _K and _V"""
     d_model = 512
     d_head = 32
     n_heads = 16
