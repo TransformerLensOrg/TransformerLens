@@ -1879,13 +1879,6 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
                 f"{layer_key}.attn.c_proj.bias"
             ]
 
-            new_state_dict[f"blocks.{layer}.mlp.b_in"] = old_state_dict[
-                f"{layer_key}.mlp.c_fc.bias"
-            ].T
-            new_state_dict[f"blocks.{layer}.mlp.b_out"] = old_state_dict[
-                f"{layer_key}.mlp.c_proj.bias"
-            ].T
-
     return new_state_dict
 
 
