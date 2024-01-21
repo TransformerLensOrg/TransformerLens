@@ -408,6 +408,7 @@ class Attention(nn.Module):
         self.cfg = cfg
 
         if cfg.load_in_4bit:
+            # 4-bit quantization convention
             nq = int((cfg.d_model * cfg.d_model) / 2)
             self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_K = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
@@ -560,6 +561,7 @@ class Attention(nn.Module):
 
         if self.cfg.load_in_4bit:
             q = self.hook_q(
+                # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
                     query_input,
                     self.W_Q.t(),
@@ -580,6 +582,7 @@ class Attention(nn.Module):
             )  # [batch, pos, head_index, d_head]
         if self.cfg.load_in_4bit:
             k = self.hook_k(
+                # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
                     key_input,
                     self.W_K.t(),
@@ -601,6 +604,7 @@ class Attention(nn.Module):
 
         if self.cfg.load_in_4bit:
             v = self.hook_v(
+                # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
                     value_input,
                     self.W_V.t(),
@@ -691,6 +695,7 @@ class Attention(nn.Module):
         )  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
+                # call bitsandbytes method to dequantize and multiply
                 out = bnb.matmul_4bit(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
                     self.W_O.t(),

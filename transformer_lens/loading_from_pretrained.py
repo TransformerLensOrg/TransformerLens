@@ -931,6 +931,8 @@ def get_pretrained_model_config(
         model_name: The name of the model. This can be either the official
             HuggingFace model name, or the name of a model trained by me
             (NeelNanda).
+        hf_cfg (dict, optional): Config of a loaded pretrained HF model,
+            converted to a dictionary.
         checkpoint_index (int, optional): If loading from a
             checkpoint, the index of the checkpoint to load. Defaults to None.
         checkpoint_value (int, optional): If loading from a checkpoint, the
@@ -1486,6 +1488,8 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_K = llama.model.layers[l].self_attn.k_proj.weight
         W_V = llama.model.layers[l].self_attn.v_proj.weight
 
+        # in case of quantization,
+        # parameters should stay as bitsandbytes.nn.modules.Params4bit
         if not cfg.load_in_4bit:
             W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
             W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
@@ -1519,6 +1523,8 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
             l
         ].post_attention_layernorm.weight
 
+        # in case of quantization,
+        # parameters should stay as bitsandbytes.nn.modules.Params4bit
         if not cfg.load_in_4bit:
             state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
             state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
