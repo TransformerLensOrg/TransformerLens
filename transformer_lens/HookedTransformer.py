@@ -1466,7 +1466,14 @@ class HookedTransformer(HookedRootModule):
             state_dict = self.fold_value_biases(state_dict)
         if refactor_factored_attn_matrices:
             state_dict = self.refactor_factored_attn_matrices(state_dict)
-        self.load_state_dict(state_dict, assign=True)
+
+        if self.cfg.load_in_4bit:
+            # with quantization, parameters should be assigned
+            # so that quantization settings are not lost
+            self.load_state_dict(state_dict, assign=True)
+        else:
+            self.load_state_dict(state_dict)
+
 
     def fill_missing_keys(self, state_dict):
         return loading.fill_missing_keys(self, state_dict)

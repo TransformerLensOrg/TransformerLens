@@ -559,13 +559,15 @@ class Attention(nn.Module):
             qkv_einops_string = "batch pos d_model"
 
         if self.cfg.load_in_4bit:
-            q = bnb.matmul_4bit(
-                query_input,
-                self.W_Q.t(),
-                bias=None,
-                quant_state=self.W_Q.quant_state
+            q = self.hook_q(
+                bnb.matmul_4bit(
+                    query_input,
+                    self.W_Q.t(),
+                    bias=None,
+                    quant_state=self.W_Q.quant_state
+                ).reshape(query_input.shape[0], query_input.shape[1], self.cfg.n_heads, self.cfg.d_head)
+                + self.b_Q
             )
-            q = q.reshape(q.shape[0], q.shape[1], int(q.shape[2]/self.cfg.d_head), self.cfg.d_head)
         else:
             q = self.hook_q(
                 einsum(
@@ -577,14 +579,15 @@ class Attention(nn.Module):
                 + self.b_Q
             )  # [batch, pos, head_index, d_head]
         if self.cfg.load_in_4bit:
-            k = bnb.matmul_4bit(
-                key_input,
-                self.W_K.t(),
-                # bias=self.b_Q.t(),
-                bias=None,
-                quant_state=self.W_K.quant_state
+            k = self.hook_k(
+                bnb.matmul_4bit(
+                    key_input,
+                    self.W_K.t(),
+                    bias=None,
+                    quant_state=self.W_K.quant_state
+                ).reshape(key_input.shape[0], key_input.shape[1], self.cfg.n_heads, self.cfg.d_head)
+                + self.b_K
             )
-            k = k.reshape(k.shape[0], k.shape[1], int(k.shape[2]/self.cfg.d_head), self.cfg.d_head)
         else:
             k = self.hook_k(
                 einsum(
@@ -597,14 +600,15 @@ class Attention(nn.Module):
             )  # [batch, pos, head_index, d_head]
 
         if self.cfg.load_in_4bit:
-            v = bnb.matmul_4bit(
-                value_input,
-                self.W_V.t(),
-                # bias=self.b_Q.t(),
-                bias=None,
-                quant_state=self.W_V.quant_state
+            v = self.hook_v(
+                bnb.matmul_4bit(
+                    value_input,
+                    self.W_V.t(),
+                    bias=None,
+                    quant_state=self.W_V.quant_state
+                ).reshape(value_input.shape[0], value_input.shape[1], self.cfg.n_heads, self.cfg.d_head)
+                + self.b_V
             )
-            v = v.reshape(v.shape[0], v.shape[1], int(v.shape[2]/self.cfg.d_head), self.cfg.d_head)
         else:
             v = self.hook_v(
                 einsum(
@@ -694,6 +698,7 @@ class Attention(nn.Module):
                     bias=None,
                     quant_state=self.W_O.quant_state
                 )
+                + self.b_O
             else:
                 out = (
                     (
@@ -710,15 +715,25 @@ class Attention(nn.Module):
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
-            result = self.hook_result(
-                einsum(
-                    "batch pos head_index d_head, \
-                        head_index d_head d_model -> \
-                        batch pos head_index d_model",
-                    z,
-                    self.W_O,
+            if self.cfg.load_in_4bit:
+                result = self.hook_result(
+                    bnb.matmul_4bit(
+                        z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
+                        self.W_O.t(),
+                        bias=None,
+                        quant_state=self.W_O.quant_state
+                    )
                 )
-            )  # [batch, pos, head_index, d_model]
+            else:
+                result = self.hook_result(
+                    einsum(
+                        "batch pos head_index d_head, \
+                            head_index d_head d_model -> \
+                            batch pos head_index d_model",
+                        z,
+                        self.W_O,
+                    )
+                )  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(
                     result, "batch position index model->batch position model", "sum"
