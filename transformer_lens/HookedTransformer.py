@@ -18,9 +18,9 @@ import torch.nn as nn
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
+from packaging import version
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
 from typing_extensions import Literal
-from packaging import version
 
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
@@ -1229,7 +1229,7 @@ class HookedTransformer(HookedRootModule):
             or from_pretrained_kwargs.get("load_in_4bit", False)
         ), "Quantization not supported"
 
-        if hf_model is not None:   
+        if hf_model is not None:
             hf_cfg = hf_model.config.to_dict()
             qc = hf_cfg.get("quantization_config", {})
             load_in_4bit = qc.get("load_in_4bit", False)
@@ -1237,13 +1237,16 @@ class HookedTransformer(HookedRootModule):
             quant_method = qc.get("quant_method", "")
             assert not load_in_8bit, "8-bit quantization is not supported"
             assert not (
-                load_in_4bit and (version.parse(torch.__version__) < version.parse("2.1.1"))
+                load_in_4bit
+                and (version.parse(torch.__version__) < version.parse("2.1.1"))
             ), "Quantization is only supported for torch versions >= 2.1.1"
             assert not (
                 load_in_4bit and ("llama" not in model_name.lower())
             ), "Quantization is only supported for Llama models"
             if load_in_4bit:
-                assert (qc.get("quant_method", "") == "bitsandbytes"), "Only bitsandbytes quantization is supported"
+                assert (
+                    qc.get("quant_method", "") == "bitsandbytes"
+                ), "Only bitsandbytes quantization is supported"
         else:
             hf_cfg = {}
 
@@ -1473,7 +1476,6 @@ class HookedTransformer(HookedRootModule):
             self.load_state_dict(state_dict, assign=True)
         else:
             self.load_state_dict(state_dict)
-
 
     def fill_missing_keys(self, state_dict):
         return loading.fill_missing_keys(self, state_dict)

@@ -1022,10 +1022,14 @@ def get_pretrained_model_config(
     cfg_dict["device"] = device
     cfg_dict["n_devices"] = n_devices
     cfg_dict["default_prepend_bos"] = default_prepend_bos
-    cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
+    if hf_cfg is not None:
+        cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get(
+            "load_in_4bit", False
+        )
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
+
 
 def get_num_params_of_pretrained(model_name):
     """
@@ -1526,7 +1530,9 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         # in case of quantization,
         # parameters should stay as bitsandbytes.nn.modules.Params4bit
         if not cfg.load_in_4bit:
-            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
+            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[
+                l
+            ].mlp.up_proj.weight.T
             state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
                 l
             ].mlp.gate_proj.weight.T
@@ -1534,9 +1540,15 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
                 l
             ].mlp.down_proj.weight.T
         else:
-            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight
-            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight
-            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[
+                l
+            ].mlp.up_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
+                l
+            ].mlp.gate_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[
+                l
+            ].mlp.down_proj.weight
 
         state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(
             cfg.d_mlp, dtype=cfg.dtype, device=cfg.device

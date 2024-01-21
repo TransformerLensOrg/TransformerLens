@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
+from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
@@ -21,10 +22,10 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utils import gelu_fast, gelu_new, get_offset_position_ids, solu
 
-from transformers.utils import is_bitsandbytes_available
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
     from bitsandbytes.nn.modules import Params4bit
+
 
 # Embed & Unembed
 class Embed(nn.Module):
@@ -410,10 +411,18 @@ class Attention(nn.Module):
         if cfg.load_in_4bit:
             # 4-bit quantization convention
             nq = int((cfg.d_model * cfg.d_model) / 2)
-            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
-            self.W_K = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
-            self.W_V = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
-            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_Q = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+            self.W_K = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+            self.W_V = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+            self.W_O = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
         else:
             self.W_Q = nn.Parameter(
                 torch.empty(
@@ -566,8 +575,13 @@ class Attention(nn.Module):
                     query_input,
                     self.W_Q.t(),
                     bias=None,
-                    quant_state=self.W_Q.quant_state
-                ).reshape(query_input.shape[0], query_input.shape[1], self.cfg.n_heads, self.cfg.d_head)
+                    quant_state=self.W_Q.quant_state,
+                ).reshape(
+                    query_input.shape[0],
+                    query_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
                 + self.b_Q
             )
         else:
@@ -584,11 +598,13 @@ class Attention(nn.Module):
             k = self.hook_k(
                 # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
-                    key_input,
-                    self.W_K.t(),
-                    bias=None,
-                    quant_state=self.W_K.quant_state
-                ).reshape(key_input.shape[0], key_input.shape[1], self.cfg.n_heads, self.cfg.d_head)
+                    key_input, self.W_K.t(), bias=None, quant_state=self.W_K.quant_state
+                ).reshape(
+                    key_input.shape[0],
+                    key_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
                 + self.b_K
             )
         else:
@@ -609,8 +625,13 @@ class Attention(nn.Module):
                     value_input,
                     self.W_V.t(),
                     bias=None,
-                    quant_state=self.W_V.quant_state
-                ).reshape(value_input.shape[0], value_input.shape[1], self.cfg.n_heads, self.cfg.d_head)
+                    quant_state=self.W_V.quant_state,
+                ).reshape(
+                    value_input.shape[0],
+                    value_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
                 + self.b_V
             )
         else:
@@ -701,9 +722,9 @@ class Attention(nn.Module):
                     self.W_O.t(),
                     # bias=self.W_O.t(),
                     bias=None,
-                    quant_state=self.W_O.quant_state
+                    quant_state=self.W_O.quant_state,
                 )
-                + self.b_O
+                +self.b_O
             else:
                 out = (
                     (
@@ -726,7 +747,7 @@ class Attention(nn.Module):
                         z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
                         self.W_O.t(),
                         bias=None,
-                        quant_state=self.W_O.quant_state
+                        quant_state=self.W_O.quant_state,
                     )
                 )
             else:
@@ -1069,12 +1090,18 @@ class GatedMLP(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        
+
         if cfg.load_in_4bit:
             nq = int((cfg.d_model * cfg.d_mlp) / 2)
-            self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
-            self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
-            self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_in = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+            self.W_gate = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+            self.W_out = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
         else:
             self.W_in = nn.Parameter(
                 torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
@@ -1125,34 +1152,31 @@ class GatedMLP(nn.Module):
         if self.cfg.load_in_4bit:
             pre_act = self.hook_pre(
                 bnb.matmul_4bit(
-                    x,
-                    self.W_gate.t(),
-                    bias=None,
-                    quant_state=self.W_gate.quant_state
+                    x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state
                 )
             )
         else:
             pre_act = self.hook_pre(
                 einsum(
-                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_gate
+                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
+                    x,
+                    self.W_gate,
                 )
             )  # [batch, pos, d_mlp]
 
         if not self.cfg.act_fn.endswith("_ln"):
-
             if self.cfg.load_in_4bit:
                 pre_linear = self.hook_pre_linear(
                     bnb.matmul_4bit(
-                        x,
-                        self.W_in.t(),
-                        bias=None,
-                        quant_state=self.W_in.quant_state
+                        x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state
                     )
                 )
-            else:             
+            else:
                 pre_linear = self.hook_pre_linear(
                     einsum(
-                        "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in
+                        "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
+                        x,
+                        self.W_in,
                     )
                 )
 
@@ -1162,17 +1186,12 @@ class GatedMLP(nn.Module):
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
-        
+
         if self.cfg.load_in_4bit:
-            return (
-                bnb.matmul_4bit(
-                    post_act,
-                    self.W_out.t(),
-                    bias=None,
-                    quant_state=self.W_out.quant_state
-                )
+            return bnb.matmul_4bit(
+                post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
             )
-        else: 
+        else:
             return (
                 einsum(
                     "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
@@ -1181,6 +1200,7 @@ class GatedMLP(nn.Module):
                 )
                 + self.b_out
             )
+
 
 # Transformer Block
 class TransformerBlock(nn.Module):
