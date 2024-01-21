@@ -24,7 +24,7 @@ from transformer_lens.utils import gelu_fast, gelu_new, get_offset_position_ids,
 from transformers.utils import is_bitsandbytes_available
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
-    from bitsandbytes.nn.modules import Params4bit, Int8Params
+    from bitsandbytes.nn.modules import Params4bit
 
 # Embed & Unembed
 class Embed(nn.Module):
