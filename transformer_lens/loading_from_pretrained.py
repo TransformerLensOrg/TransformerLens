@@ -886,6 +886,8 @@ def get_pretrained_model_config(
     if fold_ln:
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
             cfg_dict["normalization_type"] = "LNPre"
+        elif cfg_dict["normalization_type"] in ["RMS", "RMSPre"]:
+            cfg_dict["normalization_type"] = "RMSPre"
         else:
             logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
 
