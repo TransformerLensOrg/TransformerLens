@@ -237,6 +237,9 @@ class HookedTransformer(HookedRootModule):
             Union[Literal["left", "right"], None]
         ] = USE_DEFAULT_VALUE,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
+        pad_token_id: Optional[int] = None,
+        bos_token_id: Optional[int] = None,
+        attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
         Optional[Int[torch.Tensor, "batch pos"]],  # tokens
@@ -256,6 +259,8 @@ class HookedTransformer(HookedRootModule):
                 multiple strings of different lengths.
             past_kv_cache (HookedTransformerKeyValueCache, optional): If passed, we're doing caching
                 and attention_mask will be stored in the cache.
+            attention_mask (torch.Tensor, optional): The attention mask for padded tokens. This will
+            override the attention mask. 
         """
         if type(input) == str or type(input) == list:
             # If text, convert to tokens (batch_size=1)
@@ -284,8 +289,8 @@ class HookedTransformer(HookedRootModule):
             if prepend_bos is USE_DEFAULT_VALUE:
                 prepend_bos = self.cfg.default_prepend_bos
             attention_mask = utils.get_attention_mask(
-                self.tokenizer, tokens, prepend_bos
-            )
+                self.tokenizer, tokens, prepend_bos, pad_token_id=pad_token_id, padding_side=padding_side, bos_token_id=bos_token_id
+            ) if attention_mask is None else attention_mask
 
             if past_kv_cache is not None:
                 # past_kv_cache is not None, so we're doing caching.
@@ -444,6 +449,8 @@ class HookedTransformer(HookedRootModule):
         loss_per_token: Optional[bool] = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
+        pad_token_id: Optional[int] = None,
+        bos_token_id: Optional[int] = None,
         start_at_layer: Optional[int] = None,
         tokens: Optional[Int[torch.Tensor, "batch pos"]] = None,
         shortformer_pos_embed: Optional[
@@ -487,6 +494,10 @@ class HookedTransformer(HookedRootModule):
             padding_side Optional[Literal["left", "right"]]: Overrides self.tokenizer.padding_side.
                 Specifies which side to pad on when tokenizing multiple strings of different
                 lengths.
+            pad_token_id Optional[int]: Overrides self.tokenizer.pad_token_id. The id of the pad
+                token. Defaults to None.
+            bos_token_id Optional[int]: Overrides self.tokenizer.bos_token_id. The id of the bos
+                token. Defaults to None.
             start_at_layer Optional[int]: If not None, start the forward pass at the specified
                 layer. Requires input to be the residual stream before the specified layer with
                 shape [batch, pos, d_model]. Inclusive - ie, start_at_layer = 0 skips the embedding
@@ -533,6 +544,9 @@ class HookedTransformer(HookedRootModule):
                     prepend_bos=prepend_bos,
                     padding_side=padding_side,
                     past_kv_cache=past_kv_cache,
+                    pad_token_id=pad_token_id,
+                    bos_token_id=bos_token_id,
+                    attention_mask=attention_mask,
                 )
             else:
                 assert type(input) == torch.Tensor
@@ -1816,9 +1830,12 @@ class HookedTransformer(HookedRootModule):
     def generate(
         self,
         input: Union[str, Float[torch.Tensor, "batch pos"]] = "",
+        attention_mask: Optional[torch.Tensor] = None, # [batch, pos]
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
         eos_token_id: Optional[int] = None,
+        pad_token_id: Optional[int] = None,
+        bos_token_id: Optional[int] = None,
         do_sample: bool = True,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
@@ -1846,6 +1863,7 @@ class HookedTransformer(HookedRootModule):
             input (Union[str, Int[torch.Tensor, "batch pos"])]): Either a batch of tokens ([batch,
                 pos]) or a text string (this will be converted to a batch of tokens with batch size
                 1).
+            attention_mask (Optional[torch.Tensor]): Attention mask to use for the input. 
             max_new_tokens (int): Maximum number of tokens to generate.
             stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token.
             eos_token_id (Optional[Union[int, Sequence]]): The token ID to use for end
@@ -1853,6 +1871,10 @@ class HookedTransformer(HookedRootModule):
                 stop_at_eos. It's also possible to provide a list of token IDs (not just the
                 eos_token_id), in which case the generation will stop when any of them are output
                 (useful e.g. for stable_lm).
+            pad_token_id (Optional[int]): The padding token ID to use for getting the attention mask. 
+                If the model has a tokenizer, this will be taken from the tokenizer. 
+            bos_token_id (Optional[int]): The beginning of sentence token ID to use for getting the attention mask.
+                If the model has a tokenizer, this will be taken from the tokenizer.
             do_sample (bool): If True, sample from the model's output distribution. Otherwise, use
                 greedy search (take the max logit each time).
             top_k (int): Number of tokens to sample from. If None, sample from all tokens.
@@ -1958,6 +1980,9 @@ class HookedTransformer(HookedRootModule):
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
+                            attention_mask=attention_mask,
+                            pad_token_id=pad_token_id,
+                            bos_token_id=bos_token_id,
                         )
                     else:
                         logits = self.forward(
@@ -1966,6 +1991,9 @@ class HookedTransformer(HookedRootModule):
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
+                            attention_mask=attention_mask,
+                            pad_token_id=pad_token_id,
+                            bos_token_id=bos_token_id
                         )
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using
@@ -1975,6 +2003,9 @@ class HookedTransformer(HookedRootModule):
                         return_type="logits",
                         prepend_bos=prepend_bos,
                         padding_side=padding_side,
+                        attention_mask=attention_mask,
+                        pad_token_id=pad_token_id,
+                        bos_token_id=bos_token_id,
                     )
                 final_logits = logits[:, -1, :]
 
