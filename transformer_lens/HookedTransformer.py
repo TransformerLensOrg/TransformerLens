@@ -1484,19 +1484,25 @@ class HookedTransformer(HookedRootModule):
                 ] + (
                     state_dict[f"blocks.{l}.attn.W_Q"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(-2)
+                ).sum(
+                    -2
+                )
                 state_dict[f"blocks.{l}.attn.b_K"] = state_dict[
                     f"blocks.{l}.attn.b_K"
                 ] + (
                     state_dict[f"blocks.{l}.attn.W_K"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(-2)
+                ).sum(
+                    -2
+                )
                 state_dict[f"blocks.{l}.attn.b_V"] = state_dict[
                     f"blocks.{l}.attn.b_V"
                 ] + (
                     state_dict[f"blocks.{l}.attn.W_V"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(-2)
+                ).sum(
+                    -2
+                )
                 del state_dict[f"blocks.{l}.ln1.b"]
 
             state_dict[f"blocks.{l}.attn.W_Q"] = (
@@ -1543,7 +1549,9 @@ class HookedTransformer(HookedRootModule):
                     ] + (
                         state_dict[f"blocks.{l}.mlp.W_in"]
                         * state_dict[f"blocks.{l}.ln2.b"][:, None]
-                    ).sum(-2)
+                    ).sum(
+                        -2
+                    )
                     del state_dict[f"blocks.{l}.ln2.b"]
 
                 state_dict[f"blocks.{l}.mlp.W_in"] = (
@@ -1575,7 +1583,9 @@ class HookedTransformer(HookedRootModule):
                         ] + (
                             state_dict[f"blocks.{l}.mlp.W_out"]
                             * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]
-                        ).sum(-2)
+                        ).sum(
+                            -2
+                        )
 
                         del state_dict[f"blocks.{l}.mlp.ln.b"]
 

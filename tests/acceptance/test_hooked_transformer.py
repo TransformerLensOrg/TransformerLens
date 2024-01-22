@@ -222,11 +222,16 @@ def check_norm_folding(
     del unfolded_model
     torch.cuda.empty_cache()
 
-    assert torch.allclose(torch.softmax(folded_logits, dim=-1), torch.softmax(unfolded_logits, dim=-1), atol=1e-2)
+    assert torch.allclose(
+        torch.softmax(folded_logits, dim=-1),
+        torch.softmax(unfolded_logits, dim=-1),
+        atol=1e-2,
+    )
 
     return torch.max(
         torch.abs(
-            torch.softmax(folded_logits, dim=-1) - torch.softmax(unfolded_logits, dim=-1)
+            torch.softmax(folded_logits, dim=-1)
+            - torch.softmax(unfolded_logits, dim=-1)
         )
     )
 
