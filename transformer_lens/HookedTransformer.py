@@ -1419,7 +1419,9 @@ class HookedTransformer(HookedRootModule):
             if self.cfg.normalization_type in ["LN", "LNPre"]:
                 state_dict = self.fold_layer_norm(state_dict)
             elif self.cfg.normalization_type in ["RMS", "RMSPre"]:
-                state_dict = self.fold_layer_norm(state_dict, fold_biases=False, center_weights=False)
+                state_dict = self.fold_layer_norm(
+                    state_dict, fold_biases=False, center_weights=False
+                )
             else:
                 logging.warning(
                     "You are not using LayerNorm or RMSNorm, so the layer norm weights can't be folded! Skipping"
@@ -1449,7 +1451,9 @@ class HookedTransformer(HookedRootModule):
     def fill_missing_keys(self, state_dict):
         return loading.fill_missing_keys(self, state_dict)
 
-    def fold_layer_norm(self, state_dict: Dict[str, torch.Tensor], fold_biases=True, center_weights=True):
+    def fold_layer_norm(
+        self, state_dict: Dict[str, torch.Tensor], fold_biases=True, center_weights=True
+    ):
         """Fold Layer Norm.
 
         Takes in a state dict from a pretrained model, formatted to be consistent with
@@ -1468,18 +1472,30 @@ class HookedTransformer(HookedRootModule):
             # the bias, we use the W_ matrix to map it to the hidden space of the layer, so we need
             # to sum along axis -2, which is the residual stream space axis.
             if fold_biases:
-                state_dict[f"blocks.{l}.attn.b_Q"] = state_dict[f"blocks.{l}.attn.b_Q"] + (
+                state_dict[f"blocks.{l}.attn.b_Q"] = state_dict[
+                    f"blocks.{l}.attn.b_Q"
+                ] + (
                     state_dict[f"blocks.{l}.attn.W_Q"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(-2)
-                state_dict[f"blocks.{l}.attn.b_K"] = state_dict[f"blocks.{l}.attn.b_K"] + (
+                ).sum(
+                    -2
+                )
+                state_dict[f"blocks.{l}.attn.b_K"] = state_dict[
+                    f"blocks.{l}.attn.b_K"
+                ] + (
                     state_dict[f"blocks.{l}.attn.W_K"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(-2)
-                state_dict[f"blocks.{l}.attn.b_V"] = state_dict[f"blocks.{l}.attn.b_V"] + (
+                ).sum(
+                    -2
+                )
+                state_dict[f"blocks.{l}.attn.b_V"] = state_dict[
+                    f"blocks.{l}.attn.b_V"
+                ] + (
                     state_dict[f"blocks.{l}.attn.W_V"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(-2)
+                ).sum(
+                    -2
+                )
                 del state_dict[f"blocks.{l}.ln1.b"]
 
             state_dict[f"blocks.{l}.attn.W_Q"] = (
@@ -1579,7 +1595,7 @@ class HookedTransformer(HookedRootModule):
                             "mean",
                         )
 
-                    del state_dict[f"blocks.{l}.mlp.ln.w"],
+                    del state_dict[f"blocks.{l}.mlp.ln.w"]
 
         # Fold ln_final into Unembed
         if not self.cfg.final_rms and fold_biases:

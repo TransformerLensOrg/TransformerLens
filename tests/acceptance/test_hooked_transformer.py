@@ -167,7 +167,14 @@ def test_from_pretrained_revision():
         raise AssertionError("Should have raised an error")
 
 
-def check_norm_folding(model_name, hf_model=None, tokenizer=None, prompt="Hello, world!", device=None, dtype=None):
+def check_norm_folding(
+    model_name,
+    hf_model=None,
+    tokenizer=None,
+    prompt="Hello, world!",
+    device=None,
+    dtype=None,
+):
     """
     Checks that loading a model with Layer/RMS Norm folding enabled does not (significantly) change its outputs.
 
@@ -187,18 +194,37 @@ def check_norm_folding(model_name, hf_model=None, tokenizer=None, prompt="Hello,
         else:
             dtype = "float32"
 
-    folded = HookedTransformer.from_pretrained(model_name=model_name, hf_model=hf_model, device=device, tokenizer=tokenizer, dtype=dtype, fold_ln=True)
+    folded = HookedTransformer.from_pretrained(
+        model_name=model_name,
+        hf_model=hf_model,
+        device=device,
+        tokenizer=tokenizer,
+        dtype=dtype,
+        fold_ln=True,
+    )
     tokens = folded.tokenizer.encode(prompt, return_tensors="pt")
     folded_logits = folded(tokens).detach()
     del folded
     torch.cuda.empty_cache()
 
-    unfolded = HookedTransformer.from_pretrained(model_name=model_name, hf_model=hf_model, device=device, tokenizer=tokenizer, dtype=dtype,  fold_ln=False)
+    unfolded = HookedTransformer.from_pretrained(
+        model_name=model_name,
+        hf_model=hf_model,
+        device=device,
+        tokenizer=tokenizer,
+        dtype=dtype,
+        fold_ln=False,
+    )
     unfolded_logits = unfolded(tokens).detach()
     del unfolded
     torch.cuda.empty_cache()
 
-    return torch.max(torch.abs(torch.softmax(folded_logits, dim=-1) - torch.softmax(unfolded_logits, dim=-1)))
+    return torch.max(
+        torch.abs(
+            torch.softmax(folded_logits, dim=-1)
+            - torch.softmax(unfolded_logits, dim=-1)
+        )
+    )
 
 
 def check_similarity_with_hf_model(tl_model, hf_model, prompt="Hello, world!"):
