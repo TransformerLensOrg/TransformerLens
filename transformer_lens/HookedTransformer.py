@@ -1469,8 +1469,8 @@ class HookedTransformer(HookedRootModule):
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of pretrained model.
-            fold_biases Enables folding of LN biases. Should be disabled when RMS Norm is used.
-            center_weights Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
+            fold_biases (bool): Enables folding of LN biases. Should be disabled when RMS Norm is used.
+            center_weights (bool): Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
         """
         for l in range(self.cfg.n_layers):
             # Fold ln1 into attention - it's important to fold biases first, since biases depend on
