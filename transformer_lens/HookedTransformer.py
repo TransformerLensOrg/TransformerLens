@@ -1461,7 +1461,7 @@ class HookedTransformer(HookedRootModule):
     def fold_layer_norm(
         self, state_dict: Dict[str, torch.Tensor], fold_biases=True, center_weights=True
     ):
-        """Fold Layer Norm.
+        """Fold Layer Norm. Can also be used to fold RMS Norm, when fold_biases and center_weights are set to False.
 
         Takes in a state dict from a pretrained model, formatted to be consistent with
         HookedTransformer but with LayerNorm weights and biases. Folds these into the neighbouring
@@ -1469,8 +1469,8 @@ class HookedTransformer(HookedRootModule):
 
         Args:
             state_dict (Dict[str, torch.Tensor]): State dict of pretrained model.
-            :param fold_biases: Enables folding of LN biases. Should be disabled when RMS Norm is used.
-            :param center_weights: Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
+            fold_biases Enables folding of LN biases. Should be disabled when RMS Norm is used.
+            center_weights Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
         """
         for l in range(self.cfg.n_layers):
             # Fold ln1 into attention - it's important to fold biases first, since biases depend on
@@ -1484,25 +1484,19 @@ class HookedTransformer(HookedRootModule):
                 ] + (
                     state_dict[f"blocks.{l}.attn.W_Q"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(
-                    -2
-                )
+                ).sum(-2)
                 state_dict[f"blocks.{l}.attn.b_K"] = state_dict[
                     f"blocks.{l}.attn.b_K"
                 ] + (
                     state_dict[f"blocks.{l}.attn.W_K"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(
-                    -2
-                )
+                ).sum(-2)
                 state_dict[f"blocks.{l}.attn.b_V"] = state_dict[
                     f"blocks.{l}.attn.b_V"
                 ] + (
                     state_dict[f"blocks.{l}.attn.W_V"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
-                ).sum(
-                    -2
-                )
+                ).sum(-2)
                 del state_dict[f"blocks.{l}.ln1.b"]
 
             state_dict[f"blocks.{l}.attn.W_Q"] = (
@@ -1549,9 +1543,7 @@ class HookedTransformer(HookedRootModule):
                     ] + (
                         state_dict[f"blocks.{l}.mlp.W_in"]
                         * state_dict[f"blocks.{l}.ln2.b"][:, None]
-                    ).sum(
-                        -2
-                    )
+                    ).sum(-2)
                     del state_dict[f"blocks.{l}.ln2.b"]
 
                 state_dict[f"blocks.{l}.mlp.W_in"] = (
@@ -1583,9 +1575,7 @@ class HookedTransformer(HookedRootModule):
                         ] + (
                             state_dict[f"blocks.{l}.mlp.W_out"]
                             * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]
-                        ).sum(
-                            -2
-                        )
+                        ).sum(-2)
 
                         del state_dict[f"blocks.{l}.mlp.ln.b"]
 

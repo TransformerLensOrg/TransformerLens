@@ -178,7 +178,10 @@ def check_norm_folding(
     """
     Checks that loading a model with Layer/RMS Norm folding enabled does not (significantly) change its outputs.
 
-    :return: The maximum difference between the logits produced by the same model with and without norm folding enabled.
+    Returns the maximum difference between the logits produced by the same model with and without norm folding enabled.
+
+    Also asserts that this difference is within some tolerance, although this is deliberately set to a high value
+    in order to account for lower precision models.
     """
 
     # If a device/dtype is not specified, and hf_model is provided, use its device/dtype
@@ -194,7 +197,7 @@ def check_norm_folding(
         else:
             dtype = "float32"
 
-    folded = HookedTransformer.from_pretrained(
+    folded_model = HookedTransformer.from_pretrained(
         model_name=model_name,
         hf_model=hf_model,
         device=device,
@@ -202,12 +205,12 @@ def check_norm_folding(
         dtype=dtype,
         fold_ln=True,
     )
-    tokens = folded.tokenizer.encode(prompt, return_tensors="pt")
-    folded_logits = folded(tokens).detach()
-    del folded
+    tokens = folded_model.to_tokens(prompt)
+    folded_logits = folded_model(tokens).detach()
+    del folded_model
     torch.cuda.empty_cache()
 
-    unfolded = HookedTransformer.from_pretrained(
+    unfolded_model = HookedTransformer.from_pretrained(
         model_name=model_name,
         hf_model=hf_model,
         device=device,
@@ -215,14 +218,15 @@ def check_norm_folding(
         dtype=dtype,
         fold_ln=False,
     )
-    unfolded_logits = unfolded(tokens).detach()
-    del unfolded
+    unfolded_logits = unfolded_model(tokens).detach()
+    del unfolded_model
     torch.cuda.empty_cache()
+
+    assert torch.allclose(torch.softmax(folded_logits, dim=-1), torch.softmax(unfolded_logits, dim=-1), atol=1e-2)
 
     return torch.max(
         torch.abs(
-            torch.softmax(folded_logits, dim=-1)
-            - torch.softmax(unfolded_logits, dim=-1)
+            torch.softmax(folded_logits, dim=-1) - torch.softmax(unfolded_logits, dim=-1)
         )
     )
 
