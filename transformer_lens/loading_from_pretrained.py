@@ -1019,6 +1019,8 @@ def get_pretrained_model_config(
     if fold_ln:
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
             cfg_dict["normalization_type"] = "LNPre"
+        elif cfg_dict["normalization_type"] in ["RMS", "RMSPre"]:
+            cfg_dict["normalization_type"] = "RMSPre"
         else:
             logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
 
@@ -1530,7 +1532,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
         W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
-        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O.to(device=cfg.device)
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
             cfg.d_model, dtype=cfg.dtype, device=cfg.device
