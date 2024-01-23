@@ -205,7 +205,7 @@ def check_norm_folding(
         dtype=dtype,
         fold_ln=True,
         center_writing_weights=False,
-        center_unembed=False
+        center_unembed=False,
     )
     tokens = folded_model.to_tokens(prompt)
     folded_logits = folded_model(tokens).detach()
@@ -220,7 +220,7 @@ def check_norm_folding(
         dtype=dtype,
         fold_ln=False,
         center_writing_weights=False,
-        center_unembed=False
+        center_unembed=False,
     )
     unfolded_logits = unfolded_model(tokens).detach()
     del unfolded_model
