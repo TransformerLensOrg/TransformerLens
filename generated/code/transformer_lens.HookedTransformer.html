@@ -495,14 +495,18 @@ is done in-place. See fold_layer_norm for more details.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.fold_layer_norm">
-<span class="sig-name descname"><span class="pre">fold_layer_norm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.fold_layer_norm" title="Permalink to this definition">#</a></dt>
-<dd><p>Fold Layer Norm.</p>
+<span class="sig-name descname"><span class="pre">fold_layer_norm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_biases</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.fold_layer_norm" title="Permalink to this definition">#</a></dt>
+<dd><p>Fold Layer Norm. Can also be used to fold RMS Norm, when fold_biases and center_weights are set to False.</p>
 <p>Takes in a state dict from a pretrained model, formatted to be consistent with
 HookedTransformer but with LayerNorm weights and biases. Folds these into the neighbouring
 weights. See further_comments.md for more details.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>state_dict</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>torch.Tensor</em><em>]</em>) – State dict of pretrained model.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>state_dict</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>torch.Tensor</em><em>]</em>) – State dict of pretrained model.</p></li>
+<li><p><strong>fold_biases</strong> (<em>bool</em>) – Enables folding of LN biases. Should be disabled when RMS Norm is used.</p></li>
+<li><p><strong>center_weights</strong> (<em>bool</em>) – Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
