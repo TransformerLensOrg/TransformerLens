@@ -1472,6 +1472,12 @@ class HookedTransformer(HookedRootModule):
             fold_biases (bool): Enables folding of LN biases. Should be disabled when RMS Norm is used.
             center_weights (bool): Enables the centering of weights after folding in LN. Should be disabled when RMS Norm is used.
         """
+
+        # Models that use Grouped Query Attention (Only Mistral at the time of writing) prefix their K/V weights and
+        # biases with an underscore in order to distinguish them, but folding the LN into them still works the same,
+        # so we just add the underscore if GQA is used (i.e. if `cfg.n_key_value_heads is specified`).
+        gqa = "" if self.cfg.n_key_value_heads is None else "_"
+
         for l in range(self.cfg.n_layers):
             # Fold ln1 into attention - it's important to fold biases first, since biases depend on
             # weights but not vice versa The various indexing is just to broadcast ln.b and ln.w
@@ -1487,18 +1493,18 @@ class HookedTransformer(HookedRootModule):
                 ).sum(
                     -2
                 )
-                state_dict[f"blocks.{l}.attn.b_K"] = state_dict[
-                    f"blocks.{l}.attn.b_K"
+                state_dict[f"blocks.{l}.attn.{gqa}b_K"] = state_dict[
+                    f"blocks.{l}.attn.{gqa}b_K"
                 ] + (
-                    state_dict[f"blocks.{l}.attn.W_K"]
+                    state_dict[f"blocks.{l}.attn.{gqa}W_K"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
                 ).sum(
                     -2
                 )
-                state_dict[f"blocks.{l}.attn.b_V"] = state_dict[
-                    f"blocks.{l}.attn.b_V"
+                state_dict[f"blocks.{l}.attn.{gqa}b_V"] = state_dict[
+                    f"blocks.{l}.attn.{gqa}b_V"
                 ] + (
-                    state_dict[f"blocks.{l}.attn.W_V"]
+                    state_dict[f"blocks.{l}.attn.{gqa}W_V"]
                     * state_dict[f"blocks.{l}.ln1.b"][None, :, None]
                 ).sum(
                     -2
@@ -1509,12 +1515,12 @@ class HookedTransformer(HookedRootModule):
                 state_dict[f"blocks.{l}.attn.W_Q"]
                 * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             )
-            state_dict[f"blocks.{l}.attn.W_K"] = (
-                state_dict[f"blocks.{l}.attn.W_K"]
+            state_dict[f"blocks.{l}.attn.{gqa}W_K"] = (
+                state_dict[f"blocks.{l}.attn.{gqa}W_K"]
                 * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             )
-            state_dict[f"blocks.{l}.attn.W_V"] = (
-                state_dict[f"blocks.{l}.attn.W_V"]
+            state_dict[f"blocks.{l}.attn.{gqa}W_V"] = (
+                state_dict[f"blocks.{l}.attn.{gqa}W_V"]
                 * state_dict[f"blocks.{l}.ln1.w"][None, :, None]
             )
             del state_dict[f"blocks.{l}.ln1.w"]
@@ -1530,13 +1536,13 @@ class HookedTransformer(HookedRootModule):
                     "head_index d_model d_head -> head_index 1 d_head",
                     "mean",
                 )
-                state_dict[f"blocks.{l}.attn.W_K"] -= einops.reduce(
-                    state_dict[f"blocks.{l}.attn.W_K"],
+                state_dict[f"blocks.{l}.attn.{gqa}W_K"] -= einops.reduce(
+                    state_dict[f"blocks.{l}.attn.{gqa}W_K"],
                     "head_index d_model d_head -> head_index 1 d_head",
                     "mean",
                 )
-                state_dict[f"blocks.{l}.attn.W_V"] -= einops.reduce(
-                    state_dict[f"blocks.{l}.attn.W_V"],
+                state_dict[f"blocks.{l}.attn.{gqa}W_V"] -= einops.reduce(
+                    state_dict[f"blocks.{l}.attn.{gqa}W_V"],
                     "head_index d_model d_head -> head_index 1 d_head",
                     "mean",
                 )
