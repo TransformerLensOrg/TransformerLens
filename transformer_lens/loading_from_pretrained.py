@@ -1532,7 +1532,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
         W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
-        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O.to(device=cfg.device)
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
             cfg.d_model, dtype=cfg.dtype, device=cfg.device
