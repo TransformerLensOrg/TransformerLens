@@ -124,7 +124,7 @@ class HookedTransformer(HookedRootModule):
             else:
                 # Hugging Face defaults to use_fast to True
                 use_fast = True
-                # Phi model's tokenizer does not support adding a BOS token, use_fast
+                # Phi model's fast tokenizer does not support adding a BOS token, use_fast
                 # should be False
                 if "phi" in self.cfg.tokenizer_name.lower():
                     use_fast = False
