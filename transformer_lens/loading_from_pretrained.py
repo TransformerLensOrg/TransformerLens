@@ -975,8 +975,8 @@ def get_pretrained_model_config(
             so this empirically seems to give better results. To change the default behavior to False, pass in
             default_prepend_bos=False. Note that you can also locally override the default behavior by passing
             in prepend_bos=True/False when you call a method that processes the input string.
-        max_context_length (int, optional): The maximum value of `n_ctx` to use for the model.
-            If None, `n_ctx` is left uncapped. Defaults to None.
+        max_context_length (int, optional): The maximum value of :attr:`transformer_lens.HookedTransformer.n_ctx` to use
+            for the model. If None, `n_ctx` is left unchanged. Defaults to None.
         dtype (torch.dtype, optional): The dtype to load the TransformerLens model in.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
             Also given to other HuggingFace functions when compatible.
