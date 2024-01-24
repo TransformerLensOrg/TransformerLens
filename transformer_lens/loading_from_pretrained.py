@@ -153,6 +153,8 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen-1_8B-Chat",
     "Qwen/Qwen-7B-Chat",
     "Qwen/Qwen-14B-Chat",
+    "01-ai/Yi-6B",
+    "01-ai/Yi-34B",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -540,6 +542,8 @@ MODEL_ALIASES = {
     "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
     "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
     "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
+    "01-ai/Yi-6B": ["yi-6b"],
+    "01-ai/Yi-34B": ["yi-34b"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -861,6 +865,30 @@ def convert_hf_model_config(model_name: str, **kwargs):
             in official_model_name,  # Only santacoder needs trust_remote_code
             "scale_attn_by_inverse_layer_idx": hf_config.scale_attn_by_inverse_layer_idx,
             "normalization_type": "LN",
+        }
+    elif architecture == "LlamaForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "n_key_value_heads": hf_config.num_key_value_heads
+            if hf_config.num_key_value_heads != hf_config.num_attention_heads
+            else None,
+            # This is done because the current implementation of GQA will use Grouped-Query Attention if
+            # n_key_value_heads is not None, but hf_config.num_key_value_heads is sometimes specified as
+            # the same as hf_config.num_attention_heads, in which case GQA should not be used.
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            "final_rms": True,
+            "gated_mlp": True,
         }
     elif architecture == "QWenLMHeadModel":
         cfg_dict = {
@@ -1504,6 +1532,10 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
     state_dict["embed.W_E"] = llama.model.embed_tokens.weight
 
+    # Some models (Only Yi for now) use the Llama architecture with Grouped Query Attention, and so we need to modify
+    # the state dict keys for the K/V attention weight/biases, prepending "_" to the key names.
+    gqa = "_" if cfg.n_key_value_heads is not None else ""
+
     # llama has no biases anywhere and deals with everything else roughly like
     # GPTNeoX with different names
 
@@ -1517,16 +1549,16 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
         W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
-        state_dict[f"blocks.{l}.attn.W_K"] = W_K
-        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+        state_dict[f"blocks.{l}.attn.{gqa}W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.{gqa}W_V"] = W_V
 
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
-        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(
+        state_dict[f"blocks.{l}.attn.{gqa}b_K"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
-        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(
+        state_dict[f"blocks.{l}.attn.{gqa}b_V"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
 
