@@ -122,11 +122,18 @@ class HookedTransformer(HookedRootModule):
                 # llama tokenizer requires special handling
                 logging.warning("LLaMA tokenizer not loaded. Please load manually.")
             else:
+                # Hugging Face defaults to use_fast to True
+                use_fast = True
+                # Phi model's tokenizer does not support adding a BOS token, use_fast
+                # should be False
+                if "phi" in self.cfg.tokenizer_name.lower():
+                    use_fast = False
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
                         self.cfg.tokenizer_name,
                         add_bos_token=True,
                         trust_remote_code=self.cfg.trust_remote_code,
+                        use_fast=use_fast,
                     ),
                     default_padding_side=default_padding_side,
                 )
