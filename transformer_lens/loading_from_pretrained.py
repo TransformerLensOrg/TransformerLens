@@ -860,7 +860,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_ctx": hf_config.max_position_embeddings,
             "eps": hf_config.layer_norm_eps,
             "d_vocab": hf_config.vocab_size,
-            "act_fn": "gelu_new",
+            "act_fn": hf_config.hidden_act,
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "LN",
             "positional_embedding_type": "rotary",
