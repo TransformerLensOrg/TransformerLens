@@ -869,7 +869,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size // 2,
             "n_layers": hf_config.num_hidden_layers,
-            "n_ctx": 2048,  # Capped bc the actual ctx length is 30k and the attn mask would be too big
+            "n_ctx": hf_config.seq_length,
             "eps": hf_config.layer_norm_epsilon,
             "d_vocab": hf_config.vocab_size,
             "act_fn": "silu",
@@ -942,6 +942,7 @@ def get_pretrained_model_config(
     device: Optional[str] = None,
     n_devices: int = 1,
     default_prepend_bos: bool = True,
+    max_context_length: Optional[int] = None,
     dtype: torch.dtype = torch.float32,
     **kwargs,
 ):
@@ -974,6 +975,8 @@ def get_pretrained_model_config(
             so this empirically seems to give better results. To change the default behavior to False, pass in
             default_prepend_bos=False. Note that you can also locally override the default behavior by passing
             in prepend_bos=True/False when you call a method that processes the input string.
+        max_context_length (int, optional): The maximum value of `n_ctx` to use for the model.
+            If None, `n_ctx` is left uncapped. Defaults to None.
         dtype (torch.dtype, optional): The dtype to load the TransformerLens model in.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
             Also given to other HuggingFace functions when compatible.
@@ -1015,6 +1018,10 @@ def get_pretrained_model_config(
         cfg_dict["device"] = device
 
     cfg_dict["dtype"] = dtype
+
+    # If max_context_length is specified, use it to cap n_ctx
+    if max_context_length and "n_ctx" in cfg_dict:
+        cfg_dict["n_ctx"] = min(cfg_dict["n_ctx"], max_context_length)
 
     if fold_ln:
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:

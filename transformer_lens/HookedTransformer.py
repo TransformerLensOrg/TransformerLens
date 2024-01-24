@@ -1089,6 +1089,7 @@ class HookedTransformer(HookedRootModule):
         fold_value_biases: Optional[bool] = True,
         default_prepend_bos: Optional[bool] = True,
         default_padding_side: Optional[Literal["left", "right"]] = "right",
+        max_context_length: Optional[int] = 2048,
         dtype="float32",
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
@@ -1219,6 +1220,9 @@ class HookedTransformer(HookedRootModule):
                 other HuggingFace functions when compatible. For some models or arguments it doesn't
                 work, especially for models that are not internally loaded with HuggingFace's
                 from_pretrained (e.g. SoLU models).
+            max_context_length: The maximum context length to use for the model. Defaults to 2048. Can be set to
+                None to use the full context length of the model. Unless a larger context length is needed, it is
+                recommended to use the default value, as longer context lengths are highly memory intensive.
             dtype: What data type to load the model in (also sets the dtype of
                 the HuggingFace model). Set to bfloat16 or float16 if you get out of memory errors when loading
                 the model.
@@ -1260,6 +1264,7 @@ class HookedTransformer(HookedRootModule):
             device=device,
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
+            max_context_length=max_context_length,
             dtype=dtype,
             **from_pretrained_kwargs,
         )
