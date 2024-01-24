@@ -1534,7 +1534,8 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
     # Some models (Only Yi for now) use the Llama architecture with Grouped Query Attention, and so we need to modify
     # the state dict keys for the K/V attention weight/biases, prepending "_" to the key names.
-    gqa = "_" if cfg.n_key_value_heads is not None else ""
+    using_gqa = cfg.n_key_value_heads is not None
+    gqa_uscore = "_" if using_gqa else ""
 
     # llama has no biases anywhere and deals with everything else roughly like
     # GPTNeoX with different names
@@ -1549,17 +1550,17 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
         W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
-        state_dict[f"blocks.{l}.attn.{gqa}W_K"] = W_K
-        state_dict[f"blocks.{l}.attn.{gqa}W_V"] = W_V
+        state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = W_V
 
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
-        state_dict[f"blocks.{l}.attn.{gqa}b_K"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
+        state_dict[f"blocks.{l}.attn.{gqa_uscore}b_K"] = torch.zeros(
+            cfg.n_key_value_heads if using_gqa else cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
-        state_dict[f"blocks.{l}.attn.{gqa}b_V"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
+        state_dict[f"blocks.{l}.attn.{gqa_uscore}b_V"] = torch.zeros(
+            cfg.n_key_value_heads if using_gqa else cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
