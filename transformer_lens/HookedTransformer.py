@@ -1331,6 +1331,7 @@ class HookedTransformer(HookedRootModule):
         dtype=torch.float32,
         default_prepend_bos=True,
         default_padding_side="right",
+        max_context_length=None,
         **from_pretrained_kwargs,
     ):
         """Wrapper for from_pretrained.
@@ -1348,6 +1349,7 @@ class HookedTransformer(HookedRootModule):
             dtype=dtype,
             default_prepend_bos=default_prepend_bos,
             default_padding_side=default_padding_side,
+            max_context_length=max_context_length,
             **from_pretrained_kwargs,
         )
 
