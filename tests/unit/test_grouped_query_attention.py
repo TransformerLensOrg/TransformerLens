@@ -51,10 +51,9 @@ def test_grouped_query_attention_output_is_correct():
         "b_K": b_K,
         "W_V": W_V,
         "b_V": b_V,
-        "mask": regular_attention.state_dict()["mask"],
         "IGNORE": regular_attention.state_dict()["IGNORE"],
     }
-    grouped_query_attemtion_state_dict = {
+    grouped_query_attention_state_dict = {
         "W_Q": W_Q,
         "b_Q": b_Q,
         "W_O": W_O,
@@ -63,12 +62,11 @@ def test_grouped_query_attention_output_is_correct():
         "_b_K": _b_K,
         "_W_V": _W_V,
         "_b_V": _b_V,
-        "mask": grouped_query_attention.state_dict()["mask"],
         "IGNORE": grouped_query_attention.state_dict()["IGNORE"],
     }
 
     regular_attention.load_state_dict(regular_attention_state_dict)
-    grouped_query_attention.load_state_dict(grouped_query_attemtion_state_dict)
+    grouped_query_attention.load_state_dict(grouped_query_attention_state_dict)
 
     query_input = torch.rand((1, 5, d_model))
     key_input = torch.rand((1, 5, d_model))

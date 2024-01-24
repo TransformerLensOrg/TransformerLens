@@ -424,19 +424,8 @@ class AbstractAttention(ABC, nn.Module):
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.attn_type = attn_type
-        # Create a max_ctx x max_ctx mask, with True iff that query position
-        # can attend to that key position (query is first axis, key is second axis)
-        causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
-        if self.attn_type == "global":
-            # For global attention, this is a lower triangular matrix - key <= query
-            self.register_buffer("mask", causal_mask)
-        elif self.attn_type == "local":
-            # For local, this is banded, query - window_size < key <= query
-            assert isinstance(self.cfg.window_size, int)
-            self.register_buffer(
-                "mask", torch.triu(causal_mask, 1 - self.cfg.window_size)
-            )
-        else:
+
+        if self.attn_type not in ["global", "local"]:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
         self.register_buffer("IGNORE", torch.tensor(-torch.inf))
@@ -723,10 +712,32 @@ class AbstractAttention(ABC, nn.Module):
             query_ctx_length + past_kv_pos_offset == key_ctx_length
         ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
 
+        full_ctx_length = key_ctx_length
+
+        # Construct causal mask on-the-fly
+        if self.attn_type == "global":
+            # For global attention, this is a lower triangular matrix - key <= query
+            causal_mask = torch.tril(
+                torch.ones(
+                    (full_ctx_length, full_ctx_length), device=attn_scores.device
+                ).bool()
+            )
+        elif self.attn_type == "local":
+            # For local, this is banded, query - window_size < key <= query
+            assert isinstance(self.cfg.window_size, int)
+            causal_mask = torch.tril(
+                torch.ones(
+                    (full_ctx_length, full_ctx_length), device=attn_scores.device
+                ).bool()
+            )
+            causal_mask = torch.triu(causal_mask, 1 - self.cfg.window_size)
+        else:
+            raise ValueError(f"Invalid attention type: {self.attn_type}")
+
         # Index back to front to ensure local attention works
-        final_mask = self.mask[
+        final_mask = causal_mask[
             None, None, -query_ctx_length:, -key_ctx_length:
-        ]  # [1, 1, pos, pos]
+        ]  # [1, 1, query_ctx_length, key_ctx_length]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
             einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
