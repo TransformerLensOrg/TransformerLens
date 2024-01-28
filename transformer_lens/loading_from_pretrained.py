@@ -153,6 +153,9 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen-1_8B-Chat",
     "Qwen/Qwen-7B-Chat",
     "Qwen/Qwen-14B-Chat",
+    "microsoft/phi-1",
+    "microsoft/phi-1_5",
+    "microsoft/phi-2",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -540,6 +543,9 @@ MODEL_ALIASES = {
     "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
     "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
     "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
+    "microsoft/phi-1": ["phi-1"],
+    "microsoft/phi-1_5": ["phi-1_5"],
+    "microsoft/phi-2": ["phi-2"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -557,7 +563,13 @@ DEFAULT_MODEL_ALIASES = [
     for name in OFFICIAL_MODEL_NAMES
 ]
 
-NEED_REMOTE_CODE_MODELS = ("bigcode/santacoder", "Qwen/Qwen-")
+NEED_REMOTE_CODE_MODELS = (
+    "bigcode/santacoder",
+    "Qwen/Qwen-",
+    "microsoft/phi-1",
+    "microsoft/phi-1_5",
+    "microsoft/phi-2",
+)
 
 
 def make_model_alias_map():
@@ -884,6 +896,29 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "gated_mlp": True,
         }
+    elif architecture == "PhiForCausalLM":
+        # Architecture for microsoft/phi models
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.layer_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "LN",
+            "positional_embedding_type": "rotary",
+            "trust_remote_code": True,
+            "rotary_base": hf_config.rope_theta,
+            "use_attn_scale": True,
+            "parallel_attn_mlp": True,
+        }
+        partial_rotary_factor = hf_config.partial_rotary_factor
+        cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
+
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
@@ -1230,6 +1265,8 @@ def get_pretrained_state_dict(
             state_dict = convert_coder_weights(hf_model, cfg)
         elif cfg.original_architecture == "QWenLMHeadModel":
             state_dict = convert_qwen_weights(hf_model, cfg)
+        elif cfg.original_architecture == "PhiForCausalLM":
+            state_dict = convert_phi_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -2162,6 +2199,73 @@ def convert_coder_weights(model, cfg: HookedTransformerConfig):
 
     state_dict["ln_final.w"] = model.transformer.ln_f.weight
     state_dict["ln_final.b"] = model.transformer.ln_f.bias
+    return state_dict
+
+
+def convert_phi_weights(phi, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = phi.model.embed_tokens.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = phi.model.layers[l].input_layernorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = phi.model.layers[l].input_layernorm.bias
+
+        W_Q = phi.model.layers[l].self_attn.q_proj.weight
+        W_K = phi.model.layers[l].self_attn.k_proj.weight
+        W_V = phi.model.layers[l].self_attn.v_proj.weight
+        W_Q = einops.rearrange(
+            W_Q, "(n_head d_head) d_model -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        W_K = einops.rearrange(
+            W_K, "(n_head d_head) d_model  -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        W_V = einops.rearrange(
+            W_V, "(n_head d_head) d_model  -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        b_Q = phi.model.layers[l].self_attn.q_proj.bias
+        b_K = phi.model.layers[l].self_attn.k_proj.bias
+        b_V = phi.model.layers[l].self_attn.v_proj.bias
+        b_Q = einops.rearrange(
+            b_Q, "(n_head d_head) -> n_head d_head", n_head=cfg.n_heads
+        )
+        b_K = einops.rearrange(
+            b_K, "(n_head d_head) -> n_head d_head", n_head=cfg.n_heads
+        )
+        b_V = einops.rearrange(
+            b_V, "(n_head d_head) -> n_head d_head", n_head=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.b_Q"] = b_Q
+        state_dict[f"blocks.{l}.attn.b_K"] = b_K
+        state_dict[f"blocks.{l}.attn.b_V"] = b_V
+
+        W_O = phi.model.layers[l].self_attn.dense.weight
+        W_O = einops.rearrange(
+            W_O, "d_model (n_head d_head) -> n_head d_head d_model", n_head=cfg.n_heads
+        )
+
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = phi.model.layers[l].self_attn.dense.bias
+
+        # Layer Norm 1 and 2 are tied.
+        state_dict[f"blocks.{l}.ln2.w"] = state_dict[f"blocks.{l}.ln1.w"]
+        state_dict[f"blocks.{l}.ln2.b"] = state_dict[f"blocks.{l}.ln1.b"]
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = phi.model.layers[l].mlp.fc1.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = phi.model.layers[l].mlp.fc1.bias
+        state_dict[f"blocks.{l}.mlp.W_out"] = phi.model.layers[l].mlp.fc2.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = phi.model.layers[l].mlp.fc2.bias
+
+    state_dict["ln_final.w"] = phi.model.final_layernorm.weight
+    state_dict["ln_final.b"] = phi.model.final_layernorm.bias
+
+    state_dict["unembed.W_U"] = phi.lm_head.weight.T
+    state_dict["unembed.b_U"] = phi.lm_head.bias
+
     return state_dict
 
 
