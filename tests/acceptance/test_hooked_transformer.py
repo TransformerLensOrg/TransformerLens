@@ -33,6 +33,9 @@ model_names = [
     "tiny-stories-33M",
     "bloom-560m",
     "santacoder",
+    "microsoft/phi-1",
+    "microsoft/phi-1_5",
+    "microsoft/phi-2",
 ]
 text = "Hello world!"
 """ 
