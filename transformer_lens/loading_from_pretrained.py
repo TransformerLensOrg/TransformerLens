@@ -155,6 +155,8 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen-14B-Chat",
     "01-ai/Yi-6B",
     "01-ai/Yi-34B",
+    "01-ai/Yi-6B-Chat",
+    "01-ai/Yi-34B-Chat",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -542,8 +544,10 @@ MODEL_ALIASES = {
     "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
     "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
     "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
-    "01-ai/Yi-6B": ["yi-6b"],
-    "01-ai/Yi-34B": ["yi-34b"],
+    "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
+    "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
+    "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
+    "01-ai/Yi-34B-Chat": ["yi-34b-chat", "Yi-34B-Chat"],
 }
 """Model aliases for models on HuggingFace."""
 
