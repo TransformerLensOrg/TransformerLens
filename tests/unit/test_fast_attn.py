@@ -21,8 +21,8 @@ class TestFastAttn:
         return HookedTransformer.from_pretrained(model_name)
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires a CUDA device")
-    def test_logits_and_cache(self, model_name):
-        model = HookedTransformer.from_pretrained(model_name).to("cuda")
+    def test_logits_and_cache(self, model):
+        model.to("cuda")
         model.cfg.use_fast_attn = True
         fast_logits, fast_cache = model.run_with_cache(self.prompt)
         model.cfg.use_fast_attn = False
