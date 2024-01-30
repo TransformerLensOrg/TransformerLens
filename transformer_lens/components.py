@@ -553,39 +553,48 @@ class AbstractAttention(ABC, nn.Module):
             q = q.to(torch.float32)
             k = k.to(torch.float32)
 
-        attn_scores = self.calculate_attention_scores(
-            q, k
-        )  # [batch, head_index, query_pos, key_pos]
+        if self.cfg.use_fast_attn:
+            z = self.calculate_z_with_sdpa(q, k, v)  # [batch, pos, head_index, d_head]
 
-        if self.cfg.positional_embedding_type == "alibi":
-            query_ctx = attn_scores.size(-2)
-            # The key context length is the number of positions in the past - this includes all positions in the cache
-            key_ctx = attn_scores.size(-1)
-
-            # only recompute when necessary to increase efficiency.
-            if self.alibi is None or key_ctx > self.alibi.size(-1):
-                self.alibi = Attention.create_alibi_bias(
-                    self.cfg.n_heads, key_ctx, self.cfg.device
-                )
-
-            attn_scores += self.alibi[
-                :, :query_ctx, :key_ctx
-            ]  # [batch, head_index, query_pos, key_pos]
-
-        if self.cfg.attention_dir == "causal":
-            # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
-            attn_scores = self.apply_causal_mask(
-                attn_scores, kv_cache_pos_offset, attention_mask
+        else:
+            attn_scores = self.calculate_attention_scores(
+                q, k
             )  # [batch, head_index, query_pos, key_pos]
-        if additive_attention_mask is not None:
-            attn_scores += additive_attention_mask
 
-        attn_scores = self.hook_attn_scores(attn_scores)
-        pattern = F.softmax(attn_scores, dim=-1)
-        pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
-        pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
-        pattern = pattern.to(self.cfg.dtype)
-        z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
+            if self.cfg.positional_embedding_type == "alibi":
+                query_ctx = attn_scores.size(-2)
+                # The key context length is the number of positions in the past - this includes all positions in the cache
+                key_ctx = attn_scores.size(-1)
+
+                # only recompute when necessary to increase efficiency.
+                if self.alibi is None or key_ctx > self.alibi.size(-1):
+                    self.alibi = Attention.create_alibi_bias(
+                        self.cfg.n_heads, key_ctx, self.cfg.device
+                    )
+
+                attn_scores += self.alibi[
+                    :, :query_ctx, :key_ctx
+                ]  # [batch, head_index, query_pos, key_pos]
+
+            if self.cfg.attention_dir == "causal":
+                # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
+                attn_scores = self.apply_causal_mask(
+                    attn_scores, kv_cache_pos_offset, attention_mask
+                )  # [batch, head_index, query_pos, key_pos]
+            if additive_attention_mask is not None:
+                attn_scores += additive_attention_mask
+
+            attn_scores = self.hook_attn_scores(attn_scores)
+            pattern = F.softmax(attn_scores, dim=-1)
+            pattern = torch.where(
+                torch.isnan(pattern), torch.zeros_like(pattern), pattern
+            )
+            pattern = self.hook_pattern(
+                pattern
+            )  # [batch, head_index, query_pos, key_pos]
+            pattern = pattern.to(self.cfg.dtype)
+            z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
+
         if not self.cfg.use_attn_result:
             out = (
                 (
@@ -688,6 +697,26 @@ class AbstractAttention(ABC, nn.Module):
             / self.attn_scale
         )
         return attn_scores
+
+    def calculate_z_with_sdpa(
+        self,
+        q: Float[torch.Tensor, "batch query_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch key_pos head_index d_head"],
+        v: Float[torch.Tensor, "batch key_pos head_index d_head"],
+    ) -> Float[torch.Tensor, "batch query_pos head_index d_head"]:
+        # PyTorch's scaled_dot_product_attention requires Q, K, V to be float16 and shape [batch ... pos d_head]
+        convert_to_sdpa_format = lambda tensor: einops.rearrange(
+            tensor, "batch pos head_index d_head -> batch head_index pos d_head"
+        ).to(torch.float16)
+
+        convert_from_sdpa_format = lambda tensor: einops.rearrange(
+            tensor, "batch head_index pos d_head -> batch pos head_index d_head"
+        ).to(q.dtype)
+
+        query, key, value = map(convert_to_sdpa_format, [q, k, v])
+        z = F.scaled_dot_product_attention(query, key, value, is_causal=True)
+        z = self.hook_z(convert_from_sdpa_format(z))
+        return z
 
     def calculate_z_scores(
         self,

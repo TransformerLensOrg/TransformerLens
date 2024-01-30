@@ -151,6 +151,11 @@ class HookedTransformerConfig:
             Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
             to False.
+        use_fast_attn (bool): Whether to use torch.nn.functional.scaled_dot_product_attention. This
+            implementation includes FlashAttention-2, as well as, two other alternative (potentially faster) attention
+            implmentations. PyTorch attempts to automatically select the most optimal implementation
+            based on inputs. Note, using these implementations will mean loss of some intermediate hooks
+            (ie. hook_attn_scores and hook_pattern). Defaults to False.
     """
 
     n_layers: int
@@ -203,6 +208,7 @@ class HookedTransformerConfig:
     rotary_base: int = 10000
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
+    use_fast_attn: bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:
