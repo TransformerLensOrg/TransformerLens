@@ -141,6 +141,8 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mixtral-8x7B-v0.1",
+    "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "bigscience/bloom-560m",
     "bigscience/bloom-1b1",
     "bigscience/bloom-1b7",
@@ -531,6 +533,8 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
+    "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
+    "mistralai/Mixtral-8x7B-Instruct-v0.1": ["mixtral-instruct", "mixtral-8x7b-instruct"],
     "bigscience/bloom-560m": ["bloom-560m"],
     "bigscience/bloom-1b1": ["bloom-1b1"],
     "bigscience/bloom-1b7": ["bloom-1b7"],
@@ -839,6 +843,28 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
             "use_local_attn": True,
             "rotary_dim": 4096 // 32,
+        }
+    elif architecture == "MixtralForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings, # Todo: cap this
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "window_size": hf_config.sliding_window, # This is None, as no sliding window was used
+            "attn_types": ["global"]*32,
+            "eps": hf_config.rms_norm_eps,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "gated_mlp": True,
+            "use_local_attn": False,
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            "num_experts": hf_config.num_local_experts,
+            "experts_per_token": hf_config.num_experts_per_tok,
         }
     elif architecture == "BloomForCausalLM":
         cfg_dict = {
@@ -1259,6 +1285,8 @@ def get_pretrained_state_dict(
             state_dict = convert_bert_weights(hf_model, cfg)
         elif cfg.original_architecture == "MistralForCausalLM":
             state_dict = convert_mistral_weights(hf_model, cfg)
+        elif cfg.original_architecture == "MixtralForCausalLM":
+            state_dict = convert_mixtral_weights(hf_model, cfg)
         elif cfg.original_architecture == "BloomForCausalLM":
             state_dict = convert_bloom_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPT2LMHeadCustomModel":
@@ -1724,6 +1752,9 @@ def convert_mistral_weights(mistral, cfg: HookedTransformerConfig):
 
     return state_dict
 
+
+def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
+    ...
 
 def convert_opt_weights(opt, cfg: HookedTransformerConfig):
     state_dict = {}
