@@ -27,11 +27,15 @@ class TestFastAttn:
         fast_logits, fast_cache = model.run_with_cache(self.prompt)
         model.cfg.use_fast_attn = False
         slow_logits, slow_cache = model.run_with_cache(self.prompt)
-        
-        assert torch.allclose(fast_logits, slow_logits, rtol=5e-1, atol=5e-1), "Logits mismatch"
-        
+
+        assert torch.allclose(
+            fast_logits, slow_logits, rtol=5e-1, atol=5e-1
+        ), "Logits mismatch"
+
         # Fast cache should be missing Attn Scores and Pattern Keys
         assert len(fast_cache) < len(slow_cache)
-        
+
         for k, v in fast_cache.items():
-            assert torch.allclose(v, slow_cache[k], rtol=5e-1, atol=5e-1), f"Cache mismatch for {k}"
+            assert torch.allclose(
+                v, slow_cache[k], rtol=5e-1, atol=5e-1
+            ), f"Cache mismatch for {k}"
