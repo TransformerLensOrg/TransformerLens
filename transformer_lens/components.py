@@ -585,6 +585,7 @@ class AbstractAttention(ABC, nn.Module):
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
+        pattern = pattern.to(v.device)
         z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
             out = (
@@ -730,8 +731,10 @@ class AbstractAttention(ABC, nn.Module):
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
             einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
+            final_mask = final_mask.to(attention_mask.device)
             final_mask = einops.einsum(final_mask, attention_mask, einsum_str).bool()
 
+        attn_scores = attn_scores.to(final_mask.device)
         return torch.where(final_mask, attn_scores, self.IGNORE)
 
     def calculate_sin_cos_rotary(
@@ -808,6 +811,7 @@ class AbstractAttention(ABC, nn.Module):
             offset_position_ids = get_offset_position_ids(
                 past_kv_pos_offset, attention_mask
             )
+            offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
             mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
             mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin

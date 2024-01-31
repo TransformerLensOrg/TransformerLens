@@ -2070,7 +2070,10 @@ class HookedTransformer(HookedRootModule):
                     # instead.
                     sampled_tokens[finished_sequences] = eos_token_for_padding
                     finished_sequences.logical_or_(
-                        torch.isin(sampled_tokens, torch.tensor(stop_tokens).to(device))
+                        torch.isin(
+                            sampled_tokens.to(self.cfg.device),
+                            torch.tensor(stop_tokens).to(self.cfg.device),
+                        )
                     )
 
                 tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
