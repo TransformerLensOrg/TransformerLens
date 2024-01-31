@@ -1364,11 +1364,11 @@ class MoE(nn.Module):
         weights = F.softmax(weights, dim=-1)
 
         results = torch.zeros_like(x)
-        for i, expert in enumerate(self.experts):
-            # find the batch and index (of `expert_indices`, which corresponds to its index in `weights`) where the ith expert is used
-            batch_idx, nth_expert = torch.where(expert_indices == i)
-            # accumulate the weighted outputs from each expert
-            results += weights[batch_idx, nth_expert] * expert(x[batch_idx])
+        for i, expert_mlp in enumerate(self.experts):
+            # find the batch, pos, and expert indices which use this expert
+            batch, pos, expert = torch.where(expert_indices == i)
+            # accumulate the weighted outputs from the expert
+            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(x[batch])
 
         return results
 
