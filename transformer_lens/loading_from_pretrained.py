@@ -534,7 +534,10 @@ MODEL_ALIASES = {
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
-    "mistralai/Mixtral-8x7B-Instruct-v0.1": ["mixtral-instruct", "mixtral-8x7b-instruct"],
+    "mistralai/Mixtral-8x7B-Instruct-v0.1": [
+        "mixtral-instruct",
+        "mixtral-8x7b-instruct",
+    ],
     "bigscience/bloom-560m": ["bloom-560m"],
     "bigscience/bloom-1b1": ["bloom-1b1"],
     "bigscience/bloom-1b7": ["bloom-1b7"],
@@ -851,13 +854,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
-            "n_ctx": hf_config.max_position_embeddings, # Todo: cap this
+            "n_ctx": hf_config.max_position_embeddings,  # Todo: cap this
             "d_vocab": hf_config.vocab_size,
             "act_fn": hf_config.hidden_act,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "window_size": hf_config.sliding_window, # This is None, as no sliding window was used
-            "attn_types": ["global"]*32,
+            "window_size": hf_config.sliding_window,  # This is None, as no sliding window was used
+            "attn_types": ["global"] * 32,
             "eps": hf_config.rms_norm_eps,
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
@@ -1794,7 +1797,9 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
             l
         ].post_attention_layernorm.weight
 
-        state_dict[f"blocks.{l}.moe.gate.w"] = mixtral.model.layers[l].block_sparse_moe.gate.weight.T
+        state_dict[f"blocks.{l}.moe.gate.w"] = mixtral.model.layers[
+            l
+        ].block_sparse_moe.gate.weight.T
 
         # The mapping here from wn to W_{in/out/gate} is a bit confusing:
         # w1 -> W_gate
@@ -1802,16 +1807,27 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
         # w3 -> W_in
         # See https://github.com/mistralai/mistral-src/blob/main/mistral/model.py#L128 for reference
         for e in range(cfg.num_experts):
-            state_dict[f"blocks.{l}.moe.experts.{e}.W_in"] = mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight.T
-            state_dict[f"blocks.{l}.moe.experts.{e}.W_gate"] = mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight.T
-            state_dict[f"blocks.{l}.moe.experts.{e}.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
-            state_dict[f"blocks.{l}.moe.experts.{e}.W_out"] = mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight.T
-            state_dict[f"blocks.{l}.moe.experts.{e}.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+            state_dict[f"blocks.{l}.moe.experts.{e}.W_in"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight.T
+            )
+            state_dict[f"blocks.{l}.moe.experts.{e}.W_gate"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight.T
+            )
+            state_dict[f"blocks.{l}.moe.experts.{e}.b_in"] = torch.zeros(
+                cfg.d_mlp, dtype=cfg.dtype
+            )
+            state_dict[f"blocks.{l}.moe.experts.{e}.W_out"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight.T
+            )
+            state_dict[f"blocks.{l}.moe.experts.{e}.b_out"] = torch.zeros(
+                cfg.d_model, dtype=cfg.dtype
+            )
 
     state_dict["ln_final.w"] = mixtral.model.norm.weight.data
 
     state_dict["unembed.W_U"] = mixtral.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
 
 def convert_opt_weights(opt, cfg: HookedTransformerConfig):
     state_dict = {}

@@ -1327,8 +1327,12 @@ class MoE(nn.Module):
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
         assert cfg.num_experts, "num_experts must be specified for MoE layer"
-        assert cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
-        assert cfg.experts_per_token <= cfg.num_experts, "experts_per_token must be less than or equal to num_experts"
+        assert (
+            cfg.experts_per_token
+        ), "experts_per_token must be specified for MoE layer"
+        assert (
+            cfg.experts_per_token <= cfg.num_experts
+        ), "experts_per_token must be less than or equal to num_experts"
 
         self.experts = nn.ModuleList(
             [
@@ -1336,11 +1340,19 @@ class MoE(nn.Module):
                 for _ in range(cfg.num_experts)
             ]
         )
-        self.W_experts = nn.Parameter(torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype))
+        self.W_experts = nn.Parameter(
+            torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype)
+        )
 
-    def forward(self, x: Float[torch.Tensor, "batch pos d_model"]) -> Float[torch.Tensor, "batch pos d_model"]:
+    def forward(
+        self, x: Float[torch.Tensor, "batch pos d_model"]
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
         # [batch, pos, d_model] -> [batch, pos, num_experts]
-        gate_logits = einsum("batch, pos, d_model, d_model, num_experts -> batch, pos, num_experts", x, self.W_experts)
+        gate_logits = einsum(
+            "batch, pos, d_model, d_model, num_experts -> batch, pos, num_experts",
+            x,
+            self.W_experts,
+        )
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
@@ -1355,6 +1367,7 @@ class MoE(nn.Module):
             results += weights[batch_idx, nth_expert] * expert(x[batch_idx])
 
         return results
+
 
 # Transformer Block
 class TransformerBlock(nn.Module):
