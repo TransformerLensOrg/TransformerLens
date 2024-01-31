@@ -1828,6 +1828,8 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
     state_dict["unembed.W_U"] = mixtral.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
+    return state_dict
+
 
 def convert_opt_weights(opt, cfg: HookedTransformerConfig):
     state_dict = {}
