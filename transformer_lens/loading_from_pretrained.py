@@ -619,8 +619,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # Load HuggingFace model config
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
-    elif "mistral" in official_model_name.lower():
-        architecture = "MistralForCausalLM"
     else:
         hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
         architecture = hf_config.architectures[0]

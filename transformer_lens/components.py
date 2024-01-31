@@ -1412,7 +1412,9 @@ class TransformerBlock(nn.Module):
             attn_type = self.cfg.attn_types[block_index]
             self.attn = attention(cfg, attn_type, block_index)
         if not self.cfg.attn_only:
-            if self.cfg.gated_mlp:
+            if self.cfg.num_experts:
+                self.mlp = MoE(cfg)
+            elif self.cfg.gated_mlp:
                 self.mlp = GatedMLP(cfg)
             else:
                 self.mlp = MLP(cfg)
