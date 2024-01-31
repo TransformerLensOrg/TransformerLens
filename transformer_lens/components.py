@@ -1340,7 +1340,7 @@ class MoE(nn.Module):
                 for _ in range(cfg.num_experts)
             ]
         )
-        self.W_experts = nn.Parameter(
+        self.W_gate = nn.Parameter(
             torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype)
         )
 
@@ -1351,7 +1351,7 @@ class MoE(nn.Module):
         gate_logits = einsum(
             "batch, pos, d_model, d_model, num_experts -> batch, pos, num_experts",
             x,
-            self.W_experts,
+            self.W_gate,
         )
 
         # choose the top k(=experts_per_token) experts to use
