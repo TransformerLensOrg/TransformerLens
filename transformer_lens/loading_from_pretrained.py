@@ -139,6 +139,8 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-base-alpha-7b",
     "stabilityai/stablelm-tuned-alpha-3b",
     "stabilityai/stablelm-tuned-alpha-7b",
+    "mistralai/Mistral-7B-v0.1",
+    "mistralai/Mistral-7B-Instruct-v0.1",
     "bigscience/bloom-560m",
     "bigscience/bloom-1b1",
     "bigscience/bloom-1b7",
@@ -151,6 +153,9 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen-1_8B-Chat",
     "Qwen/Qwen-7B-Chat",
     "Qwen/Qwen-14B-Chat",
+    "microsoft/phi-1",
+    "microsoft/phi-1_5",
+    "microsoft/phi-2",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -524,6 +529,8 @@ MODEL_ALIASES = {
         "stablelm-tuned-alpha-7b",
         "stablelm-tuned-7b",
     ],
+    "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
+    "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
     "bigscience/bloom-560m": ["bloom-560m"],
     "bigscience/bloom-1b1": ["bloom-1b1"],
     "bigscience/bloom-1b7": ["bloom-1b7"],
@@ -536,6 +543,9 @@ MODEL_ALIASES = {
     "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
     "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
     "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
+    "microsoft/phi-1": ["phi-1"],
+    "microsoft/phi-1_5": ["phi-1_5"],
+    "microsoft/phi-2": ["phi-2"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -553,7 +563,13 @@ DEFAULT_MODEL_ALIASES = [
     for name in OFFICIAL_MODEL_NAMES
 ]
 
-NEED_REMOTE_CODE_MODELS = ("bigcode/santacoder", "Qwen/Qwen-")
+NEED_REMOTE_CODE_MODELS = (
+    "bigcode/santacoder",
+    "Qwen/Qwen-",
+    "microsoft/phi-1",
+    "microsoft/phi-1_5",
+    "microsoft/phi-2",
+)
 
 
 def make_model_alias_map():
@@ -594,11 +610,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # In case the user passed in an alias
     official_model_name = get_official_model_name(model_name)
     # Load HuggingFace model config
-    if "llama" not in official_model_name.lower():
+    if "llama" in official_model_name.lower():
+        architecture = "LlamaForCausalLM"
+    elif "mistral" in official_model_name.lower():
+        architecture = "MistralForCausalLM"
+    else:
         hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
         architecture = hf_config.architectures[0]
-    else:
-        architecture = "LlamaForCausalLM"
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -802,6 +820,26 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "gelu",
             "attention_dir": "bidirectional",
         }
+    elif architecture == "MistralForCausalLM":
+        cfg_dict = {
+            "d_model": 4096,
+            "d_head": 4096 // 32,
+            "n_heads": 32,
+            "d_mlp": 14336,
+            "n_layers": 32,
+            "n_ctx": 2048,  # Capped due to memory issues
+            "d_vocab": 32000,
+            "act_fn": "silu",
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "window_size": 4096,
+            "attn_types": ["local"] * 32,
+            "eps": 1e-05,
+            "n_key_value_heads": 8,
+            "gated_mlp": True,
+            "use_local_attn": True,
+            "rotary_dim": 4096 // 32,
+        }
     elif architecture == "BloomForCausalLM":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
@@ -817,7 +855,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "post_embedding_ln": True,
             "positional_embedding_type": "alibi",
         }
-
     elif architecture == "GPT2LMHeadCustomModel":
         # santacoder
         cfg_dict = {
@@ -859,6 +896,29 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "gated_mlp": True,
         }
+    elif architecture == "PhiForCausalLM":
+        # Architecture for microsoft/phi models
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.layer_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "LN",
+            "positional_embedding_type": "rotary",
+            "trust_remote_code": True,
+            "rotary_base": hf_config.rope_theta,
+            "use_attn_scale": True,
+            "parallel_attn_mlp": True,
+        }
+        partial_rotary_factor = hf_config.partial_rotary_factor
+        cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
+
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
@@ -997,6 +1057,8 @@ def get_pretrained_model_config(
     if fold_ln:
         if cfg_dict["normalization_type"] in ["LN", "LNPre"]:
             cfg_dict["normalization_type"] = "LNPre"
+        elif cfg_dict["normalization_type"] in ["RMS", "RMSPre"]:
+            cfg_dict["normalization_type"] = "RMSPre"
         else:
             logging.warning("Cannot fold in layer norm, normalization_type is not LN.")
 
@@ -1202,12 +1264,16 @@ def get_pretrained_state_dict(
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "MistralForCausalLM":
+            state_dict = convert_mistral_weights(hf_model, cfg)
         elif cfg.original_architecture == "BloomForCausalLM":
             state_dict = convert_bloom_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPT2LMHeadCustomModel":
             state_dict = convert_coder_weights(hf_model, cfg)
         elif cfg.original_architecture == "QWenLMHeadModel":
             state_dict = convert_qwen_weights(hf_model, cfg)
+        elif cfg.original_architecture == "PhiForCausalLM":
+            state_dict = convert_phi_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -1514,10 +1580,11 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         )
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
+
         if not cfg.load_in_4bit:
             W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
 
-        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O.to(device=cfg.device)
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
             cfg.d_model, dtype=cfg.dtype, device=cfg.device
@@ -1623,6 +1690,66 @@ def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
     state_dict["ln_final.w"] = model.ln_f.weight
 
     state_dict["unembed.W_U"] = qwen.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+    return state_dict
+
+
+def convert_mistral_weights(mistral, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = mistral.model.embed_tokens.weight
+
+    # Mistral has no biases anywhere
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = mistral.model.layers[l].input_layernorm.weight
+
+        W_Q = mistral.model.layers[l].self_attn.q_proj.weight
+        W_K = mistral.model.layers[l].self_attn.k_proj.weight
+        W_V = mistral.model.layers[l].self_attn.v_proj.weight
+        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_key_value_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_key_value_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn._W_K"] = W_K
+        state_dict[f"blocks.{l}.attn._W_V"] = W_V
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn._b_V"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+        )
+
+        W_O = mistral.model.layers[l].self_attn.o_proj.weight
+        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.ln2.w"] = mistral.model.layers[
+            l
+        ].post_attention_layernorm.weight
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = mistral.model.layers[
+            l
+        ].mlp.up_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_gate"] = mistral.model.layers[
+            l
+        ].mlp.gate_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.mlp.W_out"] = mistral.model.layers[
+            l
+        ].mlp.down_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+    state_dict["ln_final.w"] = mistral.model.norm.weight
+
+    state_dict["unembed.W_U"] = mistral.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
@@ -1908,13 +2035,6 @@ def convert_nanogpt_weights(old_state_dict, cfg: HookedTransformerConfig):
                 f"{layer_key}.attn.c_proj.bias"
             ]
 
-            new_state_dict[f"blocks.{layer}.mlp.b_in"] = old_state_dict[
-                f"{layer_key}.mlp.c_fc.bias"
-            ].T
-            new_state_dict[f"blocks.{layer}.mlp.b_out"] = old_state_dict[
-                f"{layer_key}.mlp.c_proj.bias"
-            ].T
-
     return new_state_dict
 
 
@@ -2102,6 +2222,73 @@ def convert_coder_weights(model, cfg: HookedTransformerConfig):
 
     state_dict["ln_final.w"] = model.transformer.ln_f.weight
     state_dict["ln_final.b"] = model.transformer.ln_f.bias
+    return state_dict
+
+
+def convert_phi_weights(phi, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = phi.model.embed_tokens.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = phi.model.layers[l].input_layernorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = phi.model.layers[l].input_layernorm.bias
+
+        W_Q = phi.model.layers[l].self_attn.q_proj.weight
+        W_K = phi.model.layers[l].self_attn.k_proj.weight
+        W_V = phi.model.layers[l].self_attn.v_proj.weight
+        W_Q = einops.rearrange(
+            W_Q, "(n_head d_head) d_model -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        W_K = einops.rearrange(
+            W_K, "(n_head d_head) d_model  -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        W_V = einops.rearrange(
+            W_V, "(n_head d_head) d_model  -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        b_Q = phi.model.layers[l].self_attn.q_proj.bias
+        b_K = phi.model.layers[l].self_attn.k_proj.bias
+        b_V = phi.model.layers[l].self_attn.v_proj.bias
+        b_Q = einops.rearrange(
+            b_Q, "(n_head d_head) -> n_head d_head", n_head=cfg.n_heads
+        )
+        b_K = einops.rearrange(
+            b_K, "(n_head d_head) -> n_head d_head", n_head=cfg.n_heads
+        )
+        b_V = einops.rearrange(
+            b_V, "(n_head d_head) -> n_head d_head", n_head=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.b_Q"] = b_Q
+        state_dict[f"blocks.{l}.attn.b_K"] = b_K
+        state_dict[f"blocks.{l}.attn.b_V"] = b_V
+
+        W_O = phi.model.layers[l].self_attn.dense.weight
+        W_O = einops.rearrange(
+            W_O, "d_model (n_head d_head) -> n_head d_head d_model", n_head=cfg.n_heads
+        )
+
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = phi.model.layers[l].self_attn.dense.bias
+
+        # Layer Norm 1 and 2 are tied.
+        state_dict[f"blocks.{l}.ln2.w"] = state_dict[f"blocks.{l}.ln1.w"]
+        state_dict[f"blocks.{l}.ln2.b"] = state_dict[f"blocks.{l}.ln1.b"]
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = phi.model.layers[l].mlp.fc1.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = phi.model.layers[l].mlp.fc1.bias
+        state_dict[f"blocks.{l}.mlp.W_out"] = phi.model.layers[l].mlp.fc2.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = phi.model.layers[l].mlp.fc2.bias
+
+    state_dict["ln_final.w"] = phi.model.final_layernorm.weight
+    state_dict["ln_final.b"] = phi.model.final_layernorm.bias
+
+    state_dict["unembed.W_U"] = phi.lm_head.weight.T
+    state_dict["unembed.b_U"] = phi.lm_head.bias
+
     return state_dict
 
 
