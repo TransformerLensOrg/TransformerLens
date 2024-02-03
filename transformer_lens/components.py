@@ -410,34 +410,18 @@ class AbstractAttention(ABC, nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
 
-        if cfg.load_in_4bit:
-            # 4-bit quantization convention
-            nq = int((cfg.d_model * cfg.d_model) / 2)
-            self.W_Q = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+        self.W_Q = nn.Parameter(
+            torch.empty(
+                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
             )
-            self.W_K = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+        )
+        self.W_K = abstract_attribute()
+        self.W_V = abstract_attribute()
+        self.W_O = nn.Parameter(
+            torch.empty(
+                self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype
             )
-            self.W_V = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_O = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-        else:
-            self.W_Q = nn.Parameter(
-                torch.empty(
-                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-                )
-            )
-            self.W_K = abstract_attribute()
-            self.W_V = abstract_attribute()
-            self.W_O = nn.Parameter(
-                torch.empty(
-                    self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype
-                )
-            )
+        )
 
         self.b_Q = nn.Parameter(
             torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
@@ -1059,23 +1043,39 @@ class Attention(AbstractAttention):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_K = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+
+        if cfg.load_in_4bit:
+            # 4-bit quantization convention
+            nq = int((cfg.d_model * cfg.d_model) / 2)
+            self.W_Q = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
             )
-        )
-        self.W_V = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            self.W_K = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
             )
-        )
+            self.W_V = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+            self.W_O = Params4bit(
+                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
+            )
+        else:
+            self.W_K = nn.Parameter(
+                torch.empty(
+                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+                )
+            )
+            self.W_V = nn.Parameter(
+                torch.empty(
+                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+                )
+            )
         self.b_K = nn.Parameter(
             torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
         )
         self.b_V = nn.Parameter(
             torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
         )
-
 
 class GroupedQueryAttention(AbstractAttention):
     def __init__(
