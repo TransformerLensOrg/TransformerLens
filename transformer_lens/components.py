@@ -1077,6 +1077,7 @@ class Attention(AbstractAttention):
             torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
         )
 
+
 class GroupedQueryAttention(AbstractAttention):
     def __init__(
         self,

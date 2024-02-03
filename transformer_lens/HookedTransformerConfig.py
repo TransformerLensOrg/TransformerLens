@@ -150,7 +150,7 @@ class HookedTransformerConfig:
         load_in_4bit(bool): If this flag is set, then it's assumed that parameters are 4-bit quantized
             with bitsandbytes. Currently only supported for Llama.
         n_key_value_heads (int, *optional*): The number of groups of heads that use the same key and value matrix.
-            Only for models that use Grouped Query Attention.            
+            Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
             to False.
     """
