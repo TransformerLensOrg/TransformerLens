@@ -5,7 +5,8 @@ Helpers to access activations in models.
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
+from functools import partial
+from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
 import torch.nn as nn
 import torch.utils.hooks as hooks
@@ -51,7 +52,12 @@ class HookPoint(nn.Module):
         self.add_hook(hook, dir=dir, is_permanent=True)
 
     def add_hook(
-        self, hook, dir="fwd", is_permanent=False, level=None, prepend=False
+        self,
+        hook: Callable,
+        dir: Literal["fwd", "bwd"] = "fwd",
+        is_permanent: bool = False,
+        level: Optional[int] = None,
+        prepend: bool = False,
     ) -> None:
         """
         Hook format is fn(activation, hook_name)
@@ -59,47 +65,34 @@ class HookPoint(nn.Module):
         which are the same for a HookPoint)
         If prepend is True, add this hook before all other hooks
         """
+
+        def full_hook(module, module_input, module_output):
+            if (
+                dir == "bwd"
+            ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
+                module_output = module_output[0]
+            return hook(module_output, hook=self)
+
+        full_hook.__name__ = (
+            hook.__repr__()
+        )  # annotate the `full_hook` with the string representation of the `hook` function
+
         if dir == "fwd":
-
-            def full_hook(module, module_input, module_output):
-                return hook(module_output, hook=self)
-
-            full_hook.__name__ = (
-                hook.__repr__()
-            )  # annotate the `full_hook` with the string representation of the `hook` function
-
             handle = self.register_forward_hook(full_hook)
-            handle = LensHandle(handle, is_permanent, level)
-
-            if prepend:
-                # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-                self._forward_hooks.move_to_end(handle.hook.id, last=False)
-                self.fwd_hooks.insert(0, handle)
-
-            else:
-                self.fwd_hooks.append(handle)
-
         elif dir == "bwd":
-            # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
-
-            def full_hook(module, module_input, module_output):
-                return hook(module_output[0], hook=self)
-
-            full_hook.__name__ = (
-                hook.__repr__()
-            )  # annotate the `full_hook` with the string representation of the `hook` function
-
             handle = self.register_full_backward_hook(full_hook)
-            handle = LensHandle(handle, is_permanent, level)
-
-            if prepend:
-                # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-                self._backward_hooks.move_to_end(handle.hook.id, last=False)
-                self.bwd_hooks.insert(0, handle)
-            else:
-                self.bwd_hooks.append(handle)
         else:
             raise ValueError(f"Invalid direction {dir}")
+
+        handle = LensHandle(handle, is_permanent, level)
+
+        if prepend:
+            # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
+            self._forward_hooks.move_to_end(handle.hook.id, last=False)
+            self.fwd_hooks.insert(0, handle)
+
+        else:
+            self.fwd_hooks.append(handle)
 
     def remove_hooks(self, dir="fwd", including_permanent=False, level=None) -> None:
         def _remove_hooks(handles: List[LensHandle]) -> List[LensHandle]:
@@ -398,23 +391,20 @@ class HookedRootModule(nn.Module):
 
         self.is_caching = True
 
-        def save_hook(tensor, hook):
+        def save_hook(tensor, hook, is_backward):
+            hook_name = hook.name
+            if is_backward:
+                hook_name += "_grad"
             if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
+                cache[hook_name] = tensor.detach().to(device)[0]
             else:
-                cache[hook.name] = tensor.detach().to(device)
-
-        def save_hook_back(tensor, hook):
-            if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
-            else:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)
+                cache[hook_name] = tensor.detach().to(device)
 
         for name, hp in self.hook_dict.items():
             if names_filter(name):
-                hp.add_hook(save_hook, "fwd")
+                hp.add_hook(partial(save_hook, is_backward=False), "fwd")
                 if incl_bwd:
-                    hp.add_hook(save_hook_back, "bwd")
+                    hp.add_hook(partial(save_hook, is_backward=True), "bwd")
         return cache
 
     def run_with_cache(
@@ -505,25 +495,22 @@ class HookedRootModule(nn.Module):
             names_filter = lambda name: name in filter_list
         self.is_caching = True
 
-        def save_hook(tensor, hook):
+        def save_hook(tensor, hook, is_backward=False):
+            hook_name = hook.name
+            if is_backward:
+                hook_name += "_grad"
             if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
+                cache[hook_name] = tensor.detach().to(device)[0]
             else:
-                cache[hook.name] = tensor.detach().to(device)
-
-        def save_hook_back(tensor, hook):
-            if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
-            else:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)
+                cache[hook_name] = tensor.detach().to(device)
 
         fwd_hooks = []
         bwd_hooks = []
         for name, hp in self.hook_dict.items():
             if names_filter(name):
-                fwd_hooks.append((name, save_hook))
+                fwd_hooks.append((name, partial(save_hook, is_backward=False)))
                 if incl_bwd:
-                    bwd_hooks.append((name, save_hook_back))
+                    bwd_hooks.append((name, partial(save_hook, is_backward=True)))
 
         return cache, fwd_hooks, bwd_hooks
 
