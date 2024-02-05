@@ -459,6 +459,10 @@ class HookedRootModule(nn.Module):
         """
 
         if not isinstance(pos_slice, Slice):
+            if isinstance(
+                pos_slice, int
+            ):  # slicing with an int collapses the dimension so this stops the pos dimension from collapsing
+                pos_slice = [pos_slice]
             pos_slice = Slice(pos_slice)
 
         cache_dict, fwd, bwd = self.get_caching_hooks(
