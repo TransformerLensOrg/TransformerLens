@@ -452,6 +452,8 @@ class HookedRootModule(nn.Module):
                 end of the run. Defaults to True.
             clear_contexts (bool, optional): If True, clears hook contexts whenever hooks are reset.
                 Defaults to False.
+            pos_slice:
+                The slice to apply to the cache output. Defaults to None, do nothing.
             **model_kwargs: Keyword arguments for the model.
 
         Returns:
