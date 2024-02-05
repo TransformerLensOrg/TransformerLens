@@ -5,6 +5,7 @@ Helpers to access activations in models.
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch.nn as nn
@@ -521,33 +522,41 @@ class HookedRootModule(nn.Module):
             names_filter = lambda name: name in filter_list
         self.is_caching = True
 
-        def save_hook(tensor, hook):
+        def save_hook(tensor, hook, is_backward=False):
+            hook_name = hook.name
+            if is_backward:
+                hook_name += "_grad"
             resid_stream = tensor.detach().to(device)
             if remove_batch_dim:
                 resid_stream = resid_stream[0]
-            if (
-                tensor.dim() > 1
-            ):  # check if the residual stream has a pos dimension before trying to sline
-                resid_stream = pos_slice.apply(resid_stream, dim=-2)
-            cache[hook.name] = resid_stream
 
-        def save_hook_back(tensor, hook):
-            resid_stream = tensor.detach().to(device)
-            if remove_batch_dim:
-                resid_stream = resid_stream[0]
+            # for attention heads the pos dimension is the third from last
             if (
-                tensor.dim() > 1
-            ):  # check if the residual stream has a pos dimension before trying to sline
-                resid_stream = pos_slice.apply(resid_stream, dim=-2)
-            cache[hook.name + "_grad"] = resid_stream
+                hook.name.endswith("hook_q")
+                or hook.name.endswith("hook_k")
+                or hook.name.endswith("hook_v")
+                or hook.name.endswith("hook_z")
+                or hook.name.endswith("hook_result")
+            ):
+                pos_dim = -3
+            else:
+                # for all other components the pos dimension is the second from last
+                # including the attn scores where the dest token is the second from last
+                pos_dim = -2
+
+            if (
+                tensor.dim() >= -pos_dim
+            ):  # check if the residual stream has a pos dimension before trying to slice
+                resid_stream = pos_slice.apply(resid_stream, dim=pos_dim)
+            cache[hook_name] = resid_stream
 
         fwd_hooks = []
         bwd_hooks = []
         for name, hp in self.hook_dict.items():
             if names_filter(name):
-                fwd_hooks.append((name, save_hook))
+                fwd_hooks.append((name, partial(save_hook, is_backward=False)))
                 if incl_bwd:
-                    bwd_hooks.append((name, save_hook_back))
+                    bwd_hooks.append((name, partial(save_hook, is_backward=True)))
 
         return cache, fwd_hooks, bwd_hooks
 
