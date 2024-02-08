@@ -153,6 +153,16 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen-1_8B-Chat",
     "Qwen/Qwen-7B-Chat",
     "Qwen/Qwen-14B-Chat",
+    "Qwen/Qwen1.5-0.5B",
+    "Qwen/Qwen1.5-0.5B-Chat",
+    "Qwen/Qwen1.5-1.8B",
+    "Qwen/Qwen1.5-1.8B-Chat",
+    "Qwen/Qwen1.5-4B",
+    "Qwen/Qwen1.5-4B-Chat",
+    "Qwen/Qwen1.5-7B",
+    "Qwen/Qwen1.5-7B-Chat",
+    "Qwen/Qwen1.5-14B",
+    "Qwen/Qwen1.5-14B-Chat",
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
@@ -543,6 +553,16 @@ MODEL_ALIASES = {
     "Qwen/Qwen-1_8B-Chat": ["qwen-1.8b-chat"],
     "Qwen/Qwen-7B-Chat": ["qwen-7b-chat"],
     "Qwen/Qwen-14B-Chat": ["qwen-14b-chat"],
+    "Qwen/Qwen1.5-0.5B": ["qwen1.5-0.5b"],
+    "Qwen/Qwen1.5-0.5B-Chat": ["qwen1.5-0.5b-chat"],
+    "Qwen/Qwen1.5-1.8B": ["qwen1.5-1.8b"],
+    "Qwen/Qwen1.5-1.8B-Chat": ["qwen1.5-1.8b-chat"],
+    "Qwen/Qwen1.5-4B": ["qwen1.5-4b"],
+    "Qwen/Qwen1.5-4B-Chat": ["qwen1.5-4b-chat"],
+    "Qwen/Qwen1.5-7B": ["qwen1.5-7b"],
+    "Qwen/Qwen1.5-7B-Chat": ["qwen1.5-7b-chat"],
+    "Qwen/Qwen1.5-14B": ["qwen1.5-14b"],
+    "Qwen/Qwen1.5-14B-Chat": ["qwen1.5-14b-chat"],
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
@@ -893,6 +913,28 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_adjacent_pairs": False,
             "tokenizer_prepends_bos": True,
             "trust_remote_code": True,
+            "final_rms": True,
+            "gated_mlp": True,
+        }
+    elif architecture == "Qwen2ForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 2048,  # Capped bc the actual ctx length is 30k and the attn mask would be too big
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "use_attn_scale": True,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_base": hf_config.rope_theta,
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            "tokenizer_prepends_bos": True,
             "final_rms": True,
             "gated_mlp": True,
         }
@@ -1265,6 +1307,8 @@ def get_pretrained_state_dict(
             state_dict = convert_coder_weights(hf_model, cfg)
         elif cfg.original_architecture == "QWenLMHeadModel":
             state_dict = convert_qwen_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Qwen2ForCausalLM":
+            state_dict = convert_qwen2_weights(hf_model, cfg)
         elif cfg.original_architecture == "PhiForCausalLM":
             state_dict = convert_phi_weights(hf_model, cfg)
         else:
@@ -1658,6 +1702,79 @@ def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
     state_dict["ln_final.w"] = model.ln_f.weight
+
+    state_dict["unembed.W_U"] = qwen.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+    return state_dict
+
+
+def convert_qwen2_weights(qwen, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = qwen.model.embed_tokens.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = qwen.model.layers[l].input_layernorm.weight
+
+        W_Q = qwen.model.layers[l].self_attn.q_proj.weight
+        W_K = qwen.model.layers[l].self_attn.k_proj.weight
+        W_V = qwen.model.layers[l].self_attn.v_proj.weight
+        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+
+        b_Q = qwen.model.layers[l].self_attn.q_proj.bias
+        b_Q = einops.rearrange(
+            b_Q,
+            "(n_head d_head) -> n_head d_head",
+            n_head=cfg.n_heads,
+        )
+
+        b_K = qwen.model.layers[l].self_attn.k_proj.bias
+        b_K = einops.rearrange(
+            b_K,
+            "(n_head d_head) -> n_head d_head",
+            n_head=cfg.n_heads,
+        )
+
+        b_V = qwen.model.layers[l].self_attn.v_proj.bias
+        b_V = einops.rearrange(
+            b_V,
+            "(n_head d_head) -> n_head d_head",
+            n_head=cfg.n_heads,
+        )
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = b_Q
+        state_dict[f"blocks.{l}.attn.b_K"] = b_K
+        state_dict[f"blocks.{l}.attn.b_V"] = b_V
+
+        W_O = qwen.model.layers[l].self_attn.o_proj.weight
+        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.ln2.w"] = qwen.model.layers[
+            l
+        ].post_attention_layernorm.weight
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = qwen.model.layers[l].mlp.up_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_gate"] = qwen.model.layers[
+            l
+        ].mlp.gate_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.mlp.W_out"] = qwen.model.layers[
+            l
+        ].mlp.down_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+    state_dict["ln_final.w"] = qwen.model.norm.weight
 
     state_dict["unembed.W_U"] = qwen.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
