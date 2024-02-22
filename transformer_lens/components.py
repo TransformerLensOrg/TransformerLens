@@ -46,8 +46,8 @@ class Embed(nn.Module):
         if self.cfg.post_embedding_ln:
             return self.ln(self.W_E[tokens, :])
 
-        # Gemma Models normalize embeddings by multiplying by sqrt(d_model)
-        if self.cfg.post_embedding_norm:
+        # Gemma Models scale embeddings by multiplying by sqrt(d_model)
+        if self.cfg.post_embedding_scale:
             return self.W_E[tokens, :] * (self.cfg.d_model**0.5)
         return self.W_E[tokens, :]
 

@@ -944,7 +944,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
             "final_rms": True,
-            "post_embedding_norm": True,
+            "post_embedding_scale": True,
         }
 
     else:
