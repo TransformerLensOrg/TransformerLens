@@ -943,8 +943,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "use_attn_scale": True,
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
-            "final_rms": True, 
-            "post_embedding_norm": True
+            "final_rms": True,
+            "post_embedding_norm": True,
         }
 
     else:
@@ -2335,7 +2335,9 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         # GemmaRMSNorm adds 1 to weights before multiplying by input
         state_dict[f"blocks.{l}.ln2.w"] = gemma.model.layers[
             l
-        ].post_attention_layernorm.weight + torch.ones_like(gemma.model.norm.weight, dtype=cfg.dtype)
+        ].post_attention_layernorm.weight + torch.ones_like(
+            gemma.model.norm.weight, dtype=cfg.dtype
+        )
 
         state_dict[f"blocks.{l}.mlp.W_in"] = gemma.model.layers[l].mlp.up_proj.weight.T
         state_dict[f"blocks.{l}.mlp.W_gate"] = gemma.model.layers[
@@ -2350,7 +2352,7 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
 
     # GemmaRMSNorm adds 1 to weights before multiplying by input
     state_dict["ln_final.w"] = gemma.model.norm.weight + torch.ones_like(
-       gemma.model.norm.weight, dtype=cfg.dtype
+        gemma.model.norm.weight, dtype=cfg.dtype
     )
 
     state_dict["unembed.W_U"] = gemma.lm_head.weight.T

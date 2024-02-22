@@ -151,7 +151,7 @@ class HookedTransformerConfig:
             Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
             to False.
-        post_embedding_norm (bool): Whether to normalize the post-embedding tokens by multiplying by sqrt(d_model). 
+        post_embedding_norm (bool): Whether to normalize the post-embedding tokens by multiplying by sqrt(d_model).
         Defaults to False.
     """
 
