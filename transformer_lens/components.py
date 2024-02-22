@@ -45,6 +45,10 @@ class Embed(nn.Module):
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
         if self.cfg.post_embedding_ln:
             return self.ln(self.W_E[tokens, :])
+        
+        # Gemma Models normalize embeddings by multiplying by sqrt(d_model)
+        if self.cfg.post_embedding_norm:
+            return self.W_E[tokens, :] * (self.cfg.d_model**0.5)
         return self.W_E[tokens, :]
 
 
