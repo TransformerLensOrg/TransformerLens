@@ -917,6 +917,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
         }
     elif architecture == "Qwen2ForCausalLM":
+        # Note that Qwen1.5 models have architecture type Qwen2ForCausalLM.
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
@@ -1710,6 +1711,9 @@ def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
 
 
 def convert_qwen2_weights(qwen, cfg: HookedTransformerConfig):
+    # Note that this method is also applied for Qwen1.5 models, since they
+    # have architecture type Qwen2ForCausalLM.
+
     state_dict = {}
 
     state_dict["embed.W_E"] = qwen.model.embed_tokens.weight
