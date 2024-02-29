@@ -3,6 +3,7 @@
 Utilities for representing a matrix as a product of two matrices, and for efficient calculation of
 eigenvalues, norm and SVD.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -64,7 +65,7 @@ class FactoredMatrix:
         elif isinstance(other, FactoredMatrix):
             return (self @ other.A) @ other.B
 
-    def __rmatmul__(
+    def __rmatmul__(  # type: ignore
         self,
         other: Union[
             Float[torch.Tensor, "... new_rdim ldim"],
@@ -96,7 +97,7 @@ class FactoredMatrix:
             ), f"Tensor must be a scalar for use with * but was of shape {scalar.shape}. For matrix multiplication, use @ instead."
         return FactoredMatrix(self.A * scalar, self.B)
 
-    def __rmul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:
+    def __rmul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:  # type: ignore
         """
         Right scalar multiplication. For scalar multiplication from the right, we can reuse the __mul__ method.
         """

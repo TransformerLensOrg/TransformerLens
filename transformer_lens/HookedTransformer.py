@@ -8,8 +8,9 @@ attaching hooks to every notable activation within the model. This enables the i
 alteration of activations in individual components like attention heads and MLP layers, facilitating
 a deeper understanding of the internal workings of transformers like GPT-2.
 """
+
 import logging
-from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union, cast, overload
 
 import einops
 import numpy as np
@@ -23,7 +24,6 @@ from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
-from transformer_lens import HookedTransformerConfig
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import (
     Embed,
@@ -37,6 +37,7 @@ from transformer_lens.components import (
 )
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 
 # Note - activation cache is used with run_with_cache, past_key_value_caching is used for
@@ -82,6 +83,8 @@ class HookedTransformer(HookedRootModule):
     Once you've initialized the model, a common next step is to test it can do the task you're
     investigating. This can be done with :func:`transformer_lens.utils.test_prompt`.
     """
+
+    ln_final: nn.Module
 
     def __init__(
         self,
@@ -264,7 +267,7 @@ class HookedTransformer(HookedRootModule):
             past_kv_cache (HookedTransformerKeyValueCache, optional): If passed, we're doing caching
                 and attention_mask will be stored in the cache.
         """
-        if type(input) == str or type(input) == list:
+        if isinstance(input, str) or isinstance(input, list):
             # If text, convert to tokens (batch_size=1)
             assert (
                 self.tokenizer is not None
@@ -363,7 +366,7 @@ class HookedTransformer(HookedRootModule):
         self,
         input,
         return_type: Literal["logits"],
-        loss_per_token: Optional[bool] = False,
+        loss_per_token: bool = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[
             Union[Literal["left", "right"], None]
@@ -384,7 +387,7 @@ class HookedTransformer(HookedRootModule):
         self,
         input,
         return_type: Literal["loss"],
-        loss_per_token: Optional[bool] = False,
+        loss_per_token: bool = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[
             Union[Literal["left", "right"], None]
@@ -405,7 +408,7 @@ class HookedTransformer(HookedRootModule):
         self,
         input,
         return_type: Literal["both"],
-        loss_per_token: Optional[bool] = False,
+        loss_per_token: bool = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[
             Union[Literal["left", "right"], None]
@@ -426,7 +429,7 @@ class HookedTransformer(HookedRootModule):
         self,
         input,
         return_type: Literal[None],
-        loss_per_token: Optional[bool] = False,
+        loss_per_token: bool = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[
             Union[Literal["left", "right"], None]
@@ -451,7 +454,7 @@ class HookedTransformer(HookedRootModule):
             Float[torch.Tensor, "batch pos d_model"],
         ],
         return_type: Optional[str] = "logits",
-        loss_per_token: Optional[bool] = False,
+        loss_per_token: bool = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         start_at_layer: Optional[int] = None,
@@ -570,9 +573,9 @@ class HookedTransformer(HookedRootModule):
                     residual,
                     # Cache contains a list of HookedTransformerKeyValueCache objects, one for each
                     # block
-                    past_kv_cache_entry=past_kv_cache[i]
-                    if past_kv_cache is not None
-                    else None,
+                    past_kv_cache_entry=(
+                        past_kv_cache[i] if past_kv_cache is not None else None
+                    ),
                     shortformer_pos_embed=shortformer_pos_embed,
                     attention_mask=attention_mask,
                 )  # [batch, pos, d_model]
@@ -624,7 +627,7 @@ class HookedTransformer(HookedRootModule):
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[False] = False, **kwargs
+        self, *model_args, return_cache_object: Literal[False], **kwargs
     ) -> Tuple[Output, Dict[str, torch.Tensor]]:
         ...
 
@@ -684,6 +687,7 @@ class HookedTransformer(HookedRootModule):
         # (https://github.com/huggingface/transformers/issues/25886).
         tokenizer_with_bos = utils.get_tokenizer_with_bos(tokenizer)
         self.tokenizer = tokenizer_with_bos
+        assert self.tokenizer is not None  # keep mypy happy
         self.tokenizer.padding_side = default_padding_side
 
         # Some tokenizers doesn't automatically prepend the BOS token even when they are initialized
@@ -710,8 +714,8 @@ class HookedTransformer(HookedRootModule):
         padding_side: Optional[
             Union[Literal["left", "right"], None]
         ] = USE_DEFAULT_VALUE,
-        move_to_device: Optional[bool] = True,
-        truncate: Optional[bool] = True,
+        move_to_device: bool = True,
+        truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
         """Converts a string to a tensor of tokens.
 
@@ -858,6 +862,7 @@ class HookedTransformer(HookedRootModule):
         with utils.LocallyOverridenDefaults(
             self, prepend_bos=prepend_bos, padding_side=padding_side
         ):
+            tokens: Union[np.ndarray, torch.Tensor]
             if isinstance(input, list):
                 return list(
                     map(
@@ -891,6 +896,7 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
+            assert self.tokenizer is not None  # keep mypy happy
             str_tokens = self.tokenizer.batch_decode(
                 tokens, clean_up_tokenization_spaces=False
             )
@@ -913,7 +919,7 @@ class HookedTransformer(HookedRootModule):
         assert isinstance(int_token, int)
         token = self.to_str_tokens(torch.tensor([int_token]))
         assert len(token) == 1
-        return token[0]
+        return cast(str, token[0])
 
     def get_token_position(
         self,
@@ -1043,10 +1049,10 @@ class HookedTransformer(HookedRootModule):
             residual_direction = self.W_U[:, token]
             return residual_direction
 
-    def to(
+    def to(  # type: ignore
         self,
         device_or_dtype: Union[torch.device, str, torch.dtype],
-        print_details: Optional[bool] = True,
+        print_details: bool = True,
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
@@ -1082,20 +1088,20 @@ class HookedTransformer(HookedRootModule):
     def from_pretrained(
         cls,
         model_name: str,
-        fold_ln: Optional[bool] = True,
-        center_writing_weights: Optional[bool] = True,
-        center_unembed: Optional[bool] = True,
-        refactor_factored_attn_matrices: Optional[bool] = False,
+        fold_ln: bool = True,
+        center_writing_weights: bool = True,
+        center_unembed: bool = True,
+        refactor_factored_attn_matrices: bool = False,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
         hf_model: Optional[AutoModelForCausalLM] = None,
         device: Optional[Union[str, torch.device]] = None,
-        n_devices: Optional[int] = 1,
+        n_devices: int = 1,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
-        move_to_device: Optional[bool] = True,
-        fold_value_biases: Optional[bool] = True,
-        default_prepend_bos: Optional[bool] = True,
-        default_padding_side: Optional[Literal["left", "right"]] = "right",
+        move_to_device: bool = True,
+        fold_value_biases: bool = True,
+        default_prepend_bos: bool = True,
+        default_padding_side: Literal["left", "right"] = "right",
         dtype="float32",
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
@@ -1389,11 +1395,11 @@ class HookedTransformer(HookedRootModule):
     def load_and_process_state_dict(
         self,
         state_dict: Dict[str, torch.Tensor],
-        fold_ln: Optional[bool] = True,
-        center_writing_weights: Optional[bool] = True,
-        center_unembed: Optional[bool] = True,
-        fold_value_biases: Optional[bool] = True,
-        refactor_factored_attn_matrices: Optional[bool] = False,
+        fold_ln: bool = True,
+        center_writing_weights: bool = True,
+        center_unembed: bool = True,
+        fold_value_biases: bool = True,
+        refactor_factored_attn_matrices: bool = False,
     ):
         """Load & Process State Dict.
 
@@ -1588,7 +1594,7 @@ class HookedTransformer(HookedRootModule):
                         "mean",
                     )
 
-                if self.cfg.act_fn.startswith("solu"):
+                if self.cfg.act_fn is not None and self.cfg.act_fn.startswith("solu"):
                     # Fold ln3 into activation
                     if fold_biases:
                         state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[
@@ -1864,7 +1870,7 @@ class HookedTransformer(HookedRootModule):
             for layer in self.blocks:
                 layer.ln1 = LayerNormPre(self.cfg)
                 layer.ln2 = LayerNormPre(self.cfg)
-                if self.cfg.act_fn.endswith("_ln"):
+                if self.cfg.act_fn is not None and self.cfg.act_fn.endswith("_ln"):
                     layer.mlp.ln = LayerNormPre(self.cfg)
         elif fold_ln and self.cfg.normalization_type == "RMS":
             # We do the same for RMSNorm if used
@@ -1873,7 +1879,7 @@ class HookedTransformer(HookedRootModule):
             for layer in self.blocks:
                 layer.ln1 = RMSNormPre(self.cfg)
                 layer.ln2 = RMSNormPre(self.cfg)
-                if self.cfg.act_fn.endswith("_ln"):
+                if self.cfg.act_fn is not None and self.cfg.act_fn.endswith("_ln"):
                     layer.mlp.ln = RMSNormPre(self.cfg)
 
         self.load_and_process_state_dict(
@@ -1983,8 +1989,9 @@ class HookedTransformer(HookedRootModule):
             else:
                 past_kv_cache = None
 
-            stop_tokens = []
+            stop_tokens: List[int] = []
             eos_token_for_padding = 0
+            assert self.tokenizer is not None
             if stop_at_eos:
                 tokenizer_has_eos_token = (
                     self.tokenizer is not None
@@ -2154,7 +2161,7 @@ class HookedTransformer(HookedRootModule):
         return torch.stack([block.mlp.W_in for block in self.blocks], dim=0)
 
     @property
-    def W_gate(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
+    def W_gate(self) -> Union[Float[torch.Tensor, "n_layers d_model d_mlp"], None]:
         """Stack the MLP gate weights across all layers.
 
         Only works for models with gated MLPs.
@@ -2329,7 +2336,7 @@ class HookedTransformer(HookedRootModule):
 
     def sample_datapoint(
         self,
-        tokenize: Optional[bool] = False,
+        tokenize: bool = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
     ) -> Union[str, Float[torch.Tensor, "1 pos"]]:
@@ -2356,6 +2363,7 @@ class HookedTransformer(HookedRootModule):
         """
         if self.dataset is None:
             self.load_sample_training_dataset()
+        assert self.dataset is not None  # keep mypy happy
         sample_dataset_size = len(self.dataset)
         index = np.random.randint(0, sample_dataset_size)
         if not tokenize:

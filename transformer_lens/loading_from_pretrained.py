@@ -2,10 +2,11 @@
 
 This module contains functions for loading pretrained models from the Hugging Face Hub.
 """
+
 import dataclasses
 import logging
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import einops
 import torch
@@ -974,7 +975,7 @@ def get_pretrained_model_config(
     checkpoint_index: Optional[int] = None,
     checkpoint_value: Optional[int] = None,
     fold_ln: bool = False,
-    device: Optional[str] = None,
+    device: Optional[Union[str, torch.device]] = None,
     n_devices: int = 1,
     default_prepend_bos: bool = True,
     dtype: torch.dtype = torch.float32,
@@ -1544,6 +1545,8 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
     # llama has no biases anywhere and deals with everything else roughly like
     # GPTNeoX with different names
 
+    assert cfg.d_mlp is not None  # keep mypy happy
+
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = llama.model.layers[l].input_layernorm.weight
 
@@ -1609,6 +1612,8 @@ def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
     model = qwen.transformer
     state_dict["embed.W_E"] = model.wte.weight
 
+    assert cfg.d_mlp is not None  # keep mypy happy
+
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = model.h[l].ln_1.weight
 
@@ -1669,6 +1674,9 @@ def convert_mistral_weights(mistral, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = mistral.model.embed_tokens.weight
+
+    assert cfg.n_key_value_heads is not None  # keep mypy happy
+    assert cfg.d_mlp is not None  # keep mypy happy
 
     # Mistral has no biases anywhere
     for l in range(cfg.n_layers):

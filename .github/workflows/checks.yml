@@ -5,24 +5,24 @@ on:
     branches:
       - main
     paths:
-      - '**' # Include all files by default
-      - '!.devcontainer/**'
-      - '!.vscode/**'
-      - '!.git*'
-      - '!*.md'
-      - '!.github/**'
-      - '.github/workflows/checks.yml' # Still include current workflow
+      - "**" # Include all files by default
+      - "!.devcontainer/**"
+      - "!.vscode/**"
+      - "!.git*"
+      - "!*.md"
+      - "!.github/**"
+      - ".github/workflows/checks.yml" # Still include current workflow
   pull_request:
     branches:
       - main
     paths:
-      - '**'
-      - '!.devcontainer/**'
-      - '!.vscode/**'
-      - '!.git*'
-      - '!*.md'
-      - '!.github/**'
-      - '.github/workflows/checks.yml'
+      - "**"
+      - "!.devcontainer/**"
+      - "!.vscode/**"
+      - "!.git*"
+      - "!*.md"
+      - "!.github/**"
+      - ".github/workflows/checks.yml"
   # Allow this workflow to be called from other workflows
   workflow_call:
     inputs:
@@ -73,11 +73,11 @@ jobs:
         run: make unit-test
       - name: Docstring test
         run: make docstring-test
-      # - name: Type check
-      #   run: poetry run mypy transformer_lens
+      - name: Type check
+        run: poetry run mypy .
       - name: Build check
         run: poetry build
-  
+
   # Acceptance tests are run in parallel with unit checks.
   acceptance-tests:
     name: Acceptance Tests
