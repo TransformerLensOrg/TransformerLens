@@ -622,6 +622,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
         architecture = "LlamaForCausalLM"
     elif "mistral" in official_model_name.lower():
         architecture = "MistralForCausalLM"
+    elif "gemma" in official_model_name.lower():
+        architecture = "GemmaForCausalLM"
     else:
         hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
         architecture = hf_config.architectures[0]
