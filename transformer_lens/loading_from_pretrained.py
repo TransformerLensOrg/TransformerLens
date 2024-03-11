@@ -158,6 +158,8 @@ OFFICIAL_MODEL_NAMES = [
     "microsoft/phi-2",
     "google/gemma-2b",
     "google/gemma-7b",
+    "google/gemma-2b-it",
+    "google/gemma-7b-it",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -550,6 +552,8 @@ MODEL_ALIASES = {
     "microsoft/phi-2": ["phi-2"],
     "google/gemma-2b": ["gemma-2b"],
     "google/gemma-7b": ["gemma-7b"],
+    "google/gemma-2b-it": ["gemma-2b-it"],
+    "google/gemma-7b-it": ["gemma-7b-it"],
 }
 """Model aliases for models on HuggingFace."""
 
