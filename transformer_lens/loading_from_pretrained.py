@@ -927,30 +927,52 @@ def convert_hf_model_config(model_name: str, **kwargs):
         partial_rotary_factor = hf_config.partial_rotary_factor
         cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
 
-    elif architecture == "GemmaForCausalLM":
-        # Architecture for google/gemma models
+    elif official_model_name.startswith("google/gemma-2b"):
+        # Architecture for Gemma 2b and Gemma 2b Instruct models
         cfg_dict = {
-            "d_model": hf_config.hidden_size,
-            "d_head": hf_config.head_dim,
-            "n_heads": hf_config.num_attention_heads,
-            "d_mlp": hf_config.intermediate_size,
-            "n_layers": hf_config.num_hidden_layers,
-            "n_ctx": hf_config.max_position_embeddings,
-            "eps": hf_config.rms_norm_eps,
-            "d_vocab": hf_config.vocab_size,
-            "act_fn": hf_config.hidden_act,
-            "initializer_range": hf_config.initializer_range,
+            "d_model": 2048,
+            "d_head": 256,
+            "n_heads": 8,
+            "d_mlp": 16384,
+            "n_layers": 18,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu",
+            "initializer_range": 0.02,
             "normalization_type": "RMS",
-            "rotary_base": hf_config.rope_theta,
-            "rotary_dim": hf_config.head_dim,
+            "rotary_base": 10000.0,
+            "rotary_dim": 256,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "n_key_value_heads": hf_config.num_key_value_heads,
+            "n_key_value_heads": 1,
             "gated_mlp": True,
             "final_rms": True,
             "post_embedding_scale": True,
         }
-
+    elif official_model_name.startswith("google/gemma-7b"):
+        # Architecture for Gemma 7b and Gemma 7b Instruct models
+        cfg_dict = {
+            "d_model": 3072,
+            "d_head": 256,
+            "n_heads": 16,
+            "d_mlp": 24576,
+            "n_layers": 28,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "rotary_dim": 256,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 16,
+            "gated_mlp": True,
+            "final_rms": True,
+            "post_embedding_scale": True,
+        }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
