@@ -140,7 +140,7 @@ class HookPoint(nn.Module):
         self,
         dir: str = "fwd",
         including_permanent: bool = False,
-        level: Union[int, None] = None,
+        level: Optional[int] = None,
     ) -> None:
         def _remove_hooks(handles: List[LensHandle]) -> List[LensHandle]:
             output_handles = []
@@ -166,7 +166,6 @@ class HookPoint(nn.Module):
         del self.ctx
         self.ctx = {}
 
-    # TODO: can we assume this will always be a torch.Tensor?
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x
 
@@ -200,11 +199,10 @@ class HookedRootModule(nn.Module):
     loss.backward() (and so need to disable the reset_hooks_end flag on run_with_hooks)
     """
 
-    name: Union[str, None]
+    name: Optional[str]
     mod_dict: Dict[str, nn.Module]
     hook_dict: Dict[str, HookPoint]
 
-    # TODO: check if adding 'Any' is okay here
     def __init__(self, *args: Any):
         super().__init__()
         self.is_caching = False
