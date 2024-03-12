@@ -74,7 +74,9 @@ class HookPoint(nn.Module):
         # module) - this is set by the root module at setup.
         self.name: Union[str, None] = None
 
-    def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
+    def add_perma_hook(
+        self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd"
+    ) -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
     def add_hook(
