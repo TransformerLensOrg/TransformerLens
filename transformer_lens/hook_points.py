@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Dict,
     List,
+    Literal,
     Optional,
     Protocol,
     Sequence,
@@ -73,13 +74,13 @@ class HookPoint(nn.Module):
         # module) - this is set by the root module at setup.
         self.name: Union[str, None] = None
 
-    def add_perma_hook(self, hook: HookFunction, dir: str = "fwd") -> None:
+    def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
     def add_hook(
         self,
         hook: HookFunction,
-        dir: str = "fwd",
+        dir: Literal["fwd", "bwd"] = "fwd",
         is_permanent: bool = False,
         level: Optional[int] = None,
         prepend: bool = False,
@@ -138,7 +139,7 @@ class HookPoint(nn.Module):
 
     def remove_hooks(
         self,
-        dir: str = "fwd",
+        dir: Literal["fwd", "bwd", "both"] = "fwd",
         including_permanent: bool = False,
         level: Optional[int] = None,
     ) -> None:
@@ -173,7 +174,8 @@ class HookPoint(nn.Module):
         # Returns the layer index if the name has the form 'blocks.{layer}.{...}'
         # Helper function that's mainly useful on HookedTransformer
         # If it doesn't have this form, raises an error -
-        assert self.name is not None
+        if self.name is None:
+            raise ValueError("Name cannot be None")
         split_name = self.name.split(".")
         return int(split_name[1])
 
@@ -233,7 +235,7 @@ class HookedRootModule(nn.Module):
 
     def remove_all_hook_fns(
         self,
-        direction: str = "both",
+        direction: Literal["fwd", "bwd", "both"] = "both",
         including_permanent: bool = False,
         level: Union[int, None] = None,
     ):
@@ -249,7 +251,7 @@ class HookedRootModule(nn.Module):
     def reset_hooks(
         self,
         clear_contexts: bool = True,
-        direction: str = "both",
+        direction: Literal["fwd", "bwd", "both"] = "both",
         including_permanent: bool = False,
         level: Union[int, None] = None,
     ):
@@ -263,7 +265,7 @@ class HookedRootModule(nn.Module):
         hook_point: HookPoint,
         hook_point_name: str,
         hook: HookFunction,
-        dir: str = "fwd",
+        dir: Literal["fwd", "bwd"] = "fwd",
         is_permanent: bool = False,
         level: Union[int, None] = None,
         prepend: bool = False,
@@ -287,7 +289,7 @@ class HookedRootModule(nn.Module):
         hook_point: HookPoint,
         hook_point_name: str,
         hook: HookFunction,
-        dir: str = "fwd",
+        dir: Literal["fwd", "bwd"] = "fwd",
         is_permanent: bool = False,
         prepend: bool = False,
     ) -> None:
@@ -298,7 +300,7 @@ class HookedRootModule(nn.Module):
         self,
         name: Union[str, Callable[[str], bool]],
         hook: HookFunction,
-        dir: str = "fwd",
+        dir: Literal["fwd", "bwd"] = "fwd",
         is_permanent: bool = False,
         level: Union[int, None] = None,
         prepend: bool = False,
@@ -335,7 +337,7 @@ class HookedRootModule(nn.Module):
         self,
         name: Union[str, Callable[[str], bool]],
         hook: HookFunction,
-        dir: str = "fwd",
+        dir: Literal["fwd", "bwd"] = "fwd",
     ) -> None:
         self.add_hook(name, hook, dir=dir, is_permanent=True)
 
@@ -467,7 +469,8 @@ class HookedRootModule(nn.Module):
             filter_list = names_filter
             names_filter = lambda name: name in filter_list
 
-        assert isinstance(names_filter, Callable)
+        if not isinstance(names_filter, Callable):
+            raise ValueError("names_filter must be a callable")
 
         self.is_caching = True
 
@@ -478,7 +481,8 @@ class HookedRootModule(nn.Module):
                 cache[hook.name] = tensor.detach().to(device)
 
         def save_hook_back(tensor: torch.Tensor, hook: HookPoint):
-            assert hook.name is not None
+            if hook.name is None:
+                raise ValueError("hook.name cannot be None")
             if remove_batch_dim:
                 cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
             else:
@@ -594,7 +598,8 @@ class HookedRootModule(nn.Module):
                 cache[hook.name] = tensor.detach().to(device)
 
         def save_hook_back(tensor: torch.Tensor, hook: HookPoint):
-            assert hook.name is not None
+            if hook.name is None:
+                raise RuntimeError("hook.name should not be None")
             if remove_batch_dim:
                 cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
             else:
