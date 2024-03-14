@@ -950,7 +950,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 1,
             "gated_mlp": True,
             "final_rms": True,
-            "post_embedding_scale": True,
         }
     elif official_model_name.startswith("google/gemma-7b"):
         # Architecture for Gemma 7b and Gemma 7b Instruct models
@@ -973,7 +972,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 16,
             "gated_mlp": True,
             "final_rms": True,
-            "post_embedding_scale": True,
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
