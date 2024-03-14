@@ -1,5 +1,5 @@
 import torch
-
+import einops
 from transformer_lens.components import Attention, GroupedQueryAttention
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
@@ -80,3 +80,16 @@ def test_grouped_query_attention_output_is_correct():
     )
 
     assert torch.equal(regular_attn_output, grouped_query_attn_output)
+    
+    # Test GQA behaves correctly when use_split_qkv_input is True
+    grouped_query_attention.cfg.use_split_qkv_input = True
+    
+    split_query_input = einops.repeat(query_input, 'b n d -> b n h d', h=n_heads).clone()
+    split_key_input = einops.repeat(key_input, 'b n d -> b n h d', h=n_key_value_heads).clone()
+    split_value_input = einops.repeat(value_input, 'b n d -> b n h d', h=n_key_value_heads).clone()
+    
+    split_grouped_query_attn_output = grouped_query_attention(
+        split_query_input, split_key_input, split_value_input
+    )
+    
+    assert torch.equal(regular_attn_output, split_grouped_query_attn_output)

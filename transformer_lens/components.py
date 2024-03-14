@@ -514,10 +514,12 @@ class AbstractAttention(ABC, nn.Module):
         key_input: Union[
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch pos kv_head_index d_model"]
         ],
         value_input: Union[
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch pos kv_head_index d_model"]
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
@@ -1094,13 +1096,14 @@ class GroupedQueryAttention(AbstractAttention):
         A tuple containing the Q, K, and V matrices with the specified shapes.
         """
         if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
-            qkv_einops_string = "batch pos kv_head_index d_model"
+            kv_einops_string = "batch pos kv_head_index d_model"
+            q_einops_string = "batch pos head_index d_model"
         else:
-            qkv_einops_string = "batch pos d_model"
+            kv_einops_string = q_einops_string = "batch pos d_model"
 
         q = self.hook_q(
             einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
+                f"{q_einops_string}, head_index d_model d_head \
                 -> batch pos head_index d_head",
                 query_input,
                 self.W_Q,
@@ -1109,7 +1112,7 @@ class GroupedQueryAttention(AbstractAttention):
         )  # [batch, pos, head_index, d_head]
         k = self.hook_k(
             einsum(
-                f"{qkv_einops_string}, kv_head_index d_model d_head \
+                f"{kv_einops_string}, kv_head_index d_model d_head \
                 -> batch pos kv_head_index d_head",
                 key_input,
                 self._W_K,
@@ -1118,7 +1121,7 @@ class GroupedQueryAttention(AbstractAttention):
         )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
             einsum(
-                f"{qkv_einops_string}, kv_head_index d_model d_head \
+                f"{kv_einops_string}, kv_head_index d_model d_head \
                 -> batch pos kv_head_index d_head",
                 value_input,
                 self._W_V,
@@ -1316,6 +1319,23 @@ class GatedMLP(nn.Module):
             )
             + self.b_out
         )
+        
+
+def add_head_dimension(
+    tensor: Float[torch.Tensor, "batch pos d_model"],
+    n_heads: int,
+    clone_tensor=True,
+    # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
+):
+    repeated_tensor = einops.repeat(
+        tensor,
+        "batch pos d_model -> batch pos n_heads d_model",
+        n_heads=n_heads,
+    )
+    if clone_tensor:
+        return repeated_tensor.clone()
+    else:
+        return repeated_tensor
 
 
 # Transformer Block
@@ -1402,36 +1422,28 @@ class TransformerBlock(nn.Module):
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
 
-        def add_head_dimension(
-            tensor: Float[torch.Tensor, "batch pos d_model"],
-            clone_tensor=True,
-            # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
-        ):
-            repeated_tensor = einops.repeat(
-                tensor,
-                "batch pos d_model -> batch pos n_heads d_model",
-                n_heads=self.cfg.n_heads,
-            )
-            if clone_tensor:
-                return repeated_tensor.clone()
-            else:
-                return repeated_tensor
-
         if self.cfg.use_attn_in or self.cfg.use_split_qkv_input:
             # We're adding a head dimension
-            attn_in = add_head_dimension(resid_pre, clone_tensor=False)
             if shortformer_pos_embed is not None:
-                shortformer_pos_embed = add_head_dimension(shortformer_pos_embed)
+                shortformer_pos_embed = add_head_dimension(
+                    shortformer_pos_embed,
+                    n_heads=self.cfg.n_heads
+                )
         else:
             attn_in = resid_pre
 
         if self.cfg.use_attn_in:
-            attn_in = self.hook_attn_in(attn_in.clone())
-
+            attn_in = self.hook_attn_in(
+                add_head_dimension(resid_pre, n_heads=self.cfg.n_heads))
+            
         if self.cfg.use_split_qkv_input:
-            query_input = self.hook_q_input(attn_in.clone())
-            key_input = self.hook_k_input(attn_in.clone())
-            value_input = self.hook_v_input(attn_in.clone())
+            n_kv_heads = self.cfg.n_key_value_heads if self.cfg.n_key_value_heads is not None else self.cfg.n_heads
+            query_input = self.hook_q_input(
+                add_head_dimension(resid_pre, n_heads=self.cfg.n_heads))
+            key_input = self.hook_k_input(
+                add_head_dimension(resid_pre, n_heads=n_kv_heads))
+            value_input = self.hook_v_input(
+                add_head_dimension(resid_pre, n_heads=n_kv_heads))
         else:
             query_input = attn_in
             key_input = attn_in
