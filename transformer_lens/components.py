@@ -514,12 +514,12 @@ class AbstractAttention(ABC, nn.Module):
         key_input: Union[
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
-            Float[torch.Tensor, "batch pos kv_head_index d_model"]
+            Float[torch.Tensor, "batch pos kv_head_index d_model"],
         ],
         value_input: Union[
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
-            Float[torch.Tensor, "batch pos kv_head_index d_model"]
+            Float[torch.Tensor, "batch pos kv_head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
@@ -1319,7 +1319,7 @@ class GatedMLP(nn.Module):
             )
             + self.b_out
         )
-        
+
 
 def add_head_dimension(
     tensor: Float[torch.Tensor, "batch pos d_model"],
@@ -1426,24 +1426,31 @@ class TransformerBlock(nn.Module):
             # We're adding a head dimension
             if shortformer_pos_embed is not None:
                 shortformer_pos_embed = add_head_dimension(
-                    shortformer_pos_embed,
-                    n_heads=self.cfg.n_heads
+                    shortformer_pos_embed, n_heads=self.cfg.n_heads
                 )
         else:
             attn_in = resid_pre
 
         if self.cfg.use_attn_in:
             attn_in = self.hook_attn_in(
-                add_head_dimension(resid_pre, n_heads=self.cfg.n_heads))
-            
+                add_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
+            )
+
         if self.cfg.use_split_qkv_input:
-            n_kv_heads = self.cfg.n_key_value_heads if self.cfg.n_key_value_heads is not None else self.cfg.n_heads
+            n_kv_heads = (
+                self.cfg.n_key_value_heads
+                if self.cfg.n_key_value_heads is not None
+                else self.cfg.n_heads
+            )
             query_input = self.hook_q_input(
-                add_head_dimension(resid_pre, n_heads=self.cfg.n_heads))
+                add_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
+            )
             key_input = self.hook_k_input(
-                add_head_dimension(resid_pre, n_heads=n_kv_heads))
+                add_head_dimension(resid_pre, n_heads=n_kv_heads)
+            )
             value_input = self.hook_v_input(
-                add_head_dimension(resid_pre, n_heads=n_kv_heads))
+                add_head_dimension(resid_pre, n_heads=n_kv_heads)
+            )
         else:
             query_input = attn_in
             key_input = attn_in
