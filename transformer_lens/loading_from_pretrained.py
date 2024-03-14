@@ -166,6 +166,10 @@ OFFICIAL_MODEL_NAMES = [
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
+    "google/gemma-2b",
+    "google/gemma-7b",
+    "google/gemma-2b-it",
+    "google/gemma-7b-it",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -566,6 +570,10 @@ MODEL_ALIASES = {
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
+    "google/gemma-2b": ["gemma-2b"],
+    "google/gemma-7b": ["gemma-7b"],
+    "google/gemma-2b-it": ["gemma-2b-it"],
+    "google/gemma-7b-it": ["gemma-7b-it"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -634,6 +642,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
         architecture = "LlamaForCausalLM"
     elif "mistral" in official_model_name.lower():
         architecture = "MistralForCausalLM"
+    elif "gemma" in official_model_name.lower():
+        architecture = "GemmaForCausalLM"
     else:
         hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
         architecture = hf_config.architectures[0]
@@ -962,6 +972,50 @@ def convert_hf_model_config(model_name: str, **kwargs):
         partial_rotary_factor = hf_config.partial_rotary_factor
         cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
 
+    elif official_model_name.startswith("google/gemma-2b"):
+        # Architecture for Gemma 2b and Gemma 2b Instruct models
+        cfg_dict = {
+            "d_model": 2048,
+            "d_head": 256,
+            "n_heads": 8,
+            "d_mlp": 16384,
+            "n_layers": 18,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "rotary_dim": 256,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 1,
+            "gated_mlp": True,
+            "final_rms": True,
+        }
+    elif official_model_name.startswith("google/gemma-7b"):
+        # Architecture for Gemma 7b and Gemma 7b Instruct models
+        cfg_dict = {
+            "d_model": 3072,
+            "d_head": 256,
+            "n_heads": 16,
+            "d_mlp": 24576,
+            "n_layers": 28,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "rotary_dim": 256,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 16,
+            "gated_mlp": True,
+            "final_rms": True,
+        }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
@@ -1312,6 +1366,8 @@ def get_pretrained_state_dict(
             state_dict = convert_qwen2_weights(hf_model, cfg)
         elif cfg.original_architecture == "PhiForCausalLM":
             state_dict = convert_phi_weights(hf_model, cfg)
+        elif cfg.original_architecture == "GemmaForCausalLM":
+            state_dict = convert_gemma_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
@@ -2379,6 +2435,76 @@ def convert_phi_weights(phi, cfg: HookedTransformerConfig):
 
     state_dict["unembed.W_U"] = phi.lm_head.weight.T
     state_dict["unembed.b_U"] = phi.lm_head.bias
+
+    return state_dict
+
+
+def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    # Gemma Models scale embeddings by multiplying by sqrt(d_model)
+    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * (cfg.d_model**0.5)
+
+    # Gemma has no biases anywhere
+    for l in range(cfg.n_layers):
+        # GemmaRMSNorm adds 1 to weights before multiplying by input
+        state_dict[f"blocks.{l}.ln1.w"] = gemma.model.layers[
+            l
+        ].input_layernorm.weight + torch.ones_like(
+            gemma.model.layers[l].input_layernorm.weight, dtype=cfg.dtype
+        )
+
+        W_Q = gemma.model.layers[l].self_attn.q_proj.weight
+        W_K = gemma.model.layers[l].self_attn.k_proj.weight
+        W_V = gemma.model.layers[l].self_attn.v_proj.weight
+        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_key_value_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_key_value_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn._W_K"] = W_K
+        state_dict[f"blocks.{l}.attn._W_V"] = W_V
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn._b_V"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+        )
+
+        W_O = gemma.model.layers[l].self_attn.o_proj.weight
+        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+        # GemmaRMSNorm adds 1 to weights before multiplying by input
+        state_dict[f"blocks.{l}.ln2.w"] = gemma.model.layers[
+            l
+        ].post_attention_layernorm.weight + torch.ones_like(
+            gemma.model.norm.weight, dtype=cfg.dtype
+        )
+
+        state_dict[f"blocks.{l}.mlp.W_in"] = gemma.model.layers[l].mlp.up_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_gate"] = gemma.model.layers[
+            l
+        ].mlp.gate_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.mlp.W_out"] = gemma.model.layers[
+            l
+        ].mlp.down_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+    # GemmaRMSNorm adds 1 to weights before multiplying by input
+    state_dict["ln_final.w"] = gemma.model.norm.weight + torch.ones_like(
+        gemma.model.norm.weight, dtype=cfg.dtype
+    )
+
+    state_dict["unembed.W_U"] = gemma.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
 
