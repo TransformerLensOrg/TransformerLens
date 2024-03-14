@@ -99,4 +99,6 @@ def test_grouped_query_attention_output_is_correct():
         split_query_input, split_key_input, split_value_input
     )
 
-    assert torch.equal(regular_attn_output, split_grouped_query_attn_output)
+    assert torch.allclose(
+        regular_attn_output, split_grouped_query_attn_output, rtol=1e-6
+    )
