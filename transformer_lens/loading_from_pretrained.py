@@ -2323,7 +2323,8 @@ def convert_phi_weights(phi, cfg: HookedTransformerConfig):
 def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
     state_dict = {}
 
-    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight
+    # Gemma Models scale embeddings by multiplying by sqrt(d_model)
+    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * (cfg.d_model**0.5)
 
     # Gemma has no biases anywhere
     for l in range(cfg.n_layers):
