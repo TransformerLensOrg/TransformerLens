@@ -21,7 +21,13 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import gelu_fast, gelu_new, get_offset_position_ids, solu
+from transformer_lens.utils import (
+    gelu_fast,
+    gelu_new,
+    get_offset_position_ids,
+    repeat_along_head_dimension,
+    solu,
+)
 
 
 # Embed & Unembed
@@ -1321,23 +1327,6 @@ class GatedMLP(nn.Module):
         )
 
 
-def add_head_dimension(
-    tensor: Float[torch.Tensor, "batch pos d_model"],
-    n_heads: int,
-    clone_tensor=True,
-    # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
-):
-    repeated_tensor = einops.repeat(
-        tensor,
-        "batch pos d_model -> batch pos n_heads d_model",
-        n_heads=n_heads,
-    )
-    if clone_tensor:
-        return repeated_tensor.clone()
-    else:
-        return repeated_tensor
-
-
 # Transformer Block
 class TransformerBlock(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
@@ -1425,7 +1414,7 @@ class TransformerBlock(nn.Module):
         if self.cfg.use_attn_in or self.cfg.use_split_qkv_input:
             # We're adding a head dimension
             if shortformer_pos_embed is not None:
-                shortformer_pos_embed = add_head_dimension(
+                shortformer_pos_embed = repeat_along_head_dimension(
                     shortformer_pos_embed, n_heads=self.cfg.n_heads
                 )
         else:
@@ -1433,7 +1422,7 @@ class TransformerBlock(nn.Module):
 
         if self.cfg.use_attn_in:
             attn_in = self.hook_attn_in(
-                add_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
+                repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
             )
 
         if self.cfg.use_split_qkv_input:
@@ -1443,13 +1432,13 @@ class TransformerBlock(nn.Module):
                 else self.cfg.n_heads
             )
             query_input = self.hook_q_input(
-                add_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
+                repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
             )
             key_input = self.hook_k_input(
-                add_head_dimension(resid_pre, n_heads=n_kv_heads)
+                repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
             )
             value_input = self.hook_v_input(
-                add_head_dimension(resid_pre, n_heads=n_kv_heads)
+                repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
             )
         else:
             query_input = attn_in
@@ -1546,9 +1535,15 @@ class BertBlock(nn.Module):
 
         if self.cfg.use_split_qkv_input:
             n_heads = self.cfg.n_heads
-            query_input = self.hook_q_input(add_head_dimension(query_input, n_heads))
-            key_input = self.hook_k_input(add_head_dimension(key_input, n_heads))
-            value_input = self.hook_v_input(add_head_dimension(value_input, n_heads))
+            query_input = self.hook_q_input(
+                repeat_along_head_dimension(query_input, n_heads)
+            )
+            key_input = self.hook_k_input(
+                repeat_along_head_dimension(key_input, n_heads)
+            )
+            value_input = self.hook_v_input(
+                repeat_along_head_dimension(value_input, n_heads)
+            )
 
         attn_out = self.hook_attn_out(
             self.attn(
