@@ -1434,7 +1434,11 @@ class HookedTransformer(HookedRootModule):
 
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
-            if self.cfg.normalization_type in ["LN", "LNPre"]:
+            if self.cfg.num_experts and self.cfg.num_experts > 1:
+                logging.warning(
+                    "You are using MoE, so the layer norm weights can't be folded! Skipping"
+                )
+            elif self.cfg.normalization_type in ["LN", "LNPre"]:
                 state_dict = self.fold_layer_norm(state_dict)
             elif self.cfg.normalization_type in ["RMS", "RMSPre"]:
                 state_dict = self.fold_layer_norm(
