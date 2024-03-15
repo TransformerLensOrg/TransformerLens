@@ -151,6 +151,10 @@ class HookedTransformerConfig:
             Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
             to False.
+        num_experts (int, *optional*): The number of experts to use in the MoE layer. If set, experts_per_token
+            must also be set. Set to None if not using MoE.
+        experts_per_token (int, *optional*): The number of experts to use for each pass in the MoE layer. If set,
+            num_experts must also be set. Set to None if not using MoE.
     """
 
     n_layers: int
