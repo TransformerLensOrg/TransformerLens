@@ -882,7 +882,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
-            "n_ctx": 2048, # hf_config.max_position_embeddings, # Capped due to memory issues
+            "n_ctx": 2048,  # hf_config.max_position_embeddings, # Capped due to memory issues
             "d_vocab": hf_config.vocab_size,
             "act_fn": hf_config.hidden_act,
             "normalization_type": "RMS",
