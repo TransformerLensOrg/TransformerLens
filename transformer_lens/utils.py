@@ -95,8 +95,10 @@ def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
     if isinstance(tensor, torch.Tensor):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
-    else: 
+    else:
+        # pylint: disable=wrong-import-position
         from transformer_lens import FactoredMatrix  # Lazy import to stop circular dependencies
+        # pylint: enable=wrong-import-position
         if isinstance(tensor, FactoredMatrix):
             return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
 
