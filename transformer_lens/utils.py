@@ -9,7 +9,9 @@ import json
 import re
 import shutil
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
+from typing import (
+    Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
+)
 
 import einops
 import numpy as np
@@ -22,11 +24,11 @@ from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
 from jaxtyping import Float, Int
 from rich import print as rprint
+from transformer_lens import FactoredMatrix
 from transformers import AutoTokenizer
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 USE_DEFAULT_VALUE = None
-
 
 def select_compatible_kwargs(
     kwargs_dict: Dict[str, Any], callable: Callable
