@@ -97,7 +97,7 @@ def get_corner(tensor, n=3):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
     else: 
         from transformer_lens import FactoredMatrix  # Lazy import to stop circular dependencies
-        isinstance(tensor, FactoredMatrix):
+        if isinstance(tensor, FactoredMatrix):
             return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
 
 
