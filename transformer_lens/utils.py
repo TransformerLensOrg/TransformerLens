@@ -98,7 +98,9 @@ def get_corner(tensor, n=3):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
     else:
         # pylint: disable=wrong-import-position
+        # isort: off
         from transformer_lens import FactoredMatrix  # Lazy import to stop circular dependencies
+        # isort: on
         # pylint: enable=wrong-import-position
         if isinstance(tensor, FactoredMatrix):
             return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
