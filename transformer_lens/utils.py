@@ -9,9 +9,7 @@ import json
 import re
 import shutil
 from copy import deepcopy
-from typing import (
-    Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
-)
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
 import numpy as np
