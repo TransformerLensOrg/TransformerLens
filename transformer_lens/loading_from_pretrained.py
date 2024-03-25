@@ -513,6 +513,7 @@ MODEL_ALIASES = {
         "CodeLlama-7b-instruct",
         "codellama/CodeLlama-7b-Instruct-hf",
     ],
+    "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
     "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
     "roneneldan/TinyStories-8M": ["tiny-stories-8M"],
