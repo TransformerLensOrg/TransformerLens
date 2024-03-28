@@ -115,7 +115,6 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Llama-2-7b-chat-hf",
     "meta-llama/Llama-2-13b-hf",
     "meta-llama/Llama-2-13b-chat-hf",
-    "meta-llama/Llama-2-70b-chat-hf",
     "CodeLlama-7b-hf",
     "CodeLlama-7b-Python-hf",
     "CodeLlama-7b-Instruct-hf",
@@ -503,7 +502,6 @@ MODEL_ALIASES = {
         "Llama-2-13b-chat",
         "meta-llama/Llama-2-13b-chat-hf",
     ],
-    "meta-llama/Llama-2-70b-chat-hf": ["Llama-2-70b-chat", "meta-llama-2-70b-chat-hf"],
     "CodeLlama-7b-hf": ["CodeLlamallama-2-7b", "codellama/CodeLlama-7b-hf"],
     "CodeLlama-7b-Python-hf": [
         "CodeLlama-7b-python",
@@ -513,6 +511,7 @@ MODEL_ALIASES = {
         "CodeLlama-7b-instruct",
         "codellama/CodeLlama-7b-Instruct-hf",
     ],
+    # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
     "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
@@ -744,25 +743,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "positional_embedding_type": "rotary",
             "rotary_dim": 8192 // 64,
             "rotary_adjacent_pairs": False,
-            "final_rms": True,
-            "gated_mlp": True,
-        }
-    elif "Llama-2-70b" in official_model_name:
-        cfg_dict = {
-            "d_model": 8192,
-            "d_head": 128,
-            "n_heads": 64,
-            "d_mlp": 28672,
-            "n_layers": 80,
-            "n_ctx": 4096,
-            "eps": 1e-5,
-            "d_vocab": 32000,
-            "act_fn": "silu",
-            "n_key_value_heads": 8,
-            "normalization_type": "RMS",
-            "positional_embedding_type": "rotary",
-            "rotary_adjacent_pairs": False,
-            "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
         }
@@ -1662,9 +1642,6 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
     state_dict["embed.W_E"] = llama.model.embed_tokens.weight
 
-    using_gqa = cfg.n_key_value_heads is not None
-    gqa_uscore = "_" if using_gqa else ""
-
     # llama has no biases anywhere and deals with everything else roughly like
     # GPTNeoX with different names
 
@@ -1675,30 +1652,20 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_K = llama.model.layers[l].self_attn.k_proj.weight
         W_V = llama.model.layers[l].self_attn.v_proj.weight
         W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-        W_K = einops.rearrange(
-            W_K, "(n h) m->n m h", n=cfg.n_key_value_heads if using_gqa else cfg.n_heads
-        )
-        W_V = einops.rearrange(
-            W_V, "(n h) m-n m h", n=cfg.n_key_value_heads if using_gqa else cfg.n_heads
-        )
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
-        state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
-        state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = W_V
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
 
         state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
-        state_dict[f"blocks.{l}.attn.{gqa_uscore}b_K"] = torch.zeros(
-            cfg.n_key_value_heads if using_gqa else cfg.n_heads,
-            cfg.d_head,
-            dtype=cfg.dtype,
-            device=cfg.device,
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
-        state_dict[f"blocks.{l}.attn.{gqa_uscore}b_V"] = torch.zeros(
-            cfg.n_key_value_heads if using_gqa else cfg.n_heads,
-            cfg.d_head,
-            dtype=cfg.dtype,
-            device=cfg.device,
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
