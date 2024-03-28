@@ -36,6 +36,8 @@ model_names = [
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
+    "google/gemma-2b",
+    "google/gemma-7b",
 ]
 text = "Hello world!"
 """ 
@@ -309,8 +311,12 @@ def check_dtype(dtype, margin, no_processing=False):
         gc.collect()
 
 
+@pytest.mark.skipif(
+    torch.backends.mps.is_available() or not torch.cuda.is_available(),
+    reason="some operations unsupported by MPS: https://github.com/pytorch/pytorch/issues/77754 or no GPU",
+)
 @pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
-def test_dtypes(dtype):
+def test_dtype_float(dtype):
     check_dtype(dtype, margin=5e-4)
 
 

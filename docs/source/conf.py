@@ -86,6 +86,7 @@ functions_to_ignore = [
     "convert_neox_weights",
     "convert_neel_model_config",
     "convert_opt_weights",
+    "convert_gemma_weights",
     "fill_missing_keys",
     "get_basic_config",
     "get_official_model_name",
