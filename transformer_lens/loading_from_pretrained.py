@@ -1679,7 +1679,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
             W_K, "(n h) m->n m h", n=cfg.n_key_value_heads if using_gqa else cfg.n_heads
         )
         W_V = einops.rearrange(
-            W_V, "(n h) m-n m h", n=cfg.n_key_value_heads if using_gqa else cfg.n_heads
+            W_V, "(n h) m->n m h", n=cfg.n_key_value_heads if using_gqa else cfg.n_heads
         )
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
