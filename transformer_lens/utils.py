@@ -13,7 +13,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
 
 import einops
 import numpy as np
-import pytest
 import torch
 import torch.nn.functional as F
 import transformers
@@ -600,9 +599,6 @@ def remove_batch_dim(
         return tensor
 
 
-# Note: Docstring won't be tested with PyTest (it's ignored), as it thinks this is a regular unit
-# test (because it's name is prefixed `test_`).
-@pytest.mark.skip
 def test_prompt(
     prompt: str,
     answer: str,
@@ -1141,3 +1137,13 @@ def get_tokens_with_bos_removed(tokenizer, tokens):
             dim=1, index=real_bos_positions.unsqueeze(-1), value=-100
         )
         return tokens[tokens != -100].view(*bos_removed_shape)
+
+
+try:
+    import pytest
+    # Note: Docstring won't be tested with PyTest (it's ignored), as it thinks this is a regular unit
+    # test (because it's name is prefixed `test_`).
+    pytest.mark.skip(test_prompt)
+except ModuleNotFoundError:
+    pass  # disregard if pytest not in env
+
