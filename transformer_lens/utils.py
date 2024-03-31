@@ -2,6 +2,7 @@
 
 This module contains varied utility functions used throughout the library.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -1141,9 +1142,9 @@ def get_tokens_with_bos_removed(tokenizer, tokens):
 
 try:
     import pytest
+
     # Note: Docstring won't be tested with PyTest (it's ignored), as it thinks this is a regular unit
-    # test (because it's name is prefixed `test_`).
+    # test (because its name is prefixed `test_`).
     pytest.mark.skip(test_prompt)
 except ModuleNotFoundError:
     pass  # disregard if pytest not in env
-
