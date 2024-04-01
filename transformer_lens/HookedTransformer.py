@@ -872,6 +872,9 @@ class HookedTransformer(HookedRootModule):
                 tokens = self.to_tokens(
                     input, prepend_bos=prepend_bos, padding_side=padding_side
                 )[0]
+                # Gemma tokenizer expects a batch dimension
+                if "gemma" in self.tokenizer.name_or_path and tokens.ndim == 1:
+                    tokens = tokens.unsqueeze(1)
             elif isinstance(input, torch.Tensor):
                 tokens = input
                 tokens = tokens.squeeze()  # Get rid of a trivial batch dimension
@@ -892,6 +895,7 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
+
             str_tokens = self.tokenizer.batch_decode(
                 tokens, clean_up_tokenization_spaces=False
             )
