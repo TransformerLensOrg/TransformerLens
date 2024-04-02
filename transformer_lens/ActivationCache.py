@@ -607,9 +607,6 @@ class ActivationCache:
                 layer==n_layers means to return all layer outputs incl in the final layer, layer==0
                 means just embed and pos_embed. The indices are taken such that this gives the
                 accumulated streams up to the input to layer l
-            incl_mid:
-                Whether to return resid_mid for all previous
-                layers.
             mlp_input:
                 Whether to include attn_out for the current
                 layer - essentially decomposing the residual stream that's input to the MLP input
