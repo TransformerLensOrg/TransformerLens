@@ -5,6 +5,7 @@ needed to create many different types of generative language models. They are us
 :class:`transformer_lens.HookedTransformer`.
 """
 import logging
+from abc import ABC
 from typing import Dict, Optional, Tuple, Union
 
 import einops
@@ -12,6 +13,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from better_abc import abstract_attribute
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
 
@@ -374,7 +376,6 @@ class RMSNorm(nn.Module):
     ) -> Float[torch.Tensor, "batch pos length"]:
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
-
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
@@ -382,17 +383,18 @@ class RMSNorm(nn.Module):
         return x * self.w
 
 
-# Attention
-class Attention(nn.Module):
+class AbstractAttention(ABC, nn.Module):
     def __init__(
         self,
         cfg: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
         layer_id: Optional[int] = None,
     ):
-        """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
+        """Abstract Base Class of Attention Blocks, featuring common functionality of both Attention and GroupedQueryAttention blocks.
 
-        Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+        Query and Output projections are defined in this class as they are the same for regular and grouped query attention.
+        Attributes related to Key and Value projections are abstract as their implementations may differ. For example, in GroupedQueryAttention there are less query and key heads than value heads.
+        To enforce implementation of W_K, W_V, b_K, and b_V by child classes, the better_abc.abstract_attribute class is used. See here for details: https://stackoverflow.com/questions/23831510/abstract-attribute-not-property.
 
         Args:
             cfg (Union[Dict, HookedTransformerConfig]): Config
@@ -408,16 +410,8 @@ class Attention(nn.Module):
                 self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
             )
         )
-        self.W_K = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-            )
-        )
-        self.W_V = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-            )
-        )
+        self.W_K = abstract_attribute()
+        self.W_V = abstract_attribute()
         self.W_O = nn.Parameter(
             torch.empty(
                 self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype
@@ -426,12 +420,8 @@ class Attention(nn.Module):
         self.b_Q = nn.Parameter(
             torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
         )
-        self.b_K = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
-        self.b_V = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        self.b_K = abstract_attribute()
+        self.b_V = abstract_attribute()
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.attn_type = attn_type
@@ -479,7 +469,10 @@ class Attention(nn.Module):
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
             sin, cos = self.calculate_sin_cos_rotary(
-                self.cfg.rotary_dim, self.cfg.n_ctx, dtype=self.cfg.dtype
+                self.cfg.rotary_dim,
+                self.cfg.n_ctx,
+                base=self.cfg.rotary_base,
+                dtype=self.cfg.dtype,
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
@@ -538,37 +531,7 @@ class Attention(nn.Module):
         attention_mask is the attention mask for padded tokens. Defaults to None.
         """
 
-        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
-            qkv_einops_string = "batch pos head_index d_model"
-        else:
-            qkv_einops_string = "batch pos d_model"
-        q = self.hook_q(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                query_input,
-                self.W_Q,
-            )
-            + self.b_Q
-        )  # [batch, pos, head_index, d_head]
-        k = self.hook_k(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                key_input,
-                self.W_K,
-            )
-            + self.b_K
-        )  # [batch, pos, head_index, d_head]
-        v = self.hook_v(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                value_input,
-                self.W_V,
-            )
-            + self.b_V
-        )  # [batch, pos, head_index, d_head]
+        q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
 
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
@@ -591,15 +554,8 @@ class Attention(nn.Module):
             q = q.to(torch.float32)
             k = k.to(torch.float32)
 
-        attn_scores = (
-            einsum(
-                "batch query_pos head_index d_head, \
-                    batch key_pos head_index d_head \
-                    -> batch head_index query_pos key_pos",
-                q,
-                k,
-            )
-            / self.attn_scale
+        attn_scores = self.calculate_attention_scores(
+            q, k
         )  # [batch, head_index, query_pos, key_pos]
 
         if self.cfg.positional_embedding_type == "alibi":
@@ -630,15 +586,7 @@ class Attention(nn.Module):
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
-        z = self.hook_z(
-            einsum(
-                "batch key_pos head_index d_head, \
-                batch head_index query_pos key_pos -> \
-                batch query_pos head_index d_head",
-                v,
-                pattern,
-            )
-        )  # [batch, pos, head_index, d_head]
+        z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
             out = (
                 (
@@ -671,6 +619,92 @@ class Attention(nn.Module):
                 + self.b_O
             )  # [batch, pos, d_model]
         return out
+
+    def calculate_qkv_matrices(
+        self,
+        query_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        key_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        value_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+    ) -> Tuple[
+        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch pos head_index d_head"],
+    ]:
+        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
+            qkv_einops_string = "batch pos head_index d_model"
+        else:
+            qkv_einops_string = "batch pos d_model"
+
+        q = self.hook_q(
+            einsum(
+                f"{qkv_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                query_input,
+                self.W_Q,
+            )
+            + self.b_Q
+        )  # [batch, pos, head_index, d_head]
+        k = self.hook_k(
+            einsum(
+                f"{qkv_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                key_input,
+                self.W_K,
+            )
+            + self.b_K
+        )  # [batch, pos, head_index, d_head]
+        v = self.hook_v(
+            einsum(
+                f"{qkv_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                value_input,
+                self.W_V,
+            )
+            + self.b_V
+        )  # [batch, pos, head_index, d_head]
+        return q, k, v
+
+    def calculate_attention_scores(
+        self,
+        q: Float[torch.Tensor, "batch query_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch key_pos head_index d_head"],
+    ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
+        attn_scores = (
+            einsum(
+                "batch query_pos head_index d_head, \
+                    batch key_pos head_index d_head \
+                    -> batch head_index query_pos key_pos",
+                q,
+                k,
+            )
+            / self.attn_scale
+        )
+        return attn_scores
+
+    def calculate_z_scores(
+        self,
+        v: Float[torch.Tensor, "batch key_pos head_index d_head"],
+        pattern: Float[torch.Tensor, "batch head_index query_pos key_pos"],
+    ) -> Float[torch.Tensor, "batch query_pos head_index d_head"]:
+        z = self.hook_z(
+            einsum(
+                "batch key_pos head_index d_head, \
+                batch head_index query_pos key_pos -> \
+                batch query_pos head_index d_head",
+                v,
+                pattern,
+            )
+        )
+        return z
 
     def apply_causal_mask(
         self,
@@ -722,10 +756,10 @@ class Attention(nn.Module):
 
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
-            freq = einops.repeat(freq, "d -> (2 d)")
-        else:
+        if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
+        else:
+            freq = einops.repeat(freq, "d -> (2 d)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
@@ -741,13 +775,13 @@ class Attention(nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
+        if self.cfg.rotary_adjacent_pairs:
+            rot_x[..., ::2] = -x[..., 1::2]
+            rot_x[..., 1::2] = x[..., ::2]
+        else:
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
-        else:
-            rot_x[..., ::2] = -x[..., 1::2]
-            rot_x[..., 1::2] = x[..., ::2]
 
         return rot_x
 
@@ -910,6 +944,225 @@ class Attention(nn.Module):
         alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
 
         return alibi_bias
+
+
+# Attention
+class Attention(AbstractAttention):
+    def __init__(
+        self,
+        cfg: Union[Dict, HookedTransformerConfig],
+        attn_type: str = "global",
+        layer_id: Optional[int] = None,
+    ):
+        """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
+
+        Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+
+        Args:
+            cfg (Union[Dict, HookedTransformerConfig]): Config
+            attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
+            layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
+        """
+        super().__init__(cfg, attn_type, layer_id)
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.W_K = nn.Parameter(
+            torch.empty(
+                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            )
+        )
+        self.W_V = nn.Parameter(
+            torch.empty(
+                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            )
+        )
+        self.b_K = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self.b_V = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+
+
+class GroupedQueryAttention(AbstractAttention):
+    def __init__(
+        self,
+        cfg: Union[Dict, HookedTransformerConfig],
+        attn_type: str = "global",
+        layer_id: Union[int, None] = None,
+    ):
+        """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245v2 for details.
+        Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head] and W_Q has shape [head_index, d_head, d_model].
+        However, under the hood the key and value weights _W_K and _W_V are stored with shape [n_key_value_heads, d_model, d_head] and are expanded when the corresponding properties' getter is called.
+        Similarly, during a forward pass, initially K and V are kept in shapes [batch, pos, n_key_value_heads, d_head] and will only be expanded to shapes [batch, pos, n_heads, d_head]
+        using torch.repeat_interleave when the attention pattern and z-scores are calculated.
+
+        Args:
+            cfg (Union[Dict, HookedTransformerConfig]): Config
+            attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
+            layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
+        """
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        assert cfg.n_key_value_heads is not None
+        super().__init__(cfg, attn_type, layer_id)
+        self.repeat_kv_heads = cfg.n_heads // cfg.n_key_value_heads
+        self._W_K = nn.Parameter(
+            torch.empty(
+                cfg.n_key_value_heads,
+                self.cfg.d_model,
+                self.cfg.d_head,
+                dtype=cfg.dtype,
+            )
+        )
+        self._W_V = nn.Parameter(
+            torch.empty(
+                cfg.n_key_value_heads,
+                self.cfg.d_model,
+                self.cfg.d_head,
+                dtype=cfg.dtype,
+            )
+        )
+        self._b_K = nn.Parameter(
+            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self._b_V = nn.Parameter(
+            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+
+    @property
+    def W_K(self):
+        return torch.repeat_interleave(self._W_K, dim=0, repeats=self.repeat_kv_heads)
+
+    @W_K.setter
+    def W_K(self, value):
+        self._W_K = value
+
+    @property
+    def W_V(self):
+        return torch.repeat_interleave(self._W_V, dim=0, repeats=self.repeat_kv_heads)
+
+    @W_V.setter
+    def W_V(self, value):
+        self._W_V = value
+
+    @property
+    def b_K(self):
+        return torch.repeat_interleave(self._b_K, dim=0, repeats=self.repeat_kv_heads)
+
+    @b_K.setter
+    def b_K(self, value):
+        self._b_K = value
+
+    @property
+    def b_V(self):
+        return torch.repeat_interleave(self._b_V, dim=0, repeats=self.repeat_kv_heads)
+
+    @b_V.setter
+    def b_V(self, value):
+        self._b_V = value
+
+    def calculate_qkv_matrices(
+        self,
+        query_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        key_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos kv_head_index d_model"],
+        ],
+        value_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos kv_head_index d_model"],
+        ],
+    ) -> Tuple[
+        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch pos kv_head_index d_head"],
+        Float[torch.Tensor, "batch pos kv_head_index d_head"],
+    ]:
+        """Calculate the Q, K, and V matrices for grouped query attention.
+        This function uses the unexpanded weights _W_K and _W_V to calculate K and V.
+
+        Args:
+        query_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]): The input tensor for the query projection.
+        key_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]): The input tensor for the key projection. Note that is has as many head dimensions as the GPA block has key-value heads.
+        value_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]): The input tensor for the value projection. Note that is has as many head dimensions as the GPA block has key-value heads.
+
+        Returns:
+        Tuple[Float[torch.Tensor, "batch pos head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"]]:
+        A tuple containing the Q, K, and V matrices with the specified shapes.
+        """
+        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
+            qkv_einops_string = "batch pos kv_head_index d_model"
+        else:
+            qkv_einops_string = "batch pos d_model"
+
+        q = self.hook_q(
+            einsum(
+                f"{qkv_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                query_input,
+                self.W_Q,
+            )
+            + self.b_Q
+        )  # [batch, pos, head_index, d_head]
+        k = self.hook_k(
+            einsum(
+                f"{qkv_einops_string}, kv_head_index d_model d_head \
+                -> batch pos kv_head_index d_head",
+                key_input,
+                self._W_K,
+            )
+            + self._b_K
+        )  # [batch, pos, head_index, d_head]
+        v = self.hook_v(
+            einsum(
+                f"{qkv_einops_string}, kv_head_index d_model d_head \
+                -> batch pos kv_head_index d_head",
+                value_input,
+                self._W_V,
+            )
+            + self._b_V
+        )  # [batch, pos, head_index, d_head]
+        return q, k, v
+
+    def calculate_attention_scores(
+        self,
+        q: Float[torch.Tensor, "batch query_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch key_pos kv_head_index d_head"],
+    ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
+        """Calculate attention scores from Q and the unexpanded K matrix.
+        K will be expaned from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.
+
+        Args:
+        q (Float[torch.Tensor, "batch query_pos head_index d_head"]): The Q tensor.
+        k (Float[torch.Tensor, "batch key_pos kv_head_index d_head"]): The K tensor.
+
+        Returns:
+            Float[torch.Tensor, "batch head_index query_pos key_pos"]: The attention scores.
+        """
+        k = torch.repeat_interleave(k, dim=2, repeats=self.repeat_kv_heads)
+        return super().calculate_attention_scores(q, k)
+
+    def calculate_z_scores(
+        self,
+        v: Float[torch.Tensor, "batch key_pos kv_head_index d_head"],
+        pattern: Float[torch.Tensor, "batch head_index query_pos key_pos"],
+    ) -> Float[torch.Tensor, "batch query_pos head_index d_head"]:
+        """Calculate z scores from the attention pattern and the unexpanded V matrix.
+        V will be expaned from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.
+
+        Args:
+        v (Float[torch.Tensor, "batch query_pos head_index d_head"]): The V tensor.
+        pattern (Float[torch.Tensor, "batch key_pos kv_head_index d_head"]): The attention pattern.
+
+        Returns:
+            Float[torch.Tensor, "batch head_index query_pos key_pos"]: The z scores.
+        """
+        v = torch.repeat_interleave(v, dim=2, repeats=self.repeat_kv_heads)
+        return super().calculate_z_scores(v, pattern)
 
 
 # MLP Layers
@@ -1099,12 +1352,15 @@ class TransformerBlock(nn.Module):
                 f"Invalid normalization_type passed in {self.cfg.normalization_type}"
             )
 
+        attention = (
+            Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
+        )
         if not self.cfg.use_local_attn:
-            self.attn = Attention(cfg, "global", block_index)
+            self.attn = attention(cfg, "global", block_index)
         else:
             assert self.cfg.attn_types is not None
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = Attention(cfg, attn_type, block_index)
+            self.attn = attention(cfg, attn_type, block_index)
         if not self.cfg.attn_only:
             if self.cfg.gated_mlp:
                 self.mlp = GatedMLP(cfg)

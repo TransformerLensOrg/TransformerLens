@@ -147,6 +147,8 @@ class HookedTransformerConfig:
         tokenizer_prepends_bos (bool, *optional*): This flag is set by set_tokenizer. It is set to True only
             when the tokenizer automatically prepends the BOS token if initialized with add_bos_token=True.
             We need this information to dynamically control bos prepending.
+        n_key_value_heads (int, *optional*): The number of groups of heads that use the same key and value matrix.
+            Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
             to False.
     """
@@ -196,7 +198,11 @@ class HookedTransformerConfig:
     default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
+    n_key_value_heads: Optional[int] = None
     post_embedding_ln: bool = False
+    rotary_base: int = 10000
+    trust_remote_code: bool = False
+    rotary_adjacent_pairs: bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:
