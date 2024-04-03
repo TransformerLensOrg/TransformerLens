@@ -10,6 +10,7 @@ When reading these docs for the first time, we recommend reading the main :class
 class first, including the examples, and then skimming the available methods. You can then refer
 back to these docs depending on what you need to do.
 """
+
 from __future__ import annotations
 
 import logging
@@ -833,10 +834,8 @@ class ActivationCache:
             Tensor of the results.
         """
         if type(neuron_slice) is not Slice:
-            assert isinstance(neuron_slice, SliceInput)
             neuron_slice = Slice(neuron_slice)
         if type(pos_slice) is not Slice:
-            assert isinstance(pos_slice, SliceInput)
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
