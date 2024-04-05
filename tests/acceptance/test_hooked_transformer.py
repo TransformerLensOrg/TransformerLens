@@ -247,9 +247,9 @@ def check_norm_folding(
     )
 
 
-def calculate_error(tokens1, tokens2):
-    t1 = torch.softmax(tokens1, dim=-1).to("cpu")
-    t2 = torch.softmax(tokens2, dim=-1).to("cpu")
+def calculate_error(logits1, logits2):
+    t1 = torch.softmax(logits1, dim=-1).to("cpu")
+    t2 = torch.softmax(logits2, dim=-1).to("cpu")
     err = torch.abs(t1 - t2)
     return {
         "max": torch.max(err).item(),

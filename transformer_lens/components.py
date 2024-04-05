@@ -1349,6 +1349,9 @@ class MoE(nn.Module):
             torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype)
         )
 
+        self.hook_gate = HookPoint()  # [batch pos experts_per_token]
+        self.hook_experts = HookPoint()  # [batch pos experts_per_token]
+
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
@@ -1362,7 +1365,8 @@ class MoE(nn.Module):
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
         weights, expert_indices = torch.topk(gate_logits, self.cfg.experts_per_token)
-        weights = F.softmax(weights, dim=-1)
+        weights = self.hook_gate(F.softmax(weights, dim=-1))
+        expert_indices = self.hook_experts(expert_indices)
 
         results = torch.zeros_like(x)
         for i, expert_mlp in enumerate(self.experts):
