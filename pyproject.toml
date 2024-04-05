@@ -32,10 +32,11 @@
             {platform = "!=linux", version = ">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
         ]
         tqdm=">=4.64.1"
-        transformers=">=4.34"
+        transformers=">=4.37.2"
         typing-extensions="*"
         wandb=">=0.13.5"
         better-abc = "^0.0.3"
+        sentencepiece = "*"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]

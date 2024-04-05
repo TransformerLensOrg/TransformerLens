@@ -5,10 +5,13 @@ Helpers to access activations in models.
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch.nn as nn
 import torch.utils.hooks as hooks
+
+from transformer_lens.utils import Slice
 
 
 @dataclass
@@ -426,6 +429,7 @@ class HookedRootModule(nn.Module):
         incl_bwd=False,
         reset_hooks_end=True,
         clear_contexts=False,
+        pos_slice=None,
         **model_kwargs,
     ):
         """
@@ -448,14 +452,28 @@ class HookedRootModule(nn.Module):
                 end of the run. Defaults to True.
             clear_contexts (bool, optional): If True, clears hook contexts whenever hooks are reset.
                 Defaults to False.
+            pos_slice:
+                The slice to apply to the cache output. Defaults to None, do nothing.
             **model_kwargs: Keyword arguments for the model.
 
         Returns:
             tuple: A tuple containing the model output and a Cache object.
 
         """
+
+        if not isinstance(pos_slice, Slice):
+            if isinstance(
+                pos_slice, int
+            ):  # slicing with an int collapses the dimension so this stops the pos dimension from collapsing
+                pos_slice = [pos_slice]
+            pos_slice = Slice(pos_slice)
+
         cache_dict, fwd, bwd = self.get_caching_hooks(
-            names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim
+            names_filter,
+            incl_bwd,
+            device,
+            remove_batch_dim=remove_batch_dim,
+            pos_slice=pos_slice,
         )
 
         with self.hooks(
@@ -477,6 +495,7 @@ class HookedRootModule(nn.Module):
         device=None,
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
+        pos_slice: Slice = None,
     ) -> Tuple[dict, list, list]:
         """Creates hooks to cache activations. Note: It does not add the hooks to the model.
 
@@ -505,25 +524,41 @@ class HookedRootModule(nn.Module):
             names_filter = lambda name: name in filter_list
         self.is_caching = True
 
-        def save_hook(tensor, hook):
+        def save_hook(tensor, hook, is_backward=False):
+            hook_name = hook.name
+            if is_backward:
+                hook_name += "_grad"
+            resid_stream = tensor.detach().to(device)
             if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
-            else:
-                cache[hook.name] = tensor.detach().to(device)
+                resid_stream = resid_stream[0]
 
-        def save_hook_back(tensor, hook):
-            if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
+            # for attention heads the pos dimension is the third from last
+            if (
+                hook.name.endswith("hook_q")
+                or hook.name.endswith("hook_k")
+                or hook.name.endswith("hook_v")
+                or hook.name.endswith("hook_z")
+                or hook.name.endswith("hook_result")
+            ):
+                pos_dim = -3
             else:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)
+                # for all other components the pos dimension is the second from last
+                # including the attn scores where the dest token is the second from last
+                pos_dim = -2
+
+            if (
+                tensor.dim() >= -pos_dim
+            ):  # check if the residual stream has a pos dimension before trying to slice
+                resid_stream = pos_slice.apply(resid_stream, dim=pos_dim)
+            cache[hook_name] = resid_stream
 
         fwd_hooks = []
         bwd_hooks = []
         for name, hp in self.hook_dict.items():
             if names_filter(name):
-                fwd_hooks.append((name, save_hook))
+                fwd_hooks.append((name, partial(save_hook, is_backward=False)))
                 if incl_bwd:
-                    bwd_hooks.append((name, save_hook_back))
+                    bwd_hooks.append((name, partial(save_hook, is_backward=True)))
 
         return cache, fwd_hooks, bwd_hooks
 
