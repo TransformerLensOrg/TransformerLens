@@ -380,7 +380,7 @@ because it has a significantly different architecture to e.g. GPT style transfor
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.cpu">
 <span class="sig-name descname"><span class="pre">cpu</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.cpu" title="Permalink to this definition">#</a></dt>
-<dd><p>Move all model parameters and buffers to the CPU.</p>
+<dd><p>Moves all model parameters and buffers to the CPU.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>This method modifies the module in-place.</p>
@@ -398,7 +398,7 @@ because it has a significantly different architecture to e.g. GPT style transfor
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.cuda">
 <span class="sig-name descname"><span class="pre">cuda</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.cuda" title="Permalink to this definition">#</a></dt>
-<dd><p>Move all model parameters and buffers to the GPU.</p>
+<dd><p>Moves all model parameters and buffers to the GPU.</p>
 <p>This also makes associated parameters and buffers different objects. So
 it should be called before constructing optimizer if the module will
 live on GPU while being optimized.</p>
@@ -453,7 +453,7 @@ copied to that device</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.to">
 <span class="sig-name descname"><span class="pre">to</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device_or_dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">device</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_details</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.to" title="Permalink to this definition">#</a></dt>
-<dd><p>Move and/or cast the parameters and buffers.</p>
+<dd><p>Moves and/or casts the parameters and buffers.</p>
 <p>This can be called as</p>
 <dl class="py function">
 <dt class="sig sig-object py">
