@@ -7,7 +7,7 @@ eigenvalues, norm and SVD.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, overload
 
 import torch
 from jaxtyping import Float
@@ -41,6 +41,23 @@ class FactoredMatrix:
         self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
         self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
 
+    @overload
+    def __matmul__(
+        self,
+        other: Union[
+            Float[torch.Tensor, "... rdim new_rdim"],
+            "FactoredMatrix",
+        ],
+    ) -> "FactoredMatrix":
+        ...
+
+    @overload
+    def __matmul__(
+        self,
+        other: Float[torch.Tensor, "rdim"],
+    ) -> Float[torch.Tensor, "... ldim"]:
+        ...
+
     def __matmul__(
         self,
         other: Union[
@@ -64,6 +81,23 @@ class FactoredMatrix:
                     return FactoredMatrix(self.AB, other)
         elif isinstance(other, FactoredMatrix):
             return (self @ other.A) @ other.B
+
+    @overload
+    def __rmatmul__(
+        self,
+        other: Union[
+            Float[torch.Tensor, "... new_rdim ldim"],
+            "FactoredMatrix",
+        ],
+    ) -> "FactoredMatrix":
+        ...
+
+    @overload
+    def __rmatmul__(
+        self,
+        other: Float[torch.Tensor, "ldim"],
+    ) -> Float[torch.Tensor, "... rdim"]:
+        ...
 
     def __rmatmul__(  # type: ignore
         self,

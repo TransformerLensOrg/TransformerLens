@@ -396,7 +396,8 @@ class AbstractAttention(ABC, nn.Module):
         """Abstract Base Class of Attention Blocks, featuring common functionality of both Attention and GroupedQueryAttention blocks.
 
         Query and Output projections are defined in this class as they are the same for regular and grouped query attention.
-        Attributes related to Key and Value projections are abstract as their implementations may differ.
+        Attributes related to Key and Value projections are abstract as their implementations may differ. For example, in GroupedQueryAttention there are less query and key heads than value heads.
+        To enforce implementation of W_K, W_V, b_K, and b_V by child classes, the better_abc.abstract_attribute class is used. See here for details: https://stackoverflow.com/questions/23831510/abstract-attribute-not-property.
 
         Args:
             cfg (Union[Dict, HookedTransformerConfig]): Config
