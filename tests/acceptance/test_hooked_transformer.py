@@ -7,9 +7,12 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from transformer_lens import HookedTransformer
-from transformer_lens.HookedTransformer import DTYPE_FROM_STRING
 from transformer_lens.components import LayerNormPre
-from transformer_lens.loading_from_pretrained import OFFICIAL_MODEL_NAMES, get_official_model_name
+from transformer_lens.HookedTransformer import DTYPE_FROM_STRING
+from transformer_lens.loading_from_pretrained import (
+    OFFICIAL_MODEL_NAMES,
+    get_official_model_name,
+)
 from transformer_lens.utils import clear_huggingface_cache
 
 TINY_STORIES_MODEL_NAMES = [
@@ -259,7 +262,15 @@ def calculate_error(logits1, logits2):
     }
 
 
-def benchmark_model_options(model_name: str, hf_model=None, tokenizer=None, device="cuda", n_devices=1, dtype=torch.float16, cache_in_cpu=True):
+def benchmark_model_options(
+    model_name: str,
+    hf_model=None,
+    tokenizer=None,
+    device="cuda",
+    n_devices=1,
+    dtype=torch.float16,
+    cache_in_cpu=True,
+):
     options = {
         "fold_ln": False,
         "center_writing_weights": False,
@@ -277,11 +288,15 @@ def benchmark_model_options(model_name: str, hf_model=None, tokenizer=None, devi
     model_name = get_official_model_name(model_name)
 
     if hf_model is None:
-        hf_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=dtype, device_map="auto")
+        hf_model = AutoModelForCausalLM.from_pretrained(
+            model_name, torch_dtype=dtype, device_map="auto"
+        )
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    tokens = tokenizer(prompts, return_tensors="pt", truncation=True, max_length=4).input_ids.to(device)
+    tokens = tokenizer(
+        prompts, return_tensors="pt", truncation=True, max_length=4
+    ).input_ids.to(device)
 
     # hf_model = hf_model.to(device)
     hf_logits = hf_model(tokens).logits.detach()
@@ -299,7 +314,15 @@ def benchmark_model_options(model_name: str, hf_model=None, tokenizer=None, devi
     results = {}
 
     # Check the error when all processing options are disabled
-    tl_model = HookedTransformer.from_pretrained(model_name, hf_model=hf_model, tokenizer=tokenizer, device=device, n_devices=n_devices, dtype=dtype, **options)
+    tl_model = HookedTransformer.from_pretrained(
+        model_name,
+        hf_model=hf_model,
+        tokenizer=tokenizer,
+        device=device,
+        n_devices=n_devices,
+        dtype=dtype,
+        **options,
+    )
     tl_logits = tl_model(tokens).detach().to("cpu")
     results["no_options"] = calculate_error(hf_logits, tl_logits)
     del tl_model, tl_logits
@@ -310,7 +333,15 @@ def benchmark_model_options(model_name: str, hf_model=None, tokenizer=None, devi
         gc.collect()
         new_options = options.copy()
         new_options[option] = True
-        tl_model = HookedTransformer.from_pretrained(model_name, hf_model=hf_model, tokenizer=tokenizer, device=device, n_devices=n_devices, dtype=dtype, **new_options)
+        tl_model = HookedTransformer.from_pretrained(
+            model_name,
+            hf_model=hf_model,
+            tokenizer=tokenizer,
+            device=device,
+            n_devices=n_devices,
+            dtype=dtype,
+            **new_options,
+        )
         tl_logits = tl_model(tokens).detach().to("cpu")
         results[option] = calculate_error(hf_logits, tl_logits)
 
@@ -320,7 +351,15 @@ def benchmark_model_options(model_name: str, hf_model=None, tokenizer=None, devi
 
     # Check the error when all processing options are enabled
     all_options = {k: True for k, v in options.items()}
-    tl_model = HookedTransformer.from_pretrained(model_name, hf_model=hf_model, tokenizer=tokenizer, device=device, n_devices=n_devices, dtype=dtype, **all_options)
+    tl_model = HookedTransformer.from_pretrained(
+        model_name,
+        hf_model=hf_model,
+        tokenizer=tokenizer,
+        device=device,
+        n_devices=n_devices,
+        dtype=dtype,
+        **all_options,
+    )
     tl_logits = tl_model(tokens).detach().to("cpu")
     results["all_options"] = calculate_error(hf_logits, tl_logits)
 
@@ -345,9 +384,17 @@ def benchmark_models(models, device="cuda", n_devices=1, cache_in_cpu=True):
         dtypes = models[model]
         for dtype in dtypes:
             print(f"Testing {model} with dtype {dtype}")
-            results = benchmark_model_options(model, device=device, n_devices=n_devices, dtype=DTYPE_FROM_STRING[dtype], cache_in_cpu=cache_in_cpu)
+            results = benchmark_model_options(
+                model,
+                device=device,
+                n_devices=n_devices,
+                dtype=DTYPE_FROM_STRING[dtype],
+                cache_in_cpu=cache_in_cpu,
+            )
             for option, result in results.items():
-                rows.append({"model": model, "dtype": dtype, "options": option, **result})
+                rows.append(
+                    {"model": model, "dtype": dtype, "options": option, **result}
+                )
 
     return pd.DataFrame(rows)
 
