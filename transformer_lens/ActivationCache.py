@@ -10,6 +10,7 @@ When reading these docs for the first time, we recommend reading the main :class
 class first, including the examples, and then skimming the available methods. You can then refer
 back to these docs depending on what you need to do.
 """
+
 from __future__ import annotations
 
 import logging
@@ -607,9 +608,6 @@ class ActivationCache:
                 layer==n_layers means to return all layer outputs incl in the final layer, layer==0
                 means just embed and pos_embed. The indices are taken such that this gives the
                 accumulated streams up to the input to layer l
-            incl_mid:
-                Whether to return resid_mid for all previous
-                layers.
             mlp_input:
                 Whether to include attn_out for the current
                 layer - essentially decomposing the residual stream that's input to the MLP input
@@ -833,10 +831,8 @@ class ActivationCache:
             Tensor of the results.
         """
         if type(neuron_slice) is not Slice:
-            assert isinstance(neuron_slice, SliceInput)
             neuron_slice = Slice(neuron_slice)
         if type(pos_slice) is not Slice:
-            assert isinstance(pos_slice, SliceInput)
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
