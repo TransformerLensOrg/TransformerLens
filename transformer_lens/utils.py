@@ -24,11 +24,8 @@ from jaxtyping import Float, Int
 from rich import print as rprint
 from transformers import AutoTokenizer
 
-from transformer_lens import FactoredMatrix
-
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 USE_DEFAULT_VALUE = None
-
 
 def select_compatible_kwargs(
     kwargs_dict: Dict[str, Any], callable: Callable
@@ -97,8 +94,14 @@ def get_corner(tensor, n=3):
     # Prints the top left corner of the tensor
     if isinstance(tensor, torch.Tensor):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
-    elif isinstance(tensor, FactoredMatrix):
-        return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
+    else:
+        # pylint: disable=wrong-import-position
+        # isort: off
+        from transformer_lens import FactoredMatrix  # Lazy import to stop circular dependencies
+        # isort: on
+        # pylint: enable=wrong-import-position
+        if isinstance(tensor, FactoredMatrix):
+            return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
 
 
 def to_numpy(tensor):
