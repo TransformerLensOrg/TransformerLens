@@ -835,9 +835,9 @@ class ActivationCache:
         Returns:
             Tensor of the results.
         """
-        if type(neuron_slice) is not Slice:
+        if not isinstance(neuron_slice, Slice):
             neuron_slice = Slice(neuron_slice)
-        if type(pos_slice) is not Slice:
+        if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]

@@ -6,7 +6,7 @@ This module contains functions for loading pretrained models from the Hugging Fa
 import dataclasses
 import logging
 import re
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, cast
 
 import einops
 import torch
@@ -944,9 +944,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "eps": hf_config.rms_norm_eps,
             "d_vocab": hf_config.vocab_size,
             "act_fn": hf_config.hidden_act,
-            "n_key_value_heads": hf_config.num_key_value_heads
-            if hf_config.num_key_value_heads != hf_config.num_attention_heads
-            else None,
+            "n_key_value_heads": (
+                hf_config.num_key_value_heads
+                if hf_config.num_key_value_heads != hf_config.num_attention_heads
+                else None
+            ),
             # This is done because the current implementation of GQA will use Grouped-Query Attention if
             # n_key_value_heads is not None, but hf_config.num_key_value_heads is sometimes specified as
             # the same as hf_config.num_attention_heads, in which case GQA should not be used.
@@ -1699,6 +1701,8 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
     # the state dict keys for the K/V attention weight/biases, prepending "_" to the key names.
     using_gqa = cfg.n_key_value_heads is not None
     gqa_uscore = "_" if using_gqa else ""
+    # need a cast since MyPy isn't smart enough to realize that using_gqa implies n_key_value_heads is not None
+    n_kv_heads = cast(int, cfg.n_key_value_heads if using_gqa else cfg.n_heads)
 
     # llama has no biases anywhere and deals with everything else roughly like
     # GPTNeoX with different names
@@ -1712,12 +1716,8 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_K = llama.model.layers[l].self_attn.k_proj.weight
         W_V = llama.model.layers[l].self_attn.v_proj.weight
         W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-        W_K = einops.rearrange(
-            W_K, "(n h) m->n m h", n=cfg.n_key_value_heads if using_gqa else cfg.n_heads
-        )
-        W_V = einops.rearrange(
-            W_V, "(n h) m->n m h", n=cfg.n_key_value_heads if using_gqa else cfg.n_heads
-        )
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=n_kv_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=n_kv_heads)
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = W_V
@@ -1726,13 +1726,13 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
             cfg.n_heads, cfg.d_head, dtype=cfg.dtype, device=cfg.device
         )
         state_dict[f"blocks.{l}.attn.{gqa_uscore}b_K"] = torch.zeros(
-            cfg.n_key_value_heads if using_gqa else cfg.n_heads,
+            n_kv_heads,
             cfg.d_head,
             dtype=cfg.dtype,
             device=cfg.device,
         )
         state_dict[f"blocks.{l}.attn.{gqa_uscore}b_V"] = torch.zeros(
-            cfg.n_key_value_heads if using_gqa else cfg.n_heads,
+            n_kv_heads,
             cfg.d_head,
             dtype=cfg.dtype,
             device=cfg.device,
@@ -1845,6 +1845,8 @@ def convert_qwen2_weights(qwen, cfg: HookedTransformerConfig):
     state_dict = {}
 
     state_dict["embed.W_E"] = qwen.model.embed_tokens.weight
+
+    assert cfg.d_mlp is not None  # keep mypy happy
 
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = qwen.model.layers[l].input_layernorm.weight
@@ -2516,6 +2518,9 @@ def convert_phi_weights(phi, cfg: HookedTransformerConfig):
 
 def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
     state_dict = {}
+
+    assert cfg.n_key_value_heads is not None  # mypy
+    assert cfg.d_mlp is not None  # mypy
 
     # Gemma Models scale embeddings by multiplying by sqrt(d_model)
     state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * (cfg.d_model**0.5)

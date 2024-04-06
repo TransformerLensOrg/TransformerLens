@@ -52,7 +52,7 @@ class FactoredMatrix:
         ...
 
     @overload
-    def __matmul__(
+    def __matmul__(  # type: ignore
         self,
         other: Float[torch.Tensor, "rdim"],
     ) -> Float[torch.Tensor, "... ldim"]:
@@ -83,7 +83,7 @@ class FactoredMatrix:
             return (self @ other.A) @ other.B
 
     @overload
-    def __rmatmul__(
+    def __rmatmul__(  # type: ignore
         self,
         other: Union[
             Float[torch.Tensor, "... new_rdim ldim"],
@@ -93,7 +93,7 @@ class FactoredMatrix:
         ...
 
     @overload
-    def __rmatmul__(
+    def __rmatmul__(  # type: ignore
         self,
         other: Float[torch.Tensor, "ldim"],
     ) -> Float[torch.Tensor, "... rdim"]:

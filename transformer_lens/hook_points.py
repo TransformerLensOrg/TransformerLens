@@ -506,7 +506,7 @@ class HookedRootModule(nn.Module):
         device=None,
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
-        pos_slice: Slice = None,
+        pos_slice: Optional[Slice] = None,
     ) -> Tuple[dict, list, list]:
         """Creates hooks to cache activations. Note: It does not add the hooks to the model.
 
@@ -563,6 +563,7 @@ class HookedRootModule(nn.Module):
             if (
                 tensor.dim() >= -pos_dim
             ):  # check if the residual stream has a pos dimension before trying to slice
+                assert pos_slice is not None  # keep mypy happy
                 resid_stream = pos_slice.apply(resid_stream, dim=pos_dim)
             cache[hook_name] = resid_stream
 

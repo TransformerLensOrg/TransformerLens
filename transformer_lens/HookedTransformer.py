@@ -862,6 +862,7 @@ class HookedTransformer(HookedRootModule):
         with utils.LocallyOverridenDefaults(
             self, prepend_bos=prepend_bos, padding_side=padding_side
         ):
+            assert self.tokenizer is not None  # keep mypy happy
             tokens: Union[np.ndarray, torch.Tensor]
             if isinstance(input, list):
                 return list(
@@ -899,7 +900,6 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-            assert self.tokenizer is not None  # keep mypy happy
             str_tokens = self.tokenizer.batch_decode(
                 tokens, clean_up_tokenization_spaces=False
             )
