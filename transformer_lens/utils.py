@@ -219,7 +219,9 @@ def calc_fan_in_and_fan_out(tensor):
         fan_in = shape[1]
         fan_out = shape[0] * shape[2]
     else:
-        raise ValueError(f"Fan in and fan out can not be computed for shape {shape} tensors.")
+        raise ValueError(
+            f"Fan in and fan out can not be computed for shape {shape} tensors."
+        )
 
     return fan_in, fan_out
 

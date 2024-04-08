@@ -126,7 +126,10 @@ class HookedTransformer(HookedRootModule):
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             if self.cfg.tokenizer_name in NON_HF_HOSTED_MODEL_NAMES:
-                logging.warning("%s tokenizer not loaded. Please load manually.", self.cfg.tokenizer_name)
+                logging.warning(
+                    "%s tokenizer not loaded. Please load manually.",
+                    self.cfg.tokenizer_name,
+                )
             else:
                 # Hugging Face defaults to use_fast to True
                 use_fast = True
@@ -191,7 +194,9 @@ class HookedTransformer(HookedRootModule):
             # If it's None, don't create either layer
             pass
         else:
-            logging.warning("Invalid normalization_type passed in %s", self.cfg.normalization_type)
+            logging.warning(
+                "Invalid normalization_type passed in %s", self.cfg.normalization_type
+            )
         self.unembed = Unembed(self.cfg)
 
         if self.cfg.init_weights:
@@ -1411,7 +1416,8 @@ class HookedTransformer(HookedRootModule):
 
     def _init_weights_gpt2(self):
         """Initialize weights with GPT-2 initialization. Biases are initialized to 0.0 and weights
-        are initialized to N(0, 0.64/d_model) if initializer_range is not set, otherwise std is initializer_range."""
+        are initialized to N(0, 0.64/d_model) if initializer_range is not set, otherwise std is initializer_range.
+        """
         for name, param in self.named_parameters():
             if "W_" in name:
                 nn.init.normal_(param, std=self.cfg.initializer_range)
@@ -1452,9 +1458,13 @@ class HookedTransformer(HookedRootModule):
         for name, param in self.named_parameters():
             if "W_" in name:
                 if dist_type == "uniform":
-                    init_kaiming_uniform_(param, gain=gain, nonlinearity="relu", mode="fan_in")
+                    init_kaiming_uniform_(
+                        param, gain=gain, nonlinearity="relu", mode="fan_in"
+                    )
                 elif dist_type == "normal":
-                    init_kaiming_normal_(param, gain=gain, nonlinearity="relu", mode="fan_in")
+                    init_kaiming_normal_(
+                        param, gain=gain, nonlinearity="relu", mode="fan_in"
+                    )
 
     def _init_weights_muP(self, dist_type="uniform"):
         """

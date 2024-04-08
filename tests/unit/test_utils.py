@@ -397,7 +397,9 @@ def test_calc_fan_in_fan_out():
     assert fan_out == 3
 
     # Test for the case when the tensor is 3D
-    tensor_3d = nn.Parameter(torch.rand(2, 25, 5))  # 2 x 25 x 5, I'm not writing this out
+    tensor_3d = nn.Parameter(
+        torch.rand(2, 25, 5)
+    )  # 2 x 25 x 5, I'm not writing this out
     fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_3d)
     assert fan_in == 25
     assert fan_out == 10
@@ -544,7 +546,9 @@ class TestInitXavier:
         std = np.sqrt(2 / (d_mlp + d_model))
         assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
 
-        z = nn.Parameter(torch.empty(d_model * 123))  # need to make this larger so std is accurate
+        z = nn.Parameter(
+            torch.empty(d_model * 123)
+        )  # need to make this larger so std is accurate
         utils.init_xavier_normal_(z)
         std = np.sqrt(2 / (1 + d_model * 123))
         assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
