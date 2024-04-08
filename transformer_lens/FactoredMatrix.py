@@ -218,9 +218,7 @@ class FactoredMatrix:
         elif length == len(self.shape):
             idx = self._convert_to_slice(idx, -1)
             idx = self._convert_to_slice(idx, -2)
-            return FactoredMatrix(
-                self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])]
-            )
+            return FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])])
         else:
             raise ValueError(
                 f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"

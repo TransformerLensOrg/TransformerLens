@@ -114,9 +114,7 @@ class ActivationCache:
             Whether the activations have a batch dimension.
     """
 
-    def __init__(
-        self, cache_dict: Dict[str, torch.Tensor], model, has_batch_dim: bool = True
-    ):
+    def __init__(self, cache_dict: Dict[str, torch.Tensor], model, has_batch_dim: bool = True):
         self.cache_dict = cache_dict
         self.model = model
         self.has_batch_dim = has_batch_dim
@@ -138,9 +136,7 @@ class ActivationCache:
                 self.cache_dict[key] = self.cache_dict[key][0]
             self.has_batch_dim = False
         else:
-            logging.warning(
-                "Tried removing batch dimension after already having removed it."
-            )
+            logging.warning("Tried removing batch dimension after already having removed it.")
         return self
 
     def __repr__(self) -> str:
@@ -207,9 +203,7 @@ class ActivationCache:
                 DeprecationWarning,
             )
 
-        self.cache_dict = {
-            key: value.to(device) for key, value in self.cache_dict.items()
-        }
+        self.cache_dict = {key: value.to(device) for key, value in self.cache_dict.items()}
 
         if move_model:
             self.model.to(device)
@@ -301,9 +295,7 @@ class ActivationCache:
         """
         return self.cache_dict.__iter__()
 
-    def apply_slice_to_batch_dim(
-        self, batch_slice: Union[Slice, SliceInput]
-    ) -> ActivationCache:
+    def apply_slice_to_batch_dim(self, batch_slice: Union[Slice, SliceInput]) -> ActivationCache:
         """Apply a Slice to the Batch Dimension.
 
         Args:
@@ -320,12 +312,9 @@ class ActivationCache:
         ), "Cannot index into a cache without a batch dim"
         still_has_batch_dim = (batch_slice.mode != "int") and self.has_batch_dim
         new_cache_dict = {
-            name: batch_slice.apply(param, dim=0)
-            for name, param in self.cache_dict.items()
+            name: batch_slice.apply(param, dim=0) for name, param in self.cache_dict.items()
         }
-        return ActivationCache(
-            new_cache_dict, self.model, has_batch_dim=still_has_batch_dim
-        )
+        return ActivationCache(new_cache_dict, self.model, has_batch_dim=still_has_batch_dim)
 
     def accumulated_resid(
         self,
@@ -337,9 +326,7 @@ class ActivationCache:
         return_labels: Optional[bool] = False,
     ) -> Union[
         Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"],
-        Tuple[
-            Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]
-        ],
+        Tuple[Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]],
     ]:
         """Accumulated Residual Stream.
 
@@ -463,9 +450,7 @@ class ActivationCache:
 
     def logit_attrs(
         self,
-        residual_stack: Float[
-            torch.Tensor, "num_components *batch_and_pos_dims d_model"
-        ],
+        residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
         tokens: Union[
             str,
             int,
@@ -546,9 +531,7 @@ class ActivationCache:
 
         if incorrect_tokens is not None:
             if isinstance(incorrect_tokens, str):
-                incorrect_tokens = torch.as_tensor(
-                    self.model.to_single_token(incorrect_tokens)
-                )
+                incorrect_tokens = torch.as_tensor(self.model.to_single_token(incorrect_tokens))
 
             elif isinstance(incorrect_tokens, int):
                 incorrect_tokens = torch.as_tensor(incorrect_tokens)
@@ -561,9 +544,8 @@ class ActivationCache:
                 )
 
             # If incorrect_tokens was provided, take the logit difference
-            logit_directions = (
-                logit_directions
-                - self.model.tokens_to_residual_directions(incorrect_tokens)
+            logit_directions = logit_directions - self.model.tokens_to_residual_directions(
+                incorrect_tokens
             )
 
         scaled_residual_stack = self.apply_ln_to_stack(
@@ -591,9 +573,7 @@ class ActivationCache:
         return_labels: bool = False,
     ) -> Union[
         Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"],
-        Tuple[
-            Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]
-        ],
+        Tuple[Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]],
     ]:
         """Decompose the Residual Stream.
 
@@ -682,9 +662,7 @@ class ActivationCache:
         be useful if you forget.
         """
         if "blocks.0.attn.hook_result" in self.cache_dict:
-            logging.warning(
-                "Tried to compute head results when they were already cached"
-            )
+            logging.warning("Tried to compute head results when they were already cached")
             return
         for l in range(self.model.cfg.n_layers):
             # Note that we haven't enabled set item on this object so we need to edit the underlying
@@ -856,9 +834,7 @@ class ActivationCache:
         apply_ln: bool = False,
     ) -> Union[
         Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
-        Tuple[
-            Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]
-        ],
+        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
     ]:
         """Stack Neuron Results
 
@@ -904,9 +880,7 @@ class ActivationCache:
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
             components.append(
-                self.get_neuron_results(
-                    l, pos_slice=pos_slice, neuron_slice=neuron_slice
-                )
+                self.get_neuron_results(l, pos_slice=pos_slice, neuron_slice=neuron_slice)
             )
             labels.extend([f"L{l}N{h}" for h in neuron_labels])
         if components:
@@ -940,9 +914,7 @@ class ActivationCache:
 
     def apply_ln_to_stack(
         self,
-        residual_stack: Float[
-            torch.Tensor, "num_components *batch_and_pos_dims d_model"
-        ],
+        residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
         layer: Optional[int] = None,
         mlp_input: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
@@ -1092,9 +1064,7 @@ class ActivationCache:
             labels.append("pos_embed")
             components.append(pos_slice.apply(self["pos_embed"], -2)[None])
         # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
-        bias = self.model.accumulated_bias(
-            layer, mlp_input, include_mlp_biases=expand_neurons
-        )
+        bias = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
         bias = bias.expand((1,) + head_stack.shape[1:])
         labels.append("bias")
         components.append(bias)

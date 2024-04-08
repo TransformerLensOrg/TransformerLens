@@ -31,15 +31,9 @@ CACHE_DIR = transformers.TRANSFORMERS_CACHE
 USE_DEFAULT_VALUE = None
 
 
-def select_compatible_kwargs(
-    kwargs_dict: Dict[str, Any], callable: Callable
-) -> Dict[str, Any]:
+def select_compatible_kwargs(kwargs_dict: Dict[str, Any], callable: Callable) -> Dict[str, Any]:
     """Return a dict with the elements kwargs_dict that are parameters of callable"""
-    return {
-        k: v
-        for k, v in kwargs_dict.items()
-        if k in inspect.getfullargspec(callable).args
-    }
+    return {k: v for k, v in kwargs_dict.items() if k in inspect.getfullargspec(callable).args}
 
 
 def download_file_from_hf(
@@ -89,9 +83,7 @@ def clear_huggingface_cache():
 
 
 def print_gpu_mem(step_name=""):
-    print(
-        f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU."
-    )
+    print(f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU.")
 
 
 def get_corner(tensor, n=3):
@@ -135,9 +127,7 @@ def lm_cross_entropy_loss(
     # Use torch.gather to find the log probs of the correct tokens
     # Offsets needed because we're predicting the NEXT token (this means the final logit is meaningless)
     # None and [..., 0] needed because the tensor used in gather must have the same rank.
-    predicted_log_probs = log_probs[..., :-1, :].gather(
-        dim=-1, index=tokens[..., 1:, None]
-    )[..., 0]
+    predicted_log_probs = log_probs[..., :-1, :].gather(dim=-1, index=tokens[..., 1:, None])[..., 0]
     if per_token:
         return -predicted_log_probs
     else:
@@ -168,28 +158,17 @@ def gelu_new(
     return (
         0.5
         * input
-        * (
-            1.0
-            + torch.tanh(
-                np.sqrt(2.0 / np.pi) * (input + 0.044715 * torch.pow(input, 3.0))
-            )
-        )
+        * (1.0 + torch.tanh(np.sqrt(2.0 / np.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
     )
 
 
 def gelu_fast(
     input: Float[torch.Tensor, "batch pos d_mlp"]
 ) -> Float[torch.Tensor, "batch pos d_mlp"]:
-    return (
-        0.5
-        * input
-        * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
-    )
+    return 0.5 * input * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
 
 
-def solu(
-    input: Float[torch.Tensor, "batch pos d_mlp"]
-) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
@@ -219,9 +198,7 @@ def calc_fan_in_and_fan_out(tensor):
         fan_in = shape[1]
         fan_out = shape[0] * shape[2]
     else:
-        raise ValueError(
-            f"Fan in and fan out can not be computed for shape {shape} tensors."
-        )
+        raise ValueError(f"Fan in and fan out can not be computed for shape {shape} tensors.")
 
     return fan_in, fan_out
 
@@ -329,14 +306,9 @@ def tokenize_and_concatenate(
         # Divide into 20 chunks of ~ equal length
         num_chunks = 20
         chunk_length = (len(full_text) - 1) // num_chunks + 1
-        chunks = [
-            full_text[i * chunk_length : (i + 1) * chunk_length]
-            for i in range(num_chunks)
-        ]
+        chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
-        tokens = tokenizer(chunks, return_tensors="np", padding=True)[
-            "input_ids"
-        ].flatten()
+        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
         # Drop padding tokens
         tokens = tokens[tokens != tokenizer.pad_token_id]
         num_tokens = len(tokens)
@@ -391,9 +363,7 @@ def sample_logits(
 
         final_logits = final_logits / temperature
         if freq_penalty > 0:
-            assert (
-                tokens is not None
-            ), "Must provide input_tokens if applying a frequency penalty"
+            assert tokens is not None, "Must provide input_tokens if applying a frequency penalty"
             for batch_index in range(final_logits.shape[0]):
                 # torch.bincount returns a tensor of length d_vocab, with the number of occurences of each token in the tokens.
                 final_logits[batch_index] = final_logits[
@@ -412,9 +382,7 @@ def sample_logits(
             cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
             # We round up - we want prob >= top_p not <top_p
             sorted_indices_to_remove = cumulative_probs > top_p
-            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
-                ..., :-1
-            ].clone()
+            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
             sorted_indices_to_remove[..., 0] = 0
             indices_to_remove = sorted_indices_to_remove.scatter(
                 -1, sorted_indices, sorted_indices_to_remove
@@ -591,11 +559,7 @@ def get_act_name(
     get_act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
     get_act_name('pre5')=='blocks.5.mlp.hook_pre'
     """
-    if (
-        ("." in name or name.startswith("hook_"))
-        and layer is None
-        and layer_type is None
-    ):
+    if ("." in name or name.startswith("hook_")) and layer is None and layer_type is None:
         # If this was called on a full name, just return it
         return name
     match = re.match(r"([a-z]+)(\d+)([a-z]?.*)", name)
@@ -656,9 +620,7 @@ def get_act_name(
     return full_act_name
 
 
-def remove_batch_dim(
-    tensor: Float[torch.Tensor, "1 ..."]
-) -> Float[torch.Tensor, "..."]:
+def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
     """
     Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
     """
@@ -858,9 +820,7 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
     return x.equal(x.tril())
 
 
-def check_structure(
-    t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False
-) -> None:
+def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False) -> None:
     """Validate that the two square tensors have the same structure, i.e.,
     that the directionality of comparisons points in the same directions both
     row-wise and column-wise.
@@ -957,9 +917,7 @@ def get_cumsum_along_dim(tensor, dim, reverse=False):
     return cumsum
 
 
-def get_attention_mask(
-    tokenizer, tokens: torch.Tensor, prepend_bos: bool
-) -> torch.Tensor:
+def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> torch.Tensor:
     """
     Computes the attention mask for the tokenized input.
     NOTE: Only the leftmost leading pads (when `padding_side == left`)
@@ -1071,8 +1029,7 @@ class LocallyOverridenDefaults:
             "padding_side": {
                 "default_location": "model.tokenizer.padding_side",
                 "valid_values": [USE_DEFAULT_VALUE, "left", "right"],
-                "skip_overriding": model.tokenizer
-                is None,  # Do not override if tokenizer is None
+                "skip_overriding": model.tokenizer is None,  # Do not override if tokenizer is None
                 "default_value_to_restore": None,  # Will be set later
             },
         }
@@ -1105,9 +1062,7 @@ class LocallyOverridenDefaults:
             info["default_value_to_restore"] = deepcopy(default_value)
 
             # Override the default value
-            locally_overriden_value = override_or_use_default_value(
-                default_value, override
-            )
+            locally_overriden_value = override_or_use_default_value(default_value, override)
             set_nested_attr(self, default_location, locally_overriden_value)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -1195,16 +1150,12 @@ def get_tokens_with_bos_removed(tokenizer, tokens):
 
         if tokenizer.bos_token_id == tokenizer.pad_token_id:
             is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
-            is_leading_pad = (
-                get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
-            )
+            is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
             real_bos_positions = is_leading_pad.sum(-1) - 1
         else:
             real_bos_positions = (tokens == tokenizer.bos_token_id).int().argmax(-1)
 
-        tokens = tokens.scatter(
-            dim=1, index=real_bos_positions.unsqueeze(-1), value=-100
-        )
+        tokens = tokens.scatter(dim=1, index=real_bos_positions.unsqueeze(-1), value=-100)
         return tokens[tokens != -100].view(*bos_removed_shape)
 
 

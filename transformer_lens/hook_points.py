@@ -53,9 +53,7 @@ class HookPoint(nn.Module):
     def add_perma_hook(self, hook, dir="fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
-    def add_hook(
-        self, hook, dir="fwd", is_permanent=False, level=None, prepend=False
-    ) -> None:
+    def add_hook(self, hook, dir="fwd", is_permanent=False, level=None, prepend=False) -> None:
         """
         Hook format is fn(activation, hook_name)
         Change it into PyTorch hook format (this includes input and output,
@@ -110,9 +108,7 @@ class HookPoint(nn.Module):
             for handle in handles:
                 if including_permanent:
                     handle.hook.remove()
-                elif (not handle.is_permanent) and (
-                    level is None or handle.context_level == level
-                ):
+                elif (not handle.is_permanent) and (level is None or handle.context_level == level):
                     handle.hook.remove()
                 else:
                     output_handles.append(handle)
@@ -188,13 +184,9 @@ class HookedRootModule(nn.Module):
     def hook_points(self):
         return self.hook_dict.values()
 
-    def remove_all_hook_fns(
-        self, direction="both", including_permanent=False, level=None
-    ):
+    def remove_all_hook_fns(self, direction="both", including_permanent=False, level=None):
         for hp in self.hook_points():
-            hp.remove_hooks(
-                direction, including_permanent=including_permanent, level=level
-            )
+            hp.remove_hooks(direction, including_permanent=including_permanent, level=level)
 
     def clear_contexts(self):
         for hp in self.hook_points():
@@ -231,9 +223,7 @@ class HookedRootModule(nn.Module):
             is_permanent=is_permanent,
             prepend=prepend,
         )
-        hook_point.add_hook(
-            hook, dir=dir, is_permanent=is_permanent, level=level, prepend=prepend
-        )
+        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent, level=level, prepend=prepend)
 
     def check_hooks_to_add(
         self, hook_point, hook_point_name, hook, dir="fwd", is_permanent=False
@@ -301,9 +291,7 @@ class HookedRootModule(nn.Module):
 
             for name, hook in fwd_hooks:
                 if type(name) == str:
-                    self.mod_dict[name].add_hook(
-                        hook, dir="fwd", level=self.context_level
-                    )
+                    self.mod_dict[name].add_hook(hook, dir="fwd", level=self.context_level)
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict.items():
@@ -311,9 +299,7 @@ class HookedRootModule(nn.Module):
                             hp.add_hook(hook, dir="fwd", level=self.context_level)
             for name, hook in bwd_hooks:
                 if type(name) == str:
-                    self.mod_dict[name].add_hook(
-                        hook, dir="bwd", level=self.context_level
-                    )
+                    self.mod_dict[name].add_hook(hook, dir="bwd", level=self.context_level)
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict:
@@ -362,9 +348,7 @@ class HookedRootModule(nn.Module):
                 "WARNING: Hooks will be reset at the end of run_with_hooks. This removes the backward hooks before a backward pass can occur."
             )
 
-        with self.hooks(
-            fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts
-        ) as hooked_model:
+        with self.hooks(fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts) as hooked_model:
             return hooked_model.forward(*model_args, **model_kwargs)
 
     def add_caching_hooks(

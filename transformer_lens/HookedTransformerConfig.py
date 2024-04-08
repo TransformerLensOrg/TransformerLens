@@ -223,19 +223,13 @@ class HookedTransformerConfig:
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
         if self.use_local_attn:
-            assert (
-                self.window_size is not None
-            ), "window_size must be specified for local attention"
-            assert (
-                self.attn_types is not None
-            ), "attn_types must be specified for local attention"
+            assert self.window_size is not None, "window_size must be specified for local attention"
+            assert self.attn_types is not None, "attn_types must be specified for local attention"
         if not self.attn_only:
             if self.d_mlp is None:
                 # For some reason everyone hard codes in this hyper-parameter!
                 self.d_mlp: int = self.d_model * 4
-            assert (
-                self.act_fn is not None
-            ), "act_fn must be specified for non-attn-only models"
+            assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
             assert (
                 self.act_fn in SUPPORTED_ACTIVATIONS
             ), f"act_fn={self.act_fn} must be one of {SUPPORTED_ACTIVATIONS}"
@@ -255,9 +249,7 @@ class HookedTransformerConfig:
             self.rotary_dim = self.d_head
 
         # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
-        self.n_params = self.n_layers * (
-            (self.d_model * self.d_head * self.n_heads * 4)
-        )
+        self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
         if not self.attn_only:
             # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
             self.n_params += self.n_layers * self.d_model * self.d_mlp * 2

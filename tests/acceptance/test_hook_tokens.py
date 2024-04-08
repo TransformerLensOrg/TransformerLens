@@ -30,9 +30,7 @@ def test_patch_tokens():
     new_first_token = model.to_single_token("Hi")
 
     # Define hook function to alter the first token
-    def hook_fn(
-        tokens: Int[t.Tensor, "batch seq"], hook: HookPoint, new_first_token: int
-    ):
+    def hook_fn(tokens: Int[t.Tensor, "batch seq"], hook: HookPoint, new_first_token: int):
         assert (
             tokens[0, 0].item() != new_first_token
         )  # Need new_first_token to be different from original
@@ -43,9 +41,7 @@ def test_patch_tokens():
     out_from_hook = model.run_with_hooks(
         prompt,
         prepend_bos=False,
-        fwd_hooks=[
-            ("hook_tokens", functools.partial(hook_fn, new_first_token=new_first_token))
-        ],
+        fwd_hooks=[("hook_tokens", functools.partial(hook_fn, new_first_token=new_first_token))],
     )
 
     out_direct = model(modified_prompt, prepend_bos=False)

@@ -284,9 +284,7 @@ def test_detect_head_exclude_bos(error_measure: ErrorMeasure, expected: torch.Te
         ("abs", expected_previous_exclude_current_token_match_abs),
     ),
 )
-def test_detect_head_exclude_current_token(
-    error_measure: ErrorMeasure, expected: torch.Tensor
-):
+def test_detect_head_exclude_current_token(error_measure: ErrorMeasure, expected: torch.Tensor):
     assert torch.allclose(
         detect_head(
             model,
@@ -381,9 +379,7 @@ def test_detect_head_with_invalid_detection_pattern():
 
 
 class Test_detect_head_non_lower_triangular_detection_pattern:
-    detection_pattern = torch.tril(
-        torch.ones(test_duplicated_seq_len, test_duplicated_seq_len)
-    )
+    detection_pattern = torch.tril(torch.ones(test_duplicated_seq_len, test_duplicated_seq_len))
 
     def test_no_error(self):
         detect_head(
@@ -440,16 +436,14 @@ class Test_specific_heads:
         def test_isclose_mul(self):
             assert math.isclose(
                 torch.sum(self.match_abs),
-                self.match_mul[0, 0].item()
-                - (model.cfg.n_layers * model.cfg.n_heads - 1),
+                self.match_mul[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )
 
         def test_isclose_abs(self):
             assert math.isclose(
                 torch.sum(self.match_abs),
-                self.match_abs[0, 0].item()
-                - (model.cfg.n_layers * model.cfg.n_heads - 1),
+                self.match_abs[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )
 
@@ -486,16 +480,14 @@ class Test_specific_heads:
         def test_isclose_mul(self):
             assert math.isclose(
                 torch.sum(self.match_mul),
-                self.match_mul[0, 0].item()
-                - (model.cfg.n_layers * model.cfg.n_heads - 1),
+                self.match_mul[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )
 
         def test_isclose_abs(self):
             assert math.isclose(
                 torch.sum(self.match_abs),
-                self.match_abs[0, 0].item()
-                - (model.cfg.n_layers * model.cfg.n_heads - 1),
+                self.match_abs[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )
 
@@ -532,16 +524,14 @@ class Test_specific_heads:
         def test_isclose_mul(self):
             assert math.isclose(
                 torch.sum(self.match_mul),
-                self.match_mul[0, 0].item()
-                - (model.cfg.n_layers * model.cfg.n_heads - 1),
+                self.match_mul[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )
 
         def test_isclose_abs(self):
             assert math.isclose(
                 torch.sum(self.match_abs),
-                self.match_abs[0, 0].item()
-                - (model.cfg.n_layers * model.cfg.n_heads - 1),
+                self.match_abs[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )
 
@@ -578,16 +568,14 @@ class Test_specific_heads:
         def test_isclose_mul(self):
             assert math.isclose(
                 torch.sum(self.match_mul),
-                self.match_mul[0, 0].item()
-                - (model.cfg.n_layers * model.cfg.n_heads - 1),
+                self.match_mul[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )
 
         def test_isclose_abs(self):
             assert math.isclose(
                 torch.sum(self.match_abs),
-                self.match_abs[0, 0].item()
-                - (model.cfg.n_layers * model.cfg.n_heads - 1),
+                self.match_abs[0, 0].item() - (model.cfg.n_layers * model.cfg.n_heads - 1),
                 abs_tol=ATOL,
             )
 
@@ -632,9 +620,7 @@ class Test_duplicate_token_head:
 
     def test1(self):
         assert (
-            get_duplicate_token_head_detection_pattern(
-                model.to_tokens(test_regular_sequence).cpu()
-            )
+            get_duplicate_token_head_detection_pattern(model.to_tokens(test_regular_sequence).cpu())
             == torch.zeros(4, 4)
         ).all()
 
@@ -655,9 +641,7 @@ class Test_induction_head_detection:
 
     def test1(self):
         assert (
-            get_duplicate_token_head_detection_pattern(
-                model.to_tokens(test_regular_sequence).cpu()
-            )
+            get_duplicate_token_head_detection_pattern(model.to_tokens(test_regular_sequence).cpu())
             == torch.zeros(4, 4)
         ).all()
 

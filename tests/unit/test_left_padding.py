@@ -89,9 +89,7 @@ class TestLeftPadding:
 
         attended_output_pos_embed = output_pos_embed[attention_mask.bool()]
 
-        assert torch.allclose(
-            attended_output_pos_embed, target_output_pos_embed, atol=1e-4
-        )
+        assert torch.allclose(attended_output_pos_embed, target_output_pos_embed, atol=1e-4)
 
         # padded positions should have zero pos_embed
         assert output_pos_embed[~attention_mask.bool()].sum() == 0
@@ -117,9 +115,7 @@ class TestLeftPadding:
             model.tokenizer, tokens, prepend_bos
         )  # [batch pos]
         past_kv_cache.append_attention_mask(attention_mask)
-        attention_mask_2 = utils.get_attention_mask(
-            model.tokenizer, tokens_2, False
-        )  # [batch pos]
+        attention_mask_2 = utils.get_attention_mask(model.tokenizer, tokens_2, False)  # [batch pos]
         cached_attention_mask = past_kv_cache.append_attention_mask(attention_mask_2)
 
         output_pos_embed = model.pos_embed(
@@ -141,9 +137,7 @@ class TestLeftPadding:
 
         attended_output_pos_embed = output_pos_embed[attention_mask_2.bool()]
 
-        assert torch.allclose(
-            attended_output_pos_embed, target_output_pos_embed, atol=1e-4
-        )
+        assert torch.allclose(attended_output_pos_embed, target_output_pos_embed, atol=1e-4)
 
         # padded positions should have zero pos_embed
         assert output_pos_embed[~attention_mask_2.bool()].sum() == 0

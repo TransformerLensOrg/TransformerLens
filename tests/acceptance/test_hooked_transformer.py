@@ -14,9 +14,7 @@ TINY_STORIES_MODEL_NAMES = [
     name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
 ]
 
-PYTHIA_MODEL_NAMES = [
-    name for name in OFFICIAL_MODEL_NAMES if name.startswith("EleutherAI/pythia")
-]
+PYTHIA_MODEL_NAMES = [name for name in OFFICIAL_MODEL_NAMES if name.startswith("EleutherAI/pythia")]
 
 model_names = [
     "attn-only-demo",
@@ -238,10 +236,7 @@ def check_norm_folding(
     )
 
     return torch.max(
-        torch.abs(
-            torch.softmax(folded_logits, dim=-1)
-            - torch.softmax(unfolded_logits, dim=-1)
-        )
+        torch.abs(torch.softmax(folded_logits, dim=-1) - torch.softmax(unfolded_logits, dim=-1))
     )
 
 
@@ -287,9 +282,7 @@ def check_dtype(dtype, margin, no_processing=False):
     for model_path in ["gpt2", "roneneldan/TinyStories-33M", "EleutherAI/pythia-70m"]:
         if no_processing:
             # For low precision, the processing is not advised.
-            model = HookedTransformer.from_pretrained_no_processing(
-                model_path, torch_dtype=dtype
-            )
+            model = HookedTransformer.from_pretrained_no_processing(model_path, torch_dtype=dtype)
         else:
             model = HookedTransformer.from_pretrained(model_path, torch_dtype=dtype)
 
@@ -348,9 +341,7 @@ def test_pos_embed_hook():
         z[:] = 0.0
         return z
 
-    _ = model.run_with_hooks(
-        "Hello, world", fwd_hooks=[("hook_pos_embed", remove_pos_embed)]
-    )
+    _ = model.run_with_hooks("Hello, world", fwd_hooks=[("hook_pos_embed", remove_pos_embed)])
 
     # Check that pos embed has not been permanently changed
     assert (model.W_pos == initial_W_pos).all()

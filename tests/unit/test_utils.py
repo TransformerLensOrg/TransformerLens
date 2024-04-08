@@ -274,21 +274,13 @@ def test_test_prompt(
 def test_override_or_use_default_value():
     # Case when override is not None
     assert utils.override_or_use_default_value(default_flag=True, override=True) == True
-    assert (
-        utils.override_or_use_default_value(default_flag=True, override=False) == False
-    )
-    assert (
-        utils.override_or_use_default_value(default_flag=False, override=True) == True
-    )
-    assert (
-        utils.override_or_use_default_value(default_flag=False, override=False) == False
-    )
+    assert utils.override_or_use_default_value(default_flag=True, override=False) == False
+    assert utils.override_or_use_default_value(default_flag=False, override=True) == True
+    assert utils.override_or_use_default_value(default_flag=False, override=False) == False
 
     # Case when override is None
     assert utils.override_or_use_default_value(default_flag=True, override=None) == True
-    assert (
-        utils.override_or_use_default_value(default_flag=False, override=None) == False
-    )
+    assert utils.override_or_use_default_value(default_flag=False, override=None) == False
 
     # Case when override is not passed
     assert utils.override_or_use_default_value(default_flag=True) == True
@@ -322,9 +314,7 @@ class TestAttentionMask:
     @pytest.mark.parametrize("padding_side", ["left", "right"])
     @pytest.mark.parametrize("prepend_bos", [True, False])
     @pytest.mark.parametrize("prompts_with_sep", [True, False])
-    def test_get_attention_mask(
-        self, model, padding_side, prepend_bos, prompts_with_sep
-    ):
+    def test_get_attention_mask(self, model, padding_side, prepend_bos, prompts_with_sep):
         # setup
         model.tokenizer.padding_side = padding_side
         model.tokenizer.sep_token_id = model.tokenizer.pad_token_id
@@ -397,9 +387,7 @@ def test_calc_fan_in_fan_out():
     assert fan_out == 3
 
     # Test for the case when the tensor is 3D
-    tensor_3d = nn.Parameter(
-        torch.rand(2, 25, 5)
-    )  # 2 x 25 x 5, I'm not writing this out
+    tensor_3d = nn.Parameter(torch.rand(2, 25, 5))  # 2 x 25 x 5, I'm not writing this out
     fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_3d)
     assert fan_in == 25
     assert fan_out == 10
@@ -546,9 +534,7 @@ class TestInitXavier:
         std = np.sqrt(2 / (d_mlp + d_model))
         assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
 
-        z = nn.Parameter(
-            torch.empty(d_model * 123)
-        )  # need to make this larger so std is accurate
+        z = nn.Parameter(torch.empty(d_model * 123))  # need to make this larger so std is accurate
         utils.init_xavier_normal_(z)
         std = np.sqrt(2 / (1 + d_model * 123))
         assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)

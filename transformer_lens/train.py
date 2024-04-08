@@ -98,9 +98,7 @@ def train(
         optimizer = optim.SGD(
             model.parameters(),
             lr=config.lr,
-            weight_decay=config.weight_decay
-            if config.weight_decay is not None
-            else 0.0,
+            weight_decay=config.weight_decay if config.weight_decay is not None else 0.0,
             momentum=config.momentum,
         )
     else:
@@ -134,9 +132,7 @@ def train(
             samples += tokens.shape[0]
 
             if config.wandb:
-                wandb.log(
-                    {"train_loss": loss.item(), "samples": samples, "epoch": epoch}
-                )
+                wandb.log({"train_loss": loss.item(), "samples": samples, "epoch": epoch})
 
             if config.print_every is not None and step % config.print_every == 0:
                 print(f"Epoch {epoch} Samples {samples} Step {step} Loss {loss.item()}")
