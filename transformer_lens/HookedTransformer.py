@@ -1535,7 +1535,11 @@ class HookedTransformer(HookedRootModule):
                 "With reduced precision, it is advised to use `from_pretrained_no_processing` instead of `from_pretrained`."
             )
 
-        if self.cfg.dtype not in [torch.float32, torch.float64] and self.cfg.num_experts and self.cfg.num_experts > 1:
+        if (
+            self.cfg.dtype not in [torch.float32, torch.float64]
+            and self.cfg.num_experts
+            and self.cfg.num_experts > 1
+        ):
             logging.warning(
                 "When running MoE models, it is advised to use a higher precision data type. See docs for more info."
             )
