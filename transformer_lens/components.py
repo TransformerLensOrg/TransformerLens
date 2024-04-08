@@ -1362,8 +1362,8 @@ class MoE(nn.Module):
             torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype)
         )
 
-        self.hook_gate = HookPoint()  # [batch pos experts_per_token]
-        self.hook_experts = HookPoint()  # [batch pos experts_per_token]
+        self.hook_gate = HookPoint()  # Hook on the weights of selected experts [batch pos experts_per_token]
+        self.hook_experts = HookPoint()  # Hook on the indices of selected experts [batch pos experts_per_token]
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]

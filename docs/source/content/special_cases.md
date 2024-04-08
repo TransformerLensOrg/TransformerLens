@@ -1,6 +1,6 @@
 # Special Cases
 
-### Mixture of Experts error rates
+## Mixture of Experts error rates
 Due to the Top-K gating performed in the hidden layer of Mixture of Experts models, small errors can be amplified 
 greatly in cases where a different expert is selected, which leads to a higher than normal variance in the error rate
 of the final logits. In testing done on Mixtral running in half precision, the standard deviation of the absolute error 
