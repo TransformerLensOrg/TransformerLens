@@ -289,9 +289,9 @@ def benchmark_model_options(
     if tokenizer is None:
         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    tokens = tokenizer(
-        prompts, return_tensors="pt", truncation=True, max_length=4
-    ).input_ids.to(device)
+    tokens = tokenizer(prompts, return_tensors="pt", truncation=True, max_length=4).input_ids.to(
+        device
+    )
 
     # hf_model = hf_model.to(device)
     hf_logits = hf_model(tokens).logits.detach()
@@ -387,9 +387,7 @@ def benchmark_models(models, device="cuda", n_devices=1, cache_in_cpu=True):
                 cache_in_cpu=cache_in_cpu,
             )
             for option, result in results.items():
-                rows.append(
-                    {"model": model, "dtype": dtype, "options": option, **result}
-                )
+                rows.append({"model": model, "dtype": dtype, "options": option, **result})
 
     return pd.DataFrame(rows)
 
