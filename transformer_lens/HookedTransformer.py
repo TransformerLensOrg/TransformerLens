@@ -1382,7 +1382,7 @@ class HookedTransformer(HookedRootModule):
         The default PyTorch scheme is the following: all linear layers use uniform(-1/sqrt(fan_in),
         1/sqrt(fan_in)) for weights, and uniform(-1/sqrt(fan_in), 1/sqrt(fan_in)) for biases. For
         biases, fan_in is computed using the fan_in for the weight matrix of the linear layer. Note
-        tha it _does not actually_ use Kaiming initialization, despite the fact that it calls the
+        tha it *does not actually* use Kaiming initialization, despite the fact that it calls the
         function.
 
         However, for Transformer blocks, it instead initializes biases to zero and weights using Xavier uniform, that
