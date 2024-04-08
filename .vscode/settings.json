@@ -6,7 +6,7 @@
         "editor.defaultFormatter": "tamasfe.even-better-toml"
     },
     "editor.codeActionsOnSave": {
-        "source.organizeImports": true
+        "source.organizeImports": "explicit"
     },
     "editor.formatOnSave": true,
     "evenBetterToml.formatter.allowedBlankLines": 1,
@@ -38,4 +38,6 @@
     "rewrap.autoWrap.enabled": true,
     "rewrap.reformat": true,
     "rewrap.wrappingColumn": 100,
+    "mypy.runUsingActiveInterpreter": true,
+    "editor.defaultFormatter": "ms-python.black-formatter",
 }

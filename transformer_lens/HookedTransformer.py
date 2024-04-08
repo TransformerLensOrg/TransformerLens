@@ -44,7 +44,13 @@ from transformer_lens.loading_from_pretrained import NON_HF_HOSTED_MODEL_NAMES
 # generation.
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCache
 from transformer_lens.utilities import devices
-from transformer_lens.utils import USE_DEFAULT_VALUE
+from transformer_lens.utils import (
+    USE_DEFAULT_VALUE,
+    init_kaiming_normal_,
+    init_kaiming_uniform_,
+    init_xavier_normal_,
+    init_xavier_uniform_,
+)
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
@@ -116,7 +122,7 @@ class HookedTransformer(HookedRootModule):
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a "
                 "pretrained model, use HookedTransformer.from_pretrained() instead."
             )
-        self.cfg = cfg
+        self.cfg: HookedTransformerConfig = cfg
 
         if tokenizer is not None:
             self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
@@ -124,7 +130,8 @@ class HookedTransformer(HookedRootModule):
             # If we have a tokenizer name, we can load it from HuggingFace
             if self.cfg.tokenizer_name in NON_HF_HOSTED_MODEL_NAMES:
                 logging.warning(
-                    f"{self.cfg.tokenizer_name} tokenizer not loaded. Please load manually."
+                    "%s tokenizer not loaded. Please load manually.",
+                    self.cfg.tokenizer_name,
                 )
             else:
                 # Hugging Face defaults to use_fast to True
@@ -191,7 +198,7 @@ class HookedTransformer(HookedRootModule):
             pass
         else:
             logging.warning(
-                f"Invalid normalization_type passed in {self.cfg.normalization_type}"
+                "Invalid normalization_type passed in %s", self.cfg.normalization_type
             )
         self.unembed = Unembed(self.cfg)
 
@@ -528,7 +535,7 @@ class HookedTransformer(HookedRootModule):
                 tokens that have already been through the model. Also caches attention_mask so
                 previous tokens are masked correctly (unless frozen). Padding should be ignored in
                 all cases, so it's okay to eg. pass in left padded tokens twice in a row.
-                Warning: Don't accidently prepend_bos to the second half of a prompt.
+                Warning: Don't accidentally prepend_bos to the second half of a prompt.
                 Defaults to None (don't use caching).
         """
 
@@ -987,7 +994,7 @@ class HookedTransformer(HookedRootModule):
         indices = torch.arange(len(tokens), device=tokens.device)[
             tokens == single_token
         ]
-        assert len(indices) > 0, f"The token does not occur in the prompt"
+        assert len(indices) > 0, "The token does not occur in the prompt"
         if mode == "first":
             return indices[0].item()
         elif mode == "last":
@@ -1365,10 +1372,6 @@ class HookedTransformer(HookedRootModule):
     def init_weights(self):
         """Initialize weights.
 
-        Initialize weights matrices with a normal of std=initializer_range (default=0.02). This
-        roughly follows the GPT-2 paper's scheme (but with truncation, and not halving the std for
-        W_pos).
-
         LayerNorm weights are already initialized to 1.0, and all biases are initialized to 0.0
         (including LayerNorm), so this just initializes weight matrices.
 
@@ -1381,19 +1384,119 @@ class HookedTransformer(HookedRootModule):
         This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but
         no one has gotten round to updating it? https://github.com/pytorch/pytorch/issues/18182
 
+        The default PyTorch scheme is the following: all linear layers use uniform(-1/sqrt(fan_in),
+        1/sqrt(fan_in)) for weights, and uniform(-1/sqrt(fan_in), 1/sqrt(fan_in)) for biases. For
+        biases, fan_in is computed using the fan_in for the weight matrix of the linear layer. Note
+        tha it *does not actually* use Kaiming initialization, despite the fact that it calls the
+        function.
+
+        However, for Transformer blocks, it instead initializes biases to zero and weights using Xavier uniform, that
+        is: uniform(-sqrt(6 / (fan_in + fan_out)), sqrt(6 / (fan_in + fan_out))) for weights.
+
         PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the
-        exact same weights?! https://github.com/pytorch/pytorch/issues/72253
+        exact same weights?! https://github.com/pytorch/pytorch/issues/72253.
 
         The best paper I've found on transformer initialization is the muP paper, but haven't
         integrated those ideas yet: https://arxiv.org/abs/2203.03466
+
+        We split off the initialization into separate functions because muP initialization handles
+        different parts of the model differently.
         """
 
         if self.cfg.seed is not None:
             torch.manual_seed(self.cfg.seed)
 
+        if self.cfg.init_mode == "gpt2":
+            self._init_weights_gpt2()
+        elif self.cfg.init_mode == "xavier_uniform":
+            self._init_weights_xavier(dist_type="uniform")
+        elif self.cfg.init_mode == "xavier_normal":
+            self._init_weights_xavier(dist_type="normal")
+        elif self.cfg.init_mode == "kaiming_uniform":
+            self._init_weights_kaiming(dist_type="uniform")
+        elif self.cfg.init_mode == "kaiming_normal":
+            self._init_weights_kaiming(dist_type="normal")
+        elif self.cfg.init_mode == "muP":
+            self._init_weights_muP(dist_type="normal")  # muP uses normal initialization
+
+    def _init_weights_gpt2(self):
+        """Initialize weights with GPT-2 initialization. Biases are initialized to 0.0 and weights
+        are initialized to N(0, 0.64/d_model) if initializer_range is not set, otherwise std is initializer_range.
+        """
         for name, param in self.named_parameters():
             if "W_" in name:
                 nn.init.normal_(param, std=self.cfg.initializer_range)
+
+    def _init_weights_xavier(self, dist_type="normal"):
+        """
+        Initialize weights with Xavier initialization -- that is, scale the weights by sqrt(6 /
+        (fan_in + fan_out)) for a [-1, 1] uniform distribution, or sqrt(2 / (fan_in + fan_out)) for a
+        standard normal.
+
+        Note that since TransformerLens implements the matrices in the opposite orientation to what
+        torch does (e.g. it's d_in x d_out, not d_out x d_in as in torch), we need to calculate it
+        ourselves.
+        """
+        gain = self.cfg.initializer_range
+        for name, param in self.named_parameters():
+            if "W_" in name:
+                if dist_type == "uniform":
+                    init_xavier_uniform_(param, gain=gain)
+                elif dist_type == "normal":
+                    init_xavier_normal_(param, gain=gain)
+
+    def _init_weights_kaiming(self, dist_type="uniform"):
+        """
+        Initialize weights with Kaiming initialization -- that is, scale the weights by
+        c / sqrt(fan_in), where c = sqrt(2) if the params were immediately preceded by a relu and 1 for
+        everything else.
+
+        Note that the numbers are actually incorrect here when you're using a nonlinearity other
+        than relu, e.g. the correct c for SiLu is ~1.74, for tanh it's 5/3 ~= 1.67, and for GeLU it's ~1.57.
+        But this is unlikely to matter in practice.
+
+        I'm just using fan_mode = "fan_in" for now, but it should be trivial to add fan_out.
+
+        Again, we have to implement it ourselves because of the orientation of the matrices.
+        """
+        gain = self.cfg.initializer_range
+        for name, param in self.named_parameters():
+            if "W_" in name:
+                if dist_type == "uniform":
+                    init_kaiming_uniform_(
+                        param, gain=gain, nonlinearity="relu", mode="fan_in"
+                    )
+                elif dist_type == "normal":
+                    init_kaiming_normal_(
+                        param, gain=gain, nonlinearity="relu", mode="fan_in"
+                    )
+
+    def _init_weights_muP(self, dist_type="uniform"):
+        """
+        Initialize weights with muParameterization. This involves scaling output weights by a factor
+        of 1/fan_in, input weights and biases by 1, everything else by a factor of 1/sqrt(fan_in).
+
+        Also, you need to use muAdamW, which rescales the learning rate for output weights and
+        hidden weights by a factor of 1/fan_in.
+
+        All biases are still assumed to be initialized to 0.0, so we only need to change the
+        weights.
+        """
+        for name, param in self.named_parameters():
+            if "W_" in name:
+                fan_in, _ = utils.calc_fan_in_and_fan_out(param)
+                if "embed" in name:
+                    scale = 1
+                elif "unembed" in name:
+                    scale = 1 / fan_in
+                else:
+                    scale = 1 / fan_in**0.5
+
+                if dist_type == "uniform":
+                    scale *= 3**0.5
+                    nn.init.uniform_(param, -scale, scale)
+                elif dist_type == "normal":
+                    nn.init.normal_(param, std=scale)
 
     def load_and_process_state_dict(
         self,
@@ -2290,6 +2393,7 @@ class HookedTransformer(HookedRootModule):
         return scores
 
     def all_head_labels(self):
+        """Returns a list of all head names in the model."""
         return [
             f"L{l}H{h}"
             for l in range(self.cfg.n_layers)
