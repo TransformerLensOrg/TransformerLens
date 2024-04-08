@@ -270,6 +270,9 @@ class HookedEncoder(HookedRootModule):
 
     @property
     def b_U(self) -> Float[torch.Tensor, "d_vocab"]:
+        """
+        Convenience to get the unembedding bias
+        """
         return self.unembed.b_U
 
     @property
@@ -379,13 +382,17 @@ class HookedEncoder(HookedRootModule):
 
     @property
     def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
+        """Returns a FactoredMatrix object with the product of the Q and K matrices for each layer and head.
+        Useful for visualizing attention patterns."""
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
     def OV(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
+        """Returns a FactoredMatrix object with the product of the O and V matrices for each layer and head."""
         return FactoredMatrix(self.W_V, self.W_O)
 
     def all_head_labels(self) -> List[str]:
+        """Returns a list of strings with the format "L{l}H{h}", where l is the layer index and h is the head index."""
         return [
             f"L{l}H{h}"
             for l in range(self.cfg.n_layers)
