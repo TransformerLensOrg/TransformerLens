@@ -9,6 +9,7 @@
         "source.organizeImports": "explicit"
     },
     "editor.formatOnSave": true,
+    "editor.rulers": [100],
     "evenBetterToml.formatter.allowedBlankLines": 1,
     "evenBetterToml.formatter.arrayAutoCollapse": true,
     "evenBetterToml.formatter.arrayAutoExpand": true,
@@ -40,4 +41,7 @@
     "rewrap.wrappingColumn": 100,
     "mypy.runUsingActiveInterpreter": true,
     "editor.defaultFormatter": "ms-python.black-formatter",
+    "black-formatter.args": [
+        "-l 100"
+    ],
 }

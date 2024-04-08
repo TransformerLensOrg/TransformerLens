@@ -278,9 +278,9 @@ class HookedTransformer(HookedRootModule):
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
         if (self.tokenizer and self.tokenizer.padding_side == "left") or past_kv_cache is not None:
-            # If the padding side is left or we are using caching, we need to compute the attention mask
-            # for the adjustment of absolute positional embeddings and attention masking so that pad
-            # tokens are not attended.
+            # If the padding side is left or we are using caching, we need to compute the attention
+            # mask for the adjustment of absolute positional embeddings and attention masking so
+            # that pad tokens are not attended.
 
             if prepend_bos is USE_DEFAULT_VALUE:
                 prepend_bos = self.cfg.default_prepend_bos

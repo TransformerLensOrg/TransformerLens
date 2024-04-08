@@ -94,8 +94,8 @@ class HookedTransformerConfig:
         attn_only (bool): Whether to only use attention layers, no feedforward
             layers. Defaults to False
         seed (int, *optional*): The seed to use for the model.
-            Used to set sources of randomness (Python, PyTorch and
-            NumPy) and to initialize weights. Defaults to None. We recommend setting a seed, so your experiments are reproducible.
+            Used to set sources of randomness (Python, PyTorch and NumPy) and to initialize weights.
+            Defaults to None. We recommend setting a seed, so your experiments are reproducible.
         initializer_range (float): The standard deviation of the normal used to
             initialise the weights, initialized to 0.8 / sqrt(d_model). If weight_init_mode is
             'xavier_uniform' or 'xavier_normal', this value is instead treated as the `gain` parameter for the weight
@@ -210,11 +210,9 @@ class HookedTransformerConfig:
             self.n_heads = self.d_model // self.d_head
 
             if not self.d_model % (self.d_head) == 0:
-                # logging.warning(
-                #     f"d_model {self.d_model} is not divisible by d_head {self.d_head}. n_heads was inferred to be {self.n_heads}, rounding down the ratio."
-                # )
                 logging.warning(
-                    "d_model %d is not divisible by d_head %d. n_heads was inferred to be %d, rounding down the ratio.",
+                    "d_model %d is not divisible by d_head %d."
+                    "n_heads was inferred to be %d, rounding down the ratio.",
                     self.d_model,
                     self.d_head,
                     self.n_heads,
@@ -242,16 +240,19 @@ class HookedTransformerConfig:
 
         if self.d_vocab_out == -1:
             # d_vocab_out defaults to d_vocab, unless there's an algorithmic task
-            # If d_vocab is not set, it'll be inferred from tokenizer_name or from a tokenizer explicitly passed to HookedTransformer initialisation.
+            # If d_vocab is not set, it'll be inferred from tokenizer_name or from a tokenizer
+            # explicitly passed to HookedTransformer initialisation.
             self.d_vocab_out = self.d_vocab
 
         if self.positional_embedding_type == "rotary" and self.rotary_dim is None:
             self.rotary_dim = self.d_head
 
-        # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
+        # The number of parameters in attention layers (ignoring biases and layer norm).
+        # 4 because W_Q, W_K, W_V and W_O
         self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
         if not self.attn_only:
-            # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
+            # Number of parameters in MLP layers (ignoring biases and layer norm).
+            # 2 because W_in and W_out
             self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
 
         if self.device is None:
