@@ -532,7 +532,7 @@ class HookedTransformer(HookedRootModule):
                 tokens that have already been through the model. Also caches attention_mask so
                 previous tokens are masked correctly (unless frozen). Padding should be ignored in
                 all cases, so it's okay to eg. pass in left padded tokens twice in a row.
-                Warning: Don't accidently prepend_bos to the second half of a prompt.
+                Warning: Don't accidentally prepend_bos to the second half of a prompt.
                 Defaults to None (don't use caching).
         """
 
