@@ -78,9 +78,8 @@ class HookedTransformerConfig:
             local attention
         weight_init_mode (str): the initialization mode to use for the
             weights. Only relevant for custom models, ignored for pre-trained.
-            Currently the only supported mode is 'gpt2', where biases are
-            initialized to 0 and weights are standard normals of range
-            initializer_range.
+            We now support 'gpt2', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
+            'kaiming_normal'. MuP support to come. Defaults to 'gpt2'.
         normalization_type (str, *optional*): the type of normalization to use.
             Options are None (no normalization), 'LN' (use LayerNorm, including weights
             & biases) and 'LNPre' (use LayerNorm, but no weights & biases).
@@ -98,7 +97,9 @@ class HookedTransformerConfig:
             Used to set sources of randomness (Python, PyTorch and
             NumPy) and to initialize weights. Defaults to None. We recommend setting a seed, so your experiments are reproducible.
         initializer_range (float): The standard deviation of the normal used to
-            initialise the weights, initialized to 0.8 / sqrt(d_model) .
+            initialise the weights, initialized to 0.8 / sqrt(d_model). If weight_init_mode is
+            'xavier_uniform' or 'xavier_normal', this value is instead treated as the `gain` parameter for the weight
+            initialisation (a constant factor to scale the weights by). Defaults to -1.0, which means not set.
         init_weights (bool): Whether to initialize the weights. Defaults to
             True. If False, does not initialize weights.
         scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention
@@ -215,8 +216,14 @@ class HookedTransformerConfig:
             self.n_heads = self.d_model // self.d_head
 
             if not self.d_model % (self.d_head) == 0:
+                # logging.warning(
+                #     f"d_model {self.d_model} is not divisible by d_head {self.d_head}. n_heads was inferred to be {self.n_heads}, rounding down the ratio."
+                # )
                 logging.warning(
-                    f"d_model {self.d_model} is not divisible by d_head {self.d_head}. n_heads was inferred to be {self.n_heads}, rounding down the ratio."
+                    "d_model %d is not divisible by d_head %d. n_heads was inferred to be %d, rounding down the ratio.",
+                    self.d_model,
+                    self.d_head,
+                    self.n_heads,
                 )
 
         if self.seed is not None:
@@ -231,16 +238,19 @@ class HookedTransformerConfig:
         if not self.attn_only:
             if self.d_mlp is None:
                 # For some reason everyone hard codes in this hyper-parameter!
-                self.d_mlp = self.d_model * 4
+                self.d_mlp: int = self.d_model * 4
             assert (
                 self.act_fn is not None
             ), "act_fn must be specified for non-attn-only models"
             assert (
                 self.act_fn in SUPPORTED_ACTIVATIONS
             ), f"act_fn={self.act_fn} must be one of {SUPPORTED_ACTIVATIONS}"
-        if self.initializer_range < 0:
+        if self.initializer_range < 0 and self.init_mode == "gpt2":
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)
+        if self.initializer_range < 0 and self.init_mode != "gpt2":
+            # This is the gain parameter for the weight initialisation
+            self.initializer_range = 1.0
 
         if self.d_vocab_out == -1:
             # d_vocab_out defaults to d_vocab, unless there's an algorithmic task
