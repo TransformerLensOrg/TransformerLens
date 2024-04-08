@@ -681,9 +681,6 @@ class HookedTransformer(HookedRootModule):
         self,
         input: Union[str, List[str]],
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
-        padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
-        move_to_device: Optional[bool] = True,
-        truncate: Optional[bool] = True,
         padding_side: Optional[
             Union[Literal["left", "right"], None]
         ] = USE_DEFAULT_VALUE,
