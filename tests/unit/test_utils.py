@@ -411,3 +411,145 @@ def test_calc_fan_in_fan_out():
     tensor_0d = torch.tensor(1)
     with pytest.raises(ValueError):
         fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_0d)
+
+
+class TestInitKaiming:
+    """Test cases for kaiming init."""
+
+    @pytest.mark.parametrize(
+        "d_model", [4096, 10_000]
+    )  # this needs to be large so std and min/max estimates are accurate
+    @pytest.mark.parametrize("d_mlp", [256, 512])
+    @pytest.mark.parametrize("nonlinearity", ["linear", "relu"])
+    def test_init_kaiming_uniform(self, d_model, d_mlp, nonlinearity):
+        """
+        Test init_kaiming_uniform function in the utils module on 3/2/1D tensors.
+        """
+        torch.manual_seed(1234)
+
+        gain = np.sqrt(2.0) if nonlinearity == "relu" else 1.0
+
+        x = nn.Parameter(torch.empty(2, d_model, 137))  # n_head and d_head don't matter
+        utils.init_kaiming_uniform_(x, nonlinearity=nonlinearity)
+        std = gain / np.sqrt(d_model)
+        assert np.isclose(x.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(x.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(x.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        y = nn.Parameter(torch.empty(d_mlp, d_model))
+        utils.init_kaiming_uniform_(y, nonlinearity=nonlinearity)
+        std = gain / np.sqrt(d_mlp)
+        assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(y.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(y.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        z = nn.Parameter(torch.empty(d_model * 123))
+        utils.init_kaiming_uniform_(z, nonlinearity=nonlinearity)
+        std = gain  # bias has fan_in 1
+        assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(z.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(z.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        torch.manual_seed(1234)
+        x_new = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_kaiming_uniform_(x_new, nonlinearity=nonlinearity)
+        assert torch.allclose(x_new, x, rtol=1e-2)
+
+    @pytest.mark.parametrize("d_model", [4096, 10_000])
+    @pytest.mark.parametrize("d_mlp", [256, 512])
+    @pytest.mark.parametrize("nonlinearity", ["linear", "relu"])
+    def test_init_kaiming_normal(self, d_model, d_mlp, nonlinearity):
+        """
+        Test init_kaiming_normal function in the utils module on 3/2/1D tensors.
+        """
+        torch.manual_seed(1234)
+
+        gain = np.sqrt(2.0) if nonlinearity == "relu" else 1.0
+
+        x = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_kaiming_normal_(x, nonlinearity=nonlinearity)
+        std = gain / np.sqrt(d_model)
+        assert np.isclose(x.std().detach().numpy(), std, rtol=1e-2)
+
+        y = nn.Parameter(torch.empty(d_mlp, d_model))
+        utils.init_kaiming_normal_(y, nonlinearity=nonlinearity)
+        std = gain / np.sqrt(d_mlp)
+        assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
+
+        z = nn.Parameter(torch.empty(d_model * 123))
+        utils.init_kaiming_normal_(z, nonlinearity=nonlinearity)
+        std = gain  # bias has fan_in 1
+        assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
+
+        torch.manual_seed(1234)
+        x_new = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_kaiming_normal_(x_new, nonlinearity=nonlinearity)
+        assert torch.allclose(x_new, x, rtol=1e-2)
+
+
+class TestInitXavier:
+    """Test cases for Xavier init. Std of distribution should be scaled to sqrt(2/(fan_in + fan_out))."""
+
+    @pytest.mark.parametrize("d_model", [4096, 10_000])
+    @pytest.mark.parametrize("d_mlp", [256, 512])
+    def test_init_xavier_uniform(self, d_model, d_mlp):
+        """Test init_xavier_uniform function in the utils module on 3/2/1D tensors."""
+        torch.manual_seed(1234)
+
+        x = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_xavier_uniform_(x)
+        std = np.sqrt(2 / (d_model + 137 * 2))
+        assert np.isclose(x.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(x.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(x.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        y = nn.Parameter(torch.empty(d_mlp, d_model))
+        utils.init_xavier_uniform_(y)
+        std = np.sqrt(2 / (d_mlp + d_model))
+        assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(y.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(y.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        z = nn.Parameter(torch.empty(d_model * 123))
+        utils.init_xavier_uniform_(z)
+        std = np.sqrt(2 / (1 + d_model * 123))
+        assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(z.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(z.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        torch.manual_seed(1234)
+        x_new = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_xavier_uniform_(x_new)
+        assert torch.allclose(x_new, x, rtol=1e-2)
+
+    @pytest.mark.parametrize("d_model", [4096, 10_000])
+    @pytest.mark.parametrize("d_mlp", [256, 512])
+    def test_init_xavier_normal(self, d_model, d_mlp):
+        """Test init_xavier_normal function in the utils module on 3/2/1D tensors."""
+        torch.manual_seed(1234)
+
+        x = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_xavier_normal_(x)
+        std = np.sqrt(2 / (d_model + 137 * 2))
+        assert np.isclose(x.std().detach().numpy(), std, rtol=1e-2)
+
+        y = nn.Parameter(torch.empty(d_mlp, d_model))
+        utils.init_xavier_normal_(y)
+        std = np.sqrt(2 / (d_mlp + d_model))
+        assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
+
+        z = nn.Parameter(torch.empty(d_model * 123))  # need to make this larger so std is accurate
+        utils.init_xavier_normal_(z)
+        std = np.sqrt(2 / (1 + d_model * 123))
+        assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
+
+        torch.manual_seed(1234)
+        x_new = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_xavier_normal_(x_new)
+        assert torch.allclose(x_new, x, rtol=1e-2)

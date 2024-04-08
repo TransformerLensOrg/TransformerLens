@@ -210,7 +210,6 @@ def calc_fan_in_and_fan_out(tensor):
     if len(shape) == 0:
         raise ValueError("Fan in and fan out can not be computed for scalars.")
     elif len(shape) == 1:
-        print("HERE!")
         fan_in = 1
         fan_out = shape[0]
     elif len(shape) == 2:  # Linear transform
@@ -231,7 +230,7 @@ def init_xavier_uniform_(param, gain=1.0):
     """
     fan_in, fan_out = calc_fan_in_and_fan_out(param)
     max = gain * np.sqrt(6.0 / (fan_in + fan_out))
-    nn.init.uniform_(param, -max, max)
+    return nn.init.uniform_(param, -max, max)
 
 
 def init_xavier_normal_(param, gain=1.0):
@@ -240,33 +239,39 @@ def init_xavier_normal_(param, gain=1.0):
     """
     fan_in, fan_out = calc_fan_in_and_fan_out(param)
     std = gain * np.sqrt(2.0 / (fan_in + fan_out))
-    nn.init.normal_(param, mean=0.0, std=std)
+    return nn.init.normal_(param, mean=0.0, std=std)
 
 
 def init_kaiming_uniform_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_in"):
     """
     Initializes the input tensor using the Kaiming initialization method.
 
+    Starting from a std 1 uniform distribution, we scale the weights by c / sqrt(fan_in), where c =
+    sqrt(2) if the params were immediately preceded by a relu and 1 for everything else.
+
     As with torch, `a` is a hyperparameter for `nonlinearity`, if it takes one.
     """
     fan_in, fan_out = calc_fan_in_and_fan_out(param)
     fan = fan_in if mode == "fan_in" else fan_out
-    gain = nn.init.calculate_gain(nonlinearity, a)
+    gain *= nn.init.calculate_gain(nonlinearity, a)
     max = gain * np.sqrt(3.0 / fan)
-    nn.init.uniform_(param, -max, max)
+    return nn.init.uniform_(param, -max, max)
 
 
 def init_kaiming_normal_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_in"):
     """
     Initializes the input tensor using the Kaiming initialization method.
 
+    Starting from a std 1 normal distribution, we scale the weights by c / sqrt(fan_in), where c =
+    sqrt(2) if the params were immediately preceded by a relu and 1 for everything else.
+
     As with torch, `a` is a hyperparameter for `nonlinearity`, if it takes one.
     """
     fan_in, fan_out = calc_fan_in_and_fan_out(param)
     fan = fan_in if mode == "fan_in" else fan_out
-    gain = nn.init.calculate_gain(nonlinearity, a)
+    gain *= nn.init.calculate_gain(nonlinearity, a)
     std = gain * np.sqrt(1.0 / fan)
-    nn.init.normal_(param, mean=0.0, std=std)
+    return nn.init.normal_(param, mean=0.0, std=std)
 
 
 def keep_single_column(dataset: Dataset, col_name: str):
@@ -352,16 +357,6 @@ def tokenize_and_concatenate(
     )
     tokenized_dataset.set_format(type="torch", columns=["tokens"])
     return tokenized_dataset
-
-
-""" 
-Test ^
-
-data = Dataset.from_dict({"text":[str(i) for i in range(1000)]})
-tokenizer = AutoTokenizer.from_pretrained("NeelNanda/gpt-neox-tokenizer-digits")
-print(data)
-tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
-"""
 
 
 def sample_logits(
