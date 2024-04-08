@@ -125,9 +125,7 @@ def test_get_token_position_not_found():
     input = "There were some biomolecules"
     with pytest.raises(AssertionError) as exc_info:
         model.get_token_position(single, input)
-    assert (
-        str(exc_info.value) == "The token does not occur in the prompt"
-    ), "assertion error"
+    assert str(exc_info.value) == f"The token does not occur in the prompt", "assertion error"
 
 
 def test_get_token_position_str():
