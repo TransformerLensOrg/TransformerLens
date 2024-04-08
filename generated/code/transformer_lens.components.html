@@ -285,6 +285,11 @@ To enforce implementation of W_K, W_V, b_K, and b_V by child classes, the better
 </dl>
 </dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.AbstractAttention.alibi">
+<span class="sig-name descname"><span class="pre">alibi</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.components.AbstractAttention.alibi" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.AbstractAttention.apply_causal_mask">
 <span class="sig-name descname"><span class="pre">apply_causal_mask</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">attn_scores</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">head_index</span> <span class="pre">pos</span> <span class="pre">pos_plus_past_kv_pos_offset'</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_kv_pos_offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_mask</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Int</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">offset_pos'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.components.AbstractAttention.apply_causal_mask" title="Permalink to this definition">#</a></dt>
@@ -320,7 +325,7 @@ To resolve this, I’ve coded it to default to the GPT-J mode, but to explicitly
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.AbstractAttention.create_alibi_bias">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_bias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">device</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'head_idx</span> <span class="pre">query</span> <span class="pre">key'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.AbstractAttention.create_alibi_bias" title="Permalink to this definition">#</a></dt>
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_bias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">device</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'head_idx</span> <span class="pre">query</span> <span class="pre">key'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.AbstractAttention.create_alibi_bias" title="Permalink to this definition">#</a></dt>
 <dd><p>Create the ALiBi Bias for all Heads.</p>
 <p>Calculate the ALiBi bias (<a class="reference external" href="https://arxiv.org/pdf/2108.12409.pdf">https://arxiv.org/pdf/2108.12409.pdf</a>) for all heads in a layer.</p>
 <p>The broad idea behind ALiBi is to remove the positional encoding from the original transformer
@@ -356,7 +361,7 @@ Bloom.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.AbstractAttention.create_alibi_multipliers">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_multipliers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">device</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'head_idx'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.AbstractAttention.create_alibi_multipliers" title="Permalink to this definition">#</a></dt>
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_multipliers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_heads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">device</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'head_idx'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.AbstractAttention.create_alibi_multipliers" title="Permalink to this definition">#</a></dt>
 <dd><p>Create the ALiBi Scalar Multipliers for each Head.</p>
 <p>For n heads, the set of multipliers (m) is the geometric sequence that starts at 2^(-8/n), and
 uses that same value as its ratio. For example, with 8 heads the values would be [1/(2^1),
@@ -387,7 +392,7 @@ uses that same value as its ratio. For example, with 8 heads the values would be
 
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.AbstractAttention.create_alibi_slope">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_slope</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">device</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'query</span> <span class="pre">key'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.AbstractAttention.create_alibi_slope" title="Permalink to this definition">#</a></dt>
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">create_alibi_slope</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_ctx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">device</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'query</span> <span class="pre">key'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.AbstractAttention.create_alibi_slope" title="Permalink to this definition">#</a></dt>
 <dd><p>Create an ALiBi Slope Matrix.</p>
 <p>Create the slope matrix used in ALiBi, before it is multiplied by the head-specific scalar.</p>
 <p>See <a class="reference internal" href="#transformer_lens.components.AbstractAttention.create_alibi_bias" title="transformer_lens.components.AbstractAttention.create_alibi_bias"><code class="xref py py-meth docutils literal notranslate"><span class="pre">create_alibi_bias()</span></code></a> for the full ALiBi bias calculation.</p>
@@ -550,6 +555,11 @@ pre_linear = x &#64; W_in
 post = Gelu(pre) * (pre_linear) + b_in
 mlp_out = post &#64; W_out + b_out</p>
 <p>In one equation, mlp_out = (Gelu(x &#64; W_gate) * (x &#64; W_in) + b_in) &#64; W_out + b_out</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.GatedMLP.act_fn">
+<span class="sig-name descname"><span class="pre">act_fn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.components.GatedMLP.act_fn" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.GatedMLP.forward">
 <span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.GatedMLP.forward" title="Permalink to this definition">#</a></dt>
@@ -563,6 +573,11 @@ instead of this since the former takes care of running the
 registered hooks while the latter silently ignores them.</p>
 </div>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.GatedMLP.ln">
+<span class="sig-name descname"><span class="pre">ln</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Module</span></em><a class="headerlink" href="#transformer_lens.components.GatedMLP.ln" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -720,6 +735,11 @@ registered hooks while the latter silently ignores them.</p>
 <dt class="sig sig-object py" id="transformer_lens.components.MLP">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">transformer_lens.components.</span></span><span class="sig-name descname"><span class="pre">MLP</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig" title="transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><span class="pre">HookedTransformerConfig</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.components.MLP" title="Permalink to this definition">#</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.MLP.act_fn">
+<span class="sig-name descname"><span class="pre">act_fn</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.components.MLP.act_fn" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.components.MLP.forward">
 <span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'batch</span> <span class="pre">pos</span> <span class="pre">d_model'</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.components.MLP.forward" title="Permalink to this definition">#</a></dt>
@@ -733,6 +753,11 @@ instead of this since the former takes care of running the
 registered hooks while the latter silently ignores them.</p>
 </div>
 </dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.MLP.ln">
+<span class="sig-name descname"><span class="pre">ln</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Module</span></em><a class="headerlink" href="#transformer_lens.components.MLP.ln" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -865,6 +890,21 @@ registered hooks while the latter silently ignores them.</p>
 </dl>
 </dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.TransformerBlock.ln1">
+<span class="sig-name descname"><span class="pre">ln1</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Module</span></em><a class="headerlink" href="#transformer_lens.components.TransformerBlock.ln1" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.TransformerBlock.ln2">
+<span class="sig-name descname"><span class="pre">ln2</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Module</span></em><a class="headerlink" href="#transformer_lens.components.TransformerBlock.ln2" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="transformer_lens.components.TransformerBlock.mlp">
+<span class="sig-name descname"><span class="pre">mlp</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Module</span></em><a class="headerlink" href="#transformer_lens.components.TransformerBlock.mlp" title="Permalink to this definition">#</a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -949,6 +989,7 @@ registered hooks while the latter silently ignores them.</p>
 <li><a class="reference internal" href="#transformer_lens.components.AbstractAttention.OV"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.OV</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.AbstractAttention.QK"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.QK</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.AbstractAttention.__init__"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.__init__()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.AbstractAttention.alibi"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.alibi</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.AbstractAttention.apply_causal_mask"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.apply_causal_mask()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.AbstractAttention.apply_rotary"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.apply_rotary()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.AbstractAttention.calculate_attention_scores"><code class="docutils literal notranslate"><span class="pre">AbstractAttention.calculate_attention_scores()</span></code></a></li>
@@ -983,7 +1024,9 @@ registered hooks while the latter silently ignores them.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.components.GatedMLP"><code class="docutils literal notranslate"><span class="pre">GatedMLP</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.components.GatedMLP.act_fn"><code class="docutils literal notranslate"><span class="pre">GatedMLP.act_fn</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.GatedMLP.forward"><code class="docutils literal notranslate"><span class="pre">GatedMLP.forward()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.GatedMLP.ln"><code class="docutils literal notranslate"><span class="pre">GatedMLP.ln</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.components.GroupedQueryAttention"><code class="docutils literal notranslate"><span class="pre">GroupedQueryAttention</span></code></a><ul>
@@ -1008,7 +1051,9 @@ registered hooks while the latter silently ignores them.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.components.MLP"><code class="docutils literal notranslate"><span class="pre">MLP</span></code></a><ul>
+<li><a class="reference internal" href="#transformer_lens.components.MLP.act_fn"><code class="docutils literal notranslate"><span class="pre">MLP.act_fn</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.components.MLP.forward"><code class="docutils literal notranslate"><span class="pre">MLP.forward()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.MLP.ln"><code class="docutils literal notranslate"><span class="pre">MLP.ln</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.components.PosEmbed"><code class="docutils literal notranslate"><span class="pre">PosEmbed</span></code></a><ul>
@@ -1031,6 +1076,9 @@ registered hooks while the latter silently ignores them.</p>
 </li>
 <li><a class="reference internal" href="#transformer_lens.components.TransformerBlock"><code class="docutils literal notranslate"><span class="pre">TransformerBlock</span></code></a><ul>
 <li><a class="reference internal" href="#transformer_lens.components.TransformerBlock.forward"><code class="docutils literal notranslate"><span class="pre">TransformerBlock.forward()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.TransformerBlock.ln1"><code class="docutils literal notranslate"><span class="pre">TransformerBlock.ln1</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.TransformerBlock.ln2"><code class="docutils literal notranslate"><span class="pre">TransformerBlock.ln2</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.components.TransformerBlock.mlp"><code class="docutils literal notranslate"><span class="pre">TransformerBlock.mlp</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.components.Unembed"><code class="docutils literal notranslate"><span class="pre">Unembed</span></code></a><ul>

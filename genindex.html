@@ -285,8 +285,14 @@
 </li>
         <li><a href="generated/code/transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache.accumulated_resid">accumulated_resid() (transformer_lens.ActivationCache.ActivationCache method)</a>
 </li>
-        <li><a href="generated/code/transformer_lens.HookedTransformerConfig.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.act_fn">act_fn (transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+        <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.GatedMLP.act_fn">act_fn (transformer_lens.components.GatedMLP attribute)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.MLP.act_fn">(transformer_lens.components.MLP attribute)</a>
 </li>
+          <li><a href="generated/code/transformer_lens.HookedTransformerConfig.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig.act_fn">(transformer_lens.HookedTransformerConfig.HookedTransformerConfig attribute)</a>
+</li>
+        </ul></li>
         <li><a href="generated/code/transformer_lens.ActivationCache.html#transformer_lens.ActivationCache.ActivationCache">ActivationCache (class in transformer_lens.ActivationCache)</a>
 </li>
         <li><a href="generated/code/transformer_lens.hook_points.html#transformer_lens.hook_points.HookedRootModule.add_caching_hooks">add_caching_hooks() (transformer_lens.hook_points.HookedRootModule method)</a>
@@ -303,10 +309,12 @@
           <li><a href="generated/code/transformer_lens.hook_points.html#transformer_lens.hook_points.HookPoint.add_perma_hook">(transformer_lens.hook_points.HookPoint method)</a>
 </li>
         </ul></li>
-        <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.all_composition_scores">all_composition_scores() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
+        <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.AbstractAttention.alibi">alibi (transformer_lens.components.AbstractAttention attribute)</a>
 </li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.all_composition_scores">all_composition_scores() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
+</li>
         <li><a href="generated/code/transformer_lens.HookedEncoder.html#transformer_lens.HookedEncoder.HookedEncoder.all_head_labels">all_head_labels() (transformer_lens.HookedEncoder.HookedEncoder method)</a>
 
         <ul>
@@ -899,13 +907,25 @@
 </li>
         <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.LayerNormPre">LayerNormPre (class in transformer_lens.components)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.hook_points.html#transformer_lens.hook_points.LensHandle">LensHandle (class in transformer_lens.hook_points)</a>
 </li>
         <li><a href="generated/code/transformer_lens.utils.html#transformer_lens.utils.lm_accuracy">lm_accuracy() (in module transformer_lens.utils)</a>
 </li>
         <li><a href="generated/code/transformer_lens.utils.html#transformer_lens.utils.lm_cross_entropy_loss">lm_cross_entropy_loss() (in module transformer_lens.utils)</a>
+</li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.GatedMLP.ln">ln (transformer_lens.components.GatedMLP attribute)</a>
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.MLP.ln">(transformer_lens.components.MLP attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.TransformerBlock.ln1">ln1 (transformer_lens.components.TransformerBlock attribute)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.TransformerBlock.ln2">ln2 (transformer_lens.components.TransformerBlock attribute)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.ln_final">ln_final (transformer_lens.HookedTransformer.HookedTransformer attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.load_and_process_state_dict">load_and_process_state_dict() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
@@ -946,6 +966,8 @@
         <li><a href="generated/code/transformer_lens.train.html#transformer_lens.train.HookedTransformerTrainConfig.max_steps">max_steps (transformer_lens.train.HookedTransformerTrainConfig attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.MLP">MLP (class in transformer_lens.components)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.components.html#transformer_lens.components.TransformerBlock.mlp">mlp (transformer_lens.components.TransformerBlock attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.loading_from_pretrained.html#transformer_lens.loading_from_pretrained.MODEL_ALIASES">MODEL_ALIASES (in module transformer_lens.loading_from_pretrained)</a>
 </li>
@@ -1202,10 +1224,10 @@
 </li>
         <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.set_tokenizer">set_tokenizer() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_in">set_use_attn_in() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.set_use_attn_result">set_use_attn_result() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
         <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.set_use_hook_mlp_in">set_use_hook_mlp_in() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
@@ -1215,6 +1237,8 @@
         <li><a href="generated/code/transformer_lens.hook_points.html#transformer_lens.hook_points.HookedRootModule.setup">setup() (transformer_lens.hook_points.HookedRootModule method)</a>
 </li>
         <li><a href="generated/code/transformer_lens.utils.html#transformer_lens.utils.Slice">Slice (class in transformer_lens.utils)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.utils.html#transformer_lens.utils.Slice.slice">slice (transformer_lens.utils.Slice attribute)</a>
 </li>
         <li><a href="generated/code/transformer_lens.utils.html#transformer_lens.utils.SliceInput">SliceInput (in module transformer_lens.utils)</a>
 </li>
