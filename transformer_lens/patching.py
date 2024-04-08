@@ -94,9 +94,7 @@ def generic_activation_patch(
     model: HookedTransformer,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[
-        [Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]
-    ],
+    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
     patch_setter: Callable[
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],
@@ -113,9 +111,7 @@ def generic_activation_patch(
     model: HookedTransformer,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[
-        [Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]
-    ],
+    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
     patch_setter: Callable[
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],

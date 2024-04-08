@@ -299,9 +299,7 @@ class HookedRootModule(nn.Module):
 
             for name, hook in fwd_hooks:
                 if isinstance(name, str):
-                    self.mod_dict[name].add_hook(
-                        hook, dir="fwd", level=self.context_level
-                    )
+                    self.mod_dict[name].add_hook(hook, dir="fwd", level=self.context_level)
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict.items():
@@ -309,9 +307,7 @@ class HookedRootModule(nn.Module):
                             hp.add_hook(hook, dir="fwd", level=self.context_level)
             for name, hook in bwd_hooks:
                 if isinstance(name, str):
-                    self.mod_dict[name].add_hook(
-                        hook, dir="bwd", level=self.context_level
-                    )
+                    self.mod_dict[name].add_hook(hook, dir="bwd", level=self.context_level)
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict:  # type: ignore

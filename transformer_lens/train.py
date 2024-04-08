@@ -102,9 +102,7 @@ def train(
         optimizer = optim.SGD(
             model.parameters(),
             lr=config.lr,
-            weight_decay=(
-                config.weight_decay if config.weight_decay is not None else 0.0
-            ),
+            weight_decay=(config.weight_decay if config.weight_decay is not None else 0.0),
             momentum=config.momentum,
         )
     else:

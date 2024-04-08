@@ -778,9 +778,7 @@ class AbstractAttention(ABC, nn.Module):
             ]
             x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
         else:
-            offset_position_ids = get_offset_position_ids(
-                past_kv_pos_offset, attention_mask
-            )
+            offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
             offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
             mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
             mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
@@ -1139,9 +1137,7 @@ class MLP(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         assert self.cfg.d_mlp is not None  # TODO: should this not be optional?
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
+        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
         self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
@@ -1215,12 +1211,8 @@ class GatedMLP(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         assert self.cfg.d_mlp is not None  # keep mypy happy
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
-        self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
+        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
+        self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
         self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
@@ -1289,26 +1281,17 @@ class MoE(nn.Module):
         self.cfg = cfg
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
-        assert (
-            cfg.num_experts is not None
-        ), "num_experts must be specified for MoE layer"
-        assert (
-            cfg.experts_per_token
-        ), "experts_per_token must be specified for MoE layer"
+        assert cfg.num_experts is not None, "num_experts must be specified for MoE layer"
+        assert cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
         self.experts_per_token: int = cfg.experts_per_token
         assert (
             cfg.experts_per_token <= cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
 
         self.experts = nn.ModuleList(
-            [
-                GatedMLP(cfg) if cfg.gated_mlp else MLP(cfg)
-                for _ in range(cfg.num_experts)
-            ]
+            [GatedMLP(cfg) if cfg.gated_mlp else MLP(cfg) for _ in range(cfg.num_experts)]
         )
-        self.W_gate = nn.Parameter(
-            torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype)
-        )
+        self.W_gate = nn.Parameter(torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype))
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
         self.hook_expert_weights = HookPoint()
@@ -1336,9 +1319,7 @@ class MoE(nn.Module):
             # find the batch, pos, and expert indices which use this expert
             batch, pos, expert = torch.where(expert_indices == i)
             # accumulate the weighted outputs from the expert
-            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(
-                x[batch]
-            )
+            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(x[batch])
 
         return results
 

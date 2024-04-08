@@ -1968,9 +1968,7 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn._W_K"] = W_K
         state_dict[f"blocks.{l}.attn._W_V"] = W_V
 
-        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
-        )
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
         state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
             cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
         )
@@ -1984,9 +1982,7 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
-        state_dict[f"blocks.{l}.ln2.w"] = mixtral.model.layers[
-            l
-        ].post_attention_layernorm.weight
+        state_dict[f"blocks.{l}.ln2.w"] = mixtral.model.layers[l].post_attention_layernorm.weight
 
         state_dict[f"blocks.{l}.mlp.W_gate"] = mixtral.model.layers[
             l
@@ -2004,9 +2000,7 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
             state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate"] = (
                 mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight.T
             )
-            state_dict[f"blocks.{l}.mlp.experts.{e}.b_in"] = torch.zeros(
-                cfg.d_mlp, dtype=cfg.dtype
-            )
+            state_dict[f"blocks.{l}.mlp.experts.{e}.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
             state_dict[f"blocks.{l}.mlp.experts.{e}.W_out"] = (
                 mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight.T
             )

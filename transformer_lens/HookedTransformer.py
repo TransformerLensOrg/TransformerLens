@@ -681,9 +681,7 @@ class HookedTransformer(HookedRootModule):
         self,
         input: Union[str, List[str]],
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
-        padding_side: Optional[
-            Union[Literal["left", "right"], None]
-        ] = USE_DEFAULT_VALUE,
+        padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
         move_to_device: bool = True,
         truncate: bool = True,
     ) -> Int[torch.Tensor, "batch pos"]:
@@ -860,9 +858,7 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-            str_tokens = self.tokenizer.batch_decode(
-                tokens, clean_up_tokenization_spaces=False
-            )
+            str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
             return str_tokens
 
     def to_single_token(self, string):

@@ -430,9 +430,7 @@ class ActivationCache:
         components_list = []
         for l in range(layer + 1):
             if l == self.model.cfg.n_layers:
-                components_list.append(
-                    self[("resid_post", self.model.cfg.n_layers - 1)]
-                )
+                components_list.append(self[("resid_post", self.model.cfg.n_layers - 1)])
                 labels.append("final_post")
                 continue
             components_list.append(self[("resid_pre", l)])
