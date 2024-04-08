@@ -547,13 +547,7 @@ class HookedTransformer(HookedRootModule):
                     residual,
                     # Cache contains a list of HookedTransformerKeyValueCache objects, one for each
                     # block
-<<<<<<< HEAD
                     past_kv_cache_entry=past_kv_cache[i] if past_kv_cache is not None else None,
-=======
-                    past_kv_cache_entry=(
-                        past_kv_cache[i] if past_kv_cache is not None else None
-                    ),
->>>>>>> main
                     shortformer_pos_embed=shortformer_pos_embed,
                     attention_mask=attention_mask,
                 )  # [batch, pos, d_model]
@@ -687,17 +681,14 @@ class HookedTransformer(HookedRootModule):
         self,
         input: Union[str, List[str]],
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
-<<<<<<< HEAD
         padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
         move_to_device: Optional[bool] = True,
         truncate: Optional[bool] = True,
-=======
         padding_side: Optional[
             Union[Literal["left", "right"], None]
         ] = USE_DEFAULT_VALUE,
         move_to_device: bool = True,
         truncate: bool = True,
->>>>>>> main
     ) -> Int[torch.Tensor, "batch pos"]:
         """Converts a string to a tensor of tokens.
 
@@ -872,14 +863,9 @@ class HookedTransformer(HookedRootModule):
                 ), f"Invalid tokens input to to_str_tokens, has shape: {tokens.shape}"
             else:
                 raise ValueError(f"Invalid input type to to_str_tokens: {type(input)}")
-<<<<<<< HEAD
-
-            str_tokens = self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
-=======
             str_tokens = self.tokenizer.batch_decode(
                 tokens, clean_up_tokenization_spaces=False
             )
->>>>>>> main
             return str_tokens
 
     def to_single_token(self, string):
