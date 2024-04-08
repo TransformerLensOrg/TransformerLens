@@ -1344,7 +1344,11 @@ class MoE(nn.Module):
         self.cfg = cfg
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
-        assert cfg.num_experts, "num_experts must be specified for MoE layer"
+        assert (
+            cfg.num_experts is not None
+        ), "num_experts must be specified for MoE layer"
+        self.experts_per_token: int = cfg.experts_per_token
+
         assert (
             cfg.experts_per_token
         ), "experts_per_token must be specified for MoE layer"
@@ -1379,7 +1383,7 @@ class MoE(nn.Module):
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
-        weights, expert_indices = torch.topk(gate_logits, self.cfg.experts_per_token)
+        weights, expert_indices = torch.topk(gate_logits, self.experts_per_token)
         weights = self.hook_gate(F.softmax(weights, dim=-1))
         expert_indices = self.hook_experts(expert_indices)
 
