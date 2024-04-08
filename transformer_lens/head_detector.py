@@ -2,6 +2,7 @@
 
 Utilities for detecting specific types of heads (e.g. previous token heads).
 """
+
 import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union, cast
@@ -10,7 +11,8 @@ import numpy as np
 import torch
 from typing_extensions import Literal, get_args
 
-from transformer_lens import ActivationCache, HookedTransformer
+from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.HookedTransformer import HookedTransformer
 from transformer_lens.utils import is_lower_triangular, is_square
 
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]

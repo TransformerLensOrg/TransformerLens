@@ -104,8 +104,13 @@ class HookedTransformerKeyValueCache:
         for entry in self.entries:
             entry.frozen = False
 
-    def append_attention_mask(self, attention_mask: Int[torch.Tensor, "batch new_tokens"]):
-        updated_attention_mask = torch.cat([self.previous_attention_mask, attention_mask], dim=-1)
+    def append_attention_mask(
+        self, attention_mask: Int[torch.Tensor, "batch new_tokens"]
+    ):
+        attention_mask = attention_mask.to(self.previous_attention_mask.device)
+        updated_attention_mask = torch.cat(
+            [self.previous_attention_mask, attention_mask], dim=-1
+        )
         if not self.frozen:
             self.previous_attention_mask = updated_attention_mask
         return updated_attention_mask

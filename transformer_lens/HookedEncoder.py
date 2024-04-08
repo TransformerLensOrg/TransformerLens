@@ -3,6 +3,7 @@
 Contains a BERT style model. This is separate from :class:`transformer_lens.HookedTransformer`
 because it has a significantly different architecture to e.g. GPT style transformers.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,9 +17,11 @@ from transformers import AutoTokenizer
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
-from transformer_lens import ActivationCache, FactoredMatrix, HookedTransformerConfig
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
+from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
 
 
@@ -132,7 +135,7 @@ class HookedEncoder(HookedRootModule):
         resid = self.mlm_head(resid)
 
         if return_type is None:
-            return
+            return None
 
         logits = self.unembed(resid)
         return logits
@@ -145,7 +148,7 @@ class HookedEncoder(HookedRootModule):
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[False] = False, **kwargs
+        self, *model_args, return_cache_object: Literal[False], **kwargs
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:
         ...
 
@@ -171,7 +174,7 @@ class HookedEncoder(HookedRootModule):
         else:
             return out, cache_dict
 
-    def to(
+    def to(  # type: ignore
         self,
         device_or_dtype: Union[torch.device, str, torch.dtype],
         print_details: bool = True,

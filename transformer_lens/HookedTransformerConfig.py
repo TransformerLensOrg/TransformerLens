@@ -3,6 +3,7 @@
 Module with a dataclass for storing the configuration of a
 :class:`transformer_lens.HookedTransformer` model.
 """
+
 from __future__ import annotations
 
 import logging
@@ -152,6 +153,10 @@ class HookedTransformerConfig:
             Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
             to False.
+        num_experts (int, *optional*): The number of experts to use in the MoE layer. If set, experts_per_token
+            must also be set. Set to None if not using MoE.
+        experts_per_token (int, *optional*): The number of experts to use for each pass in the MoE layer. If set,
+            num_experts must also be set. Set to None if not using MoE.
     """
 
     n_layers: int
@@ -204,6 +209,8 @@ class HookedTransformerConfig:
     rotary_base: int = 10000
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
+    num_experts: Optional[int] = None
+    experts_per_token: Optional[int] = None
 
     def __post_init__(self):
         if self.n_heads == -1:
@@ -247,13 +254,30 @@ class HookedTransformerConfig:
         if self.positional_embedding_type == "rotary" and self.rotary_dim is None:
             self.rotary_dim = self.d_head
 
-        # The number of parameters in attention layers (ignoring biases and layer norm).
-        # 4 because W_Q, W_K, W_V and W_O
-        self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
+        if self.num_experts is not None:
+            assert (
+                self.experts_per_token is not None
+            ), "experts_per_token must be set if num_experts is set"
+        if self.experts_per_token is not None:
+            assert (
+                self.num_experts is not None
+            ), "num_experts must be set if experts_per_token is set"
+
+        # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
+        self.n_params = self.n_layers * (
+            (self.d_model * self.d_head * self.n_heads * 4)
+        )
         if not self.attn_only:
-            # Number of parameters in MLP layers (ignoring biases and layer norm).
-            # 2 because W_in and W_out
-            self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
+            assert self.d_mlp is not None  # mypy
+            # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
+            mlp_params_per_layer = self.d_model * self.d_mlp * (2 + self.gated_mlp)
+
+            if self.num_experts:
+                # If we are using MoE, we multiply by num_experts, and add the expert gate parameters (d_model * num_experts)
+                mlp_params_per_layer = (
+                    mlp_params_per_layer + self.d_model
+                ) * self.num_experts
+            self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
             self.device = utils.get_device()

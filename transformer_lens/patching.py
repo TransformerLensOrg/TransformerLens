@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import itertools
 from functools import partial
-from typing import Callable, Optional, Sequence, Tuple, Union
+from typing import Callable, Optional, Sequence, Tuple, Union, overload
 
 import einops
 import pandas as pd
@@ -61,7 +61,8 @@ from tqdm.auto import tqdm
 from typing_extensions import Literal
 
 import transformer_lens.utils as utils
-from transformer_lens import ActivationCache, HookedTransformer
+from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.HookedTransformer import HookedTransformer
 
 # %%
 Logits = torch.Tensor
@@ -86,6 +87,44 @@ def make_df_from_ranges(
 # %%
 CorruptedActivation = torch.Tensor
 PatchedActivation = torch.Tensor
+
+
+@overload
+def generic_activation_patch(
+    model: HookedTransformer,
+    corrupted_tokens: Int[torch.Tensor, "batch pos"],
+    clean_cache: ActivationCache,
+    patching_metric: Callable[
+        [Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]
+    ],
+    patch_setter: Callable[
+        [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
+    ],
+    activation_name: str,
+    index_axis_names: Optional[Sequence[AxisNames]] = None,
+    index_df: Optional[pd.DataFrame] = None,
+    return_index_df: Literal[False] = False,
+) -> torch.Tensor:
+    ...
+
+
+@overload
+def generic_activation_patch(
+    model: HookedTransformer,
+    corrupted_tokens: Int[torch.Tensor, "batch pos"],
+    clean_cache: ActivationCache,
+    patching_metric: Callable[
+        [Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]
+    ],
+    patch_setter: Callable[
+        [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
+    ],
+    activation_name: str,
+    index_axis_names: Optional[Sequence[AxisNames]],
+    index_df: Optional[pd.DataFrame],
+    return_index_df: Literal[True],
+) -> Tuple[torch.Tensor, pd.DataFrame]:
+    ...
 
 
 def generic_activation_patch(
@@ -631,7 +670,7 @@ def get_act_patch_attn_head_all_pos_every(
     Returns:
         patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [5, n_layers, n_heads]
     """
-    act_patch_results = []
+    act_patch_results: list[torch.Tensor] = []
     act_patch_results.append(
         get_act_patch_attn_head_out_all_pos(model, corrupted_tokens, clean_cache, metric)
     )
