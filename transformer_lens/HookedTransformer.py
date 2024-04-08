@@ -1540,9 +1540,22 @@ class HookedTransformer(HookedRootModule):
                 "With reduced precision, it is advised to use `from_pretrained_no_processing` instead of `from_pretrained`."
             )
 
+        if (
+            self.cfg.dtype not in [torch.float32, torch.float64]
+            and self.cfg.num_experts
+            and self.cfg.num_experts > 1
+        ):
+            logging.warning(
+                "When running MoE models, it is advised to use a higher precision data type. See docs for more info."
+            )
+
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
-            if self.cfg.normalization_type in ["LN", "LNPre"]:
+            if self.cfg.num_experts and self.cfg.num_experts > 1:
+                logging.warning(
+                    "You are using MoE, so the layer norm weights can't be folded! Skipping"
+                )
+            elif self.cfg.normalization_type in ["LN", "LNPre"]:
                 state_dict = self.fold_layer_norm(state_dict)
             elif self.cfg.normalization_type in ["RMS", "RMSPre"]:
                 state_dict = self.fold_layer_norm(
@@ -1967,7 +1980,11 @@ class HookedTransformer(HookedRootModule):
         version of the same model.
         """
         state_dict = self.state_dict()
-        if fold_ln and self.cfg.normalization_type == "LN":
+        if fold_ln and self.cfg.num_experts and self.cfg.num_experts > 1:
+            # If we're using MoE, we don't fold the layer norm weights, so we don't need to do any preprocessing
+            # A warning is already issued in `load_and_process_state_dict`
+            pass
+        elif fold_ln and self.cfg.normalization_type == "LN":
             # If we're folding the LN into the weights, we need to replace all the layernorm layers
             # with LayerNormPres, which do not have learnable parameters. This is somewhat hacky,
             # but it's the easiest way to do it.
@@ -2183,7 +2200,10 @@ class HookedTransformer(HookedRootModule):
                     # instead.
                     sampled_tokens[finished_sequences] = eos_token_for_padding
                     finished_sequences.logical_or_(
-                        torch.isin(sampled_tokens, torch.tensor(stop_tokens).to(device))
+                        torch.isin(
+                            sampled_tokens.to(self.cfg.device),
+                            torch.tensor(stop_tokens).to(self.cfg.device),
+                        )
                     )
 
                 tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)

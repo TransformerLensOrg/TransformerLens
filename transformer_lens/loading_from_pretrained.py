@@ -143,6 +143,8 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mixtral-8x7B-v0.1",
+    "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "bigscience/bloom-560m",
     "bigscience/bloom-1b1",
     "bigscience/bloom-1b7",
@@ -551,6 +553,11 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
+    "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
+    "mistralai/Mixtral-8x7B-Instruct-v0.1": [
+        "mixtral-instruct",
+        "mixtral-8x7b-instruct",
+    ],
     "bigscience/bloom-560m": ["bloom-560m"],
     "bigscience/bloom-1b1": ["bloom-1b1"],
     "bigscience/bloom-1b7": ["bloom-1b7"],
@@ -650,8 +657,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # Load HuggingFace model config
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
-    elif "mistral" in official_model_name.lower():
-        architecture = "MistralForCausalLM"
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
@@ -898,6 +903,28 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
             "use_local_attn": True,
             "rotary_dim": 4096 // 32,
+        }
+    elif architecture == "MixtralForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 2048,  # hf_config.max_position_embeddings, # Capped due to memory issues
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "window_size": hf_config.sliding_window,  # This is None, as no sliding window was used
+            "attn_types": ["global"] * 32,
+            "eps": hf_config.rms_norm_eps,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "gated_mlp": True,
+            "use_local_attn": False,
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            "num_experts": hf_config.num_local_experts,
+            "experts_per_token": hf_config.num_experts_per_tok,
         }
     elif architecture == "BloomForCausalLM":
         cfg_dict = {
@@ -1411,6 +1438,8 @@ def get_pretrained_state_dict(
             state_dict = convert_bert_weights(hf_model, cfg)
         elif cfg.original_architecture == "MistralForCausalLM":
             state_dict = convert_mistral_weights(hf_model, cfg)
+        elif cfg.original_architecture == "MixtralForCausalLM":
+            state_dict = convert_mixtral_weights(hf_model, cfg)
         elif cfg.original_architecture == "BloomForCausalLM":
             state_dict = convert_bloom_weights(hf_model, cfg)
         elif cfg.original_architecture == "GPT2LMHeadCustomModel":
@@ -1974,6 +2003,85 @@ def convert_mistral_weights(mistral, cfg: HookedTransformerConfig):
     state_dict["ln_final.w"] = mistral.model.norm.weight
 
     state_dict["unembed.W_U"] = mistral.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+    return state_dict
+
+
+def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
+    # The same as Mistral, but with the MLP replaced with MoE
+    # As with Mistral, Mixtral has no biases
+
+    state_dict = {}
+
+    assert cfg.n_key_value_heads is not None  # keep mypy happy
+    assert cfg.d_mlp is not None
+    assert cfg.num_experts is not None
+
+    state_dict["embed.W_E"] = mixtral.model.embed_tokens.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = mixtral.model.layers[l].input_layernorm.weight
+
+        W_Q = mixtral.model.layers[l].self_attn.q_proj.weight
+        W_K = mixtral.model.layers[l].self_attn.k_proj.weight
+        W_V = mixtral.model.layers[l].self_attn.v_proj.weight
+        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_key_value_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_key_value_heads)
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn._W_K"] = W_K
+        state_dict[f"blocks.{l}.attn._W_V"] = W_V
+
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
+            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+        )
+        state_dict[f"blocks.{l}.attn._b_V"] = torch.zeros(
+            cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
+        )
+
+        W_O = mixtral.model.layers[l].self_attn.o_proj.weight
+        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.ln2.w"] = mixtral.model.layers[
+            l
+        ].post_attention_layernorm.weight
+
+        state_dict[f"blocks.{l}.mlp.W_gate"] = mixtral.model.layers[
+            l
+        ].block_sparse_moe.gate.weight.T
+
+        # The mapping here from wn to W_{in/out/gate} is a bit confusing:
+        # w1 -> W_gate
+        # w2 -> W_out
+        # w3 -> W_in
+        # See https://github.com/mistralai/mistral-src/blob/main/mistral/model.py#L128 for reference
+        for e in range(cfg.num_experts):
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight.T
+            )
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight.T
+            )
+            state_dict[f"blocks.{l}.mlp.experts.{e}.b_in"] = torch.zeros(
+                cfg.d_mlp, dtype=cfg.dtype
+            )
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight.T
+            )
+            state_dict[f"blocks.{l}.mlp.experts.{e}.b_out"] = torch.zeros(
+                cfg.d_model, dtype=cfg.dtype
+            )
+
+    state_dict["ln_final.w"] = mixtral.model.norm.weight.data
+
+    state_dict["unembed.W_U"] = mixtral.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict

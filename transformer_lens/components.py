@@ -591,6 +591,7 @@ class AbstractAttention(ABC, nn.Module):
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
+        pattern = pattern.to(v.device)
         z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
             out = (
@@ -736,8 +737,10 @@ class AbstractAttention(ABC, nn.Module):
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
             einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
+            final_mask = final_mask.to(attention_mask.device)
             final_mask = einops.einsum(final_mask, attention_mask, einsum_str).bool()
 
+        attn_scores = attn_scores.to(final_mask.device)
         return torch.where(final_mask, attn_scores, self.IGNORE)
 
     def calculate_sin_cos_rotary(
@@ -814,6 +817,7 @@ class AbstractAttention(ABC, nn.Module):
             offset_position_ids = get_offset_position_ids(
                 past_kv_pos_offset, attention_mask
             )
+            offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
             mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
             mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
@@ -1332,6 +1336,68 @@ class GatedMLP(nn.Module):
         )
 
 
+class MoE(nn.Module):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+
+        # Ensure that num_experts and experts_per_token are specified and non-zero
+        assert (
+            cfg.num_experts is not None
+        ), "num_experts must be specified for MoE layer"
+        assert (
+            cfg.experts_per_token
+        ), "experts_per_token must be specified for MoE layer"
+        self.experts_per_token: int = cfg.experts_per_token
+        assert (
+            cfg.experts_per_token <= cfg.num_experts
+        ), "experts_per_token must be less than or equal to num_experts"
+
+        self.experts = nn.ModuleList(
+            [
+                GatedMLP(cfg) if cfg.gated_mlp else MLP(cfg)
+                for _ in range(cfg.num_experts)
+            ]
+        )
+        self.W_gate = nn.Parameter(
+            torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype)
+        )
+
+        # Hook on the weights of selected experts [batch pos experts_per_token]
+        self.hook_expert_weights = HookPoint()
+        # Hook on the indices of selected experts [batch pos experts_per_token]
+        self.hook_expert_indices = HookPoint()
+
+    def forward(
+        self, x: Float[torch.Tensor, "batch pos d_model"]
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
+        # [batch, pos, d_model] -> [batch, pos, num_experts]
+        gate_logits = einsum(
+            "batch pos d_model, d_model num_experts -> batch pos num_experts",
+            x,
+            self.W_gate,
+        )
+
+        # choose the top k(=experts_per_token) experts to use
+        # both are [batch, pos, experts_per_token]
+        weights, expert_indices = torch.topk(gate_logits, self.experts_per_token)
+        weights = self.hook_expert_weights(F.softmax(weights, dim=-1))
+        expert_indices = self.hook_expert_indices(expert_indices)
+
+        results = torch.zeros_like(x)
+        for i, expert_mlp in enumerate(self.experts):
+            # find the batch, pos, and expert indices which use this expert
+            batch, pos, expert = torch.where(expert_indices == i)
+            # accumulate the weighted outputs from the expert
+            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(
+                x[batch]
+            )
+
+        return results
+
+
 # Transformer Block
 class TransformerBlock(nn.Module):
     ln1: nn.Module
@@ -1379,7 +1445,9 @@ class TransformerBlock(nn.Module):
             attn_type = self.cfg.attn_types[block_index]
             self.attn = attention(cfg, attn_type, block_index)
         if not self.cfg.attn_only:
-            if self.cfg.gated_mlp:
+            if self.cfg.num_experts:
+                self.mlp = MoE(cfg)
+            elif self.cfg.gated_mlp:
                 self.mlp = GatedMLP(cfg)
             else:
                 self.mlp = MLP(cfg)
