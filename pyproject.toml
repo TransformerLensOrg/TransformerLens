@@ -94,6 +94,7 @@
     ignore_missing_imports=true
 
 [tool.black]
+    line-length = 100  # Set line length to 100 to match other tools
     # Exclude snapshot tests & .venv
     exclude='''
 (
