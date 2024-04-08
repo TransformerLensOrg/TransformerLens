@@ -2015,6 +2015,8 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
     state_dict = {}
 
     assert cfg.n_key_value_heads is not None  # keep mypy happy
+    assert cfg.d_mlp is not None
+    assert cfg.num_experts is not None
 
     state_dict["embed.W_E"] = mixtral.model.embed_tokens.weight
 

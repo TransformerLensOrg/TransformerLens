@@ -1347,11 +1347,10 @@ class MoE(nn.Module):
         assert (
             cfg.num_experts is not None
         ), "num_experts must be specified for MoE layer"
-        self.experts_per_token: int = cfg.experts_per_token
-
         assert (
             cfg.experts_per_token
         ), "experts_per_token must be specified for MoE layer"
+        self.experts_per_token: int = cfg.experts_per_token
         assert (
             cfg.experts_per_token <= cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
