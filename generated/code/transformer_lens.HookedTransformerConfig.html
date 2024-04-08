@@ -305,9 +305,8 @@ attention</p></li>
 local attention</p></li>
 <li><p><strong>weight_init_mode</strong> (<em>str</em>) – the initialization mode to use for the
 weights. Only relevant for custom models, ignored for pre-trained.
-Currently the only supported mode is ‘gpt2’, where biases are
-initialized to 0 and weights are standard normals of range
-initializer_range.</p></li>
+We now support ‘gpt2’, ‘xavier_uniform’, ‘xavier_normal’, ‘kaiming_uniform’,
+‘kaiming_normal’. MuP support to come. Defaults to ‘gpt2’.</p></li>
 <li><p><strong>normalization_type</strong> (str, <em>optional</em>) – the type of normalization to use.
 Options are None (no normalization), ‘LN’ (use LayerNorm, including weights
 &amp; biases) and ‘LNPre’ (use LayerNorm, but no weights &amp; biases).
@@ -325,7 +324,9 @@ layers. Defaults to False</p></li>
 Used to set sources of randomness (Python, PyTorch and
 NumPy) and to initialize weights. Defaults to None. We recommend setting a seed, so your experiments are reproducible.</p></li>
 <li><p><strong>initializer_range</strong> (<em>float</em>) – The standard deviation of the normal used to
-initialise the weights, initialized to 0.8 / sqrt(d_model) .</p></li>
+initialise the weights, initialized to 0.8 / sqrt(d_model). If weight_init_mode is
+‘xavier_uniform’ or ‘xavier_normal’, this value is instead treated as the <cite>gain</cite> parameter for the weight
+initialisation (a constant factor to scale the weights by). Defaults to -1.0, which means not set.</p></li>
 <li><p><strong>init_weights</strong> (<em>bool</em>) – Whether to initialize the weights. Defaults to
 True. If False, does not initialize weights.</p></li>
 <li><p><strong>scale_attn_by_inverse_layer_idx</strong> (<em>bool</em>) – Whether to scale the attention

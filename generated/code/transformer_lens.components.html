@@ -279,7 +279,7 @@ To enforce implementation of W_K, W_V, b_K, and b_V by child classes, the better
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>cfg</strong> (<em>Union</em><em>[</em><em>Dict</em><em>, </em><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig" title="transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><em>HookedTransformerConfig</em></a><em>]</em>) – Config</p></li>
 <li><p><strong>attn_type</strong> (<em>str</em><em>, </em><em>optional</em>) – “global” or “local”, used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to “global”.</p></li>
-<li><p><strong>layer_id</strong> (<em>int</em><em>, </em><em>optional</em>) – The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.</p></li>
+<li><p><strong>layer_id</strong> (<em>int</em><em>, </em><em>optional</em>) – The index of the current layer. Used by the Mistral models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.</p></li>
 </ul>
 </dd>
 </dl>

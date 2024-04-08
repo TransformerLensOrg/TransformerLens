@@ -264,12 +264,15 @@ because it has a significantly different architecture to e.g. GPT style transfor
 <dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.OV">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">OV</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.FactoredMatrix.html#transformer_lens.FactoredMatrix.FactoredMatrix" title="transformer_lens.FactoredMatrix.FactoredMatrix"><span class="pre">FactoredMatrix</span></a></em><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.OV" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Returns a FactoredMatrix object with the product of the O and V matrices for each layer and head.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.QK">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">QK</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.FactoredMatrix.html#transformer_lens.FactoredMatrix.FactoredMatrix" title="transformer_lens.FactoredMatrix.FactoredMatrix"><span class="pre">FactoredMatrix</span></a></em><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.QK" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Returns a FactoredMatrix object with the product of the Q and K matrices for each layer and head.
+Useful for visualizing attention patterns.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.W_E">
@@ -334,7 +337,8 @@ because it has a significantly different architecture to e.g. GPT style transfor
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.all_head_labels">
 <span class="sig-name descname"><span class="pre">all_head_labels</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.all_head_labels" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Returns a list of strings with the format “L{l}H{h}”, where l is the layer index and h is the head index.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.b_K">
@@ -357,7 +361,8 @@ because it has a significantly different architecture to e.g. GPT style transfor
 <dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.b_U">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">b_U</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'d_vocab'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.HookedEncoder.HookedEncoder.b_U" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Convenience to get the unembedding bias</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.HookedEncoder.HookedEncoder.b_V">

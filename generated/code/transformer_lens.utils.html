@@ -365,6 +365,14 @@ elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list o
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.calc_fan_in_and_fan_out">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">calc_fan_in_and_fan_out</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.calc_fan_in_and_fan_out" title="Permalink to this definition">#</a></dt>
+<dd><p>Calculate the fan in and fan out of a tensor. We define it ourselves because Torch uses a
+different convention for weights (e.g. for an MLP they use d_out x d_in, and we use d_in x
+d_out, for attention they do (n_head d_head) x d_model, we do n_head x d_model x d_head).</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utils.composition_scores">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">composition_scores</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">left:</span> <span class="pre">&lt;module</span> <span class="pre">'transformer_lens.FactoredMatrix'</span> <span class="pre">from</span> <span class="pre">'/home/runner/work/TransformerLens/TransformerLens/transformer_lens/FactoredMatrix.py'&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">right:</span> <span class="pre">&lt;module</span> <span class="pre">'transformer_lens.FactoredMatrix'</span> <span class="pre">from</span> <span class="pre">'/home/runner/work/TransformerLens/TransformerLens/transformer_lens/FactoredMatrix.py'&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">broadcast_dims=True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'*leading_dims'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Float</span><span class="p"><span class="pre">[</span></span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'*leading_dims_left_and_right'</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utils.composition_scores" title="Permalink to this definition">#</a></dt>
 <dd><p>See <cite>HookedTransformer.all_composition_scores</cite> for documentation.</p>
@@ -562,6 +570,36 @@ The last dimension of <cite>tokens</cite> must be the sequence length.</p>
 <dd class="field-odd"><p>torch.Tensor</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.init_kaiming_normal_">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">init_kaiming_normal_</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nonlinearity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'relu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fan_in'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.init_kaiming_normal_" title="Permalink to this definition">#</a></dt>
+<dd><p>Initializes the input tensor using the Kaiming initialization method.</p>
+<p>Starting from a std 1 normal distribution, we scale the weights by c / sqrt(fan_in), where c =
+sqrt(2) if the params were immediately preceded by a relu and 1 for everything else.</p>
+<p>As with torch, <cite>a</cite> is a hyperparameter for <cite>nonlinearity</cite>, if it takes one.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.init_kaiming_uniform_">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">init_kaiming_uniform_</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">a</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nonlinearity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'relu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fan_in'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.init_kaiming_uniform_" title="Permalink to this definition">#</a></dt>
+<dd><p>Initializes the input tensor using the Kaiming initialization method.</p>
+<p>Starting from a std 1 uniform distribution, we scale the weights by c / sqrt(fan_in), where c =
+sqrt(2) if the params were immediately preceded by a relu and 1 for everything else.</p>
+<p>As with torch, <cite>a</cite> is a hyperparameter for <cite>nonlinearity</cite>, if it takes one.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.init_xavier_normal_">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">init_xavier_normal_</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.init_xavier_normal_" title="Permalink to this definition">#</a></dt>
+<dd><p>Initializes the input tensor using the Xavier initialization method.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utils.init_xavier_uniform_">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utils.</span></span><span class="sig-name descname"><span class="pre">init_xavier_uniform_</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">param</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utils.init_xavier_uniform_" title="Permalink to this definition">#</a></dt>
+<dd><p>Initializes the input tensor using the Xavier initialization method.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -827,6 +865,7 @@ to use the BOS token as a resting place for attention heads (i.e. a way for them
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.utils.SliceInput"><code class="docutils literal notranslate"><span class="pre">SliceInput</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.calc_fan_in_and_fan_out"><code class="docutils literal notranslate"><span class="pre">calc_fan_in_and_fan_out()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.composition_scores"><code class="docutils literal notranslate"><span class="pre">composition_scores()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.download_file_from_hf"><code class="docutils literal notranslate"><span class="pre">download_file_from_hf()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.gelu_fast"><code class="docutils literal notranslate"><span class="pre">gelu_fast()</span></code></a></li>
@@ -842,6 +881,10 @@ to use the BOS token as a resting place for attention heads (i.e. a way for them
 <li><a class="reference internal" href="#transformer_lens.utils.get_offset_position_ids"><code class="docutils literal notranslate"><span class="pre">get_offset_position_ids()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_tokenizer_with_bos"><code class="docutils literal notranslate"><span class="pre">get_tokenizer_with_bos()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.get_tokens_with_bos_removed"><code class="docutils literal notranslate"><span class="pre">get_tokens_with_bos_removed()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.init_kaiming_normal_"><code class="docutils literal notranslate"><span class="pre">init_kaiming_normal_()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.init_kaiming_uniform_"><code class="docutils literal notranslate"><span class="pre">init_kaiming_uniform_()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.init_xavier_normal_"><code class="docutils literal notranslate"><span class="pre">init_xavier_normal_()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.init_xavier_uniform_"><code class="docutils literal notranslate"><span class="pre">init_xavier_uniform_()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.is_lower_triangular"><code class="docutils literal notranslate"><span class="pre">is_lower_triangular()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.is_square"><code class="docutils literal notranslate"><span class="pre">is_square()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.keep_single_column"><code class="docutils literal notranslate"><span class="pre">keep_single_column()</span></code></a></li>

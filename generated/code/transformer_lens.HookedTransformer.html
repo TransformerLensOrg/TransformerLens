@@ -412,7 +412,8 @@ for three metrics used.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.all_head_labels">
 <span class="sig-name descname"><span class="pre">all_head_labels</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.all_head_labels" title="Permalink to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Returns a list of all head names in the model.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.b_K">
@@ -592,7 +593,7 @@ is useful for generating text, because we don’t need to repeat computation for
 tokens that have already been through the model. Also caches attention_mask so
 previous tokens are masked correctly (unless frozen). Padding should be ignored in
 all cases, so it’s okay to eg. pass in left padded tokens twice in a row.
-Warning: Don’t accidently prepend_bos to the second half of a prompt.
+Warning: Don’t accidentally prepend_bos to the second half of a prompt.
 Defaults to None (don’t use caching).</p></li>
 </ul>
 </dd>
@@ -833,9 +834,6 @@ strings of different lengths.</p></li>
 <dt class="sig sig-object py" id="transformer_lens.HookedTransformer.HookedTransformer.init_weights">
 <span class="sig-name descname"><span class="pre">init_weights</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.HookedTransformer.HookedTransformer.init_weights" title="Permalink to this definition">#</a></dt>
 <dd><p>Initialize weights.</p>
-<p>Initialize weights matrices with a normal of std=initializer_range (default=0.02). This
-roughly follows the GPT-2 paper’s scheme (but with truncation, and not halving the std for
-W_pos).</p>
 <p>LayerNorm weights are already initialized to 1.0, and all biases are initialized to 0.0
 (including LayerNorm), so this just initializes weight matrices.</p>
 <p>Weight matrices are set to empty by default (to save space + compute, since they’re the bulk
@@ -844,10 +842,19 @@ weights! Note that this function assumes that weight names being with <cite>W_</
 <p>Set seed here to ensure determinism.</p>
 <p>This does NOT follow the PyTorch scheme, which as far as I can tell is super out of date but
 no one has gotten round to updating it? <a class="reference external" href="https://github.com/pytorch/pytorch/issues/18182">https://github.com/pytorch/pytorch/issues/18182</a></p>
+<p>The default PyTorch scheme is the following: all linear layers use uniform(-1/sqrt(fan_in),
+1/sqrt(fan_in)) for weights, and uniform(-1/sqrt(fan_in), 1/sqrt(fan_in)) for biases. For
+biases, fan_in is computed using the fan_in for the weight matrix of the linear layer. Note
+tha it <em>does not actually</em> use Kaiming initialization, despite the fact that it calls the
+function.</p>
+<p>However, for Transformer blocks, it instead initializes biases to zero and weights using Xavier uniform, that
+is: uniform(-sqrt(6 / (fan_in + fan_out)), sqrt(6 / (fan_in + fan_out))) for weights.</p>
 <p>PyTorch Transformers are especially bad - TransformerEncoder initializes all layers to the
-exact same weights?! <a class="reference external" href="https://github.com/pytorch/pytorch/issues/72253">https://github.com/pytorch/pytorch/issues/72253</a></p>
+exact same weights?! <a class="reference external" href="https://github.com/pytorch/pytorch/issues/72253">https://github.com/pytorch/pytorch/issues/72253</a>.</p>
 <p>The best paper I’ve found on transformer initialization is the muP paper, but haven’t
 integrated those ideas yet: <a class="reference external" href="https://arxiv.org/abs/2203.03466">https://arxiv.org/abs/2203.03466</a></p>
+<p>We split off the initialization into separate functions because muP initialization handles
+different parts of the model differently.</p>
 </dd></dl>
 
 <dl class="py method">
