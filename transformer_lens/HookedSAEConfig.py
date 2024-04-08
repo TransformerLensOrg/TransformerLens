@@ -10,6 +10,7 @@ import torch
 
 from transformer_lens import utils
 
+
 @dataclass
 class HookedSAEConfig:
     """
@@ -27,6 +28,7 @@ class HookedSAEConfig:
         device(str): The device to use for the SAE. Defaults to 'cuda' if
             available, else 'cpu'.
     """
+
     d_sae: int
     d_in: int
     hook_name: str
@@ -34,7 +36,7 @@ class HookedSAEConfig:
     dtype: torch.dtype = torch.float32
     seed: Optional[int] = None
     device: Optional[str] = None
-    
+
     def __post_init__(self):
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
