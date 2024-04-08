@@ -1535,6 +1535,11 @@ class HookedTransformer(HookedRootModule):
                 "With reduced precision, it is advised to use `from_pretrained_no_processing` instead of `from_pretrained`."
             )
 
+        if self.cfg.dtype not in [torch.float32, torch.float64] and self.cfg.num_experts and self.cfg.num_experts > 1:
+            logging.warning(
+                "When running MoE models, it is advised to use a higher precision data type. See docs for more info."
+            )
+
         state_dict = self.fill_missing_keys(state_dict)
         if fold_ln:
             if self.cfg.num_experts and self.cfg.num_experts > 1:
@@ -1966,7 +1971,11 @@ class HookedTransformer(HookedRootModule):
         version of the same model.
         """
         state_dict = self.state_dict()
-        if fold_ln and self.cfg.normalization_type == "LN":
+        if fold_ln and self.num_experts and self.num_experts > 1:
+            # If we're using MoE, we don't fold the layer norm weights, so we don't need to do any preprocessing
+            # A warning is already issued in `load_and_process_state_dict`
+            pass
+        elif fold_ln and self.cfg.normalization_type == "LN":
             # If we're folding the LN into the weights, we need to replace all the layernorm layers
             # with LayerNormPres, which do not have learnable parameters. This is somewhat hacky,
             # but it's the easiest way to do it.
