@@ -1975,7 +1975,7 @@ class HookedTransformer(HookedRootModule):
         version of the same model.
         """
         state_dict = self.state_dict()
-        if fold_ln and self.num_experts and self.num_experts > 1:
+        if fold_ln and self.cfg.num_experts and self.cfg.num_experts > 1:
             # If we're using MoE, we don't fold the layer norm weights, so we don't need to do any preprocessing
             # A warning is already issued in `load_and_process_state_dict`
             pass
