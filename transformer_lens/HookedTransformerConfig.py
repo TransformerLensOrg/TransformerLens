@@ -278,12 +278,12 @@ class HookedTransformerConfig:
             assert self.d_mlp is not None  # mypy
             # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
             mlp_params_per_layer = self.d_model * self.d_mlp * (2 + self.gated_mlp)
-            
+
             if self.num_experts:
                 # If we are using MoE, we multiply by num_experts, and add the expert gate parameters (d_model * num_experts)
                 mlp_params_per_layer = (
-                                        mlp_params_per_layer + self.d_model
-                                        ) * self.num_experts
+                    mlp_params_per_layer + self.d_model
+                ) * self.num_experts
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
