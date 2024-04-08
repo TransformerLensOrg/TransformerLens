@@ -3,6 +3,7 @@ from unittest import mock
 import numpy as np
 import pytest
 import torch
+from torch import nn
 
 import transformer_lens.utils as utils
 from transformer_lens import HookedTransformer
@@ -377,3 +378,36 @@ class TestAttentionMask:
             else:
                 # otherwise, there should be no attended but non-pad token
                 assert attended_but_non_pad_mask.sum() == 0
+
+
+def test_calc_fan_in_fan_out():
+    """
+    Test for the calc_fan_in_and_fan_out function in the utils module.
+    """
+    # Test for the case when the tensor is 1D
+    tensor_1d = torch.tensor([1, 2, 3, 4, 5])
+    fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_1d)
+    assert fan_in == 1
+    assert fan_out == 5
+
+    # Test for the case when the tensor is 2D
+    tensor_2d = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_2d)
+    assert fan_in == 2
+    assert fan_out == 3
+
+    # Test for the case when the tensor is 3D
+    tensor_3d = nn.Parameter(torch.rand(2, 25, 5))  # 2 x 25 x 5, I'm not writing this out
+    fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_3d)
+    assert fan_in == 25
+    assert fan_out == 10
+
+    # Test for the case when the tensor is 4D (should raise a ValueError)
+    tensor_4d = torch.tensor([[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]])
+    with pytest.raises(ValueError):
+        fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_4d)
+
+    # Test for the case when the tensor is 0D (also should raise a ValueError)
+    tensor_0d = torch.tensor(1)
+    with pytest.raises(ValueError):
+        fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_0d)
