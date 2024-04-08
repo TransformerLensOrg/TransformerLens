@@ -3,6 +3,7 @@
 Module with a dataclass for storing the configuration of a
 :class:`transformer_lens.HookedTransformer` model.
 """
+
 from __future__ import annotations
 
 import logging
@@ -259,6 +260,7 @@ class HookedTransformerConfig:
             (self.d_model * self.d_head * self.n_heads * 4)
         )
         if not self.attn_only:
+            assert self.d_mlp is not None  # mypy
             # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
             self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
 

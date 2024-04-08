@@ -4,9 +4,10 @@ This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, 
 needed to create many different types of generative language models. They are used by
 :class:`transformer_lens.HookedTransformer`.
 """
+
 import logging
 from abc import ABC
-from typing import Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import einops
 import numpy as np
@@ -263,7 +264,7 @@ class LayerNormPre(nn.Module):
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
-        x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
+        x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
         scale: Union[
             Float[torch.Tensor, "batch pos 1"],
             Float[torch.Tensor, "batch pos head_index 1"],
@@ -311,7 +312,7 @@ class LayerNorm(nn.Module):
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
-        x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
+        x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
@@ -384,6 +385,8 @@ class RMSNorm(nn.Module):
 
 
 class AbstractAttention(ABC, nn.Module):
+    alibi: Union[torch.Tensor, None]
+
     def __init__(
         self,
         cfg: Union[Dict, HookedTransformerConfig],
@@ -450,6 +453,7 @@ class AbstractAttention(ABC, nn.Module):
         else:
             self.attn_scale = 1.0
         if self.cfg.scale_attn_by_inverse_layer_idx:
+            assert self.layer_id is not None  # keep mypy happy
             self.attn_scale *= self.layer_id + 1
 
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
@@ -468,6 +472,7 @@ class AbstractAttention(ABC, nn.Module):
             # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See HookedTransformerConfig for details
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
+            assert self.cfg.rotary_dim is not None  # keep mypy happy
             sin, cos = self.calculate_sin_cos_rotary(
                 self.cfg.rotary_dim,
                 self.cfg.n_ctx,
@@ -817,7 +822,7 @@ class AbstractAttention(ABC, nn.Module):
 
     @staticmethod
     def create_alibi_slope(
-        n_ctx: int, device: torch.device = None
+        n_ctx: int, device: Optional[Union[str, torch.device]] = None
     ) -> Float[torch.Tensor, "query key"]:
         """Create an ALiBi Slope Matrix.
 
@@ -859,7 +864,7 @@ class AbstractAttention(ABC, nn.Module):
 
     @staticmethod
     def create_alibi_multipliers(
-        n_heads: int, device: torch.device = None
+        n_heads: int, device: Optional[Union[str, torch.device]] = None
     ) -> Float[torch.Tensor, "head_idx"]:
         """Create the ALiBi Scalar Multipliers for each Head.
 
@@ -898,7 +903,7 @@ class AbstractAttention(ABC, nn.Module):
 
     @staticmethod
     def create_alibi_bias(
-        n_heads: int, n_ctx: int, device: torch.device = None
+        n_heads: int, n_ctx: int, device: Optional[Union[torch.device, str]] = None
     ) -> Float[torch.Tensor, "head_idx query key"]:
         """Create the ALiBi Bias for all Heads.
 
@@ -1167,11 +1172,15 @@ class GroupedQueryAttention(AbstractAttention):
 
 # MLP Layers
 class MLP(nn.Module):
+    act_fn: Callable[..., torch.Tensor]
+    ln: nn.Module
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
+        assert self.cfg.d_mlp is not None  # TODO: should this not be optional?
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
         )
@@ -1214,7 +1223,7 @@ class MLP(nn.Module):
             einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
             + self.b_in
         )  # [batch, pos, d_mlp]
-        if not self.cfg.act_fn.endswith("_ln"):
+        if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
@@ -1242,11 +1251,15 @@ class GatedMLP(nn.Module):
     In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in) + b_in) @ W_out + b_out
     """
 
+    act_fn: Callable[..., torch.Tensor]
+    ln: nn.Module
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
+        assert self.cfg.d_mlp is not None  # keep mypy happy
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
         )
@@ -1297,7 +1310,7 @@ class GatedMLP(nn.Module):
                 "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_gate
             )
         )  # [batch, pos, d_mlp]
-        if not self.cfg.act_fn.endswith("_ln"):
+        if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             pre_linear = self.hook_pre_linear(
                 einsum(
                     "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in
@@ -1321,6 +1334,10 @@ class GatedMLP(nn.Module):
 
 # Transformer Block
 class TransformerBlock(nn.Module):
+    ln1: nn.Module
+    ln2: nn.Module
+    mlp: nn.Module
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
         super().__init__()
         if isinstance(cfg, Dict):

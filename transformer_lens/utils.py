@@ -10,7 +10,7 @@ import json
 import re
 import shutil
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import einops
 import numpy as np
@@ -25,7 +25,7 @@ from jaxtyping import Float, Int
 from rich import print as rprint
 from transformers import AutoTokenizer
 
-from transformer_lens import FactoredMatrix
+from transformer_lens.FactoredMatrix import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 USE_DEFAULT_VALUE = None
@@ -426,7 +426,7 @@ def sample_logits(
 
 
 # Type alias
-SliceInput: Type = Optional[
+SliceInput = Optional[
     Union[
         int,
         Tuple[int,],
@@ -473,6 +473,8 @@ class Slice:
     elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.
     """
 
+    slice: Union[int, slice, np.ndarray]
+
     def __init__(
         self,
         input_slice: SliceInput = None,
@@ -486,14 +488,13 @@ class Slice:
         Raises:
             ValueError: If the input_slice is not one of the above types.
         """
-        if type(input_slice) == tuple:
-            input_slice: slice = slice(*input_slice)
-            self.slice = input_slice
+        if isinstance(input_slice, tuple):
+            self.slice = slice(*input_slice)
             self.mode = "slice"
-        elif type(input_slice) == int:
+        elif isinstance(input_slice, int):
             self.slice = input_slice
             self.mode = "int"
-        elif type(input_slice) == slice:
+        elif isinstance(input_slice, slice):
             self.slice = input_slice
             self.mode = "slice"
         elif type(input_slice) in [list, torch.Tensor, np.ndarray]:
@@ -522,7 +523,7 @@ class Slice:
         """
         ndim = tensor.ndim
         slices = [slice(None)] * ndim
-        slices[dim] = self.slice
+        slices[dim] = self.slice  # type: ignore
         return tensor[tuple(slices)]
 
     def indices(
@@ -600,7 +601,7 @@ def get_act_name(
         return name
     match = re.match(r"([a-z]+)(\d+)([a-z]?.*)", name)
     if match is not None:
-        name, layer, layer_type = match.groups(0)
+        name, layer, layer_type = match.groups(0)  # type: ignore
 
     layer_type_alias = {
         "a": "attn",
@@ -672,10 +673,10 @@ def test_prompt(
     prompt: str,
     answer: str,
     model,  # Can't give type hint due to circular imports
-    prepend_space_to_answer: Optional[bool] = True,
-    print_details: Optional[bool] = True,
+    prepend_space_to_answer: bool = True,
+    print_details: bool = True,
     prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
-    top_k: Optional[int] = 10,
+    top_k: int = 10,
 ) -> None:
     """Test if the Model Can Give the Correct Answer to a Prompt.
 
@@ -804,11 +805,11 @@ def composition_scores(
         left.rdim == right.ldim
     ), f"Composition scores require left.rdim==right.ldim, shapes were left: {left.shape}, right:{right.shape}"
 
-    right = right.collapse_r()
-    left = left.collapse_l()
-    r_norms = right.norm(dim=[-2, -1])
-    l_norms = left.norm(dim=[-2, -1])
-    comp_norms = (left @ right).norm(dim=[-2, -1])
+    new_right = right.collapse_r()
+    new_left = left.collapse_l()
+    r_norms = new_right.norm(dim=[-2, -1])
+    l_norms = new_left.norm(dim=[-2, -1])
+    comp_norms = (new_left @ new_right).norm(dim=[-2, -1])
     return comp_norms / r_norms / l_norms
 
 
@@ -1096,7 +1097,7 @@ class LocallyOverridenDefaults:
             # Ensure the override is a valid value
             valid_values = info["valid_values"]
             assert (
-                override in valid_values
+                override in valid_values  # type: ignore
             ), f"{property} must be one of {valid_values}, but got {override}."
 
             # Fetch current default and store it to restore later
