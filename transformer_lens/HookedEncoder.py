@@ -3,6 +3,7 @@
 Contains a BERT style model. This is separate from :class:`transformer_lens.HookedTransformer`
 because it has a significantly different architecture to e.g. GPT style transformers.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,9 +17,11 @@ from transformers import AutoTokenizer
 from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
-from transformer_lens import ActivationCache, FactoredMatrix, HookedTransformerConfig
+from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
+from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities import devices
 
 
@@ -140,7 +143,7 @@ class HookedEncoder(HookedRootModule):
         resid = self.mlm_head(resid)
 
         if return_type is None:
-            return
+            return None
 
         logits = self.unembed(resid)
         return logits
@@ -153,7 +156,7 @@ class HookedEncoder(HookedRootModule):
 
     @overload
     def run_with_cache(
-        self, *model_args, return_cache_object: Literal[False] = False, **kwargs
+        self, *model_args, return_cache_object: Literal[False], **kwargs
     ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:
         ...
 
@@ -181,7 +184,7 @@ class HookedEncoder(HookedRootModule):
         else:
             return out, cache_dict
 
-    def to(
+    def to(  # type: ignore
         self,
         device_or_dtype: Union[torch.device, str, torch.dtype],
         print_details: bool = True,
@@ -270,6 +273,9 @@ class HookedEncoder(HookedRootModule):
 
     @property
     def b_U(self) -> Float[torch.Tensor, "d_vocab"]:
+        """
+        Convenience to get the unembedding bias
+        """
         return self.unembed.b_U
 
     @property
@@ -379,13 +385,17 @@ class HookedEncoder(HookedRootModule):
 
     @property
     def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
+        """Returns a FactoredMatrix object with the product of the Q and K matrices for each layer and head.
+        Useful for visualizing attention patterns."""
         return FactoredMatrix(self.W_Q, self.W_K.transpose(-2, -1))
 
     @property
     def OV(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
+        """Returns a FactoredMatrix object with the product of the O and V matrices for each layer and head."""
         return FactoredMatrix(self.W_V, self.W_O)
 
     def all_head_labels(self) -> List[str]:
+        """Returns a list of strings with the format "L{l}H{h}", where l is the layer index and h is the head index."""
         return [
             f"L{l}H{h}"
             for l in range(self.cfg.n_layers)

@@ -15,6 +15,7 @@
     [tool.poetry.dependencies]
         accelerate=">=0.23.0" # Needed for Llama Models
         beartype="^0.14.1"
+        better-abc="^0.0.3"
         datasets=">=2.7.1"
         einops=">=0.6.0"
         fancy-einsum=">=0.0.3"
@@ -27,12 +28,15 @@
         pandas=">=1.1.5"
         python=">=3.8,<4.0"
         rich=">=12.6.0"
-        torch=">=1.10,!=2.0,!=2.1.0" # Pin >=2.1.1 due to known MPS errors on 2.1.0
+        torch = [
+            {platform = "linux", version = ">=1.10"}, # We can use any torch version on Linux (e.g colab)
+            {platform = "!=linux", version = ">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
+        ]
         tqdm=">=4.64.1"
-        transformers=">=4.34"
+        transformers=">=4.37.2"
         typing-extensions="*"
         wandb=">=0.13.5"
-        better-abc = "^0.0.3"
+        sentencepiece = "*"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
@@ -40,7 +44,7 @@
             circuitsvis=">=1.38.1"
             isort="5.8.0"
             jupyter=">=1.0.0"
-            mypy=">=0.991"
+            mypy=">=1.8.0"
             nbval="^0.10.0"
             plotly=">=5.12.0"
             pycln="^2.1.3"
@@ -87,6 +91,7 @@
 
 [tool.mypy]
     check_untyped_defs=true
+    exclude=[".venv/", "assets", "demos", "docs", "easy_transformer", "tests"]
     ignore_missing_imports=true
 
 [tool.black]
