@@ -1486,7 +1486,7 @@ class HookedTransformer(HookedRootModule):
             if "W_" in name:
                 fan_in, _ = utils.calc_fan_in_and_fan_out(param)
                 if "embed" in name:
-                    scale = 1
+                    scale = float(1)
                 elif "unembed" in name:
                     scale = 1 / fan_in
                 else:
