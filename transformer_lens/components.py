@@ -1527,15 +1527,9 @@ class BertBlock(nn.Module):
 
         if self.cfg.use_split_qkv_input:
             n_heads = self.cfg.n_heads
-            query_input = self.hook_q_input(
-                repeat_along_head_dimension(query_input, n_heads)
-            )
-            key_input = self.hook_k_input(
-                repeat_along_head_dimension(key_input, n_heads)
-            )
-            value_input = self.hook_v_input(
-                repeat_along_head_dimension(value_input, n_heads)
-            )
+            query_input = self.hook_q_input(repeat_along_head_dimension(query_input, n_heads))
+            key_input = self.hook_k_input(repeat_along_head_dimension(key_input, n_heads))
+            value_input = self.hook_v_input(repeat_along_head_dimension(value_input, n_heads))
 
         attn_out = self.hook_attn_out(
             self.attn(
