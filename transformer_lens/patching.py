@@ -79,11 +79,7 @@ def make_df_from_ranges(
     """
     Takes in a list of column names and max ranges for each column, and returns a dataframe with the cartesian product of the range for each column (ie iterating through all combinations from zero to column_max_range - 1, in order, incrementing the final column first)
     """
-    rows = list(
-        itertools.product(
-            *[range(axis_max_range) for axis_max_range in column_max_ranges]
-        )
-    )
+    rows = list(itertools.product(*[range(axis_max_range) for axis_max_range in column_max_ranges]))
     df = pd.DataFrame(rows, columns=column_names)
     return df
 
@@ -98,9 +94,7 @@ def generic_activation_patch(
     model: HookedTransformer,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[
-        [Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]
-    ],
+    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
     patch_setter: Callable[
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],
@@ -117,9 +111,7 @@ def generic_activation_patch(
     model: HookedTransformer,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[
-        [Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]
-    ],
+    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
     patch_setter: Callable[
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],
@@ -135,9 +127,7 @@ def generic_activation_patch(
     model: HookedTransformer,
     corrupted_tokens: Int[torch.Tensor, "batch pos"],
     clean_cache: ActivationCache,
-    patching_metric: Callable[
-        [Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]
-    ],
+    patching_metric: Callable[[Float[torch.Tensor, "batch pos d_vocab"]], Float[torch.Tensor, ""]],
     patch_setter: Callable[
         [CorruptedActivation, Sequence[int], ActivationCache], PatchedActivation
     ],
@@ -187,9 +177,7 @@ def generic_activation_patch(
         max_axis_range["head"] = max_axis_range["head_index"]
 
         # Get the max range for each axis we iterate over
-        index_axis_max_range = [
-            max_axis_range[axis_name] for axis_name in index_axis_names
-        ]
+        index_axis_max_range = [max_axis_range[axis_name] for axis_name in index_axis_names]
 
         # Get the dataframe where each row is a tuple of indices
         index_df = make_df_from_ranges(index_axis_max_range, index_axis_names)
@@ -206,9 +194,7 @@ def generic_activation_patch(
     if flattened_output:
         patched_metric_output = torch.zeros(len(index_df), device=model.cfg.device)
     else:
-        patched_metric_output = torch.zeros(
-            index_axis_max_range, device=model.cfg.device
-        )
+        patched_metric_output = torch.zeros(index_axis_max_range, device=model.cfg.device)
 
     # A generic patching hook - for each index, it applies the patch_setter appropriately to patch the activation
     def patching_hook(corrupted_activation, hook, index, clean_activation):
@@ -321,9 +307,7 @@ def layer_head_pos_pattern_patch_setter(
     """
     assert len(index) == 3
     layer, head_index, dest_pos = index
-    corrupted_activation[:, head_index, dest_pos, :] = clean_activation[
-        :, head_index, dest_pos, :
-    ]
+    corrupted_activation[:, head_index, dest_pos, :] = clean_activation[:, head_index, dest_pos, :]
 
     return corrupted_activation
 
@@ -684,9 +668,7 @@ def get_act_patch_attn_head_all_pos_every(
     """
     act_patch_results: list[torch.Tensor] = []
     act_patch_results.append(
-        get_act_patch_attn_head_out_all_pos(
-            model, corrupted_tokens, clean_cache, metric
-        )
+        get_act_patch_attn_head_out_all_pos(model, corrupted_tokens, clean_cache, metric)
     )
     act_patch_results.append(
         get_act_patch_attn_head_q_all_pos(model, corrupted_tokens, clean_cache, metric)
@@ -698,9 +680,7 @@ def get_act_patch_attn_head_all_pos_every(
         get_act_patch_attn_head_v_all_pos(model, corrupted_tokens, clean_cache, metric)
     )
     act_patch_results.append(
-        get_act_patch_attn_head_pattern_all_pos(
-            model, corrupted_tokens, clean_cache, metric
-        )
+        get_act_patch_attn_head_pattern_all_pos(model, corrupted_tokens, clean_cache, metric)
     )
     return torch.stack(act_patch_results, dim=0)
 
@@ -737,9 +717,7 @@ def get_act_patch_attn_head_by_pos_every(
     pattern_results = get_act_patch_attn_head_pattern_by_pos(
         model, corrupted_tokens, clean_cache, metric
     )
-    act_patch_results.append(
-        einops.rearrange(pattern_results, "batch head pos -> batch pos head")
-    )
+    act_patch_results.append(einops.rearrange(pattern_results, "batch head pos -> batch pos head"))
     return torch.stack(act_patch_results, dim=0)
 
 
@@ -758,13 +736,7 @@ def get_act_patch_block_every(
         patched_output (torch.Tensor): The tensor of the patching metric for each patch. Has shape [3, n_layers, pos]
     """
     act_patch_results = []
-    act_patch_results.append(
-        get_act_patch_resid_pre(model, corrupted_tokens, clean_cache, metric)
-    )
-    act_patch_results.append(
-        get_act_patch_attn_out(model, corrupted_tokens, clean_cache, metric)
-    )
-    act_patch_results.append(
-        get_act_patch_mlp_out(model, corrupted_tokens, clean_cache, metric)
-    )
+    act_patch_results.append(get_act_patch_resid_pre(model, corrupted_tokens, clean_cache, metric))
+    act_patch_results.append(get_act_patch_attn_out(model, corrupted_tokens, clean_cache, metric))
+    act_patch_results.append(get_act_patch_mlp_out(model, corrupted_tokens, clean_cache, metric))
     return torch.stack(act_patch_results, dim=0)

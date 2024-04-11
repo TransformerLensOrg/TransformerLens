@@ -43,6 +43,8 @@ actions.
 - Format all files via `make format`
 - Only check the formatting via `make check-format`
 
+Note that `black` line length is set to 100 in `pyproject.toml` (instead of the default 88).
+
 ## Documentation
 
 Please make sure to add thorough documentation for any features you add. You should do this directly

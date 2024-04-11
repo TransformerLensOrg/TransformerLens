@@ -96,13 +96,9 @@ class SVDInterpreter:
             _, _, V = torch.linalg.svd(matrix)
 
         else:
-            raise ValueError(
-                f"Vector type must be in {VECTOR_TYPES}, instead got {vector_type}"
-            )
+            raise ValueError(f"Vector type must be in {VECTOR_TYPES}, instead got {vector_type}")
 
-        return self._get_singular_vectors_from_matrix(
-            V, self.params[OUTPUT_EMBEDDING], num_vectors
-        )
+        return self._get_singular_vectors_from_matrix(V, self.params[OUTPUT_EMBEDDING], num_vectors)
 
     def _get_singular_vectors_from_matrix(
         self,
