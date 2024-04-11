@@ -44,6 +44,7 @@ content/citation
 content/contributing
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
+content/special_cases
 ```
 
 ```{toctree}
