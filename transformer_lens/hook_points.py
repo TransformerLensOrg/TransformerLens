@@ -68,13 +68,14 @@ class HookPoint(nn.Module):
         which are the same for a HookPoint)
         If prepend is True, add this hook before all other hooks
         """
+
         def full_hook(module, module_input, module_output):
             if (
                 dir == "bwd"
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
                 module_output = module_output[0]
             return hook(module_output, hook=self)
-        
+
         full_hook.__name__ = (
             hook.__repr__()
         )  # annotate the `full_hook` with the string representation of the `hook` function
@@ -83,14 +84,14 @@ class HookPoint(nn.Module):
             handle = self.register_full_backward_hook(full_hook)
         else:
             raise ValueError(f"Invalid direction {dir}")
-        
+
         handle = LensHandle(handle, is_permanent, level)
-        
+
         if prepend:
             # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
             self._forward_hooks.move_to_end(handle.hook.id, last=False)
             self.fwd_hooks.insert(0, handle)
-            
+
             self.fwd_hooks.append(handle)
 
     def remove_hooks(self, dir="fwd", including_permanent=False, level=None) -> None:
