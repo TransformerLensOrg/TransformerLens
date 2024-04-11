@@ -82,8 +82,12 @@ class HookPoint(nn.Module):
 
         if dir == "fwd":
             pt_handle = self.register_forward_hook(full_hook)
+            _internal_hooks = self._forward_hooks
+            visible_hooks = self.fwd_hooks
         elif dir == "bwd":
             pt_handle = self.register_full_backward_hook(full_hook)
+            _internal_hooks = self._backward_hooks
+            visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
 
@@ -91,10 +95,11 @@ class HookPoint(nn.Module):
 
         if prepend:
             # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-            self._forward_hooks.move_to_end(handle.hook.id, last=False)
-            self.fwd_hooks.insert(0, handle)
+            _internal_hooks.move_to_end(handle.hook.id, last=False)
+            visible_hooks.insert(0, handle)
 
-            self.fwd_hooks.append(handle)
+        else:
+            visible_hooks.append(handle)
 
     def remove_hooks(self, dir="fwd", including_permanent=False, level=None) -> None:
         def _remove_hooks(handles: List[LensHandle]) -> List[LensHandle]:
