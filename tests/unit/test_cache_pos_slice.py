@@ -21,16 +21,12 @@ def test_run_with_cache_pos_slice_keep_batch():
     num_tokens = len(model.tokenizer.encode(prompt))
 
     for i in range(-1, num_tokens + 1):
-        _, cache_with_slice = model.run_with_cache(
-            prompt, return_type=None, pos_slice=i
-        )
+        _, cache_with_slice = model.run_with_cache(prompt, return_type=None, pos_slice=i)
 
         assert cache_with_slice["embed"].shape == torch.Size([1, 1, d_model])
         assert cache_with_slice["q", 0].shape == torch.Size([1, 1, n_heads, d_head])
 
-        assert torch.equal(
-            cache_no_slice["embed"][0, i, :], cache_with_slice["embed"][0, 0, :]
-        )
+        assert torch.equal(cache_no_slice["embed"][0, i, :], cache_with_slice["embed"][0, 0, :])
         assert torch.equal(
             cache_no_slice["pos_embed"][0, i, :], cache_with_slice["pos_embed"][0, 0, :]
         )
@@ -143,25 +139,17 @@ def test_run_with_cache_pos_slice_keep_batch():
 
 
 def test_run_with_cache_pos_slice_remove_batch():
-    _, cache_no_slice = model.run_with_cache(
-        prompt, remove_batch_dim=True, return_type=None
-    )
+    _, cache_no_slice = model.run_with_cache(prompt, remove_batch_dim=True, return_type=None)
     num_tokens = len(model.tokenizer.encode(prompt))
 
     for i in range(-1, num_tokens + 1):
-        _, cache_with_slice = model.run_with_cache(
-            prompt, remove_batch_dim=True, pos_slice=i
-        )
+        _, cache_with_slice = model.run_with_cache(prompt, remove_batch_dim=True, pos_slice=i)
 
         assert cache_with_slice["embed"].shape == torch.Size([1, d_model])
         assert cache_with_slice["q", 0].shape == torch.Size([1, n_heads, d_head])
 
-        assert torch.equal(
-            cache_no_slice["embed"][i, :], cache_with_slice["embed"][0, :]
-        )
-        assert torch.equal(
-            cache_no_slice["pos_embed"][i, :], cache_with_slice["pos_embed"][0, :]
-        )
+        assert torch.equal(cache_no_slice["embed"][i, :], cache_with_slice["embed"][0, :])
+        assert torch.equal(cache_no_slice["pos_embed"][i, :], cache_with_slice["pos_embed"][0, :])
 
         for layer in range(n_layers):
             assert torch.equal(

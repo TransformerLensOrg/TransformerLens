@@ -83,9 +83,7 @@ class PosEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_pos = nn.Parameter(
-            torch.empty(self.cfg.n_ctx, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model, dtype=cfg.dtype))
 
     def forward(
         self,
@@ -119,9 +117,7 @@ class PosEmbed(nn.Module):
             # Separated from the no padding case for computational efficiency
             # (this code is a bit slower than the code above)
 
-            offset_position_ids = get_offset_position_ids(
-                past_kv_pos_offset, attention_mask
-            )
+            offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
             pos_embed = self.W_pos[offset_position_ids]  # [batch, pos, d_model]
 
             # Set the position embeddings to 0 for pad tokens (this is an arbitrary choice)
@@ -148,9 +144,7 @@ class TokenTypeEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_token_type = nn.Parameter(
-            torch.empty(2, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model, dtype=cfg.dtype))
 
     def forward(self, token_type_ids: Int[torch.Tensor, "batch pos"]):
         return self.W_token_type[token_type_ids, :]
@@ -181,9 +175,7 @@ class BertEmbed(nn.Module):
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ):
         base_index_id = torch.arange(input_ids.shape[1], device=input_ids.device)
-        index_ids = einops.repeat(
-            base_index_id, "pos -> batch pos", batch=input_ids.shape[0]
-        )
+        index_ids = einops.repeat(base_index_id, "pos -> batch pos", batch=input_ids.shape[0])
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
 
@@ -193,9 +185,7 @@ class BertEmbed(nn.Module):
             self.token_type_embed(token_type_ids)
         )
 
-        embeddings_out = (
-            word_embeddings_out + position_embeddings_out + token_type_embeddings_out
-        )
+        embeddings_out = word_embeddings_out + position_embeddings_out + token_type_embeddings_out
         layer_norm_out = self.ln(embeddings_out)
         return layer_norm_out
 
@@ -273,9 +263,7 @@ class LayerNormPre(nn.Module):
 
 
 class LayerNorm(nn.Module):
-    def __init__(
-        self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None
-    ):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         LayerNorm with optional length parameter
 
@@ -342,15 +330,11 @@ class RMSNormPre(nn.Module):
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
-        return self.hook_normalized(x / scale).to(
-            self.cfg.dtype
-        )  # [batch, pos, length]
+        return self.hook_normalized(x / scale).to(self.cfg.dtype)  # [batch, pos, length]
 
 
 class RMSNorm(nn.Module):
-    def __init__(
-        self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None
-    ):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         RMSNorm - LayerNorm without the centering and bias (RMS = Root Mean Square)
 
@@ -409,26 +393,19 @@ class AbstractAttention(ABC, nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_Q = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-            )
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
         )
         self.W_K = abstract_attribute()
         self.W_V = abstract_attribute()
         self.W_O = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype
-            )
+            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
         )
-        self.b_Q = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K = abstract_attribute()
         self.b_V = abstract_attribute()
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.attn_type = attn_type
-
         if self.attn_type not in ["global", "local"]:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
@@ -536,9 +513,7 @@ class AbstractAttention(ABC, nn.Module):
             kv_cache_pos_offset = 0
 
         if self.cfg.positional_embedding_type == "rotary":
-            q = self.hook_rot_q(
-                self.apply_rotary(q, kv_cache_pos_offset, attention_mask)
-            )
+            q = self.hook_rot_q(self.apply_rotary(q, kv_cache_pos_offset, attention_mask))
             k = self.hook_rot_k(
                 self.apply_rotary(k, 0, attention_mask)
             )  # keys are cached so no offset
@@ -559,9 +534,7 @@ class AbstractAttention(ABC, nn.Module):
 
             # only recompute when necessary to increase efficiency.
             if self.alibi is None or key_ctx > self.alibi.size(-1):
-                self.alibi = Attention.create_alibi_bias(
-                    self.cfg.n_heads, key_ctx, self.cfg.device
-                )
+                self.alibi = Attention.create_alibi_bias(self.cfg.n_heads, key_ctx, self.cfg.device)
 
             attn_scores += self.alibi[
                 :, :query_ctx, :key_ctx
@@ -608,9 +581,7 @@ class AbstractAttention(ABC, nn.Module):
                 )
             )  # [batch, pos, head_index, d_model]
             out = (
-                einops.reduce(
-                    result, "batch position index model->batch position model", "sum"
-                )
+                einops.reduce(result, "batch position index model->batch position model", "sum")
                 + self.b_O
             )  # [batch, pos, d_model]
         return out
@@ -703,9 +674,7 @@ class AbstractAttention(ABC, nn.Module):
 
     def apply_causal_mask(
         self,
-        attn_scores: Float[
-            torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"
-        ],
+        attn_scores: Float[torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"],
         past_kv_pos_offset: int = 0,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ):
@@ -742,9 +711,7 @@ class AbstractAttention(ABC, nn.Module):
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
         # Index back to front to ensure local attention works
-        final_mask = causal_mask[
-            None, None, -query_ctx_length:, -key_ctx_length:
-        ]  # [1, 1, query_ctx_length, key_ctx_length]
+        final_mask = causal_mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, query_ctx_length, key_ctx_length
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
             einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
@@ -760,9 +727,7 @@ class AbstractAttention(ABC, nn.Module):
         n_ctx: int,
         base: int = 10000,
         dtype: torch.dtype = torch.float32,
-    ) -> Tuple[
-        Float[torch.Tensor, "n_ctx rotary_dim"], Float[torch.Tensor, "n_ctx rotary_dim"]
-    ]:
+    ) -> Tuple[Float[torch.Tensor, "n_ctx rotary_dim"], Float[torch.Tensor, "n_ctx rotary_dim"]]:
         """
         Calculate the sine and cosine waves to use in a rotary embedding. See https://blog.eleuther.ai/rotary-embeddings/ for details
 
@@ -825,9 +790,7 @@ class AbstractAttention(ABC, nn.Module):
             ]
             x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
         else:
-            offset_position_ids = get_offset_position_ids(
-                past_kv_pos_offset, attention_mask
-            )
+            offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
             offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
             mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
             mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
@@ -951,14 +914,12 @@ class AbstractAttention(ABC, nn.Module):
             The ALiBi bias that should be added to the attention scores before the softmax.
         """
         # Create the slope matrix
-        slope: Float[torch.Tensor, "query key"] = Attention.create_alibi_slope(
-            n_ctx, device
-        )
+        slope: Float[torch.Tensor, "query key"] = Attention.create_alibi_slope(n_ctx, device)
 
         # Create the scalar multiplier for each head.
-        multipliers: Float[
-            torch.Tensor, "head_idx"
-        ] = Attention.create_alibi_multipliers(n_heads, device)
+        multipliers: Float[torch.Tensor, "head_idx"] = Attention.create_alibi_multipliers(
+            n_heads, device
+        )
 
         # The ALiBi bias is then m * slope_matrix
         alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
@@ -988,21 +949,13 @@ class Attention(AbstractAttention):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.W_K = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-            )
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
         )
         self.W_V = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-            )
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
         )
-        self.b_K = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
-        self.b_V = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
 
 
 class GroupedQueryAttention(AbstractAttention):
@@ -1196,13 +1149,9 @@ class MLP(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         assert self.cfg.d_mlp is not None  # TODO: should this not be optional?
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
+        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
-        self.W_out = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
@@ -1235,8 +1184,7 @@ class MLP(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
-            + self.b_in
+            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in) + self.b_in
         )  # [batch, pos, d_mlp]
         if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
@@ -1275,16 +1223,10 @@ class GatedMLP(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         assert self.cfg.d_mlp is not None  # keep mypy happy
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
-        self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
+        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
+        self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
-        self.W_out = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         # hook on gate output but before act_fn
@@ -1321,15 +1263,11 @@ class GatedMLP(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum(
-                "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_gate
-            )
+            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_gate)
         )  # [batch, pos, d_mlp]
         if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             pre_linear = self.hook_pre_linear(
-                einsum(
-                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in
-                )
+                einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
             )
             post_act = self.hook_post(
                 (self.act_fn(pre_act) * pre_linear) + self.b_in
@@ -1355,26 +1293,17 @@ class MoE(nn.Module):
         self.cfg = cfg
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
-        assert (
-            cfg.num_experts is not None
-        ), "num_experts must be specified for MoE layer"
-        assert (
-            cfg.experts_per_token
-        ), "experts_per_token must be specified for MoE layer"
+        assert cfg.num_experts is not None, "num_experts must be specified for MoE layer"
+        assert cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
         self.experts_per_token: int = cfg.experts_per_token
         assert (
             cfg.experts_per_token <= cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
 
         self.experts = nn.ModuleList(
-            [
-                GatedMLP(cfg) if cfg.gated_mlp else MLP(cfg)
-                for _ in range(cfg.num_experts)
-            ]
+            [GatedMLP(cfg) if cfg.gated_mlp else MLP(cfg) for _ in range(cfg.num_experts)]
         )
-        self.W_gate = nn.Parameter(
-            torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype)
-        )
+        self.W_gate = nn.Parameter(torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype))
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
         self.hook_expert_weights = HookPoint()
@@ -1402,9 +1331,7 @@ class MoE(nn.Module):
             # find the batch, pos, and expert indices which use this expert
             batch, pos, expert = torch.where(expert_indices == i)
             # accumulate the weighted outputs from the expert
-            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(
-                x[batch]
-            )
+            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(x[batch])
 
         return results
 
@@ -1442,13 +1369,9 @@ class TransformerBlock(nn.Module):
             if not self.cfg.attn_only:
                 self.ln2 = nn.Identity()
         else:
-            logging.warning(
-                f"Invalid normalization_type passed in {self.cfg.normalization_type}"
-            )
+            logging.warning(f"Invalid normalization_type passed in {self.cfg.normalization_type}")
 
-        attention = (
-            Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
-        )
+        attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
         if not self.cfg.use_local_attn:
             self.attn = attention(cfg, "global", block_index)
         else:
@@ -1480,9 +1403,7 @@ class TransformerBlock(nn.Module):
     def forward(
         self,
         resid_pre: Float[torch.Tensor, "batch pos d_model"],
-        shortformer_pos_embed: Optional[
-            Float[torch.Tensor, "batch pos d_model"]
-        ] = None,
+        shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
@@ -1549,39 +1470,25 @@ class TransformerBlock(nn.Module):
             )
         )  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
-            resid_mid = self.hook_resid_mid(
-                resid_pre + attn_out
-            )  # [batch, pos, d_model]
+            resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             mlp_in = (
-                resid_mid
-                if not self.cfg.use_hook_mlp_in
-                else self.hook_mlp_in(resid_mid.clone())
+                resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
             normalized_resid_mid = self.ln2(mlp_in)
-            mlp_out = self.hook_mlp_out(
-                self.mlp(normalized_resid_mid)
-            )  # [batch, pos, d_model]
-            resid_post = self.hook_resid_post(
-                resid_mid + mlp_out
-            )  # [batch, pos, d_model]
+            mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
             # In GPT-J, LN1 and LN2 are tied, in GPT-NeoX they aren't.
             normalized_resid_pre_2 = self.ln2(
-                resid_pre
-                if not self.cfg.use_hook_mlp_in
-                else self.hook_mlp_in(resid_pre.clone())
+                resid_pre if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_pre.clone())
             )
-            mlp_out = self.hook_mlp_out(
-                self.mlp(normalized_resid_pre_2)
-            )  # [batch, pos, d_model]
+            mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_pre_2))  # [batch, pos, d_model]
             resid_post = self.hook_resid_post(
                 resid_pre + attn_out + mlp_out
             )  # [batch, pos, d_model]
         else:
-            resid_post = self.hook_resid_post(
-                resid_pre + attn_out
-            )  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
         return resid_post
 
 
@@ -1645,11 +1552,7 @@ class BertBlock(nn.Module):
         )
         resid_mid = self.hook_resid_mid(resid_pre + attn_out)
 
-        mlp_in = (
-            resid_mid
-            if not self.cfg.use_hook_mlp_in
-            else self.hook_mlp_in(resid_mid.clone())
-        )
+        mlp_in = resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
         normalized_resid_mid = self.ln1(mlp_in)
         mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))
         resid_post = self.hook_resid_post(normalized_resid_mid + mlp_out)

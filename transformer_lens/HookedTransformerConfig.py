@@ -95,8 +95,8 @@ class HookedTransformerConfig:
         attn_only (bool): Whether to only use attention layers, no feedforward
             layers. Defaults to False
         seed (int, *optional*): The seed to use for the model.
-            Used to set sources of randomness (Python, PyTorch and
-            NumPy) and to initialize weights. Defaults to None. We recommend setting a seed, so your experiments are reproducible.
+            Used to set sources of randomness (Python, PyTorch and NumPy) and to initialize weights.
+            Defaults to None. We recommend setting a seed, so your experiments are reproducible.
         initializer_range (float): The standard deviation of the normal used to
             initialise the weights, initialized to 0.8 / sqrt(d_model). If weight_init_mode is
             'xavier_uniform' or 'xavier_normal', this value is instead treated as the `gain` parameter for the weight
@@ -217,11 +217,9 @@ class HookedTransformerConfig:
             self.n_heads = self.d_model // self.d_head
 
             if not self.d_model % (self.d_head) == 0:
-                # logging.warning(
-                #     f"d_model {self.d_model} is not divisible by d_head {self.d_head}. n_heads was inferred to be {self.n_heads}, rounding down the ratio."
-                # )
                 logging.warning(
-                    "d_model %d is not divisible by d_head %d. n_heads was inferred to be %d, rounding down the ratio.",
+                    "d_model %d is not divisible by d_head %d."
+                    "n_heads was inferred to be %d, rounding down the ratio.",
                     self.d_model,
                     self.d_head,
                     self.n_heads,
@@ -230,19 +228,13 @@ class HookedTransformerConfig:
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
         if self.use_local_attn:
-            assert (
-                self.window_size is not None
-            ), "window_size must be specified for local attention"
-            assert (
-                self.attn_types is not None
-            ), "attn_types must be specified for local attention"
+            assert self.window_size is not None, "window_size must be specified for local attention"
+            assert self.attn_types is not None, "attn_types must be specified for local attention"
         if not self.attn_only:
             if self.d_mlp is None:
                 # For some reason everyone hard codes in this hyper-parameter!
                 self.d_mlp: int = self.d_model * 4
-            assert (
-                self.act_fn is not None
-            ), "act_fn must be specified for non-attn-only models"
+            assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
             assert (
                 self.act_fn in SUPPORTED_ACTIVATIONS
             ), f"act_fn={self.act_fn} must be one of {SUPPORTED_ACTIVATIONS}"
@@ -255,7 +247,8 @@ class HookedTransformerConfig:
 
         if self.d_vocab_out == -1:
             # d_vocab_out defaults to d_vocab, unless there's an algorithmic task
-            # If d_vocab is not set, it'll be inferred from tokenizer_name or from a tokenizer explicitly passed to HookedTransformer initialisation.
+            # If d_vocab is not set, it'll be inferred from tokenizer_name or from a tokenizer
+            # explicitly passed to HookedTransformer initialisation.
             self.d_vocab_out = self.d_vocab
 
         if self.positional_embedding_type == "rotary" and self.rotary_dim is None:
@@ -271,9 +264,7 @@ class HookedTransformerConfig:
             ), "num_experts must be set if experts_per_token is set"
 
         # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
-        self.n_params = self.n_layers * (
-            (self.d_model * self.d_head * self.n_heads * 4)
-        )
+        self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
         if not self.attn_only:
             assert self.d_mlp is not None  # mypy
             # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
@@ -281,9 +272,7 @@ class HookedTransformerConfig:
 
             if self.num_experts:
                 # If we are using MoE, we multiply by num_experts, and add the expert gate parameters (d_model * num_experts)
-                mlp_params_per_layer = (
-                    mlp_params_per_layer + self.d_model
-                ) * self.num_experts
+                mlp_params_per_layer = (mlp_params_per_layer + self.d_model) * self.num_experts
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:

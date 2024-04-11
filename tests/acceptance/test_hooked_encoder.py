@@ -41,9 +41,7 @@ def test_full_model(our_bert, huggingface_bert, tokenizer):
     input_ids = tokenized["input_ids"]
     attention_mask = tokenized["attention_mask"]
 
-    huggingface_bert_out = huggingface_bert(
-        input_ids, attention_mask=attention_mask
-    ).logits
+    huggingface_bert_out = huggingface_bert(input_ids, attention_mask=attention_mask).logits
     our_bert_out = our_bert(input_ids, one_zero_attention_mask=attention_mask)
     assert_close(huggingface_bert_out, our_bert_out, rtol=1.3e-6, atol=4e-5)
 
@@ -97,23 +95,17 @@ def test_bert_block(our_bert, huggingface_bert, hello_world_tokens):
 
 
 def test_mlm_head(our_bert, huggingface_bert, hello_world_tokens):
-    huggingface_bert_core_outputs = huggingface_bert.bert(
-        hello_world_tokens
-    ).last_hidden_state
+    huggingface_bert_core_outputs = huggingface_bert.bert(hello_world_tokens).last_hidden_state
 
     our_mlm_head_out = our_bert.mlm_head(huggingface_bert_core_outputs)
     our_unembed_out = our_bert.unembed(our_mlm_head_out)
-    huggingface_predictions_out = huggingface_bert.cls.predictions(
-        huggingface_bert_core_outputs
-    )
+    huggingface_predictions_out = huggingface_bert.cls.predictions(huggingface_bert_core_outputs)
 
     assert_close(our_unembed_out, huggingface_predictions_out, rtol=1.3e-6, atol=4e-5)
 
 
 def test_unembed(our_bert, huggingface_bert, hello_world_tokens):
-    huggingface_bert_core_outputs = huggingface_bert.bert(
-        hello_world_tokens
-    ).last_hidden_state
+    huggingface_bert_core_outputs = huggingface_bert.bert(hello_world_tokens).last_hidden_state
 
     our_mlm_head_out = our_bert.mlm_head(huggingface_bert_core_outputs)
     huggingface_predictions_out = huggingface_bert.cls.predictions.transform(
@@ -167,9 +159,7 @@ def test_half_precision(dtype):
 def test_predictions(our_bert, huggingface_bert, tokenizer):
     input_ids = tokenizer("The [MASK] sat on the mat", return_tensors="pt")["input_ids"]
 
-    def get_predictions(
-        logits: Float[torch.Tensor, "batch pos d_vocab"], positions: List[int]
-    ):
+    def get_predictions(logits: Float[torch.Tensor, "batch pos d_vocab"], positions: List[int]):
         logits_at_position = logits.squeeze(0)[positions]
         predicted_tokens = F.softmax(logits_at_position, dim=-1).argmax(dim=-1)
         return tokenizer.batch_decode(predicted_tokens)

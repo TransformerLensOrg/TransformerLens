@@ -27,9 +27,7 @@ class HookedTransformerKeyValueCacheEntry:
         device: Union[torch.device, str, None],
         batch_size: int = 1,
     ):
-        n_heads = (
-            cfg.n_key_value_heads if cfg.n_key_value_heads is not None else cfg.n_heads
-        )
+        n_heads = cfg.n_key_value_heads if cfg.n_key_value_heads is not None else cfg.n_heads
         return cls(
             past_keys=torch.empty(
                 (batch_size, 0, n_heads, cfg.d_head), device=device, dtype=cfg.dtype
@@ -106,13 +104,9 @@ class HookedTransformerKeyValueCache:
         for entry in self.entries:
             entry.frozen = False
 
-    def append_attention_mask(
-        self, attention_mask: Int[torch.Tensor, "batch new_tokens"]
-    ):
+    def append_attention_mask(self, attention_mask: Int[torch.Tensor, "batch new_tokens"]):
         attention_mask = attention_mask.to(self.previous_attention_mask.device)
-        updated_attention_mask = torch.cat(
-            [self.previous_attention_mask, attention_mask], dim=-1
-        )
+        updated_attention_mask = torch.cat([self.previous_attention_mask, attention_mask], dim=-1)
         if not self.frozen:
             self.previous_attention_mask = updated_attention_mask
         return updated_attention_mask

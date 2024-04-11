@@ -73,8 +73,6 @@ def test_grouped_query_attention_output_is_correct():
     value_input = torch.rand((1, 5, d_model))
 
     regular_attn_output = regular_attention(query_input, key_input, value_input)
-    grouped_query_attn_output = grouped_query_attention(
-        query_input, key_input, value_input
-    )
+    grouped_query_attn_output = grouped_query_attention(query_input, key_input, value_input)
 
     assert torch.equal(regular_attn_output, grouped_query_attn_output)

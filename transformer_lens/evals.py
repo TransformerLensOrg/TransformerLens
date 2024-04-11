@@ -40,9 +40,7 @@ def make_wiki_data_loader(tokenizer, batch_size=8):
     wiki_data = load_dataset("wikitext", "wikitext-2-v1", split="train")
     print(len(wiki_data))
     dataset = utils.tokenize_and_concatenate(wiki_data, tokenizer)
-    data_loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, drop_last=True
-    )
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return data_loader
 
 
@@ -55,9 +53,7 @@ def make_owt_data_loader(tokenizer, batch_size=8):
     owt_data = load_dataset("stas/openwebtext-10k", split="train")
     print(len(owt_data))
     dataset = utils.tokenize_and_concatenate(owt_data, tokenizer)
-    data_loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, drop_last=True
-    )
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return data_loader
 
 
@@ -71,9 +67,7 @@ def make_pile_data_loader(tokenizer, batch_size=8):
     pile_data = load_dataset("NeelNanda/pile-10k", split="train")
     print(len(pile_data))
     dataset = utils.tokenize_and_concatenate(pile_data, tokenizer)
-    data_loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, drop_last=True
-    )
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return data_loader
 
 
@@ -86,12 +80,8 @@ def make_code_data_loader(tokenizer, batch_size=8):
     """
     code_data = load_dataset("codeparrot/codeparrot-valid-v2-near-dedup", split="train")
     print(len(code_data))
-    dataset = utils.tokenize_and_concatenate(
-        code_data, tokenizer, column_name="content"
-    )
-    data_loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, drop_last=True
-    )
+    dataset = utils.tokenize_and_concatenate(code_data, tokenizer, column_name="content")
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return data_loader
 
 
@@ -146,9 +136,7 @@ def induction_loss(
         repeated_tokens[:, 0] = tokenizer.bos_token_id
     # Run the model, and extract the per token correct log prob
     logits = model(repeated_tokens, return_type="logits")
-    correct_log_probs = utils.lm_cross_entropy_loss(
-        logits, repeated_tokens, per_token=True
-    )
+    correct_log_probs = utils.lm_cross_entropy_loss(logits, repeated_tokens, per_token=True)
     # Take the loss over the second half of the sequence
     return correct_log_probs[:, subseq_len + 1 :].mean()
 
@@ -212,9 +200,7 @@ class IOIDataset(Dataset):
         self.tokenizer = tokenizer
         self.prepend_bos = prepend_bos
 
-        self.templates = (
-            templates if templates is not None else self.get_default_templates()
-        )
+        self.templates = templates if templates is not None else self.get_default_templates()
         self.names = names if names is not None else self.get_default_names()
         self.nouns = nouns if nouns is not None else self.get_default_nouns()
 
@@ -256,9 +242,7 @@ class IOIDataset(Dataset):
         if symmetric:
             sample_2 = template.replace("[A]", names[1])
             sample_2 = sample_2.replace("[B]", names[0])
-            samples.append(
-                {"text": sample_2, "IO": " " + names[1], "S": " " + names[0]}
-            )
+            samples.append({"text": sample_2, "IO": " " + names[1], "S": " " + names[0]})
 
         return samples
 
@@ -282,9 +266,7 @@ class IOIDataset(Dataset):
 
 
 @torch.inference_mode()
-def ioi_eval(
-    model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None, symmetric=False
-):
+def ioi_eval(model, dataset=None, batch_size=8, num_samples=1000, tokenizer=None, symmetric=False):
     """Evaluate the Model on the Indirect Object Identification Task.
 
     Args:
@@ -314,9 +296,7 @@ def ioi_eval(
             "prompt_length": [p.shape[0] for p in prompts],
         }
 
-    data_loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, collate_fn=collate
-    )
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate)
 
     total_correct = 0
     total_logit_diff = 0
