@@ -95,7 +95,7 @@ class HookPoint(nn.Module):
 
         if prepend:
             # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-            _internal_hooks.move_to_end(handle.hook.id, last=False)
+            _internal_hooks.move_to_end(handle.hook.id, last=False) # type: ignore # TODO: this type error could signify a bug
             visible_hooks.insert(0, handle)
 
         else:
