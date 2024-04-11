@@ -32,6 +32,8 @@ quite slow (as we only have CPU actions) so the smaller models like `attn-only-1
 - Unit tests only via `make unit-test`
 - Acceptance tests only via `make acceptance-test`
 - Docstring tests only via `make docstring-test`
+- Notebook tests only via `make notebook-test`
+- Run all test suites mentioned `make test`
 
 ## Formatting
 
@@ -40,6 +42,8 @@ actions.
 
 - Format all files via `make format`
 - Only check the formatting via `make check-format`
+
+Note that `black` line length is set to 100 in `pyproject.toml` (instead of the default 88).
 
 ## Documentation
 
