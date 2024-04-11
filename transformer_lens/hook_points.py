@@ -81,11 +81,13 @@ class HookPoint(nn.Module):
         )  # annotate the `full_hook` with the string representation of the `hook` function
 
         if dir == "fwd":
-            handle = self.register_full_backward_hook(full_hook)
+            pt_handle = self.register_forward_hook(full_hook)
+        elif dir == "bwd":
+            pt_handle = self.register_full_backward_hook(full_hook)
         else:
             raise ValueError(f"Invalid direction {dir}")
 
-        handle = LensHandle(handle, is_permanent, level)
+        handle = LensHandle(pt_handle, is_permanent, level)
 
         if prepend:
             # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
