@@ -220,9 +220,7 @@ def test_no_stop_no_output():
     )
     rand_input = torch.randint(0, 20, (2, 10))
 
-    output, cache = model.run_with_cache(
-        rand_input, stop_at_layer=None, return_type=None
-    )
+    output, cache = model.run_with_cache(rand_input, stop_at_layer=None, return_type=None)
 
     assert output is None
     assert "hook_embed" in cache.keys()

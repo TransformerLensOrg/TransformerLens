@@ -3,10 +3,11 @@
 Utilities for representing a matrix as a product of two matrices, and for efficient calculation of
 eigenvalues, norm and SVD.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, overload
 
 import torch
 from jaxtyping import Float
@@ -40,6 +41,23 @@ class FactoredMatrix:
         self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
         self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
 
+    @overload
+    def __matmul__(
+        self,
+        other: Union[
+            Float[torch.Tensor, "... rdim new_rdim"],
+            "FactoredMatrix",
+        ],
+    ) -> "FactoredMatrix":
+        ...
+
+    @overload
+    def __matmul__(  # type: ignore
+        self,
+        other: Float[torch.Tensor, "rdim"],
+    ) -> Float[torch.Tensor, "... ldim"]:
+        ...
+
     def __matmul__(
         self,
         other: Union[
@@ -64,7 +82,24 @@ class FactoredMatrix:
         elif isinstance(other, FactoredMatrix):
             return (self @ other.A) @ other.B
 
-    def __rmatmul__(
+    @overload
+    def __rmatmul__(  # type: ignore
+        self,
+        other: Union[
+            Float[torch.Tensor, "... new_rdim ldim"],
+            "FactoredMatrix",
+        ],
+    ) -> "FactoredMatrix":
+        ...
+
+    @overload
+    def __rmatmul__(  # type: ignore
+        self,
+        other: Float[torch.Tensor, "ldim"],
+    ) -> Float[torch.Tensor, "... rdim"]:
+        ...
+
+    def __rmatmul__(  # type: ignore
         self,
         other: Union[
             Float[torch.Tensor, "... new_rdim ldim"],
@@ -96,7 +131,7 @@ class FactoredMatrix:
             ), f"Tensor must be a scalar for use with * but was of shape {scalar.shape}. For matrix multiplication, use @ instead."
         return FactoredMatrix(self.A * scalar, self.B)
 
-    def __rmul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:
+    def __rmul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:  # type: ignore
         """
         Right scalar multiplication. For scalar multiplication from the right, we can reuse the __mul__ method.
         """
@@ -183,9 +218,7 @@ class FactoredMatrix:
         elif length == len(self.shape):
             idx = self._convert_to_slice(idx, -1)
             idx = self._convert_to_slice(idx, -2)
-            return FactoredMatrix(
-                self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])]
-            )
+            return FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])])
         else:
             raise ValueError(
                 f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"

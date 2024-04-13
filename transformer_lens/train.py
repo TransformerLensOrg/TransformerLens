@@ -3,16 +3,19 @@
 Utilities for training :class:`transformer_lens.HookedTransformer` models on autoregressive language
 modeling tasks.
 """
+
 from dataclasses import dataclass
 from typing import Optional
 
 import torch
 import torch.optim as optim
 import wandb
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 
-from transformer_lens import HookedTransformer, utils
+from transformer_lens import utils
+from transformer_lens.HookedTransformer import HookedTransformer
 
 
 @dataclass
@@ -81,6 +84,7 @@ def train(
     if config.device is None:
         config.device = utils.get_device()
 
+    optimizer: Optimizer
     if config.optimizer_name in ["Adam", "AdamW"]:
         # Weight decay in Adam is implemented badly, so use AdamW instead (see PyTorch AdamW docs)
         if config.weight_decay is not None:
@@ -98,9 +102,7 @@ def train(
         optimizer = optim.SGD(
             model.parameters(),
             lr=config.lr,
-            weight_decay=config.weight_decay
-            if config.weight_decay is not None
-            else 0.0,
+            weight_decay=(config.weight_decay if config.weight_decay is not None else 0.0),
             momentum=config.momentum,
         )
     else:
@@ -134,9 +136,7 @@ def train(
             samples += tokens.shape[0]
 
             if config.wandb:
-                wandb.log(
-                    {"train_loss": loss.item(), "samples": samples, "epoch": epoch}
-                )
+                wandb.log({"train_loss": loss.item(), "samples": samples, "epoch": epoch})
 
             if config.print_every is not None and step % config.print_every == 0:
                 print(f"Epoch {epoch} Samples {samples} Step {step} Loss {loss.item()}")
