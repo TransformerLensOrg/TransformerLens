@@ -1259,9 +1259,7 @@ def get_pretrained_model_config(
     cfg_dict["n_devices"] = n_devices
     cfg_dict["default_prepend_bos"] = default_prepend_bos
     if hf_cfg is not None:
-        cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get(
-            "load_in_4bit", False
-        )
+        cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
@@ -1713,12 +1711,8 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_K = llama.model.layers[l].self_attn.k_proj.weight
         W_V = llama.model.layers[l].self_attn.v_proj.weight
         W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-        W_K = einops.rearrange(
-            W_K, "(n h) m->n m h", n=n_kv_heads
-        )
-        W_V = einops.rearrange(
-            W_V, "(n h) m->n m h", n=n_kv_heads
-        )
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=n_kv_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=n_kv_heads)
 
         # in case of quantization,
         # parameters should stay as bitsandbytes.nn.modules.Params4bit
@@ -1763,25 +1757,13 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         # in case of quantization,
         # parameters should stay as bitsandbytes.nn.modules.Params4bit
         if not cfg.load_in_4bit:
-            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[
-                l
-            ].mlp.up_proj.weight.T
-            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
-                l
-            ].mlp.gate_proj.weight.T
-            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[
-                l
-            ].mlp.down_proj.weight.T
+            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
+            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight.T
+            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight.T
         else:
-            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[
-                l
-            ].mlp.up_proj.weight
-            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[
-                l
-            ].mlp.gate_proj.weight
-            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[
-                l
-            ].mlp.down_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight
 
         state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(
             cfg.d_mlp, dtype=cfg.dtype, device=cfg.device

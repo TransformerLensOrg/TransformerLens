@@ -1200,8 +1200,7 @@ class HookedTransformer(HookedRootModule):
             quant_method = qc.get("quant_method", "")
             assert not load_in_8bit, "8-bit quantization is not supported"
             assert not (
-                load_in_4bit
-                and (version.parse(torch.__version__) < version.parse("2.1.1"))
+                load_in_4bit and (version.parse(torch.__version__) < version.parse("2.1.1"))
             ), "Quantization is only supported for torch versions >= 2.1.1"
             assert not (
                 load_in_4bit and ("llama" not in model_name.lower())

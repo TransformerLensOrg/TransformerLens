@@ -404,14 +404,10 @@ class AbstractAttention(ABC, nn.Module):
         self.W_K = abstract_attribute()
         self.W_V = abstract_attribute()
         self.W_O = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype
-            )
+            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
         )
 
-        self.b_Q = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K = abstract_attribute()
         self.b_V = abstract_attribute()
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
@@ -1021,35 +1017,19 @@ class Attention(AbstractAttention):
         if cfg.load_in_4bit:
             # 4-bit quantization convention
             nq = int((cfg.d_model * cfg.d_model) / 2)
-            self.W_Q = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_K = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_V = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_O = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
+            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_K = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_V = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
             self.W_K = nn.Parameter(
-                torch.empty(
-                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-                )
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
             )
             self.W_V = nn.Parameter(
-                torch.empty(
-                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-                )
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
             )
-        self.b_K = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
-        self.b_V = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
 
@@ -1322,19 +1302,11 @@ class GatedMLP(nn.Module):
 
         if cfg.load_in_4bit:
             nq = int((cfg.d_model * cfg.d_mlp) / 2)
-            self.W_in = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_gate = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_out = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
+            self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
-            self.W_in = nn.Parameter(
-                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-            )
+            self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
             self.W_gate = nn.Parameter(
                 torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
             )
@@ -1380,9 +1352,7 @@ class GatedMLP(nn.Module):
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         if self.cfg.load_in_4bit:
             pre_act = self.hook_pre(
-                bnb.matmul_4bit(
-                    x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state
-                )
+                bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
             )
         else:
             pre_act = self.hook_pre(
@@ -1396,9 +1366,7 @@ class GatedMLP(nn.Module):
         if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             if self.cfg.load_in_4bit:
                 pre_linear = self.hook_pre_linear(
-                    bnb.matmul_4bit(
-                        x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state
-                    )
+                    bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
                 )
             else:
                 pre_linear = self.hook_pre_linear(
