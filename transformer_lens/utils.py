@@ -957,6 +957,23 @@ def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> to
     return attention_mask
 
 
+def repeat_along_head_dimension(
+    tensor: Float[torch.Tensor, "batch pos d_model"],
+    n_heads: int,
+    clone_tensor=True,
+    # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
+):
+    repeated_tensor = einops.repeat(
+        tensor,
+        "batch pos d_model -> batch pos n_heads d_model",
+        n_heads=n_heads,
+    )
+    if clone_tensor:
+        return repeated_tensor.clone()
+    else:
+        return repeated_tensor
+
+
 def get_nested_attr(obj, attr_str):
     """
     Retrieves a nested attribute from an object based on a dot-separated string.
