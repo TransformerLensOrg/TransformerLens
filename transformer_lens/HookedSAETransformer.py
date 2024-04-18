@@ -5,10 +5,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from jaxtyping import Float
 
-from transformer_lens import HookedTransformer
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.hook_points import HookPoint  # Hooking utilities
 from transformer_lens.HookedSAE import HookedSAE
+from transformer_lens.HookedTransformer import HookedTransformer
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
@@ -97,7 +97,7 @@ class HookedSAETransformer(HookedTransformer):
         if turn_on:
             self.turn_saes_on([act_name])
 
-    def turn_saes_on(self, act_names: Optional[Union[str, List[str], Callable]] = None):
+    def turn_saes_on(self, act_names: Optional[Union[str, List[str]]] = None):
         """
         Turn on the attached SAEs for the given act_name(s)
 
@@ -170,8 +170,8 @@ class HookedSAETransformer(HookedTransformer):
         *model_args,
         act_names: Union[str, List[str]] = [],
         reset_saes_end: bool = True,
-        return_cache_object: bool = True,
-        remove_batch_dim: bool = False,
+        return_cache_object=True,
+        remove_batch_dim=False,
         **kwargs,
     ) -> Tuple[
         Union[
