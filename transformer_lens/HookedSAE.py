@@ -26,9 +26,7 @@ class HookedSAE(HookedRootModule):
         if isinstance(cfg, Dict):
             cfg = HookedSAEConfig(**cfg)
         elif isinstance(cfg, str):
-            raise ValueError(
-                "Please pass in a config dictionary or HookedSAEConfig object."
-            )
+            raise ValueError("Please pass in a config dictionary or HookedSAEConfig object.")
         self.cfg = cfg
 
         self.W_enc = nn.Parameter(
@@ -53,9 +51,7 @@ class HookedSAE(HookedRootModule):
 
         self.to(self.cfg.device)
 
-    def forward(
-        self, input: Float[torch.Tensor, "... d_in"]
-    ) -> Float[torch.Tensor, "... d_in"]:
+    def forward(self, input: Float[torch.Tensor, "... d_in"]) -> Float[torch.Tensor, "... d_in"]:
         """SAE Forward Pass.
 
         Args:
@@ -85,9 +81,7 @@ class HookedSAE(HookedRootModule):
         sae_acts_post = self.hook_sae_acts_post(F.relu(sae_acts_pre))  # [..., d_sae]
         x_reconstruct = self.hook_sae_recons(
             (
-                einops.einsum(
-                    sae_acts_post, self.W_dec, "... d_sae, d_sae d_in -> ... d_in"
-                )
+                einops.einsum(sae_acts_post, self.W_dec, "... d_sae, d_sae d_in -> ... d_in")
                 + self.b_dec
             ).reshape(input.shape)
         )
@@ -98,9 +92,7 @@ class HookedSAE(HookedRootModule):
                 # Otherwise, the output with error term will always equal input, even for causal interventions that affect x_reconstruct
                 # This is in a no_grad context to detach the error, so we can compute SAE feature gradients (eg for attribution patching). See A.3 in https://arxiv.org/pdf/2403.19647.pdf for more detail
                 sae_acts_pre_clean = (
-                    einops.einsum(
-                        x_cent, self.W_enc, "... d_in, d_in d_sae -> ... d_sae"
-                    )
+                    einops.einsum(x_cent, self.W_enc, "... d_in, d_in d_sae -> ... d_sae")
                     + self.b_enc
                 )  # [..., d_sae]
                 sae_acts_post_clean = F.relu(sae_acts_pre_clean)

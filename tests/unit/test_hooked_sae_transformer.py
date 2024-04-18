@@ -64,9 +64,7 @@ def test_model_with_no_saes_matches_original_model(model, original_logits):
         "blocks.0.hook_resid_pre",
     ],
 )
-def test_model_with_saes_does_not_match_original_model(
-    model, act_name, original_logits
-):
+def test_model_with_saes_does_not_match_original_model(model, act_name, original_logits):
     """Verifies that the attached (and turned on) SAEs actually affect the models output logits"""
     assert len(model.acts_to_saes) == 0
     sae_cfg = get_sae_config(model, act_name)

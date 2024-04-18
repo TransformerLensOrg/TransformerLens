@@ -74,9 +74,7 @@ class HookedSAETransformer(HookedTransformer):
         super().__init__(*model_args, **model_kwargs)
         self.acts_to_saes: Dict[str, HookedSAE] = {}
 
-    def attach_sae(
-        self, sae: HookedSAE, turn_on: bool = True, hook_name: Optional[str] = None
-    ):
+    def attach_sae(self, sae: HookedSAE, turn_on: bool = True, hook_name: Optional[str] = None):
         """Attach an SAE to the model.
 
         By default, it will use the hook_name from the SAE's HookedSAEConfig. If you want to use a different hook_name, you can pass it in as an argument.
@@ -94,9 +92,7 @@ class HookedSAETransformer(HookedTransformer):
             )
             return
         if act_name in self.acts_to_saes:
-            logging.warning(
-                f"SAE already attached to {act_name}. This will be replaced."
-            )
+            logging.warning(f"SAE already attached to {act_name}. This will be replaced.")
         self.acts_to_saes[act_name] = sae
         if turn_on:
             self.turn_saes_on([act_name])
@@ -135,9 +131,7 @@ class HookedSAETransformer(HookedTransformer):
 
         for act_name in act_names or self.acts_to_saes.keys():
             if act_name not in self.acts_to_saes:
-                logging.warning(
-                    f"No SAE is attached to {act_name}. There's nothing to turn off."
-                )
+                logging.warning(f"No SAE is attached to {act_name}. There's nothing to turn off.")
             else:
                 set_deep_attr(self, act_name, HookPoint())
 
@@ -259,9 +253,7 @@ class HookedSAETransformer(HookedTransformer):
             Dict[str, bool]: A dictionary of act_name to whether the corresponding SAE is turned on
         """
         return {
-            act_name: (
-                False if isinstance(get_deep_attr(self, act_name), HookPoint) else True
-            )
+            act_name: (False if isinstance(get_deep_attr(self, act_name), HookPoint) else True)
             for act_name in self.acts_to_saes.keys()
         }
 
