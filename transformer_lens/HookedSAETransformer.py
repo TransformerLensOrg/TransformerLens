@@ -1,4 +1,5 @@
 import logging
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -100,14 +101,14 @@ class HookedSAETransformer(HookedTransformer):
         if turn_on:
             self.turn_saes_on([act_name])
 
-    def turn_saes_on(self, act_names: Optional[Union[str, List[str]]] = None):
+    def turn_saes_on(self, act_names: Optional[Union[str, List[str], Callable]] = None):
         """
         Turn on the attached SAEs for the given act_name(s)
 
         Note they will stay on you turn them off
 
         Args:
-            act_names: (Union[str, List[str]]) The act_names for the SAEs to turn on
+            act_names: (Union[str, List[str]]) The act_name(s) for the SAEs to turn on. If None, will turn on all SAEs attached to the model. Defaults to None.
         """
         if isinstance(act_names, str):
             act_names = [act_names]
@@ -145,7 +146,8 @@ class HookedSAETransformer(HookedTransformer):
     def run_with_saes(
         self,
         *model_args,
-        act_names: List[str] = [],
+        act_names: Union[str, List[str]] = [],
+        reset_saes_end: bool = True,
         **model_kwargs,
     ) -> Union[
         None,
@@ -161,21 +163,19 @@ class HookedSAETransformer(HookedTransformer):
 
         Args:
             *model_args: Positional arguments for the model forward pass
-            act_names: (List[str]) The act_names for the SAEs to turn on for this forward pass
+            act_names: (Union[str, List[str]]) The act_names for the SAEs to turn on for this forward pass
+            reset_saes_end (bool): If True, removes all SAEs added during this run are turned off at the end. Default is True.
             **model_kwargs: Keyword arguments for the model forward pass
         """
         self.turn_saes_off()
-        try:
-            self.turn_saes_on(act_names)
-            out = self(*model_args, **model_kwargs)
-        finally:
-            self.turn_saes_off()
-        return out
+        with self.saes(act_names=act_names, reset_saes_end=reset_saes_end):
+            return self(*model_args, **model_kwargs)
 
     def run_with_cache_with_saes(
         self,
         *model_args,
-        act_names: List[str] = [],
+        act_names: Union[str, List[str]] = [],
+        reset_saes_end: bool = True,
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
         **kwargs,
@@ -196,7 +196,8 @@ class HookedSAETransformer(HookedTransformer):
 
         Args:
             *model_args: Positional arguments for the model forward pass
-            act_names: (List[str]) The act_names for the SAEs to turn on for this forward pass
+            act_names: (Union[str, List[str]]) The act_names for the SAEs to turn on for this forward pass
+            reset_saes_end: (bool) Whether to turn off the SAEs corresponding to act_names at the end of the forward pass (default: True)
             return_cache_object: (bool) if True, this will return an ActivationCache object, with a bunch of
                 useful HookedTransformer specific methods, otherwise it will return a dictionary of
                 activations as in HookedRootModule.
@@ -204,22 +205,19 @@ class HookedSAETransformer(HookedTransformer):
             **kwargs: Keyword arguments for the model forward pass
         """
         self.turn_saes_off()
-        try:
-            self.turn_saes_on(act_names)
-            out = self.run_with_cache(
+        with self.saes(act_names=act_names, reset_saes_end=reset_saes_end):
+            return self.run_with_cache(
                 *model_args,
                 return_cache_object=return_cache_object,
                 remove_batch_dim=remove_batch_dim,
                 **kwargs,
             )
-        finally:
-            self.turn_saes_off()
-        return out
 
     def run_with_hooks_with_saes(
         self,
         *model_args,
-        act_names: List[str] = [],
+        act_names: Union[str, List[str]] = [],
+        reset_saes_end: bool = True,
         fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         reset_hooks_end=True,
@@ -234,7 +232,8 @@ class HookedSAETransformer(HookedTransformer):
 
         ARgs:
             *model_args: Positional arguments for the model forward pass
-            act_names: (List[str]) The act_names for the SAEs to turn on for this forward pass
+            act_names: (Union[str, List[str]]) The act_names for the SAEs to turn on for this forward pass
+            reset_saes_end: (bool) Whether to turn off the SAEs corresponding to act_names at the end of the forward pass (default: True)
             fwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of forward hooks to apply
             bwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of backward hooks to apply
             reset_hooks_end: (bool) Whether to reset the hooks at the end of the forward pass (default: True)
@@ -242,9 +241,8 @@ class HookedSAETransformer(HookedTransformer):
             **model_kwargs: Keyword arguments for the model forward pass
         """
         self.turn_saes_off()
-        try:
-            self.turn_saes_on(act_names)
-            out = self.run_with_hooks(
+        with self.saes(act_names=act_names, reset_saes_end=reset_saes_end):
+            return self.run_with_hooks(
                 *model_args,
                 fwd_hooks=fwd_hooks,
                 bwd_hooks=bwd_hooks,
@@ -252,9 +250,6 @@ class HookedSAETransformer(HookedTransformer):
                 clear_contexts=clear_contexts,
                 **model_kwargs,
             )
-        finally:
-            self.turn_saes_off()
-        return out
 
     def get_saes_status(self):
         """
@@ -269,3 +264,38 @@ class HookedSAETransformer(HookedTransformer):
             )
             for act_name in self.acts_to_saes.keys()
         }
+
+    def remove_all_saes(self):
+        """
+        Turns off and removes all SAEs attached to the model
+        """
+        self.turn_saes_off()
+        self.acts_to_saes = {}
+
+    @contextmanager
+    def saes(
+        self,
+        act_names: Union[str, List[str]] = [],
+        reset_saes_end: bool = True,
+    ):
+        """
+        A context manager for adding temporary SAEs to the model.
+        See HookedTransformer.hooks for a similar context manager for hooks.
+
+        Args:
+            act_names: hook point names where SAEs should be spliced.
+            reset_saes_end (bool): If True, removes all SAEs added by this context manager when the context manager exits.
+
+        Example:
+
+        .. code-block:: python
+
+            with model.saes(act_names=["blocks.10.hook_resid_pre"]):
+                spliced_loss = model(text, return_type="loss")
+        """
+        try:
+            self.turn_saes_on(act_names)
+            yield self
+        finally:
+            if reset_saes_end:
+                self.turn_saes_off(act_names)

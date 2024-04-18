@@ -27,8 +27,7 @@ class HookedSAE(HookedRootModule):
             cfg = HookedSAEConfig(**cfg)
         elif isinstance(cfg, str):
             raise ValueError(
-                "Please pass in a config dictionary or HookedSAEConfig object. If you want to load a "
-                "pretrained SAE, use HookedSAE.from_pretrained() instead."
+                "Please pass in a config dictionary or HookedSAEConfig object."
             )
         self.cfg = cfg
 
@@ -97,7 +96,7 @@ class HookedSAE(HookedRootModule):
             with torch.no_grad():
                 # Recompute everything without hooks to get true error term
                 # Otherwise, the output with error term will always equal input, even for causal interventions that affect x_reconstruct
-                # This is in a no_grad context to detach the error, so we can compute SAE feature gradients (eg with attribution patching). See A.3 in https://arxiv.org/pdf/2403.19647.pdf for more detail
+                # This is in a no_grad context to detach the error, so we can compute SAE feature gradients (eg for attribution patching). See A.3 in https://arxiv.org/pdf/2403.19647.pdf for more detail
                 sae_acts_pre_clean = (
                     einops.einsum(
                         x_cent, self.W_enc, "... d_in, d_in d_sae -> ... d_sae"
