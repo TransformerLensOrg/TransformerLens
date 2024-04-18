@@ -52,7 +52,7 @@ class FactoredMatrix:
         ...
 
     @overload
-    def __matmul__(
+    def __matmul__(  # type: ignore
         self,
         other: Float[torch.Tensor, "rdim"],
     ) -> Float[torch.Tensor, "... ldim"]:
@@ -83,7 +83,7 @@ class FactoredMatrix:
             return (self @ other.A) @ other.B
 
     @overload
-    def __rmatmul__(
+    def __rmatmul__(  # type: ignore
         self,
         other: Union[
             Float[torch.Tensor, "... new_rdim ldim"],
@@ -93,13 +93,13 @@ class FactoredMatrix:
         ...
 
     @overload
-    def __rmatmul__(
+    def __rmatmul__(  # type: ignore
         self,
         other: Float[torch.Tensor, "ldim"],
     ) -> Float[torch.Tensor, "... rdim"]:
         ...
 
-    def __rmatmul__(
+    def __rmatmul__(  # type: ignore
         self,
         other: Union[
             Float[torch.Tensor, "... new_rdim ldim"],
@@ -131,7 +131,7 @@ class FactoredMatrix:
             ), f"Tensor must be a scalar for use with * but was of shape {scalar.shape}. For matrix multiplication, use @ instead."
         return FactoredMatrix(self.A * scalar, self.B)
 
-    def __rmul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:
+    def __rmul__(self, scalar: Union[int, float, torch.Tensor]) -> FactoredMatrix:  # type: ignore
         """
         Right scalar multiplication. For scalar multiplication from the right, we can reuse the __mul__ method.
         """
@@ -218,9 +218,7 @@ class FactoredMatrix:
         elif length == len(self.shape):
             idx = self._convert_to_slice(idx, -1)
             idx = self._convert_to_slice(idx, -2)
-            return FactoredMatrix(
-                self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])]
-            )
+            return FactoredMatrix(self.A[idx[:-1]], self.B[idx[:-2] + (slice(None), idx[-1])])
         else:
             raise ValueError(
                 f"{idx} is too long an index for a FactoredMatrix with shape {self.shape}"

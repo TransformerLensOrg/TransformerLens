@@ -30,17 +30,13 @@ class TokenizerOnlyHookedTransformer(HookedTransformer):
         elif self.cfg.tokenizer_name is not None:
             # If we have a tokenizer name, we can load it from HuggingFace
             self.set_tokenizer(
-                AutoTokenizer.from_pretrained(
-                    self.cfg.tokenizer_name, add_bos_token=True
-                ),
+                AutoTokenizer.from_pretrained(self.cfg.tokenizer_name, add_bos_token=True),
                 default_padding_side=default_padding_side,
             )
         else:
             # If no tokenizer name is provided, we assume we're training on an algorithmic task and will pass in tokens
             # directly. In this case, we don't need a tokenizer.
-            assert (
-                self.cfg.d_vocab != -1
-            ), "Must provide a tokenizer if d_vocab is not provided"
+            assert self.cfg.d_vocab != -1, "Must provide a tokenizer if d_vocab is not provided"
             self.tokenizer = None
             if default_padding_side != "right":
                 logging.warning(
@@ -101,9 +97,7 @@ class TestTokenizer:
 
     # helper functions
     def get_num_tokens_in_prompt(self, model, prompt, intended_prepend_bos):
-        tokenizer = AutoTokenizer.from_pretrained(
-            model.tokenizer.name_or_path, add_bos_token=False
-        )
+        tokenizer = AutoTokenizer.from_pretrained(model.tokenizer.name_or_path, add_bos_token=False)
         tokens = tokenizer(
             prompt,
         )["input_ids"]
@@ -126,9 +120,7 @@ class TestTokenizer:
         assert len(str_tokens) == tokens.shape[1] == expected_num_tokens
 
     def check_prompt(self, model, intended_prepend_bos, overriding_prepend_bos=None):
-        str_tokens = model.to_str_tokens(
-            self.prompt, prepend_bos=overriding_prepend_bos
-        )
+        str_tokens = model.to_str_tokens(self.prompt, prepend_bos=overriding_prepend_bos)
         tokens = model.to_tokens(self.prompt, prepend_bos=overriding_prepend_bos)
 
         self.check_first_token(model, str_tokens, tokens, intended_prepend_bos)
@@ -164,9 +156,7 @@ class TestTokenizer:
 
         if model.tokenizer.pad_token_id != model.tokenizer.bos_token_id:
             if intended_prepend_bos:
-                assert (tokens == model.tokenizer.bos_token_id).sum() == tokens.shape[
-                    0
-                ], tokens
+                assert (tokens == model.tokenizer.bos_token_id).sum() == tokens.shape[0], tokens
             else:
                 assert (tokens == model.tokenizer.bos_token_id).sum() == 0, tokens
 
@@ -220,9 +210,7 @@ class TestTokenizer:
 
     @pytest.mark.parametrize("intended_prepend_bos", [True, False])
     @pytest.mark.parametrize("intended_padding_side", ["left", "right"])
-    def test_changing_defaults(
-        self, model, intended_prepend_bos, intended_padding_side
-    ):
+    def test_changing_defaults(self, model, intended_prepend_bos, intended_padding_side):
         model.tokenizer.padding_side = intended_padding_side
         model.cfg.default_prepend_bos = intended_prepend_bos
 
@@ -231,9 +219,7 @@ class TestTokenizer:
 
     @pytest.mark.parametrize("intended_prepend_bos", [True, False])
     @pytest.mark.parametrize("intended_padding_side", ["left", "right"])
-    def test_overriding_defaults(
-        self, model, intended_prepend_bos, intended_padding_side
-    ):
+    def test_overriding_defaults(self, model, intended_prepend_bos, intended_padding_side):
         self.check_prompt(model, intended_prepend_bos, intended_prepend_bos)
         self.check_prompts(
             model,
