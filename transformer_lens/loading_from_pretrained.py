@@ -120,7 +120,11 @@ OFFICIAL_MODEL_NAMES = [
     "CodeLlama-7b-hf",
     "CodeLlama-7b-Python-hf",
     "CodeLlama-7b-Instruct-hf",
-    # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
+    # TODO Llama-2-70b-hf (and Llama 3!) requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
+    "meta-llama/Meta-Llama-3-8B",
+    "meta-llama/Meta-Llama-3-8B-Instruct",
+    "meta-llama/Meta-Llama-3-70B",
+    "meta-llama/Meta-Llama-3-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
     "roneneldan/TinyStories-1M",
@@ -600,7 +604,7 @@ NON_HF_HOSTED_MODEL_NAMES = [
     "llama-30b-hf",
     "llama-65b-hf",
 ]
-"""Official model names for models that not hosted on HuggingFace."""
+"""Official model names for models not hosted on HuggingFace."""
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
 DEFAULT_MODEL_ALIASES = [
@@ -654,7 +658,10 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # In case the user passed in an alias
     official_model_name = get_official_model_name(model_name)
     # Load HuggingFace model config
-    if "llama" in official_model_name.lower():
+    if (
+        "llama" in official_model_name.lower()
+        and "llama-3" not in official_model_name.lower()
+    ):
         architecture = "LlamaForCausalLM"
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
