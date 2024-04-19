@@ -398,14 +398,19 @@ class AbstractAttention(ABC, nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
 
-        self.W_Q = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        if self.cfg.load_in_4bit:
+            nq = int((cfg.d_model * cfg.d_model) / 2)
+            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        else:
+            self.W_Q = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+            )
+            self.W_O = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
+            )
         self.W_K = abstract_attribute()
         self.W_V = abstract_attribute()
-        self.W_O = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
-        )
 
         self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K = abstract_attribute()
@@ -575,7 +580,6 @@ class AbstractAttention(ABC, nn.Module):
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
                 # call bitsandbytes method to dequantize and multiply
-                assert isinstance(self.W_O, Params4bit)  # keep mypy happy
                 out = bnb.matmul_4bit(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
                     self.W_O.t(),
@@ -600,7 +604,6 @@ class AbstractAttention(ABC, nn.Module):
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
-            assert isinstance(self.W_O, Params4bit)  # keep mypy happy
             if self.cfg.load_in_4bit:
                 result = self.hook_result(
                     bnb.matmul_4bit(
@@ -651,7 +654,6 @@ class AbstractAttention(ABC, nn.Module):
             qkv_einops_string = "batch pos d_model"
 
         if self.cfg.load_in_4bit:
-            assert isinstance(self.W_Q, Params4bit)  # keep mypy happy
             q = self.hook_q(
                 # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
