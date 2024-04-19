@@ -575,6 +575,7 @@ class AbstractAttention(ABC, nn.Module):
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
                 # call bitsandbytes method to dequantize and multiply
+                assert isinstance(self.W_O, Params4bit)  # keep mypy happy
                 out = bnb.matmul_4bit(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
                     self.W_O.t(),
@@ -599,6 +600,7 @@ class AbstractAttention(ABC, nn.Module):
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
+            assert isinstance(self.W_O, Params4bit)  # keep mypy happy
             if self.cfg.load_in_4bit:
                 result = self.hook_result(
                     bnb.matmul_4bit(
@@ -649,6 +651,7 @@ class AbstractAttention(ABC, nn.Module):
             qkv_einops_string = "batch pos d_model"
 
         if self.cfg.load_in_4bit:
+            assert isinstance(self.W_Q, Params4bit)  # keep mypy happy
             q = self.hook_q(
                 # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
@@ -1301,7 +1304,7 @@ class GatedMLP(nn.Module):
         assert self.cfg.d_mlp is not None  # keep mypy happy
 
         if cfg.load_in_4bit:
-            nq = int((cfg.d_model * cfg.d_mlp) / 2)
+            nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
             self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
