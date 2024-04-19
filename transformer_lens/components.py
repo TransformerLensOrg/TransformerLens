@@ -398,14 +398,19 @@ class AbstractAttention(ABC, nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
 
-        self.W_Q = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        if self.cfg.load_in_4bit:
+            nq = int((cfg.d_model * cfg.d_model) / 2)
+            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        else:
+            self.W_Q = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+            )
+            self.W_O = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
+            )
         self.W_K = abstract_attribute()
         self.W_V = abstract_attribute()
-        self.W_O = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
-        )
 
         self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K = abstract_attribute()
@@ -1017,10 +1022,8 @@ class Attention(AbstractAttention):
         if cfg.load_in_4bit:
             # 4-bit quantization convention
             nq = int((cfg.d_model * cfg.d_model) / 2)
-            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_K = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_V = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
-            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
             self.W_K = nn.Parameter(
                 torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
@@ -1301,7 +1304,7 @@ class GatedMLP(nn.Module):
         assert self.cfg.d_mlp is not None  # keep mypy happy
 
         if cfg.load_in_4bit:
-            nq = int((cfg.d_model * cfg.d_mlp) / 2)
+            nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
             self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
