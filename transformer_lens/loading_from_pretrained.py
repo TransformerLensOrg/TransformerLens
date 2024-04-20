@@ -658,16 +658,12 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # In case the user passed in an alias
     official_model_name = get_official_model_name(model_name)
     # Load HuggingFace model config
-    if (
-        "llama" in official_model_name.lower()
-        and "llama-3" not in official_model_name.lower()
-    ):
-        architecture = "LlamaForCausalLM"
-    elif "gemma" in official_model_name.lower():
+    if "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
         hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
         architecture = hf_config.architectures[0]
+
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
