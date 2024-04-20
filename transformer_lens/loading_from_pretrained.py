@@ -120,7 +120,6 @@ OFFICIAL_MODEL_NAMES = [
     "CodeLlama-7b-hf",
     "CodeLlama-7b-Python-hf",
     "CodeLlama-7b-Instruct-hf",
-    # TODO Llama-2-70b-hf (and Llama 3!) requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
     "meta-llama/Meta-Llama-3-8B",
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "meta-llama/Meta-Llama-3-70B",
