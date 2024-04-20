@@ -657,7 +657,9 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # In case the user passed in an alias
     official_model_name = get_official_model_name(model_name)
     # Load HuggingFace model config
-    if "gemma" in official_model_name.lower():
+    if official_model_name.lower() in NON_HF_HOSTED_MODEL_NAMES:
+        architecture = "LlamaForCausalLM"
+    elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
         hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
