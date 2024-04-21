@@ -50,6 +50,7 @@ class HookedSAE(HookedRootModule):
         self.hook_sae_output = HookPoint()
 
         self.to(self.cfg.device)
+        self.setup()
 
     def forward(self, input: Float[torch.Tensor, "... d_in"]) -> Float[torch.Tensor, "... d_in"]:
         """SAE Forward Pass.
