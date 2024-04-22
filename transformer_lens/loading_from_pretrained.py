@@ -5,6 +5,7 @@ This module contains functions for loading pretrained models from the Hugging Fa
 
 import dataclasses
 import logging
+import os
 import re
 from typing import Dict, Optional, Union, cast
 
@@ -659,7 +660,12 @@ def convert_hf_model_config(model_name: str, **kwargs):
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
-        hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
+        huggingface_token = os.environ.get('HF_TOKEN', None)
+        hf_config = AutoConfig.from_pretrained(
+            official_model_name,
+            token=huggingface_token,
+            **kwargs,
+        )
         architecture = hf_config.architectures[0]
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
@@ -1378,11 +1384,13 @@ def get_pretrained_state_dict(
         return state_dict
     else:
         if cfg.from_checkpoint:
+            huggingface_token = os.environ.get('HF_TOKEN', None)
             if official_model_name.startswith("stanford-crfm"):
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
                     torch_dtype=dtype,
+                    token=huggingface_token,
                     **kwargs,
                 )
             elif official_model_name.startswith("EleutherAI/pythia"):
@@ -1390,20 +1398,28 @@ def get_pretrained_state_dict(
                     official_model_name,
                     revision=f"step{cfg.checkpoint_value}",
                     torch_dtype=dtype,
+                    token=huggingface_token,
                     **kwargs,
                 )
             else:
                 raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
+            huggingface_token = os.environ.get('HF_TOKEN', None)
             if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
                 raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
-                    official_model_name, torch_dtype=dtype, **kwargs
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token,
+                    **kwargs,
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name, torch_dtype=dtype, **kwargs
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token,
+                    **kwargs,
                 )
 
             # Load model weights, and fold in layer norm weights
