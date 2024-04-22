@@ -1121,7 +1121,7 @@ def get_tokenizer_with_bos(tokenizer):
     if add_bos_token:
         tokenizer_with_bos = tokenizer
     else:
-        huggingface_token = os.environ.get('HF_TOKEN', None)
+        huggingface_token = os.environ.get("HF_TOKEN", None)
         tokenizer_with_bos = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path,
             add_bos_token=True,

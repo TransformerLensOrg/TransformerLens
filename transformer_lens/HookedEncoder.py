@@ -53,7 +53,7 @@ class HookedEncoder(HookedRootModule):
         if tokenizer is not None:
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
-            huggingface_token = os.environ.get('HF_TOKEN', None)
+            huggingface_token = os.environ.get("HF_TOKEN", None)
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.cfg.tokenizer_name,
                 token=huggingface_token,
