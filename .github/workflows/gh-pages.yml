@@ -33,9 +33,7 @@ jobs:
       - name: Install dependencies
         run: poetry install --with docs
       - name: Build Docs
-        run: poetry run build-docs
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run:  HF_TOKEN=${{ secrets.HF_TOKEN }} poetry run build-docs
       - name: Upload Docs Artifact
         uses: actions/upload-artifact@v3
         with:
