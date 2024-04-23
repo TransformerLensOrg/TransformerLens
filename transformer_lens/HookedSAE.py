@@ -19,6 +19,8 @@ class HookedSAE(HookedRootModule):
     Implements a standard SAE with a TransformerLens hooks for SAE activations
 
     Designed for inference / analysis, not training. For training, see Joseph Bloom's SAELens (https://github.com/jbloomAus/SAELens)
+
+    Note that HookedSAETransformer is fairly modular, and doesn't make strong assumptions about the architecture of the SAEs that get attached. We provide HookedSAE as a useful default class, but if you want to eg experiment with other SAE architectures, you can just copy the HookedSAE code into a notebook, edit it, and add instances of the new SAE class to a HookedSAETransformer (e.g. with HookedSAETransformer.add_sae(sae))
     """
 
     def __init__(self, cfg: Union[HookedSAEConfig, Dict]):
@@ -50,6 +52,7 @@ class HookedSAE(HookedRootModule):
         self.hook_sae_output = HookPoint()
 
         self.to(self.cfg.device)
+        self.setup()
 
     def forward(self, input: Float[torch.Tensor, "... d_in"]) -> Float[torch.Tensor, "... d_in"]:
         """SAE Forward Pass.

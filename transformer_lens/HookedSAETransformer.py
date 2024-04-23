@@ -38,7 +38,7 @@ def get_deep_attr(obj: Any, path: str):
 
 def set_deep_attr(obj: Any, path: str, value: Any):
     """Helper function to change the value of a nested attribute from a object.
-    In practice used to swap HookedTransformer HookPoints (eg model.blocks[0].attn.hook_z) with HookedSAEs
+    In practice used to swap HookedTransformer HookPoints (eg model.blocks[0].attn.hook_z) with HookedSAEs and vice versa
 
     Args:
         obj: Any object. In practice, this is a HookedTransformer (or subclass)
@@ -62,7 +62,7 @@ class HookedSAETransformer(HookedTransformer):
         *model_args,
         **model_kwargs,
     ):
-        """Model initialization. Just HookedTransformer init, but adds a dictionary to attach SAEs.
+        """Model initialization. Just HookedTransformer init, but adds a dictionary to keep track of attached SAEs.
 
         Note that if you want to load the model from pretrained weights, you should use
         :meth:`from_pretrained` instead.
@@ -74,73 +74,82 @@ class HookedSAETransformer(HookedTransformer):
         super().__init__(*model_args, **model_kwargs)
         self.acts_to_saes: Dict[str, HookedSAE] = {}
 
-    def attach_sae(self, sae: HookedSAE, turn_on: bool = True, hook_name: Optional[str] = None):
-        """Attach an SAE to the model.
+    def add_sae(self, sae: HookedSAE):
+        """Attaches an SAE to the model
 
-        By default, it will use the hook_name from the SAE's HookedSAEConfig. If you want to use a different hook_name, you can pass it in as an argument.
-        By default, the SAE will be turned on. If you want to attach the SAE without turning it on, you can pass in turn_on=False.
+        WARNING: This sae will be permanantly attached until you remove it with reset_saes. This function will also overwrite any existing SAE attached to the same hook point.
 
         Args:
-            sae: (HookedAutoEncoder) SAE that you want to attach
-            turn_on: if true, turn on the SAE (default: True)
-            hook_name: (Optional[str]) The hook name to attach the SAE to (default: None)
+            sae: HookedSAE. The SAE to attach to the model
+            is_permanent: bool. If True, the SAE will not be removed by reset_saes_end. Default is True.
         """
-        act_name = hook_name or sae.cfg.hook_name
+        act_name = sae.cfg.hook_name
         if (act_name not in self.acts_to_saes) and (act_name not in self.hook_dict):
             logging.warning(
                 f"No hook found for {act_name}. Skipping. Check model.hook_dict for available hooks."
             )
             return
-        if act_name in self.acts_to_saes:
-            logging.warning(f"SAE already attached to {act_name}. This will be replaced.")
+
         self.acts_to_saes[act_name] = sae
-        if turn_on:
-            self.turn_saes_on([act_name])
-
-    def turn_saes_on(self, act_names: Optional[Union[str, List[str]]] = None):
-        """
-        Turn on the attached SAEs for the given act_name(s)
-
-        Note they will stay on you turn them off
-
-        Args:
-            act_names: (Union[str, List[str]]) The act_name(s) for the SAEs to turn on. If None, will turn on all SAEs attached to the model. Defaults to None.
-        """
-        if isinstance(act_names, str):
-            act_names = [act_names]
-
-        for act_name in act_names or self.acts_to_saes.keys():
-            if act_name not in self.acts_to_saes:
-                logging.warning(f"No SAE is attached to {act_name}. Skipping.")
-            else:
-                set_deep_attr(self, act_name, self.acts_to_saes[act_name])
-
+        set_deep_attr(self, act_name, sae)
         self.setup()
 
-    def turn_saes_off(self, act_names: Optional[Union[str, List[str]]] = None):
-        """
-        Turns off the SAEs for the given act_name(s)
+    def _reset_sae(self, act_name: str, prev_sae: Optional[HookedSAE] = None):
+        """Resets an SAE that was attached to the model
 
-        If no act_names are given, will turn off all SAEs
+        By default will remove the SAE from that hook_point.
+        If prev_sae is provided, will replace the current SAE with the provided one.
 
         Args:
-            act_names: (Optional[Union[str, List[str]]]) The act_names for the SAEs to turn off. Defaults to None.
+            act_name: str. The hook_name of the SAE to reset
+            prev_sae: Optional[HookedSAE]. The SAE to replace the current one with. If None, will just remove the SAE from this hook point. Defaults to None
+        """
+        if act_name not in self.acts_to_saes:
+            logging.warning(f"No SAE is attached to {act_name}. There's nothing to reset.")
+            return
+
+        if prev_sae:
+            set_deep_attr(self, act_name, prev_sae)
+            self.acts_to_saes[act_name] = prev_sae
+        else:
+            set_deep_attr(self, act_name, HookPoint())
+            del self.acts_to_saes[act_name]
+
+    def reset_saes(
+        self,
+        act_names: Optional[Union[str, List[str]]] = None,
+        prev_saes: Optional[List[Union[HookedSAE, None]]] = None,
+    ):
+        """Reset the SAEs attached to the model
+
+        If act_names are provided will just reset SAEs attached to those hooks. Otherwise will reset all SAEs attached to the model.
+        Optionally can provide a list of previous SAEs to reset to. By default, will just remove the SAEs.
+
+        Args:
+            act_names (Optional[Union[str, List[str]]): The act_names of the SAEs to reset. If None, will reset all SAEs attached to the model. Defaults to None.
+            prev_saes (Optional[List[Union[HookedSAE, None]]]): List of SAEs to replace the current ones with. If None, will just remove the SAEs. Defaults to None.
         """
         if isinstance(act_names, str):
             act_names = [act_names]
+        elif act_names is None:
+            act_names = list(self.acts_to_saes.keys())
 
-        for act_name in act_names or self.acts_to_saes.keys():
-            if act_name not in self.acts_to_saes:
-                logging.warning(f"No SAE is attached to {act_name}. There's nothing to turn off.")
-            else:
-                set_deep_attr(self, act_name, HookPoint())
+        if prev_saes:
+            assert len(act_names) == len(
+                prev_saes
+            ), "act_names and prev_saes must have the same length"
+        else:
+            prev_saes = [None] * len(act_names)
+
+        for act_name, prev_sae in zip(act_names, prev_saes):
+            self._reset_sae(act_name, prev_sae)
 
         self.setup()
 
     def run_with_saes(
         self,
         *model_args,
-        act_names: Union[str, List[str]] = [],
+        saes: Union[HookedSAE, List[HookedSAE]] = [],
         reset_saes_end: bool = True,
         **model_kwargs,
     ) -> Union[
@@ -151,24 +160,21 @@ class HookedSAETransformer(HookedTransformer):
     ]:
         """Wrapper around HookedTransformer forward pass.
 
-        Runs the model with the SAEs for given act_names turned on.
-        Note this will turn off all other SAEs that are not in act_names before running
-        After running, it will turn off all SAEs
+        Runs the model with the given SAEs attached for one forward pass, then removes them. By default, will reset all SAEs to original state after.
 
         Args:
             *model_args: Positional arguments for the model forward pass
-            act_names: (Union[str, List[str]]) The act_names for the SAEs to turn on for this forward pass
+            saes: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
             reset_saes_end (bool): If True, removes all SAEs added during this run are turned off at the end. Default is True.
             **model_kwargs: Keyword arguments for the model forward pass
         """
-        self.turn_saes_off()
-        with self.saes(act_names=act_names, reset_saes_end=reset_saes_end):
+        with self.saes(saes=saes, reset_saes_end=reset_saes_end):
             return self(*model_args, **model_kwargs)
 
     def run_with_cache_with_saes(
         self,
         *model_args,
-        act_names: Union[str, List[str]] = [],
+        saes: Union[HookedSAE, List[HookedSAE]] = [],
         reset_saes_end: bool = True,
         return_cache_object=True,
         remove_batch_dim=False,
@@ -184,13 +190,12 @@ class HookedSAETransformer(HookedTransformer):
     ]:
         """Wrapper around 'run_with_cache' in HookedTransformer.
 
-        Turns on the SAEs for the given act_names before running the model with cache and then turns them off after
-        Note this will turn off all other SAEs that are not in act_names before running
-        After running, it will turn off all SAEs
+        Turns on the SAEs for the given act_names before running the model with cache and then turns them off after.
+        By default, will reset all SAEs to original state after.
 
         Args:
             *model_args: Positional arguments for the model forward pass
-            act_names: (Union[str, List[str]]) The act_names for the SAEs to turn on for this forward pass
+            saes: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
             reset_saes_end: (bool) Whether to turn off the SAEs corresponding to act_names at the end of the forward pass (default: True)
             return_cache_object: (bool) if True, this will return an ActivationCache object, with a bunch of
                 useful HookedTransformer specific methods, otherwise it will return a dictionary of
@@ -198,8 +203,7 @@ class HookedSAETransformer(HookedTransformer):
             remove_batch_dim: (bool) Whether to remove the batch dimension (only works for batch_size==1). Defaults to False.
             **kwargs: Keyword arguments for the model forward pass
         """
-        self.turn_saes_off()
-        with self.saes(act_names=act_names, reset_saes_end=reset_saes_end):
+        with self.saes(saes=saes, reset_saes_end=reset_saes_end):
             return self.run_with_cache(
                 *model_args,
                 return_cache_object=return_cache_object,
@@ -210,7 +214,7 @@ class HookedSAETransformer(HookedTransformer):
     def run_with_hooks_with_saes(
         self,
         *model_args,
-        act_names: Union[str, List[str]] = [],
+        saes: Union[HookedSAE, List[HookedSAE]] = [],
         reset_saes_end: bool = True,
         fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
         bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],
@@ -221,12 +225,11 @@ class HookedSAETransformer(HookedTransformer):
         """Wrapper around 'run_with_hooks' in HookedTransformer.
 
         Turns on the SAEs for the given act_names before running the model with hooks and then turns them off after
-        Note this will turn off all other SAEs that are not in act_names before running
-        After running, it will turn off all SAEs
+        By default, will reset all SAEs to original state after.
 
-        ARgs:
+        Args:
             *model_args: Positional arguments for the model forward pass
-            act_names: (Union[str, List[str]]) The act_names for the SAEs to turn on for this forward pass
+            act_names: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
             reset_saes_end: (bool) Whether to turn off the SAEs corresponding to act_names at the end of the forward pass (default: True)
             fwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of forward hooks to apply
             bwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of backward hooks to apply
@@ -234,8 +237,7 @@ class HookedSAETransformer(HookedTransformer):
             clear_contexts: (bool) Whether to clear the contexts at the end of the forward pass (default: False)
             **model_kwargs: Keyword arguments for the model forward pass
         """
-        self.turn_saes_off()
-        with self.saes(act_names=act_names, reset_saes_end=reset_saes_end):
+        with self.saes(saes=saes, reset_saes_end=reset_saes_end):
             return self.run_with_hooks(
                 *model_args,
                 fwd_hooks=fwd_hooks,
@@ -245,29 +247,10 @@ class HookedSAETransformer(HookedTransformer):
                 **model_kwargs,
             )
 
-    def get_saes_status(self):
-        """
-        Helper function to check which SAEs attached to the model are currently turned on / off
-
-        Returns:
-            Dict[str, bool]: A dictionary of act_name to whether the corresponding SAE is turned on
-        """
-        return {
-            act_name: (False if isinstance(get_deep_attr(self, act_name), HookPoint) else True)
-            for act_name in self.acts_to_saes.keys()
-        }
-
-    def remove_all_saes(self):
-        """
-        Turns off and removes all SAEs attached to the model
-        """
-        self.turn_saes_off()
-        self.acts_to_saes = {}
-
     @contextmanager
     def saes(
         self,
-        act_names: Union[str, List[str]] = [],
+        saes: Union[HookedSAE, List[HookedSAE]] = [],
         reset_saes_end: bool = True,
     ):
         """
@@ -275,19 +258,26 @@ class HookedSAETransformer(HookedTransformer):
         See HookedTransformer.hooks for a similar context manager for hooks.
 
         Args:
-            act_names: hook point names where SAEs should be spliced.
+            saes Union[HookedSAE, List[HookedSAE]]: SAEs to be attached.
             reset_saes_end (bool): If True, removes all SAEs added by this context manager when the context manager exits.
 
         Example:
-
-        .. code-block:: python
-
-            with model.saes(act_names=["blocks.10.hook_resid_pre"]):
-                spliced_loss = model(text, return_type="loss")
+        ```python
+        hooked_saes = [HookedSAE(...), HookedSAE(...)]
+        with model.saes(saes=hooked_saes):
+            spliced_loss = model(text, return_type="loss")
+        ```
         """
+        act_names_to_reset = []
+        prev_saes = []
+        if isinstance(saes, HookedSAE):
+            saes = [saes]
         try:
-            self.turn_saes_on(act_names)
+            for sae in saes:
+                act_names_to_reset.append(sae.cfg.hook_name)
+                prev_saes.append(self.acts_to_saes.get(sae.cfg.hook_name, None))
+                self.add_sae(sae)
             yield self
         finally:
             if reset_saes_end:
-                self.turn_saes_off(act_names)
+                self.reset_saes(act_names_to_reset, prev_saes)
