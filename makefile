@@ -18,7 +18,14 @@ docstring-test:
 	poetry run pytest transformer_lens/
 
 notebook-test:
-	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/ 
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Main_Demo.ipynb 
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Exploratory_Analysis_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/BERT.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Grokking_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Head_Detector_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/No_Position_Experiment.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Othello_GPT.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Activation_Patching_in_TL_Demo.ipynb
 
 test:
 	make unit-test
