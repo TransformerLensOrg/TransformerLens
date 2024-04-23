@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: poetry install --with docs
       - name: Build Docs
-        run: HF_TOKEN="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" poetry run build-docs
+        run: echo "Hello $HF_TOKEN"; HF_TOKEN="$HF_TOKEN" poetry run build-docs
         env:
           HF_TOKEN: "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"
       - name: Upload Docs Artifact
