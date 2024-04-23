@@ -32,12 +32,10 @@ jobs:
           version: 1.0
       - name: Install dependencies
         run: poetry install --with docs
-      - name: Test Secret
-        run: echo $HF_TOKEN
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Build Docs
-        run:  HF_TOKEN="${{ secrets.HF_TOKEN }}"" poetry run build-docs
+        run: poetry run build-docs
+        env:
+          HF_TOKEN: "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"
       - name: Upload Docs Artifact
         uses: actions/upload-artifact@v3
         with:
