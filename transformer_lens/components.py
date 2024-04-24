@@ -17,6 +17,7 @@ import torch.nn.functional as F
 from better_abc import abstract_attribute
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
+from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
@@ -29,6 +30,10 @@ from transformer_lens.utils import (
     repeat_along_head_dimension,
     solu,
 )
+
+if is_bitsandbytes_available():
+    import bitsandbytes as bnb
+    from bitsandbytes.nn.modules import Params4bit
 
 
 # Embed & Unembed
@@ -398,14 +403,21 @@ class AbstractAttention(ABC, nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_Q = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
-        )
+
+        if self.cfg.load_in_4bit:
+            nq = int((cfg.d_model * cfg.d_model) / 2)
+            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        else:
+            self.W_Q = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+            )
+            self.W_O = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
+            )
         self.W_K = abstract_attribute()
         self.W_V = abstract_attribute()
-        self.W_O = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
-        )
+
         self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K = abstract_attribute()
         self.b_V = abstract_attribute()
@@ -574,30 +586,51 @@ class AbstractAttention(ABC, nn.Module):
         pattern = pattern.to(v.device)
         z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
         if not self.cfg.use_attn_result:
-            out = (
-                (
-                    einsum(
-                        "batch pos head_index d_head, \
-                            head_index d_head d_model -> \
-                            batch pos d_model",
-                        z,
-                        self.W_O,
-                    )
+            if self.cfg.load_in_4bit:
+                # call bitsandbytes method to dequantize and multiply
+                out = bnb.matmul_4bit(
+                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
+                    self.W_O.t(),
+                    # bias=self.W_O.t(),
+                    bias=None,
+                    quant_state=self.W_O.quant_state,
                 )
-                + self.b_O
-            )  # [batch, pos, d_model]
+                +self.b_O
+            else:
+                out = (
+                    (
+                        einsum(
+                            "batch pos head_index d_head, \
+                                head_index d_head d_model -> \
+                                batch pos d_model",
+                            z,
+                            self.W_O,
+                        )
+                    )
+                    + self.b_O
+                )  # [batch, pos, d_model]
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
-            result = self.hook_result(
-                einsum(
-                    "batch pos head_index d_head, \
-                        head_index d_head d_model -> \
-                        batch pos head_index d_model",
-                    z,
-                    self.W_O,
+            if self.cfg.load_in_4bit:
+                result = self.hook_result(
+                    bnb.matmul_4bit(
+                        z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
+                        self.W_O.t(),
+                        bias=None,
+                        quant_state=self.W_O.quant_state,
+                    )
                 )
-            )  # [batch, pos, head_index, d_model]
+            else:
+                result = self.hook_result(
+                    einsum(
+                        "batch pos head_index d_head, \
+                            head_index d_head d_model -> \
+                            batch pos head_index d_model",
+                        z,
+                        self.W_O,
+                    )
+                )  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(result, "batch position index model->batch position model", "sum")
                 + self.b_O
@@ -628,33 +661,82 @@ class AbstractAttention(ABC, nn.Module):
         else:
             qkv_einops_string = "batch pos d_model"
 
-        q = self.hook_q(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                query_input,
-                self.W_Q,
+        if self.cfg.load_in_4bit:
+            q = self.hook_q(
+                # call bitsandbytes method to dequantize and multiply
+                bnb.matmul_4bit(
+                    query_input,
+                    self.W_Q.t(),
+                    bias=None,
+                    quant_state=self.W_Q.quant_state,
+                ).reshape(
+                    query_input.shape[0],
+                    query_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
+                + self.b_Q
             )
-            + self.b_Q
-        )  # [batch, pos, head_index, d_head]
-        k = self.hook_k(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                key_input,
-                self.W_K,
+        else:
+            q = self.hook_q(
+                einsum(
+                    f"{qkv_einops_string}, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    query_input,
+                    self.W_Q,
+                )
+                + self.b_Q
+            )  # [batch, pos, head_index, d_head]
+        if self.cfg.load_in_4bit:
+            k = self.hook_k(
+                # call bitsandbytes method to dequantize and multiply
+                bnb.matmul_4bit(
+                    key_input, self.W_K.t(), bias=None, quant_state=self.W_K.quant_state
+                ).reshape(
+                    key_input.shape[0],
+                    key_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
+                + self.b_K
             )
-            + self.b_K
-        )  # [batch, pos, head_index, d_head]
-        v = self.hook_v(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                value_input,
-                self.W_V,
+        else:
+            k = self.hook_k(
+                einsum(
+                    f"{qkv_einops_string}, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    key_input,
+                    self.W_K,
+                )
+                + self.b_K
+            )  # [batch, pos, head_index, d_head]
+
+        if self.cfg.load_in_4bit:
+            v = self.hook_v(
+                # call bitsandbytes method to dequantize and multiply
+                bnb.matmul_4bit(
+                    value_input,
+                    self.W_V.t(),
+                    bias=None,
+                    quant_state=self.W_V.quant_state,
+                ).reshape(
+                    value_input.shape[0],
+                    value_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
+                + self.b_V
             )
-            + self.b_V
-        )  # [batch, pos, head_index, d_head]
+        else:
+            v = self.hook_v(
+                einsum(
+                    f"{qkv_einops_string}, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    value_input,
+                    self.W_V,
+                )
+                + self.b_V
+            )  # [batch, pos, head_index, d_head]
         return q, k, v
 
     def calculate_attention_scores(
@@ -944,12 +1026,21 @@ class Attention(AbstractAttention):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_K = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
-        )
-        self.W_V = nn.Parameter(
-            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
-        )
+
+        if cfg.load_in_4bit:
+            # 4-bit quantization convention
+            nq = int((cfg.d_model * cfg.d_model) / 2)
+            self.W_K = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_V = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        else:
+            self.W_K = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+            )
+            self.W_V = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+            )
+        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
 
@@ -961,7 +1052,7 @@ class GroupedQueryAttention(AbstractAttention):
         attn_type: str = "global",
         layer_id: Union[int, None] = None,
     ):
-        """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245v2 for details.
+        """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245 for details.
         Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head] and W_Q has shape [head_index, d_head, d_model].
         However, under the hood the key and value weights _W_K and _W_V are stored with shape [n_key_value_heads, d_model, d_head] and are expanded when the corresponding properties' getter is called.
         Similarly, during a forward pass, initially K and V are kept in shapes [batch, pos, n_key_value_heads, d_head] and will only be expanded to shapes [batch, pos, n_heads, d_head]
@@ -1220,10 +1311,22 @@ class GatedMLP(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         assert self.cfg.d_mlp is not None  # keep mypy happy
-        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
-        self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
+
+        if cfg.load_in_4bit:
+            nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
+            self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        else:
+            self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
+            self.W_gate = nn.Parameter(
+                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
+            )
+            self.W_out = nn.Parameter(
+                torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
+            )
+
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
-        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         # hook on gate output but before act_fn
@@ -1259,27 +1362,53 @@ class GatedMLP(nn.Module):
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
-        pre_act = self.hook_pre(
-            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_gate)
-        )  # [batch, pos, d_mlp]
-        if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
-            pre_linear = self.hook_pre_linear(
-                einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
+        if self.cfg.load_in_4bit:
+            pre_act = self.hook_pre(
+                bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
             )
+        else:
+            pre_act = self.hook_pre(
+                einsum(
+                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
+                    x,
+                    self.W_gate,
+                )
+            )  # [batch, pos, d_mlp]
+
+        if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
+            if self.cfg.load_in_4bit:
+                pre_linear = self.hook_pre_linear(
+                    bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
+                )
+            else:
+                pre_linear = self.hook_pre_linear(
+                    einsum(
+                        "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
+                        x,
+                        self.W_in,
+                    )
+                )
+
             post_act = self.hook_post(
                 (self.act_fn(pre_act) * pre_linear) + self.b_in
             )  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
-        return (
-            einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
-                self.W_out,
+
+        if self.cfg.load_in_4bit:
+            return bnb.matmul_4bit(
+                post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
             )
-            + self.b_out
-        )
+        else:
+            return (
+                einsum(
+                    "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
+                    post_act,
+                    self.W_out,
+                )
+                + self.b_out
+            )
 
 
 class MoE(nn.Module):
