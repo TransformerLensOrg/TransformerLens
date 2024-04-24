@@ -611,8 +611,6 @@ DEFAULT_MODEL_ALIASES = [
 NEED_REMOTE_CODE_MODELS = (
     "bigcode/santacoder",
     "Qwen/Qwen-",
-    "microsoft/phi-1",
-    "microsoft/phi-1_5",
     "microsoft/phi-2",
 )
 
