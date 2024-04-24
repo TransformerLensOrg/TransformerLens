@@ -258,6 +258,16 @@
 <p>Import the library with <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">transformer_lens</span></code></p>
 <p>(Note: This library used to be known as EasyTransformer, and some breaking changes have been made since the rename. If you need to use the old version with some legacy code, run <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">git+https://github.com/neelnanda-io/TransformerLens&#64;v1</span></code>.)</p>
 </section>
+<section id="huggingface-gated-access">
+<h2>Huggingface Gated Access<a class="headerlink" href="#huggingface-gated-access" title="Permalink to this heading">#</a></h2>
+<p>Some of the models available in TransformerLens require gated access to be used. Luckily TransformerLens provides a way to access those models via the configuration of an environmental variable. Simply configure your access token found <a class="reference external" href="https://huggingface.co/settings/tokens">here</a> as <code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code> in your environment.</p>
+<p>You will need to make sure you accept the agreements for any gated models, but once you do, the models will work with TransformerLens without issue. If you attempt to ues one of these models before you have accepted any related agreements, the console output will be very helpful and point you to the URL where you need to accept an agreement. As of 23/4/24, the current list of gated models supported by TransformerLens is as follows.</p>
+<ul class="simple">
+<li><p>https://huggingface.co/mistralai/Mixtral-8x7B-v0.1</p></li>
+<li><p>https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1</p></li>
+<li><p>https://huggingface.co/mistralai/Mistral-7B-v0.1</p></li>
+</ul>
+</section>
 </section>
 
         </article>
@@ -318,6 +328,7 @@
 <li><a class="reference internal" href="#">Getting Started</a><ul>
 <li><a class="reference internal" href="#advice-for-reading-the-code">Advice for Reading the Code</a></li>
 <li><a class="reference internal" href="#installation">Installation</a></li>
+<li><a class="reference internal" href="#huggingface-gated-access">Huggingface Gated Access</a></li>
 </ul>
 </li>
 </ul>
