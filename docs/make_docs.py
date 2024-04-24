@@ -93,10 +93,7 @@ def generate_model_table(_app: Optional[Any] = None):
     ]
     df = pd.DataFrame(
         {
-            name: [
-                get_property(name, model_name)
-                for model_name in loading.DEFAULT_MODEL_ALIASES
-            ]
+            name: [get_property(name, model_name) for model_name in loading.DEFAULT_MODEL_ALIASES]
             for name in column_names
         },
         index=loading.DEFAULT_MODEL_ALIASES,

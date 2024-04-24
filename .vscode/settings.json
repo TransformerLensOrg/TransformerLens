@@ -6,9 +6,10 @@
         "editor.defaultFormatter": "tamasfe.even-better-toml"
     },
     "editor.codeActionsOnSave": {
-        "source.organizeImports": true
+        "source.organizeImports": "explicit"
     },
     "editor.formatOnSave": true,
+    "editor.rulers": [100],
     "evenBetterToml.formatter.allowedBlankLines": 1,
     "evenBetterToml.formatter.arrayAutoCollapse": true,
     "evenBetterToml.formatter.arrayAutoExpand": true,
@@ -38,4 +39,9 @@
     "rewrap.autoWrap.enabled": true,
     "rewrap.reformat": true,
     "rewrap.wrappingColumn": 100,
+    "mypy.runUsingActiveInterpreter": true,
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "black-formatter.args": [
+        "-l 100"
+    ],
 }

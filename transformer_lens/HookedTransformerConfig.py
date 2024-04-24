@@ -3,6 +3,7 @@
 Module with a dataclass for storing the configuration of a
 :class:`transformer_lens.HookedTransformer` model.
 """
+
 from __future__ import annotations
 
 import logging
@@ -78,9 +79,8 @@ class HookedTransformerConfig:
             local attention
         weight_init_mode (str): the initialization mode to use for the
             weights. Only relevant for custom models, ignored for pre-trained.
-            Currently the only supported mode is 'gpt2', where biases are
-            initialized to 0 and weights are standard normals of range
-            initializer_range.
+            We now support 'gpt2', 'xavier_uniform', 'xavier_normal', 'kaiming_uniform',
+            'kaiming_normal'. MuP support to come. Defaults to 'gpt2'.
         normalization_type (str, *optional*): the type of normalization to use.
             Options are None (no normalization), 'LN' (use LayerNorm, including weights
             & biases) and 'LNPre' (use LayerNorm, but no weights & biases).
@@ -95,10 +95,12 @@ class HookedTransformerConfig:
         attn_only (bool): Whether to only use attention layers, no feedforward
             layers. Defaults to False
         seed (int, *optional*): The seed to use for the model.
-            Used to set sources of randomness (Python, PyTorch and
-            NumPy) and to initialize weights. Defaults to None. We recommend setting a seed, so your experiments are reproducible.
+            Used to set sources of randomness (Python, PyTorch and NumPy) and to initialize weights.
+            Defaults to None. We recommend setting a seed, so your experiments are reproducible.
         initializer_range (float): The standard deviation of the normal used to
-            initialise the weights, initialized to 0.8 / sqrt(d_model) .
+            initialise the weights, initialized to 0.8 / sqrt(d_model). If weight_init_mode is
+            'xavier_uniform' or 'xavier_normal', this value is instead treated as the `gain` parameter for the weight
+            initialisation (a constant factor to scale the weights by). Defaults to -1.0, which means not set.
         init_weights (bool): Whether to initialize the weights. Defaults to
             True. If False, does not initialize weights.
         scale_attn_by_inverse_layer_idx (bool): Whether to scale the attention
@@ -147,8 +149,16 @@ class HookedTransformerConfig:
         tokenizer_prepends_bos (bool, *optional*): This flag is set by set_tokenizer. It is set to True only
             when the tokenizer automatically prepends the BOS token if initialized with add_bos_token=True.
             We need this information to dynamically control bos prepending.
+        load_in_4bit(bool): If this flag is set, then it's assumed that parameters are 4-bit quantized
+            with bitsandbytes. Currently only supported for Llama.
+        n_key_value_heads (int, *optional*): The number of groups of heads that use the same key and value matrix.
+            Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
             to False.
+        num_experts (int, *optional*): The number of experts to use in the MoE layer. If set, experts_per_token
+            must also be set. Set to None if not using MoE.
+        experts_per_token (int, *optional*): The number of experts to use for each pass in the MoE layer. If set,
+            num_experts must also be set. Set to None if not using MoE.
     """
 
     n_layers: int
@@ -196,7 +206,14 @@ class HookedTransformerConfig:
     default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
+    n_key_value_heads: Optional[int] = None
     post_embedding_ln: bool = False
+    rotary_base: int = 10000
+    trust_remote_code: bool = False
+    rotary_adjacent_pairs: bool = False
+    load_in_4bit: bool = False
+    num_experts: Optional[int] = None
+    experts_per_token: Optional[int] = None
 
     def __post_init__(self):
         if self.n_heads == -1:
@@ -204,47 +221,62 @@ class HookedTransformerConfig:
 
             if not self.d_model % (self.d_head) == 0:
                 logging.warning(
-                    f"d_model {self.d_model} is not divisible by d_head {self.d_head}. n_heads was inferred to be {self.n_heads}, rounding down the ratio."
+                    "d_model %d is not divisible by d_head %d."
+                    "n_heads was inferred to be %d, rounding down the ratio.",
+                    self.d_model,
+                    self.d_head,
+                    self.n_heads,
                 )
 
         if self.seed is not None:
             self.set_seed_everywhere(self.seed)
         if self.use_local_attn:
-            assert (
-                self.window_size is not None
-            ), "window_size must be specified for local attention"
-            assert (
-                self.attn_types is not None
-            ), "attn_types must be specified for local attention"
+            assert self.window_size is not None, "window_size must be specified for local attention"
+            assert self.attn_types is not None, "attn_types must be specified for local attention"
         if not self.attn_only:
             if self.d_mlp is None:
                 # For some reason everyone hard codes in this hyper-parameter!
-                self.d_mlp = self.d_model * 4
-            assert (
-                self.act_fn is not None
-            ), "act_fn must be specified for non-attn-only models"
+                self.d_mlp: int = self.d_model * 4
+            assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
             assert (
                 self.act_fn in SUPPORTED_ACTIVATIONS
             ), f"act_fn={self.act_fn} must be one of {SUPPORTED_ACTIVATIONS}"
-        if self.initializer_range < 0:
+        if self.initializer_range < 0 and self.init_mode == "gpt2":
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)
+        if self.initializer_range < 0 and self.init_mode != "gpt2":
+            # This is the gain parameter for the weight initialisation
+            self.initializer_range = 1.0
 
         if self.d_vocab_out == -1:
             # d_vocab_out defaults to d_vocab, unless there's an algorithmic task
-            # If d_vocab is not set, it'll be inferred from tokenizer_name or from a tokenizer explicitly passed to HookedTransformer initialisation.
+            # If d_vocab is not set, it'll be inferred from tokenizer_name or from a tokenizer
+            # explicitly passed to HookedTransformer initialisation.
             self.d_vocab_out = self.d_vocab
 
         if self.positional_embedding_type == "rotary" and self.rotary_dim is None:
             self.rotary_dim = self.d_head
 
+        if self.num_experts is not None:
+            assert (
+                self.experts_per_token is not None
+            ), "experts_per_token must be set if num_experts is set"
+        if self.experts_per_token is not None:
+            assert (
+                self.num_experts is not None
+            ), "num_experts must be set if experts_per_token is set"
+
         # The number of parameters in attention layers (ignoring biases and layer norm). 4 because W_Q, W_K, W_V and W_O
-        self.n_params = self.n_layers * (
-            (self.d_model * self.d_head * self.n_heads * 4)
-        )
+        self.n_params = self.n_layers * ((self.d_model * self.d_head * self.n_heads * 4))
         if not self.attn_only:
+            assert self.d_mlp is not None  # mypy
             # Number of parameters in MLP layers (ignoring biases and layer norm). 2 because W_in and W_out
-            self.n_params += self.n_layers * self.d_model * self.d_mlp * 2
+            mlp_params_per_layer = self.d_model * self.d_mlp * (2 + self.gated_mlp)
+
+            if self.num_experts:
+                # If we are using MoE, we multiply by num_experts, and add the expert gate parameters (d_model * num_experts)
+                mlp_params_per_layer = (mlp_params_per_layer + self.d_model) * self.num_experts
+            self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
             self.device = utils.get_device()

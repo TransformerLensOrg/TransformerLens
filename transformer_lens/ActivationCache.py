@@ -10,11 +10,12 @@ When reading these docs for the first time, we recommend reading the main :class
 class first, including the examples, and then skimming the available methods. You can then refer
 back to these docs depending on what you need to do.
 """
+
 from __future__ import annotations
 
 import logging
 import warnings
-from typing import Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import einops
 import numpy as np
@@ -113,9 +114,7 @@ class ActivationCache:
             Whether the activations have a batch dimension.
     """
 
-    def __init__(
-        self, cache_dict: Dict[str, torch.Tensor], model, has_batch_dim: bool = True
-    ):
+    def __init__(self, cache_dict: Dict[str, torch.Tensor], model, has_batch_dim: bool = True):
         self.cache_dict = cache_dict
         self.model = model
         self.has_batch_dim = has_batch_dim
@@ -137,9 +136,7 @@ class ActivationCache:
                 self.cache_dict[key] = self.cache_dict[key][0]
             self.has_batch_dim = False
         else:
-            logging.warning(
-                "Tried removing batch dimension after already having removed it."
-            )
+            logging.warning("Tried removing batch dimension after already having removed it.")
         return self
 
     def __repr__(self) -> str:
@@ -206,9 +203,7 @@ class ActivationCache:
                 DeprecationWarning,
             )
 
-        self.cache_dict = {
-            key: value.to(device) for key, value in self.cache_dict.items()
-        }
+        self.cache_dict = {key: value.to(device) for key, value in self.cache_dict.items()}
 
         if move_model:
             self.model.to(device)
@@ -276,7 +271,7 @@ class ActivationCache:
         """
         return self.cache_dict.items()
 
-    def __iter__(self) -> Iterator[Tuple[str, torch.Tensor]]:
+    def __iter__(self) -> Iterator[str]:
         """ActivationCache Iterator.
 
         Special method that returns an iterator over the ActivationCache. Allows looping over the
@@ -300,9 +295,7 @@ class ActivationCache:
         """
         return self.cache_dict.__iter__()
 
-    def apply_slice_to_batch_dim(
-        self, batch_slice: Union[Slice, SliceInput]
-    ) -> ActivationCache:
+    def apply_slice_to_batch_dim(self, batch_slice: Union[Slice, SliceInput]) -> ActivationCache:
         """Apply a Slice to the Batch Dimension.
 
         Args:
@@ -314,31 +307,27 @@ class ActivationCache:
         """
         if not isinstance(batch_slice, Slice):
             batch_slice = Slice(batch_slice)
+        batch_slice = cast(Slice, batch_slice)  # mypy can't seem to infer this
         assert (
             self.has_batch_dim or batch_slice.mode == "empty"
         ), "Cannot index into a cache without a batch dim"
         still_has_batch_dim = (batch_slice.mode != "int") and self.has_batch_dim
         new_cache_dict = {
-            name: batch_slice.apply(param, dim=0)
-            for name, param in self.cache_dict.items()
+            name: batch_slice.apply(param, dim=0) for name, param in self.cache_dict.items()
         }
-        return ActivationCache(
-            new_cache_dict, self.model, has_batch_dim=still_has_batch_dim
-        )
+        return ActivationCache(new_cache_dict, self.model, has_batch_dim=still_has_batch_dim)
 
     def accumulated_resid(
         self,
         layer: Optional[int] = None,
-        incl_mid: Optional[bool] = False,
-        apply_ln: Optional[bool] = False,
+        incl_mid: bool = False,
+        apply_ln: bool = False,
         pos_slice: Optional[Union[Slice, SliceInput]] = None,
-        mlp_input: Optional[bool] = False,
-        return_labels: Optional[bool] = False,
+        mlp_input: bool = False,
+        return_labels: bool = False,
     ) -> Union[
         Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"],
-        Tuple[
-            Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]
-        ],
+        Tuple[Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]],
     ]:
         """Accumulated Residual Stream.
 
@@ -438,19 +427,19 @@ class ActivationCache:
             layer = self.model.cfg.n_layers
         assert isinstance(layer, int)
         labels = []
-        components = []
+        components_list = []
         for l in range(layer + 1):
             if l == self.model.cfg.n_layers:
-                components.append(self[("resid_post", self.model.cfg.n_layers - 1)])
+                components_list.append(self[("resid_post", self.model.cfg.n_layers - 1)])
                 labels.append("final_post")
                 continue
-            components.append(self[("resid_pre", l)])
+            components_list.append(self[("resid_pre", l)])
             labels.append(f"{l}_pre")
             if (incl_mid and l < layer) or (mlp_input and l == layer):
-                components.append(self[("resid_mid", l)])
+                components_list.append(self[("resid_mid", l)])
                 labels.append(f"{l}_mid")
-        components = [pos_slice.apply(c, dim=-2) for c in components]
-        components = torch.stack(components, dim=0)
+        components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
+        components = torch.stack(components_list, dim=0)
         if apply_ln:
             components = self.apply_ln_to_stack(
                 components, layer, pos_slice=pos_slice, mlp_input=mlp_input
@@ -462,9 +451,7 @@ class ActivationCache:
 
     def logit_attrs(
         self,
-        residual_stack: Float[
-            torch.Tensor, "num_components *batch_and_pos_dims d_model"
-        ],
+        residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
         tokens: Union[
             str,
             int,
@@ -545,9 +532,7 @@ class ActivationCache:
 
         if incorrect_tokens is not None:
             if isinstance(incorrect_tokens, str):
-                incorrect_tokens = torch.as_tensor(
-                    self.model.to_single_token(incorrect_tokens)
-                )
+                incorrect_tokens = torch.as_tensor(self.model.to_single_token(incorrect_tokens))
 
             elif isinstance(incorrect_tokens, int):
                 incorrect_tokens = torch.as_tensor(incorrect_tokens)
@@ -560,9 +545,8 @@ class ActivationCache:
                 )
 
             # If incorrect_tokens was provided, take the logit difference
-            logit_directions = (
-                logit_directions
-                - self.model.tokens_to_residual_directions(incorrect_tokens)
+            logit_directions = logit_directions - self.model.tokens_to_residual_directions(
+                incorrect_tokens
             )
 
         scaled_residual_stack = self.apply_ln_to_stack(
@@ -590,9 +574,7 @@ class ActivationCache:
         return_labels: bool = False,
     ) -> Union[
         Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"],
-        Tuple[
-            Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]
-        ],
+        Tuple[Float[torch.Tensor, "layers_covered *batch_and_pos_dims d_model"], List[str]],
     ]:
         """Decompose the Residual Stream.
 
@@ -607,9 +589,6 @@ class ActivationCache:
                 layer==n_layers means to return all layer outputs incl in the final layer, layer==0
                 means just embed and pos_embed. The indices are taken such that this gives the
                 accumulated streams up to the input to layer l
-            incl_mid:
-                Whether to return resid_mid for all previous
-                layers.
             mlp_input:
                 Whether to include attn_out for the current
                 layer - essentially decomposing the residual stream that's input to the MLP input
@@ -635,6 +614,7 @@ class ActivationCache:
         """
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
+        pos_slice = cast(Slice, pos_slice)  # mypy can't seem to infer this
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
@@ -642,28 +622,28 @@ class ActivationCache:
 
         incl_attn = mode != "mlp"
         incl_mlp = mode != "attn" and not self.model.cfg.attn_only
-        components = []
+        components_list = []
         labels = []
         if incl_embeds:
             if self.has_embed:
-                components = [self["hook_embed"]]
+                components_list = [self["hook_embed"]]
                 labels.append("embed")
             if self.has_pos_embed:
-                components.append(self["hook_pos_embed"])
+                components_list.append(self["hook_pos_embed"])
                 labels.append("pos_embed")
 
         for l in range(layer):
             if incl_attn:
-                components.append(self[("attn_out", l)])
+                components_list.append(self[("attn_out", l)])
                 labels.append(f"{l}_attn_out")
             if incl_mlp:
-                components.append(self[("mlp_out", l)])
+                components_list.append(self[("mlp_out", l)])
                 labels.append(f"{l}_mlp_out")
         if mlp_input and incl_attn:
-            components.append(self[("attn_out", layer)])
+            components_list.append(self[("attn_out", layer)])
             labels.append(f"{layer}_attn_out")
-        components = [pos_slice.apply(c, dim=-2) for c in components]
-        components = torch.stack(components, dim=0)
+        components_list = [pos_slice.apply(c, dim=-2) for c in components_list]
+        components = torch.stack(components_list, dim=0)
         if apply_ln:
             components = self.apply_ln_to_stack(
                 components, layer, pos_slice=pos_slice, mlp_input=mlp_input
@@ -684,9 +664,7 @@ class ActivationCache:
         be useful if you forget.
         """
         if "blocks.0.attn.hook_result" in self.cache_dict:
-            logging.warning(
-                "Tried to compute head results when they were already cached"
-            )
+            logging.warning("Tried to compute head results when they were already cached")
             return
         for l in range(self.model.cfg.n_layers):
             # Note that we haven't enabled set item on this object so we need to edit the underlying
@@ -727,6 +705,7 @@ class ActivationCache:
         """
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
+        pos_slice = cast(Slice, pos_slice)  # mypy can't seem to infer this
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
@@ -737,7 +716,7 @@ class ActivationCache:
             )
             self.compute_head_results()
 
-        components = []
+        components: Any = []
         labels = []
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
@@ -773,7 +752,7 @@ class ActivationCache:
             components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
 
         if return_labels:
-            return components, labels
+            return components, labels  # type: ignore # TODO: fix this properly
         else:
             return components
 
@@ -832,11 +811,9 @@ class ActivationCache:
         Returns:
             Tensor of the results.
         """
-        if type(neuron_slice) is not Slice:
-            assert isinstance(neuron_slice, SliceInput)
+        if not isinstance(neuron_slice, Slice):
             neuron_slice = Slice(neuron_slice)
-        if type(pos_slice) is not Slice:
-            assert isinstance(pos_slice, SliceInput)
+        if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
         neuron_acts = self[("post", layer, "mlp")]
@@ -860,9 +837,7 @@ class ActivationCache:
         apply_ln: bool = False,
     ) -> Union[
         Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
-        Tuple[
-            Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]
-        ],
+        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
     ]:
         """Stack Neuron Results
 
@@ -894,7 +869,7 @@ class ActivationCache:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
 
-        components = []
+        components: Any = []  # TODO: fix typing properly
         labels = []
 
         if not isinstance(neuron_slice, Slice):
@@ -902,15 +877,15 @@ class ActivationCache:
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
 
-        neuron_labels = neuron_slice.apply(torch.arange(self.model.cfg.d_mlp), dim=0)
+        neuron_labels: torch.Tensor | np.ndarray = neuron_slice.apply(
+            torch.arange(self.model.cfg.d_mlp), dim=0
+        )
         if type(neuron_labels) == int:
             neuron_labels = np.array([neuron_labels])
         for l in range(layer):
             # Note that this has shape batch x pos x head_index x d_model
             components.append(
-                self.get_neuron_results(
-                    l, pos_slice=pos_slice, neuron_slice=neuron_slice
-                )
+                self.get_neuron_results(l, pos_slice=pos_slice, neuron_slice=neuron_slice)
             )
             labels.extend([f"L{l}N{h}" for h in neuron_labels])
         if components:
@@ -944,9 +919,7 @@ class ActivationCache:
 
     def apply_ln_to_stack(
         self,
-        residual_stack: Float[
-            torch.Tensor, "num_components *batch_and_pos_dims d_model"
-        ],
+        residual_stack: Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
         layer: Optional[int] = None,
         mlp_input: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
@@ -1059,6 +1032,7 @@ class ActivationCache:
         if layer is None or layer == -1:
             # Default to the residual stream immediately pre unembed
             layer = self.model.cfg.n_layers
+        assert layer is not None  # keep mypy happy
 
         if not isinstance(pos_slice, Slice):
             pos_slice = Slice(pos_slice)
@@ -1096,9 +1070,7 @@ class ActivationCache:
             labels.append("pos_embed")
             components.append(pos_slice.apply(self["pos_embed"], -2)[None])
         # If we didn't expand the neurons, the MLP biases are already included in the MLP outputs.
-        bias = self.model.accumulated_bias(
-            layer, mlp_input, include_mlp_biases=expand_neurons
-        )
+        bias = self.model.accumulated_bias(layer, mlp_input, include_mlp_biases=expand_neurons)
         bias = bias.expand((1,) + head_stack.shape[1:])
         labels.append("bias")
         components.append(bias)
@@ -1109,6 +1081,6 @@ class ActivationCache:
             )
 
         if return_labels:
-            return residual_stack, labels
+            return residual_stack, labels  # type: ignore # TODO: fix this properly
         else:
             return residual_stack

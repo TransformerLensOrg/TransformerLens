@@ -45,9 +45,7 @@ class BaseMultiplyByMatrixTest(ABC):
         b_with_leading = repeat(b, "x y -> b x y", b=2)
         matrix_with_leading = repeat(matrix, "x y -> b x y", b=2)
 
-        product = self._test_multiply(
-            a_with_leading, b_with_leading, matrix_with_leading
-        )
+        product = self._test_multiply(a_with_leading, b_with_leading, matrix_with_leading)
 
         assert product.A.shape[:-2] == (2,)
         assert product.B.shape[:-2] == (2,)
