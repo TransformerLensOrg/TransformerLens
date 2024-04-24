@@ -1052,7 +1052,7 @@ class GroupedQueryAttention(AbstractAttention):
         attn_type: str = "global",
         layer_id: Union[int, None] = None,
     ):
-        """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245v2 for details.
+        """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245 for details.
         Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head] and W_Q has shape [head_index, d_head, d_model].
         However, under the hood the key and value weights _W_K and _W_V are stored with shape [n_key_value_heads, d_model, d_head] and are expanded when the corresponding properties' getter is called.
         Similarly, during a forward pass, initially K and V are kept in shapes [batch, pos, n_key_value_heads, d_head] and will only be expanded to shapes [batch, pos, n_heads, d_head]

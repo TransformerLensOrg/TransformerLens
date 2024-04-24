@@ -7,6 +7,7 @@ because it has a significantly different architecture to e.g. GPT style transfor
 from __future__ import annotations
 
 import logging
+import os
 from typing import Dict, List, Optional, Tuple, Union, cast, overload
 
 import torch
@@ -52,7 +53,11 @@ class HookedEncoder(HookedRootModule):
         if tokenizer is not None:
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.cfg.tokenizer_name)
+            huggingface_token = os.environ.get("HF_TOKEN", None)
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.cfg.tokenizer_name,
+                token=huggingface_token,
+            )
         else:
             self.tokenizer = None
 
