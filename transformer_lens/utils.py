@@ -316,9 +316,7 @@ def tokenize_and_concatenate(
         chunk_length = (len(full_text) - 1) // num_chunks + 1
         chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
-        tokens = tokenizer(chunks, return_tensors="np", padding=True)[
-            "input_ids"
-        ].flatten()
+        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
         if remove_pad_tokens:
             # Drop padding tokens
             tokens = tokens[tokens != tokenizer.pad_token_id]
