@@ -1766,9 +1766,6 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_Q = llama.model.layers[l].self_attn.q_proj.weight
         W_K = llama.model.layers[l].self_attn.k_proj.weight
         W_V = llama.model.layers[l].self_attn.v_proj.weight
-        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=n_kv_heads)
-        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=n_kv_heads)
 
         # in case of quantization,
         # parameters should stay as bitsandbytes.nn.modules.Params4bit
