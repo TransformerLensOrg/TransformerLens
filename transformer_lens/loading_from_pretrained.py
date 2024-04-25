@@ -1771,8 +1771,8 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         # parameters should stay as bitsandbytes.nn.modules.Params4bit
         if not cfg.load_in_4bit:
             W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-            W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
-            W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+            W_K = einops.rearrange(W_K, "(n h) m->n m h", n=n_kv_heads)
+            W_V = einops.rearrange(W_V, "(n h) m->n m h", n=n_kv_heads)
 
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
