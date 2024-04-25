@@ -24,7 +24,7 @@ TransformerLens lets you load in 50+ different open source language models, and 
 activations of the model to you. You can cache any internal activation in the model, and add in
 functions to edit, remove or replace these activations as the model runs.
 
-The library also now supports mechanistic interpretability with SAEs (sparse autoencoders)! With [HookedSAETransformer](https://colab.research.google.com/github/ckkissane/TransformerLens/blob/hooked-sae-transformer/demos/HookedSAETransformerDemo.ipynb), you can splice in SAEs during inference and cache + intervene on SAE activations. We recommend [SAELens](https://github.com/jbloomAus/SAELens) (build on top of TransformerLens) for training SAEs.
+The library also now supports mechanistic interpretability with SAEs (sparse autoencoders)! With [HookedSAETransformer](https://colab.research.google.com/github/ckkissane/TransformerLens/blob/hooked-sae-transformer/demos/HookedSAETransformerDemo.ipynb), you can splice in SAEs during inference and cache + intervene on SAE activations. We recommend [SAELens](https://github.com/jbloomAus/SAELens) (built on top of TransformerLens) for training SAEs.
 
 ## Quick Start
 

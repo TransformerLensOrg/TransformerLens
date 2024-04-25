@@ -58,10 +58,11 @@ class HookedSAE(HookedRootModule):
         """SAE Forward Pass.
 
         Args:
-            input: The input tensor of activations to the SAE. Shape [..., d_in]
+            input: The input tensor of activations to the SAE. Shape [..., d_in].
+                Also supports hook_z activations of shape [..., n_heads, d_head], where n_heads * d_head = d_in, for attention output (hook_z) SAEs.
 
         Returns:
-            output: The reconstructed output tensor from the SAE, with the error term optionally added. Same shape as input [..., d_in]
+            output: The reconstructed output tensor from the SAE, with the error term optionally added. Same shape as input (eg [..., d_in])
         """
         self.hook_sae_input(input)
         if input.shape[-1] == self.cfg.d_in:
@@ -108,7 +109,7 @@ class HookedSAE(HookedRootModule):
                     + self.b_dec
                 ).reshape(input.shape)
 
-                error = self.hook_sae_error(input - x_reconstruct_clean)
-            return self.hook_sae_output(x_reconstruct + error)
+                sae_error = self.hook_sae_error(input - x_reconstruct_clean)
+            return self.hook_sae_output(x_reconstruct + sae_error)
 
         return self.hook_sae_output(x_reconstruct)

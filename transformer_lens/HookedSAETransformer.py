@@ -81,7 +81,6 @@ class HookedSAETransformer(HookedTransformer):
 
         Args:
             sae: HookedSAE. The SAE to attach to the model
-            is_permanent: bool. If True, the SAE will not be removed by reset_saes_end. Default is True.
         """
         act_name = sae.cfg.hook_name
         if (act_name not in self.acts_to_saes) and (act_name not in self.hook_dict):
@@ -99,6 +98,7 @@ class HookedSAETransformer(HookedTransformer):
 
         By default will remove the SAE from that hook_point.
         If prev_sae is provided, will replace the current SAE with the provided one.
+        This is mainly used to restore previously attached SAEs after temporarily running with different SAEs (eg with run_with_saes)
 
         Args:
             act_name: str. The hook_name of the SAE to reset
@@ -123,7 +123,7 @@ class HookedSAETransformer(HookedTransformer):
         """Reset the SAEs attached to the model
 
         If act_names are provided will just reset SAEs attached to those hooks. Otherwise will reset all SAEs attached to the model.
-        Optionally can provide a list of previous SAEs to reset to. By default, will just remove the SAEs.
+        Optionally can provide a list of prev_saes to reset to. This is mainly used to restore previously attached SAEs after temporarily running with different SAEs (eg with run_with_saes).
 
         Args:
             act_names (Optional[Union[str, List[str]]): The act_names of the SAEs to reset. If None, will reset all SAEs attached to the model. Defaults to None.
@@ -165,7 +165,7 @@ class HookedSAETransformer(HookedTransformer):
         Args:
             *model_args: Positional arguments for the model forward pass
             saes: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
-            reset_saes_end (bool): If True, removes all SAEs added during this run are turned off at the end. Default is True.
+            reset_saes_end (bool): If True, all SAEs added during this run are removed at the end, and previously attached SAEs are restored to their original state. Default is True.
             **model_kwargs: Keyword arguments for the model forward pass
         """
         with self.saes(saes=saes, reset_saes_end=reset_saes_end):
@@ -190,13 +190,13 @@ class HookedSAETransformer(HookedTransformer):
     ]:
         """Wrapper around 'run_with_cache' in HookedTransformer.
 
-        Turns on the SAEs for the given act_names before running the model with cache and then turns them off after.
+        Attaches given SAEs before running the model with cache and then removes them.
         By default, will reset all SAEs to original state after.
 
         Args:
             *model_args: Positional arguments for the model forward pass
             saes: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
-            reset_saes_end: (bool) Whether to turn off the SAEs corresponding to act_names at the end of the forward pass (default: True)
+            reset_saes_end: (bool) If True, all SAEs added during this run are removed at the end, and previously attached SAEs are restored to their original state. Default is True.
             return_cache_object: (bool) if True, this will return an ActivationCache object, with a bunch of
                 useful HookedTransformer specific methods, otherwise it will return a dictionary of
                 activations as in HookedRootModule.
@@ -224,13 +224,13 @@ class HookedSAETransformer(HookedTransformer):
     ):
         """Wrapper around 'run_with_hooks' in HookedTransformer.
 
-        Turns on the SAEs for the given act_names before running the model with hooks and then turns them off after
+        Attaches the given SAEs to the model before running the model with hooks and then removes them.
         By default, will reset all SAEs to original state after.
 
         Args:
             *model_args: Positional arguments for the model forward pass
             act_names: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
-            reset_saes_end: (bool) Whether to turn off the SAEs corresponding to act_names at the end of the forward pass (default: True)
+            reset_saes_end: (bool) If True, all SAEs added during this run are removed at the end, and previously attached SAEs are restored to their original state. (default: True)
             fwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of forward hooks to apply
             bwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of backward hooks to apply
             reset_hooks_end: (bool) Whether to reset the hooks at the end of the forward pass (default: True)
@@ -256,10 +256,11 @@ class HookedSAETransformer(HookedTransformer):
         """
         A context manager for adding temporary SAEs to the model.
         See HookedTransformer.hooks for a similar context manager for hooks.
+        By default will keep track of previously attached SAEs, and restore them when the context manager exits.
 
         Args:
             saes Union[HookedSAE, List[HookedSAE]]: SAEs to be attached.
-            reset_saes_end (bool): If True, removes all SAEs added by this context manager when the context manager exits.
+            reset_saes_end (bool): If True, removes all SAEs added by this context manager when the context manager exits, returning previously attached SAEs to their original state.
 
         Example:
         ```python
