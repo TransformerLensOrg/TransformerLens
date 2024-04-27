@@ -3,6 +3,7 @@
 Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
 :class:`transformer_lens.HookedTransformer`.
 """
+
 from typing import Optional, Union
 
 import fancy_einsum as einsum
@@ -10,7 +11,8 @@ import torch
 from typeguard import typechecked
 from typing_extensions import Literal
 
-from transformer_lens import FactoredMatrix, HookedTransformer
+from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.HookedTransformer import HookedTransformer
 
 OUTPUT_EMBEDDING = "unembed.W_U"
 VECTOR_TYPES = ["OV", "w_in", "w_out"]
@@ -79,7 +81,9 @@ class SVDInterpreter:
                 "w_out",
             ], f"Head index optional only for w_in and w_out, got {vector_type}"
 
+        matrix: Union[FactoredMatrix, torch.Tensor]
         if vector_type == "OV":
+            assert head_index is not None  # keep mypy happy
             matrix = self._get_OV_matrix(layer_index, head_index)
             V = matrix.Vh.T
 
@@ -92,13 +96,9 @@ class SVDInterpreter:
             _, _, V = torch.linalg.svd(matrix)
 
         else:
-            raise ValueError(
-                f"Vector type must be in {VECTOR_TYPES}, instead got {vector_type}"
-            )
+            raise ValueError(f"Vector type must be in {VECTOR_TYPES}, instead got {vector_type}")
 
-        return self._get_singular_vectors_from_matrix(
-            V, self.params[OUTPUT_EMBEDDING], num_vectors
-        )
+        return self._get_singular_vectors_from_matrix(V, self.params[OUTPUT_EMBEDDING], num_vectors)
 
     def _get_singular_vectors_from_matrix(
         self,
@@ -108,12 +108,12 @@ class SVDInterpreter:
     ) -> torch.Tensor:
         """Returns the top num_vectors singular vectors from a matrix."""
 
-        vectors = []
+        vectors_list = []
         for i in range(num_vectors):
-            activations = V[i, :].float() @ embedding
-            vectors.append(activations)
+            activations = V[i, :].float() @ embedding  # type: ignore
+            vectors_list.append(activations)
 
-        vectors = torch.stack(vectors, dim=1).unsqueeze(1)
+        vectors = torch.stack(vectors_list, dim=1).unsqueeze(1)
         assert vectors.shape == (
             self.cfg.d_vocab,
             1,
@@ -131,10 +131,8 @@ class SVDInterpreter:
             0 <= head_index < self.cfg.n_heads
         ), f"Head index must be between 0 and {self.cfg.n_heads-1} but got {head_index}"
 
-        W_V, W_O = (
-            self.params[f"blocks.{layer_index}.attn.W_V"],
-            self.params[f"blocks.{layer_index}.attn.W_O"],
-        )
+        W_V: torch.Tensor = self.params[f"blocks.{layer_index}.attn.W_V"]
+        W_O: torch.Tensor = self.params[f"blocks.{layer_index}.attn.W_O"]
         W_V, W_O = W_V[head_index, :, :], W_O[head_index, :, :]
 
         return FactoredMatrix(W_V, W_O)

@@ -58,9 +58,7 @@ def test_to_tokens_device():
     s = "Hello, world!"
     tokens1 = model.to_tokens(s, move_to_device=False)
     tokens2 = model.to_tokens(s, move_to_device=True)
-    assert equal(
-        tokens1, tokens2
-    ), "move to device has no effect when running tests on CPU"
+    assert equal(tokens1, tokens2), "move to device has no effect when running tests on CPU"
 
 
 def test_to_tokens_truncate():
@@ -125,9 +123,7 @@ def test_get_token_position_not_found():
     input = "There were some biomolecules"
     with pytest.raises(AssertionError) as exc_info:
         model.get_token_position(single, input)
-    assert (
-        str(exc_info.value) == "The token does not occur in the prompt"
-    ), "assertion error"
+    assert str(exc_info.value) == f"The token does not occur in the prompt", "assertion error"
 
 
 def test_get_token_position_str():

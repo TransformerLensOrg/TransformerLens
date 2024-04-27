@@ -124,9 +124,7 @@ def test_no_start_logit_output(setup_data: Dict[str, Any]):
 
 def test_no_start_none_output(setup_data: Dict[str, Any]):
     model, rand_input = setup_data["model"], setup_data["rand_input"]
-    output, cache = model.run_with_cache(
-        rand_input, start_at_layer=None, return_type=None
-    )
+    output, cache = model.run_with_cache(rand_input, start_at_layer=None, return_type=None)
 
     assert output is None
     assert "hook_embed" in cache.keys()
@@ -183,11 +181,7 @@ def test_start_at_layer_kwargs():
         shortformer_pos_embed,
         attention_mask,
     ) = model.input_to_embed(input)
-    assert (
-        tokens is not None
-        and shortformer_pos_embed is not None
-        and attention_mask is not None
-    )
+    assert tokens is not None and shortformer_pos_embed is not None and attention_mask is not None
 
     start_at_layer_output = model(
         rand_embed,

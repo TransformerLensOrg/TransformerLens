@@ -4,22 +4,36 @@ This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, 
 needed to create many different types of generative language models. They are used by
 :class:`transformer_lens.HookedTransformer`.
 """
+
 import logging
-from typing import Dict, Optional, Tuple, Union
+from abc import ABC
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import einops
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from better_abc import abstract_attribute
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
+from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import gelu_fast, gelu_new, get_offset_position_ids, solu
+from transformer_lens.utils import (
+    gelu_fast,
+    gelu_new,
+    get_offset_position_ids,
+    repeat_along_head_dimension,
+    solu,
+)
+
+if is_bitsandbytes_available():
+    import bitsandbytes as bnb
+    from bitsandbytes.nn.modules import Params4bit
 
 
 # Embed & Unembed
@@ -80,9 +94,7 @@ class PosEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_pos = nn.Parameter(
-            torch.empty(self.cfg.n_ctx, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model, dtype=cfg.dtype))
 
     def forward(
         self,
@@ -116,9 +128,7 @@ class PosEmbed(nn.Module):
             # Separated from the no padding case for computational efficiency
             # (this code is a bit slower than the code above)
 
-            offset_position_ids = get_offset_position_ids(
-                past_kv_pos_offset, attention_mask
-            )
+            offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
             pos_embed = self.W_pos[offset_position_ids]  # [batch, pos, d_model]
 
             # Set the position embeddings to 0 for pad tokens (this is an arbitrary choice)
@@ -145,9 +155,7 @@ class TokenTypeEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_token_type = nn.Parameter(
-            torch.empty(2, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model, dtype=cfg.dtype))
 
     def forward(self, token_type_ids: Int[torch.Tensor, "batch pos"]):
         return self.W_token_type[token_type_ids, :]
@@ -178,9 +186,7 @@ class BertEmbed(nn.Module):
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ):
         base_index_id = torch.arange(input_ids.shape[1], device=input_ids.device)
-        index_ids = einops.repeat(
-            base_index_id, "pos -> batch pos", batch=input_ids.shape[0]
-        )
+        index_ids = einops.repeat(base_index_id, "pos -> batch pos", batch=input_ids.shape[0])
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
 
@@ -190,9 +196,7 @@ class BertEmbed(nn.Module):
             self.token_type_embed(token_type_ids)
         )
 
-        embeddings_out = (
-            word_embeddings_out + position_embeddings_out + token_type_embeddings_out
-        )
+        embeddings_out = word_embeddings_out + position_embeddings_out + token_type_embeddings_out
         layer_norm_out = self.ln(embeddings_out)
         return layer_norm_out
 
@@ -261,7 +265,7 @@ class LayerNormPre(nn.Module):
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
-        x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
+        x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
         scale: Union[
             Float[torch.Tensor, "batch pos 1"],
             Float[torch.Tensor, "batch pos head_index 1"],
@@ -270,9 +274,7 @@ class LayerNormPre(nn.Module):
 
 
 class LayerNorm(nn.Module):
-    def __init__(
-        self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None
-    ):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         LayerNorm with optional length parameter
 
@@ -309,7 +311,7 @@ class LayerNorm(nn.Module):
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
-        x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
+        x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
@@ -339,15 +341,11 @@ class RMSNormPre(nn.Module):
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
-        return self.hook_normalized(x / scale).to(
-            self.cfg.dtype
-        )  # [batch, pos, length]
+        return self.hook_normalized(x / scale).to(self.cfg.dtype)  # [batch, pos, length]
 
 
 class RMSNorm(nn.Module):
-    def __init__(
-        self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None
-    ):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         RMSNorm - LayerNorm without the centering and bias (RMS = Root Mean Square)
 
@@ -374,7 +372,6 @@ class RMSNorm(nn.Module):
     ) -> Float[torch.Tensor, "batch pos length"]:
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
-
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
@@ -382,56 +379,48 @@ class RMSNorm(nn.Module):
         return x * self.w
 
 
-# Attention
-class Attention(nn.Module):
+class AbstractAttention(ABC, nn.Module):
+    alibi: Union[torch.Tensor, None]
+
     def __init__(
         self,
         cfg: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
         layer_id: Optional[int] = None,
     ):
-        """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
+        """Abstract Base Class of Attention Blocks, featuring common functionality of both Attention and GroupedQueryAttention blocks.
 
-        Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+        Query and Output projections are defined in this class as they are the same for regular and grouped query attention.
+        Attributes related to Key and Value projections are abstract as their implementations may differ. For example, in GroupedQueryAttention there are less query and key heads than value heads.
+        To enforce implementation of W_K, W_V, b_K, and b_V by child classes, the better_abc.abstract_attribute class is used. See here for details: https://stackoverflow.com/questions/23831510/abstract-attribute-not-property.
 
         Args:
             cfg (Union[Dict, HookedTransformerConfig]): Config
             attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
-            layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
+            layer_id (int, optional): The index of the current layer. Used by the Mistral models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_Q = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+
+        if self.cfg.load_in_4bit:
+            nq = int((cfg.d_model * cfg.d_model) / 2)
+            self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        else:
+            self.W_Q = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
             )
-        )
-        self.W_K = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
+            self.W_O = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
             )
-        )
-        self.W_V = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-            )
-        )
-        self.W_O = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype
-            )
-        )
-        self.b_Q = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
-        self.b_K = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
-        self.b_V = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        self.W_K = abstract_attribute()
+        self.W_V = abstract_attribute()
+
+        self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_K = abstract_attribute()
+        self.b_V = abstract_attribute()
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.attn_type = attn_type
@@ -444,9 +433,7 @@ class Attention(nn.Module):
         elif self.attn_type == "local":
             # For local, this is banded, query - window_size < key <= query
             assert isinstance(self.cfg.window_size, int)
-            self.register_buffer(
-                "mask", torch.triu(causal_mask, 1 - self.cfg.window_size)
-            )
+            self.register_buffer("mask", torch.triu(causal_mask, 1 - self.cfg.window_size))
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
 
@@ -460,6 +447,7 @@ class Attention(nn.Module):
         else:
             self.attn_scale = 1.0
         if self.cfg.scale_attn_by_inverse_layer_idx:
+            assert self.layer_id is not None  # keep mypy happy
             self.attn_scale *= self.layer_id + 1
 
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
@@ -478,8 +466,12 @@ class Attention(nn.Module):
             # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See HookedTransformerConfig for details
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
+            assert self.cfg.rotary_dim is not None  # keep mypy happy
             sin, cos = self.calculate_sin_cos_rotary(
-                self.cfg.rotary_dim, self.cfg.n_ctx, dtype=self.cfg.dtype
+                self.cfg.rotary_dim,
+                self.cfg.n_ctx,
+                base=self.cfg.rotary_base,
+                dtype=self.cfg.dtype,
             )
             self.register_buffer("rotary_sin", sin)
             self.register_buffer("rotary_cos", cos)
@@ -522,10 +514,12 @@ class Attention(nn.Module):
         key_input: Union[
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch pos kv_head_index d_model"],
         ],
         value_input: Union[
             Float[torch.Tensor, "batch pos d_model"],
             Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch pos kv_head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
@@ -538,37 +532,7 @@ class Attention(nn.Module):
         attention_mask is the attention mask for padded tokens. Defaults to None.
         """
 
-        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
-            qkv_einops_string = "batch pos head_index d_model"
-        else:
-            qkv_einops_string = "batch pos d_model"
-        q = self.hook_q(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                query_input,
-                self.W_Q,
-            )
-            + self.b_Q
-        )  # [batch, pos, head_index, d_head]
-        k = self.hook_k(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                key_input,
-                self.W_K,
-            )
-            + self.b_K
-        )  # [batch, pos, head_index, d_head]
-        v = self.hook_v(
-            einsum(
-                f"{qkv_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                value_input,
-                self.W_V,
-            )
-            + self.b_V
-        )  # [batch, pos, head_index, d_head]
+        q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
 
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
@@ -579,9 +543,7 @@ class Attention(nn.Module):
             kv_cache_pos_offset = 0
 
         if self.cfg.positional_embedding_type == "rotary":
-            q = self.hook_rot_q(
-                self.apply_rotary(q, kv_cache_pos_offset, attention_mask)
-            )
+            q = self.hook_rot_q(self.apply_rotary(q, kv_cache_pos_offset, attention_mask))
             k = self.hook_rot_k(
                 self.apply_rotary(k, 0, attention_mask)
             )  # keys are cached so no offset
@@ -591,15 +553,8 @@ class Attention(nn.Module):
             q = q.to(torch.float32)
             k = k.to(torch.float32)
 
-        attn_scores = (
-            einsum(
-                "batch query_pos head_index d_head, \
-                    batch key_pos head_index d_head \
-                    -> batch head_index query_pos key_pos",
-                q,
-                k,
-            )
-            / self.attn_scale
+        attn_scores = self.calculate_attention_scores(
+            q, k
         )  # [batch, head_index, query_pos, key_pos]
 
         if self.cfg.positional_embedding_type == "alibi":
@@ -609,9 +564,7 @@ class Attention(nn.Module):
 
             # only recompute when necessary to increase efficiency.
             if self.alibi is None or key_ctx > self.alibi.size(-1):
-                self.alibi = Attention.create_alibi_bias(
-                    self.cfg.n_heads, key_ctx, self.cfg.device
-                )
+                self.alibi = Attention.create_alibi_bias(self.cfg.n_heads, key_ctx, self.cfg.device)
 
             attn_scores += self.alibi[
                 :, :query_ctx, :key_ctx
@@ -630,6 +583,184 @@ class Attention(nn.Module):
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
+        pattern = pattern.to(v.device)
+        z = self.calculate_z_scores(v, pattern)  # [batch, pos, head_index, d_head]
+        if not self.cfg.use_attn_result:
+            if self.cfg.load_in_4bit:
+                # call bitsandbytes method to dequantize and multiply
+                out = bnb.matmul_4bit(
+                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
+                    self.W_O.t(),
+                    # bias=self.W_O.t(),
+                    bias=None,
+                    quant_state=self.W_O.quant_state,
+                )
+                +self.b_O
+            else:
+                out = (
+                    (
+                        einsum(
+                            "batch pos head_index d_head, \
+                                head_index d_head d_model -> \
+                                batch pos d_model",
+                            z,
+                            self.W_O,
+                        )
+                    )
+                    + self.b_O
+                )  # [batch, pos, d_model]
+        else:
+            # Explicitly calculate the attention result so it can be accessed by a hook
+            # This is off by default because it can easily eat through your GPU memory.
+            if self.cfg.load_in_4bit:
+                result = self.hook_result(
+                    bnb.matmul_4bit(
+                        z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
+                        self.W_O.t(),
+                        bias=None,
+                        quant_state=self.W_O.quant_state,
+                    )
+                )
+            else:
+                result = self.hook_result(
+                    einsum(
+                        "batch pos head_index d_head, \
+                            head_index d_head d_model -> \
+                            batch pos head_index d_model",
+                        z,
+                        self.W_O,
+                    )
+                )  # [batch, pos, head_index, d_model]
+            out = (
+                einops.reduce(result, "batch position index model->batch position model", "sum")
+                + self.b_O
+            )  # [batch, pos, d_model]
+        return out
+
+    def calculate_qkv_matrices(
+        self,
+        query_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        key_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        value_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+    ) -> Tuple[
+        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch pos head_index d_head"],
+    ]:
+        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
+            qkv_einops_string = "batch pos head_index d_model"
+        else:
+            qkv_einops_string = "batch pos d_model"
+
+        if self.cfg.load_in_4bit:
+            q = self.hook_q(
+                # call bitsandbytes method to dequantize and multiply
+                bnb.matmul_4bit(
+                    query_input,
+                    self.W_Q.t(),
+                    bias=None,
+                    quant_state=self.W_Q.quant_state,
+                ).reshape(
+                    query_input.shape[0],
+                    query_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
+                + self.b_Q
+            )
+        else:
+            q = self.hook_q(
+                einsum(
+                    f"{qkv_einops_string}, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    query_input,
+                    self.W_Q,
+                )
+                + self.b_Q
+            )  # [batch, pos, head_index, d_head]
+        if self.cfg.load_in_4bit:
+            k = self.hook_k(
+                # call bitsandbytes method to dequantize and multiply
+                bnb.matmul_4bit(
+                    key_input, self.W_K.t(), bias=None, quant_state=self.W_K.quant_state
+                ).reshape(
+                    key_input.shape[0],
+                    key_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
+                + self.b_K
+            )
+        else:
+            k = self.hook_k(
+                einsum(
+                    f"{qkv_einops_string}, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    key_input,
+                    self.W_K,
+                )
+                + self.b_K
+            )  # [batch, pos, head_index, d_head]
+
+        if self.cfg.load_in_4bit:
+            v = self.hook_v(
+                # call bitsandbytes method to dequantize and multiply
+                bnb.matmul_4bit(
+                    value_input,
+                    self.W_V.t(),
+                    bias=None,
+                    quant_state=self.W_V.quant_state,
+                ).reshape(
+                    value_input.shape[0],
+                    value_input.shape[1],
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                )
+                + self.b_V
+            )
+        else:
+            v = self.hook_v(
+                einsum(
+                    f"{qkv_einops_string}, head_index d_model d_head \
+                    -> batch pos head_index d_head",
+                    value_input,
+                    self.W_V,
+                )
+                + self.b_V
+            )  # [batch, pos, head_index, d_head]
+        return q, k, v
+
+    def calculate_attention_scores(
+        self,
+        q: Float[torch.Tensor, "batch query_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch key_pos head_index d_head"],
+    ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
+        attn_scores = (
+            einsum(
+                "batch query_pos head_index d_head, \
+                    batch key_pos head_index d_head \
+                    -> batch head_index query_pos key_pos",
+                q,
+                k,
+            )
+            / self.attn_scale
+        )
+        return attn_scores
+
+    def calculate_z_scores(
+        self,
+        v: Float[torch.Tensor, "batch key_pos head_index d_head"],
+        pattern: Float[torch.Tensor, "batch head_index query_pos key_pos"],
+    ) -> Float[torch.Tensor, "batch query_pos head_index d_head"]:
         z = self.hook_z(
             einsum(
                 "batch key_pos head_index d_head, \
@@ -638,45 +769,12 @@ class Attention(nn.Module):
                 v,
                 pattern,
             )
-        )  # [batch, pos, head_index, d_head]
-        if not self.cfg.use_attn_result:
-            out = (
-                (
-                    einsum(
-                        "batch pos head_index d_head, \
-                            head_index d_head d_model -> \
-                            batch pos d_model",
-                        z,
-                        self.W_O,
-                    )
-                )
-                + self.b_O
-            )  # [batch, pos, d_model]
-        else:
-            # Explicitly calculate the attention result so it can be accessed by a hook
-            # This is off by default because it can easily eat through your GPU memory.
-            result = self.hook_result(
-                einsum(
-                    "batch pos head_index d_head, \
-                        head_index d_head d_model -> \
-                        batch pos head_index d_model",
-                    z,
-                    self.W_O,
-                )
-            )  # [batch, pos, head_index, d_model]
-            out = (
-                einops.reduce(
-                    result, "batch position index model->batch position model", "sum"
-                )
-                + self.b_O
-            )  # [batch, pos, d_model]
-        return out
+        )
+        return z
 
     def apply_causal_mask(
         self,
-        attn_scores: Float[
-            torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"
-        ],
+        attn_scores: Float[torch.Tensor, "batch head_index pos pos_plus_past_kv_pos_offset"],
         past_kv_pos_offset: int = 0,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ):
@@ -691,14 +789,14 @@ class Attention(nn.Module):
         ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
 
         # Index back to front to ensure local attention works
-        final_mask = self.mask[
-            None, None, -query_ctx_length:, -key_ctx_length:
-        ]  # [1, 1, pos, pos]
+        final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
             einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
+            final_mask = final_mask.to(attention_mask.device)
             final_mask = einops.einsum(final_mask, attention_mask, einsum_str).bool()
 
+        attn_scores = attn_scores.to(final_mask.device)
         return torch.where(final_mask, attn_scores, self.IGNORE)
 
     def calculate_sin_cos_rotary(
@@ -707,9 +805,7 @@ class Attention(nn.Module):
         n_ctx: int,
         base: int = 10000,
         dtype: torch.dtype = torch.float32,
-    ) -> Tuple[
-        Float[torch.Tensor, "n_ctx rotary_dim"], Float[torch.Tensor, "n_ctx rotary_dim"]
-    ]:
+    ) -> Tuple[Float[torch.Tensor, "n_ctx rotary_dim"], Float[torch.Tensor, "n_ctx rotary_dim"]]:
         """
         Calculate the sine and cosine waves to use in a rotary embedding. See https://blog.eleuther.ai/rotary-embeddings/ for details
 
@@ -722,10 +818,10 @@ class Attention(nn.Module):
 
         # A set of frequencies evenly spaced in log space
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
-            freq = einops.repeat(freq, "d -> (2 d)")
-        else:
+        if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
+        else:
+            freq = einops.repeat(freq, "d -> (2 d)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
@@ -741,13 +837,13 @@ class Attention(nn.Module):
         GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
         """
         rot_x = x.clone()
-        if self.cfg.original_architecture in ["GPTNeoXForCausalLM", "LlamaForCausalLM"]:
+        if self.cfg.rotary_adjacent_pairs:
+            rot_x[..., ::2] = -x[..., 1::2]
+            rot_x[..., 1::2] = x[..., ::2]
+        else:
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
-        else:
-            rot_x[..., ::2] = -x[..., 1::2]
-            rot_x[..., 1::2] = x[..., ::2]
 
         return rot_x
 
@@ -772,9 +868,8 @@ class Attention(nn.Module):
             ]
             x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
         else:
-            offset_position_ids = get_offset_position_ids(
-                past_kv_pos_offset, attention_mask
-            )
+            offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
+            offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
             mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
             mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
@@ -783,7 +878,7 @@ class Attention(nn.Module):
 
     @staticmethod
     def create_alibi_slope(
-        n_ctx: int, device: torch.device = None
+        n_ctx: int, device: Optional[Union[str, torch.device]] = None
     ) -> Float[torch.Tensor, "query key"]:
         """Create an ALiBi Slope Matrix.
 
@@ -825,7 +920,7 @@ class Attention(nn.Module):
 
     @staticmethod
     def create_alibi_multipliers(
-        n_heads: int, device: torch.device = None
+        n_heads: int, device: Optional[Union[str, torch.device]] = None
     ) -> Float[torch.Tensor, "head_idx"]:
         """Create the ALiBi Scalar Multipliers for each Head.
 
@@ -864,7 +959,7 @@ class Attention(nn.Module):
 
     @staticmethod
     def create_alibi_bias(
-        n_heads: int, n_ctx: int, device: torch.device = None
+        n_heads: int, n_ctx: int, device: Optional[Union[torch.device, str]] = None
     ) -> Float[torch.Tensor, "head_idx query key"]:
         """Create the ALiBi Bias for all Heads.
 
@@ -897,14 +992,12 @@ class Attention(nn.Module):
             The ALiBi bias that should be added to the attention scores before the softmax.
         """
         # Create the slope matrix
-        slope: Float[torch.Tensor, "query key"] = Attention.create_alibi_slope(
-            n_ctx, device
-        )
+        slope: Float[torch.Tensor, "query key"] = Attention.create_alibi_slope(n_ctx, device)
 
         # Create the scalar multiplier for each head.
-        multipliers: Float[
-            torch.Tensor, "head_idx"
-        ] = Attention.create_alibi_multipliers(n_heads, device)
+        multipliers: Float[torch.Tensor, "head_idx"] = Attention.create_alibi_multipliers(
+            n_heads, device
+        )
 
         # The ALiBi bias is then m * slope_matrix
         alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
@@ -912,20 +1005,239 @@ class Attention(nn.Module):
         return alibi_bias
 
 
+# Attention
+class Attention(AbstractAttention):
+    def __init__(
+        self,
+        cfg: Union[Dict, HookedTransformerConfig],
+        attn_type: str = "global",
+        layer_id: Optional[int] = None,
+    ):
+        """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
+
+        Convention: All attention pattern-style matrices have shape [batch, head_index, query_pos, key_pos]
+
+        Args:
+            cfg (Union[Dict, HookedTransformerConfig]): Config
+            attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
+            layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
+        """
+        super().__init__(cfg, attn_type, layer_id)
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+
+        if cfg.load_in_4bit:
+            # 4-bit quantization convention
+            nq = int((cfg.d_model * cfg.d_model) / 2)
+            self.W_K = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_V = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        else:
+            self.W_K = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+            )
+            self.W_V = nn.Parameter(
+                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+            )
+        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+
+
+class GroupedQueryAttention(AbstractAttention):
+    def __init__(
+        self,
+        cfg: Union[Dict, HookedTransformerConfig],
+        attn_type: str = "global",
+        layer_id: Union[int, None] = None,
+    ):
+        """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245 for details.
+        Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head] and W_Q has shape [head_index, d_head, d_model].
+        However, under the hood the key and value weights _W_K and _W_V are stored with shape [n_key_value_heads, d_model, d_head] and are expanded when the corresponding properties' getter is called.
+        Similarly, during a forward pass, initially K and V are kept in shapes [batch, pos, n_key_value_heads, d_head] and will only be expanded to shapes [batch, pos, n_heads, d_head]
+        using torch.repeat_interleave when the attention pattern and z-scores are calculated.
+
+        Args:
+            cfg (Union[Dict, HookedTransformerConfig]): Config
+            attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
+            layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
+        """
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        assert cfg.n_key_value_heads is not None
+        super().__init__(cfg, attn_type, layer_id)
+        self.repeat_kv_heads = cfg.n_heads // cfg.n_key_value_heads
+        self._W_K = nn.Parameter(
+            torch.empty(
+                cfg.n_key_value_heads,
+                self.cfg.d_model,
+                self.cfg.d_head,
+                dtype=cfg.dtype,
+            )
+        )
+        self._W_V = nn.Parameter(
+            torch.empty(
+                cfg.n_key_value_heads,
+                self.cfg.d_model,
+                self.cfg.d_head,
+                dtype=cfg.dtype,
+            )
+        )
+        self._b_K = nn.Parameter(
+            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self._b_V = nn.Parameter(
+            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
+        )
+
+    @property
+    def W_K(self):
+        return torch.repeat_interleave(self._W_K, dim=0, repeats=self.repeat_kv_heads)
+
+    @W_K.setter
+    def W_K(self, value):
+        self._W_K = value
+
+    @property
+    def W_V(self):
+        return torch.repeat_interleave(self._W_V, dim=0, repeats=self.repeat_kv_heads)
+
+    @W_V.setter
+    def W_V(self, value):
+        self._W_V = value
+
+    @property
+    def b_K(self):
+        return torch.repeat_interleave(self._b_K, dim=0, repeats=self.repeat_kv_heads)
+
+    @b_K.setter
+    def b_K(self, value):
+        self._b_K = value
+
+    @property
+    def b_V(self):
+        return torch.repeat_interleave(self._b_V, dim=0, repeats=self.repeat_kv_heads)
+
+    @b_V.setter
+    def b_V(self, value):
+        self._b_V = value
+
+    def calculate_qkv_matrices(
+        self,
+        query_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+        key_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos kv_head_index d_model"],
+        ],
+        value_input: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos kv_head_index d_model"],
+        ],
+    ) -> Tuple[
+        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch pos kv_head_index d_head"],
+        Float[torch.Tensor, "batch pos kv_head_index d_head"],
+    ]:
+        """Calculate the Q, K, and V matrices for grouped query attention.
+        This function uses the unexpanded weights _W_K and _W_V to calculate K and V.
+
+        Args:
+        query_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]): The input tensor for the query projection.
+        key_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]): The input tensor for the key projection. Note that is has as many head dimensions as the GPA block has key-value heads.
+        value_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]): The input tensor for the value projection. Note that is has as many head dimensions as the GPA block has key-value heads.
+
+        Returns:
+        Tuple[Float[torch.Tensor, "batch pos head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"]]:
+        A tuple containing the Q, K, and V matrices with the specified shapes.
+        """
+        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
+            kv_einops_string = "batch pos kv_head_index d_model"
+            q_einops_string = "batch pos head_index d_model"
+        else:
+            kv_einops_string = q_einops_string = "batch pos d_model"
+
+        q = self.hook_q(
+            einsum(
+                f"{q_einops_string}, head_index d_model d_head \
+                -> batch pos head_index d_head",
+                query_input,
+                self.W_Q,
+            )
+            + self.b_Q
+        )  # [batch, pos, head_index, d_head]
+        k = self.hook_k(
+            einsum(
+                f"{kv_einops_string}, kv_head_index d_model d_head \
+                -> batch pos kv_head_index d_head",
+                key_input,
+                self._W_K,
+            )
+            + self._b_K
+        )  # [batch, pos, head_index, d_head]
+        v = self.hook_v(
+            einsum(
+                f"{kv_einops_string}, kv_head_index d_model d_head \
+                -> batch pos kv_head_index d_head",
+                value_input,
+                self._W_V,
+            )
+            + self._b_V
+        )  # [batch, pos, head_index, d_head]
+        return q, k, v
+
+    def calculate_attention_scores(
+        self,
+        q: Float[torch.Tensor, "batch query_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch key_pos kv_head_index d_head"],
+    ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
+        """Calculate attention scores from Q and the unexpanded K matrix.
+        K will be expaned from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.
+
+        Args:
+        q (Float[torch.Tensor, "batch query_pos head_index d_head"]): The Q tensor.
+        k (Float[torch.Tensor, "batch key_pos kv_head_index d_head"]): The K tensor.
+
+        Returns:
+            Float[torch.Tensor, "batch head_index query_pos key_pos"]: The attention scores.
+        """
+        k = torch.repeat_interleave(k, dim=2, repeats=self.repeat_kv_heads)
+        return super().calculate_attention_scores(q, k)
+
+    def calculate_z_scores(
+        self,
+        v: Float[torch.Tensor, "batch key_pos kv_head_index d_head"],
+        pattern: Float[torch.Tensor, "batch head_index query_pos key_pos"],
+    ) -> Float[torch.Tensor, "batch query_pos head_index d_head"]:
+        """Calculate z scores from the attention pattern and the unexpanded V matrix.
+        V will be expaned from [batch, pos, n_key_value_head, d_head] to [batch, pos, n_query_heads, d_head] using torch.repeat_interleave.
+
+        Args:
+        v (Float[torch.Tensor, "batch query_pos head_index d_head"]): The V tensor.
+        pattern (Float[torch.Tensor, "batch key_pos kv_head_index d_head"]): The attention pattern.
+
+        Returns:
+            Float[torch.Tensor, "batch head_index query_pos key_pos"]: The z scores.
+        """
+        v = torch.repeat_interleave(v, dim=2, repeats=self.repeat_kv_heads)
+        return super().calculate_z_scores(v, pattern)
+
+
 # MLP Layers
 class MLP(nn.Module):
+    act_fn: Callable[..., torch.Tensor]
+    ln: nn.Module
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
+        assert self.cfg.d_mlp is not None  # TODO: should this not be optional?
+        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
-        self.W_out = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
@@ -958,10 +1270,9 @@ class MLP(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
-            + self.b_in
+            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in) + self.b_in
         )  # [batch, pos, d_mlp]
-        if not self.cfg.act_fn.endswith("_ln"):
+        if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
@@ -989,21 +1300,31 @@ class GatedMLP(nn.Module):
     In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in) + b_in) @ W_out + b_out
     """
 
+    act_fn: Callable[..., torch.Tensor]
+    ln: nn.Module
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
-        self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
+        assert self.cfg.d_mlp is not None  # keep mypy happy
+
+        if cfg.load_in_4bit:
+            nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
+            self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        else:
+            self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
+            self.W_gate = nn.Parameter(
+                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
+            )
+            self.W_out = nn.Parameter(
+                torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
+            )
+
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
-        self.W_out = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
-        )
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         # hook on gate output but before act_fn
@@ -1039,35 +1360,112 @@ class GatedMLP(nn.Module):
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
-        pre_act = self.hook_pre(
-            einsum(
-                "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_gate
+        if self.cfg.load_in_4bit:
+            pre_act = self.hook_pre(
+                bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
             )
-        )  # [batch, pos, d_mlp]
-        if not self.cfg.act_fn.endswith("_ln"):
-            pre_linear = self.hook_pre_linear(
+        else:
+            pre_act = self.hook_pre(
                 einsum(
-                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in
+                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
+                    x,
+                    self.W_gate,
                 )
-            )
+            )  # [batch, pos, d_mlp]
+
+        if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
+            if self.cfg.load_in_4bit:
+                pre_linear = self.hook_pre_linear(
+                    bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
+                )
+            else:
+                pre_linear = self.hook_pre_linear(
+                    einsum(
+                        "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
+                        x,
+                        self.W_in,
+                    )
+                )
+
             post_act = self.hook_post(
                 (self.act_fn(pre_act) * pre_linear) + self.b_in
             )  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
-        return (
-            einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
-                self.W_out,
+
+        if self.cfg.load_in_4bit:
+            return bnb.matmul_4bit(
+                post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
             )
-            + self.b_out
+        else:
+            return (
+                einsum(
+                    "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
+                    post_act,
+                    self.W_out,
+                )
+                + self.b_out
+            )
+
+
+class MoE(nn.Module):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+
+        # Ensure that num_experts and experts_per_token are specified and non-zero
+        assert cfg.num_experts is not None, "num_experts must be specified for MoE layer"
+        assert cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
+        self.experts_per_token: int = cfg.experts_per_token
+        assert (
+            cfg.experts_per_token <= cfg.num_experts
+        ), "experts_per_token must be less than or equal to num_experts"
+
+        self.experts = nn.ModuleList(
+            [GatedMLP(cfg) if cfg.gated_mlp else MLP(cfg) for _ in range(cfg.num_experts)]
         )
+        self.W_gate = nn.Parameter(torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype))
+
+        # Hook on the weights of selected experts [batch pos experts_per_token]
+        self.hook_expert_weights = HookPoint()
+        # Hook on the indices of selected experts [batch pos experts_per_token]
+        self.hook_expert_indices = HookPoint()
+
+    def forward(
+        self, x: Float[torch.Tensor, "batch pos d_model"]
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
+        # [batch, pos, d_model] -> [batch, pos, num_experts]
+        gate_logits = einsum(
+            "batch pos d_model, d_model num_experts -> batch pos num_experts",
+            x,
+            self.W_gate,
+        )
+
+        # choose the top k(=experts_per_token) experts to use
+        # both are [batch, pos, experts_per_token]
+        weights, expert_indices = torch.topk(gate_logits, self.experts_per_token)
+        weights = self.hook_expert_weights(F.softmax(weights, dim=-1))
+        expert_indices = self.hook_expert_indices(expert_indices)
+
+        results = torch.zeros_like(x)
+        for i, expert_mlp in enumerate(self.experts):
+            # find the batch, pos, and expert indices which use this expert
+            batch, pos, expert = torch.where(expert_indices == i)
+            # accumulate the weighted outputs from the expert
+            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(x[batch])
+
+        return results
 
 
 # Transformer Block
 class TransformerBlock(nn.Module):
+    ln1: nn.Module
+    ln2: nn.Module
+    mlp: nn.Module
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -1095,18 +1493,19 @@ class TransformerBlock(nn.Module):
             if not self.cfg.attn_only:
                 self.ln2 = nn.Identity()
         else:
-            logging.warning(
-                f"Invalid normalization_type passed in {self.cfg.normalization_type}"
-            )
+            logging.warning(f"Invalid normalization_type passed in {self.cfg.normalization_type}")
 
+        attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
         if not self.cfg.use_local_attn:
-            self.attn = Attention(cfg, "global", block_index)
+            self.attn = attention(cfg, "global", block_index)
         else:
             assert self.cfg.attn_types is not None
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = Attention(cfg, attn_type, block_index)
+            self.attn = attention(cfg, attn_type, block_index)
         if not self.cfg.attn_only:
-            if self.cfg.gated_mlp:
+            if self.cfg.num_experts:
+                self.mlp = MoE(cfg)
+            elif self.cfg.gated_mlp:
                 self.mlp = GatedMLP(cfg)
             else:
                 self.mlp = MLP(cfg)
@@ -1128,9 +1527,7 @@ class TransformerBlock(nn.Module):
     def forward(
         self,
         resid_pre: Float[torch.Tensor, "batch pos d_model"],
-        shortformer_pos_embed: Optional[
-            Float[torch.Tensor, "batch pos d_model"]
-        ] = None,
+        shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
@@ -1147,36 +1544,35 @@ class TransformerBlock(nn.Module):
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
 
-        def add_head_dimension(
-            tensor: Float[torch.Tensor, "batch pos d_model"],
-            clone_tensor=True,
-            # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
-        ):
-            repeated_tensor = einops.repeat(
-                tensor,
-                "batch pos d_model -> batch pos n_heads d_model",
-                n_heads=self.cfg.n_heads,
-            )
-            if clone_tensor:
-                return repeated_tensor.clone()
-            else:
-                return repeated_tensor
-
         if self.cfg.use_attn_in or self.cfg.use_split_qkv_input:
             # We're adding a head dimension
-            attn_in = add_head_dimension(resid_pre, clone_tensor=False)
             if shortformer_pos_embed is not None:
-                shortformer_pos_embed = add_head_dimension(shortformer_pos_embed)
+                shortformer_pos_embed = repeat_along_head_dimension(
+                    shortformer_pos_embed, n_heads=self.cfg.n_heads
+                )
         else:
             attn_in = resid_pre
 
         if self.cfg.use_attn_in:
-            attn_in = self.hook_attn_in(attn_in.clone())
+            attn_in = self.hook_attn_in(
+                repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
+            )
 
         if self.cfg.use_split_qkv_input:
-            query_input = self.hook_q_input(attn_in.clone())
-            key_input = self.hook_k_input(attn_in.clone())
-            value_input = self.hook_v_input(attn_in.clone())
+            n_kv_heads = (
+                self.cfg.n_key_value_heads
+                if self.cfg.n_key_value_heads is not None
+                else self.cfg.n_heads
+            )
+            query_input = self.hook_q_input(
+                repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
+            )
+            key_input = self.hook_k_input(
+                repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
+            )
+            value_input = self.hook_v_input(
+                repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
+            )
         else:
             query_input = attn_in
             key_input = attn_in
@@ -1197,39 +1593,25 @@ class TransformerBlock(nn.Module):
             )
         )  # [batch, pos, d_model]
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
-            resid_mid = self.hook_resid_mid(
-                resid_pre + attn_out
-            )  # [batch, pos, d_model]
+            resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             mlp_in = (
-                resid_mid
-                if not self.cfg.use_hook_mlp_in
-                else self.hook_mlp_in(resid_mid.clone())
+                resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
             normalized_resid_mid = self.ln2(mlp_in)
-            mlp_out = self.hook_mlp_out(
-                self.mlp(normalized_resid_mid)
-            )  # [batch, pos, d_model]
-            resid_post = self.hook_resid_post(
-                resid_mid + mlp_out
-            )  # [batch, pos, d_model]
+            mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
             # In GPT-J, LN1 and LN2 are tied, in GPT-NeoX they aren't.
             normalized_resid_pre_2 = self.ln2(
-                resid_pre
-                if not self.cfg.use_hook_mlp_in
-                else self.hook_mlp_in(resid_pre.clone())
+                resid_pre if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_pre.clone())
             )
-            mlp_out = self.hook_mlp_out(
-                self.mlp(normalized_resid_pre_2)
-            )  # [batch, pos, d_model]
+            mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_pre_2))  # [batch, pos, d_model]
             resid_post = self.hook_resid_post(
                 resid_pre + attn_out + mlp_out
             )  # [batch, pos, d_model]
         else:
-            resid_post = self.hook_resid_post(
-                resid_pre + attn_out
-            )  # [batch, pos, d_model]
+            resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
         return resid_post
 
 
@@ -1271,17 +1653,10 @@ class BertBlock(nn.Module):
         value_input = resid_pre
 
         if self.cfg.use_split_qkv_input:
-
-            def add_head_dimension(tensor):
-                return einops.repeat(
-                    tensor,
-                    "batch pos d_model -> batch pos n_heads d_model",
-                    n_heads=self.cfg.n_heads,
-                ).clone()
-
-            query_input = self.hook_q_input(add_head_dimension(query_input))
-            key_input = self.hook_k_input(add_head_dimension(key_input))
-            value_input = self.hook_v_input(add_head_dimension(value_input))
+            n_heads = self.cfg.n_heads
+            query_input = self.hook_q_input(repeat_along_head_dimension(query_input, n_heads))
+            key_input = self.hook_k_input(repeat_along_head_dimension(key_input, n_heads))
+            value_input = self.hook_v_input(repeat_along_head_dimension(value_input, n_heads))
 
         attn_out = self.hook_attn_out(
             self.attn(
@@ -1293,11 +1668,7 @@ class BertBlock(nn.Module):
         )
         resid_mid = self.hook_resid_mid(resid_pre + attn_out)
 
-        mlp_in = (
-            resid_mid
-            if not self.cfg.use_hook_mlp_in
-            else self.hook_mlp_in(resid_mid.clone())
-        )
+        mlp_in = resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
         normalized_resid_mid = self.ln1(mlp_in)
         mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))
         resid_post = self.hook_resid_post(normalized_resid_mid + mlp_out)
