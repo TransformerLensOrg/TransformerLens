@@ -535,12 +535,12 @@ class AbstractAttention(ABC, nn.Module):
 
         Examples:
 
-        >>> Attention.create_alibi_slope(3)
+        >>> AbstractAttention.create_alibi_slope(3)
         tensor([[ 0.,  0.,  0.],
                 [-1.,  0.,  0.],
                 [-2., -1.,  0.]])
 
-        >>> Attention.create_alibi_slope(4)
+        >>> AbstractAttention.create_alibi_slope(4)
         tensor([[ 0.,  0.,  0.,  0.],
                 [-1.,  0.,  0.,  0.],
                 [-2., -1.,  0.,  0.],
