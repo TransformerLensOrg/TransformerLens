@@ -21,6 +21,7 @@ if is_bitsandbytes_available():
     import bitsandbytes as bnb
     from bitsandbytes.nn.modules import Params4bit
 
+
 class AbstractAttention(ABC, nn.Module):
     alibi: Union[torch.Tensor, None]
 
@@ -57,8 +58,8 @@ class AbstractAttention(ABC, nn.Module):
             self.W_O = nn.Parameter(
                 torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
             )
-        self.W_K: Params4bit|nn.Parameter = abstract_attribute()
-        self.W_V: Params4bit|nn.Parameter = abstract_attribute()
+        self.W_K: Params4bit | nn.Parameter = abstract_attribute()
+        self.W_V: Params4bit | nn.Parameter = abstract_attribute()
 
         self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K: nn.Parameter = abstract_attribute()
@@ -206,7 +207,9 @@ class AbstractAttention(ABC, nn.Module):
 
             # only recompute when necessary to increase efficiency.
             if self.alibi is None or key_ctx > self.alibi.size(-1):
-                self.alibi = AbstractAttention.create_alibi_bias(self.cfg.n_heads, key_ctx, self.cfg.device)
+                self.alibi = AbstractAttention.create_alibi_bias(
+                    self.cfg.n_heads, key_ctx, self.cfg.device
+                )
 
             attn_scores += self.alibi[
                 :, :query_ctx, :key_ctx
@@ -636,7 +639,9 @@ class AbstractAttention(ABC, nn.Module):
             The ALiBi bias that should be added to the attention scores before the softmax.
         """
         # Create the slope matrix
-        slope: Float[torch.Tensor, "query key"] = AbstractAttention.create_alibi_slope(n_ctx, device)
+        slope: Float[torch.Tensor, "query key"] = AbstractAttention.create_alibi_slope(
+            n_ctx, device
+        )
 
         # Create the scalar multiplier for each head.
         multipliers: Float[torch.Tensor, "head_idx"] = AbstractAttention.create_alibi_multipliers(

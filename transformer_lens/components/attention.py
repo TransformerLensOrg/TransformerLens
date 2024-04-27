@@ -14,6 +14,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 if is_bitsandbytes_available():
     from bitsandbytes.nn.modules import Params4bit
 
+
 # Attention
 class Attention(AbstractAttention):
     def __init__(
