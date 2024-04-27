@@ -1,112 +1,103 @@
 [tool.poetry]
-name = "transformer-lens"
-version = "0.0.0" # This is automatically set by the CD pipeline on release
-description = "An implementation of transformers tailored for mechanistic interpretability."
-authors = ["Neel Nanda <77788841+neelnanda-io@users.noreply.github.com>"]
-license = "MIT"
-readme = "README.md"
-packages = [{include = "transformer_lens"}]
+    authors=["Neel Nanda <77788841+neelnanda-io@users.noreply.github.com>"]
+    description="An implementation of transformers tailored for mechanistic interpretability."
+    license="MIT"
+    name="transformer-lens"
+    packages=[{include="transformer_lens"}]
+    readme="README.md"
+    # Version is automatically set by the pipeline on release
+    version="0.0.0"
 
-[tool.poetry.scripts]
-build-docs = "docs.make_docs:build_docs"
-docs-hot-reload = "docs.make_docs:docs_hot_reload"
+    [tool.poetry.scripts]
+        build-docs="docs.make_docs:build_docs"
+        docs-hot-reload="docs.make_docs:docs_hot_reload"
 
-[tool.poetry.dependencies]
-python = ">=3.8,<4.0"
-einops = ">=0.6.0"
-numpy = [{ version = ">=1.20,<1.25", python = ">=3.8,<3.9" },
-         { version = ">=1.24", python = ">=3.9,<3.12" },
-         { version = ">=1.26", python = ">=3.12,<3.13" }]
-torch = ">=1.10,!=2.0,!=2.1.0"
-# See PyTorch 2 fix below. We pin >=2.1.1 due to MPS errors (See our Slack)
+    [tool.poetry.dependencies]
+        accelerate=">=0.23.0" # Needed for Llama Models
+        beartype="^0.14.1"
+        better-abc="^0.0.3"
+        datasets=">=2.7.1"
+        einops=">=0.6.0"
+        fancy-einsum=">=0.0.3"
+        jaxtyping=">=0.2.11"
+        numpy=[
+            {version=">=1.20,<1.25", python=">=3.8,<3.9"},
+            {version=">=1.24", python=">=3.9,<3.12"},
+            {version=">=1.26", python=">=3.12,<3.13"},
+        ]
+        pandas=">=1.1.5"
+        python=">=3.8,<4.0"
+        rich=">=12.6.0"
+        torch = [
+            {platform = "linux", version = ">=1.10"}, # We can use any torch version on Linux (e.g colab)
+            {platform = "!=linux", version = ">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
+        ]
+        tqdm=">=4.64.1"
+        transformers=">=4.37.2"
+        typing-extensions="*"
+        wandb=">=0.13.5"
+        sentencepiece = "*"
 
-datasets = ">=2.7.1"
-transformers = ">=4.25.1"
-tqdm = ">=4.64.1"
-pandas = ">=1.1.5"
-wandb = ">=0.13.5"
-fancy-einsum = ">=0.0.3"
-rich = ">=12.6.0"
-jaxtyping = ">=0.2.11"
-beartype = "^0.14.1"
-accelerate = ">=0.23.0" # Needed for Llama Models
-typing-extensions = "*"
-# PyTorch 2.0 Bug Fix PyTorch didn't put their dependencies metadata into all wheels for 2.1.0, so
-# it doesn't work with Poetry. This is a known bug - the workaround is to place them manually here
-# (from the one wheel that did correctly list them). This was broken in 2.0.1 and the fix wasn't
-# made for 2.1.0, however Meta are aware of the issue and once it is fixed (and the torch version
-# requirement bumped) this should be removed. Note also the python version is used to specify that
-# this is only added where v2 torch is installed (as per the torch version requirement above).
-# https://github.com/pytorch/pytorch/issues/100974
-# https://github.com/python-poetry/poetry/issues/7902#issuecomment-1583078794
-nvidia-cuda-nvrtc-cu12 = { version = ">=12.1.105", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-cuda-runtime-cu12 = { version = ">=12.1.105", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-cuda-cupti-cu12 = { version = ">=12.1.105", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-cudnn-cu12 = { version = ">=8.9.2.26", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-cublas-cu12 = { version = ">=12.1.3.1", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-cufft-cu12 = { version = ">=11.0.2.54", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-curand-cu12 = { version = ">=10.3.2.106", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-cusolver-cu12 = { version = ">=11.4.5.107", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-cusparse-cu12 = { version = ">=12.1.0.106", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-nccl-cu12 = { version = ">=2.18.1", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-nvidia-nvtx-cu12 = { version = ">=12.1.105", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-triton = { version = ">=2.1.0", markers = "platform_system == 'Linux' and platform_machine == 'x86_64'" }
-# End PyTorch 2.1.0 Bug Fix
+    [tool.poetry.group]
+        [tool.poetry.group.dev.dependencies]
+            black="^23.3.0"
+            circuitsvis=">=1.38.1"
+            isort="5.8.0"
+            jupyter=">=1.0.0"
+            mypy=">=1.8.0"
+            nbval="^0.10.0"
+            plotly=">=5.12.0"
+            pycln="^2.1.3"
+            pytest=">=7.2.0"
+            pytest-cov=">=4.0.0"
+            pytest-doctestplus="^1.0.0"
 
-[tool.poetry.group.dev.dependencies]
-pytest = ">=7.2.0"
-pytest-cov = ">=4.0.0"
-mypy = ">=0.991"
-jupyter = ">=1.0.0"
-circuitsvis = ">=1.38.1"
-plotly = ">=5.12.0"
-isort = "5.8.0"
-black = "^23.3.0"
-pycln = "^2.1.3"
-pytest-doctestplus = "^1.0.0"
-nbval = "^0.10.0"
+        [tool.poetry.group.jupyter.dependencies]
+            ipywidgets="^8.1.1"
+            jupyterlab=">=3.5.0"
 
-[tool.poetry.group.jupyter.dependencies]
-jupyterlab = ">=3.5.0"
-ipywidgets = "^8.1.1"
+        [tool.poetry.group.docs.dependencies]
+            furo={version=">=2022.12.7"}
+            myst-parser={version=">=0.18.1"}
+            nbconvert="^7.9.2"
+            nbsphinx="^0.9.3"
+            pandoc="^2.3"
+            snowballstemmer="*"
+            sphinx={version="5.2.3"}
+            sphinx-autobuild={version=">=2021.3.14"}
+            sphinxcontrib-napoleon={version=">=0.7"}
+            tabulate={version=">=0.9.0"}
 
-[tool.poetry.group.docs.dependencies]
-sphinx = {version = "5.2.3" }
-sphinxcontrib-napoleon = {version = ">=0.7" }
-sphinx-autobuild = {version = ">=2021.3.14" }
-furo = {version = ">=2022.12.7" }
-myst-parser = {version = ">=0.18.1" }
-tabulate= {version = ">=0.9.0" }
-snowballstemmer = "*"
-nbsphinx = "^0.9.3"
-pandoc = "^2.3"
-nbconvert = "^7.9.2"
-
-[tool.pytest.ini_options]
-doctest_optionflags = "NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
-filterwarnings = [
-    "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
-    # Ignore numpy.distutils deprecation warning caused by pandas
-    # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
-    "ignore:distutils Version classes are deprecated:DeprecationWarning"
-]
-addopts = """--jaxtyping-packages=transformer_lens,beartype.beartype \ 
--W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning \ 
---deselect transformer_lens/utils.py::test_prompt \
---doctest-modules --doctest-plus \
---nbval"""
+[tool.pytest]
+    [tool.pytest.ini_options]
+        addopts=[
+            "--doctest-modules",
+            "--doctest-plus",
+            "--jaxtyping-packages=transformer_lens,beartype.beartype",
+            "--nbval",
+            "-W ignore::beartype.roar.BeartypeDecorHintPep585DeprecationWarning",
+        ]
+        doctest_optionflags="NORMALIZE_WHITESPACE ELLIPSIS FLOAT_CMP"
+        filterwarnings=[
+            "ignore:pkg_resources is deprecated as an API:DeprecationWarning",
+            # Ignore numpy.distutils deprecation warning caused by pandas
+            # More info: https://numpy.org/doc/stable/reference/distutils.html#module-numpy.distutils
+            "ignore:distutils Version classes are deprecated:DeprecationWarning",
+        ]
 
 [tool.isort]
-profile = "black"
-extend_skip = ["__init__.py", ".venv/"]
+    extend_skip=[".venv/", "__init__.py"]
+    profile="black"
 
 [tool.mypy]
-ignore_missing_imports = true
-check_untyped_defs = true
+    check_untyped_defs=true
+    exclude=[".venv/", "assets", "demos", "docs", "easy_transformer", "tests"]
+    ignore_missing_imports=true
 
 [tool.black]
-# Exclude snapshot tests & .venv
-exclude = '''
+    line-length=100  # Set line length to 100 to match other tools
+    # Exclude snapshot tests & .venv
+    exclude='''
 (
 /snapshots/
 | .venv/
@@ -115,21 +106,21 @@ exclude = '''
 
 [tool.pylint]
     [tool.pylint.TYPECHECK]
-    # Fix for Pytorch member existence checks
-    generated-members = "torch.*"
+        # Fix for Pytorch member existence checks
+        generated-members="torch.*"
 
     [tool.pylint.DESIGN]
-    max-args = 10
-    max-locals = 30
+        max-args=10
+        max-locals=30
 
     [tool.pylint."MESSAGES CONTROL"]
-    disable = "redefined-builtin" # Disable redefined builtin functions
+        disable="redefined-builtin" # Disable redefined builtin functions
 
     [tool.pylint.'MASTER']
-    disable = [
-        "C0103", # Disable invalid file name (as we use PascalCase for classes)
-    ]
+        disable=[
+            "C0103", # Disable invalid file name (as we use PascalCase for classes)
+        ]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+    build-backend="poetry.core.masonry.api"
+    requires=["poetry-core"]

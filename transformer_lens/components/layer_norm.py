@@ -13,9 +13,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class LayerNorm(nn.Module):
-    def __init__(
-        self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None
-    ):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         LayerNorm with optional length parameter
 
@@ -26,7 +24,10 @@ class LayerNorm(nn.Module):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
         self.eps = self.cfg.eps
-        self.length = self.cfg.d_model if length is None else length
+        if length is None:
+            self.length = self.cfg.d_model
+        else:
+            self.length = length
 
         self.w = nn.Parameter(torch.ones(self.length, dtype=cfg.dtype))
         self.b = nn.Parameter(torch.zeros(self.length, dtype=cfg.dtype))
@@ -49,7 +50,7 @@ class LayerNorm(nn.Module):
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
-        x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
+        x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )

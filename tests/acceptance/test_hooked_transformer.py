@@ -1,22 +1,25 @@
 import gc
 import os
 
+import pandas as pd
 import pytest
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 from transformer_lens import HookedTransformer
 from transformer_lens.components import LayerNormPre
-from transformer_lens.loading_from_pretrained import OFFICIAL_MODEL_NAMES
+from transformer_lens.HookedTransformer import DTYPE_FROM_STRING
+from transformer_lens.loading_from_pretrained import (
+    OFFICIAL_MODEL_NAMES,
+    get_official_model_name,
+)
 from transformer_lens.utils import clear_huggingface_cache
 
 TINY_STORIES_MODEL_NAMES = [
     name for name in OFFICIAL_MODEL_NAMES if name.startswith("roneneldan/TinyStories")
 ]
 
-PYTHIA_MODEL_NAMES = [
-    name for name in OFFICIAL_MODEL_NAMES if name.startswith("EleutherAI/pythia")
-]
+PYTHIA_MODEL_NAMES = [name for name in OFFICIAL_MODEL_NAMES if name.startswith("EleutherAI/pythia")]
 
 model_names = [
     "attn-only-demo",
@@ -33,6 +36,11 @@ model_names = [
     "tiny-stories-33M",
     "bloom-560m",
     "santacoder",
+    "microsoft/phi-1",
+    "microsoft/phi-1_5",
+    "microsoft/phi-2",
+    "google/gemma-2b",
+    "google/gemma-7b",
 ]
 text = "Hello world!"
 """ 
@@ -167,6 +175,223 @@ def test_from_pretrained_revision():
         raise AssertionError("Should have raised an error")
 
 
+def check_norm_folding(
+    model_name,
+    hf_model=None,
+    tokenizer=None,
+    prompt="Hello, world!",
+    device=None,
+    dtype=None,
+):
+    """
+    Checks that loading a model with Layer/RMS Norm folding enabled does not (significantly) change its outputs.
+
+    Returns the maximum difference between the logits produced by the same model with and without norm folding enabled.
+
+    Also asserts that this difference is within some tolerance, although this is deliberately set to a high value
+    in order to account for lower precision models.
+    """
+
+    # If a device/dtype is not specified, and hf_model is provided, use its device/dtype
+    # Otherwise, default to cuda (if available)/float32
+    if device is None:
+        if hf_model:
+            device = hf_model.device
+        else:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+    if dtype is None:
+        if hf_model:
+            dtype = hf_model.dtype
+        else:
+            dtype = "float32"
+
+    folded_model = HookedTransformer.from_pretrained(
+        model_name=model_name,
+        hf_model=hf_model,
+        device=device,
+        tokenizer=tokenizer,
+        dtype=dtype,
+        fold_ln=True,
+        center_writing_weights=False,
+        center_unembed=False,
+    )
+    tokens = folded_model.to_tokens(prompt)
+    folded_logits = folded_model(tokens).detach()
+    del folded_model
+    torch.cuda.empty_cache()
+
+    unfolded_model = HookedTransformer.from_pretrained(
+        model_name=model_name,
+        hf_model=hf_model,
+        device=device,
+        tokenizer=tokenizer,
+        dtype=dtype,
+        fold_ln=False,
+        center_writing_weights=False,
+        center_unembed=False,
+    )
+    unfolded_logits = unfolded_model(tokens).detach()
+    del unfolded_model
+    torch.cuda.empty_cache()
+
+    assert torch.allclose(
+        torch.softmax(folded_logits, dim=-1),
+        torch.softmax(unfolded_logits, dim=-1),
+        atol=1e-2,
+    )
+
+    return torch.max(
+        torch.abs(torch.softmax(folded_logits, dim=-1) - torch.softmax(unfolded_logits, dim=-1))
+    )
+
+
+def calculate_error(logits1, logits2):
+    t1 = torch.softmax(logits1, dim=-1).to("cpu")
+    t2 = torch.softmax(logits2, dim=-1).to("cpu")
+    err = torch.abs(t1 - t2)
+    return {
+        "max": torch.max(err).item(),
+        "mean": torch.mean(err).item(),
+        "median": torch.median(err).item(),
+        "std": torch.std(err).item(),
+    }
+
+
+def benchmark_model_options(
+    model_name: str,
+    hf_model=None,
+    tokenizer=None,
+    device="cuda",
+    n_devices=1,
+    dtype=torch.float16,
+    cache_in_cpu=True,
+):
+    options = {
+        "fold_ln": False,
+        "center_writing_weights": False,
+        "center_unembed": False,
+        "fold_value_biases": False,
+    }
+
+    prompts = [
+        "Hello, world!",
+        "This is a test.",
+        "What is it about?",
+        "I don't know.",
+    ]
+
+    model_name = get_official_model_name(model_name)
+
+    if hf_model is None:
+        hf_model = AutoModelForCausalLM.from_pretrained(
+            model_name, torch_dtype=dtype, device_map="auto"
+        )
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    tokens = tokenizer(prompts, return_tensors="pt", truncation=True, max_length=4).input_ids.to(
+        device
+    )
+
+    # hf_model = hf_model.to(device)
+    hf_logits = hf_model(tokens).logits.detach()
+    hf_logits = hf_logits.to("cpu")
+
+    if cache_in_cpu:
+        hf_model = hf_model.to("cpu")
+    else:
+        del hf_model
+        hf_model = None
+
+    torch.cuda.empty_cache()
+    gc.collect()
+
+    results = {}
+
+    # Check the error when all processing options are disabled
+    tl_model = HookedTransformer.from_pretrained(
+        model_name,
+        hf_model=hf_model,
+        tokenizer=tokenizer,
+        device=device,
+        n_devices=n_devices,
+        dtype=dtype,
+        **options,
+    )
+    tl_logits = tl_model(tokens).detach().to("cpu")
+    results["no_options"] = calculate_error(hf_logits, tl_logits)
+    del tl_model, tl_logits
+    torch.cuda.empty_cache()
+
+    # Check the error when each processing option is enabled individually
+    for option in options:
+        gc.collect()
+        new_options = options.copy()
+        new_options[option] = True
+        tl_model = HookedTransformer.from_pretrained(
+            model_name,
+            hf_model=hf_model,
+            tokenizer=tokenizer,
+            device=device,
+            n_devices=n_devices,
+            dtype=dtype,
+            **new_options,
+        )
+        tl_logits = tl_model(tokens).detach().to("cpu")
+        results[option] = calculate_error(hf_logits, tl_logits)
+
+        del tl_model, tl_logits
+        torch.cuda.empty_cache()
+        gc.collect()
+
+    # Check the error when all processing options are enabled
+    all_options = {k: True for k, v in options.items()}
+    tl_model = HookedTransformer.from_pretrained(
+        model_name,
+        hf_model=hf_model,
+        tokenizer=tokenizer,
+        device=device,
+        n_devices=n_devices,
+        dtype=dtype,
+        **all_options,
+    )
+    tl_logits = tl_model(tokens).detach().to("cpu")
+    results["all_options"] = calculate_error(hf_logits, tl_logits)
+
+    del tl_model, tl_logits
+
+    del hf_model
+    del tokens
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    return results
+
+
+def benchmark_models(models, device="cuda", n_devices=1, cache_in_cpu=True):
+    """
+    Benchmark the error introduced by different options and data types for a list of models.
+    :param models: A dict mapping model names to a list of dtypes to test
+    """
+    rows = []
+
+    for model in models:
+        dtypes = models[model]
+        for dtype in dtypes:
+            print(f"Testing {model} with dtype {dtype}")
+            results = benchmark_model_options(
+                model,
+                device=device,
+                n_devices=n_devices,
+                dtype=DTYPE_FROM_STRING[dtype],
+                cache_in_cpu=cache_in_cpu,
+            )
+            for option, result in results.items():
+                rows.append({"model": model, "dtype": dtype, "options": option, **result})
+
+    return pd.DataFrame(rows)
+
+
 def check_similarity_with_hf_model(tl_model, hf_model, prompt="Hello, world!"):
     """
     Check that the TransformerLens model and the HuggingFace model
@@ -209,9 +434,7 @@ def check_dtype(dtype, margin, no_processing=False):
     for model_path in ["gpt2", "roneneldan/TinyStories-33M", "EleutherAI/pythia-70m"]:
         if no_processing:
             # For low precision, the processing is not advised.
-            model = HookedTransformer.from_pretrained_no_processing(
-                model_path, torch_dtype=dtype
-            )
+            model = HookedTransformer.from_pretrained_no_processing(model_path, torch_dtype=dtype)
         else:
             model = HookedTransformer.from_pretrained(model_path, torch_dtype=dtype)
 
@@ -233,8 +456,12 @@ def check_dtype(dtype, margin, no_processing=False):
         gc.collect()
 
 
+@pytest.mark.skipif(
+    torch.backends.mps.is_available() or not torch.cuda.is_available(),
+    reason="some operations unsupported by MPS: https://github.com/pytorch/pytorch/issues/77754 or no GPU",
+)
 @pytest.mark.parametrize("dtype", [torch.float64, torch.float32])
-def test_dtypes(dtype):
+def test_dtype_float(dtype):
     check_dtype(dtype, margin=5e-4)
 
 
@@ -266,9 +493,7 @@ def test_pos_embed_hook():
         z[:] = 0.0
         return z
 
-    _ = model.run_with_hooks(
-        "Hello, world", fwd_hooks=[("hook_pos_embed", remove_pos_embed)]
-    )
+    _ = model.run_with_hooks("Hello, world", fwd_hooks=[("hook_pos_embed", remove_pos_embed)])
 
     # Check that pos embed has not been permanently changed
     assert (model.W_pos == initial_W_pos).all()

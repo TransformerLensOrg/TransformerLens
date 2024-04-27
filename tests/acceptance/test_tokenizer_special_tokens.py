@@ -27,9 +27,7 @@ def test_d_vocab_from_tokenizer():
         else:
             tokenizer_name = loading.get_official_model_name(model_name)
 
-        model = HookedTransformer(
-            cfg=cfg, tokenizer=AutoTokenizer.from_pretrained(tokenizer_name)
-        )
+        model = HookedTransformer(cfg=cfg, tokenizer=AutoTokenizer.from_pretrained(tokenizer_name))
 
         tokens_with_bos = model.to_tokens(test_string)
         tokens_without_bos = model.to_tokens(test_string, prepend_bos=False)

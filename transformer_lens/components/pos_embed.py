@@ -20,9 +20,7 @@ class PosEmbed(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_pos = nn.Parameter(
-            torch.empty(self.cfg.n_ctx, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_pos = nn.Parameter(torch.empty(self.cfg.n_ctx, self.cfg.d_model, dtype=cfg.dtype))
 
     def forward(
         self,
@@ -56,9 +54,7 @@ class PosEmbed(nn.Module):
             # Separated from the no padding case for computational efficiency
             # (this code is a bit slower than the code above)
 
-            offset_position_ids = get_offset_position_ids(
-                past_kv_pos_offset, attention_mask
-            )
+            offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
             pos_embed = self.W_pos[offset_position_ids]  # [batch, pos, d_model]
 
             # Set the position embeddings to 0 for pad tokens (this is an arbitrary choice)

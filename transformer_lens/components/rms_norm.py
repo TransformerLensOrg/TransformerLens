@@ -13,9 +13,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class RMSNorm(nn.Module):
-    def __init__(
-        self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None
-    ):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         RMSNorm - LayerNorm without the centering and bias (RMS = Root Mean Square)
 
@@ -42,7 +40,6 @@ class RMSNorm(nn.Module):
     ) -> Float[torch.Tensor, "batch pos length"]:
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
-
         scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )

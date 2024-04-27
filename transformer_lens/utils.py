@@ -2,18 +2,21 @@
 
 This module contains varied utility functions used throughout the library.
 """
+
 from __future__ import annotations
 
 import inspect
 import json
+import os
 import re
 import shutil
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import einops
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import transformers
 from datasets.arrow_dataset import Dataset
@@ -23,21 +26,15 @@ from jaxtyping import Float, Int
 from rich import print as rprint
 from transformers import AutoTokenizer
 
-from transformer_lens import FactoredMatrix
+from transformer_lens.FactoredMatrix import FactoredMatrix
 
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
 USE_DEFAULT_VALUE = None
 
 
-def select_compatible_kwargs(
-    kwargs_dict: Dict[str, Any], callable: Callable
-) -> Dict[str, Any]:
+def select_compatible_kwargs(kwargs_dict: Dict[str, Any], callable: Callable) -> Dict[str, Any]:
     """Return a dict with the elements kwargs_dict that are parameters of callable"""
-    return {
-        k: v
-        for k, v in kwargs_dict.items()
-        if k in inspect.getfullargspec(callable).args
-    }
+    return {k: v for k, v in kwargs_dict.items() if k in inspect.getfullargspec(callable).args}
 
 
 def download_file_from_hf(
@@ -87,9 +84,7 @@ def clear_huggingface_cache():
 
 
 def print_gpu_mem(step_name=""):
-    print(
-        f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU."
-    )
+    print(f"{step_name} ~ {np.round(torch.cuda.memory_allocated()/2e30, 2)} GiB allocated on GPU.")
 
 
 def get_corner(tensor, n=3):
@@ -133,9 +128,7 @@ def lm_cross_entropy_loss(
     # Use torch.gather to find the log probs of the correct tokens
     # Offsets needed because we're predicting the NEXT token (this means the final logit is meaningless)
     # None and [..., 0] needed because the tensor used in gather must have the same rank.
-    predicted_log_probs = log_probs[..., :-1, :].gather(
-        dim=-1, index=tokens[..., 1:, None]
-    )[..., 0]
+    predicted_log_probs = log_probs[..., :-1, :].gather(dim=-1, index=tokens[..., 1:, None])[..., 0]
     if per_token:
         return -predicted_log_probs
     else:
@@ -166,28 +159,17 @@ def gelu_new(
     return (
         0.5
         * input
-        * (
-            1.0
-            + torch.tanh(
-                np.sqrt(2.0 / np.pi) * (input + 0.044715 * torch.pow(input, 3.0))
-            )
-        )
+        * (1.0 + torch.tanh(np.sqrt(2.0 / np.pi) * (input + 0.044715 * torch.pow(input, 3.0))))
     )
 
 
 def gelu_fast(
     input: Float[torch.Tensor, "batch pos d_mlp"]
 ) -> Float[torch.Tensor, "batch pos d_mlp"]:
-    return (
-        0.5
-        * input
-        * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
-    )
+    return 0.5 * input * (1.0 + torch.tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)))
 
 
-def solu(
-    input: Float[torch.Tensor, "batch pos d_mlp"]
-) -> Float[torch.Tensor, "batch pos d_mlp"]:
+def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
     """
     SoLU activation function as described by
     https://transformer-circuits.pub/2022/solu/index.html.
@@ -195,6 +177,81 @@ def solu(
     LayerNorm implemented by the MLP class.
     """
     return input * F.softmax(input, dim=-1)
+
+
+def calc_fan_in_and_fan_out(tensor):
+    """
+    Calculate the fan in and fan out of a tensor. We define it ourselves because Torch uses a
+    different convention for weights (e.g. for an MLP they use d_out x d_in, and we use d_in x
+    d_out, for attention they do (n_head d_head) x d_model, we do n_head x d_model x d_head).
+    """
+    shape = tensor.shape
+
+    if len(shape) == 0:
+        raise ValueError("Fan in and fan out can not be computed for scalars.")
+    elif len(shape) == 1:
+        fan_in = 1
+        fan_out = shape[0]
+    elif len(shape) == 2:  # Linear transform
+        fan_in = shape[0]
+        fan_out = shape[1]
+    elif len(shape) == 3:  # Attention head weight, has shape n_head x d_model x d_head
+        fan_in = shape[1]
+        fan_out = shape[0] * shape[2]
+    else:
+        raise ValueError(f"Fan in and fan out can not be computed for shape {shape} tensors.")
+
+    return fan_in, fan_out
+
+
+def init_xavier_uniform_(param, gain=1.0):
+    """
+    Initializes the input tensor using the Xavier initialization method.
+    """
+    fan_in, fan_out = calc_fan_in_and_fan_out(param)
+    max = gain * np.sqrt(6.0 / (fan_in + fan_out))
+    return nn.init.uniform_(param, -max, max)
+
+
+def init_xavier_normal_(param, gain=1.0):
+    """
+    Initializes the input tensor using the Xavier initialization method.
+    """
+    fan_in, fan_out = calc_fan_in_and_fan_out(param)
+    std = gain * np.sqrt(2.0 / (fan_in + fan_out))
+    return nn.init.normal_(param, mean=0.0, std=std)
+
+
+def init_kaiming_uniform_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_in"):
+    """
+    Initializes the input tensor using the Kaiming initialization method.
+
+    Starting from a std 1 uniform distribution, we scale the weights by c / sqrt(fan_in), where c =
+    sqrt(2) if the params were immediately preceded by a relu and 1 for everything else.
+
+    As with torch, `a` is a hyperparameter for `nonlinearity`, if it takes one.
+    """
+    fan_in, fan_out = calc_fan_in_and_fan_out(param)
+    fan = fan_in if mode == "fan_in" else fan_out
+    gain *= nn.init.calculate_gain(nonlinearity, a)
+    max = gain * np.sqrt(3.0 / fan)
+    return nn.init.uniform_(param, -max, max)
+
+
+def init_kaiming_normal_(param, a=0, nonlinearity="relu", gain=1.0, mode="fan_in"):
+    """
+    Initializes the input tensor using the Kaiming initialization method.
+
+    Starting from a std 1 normal distribution, we scale the weights by c / sqrt(fan_in), where c =
+    sqrt(2) if the params were immediately preceded by a relu and 1 for everything else.
+
+    As with torch, `a` is a hyperparameter for `nonlinearity`, if it takes one.
+    """
+    fan_in, fan_out = calc_fan_in_and_fan_out(param)
+    fan = fan_in if mode == "fan_in" else fan_out
+    gain *= nn.init.calculate_gain(nonlinearity, a)
+    std = gain * np.sqrt(1.0 / fan)
+    return nn.init.normal_(param, mean=0.0, std=std)
 
 
 def keep_single_column(dataset: Dataset, col_name: str):
@@ -250,14 +307,9 @@ def tokenize_and_concatenate(
         # Divide into 20 chunks of ~ equal length
         num_chunks = 20
         chunk_length = (len(full_text) - 1) // num_chunks + 1
-        chunks = [
-            full_text[i * chunk_length : (i + 1) * chunk_length]
-            for i in range(num_chunks)
-        ]
+        chunks = [full_text[i * chunk_length : (i + 1) * chunk_length] for i in range(num_chunks)]
         # Tokenize the chunks in parallel. Uses NumPy because HuggingFace map doesn't want tensors returned
-        tokens = tokenizer(chunks, return_tensors="np", padding=True)[
-            "input_ids"
-        ].flatten()
+        tokens = tokenizer(chunks, return_tensors="np", padding=True)["input_ids"].flatten()
         # Drop padding tokens
         tokens = tokens[tokens != tokenizer.pad_token_id]
         num_tokens = len(tokens)
@@ -280,16 +332,6 @@ def tokenize_and_concatenate(
     )
     tokenized_dataset.set_format(type="torch", columns=["tokens"])
     return tokenized_dataset
-
-
-""" 
-Test ^
-
-data = Dataset.from_dict({"text":[str(i) for i in range(1000)]})
-tokenizer = AutoTokenizer.from_pretrained("NeelNanda/gpt-neox-tokenizer-digits")
-print(data)
-tokenize_and_concatenate(data, tokenizer, streaming=False, column_name="text")
-"""
 
 
 def sample_logits(
@@ -322,9 +364,7 @@ def sample_logits(
 
         final_logits = final_logits / temperature
         if freq_penalty > 0:
-            assert (
-                tokens is not None
-            ), "Must provide input_tokens if applying a frequency penalty"
+            assert tokens is not None, "Must provide input_tokens if applying a frequency penalty"
             for batch_index in range(final_logits.shape[0]):
                 # torch.bincount returns a tensor of length d_vocab, with the number of occurences of each token in the tokens.
                 final_logits[batch_index] = final_logits[
@@ -343,9 +383,7 @@ def sample_logits(
             cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
             # We round up - we want prob >= top_p not <top_p
             sorted_indices_to_remove = cumulative_probs > top_p
-            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
-                ..., :-1
-            ].clone()
+            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
             sorted_indices_to_remove[..., 0] = 0
             indices_to_remove = sorted_indices_to_remove.scatter(
                 -1, sorted_indices, sorted_indices_to_remove
@@ -357,7 +395,7 @@ def sample_logits(
 
 
 # Type alias
-SliceInput: Type = Optional[
+SliceInput = Optional[
     Union[
         int,
         Tuple[int,],
@@ -404,6 +442,8 @@ class Slice:
     elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list of indices.
     """
 
+    slice: Union[int, slice, np.ndarray]
+
     def __init__(
         self,
         input_slice: SliceInput = None,
@@ -417,14 +457,13 @@ class Slice:
         Raises:
             ValueError: If the input_slice is not one of the above types.
         """
-        if type(input_slice) == tuple:
-            input_slice: slice = slice(*input_slice)
-            self.slice = input_slice
+        if isinstance(input_slice, tuple):
+            self.slice = slice(*input_slice)
             self.mode = "slice"
-        elif type(input_slice) == int:
+        elif isinstance(input_slice, int):
             self.slice = input_slice
             self.mode = "int"
-        elif type(input_slice) == slice:
+        elif isinstance(input_slice, slice):
             self.slice = input_slice
             self.mode = "slice"
         elif type(input_slice) in [list, torch.Tensor, np.ndarray]:
@@ -453,7 +492,7 @@ class Slice:
         """
         ndim = tensor.ndim
         slices = [slice(None)] * ndim
-        slices[dim] = self.slice
+        slices[dim] = self.slice  # type: ignore
         return tensor[tuple(slices)]
 
     def indices(
@@ -522,16 +561,12 @@ def get_act_name(
     get_act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
     get_act_name('pre5')=='blocks.5.mlp.hook_pre'
     """
-    if (
-        ("." in name or name.startswith("hook_"))
-        and layer is None
-        and layer_type is None
-    ):
+    if ("." in name or name.startswith("hook_")) and layer is None and layer_type is None:
         # If this was called on a full name, just return it
         return name
     match = re.match(r"([a-z]+)(\d+)([a-z]?.*)", name)
     if match is not None:
-        name, layer, layer_type = match.groups(0)
+        name, layer, layer_type = match.groups(0)  # type: ignore
 
     layer_type_alias = {
         "a": "attn",
@@ -587,9 +622,7 @@ def get_act_name(
     return full_act_name
 
 
-def remove_batch_dim(
-    tensor: Float[torch.Tensor, "1 ..."]
-) -> Float[torch.Tensor, "..."]:
+def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
     """
     Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
     """
@@ -599,16 +632,14 @@ def remove_batch_dim(
         return tensor
 
 
-# Note: Docstring won't be tested with PyTest (it's ignored), as it thinks this is a regular unit
-# test (because it's name is prefixed `test_`).
 def test_prompt(
     prompt: str,
     answer: str,
     model,  # Can't give type hint due to circular imports
-    prepend_space_to_answer: Optional[bool] = True,
-    print_details: Optional[bool] = True,
+    prepend_space_to_answer: bool = True,
+    print_details: bool = True,
     prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
-    top_k: Optional[int] = 10,
+    top_k: int = 10,
 ) -> None:
     """Test if the Model Can Give the Correct Answer to a Prompt.
 
@@ -737,11 +768,11 @@ def composition_scores(
         left.rdim == right.ldim
     ), f"Composition scores require left.rdim==right.ldim, shapes were left: {left.shape}, right:{right.shape}"
 
-    right = right.collapse_r()
-    left = left.collapse_l()
-    r_norms = right.norm(dim=[-2, -1])
-    l_norms = left.norm(dim=[-2, -1])
-    comp_norms = (left @ right).norm(dim=[-2, -1])
+    new_right = right.collapse_r()
+    new_left = left.collapse_l()
+    r_norms = new_right.norm(dim=[-2, -1])
+    l_norms = new_left.norm(dim=[-2, -1])
+    comp_norms = (new_left @ new_right).norm(dim=[-2, -1])
     return comp_norms / r_norms / l_norms
 
 
@@ -791,9 +822,7 @@ def is_lower_triangular(x: torch.Tensor) -> bool:
     return x.equal(x.tril())
 
 
-def check_structure(
-    t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False
-) -> None:
+def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False) -> None:
     """Validate that the two square tensors have the same structure, i.e.,
     that the directionality of comparisons points in the same directions both
     row-wise and column-wise.
@@ -890,9 +919,7 @@ def get_cumsum_along_dim(tensor, dim, reverse=False):
     return cumsum
 
 
-def get_attention_mask(
-    tokenizer, tokens: torch.Tensor, prepend_bos: bool
-) -> torch.Tensor:
+def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> torch.Tensor:
     """
     Computes the attention mask for the tokenized input.
     NOTE: Only the leftmost leading pads (when `padding_side == left`)
@@ -929,6 +956,23 @@ def get_attention_mask(
             attention_mask[torch.arange(attention_mask.shape[0]), pad_bos_positions] = 1
 
     return attention_mask
+
+
+def repeat_along_head_dimension(
+    tensor: Float[torch.Tensor, "batch pos d_model"],
+    n_heads: int,
+    clone_tensor=True,
+    # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
+):
+    repeated_tensor = einops.repeat(
+        tensor,
+        "batch pos d_model -> batch pos n_heads d_model",
+        n_heads=n_heads,
+    )
+    if clone_tensor:
+        return repeated_tensor.clone()
+    else:
+        return repeated_tensor
 
 
 def get_nested_attr(obj, attr_str):
@@ -1004,8 +1048,7 @@ class LocallyOverridenDefaults:
             "padding_side": {
                 "default_location": "model.tokenizer.padding_side",
                 "valid_values": [USE_DEFAULT_VALUE, "left", "right"],
-                "skip_overriding": model.tokenizer
-                is None,  # Do not override if tokenizer is None
+                "skip_overriding": model.tokenizer is None,  # Do not override if tokenizer is None
                 "default_value_to_restore": None,  # Will be set later
             },
         }
@@ -1029,7 +1072,7 @@ class LocallyOverridenDefaults:
             # Ensure the override is a valid value
             valid_values = info["valid_values"]
             assert (
-                override in valid_values
+                override in valid_values  # type: ignore
             ), f"{property} must be one of {valid_values}, but got {override}."
 
             # Fetch current default and store it to restore later
@@ -1038,9 +1081,7 @@ class LocallyOverridenDefaults:
             info["default_value_to_restore"] = deepcopy(default_value)
 
             # Override the default value
-            locally_overriden_value = override_or_use_default_value(
-                default_value, override
-            )
+            locally_overriden_value = override_or_use_default_value(default_value, override)
             set_nested_attr(self, default_location, locally_overriden_value)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -1080,8 +1121,12 @@ def get_tokenizer_with_bos(tokenizer):
     if add_bos_token:
         tokenizer_with_bos = tokenizer
     else:
+        huggingface_token = os.environ.get("HF_TOKEN", None)
         tokenizer_with_bos = AutoTokenizer.from_pretrained(
-            pretrained_model_name_or_path, add_bos_token=True, **init_kwargs
+            pretrained_model_name_or_path,
+            add_bos_token=True,
+            token=huggingface_token,
+            **init_kwargs,
         )
 
     return tokenizer_with_bos
@@ -1126,14 +1171,20 @@ def get_tokens_with_bos_removed(tokenizer, tokens):
 
         if tokenizer.bos_token_id == tokenizer.pad_token_id:
             is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
-            is_leading_pad = (
-                get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
-            )
+            is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
             real_bos_positions = is_leading_pad.sum(-1) - 1
         else:
             real_bos_positions = (tokens == tokenizer.bos_token_id).int().argmax(-1)
 
-        tokens = tokens.scatter(
-            dim=1, index=real_bos_positions.unsqueeze(-1), value=-100
-        )
+        tokens = tokens.scatter(dim=1, index=real_bos_positions.unsqueeze(-1), value=-100)
         return tokens[tokens != -100].view(*bos_removed_shape)
+
+
+try:
+    import pytest
+
+    # Note: Docstring won't be tested with PyTest (it's ignored), as it thinks this is a regular unit
+    # test (because its name is prefixed `test_`).
+    pytest.mark.skip(test_prompt)
+except ModuleNotFoundError:
+    pass  # disregard if pytest not in env

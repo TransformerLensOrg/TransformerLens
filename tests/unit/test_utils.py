@@ -3,6 +3,7 @@ from unittest import mock
 import numpy as np
 import pytest
 import torch
+from torch import nn
 
 import transformer_lens.utils as utils
 from transformer_lens import HookedTransformer
@@ -273,21 +274,13 @@ def test_test_prompt(
 def test_override_or_use_default_value():
     # Case when override is not None
     assert utils.override_or_use_default_value(default_flag=True, override=True) == True
-    assert (
-        utils.override_or_use_default_value(default_flag=True, override=False) == False
-    )
-    assert (
-        utils.override_or_use_default_value(default_flag=False, override=True) == True
-    )
-    assert (
-        utils.override_or_use_default_value(default_flag=False, override=False) == False
-    )
+    assert utils.override_or_use_default_value(default_flag=True, override=False) == False
+    assert utils.override_or_use_default_value(default_flag=False, override=True) == True
+    assert utils.override_or_use_default_value(default_flag=False, override=False) == False
 
     # Case when override is None
     assert utils.override_or_use_default_value(default_flag=True, override=None) == True
-    assert (
-        utils.override_or_use_default_value(default_flag=False, override=None) == False
-    )
+    assert utils.override_or_use_default_value(default_flag=False, override=None) == False
 
     # Case when override is not passed
     assert utils.override_or_use_default_value(default_flag=True) == True
@@ -321,9 +314,7 @@ class TestAttentionMask:
     @pytest.mark.parametrize("padding_side", ["left", "right"])
     @pytest.mark.parametrize("prepend_bos", [True, False])
     @pytest.mark.parametrize("prompts_with_sep", [True, False])
-    def test_get_attention_mask(
-        self, model, padding_side, prepend_bos, prompts_with_sep
-    ):
+    def test_get_attention_mask(self, model, padding_side, prepend_bos, prompts_with_sep):
         # setup
         model.tokenizer.padding_side = padding_side
         model.tokenizer.sep_token_id = model.tokenizer.pad_token_id
@@ -377,3 +368,178 @@ class TestAttentionMask:
             else:
                 # otherwise, there should be no attended but non-pad token
                 assert attended_but_non_pad_mask.sum() == 0
+
+
+def test_calc_fan_in_fan_out():
+    """
+    Test for the calc_fan_in_and_fan_out function in the utils module.
+    """
+    # Test for the case when the tensor is 1D
+    tensor_1d = torch.tensor([1, 2, 3, 4, 5])
+    fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_1d)
+    assert fan_in == 1
+    assert fan_out == 5
+
+    # Test for the case when the tensor is 2D
+    tensor_2d = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_2d)
+    assert fan_in == 2
+    assert fan_out == 3
+
+    # Test for the case when the tensor is 3D
+    tensor_3d = nn.Parameter(torch.rand(2, 25, 5))  # 2 x 25 x 5, I'm not writing this out
+    fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_3d)
+    assert fan_in == 25
+    assert fan_out == 10
+
+    # Test for the case when the tensor is 4D (should raise a ValueError)
+    tensor_4d = torch.tensor([[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]])
+    with pytest.raises(ValueError):
+        fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_4d)
+
+    # Test for the case when the tensor is 0D (also should raise a ValueError)
+    tensor_0d = torch.tensor(1)
+    with pytest.raises(ValueError):
+        fan_in, fan_out = utils.calc_fan_in_and_fan_out(tensor_0d)
+
+
+class TestInitKaiming:
+    """Test cases for kaiming init."""
+
+    @pytest.mark.parametrize(
+        "d_model", [4096, 10_000]
+    )  # this needs to be large so std and min/max estimates are accurate
+    @pytest.mark.parametrize("d_mlp", [256, 512])
+    @pytest.mark.parametrize("nonlinearity", ["linear", "relu"])
+    def test_init_kaiming_uniform(self, d_model, d_mlp, nonlinearity):
+        """
+        Test init_kaiming_uniform function in the utils module on 3/2/1D tensors.
+        """
+        torch.manual_seed(1234)
+
+        gain = np.sqrt(2.0) if nonlinearity == "relu" else 1.0
+
+        x = nn.Parameter(torch.empty(2, d_model, 137))  # n_head and d_head don't matter
+        utils.init_kaiming_uniform_(x, nonlinearity=nonlinearity)
+        std = gain / np.sqrt(d_model)
+        assert np.isclose(x.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(x.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(x.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        y = nn.Parameter(torch.empty(d_mlp, d_model))
+        utils.init_kaiming_uniform_(y, nonlinearity=nonlinearity)
+        std = gain / np.sqrt(d_mlp)
+        assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(y.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(y.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        z = nn.Parameter(torch.empty(d_model * 123))
+        utils.init_kaiming_uniform_(z, nonlinearity=nonlinearity)
+        std = gain  # bias has fan_in 1
+        assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(z.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(z.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        torch.manual_seed(1234)
+        x_new = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_kaiming_uniform_(x_new, nonlinearity=nonlinearity)
+        assert torch.allclose(x_new, x, rtol=1e-2)
+
+    @pytest.mark.parametrize("d_model", [4096, 10_000])
+    @pytest.mark.parametrize("d_mlp", [256, 512])
+    @pytest.mark.parametrize("nonlinearity", ["linear", "relu"])
+    def test_init_kaiming_normal(self, d_model, d_mlp, nonlinearity):
+        """
+        Test init_kaiming_normal function in the utils module on 3/2/1D tensors.
+        """
+        torch.manual_seed(1234)
+
+        gain = np.sqrt(2.0) if nonlinearity == "relu" else 1.0
+
+        x = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_kaiming_normal_(x, nonlinearity=nonlinearity)
+        std = gain / np.sqrt(d_model)
+        assert np.isclose(x.std().detach().numpy(), std, rtol=1e-2)
+
+        y = nn.Parameter(torch.empty(d_mlp, d_model))
+        utils.init_kaiming_normal_(y, nonlinearity=nonlinearity)
+        std = gain / np.sqrt(d_mlp)
+        assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
+
+        z = nn.Parameter(torch.empty(d_model * 123))
+        utils.init_kaiming_normal_(z, nonlinearity=nonlinearity)
+        std = gain  # bias has fan_in 1
+        assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
+
+        torch.manual_seed(1234)
+        x_new = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_kaiming_normal_(x_new, nonlinearity=nonlinearity)
+        assert torch.allclose(x_new, x, rtol=1e-2)
+
+
+class TestInitXavier:
+    """Test cases for Xavier init. Std of distribution should be scaled to sqrt(2/(fan_in + fan_out))."""
+
+    @pytest.mark.parametrize("d_model", [4096, 10_000])
+    @pytest.mark.parametrize("d_mlp", [256, 512])
+    def test_init_xavier_uniform(self, d_model, d_mlp):
+        """Test init_xavier_uniform function in the utils module on 3/2/1D tensors."""
+        torch.manual_seed(1234)
+
+        x = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_xavier_uniform_(x)
+        std = np.sqrt(2 / (d_model + 137 * 2))
+        assert np.isclose(x.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(x.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(x.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        y = nn.Parameter(torch.empty(d_mlp, d_model))
+        utils.init_xavier_uniform_(y)
+        std = np.sqrt(2 / (d_mlp + d_model))
+        assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(y.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(y.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        z = nn.Parameter(torch.empty(d_model * 123))
+        utils.init_xavier_uniform_(z)
+        std = np.sqrt(2 / (1 + d_model * 123))
+        assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
+        # for uniform distributions, min/max is sqrt(3) times the std
+        assert np.isclose(z.max().detach().numpy(), np.sqrt(3) * std, rtol=1e-2)
+        assert np.isclose(z.min().detach().numpy(), -np.sqrt(3) * std, rtol=1e-2)
+
+        torch.manual_seed(1234)
+        x_new = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_xavier_uniform_(x_new)
+        assert torch.allclose(x_new, x, rtol=1e-2)
+
+    @pytest.mark.parametrize("d_model", [4096, 10_000])
+    @pytest.mark.parametrize("d_mlp", [256, 512])
+    def test_init_xavier_normal(self, d_model, d_mlp):
+        """Test init_xavier_normal function in the utils module on 3/2/1D tensors."""
+        torch.manual_seed(1234)
+
+        x = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_xavier_normal_(x)
+        std = np.sqrt(2 / (d_model + 137 * 2))
+        assert np.isclose(x.std().detach().numpy(), std, rtol=1e-2)
+
+        y = nn.Parameter(torch.empty(d_mlp, d_model))
+        utils.init_xavier_normal_(y)
+        std = np.sqrt(2 / (d_mlp + d_model))
+        assert np.isclose(y.std().detach().numpy(), std, rtol=1e-2)
+
+        z = nn.Parameter(torch.empty(d_model * 123))  # need to make this larger so std is accurate
+        utils.init_xavier_normal_(z)
+        std = np.sqrt(2 / (1 + d_model * 123))
+        assert np.isclose(z.std().detach().numpy(), std, rtol=1e-2)
+
+        torch.manual_seed(1234)
+        x_new = nn.Parameter(torch.empty(2, d_model, 137))
+        utils.init_xavier_normal_(x_new)
+        assert torch.allclose(x_new, x, rtol=1e-2)

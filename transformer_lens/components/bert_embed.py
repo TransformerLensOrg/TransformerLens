@@ -39,9 +39,7 @@ class BertEmbed(nn.Module):
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ):
         base_index_id = torch.arange(input_ids.shape[1], device=input_ids.device)
-        index_ids = einops.repeat(
-            base_index_id, "pos -> batch pos", batch=input_ids.shape[0]
-        )
+        index_ids = einops.repeat(base_index_id, "pos -> batch pos", batch=input_ids.shape[0])
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
 
@@ -51,8 +49,6 @@ class BertEmbed(nn.Module):
             self.token_type_embed(token_type_ids)
         )
 
-        embeddings_out = (
-            word_embeddings_out + position_embeddings_out + token_type_embeddings_out
-        )
+        embeddings_out = word_embeddings_out + position_embeddings_out + token_type_embeddings_out
         layer_norm_out = self.ln(embeddings_out)
         return layer_norm_out

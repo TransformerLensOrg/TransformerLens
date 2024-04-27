@@ -2,7 +2,7 @@
 
 This module contains all the component :class:`MLP`.
 """
-from typing import Dict, Union
+from typing import Callable, Dict, Union
 
 import torch
 import torch.nn as nn
@@ -18,18 +18,18 @@ from transformer_lens.utils import gelu_fast, gelu_new, solu
 
 # MLP Layers
 class MLP(nn.Module):
+    act_fn: Callable[..., torch.Tensor]
+    ln: nn.Module
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
-        )
+        assert self.cfg.d_mlp is not None  # TODO: should this not be optional?
+        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
-        self.W_out = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
-        )
+        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
@@ -62,13 +62,10 @@ class MLP(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in)
-            + self.b_in
+            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in) + self.b_in
         )  # [batch, pos, d_mlp]
-        if not self.cfg.act_fn.endswith("_ln"):
-            post_act = self.hook_post(
-                self.act_fn(pre_act)
-            )  # [batch, pos, d_mlp] TODO segmentation fault
+        if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
+            post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))

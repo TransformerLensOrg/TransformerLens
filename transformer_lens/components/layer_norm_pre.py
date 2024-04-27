@@ -47,7 +47,7 @@ class LayerNormPre(nn.Module):
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             x = x.to(torch.float32)
 
-        x = x - x.mean(axis=-1, keepdim=True)  # [batch, pos, length]
+        x = x - x.mean(-1, keepdim=True)  # [batch, pos, length]
         scale: Union[
             Float[torch.Tensor, "batch pos 1"],
             Float[torch.Tensor, "batch pos head_index 1"],

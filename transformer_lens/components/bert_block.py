@@ -4,10 +4,12 @@ This module contains all the component :class:`BertBlock`.
 """
 from typing import Optional
 
-import einops
 import torch
 import torch.nn as nn
 from jaxtyping import Float
+from transformer_lens.utils import (
+    repeat_along_head_dimension,
+)
 
 from transformer_lens.components import MLP, Attention, LayerNorm
 from transformer_lens.hook_points import HookPoint
@@ -52,17 +54,10 @@ class BertBlock(nn.Module):
         value_input = resid_pre
 
         if self.cfg.use_split_qkv_input:
-
-            def add_head_dimension(tensor):
-                return einops.repeat(
-                    tensor,
-                    "batch pos d_model -> batch pos n_heads d_model",
-                    n_heads=self.cfg.n_heads,
-                ).clone()
-
-            query_input = self.hook_q_input(add_head_dimension(query_input))
-            key_input = self.hook_k_input(add_head_dimension(key_input))
-            value_input = self.hook_v_input(add_head_dimension(value_input))
+            n_heads = self.cfg.n_heads
+            query_input = self.hook_q_input(repeat_along_head_dimension(query_input, n_heads))
+            key_input = self.hook_k_input(repeat_along_head_dimension(key_input, n_heads))
+            value_input = self.hook_v_input(repeat_along_head_dimension(value_input, n_heads))
 
         attn_out = self.hook_attn_out(
             self.attn(
@@ -74,11 +69,7 @@ class BertBlock(nn.Module):
         )
         resid_mid = self.hook_resid_mid(resid_pre + attn_out)
 
-        mlp_in = (
-            resid_mid
-            if not self.cfg.use_hook_mlp_in
-            else self.hook_mlp_in(resid_mid.clone())
-        )
+        mlp_in = resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
         normalized_resid_mid = self.ln1(mlp_in)
         mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))
         resid_post = self.hook_resid_post(normalized_resid_mid + mlp_out)

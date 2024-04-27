@@ -5,7 +5,7 @@ needed to create many different types of generative language models. They are us
 :class:`transformer_lens.HookedTransformer`.
 """
 # Independent classes
-from .attention import Attention
+from .abstract_attention import AbstractAttention
 from .layer_norm import LayerNorm
 from .layer_norm_pre import LayerNormPre
 from .pos_embed import PosEmbed
@@ -15,12 +15,15 @@ from .token_typed_embed import TokenTypeEmbed
 from .unembed import Unembed
 
 # Only dependent on independent modules
+from .attention import Attention
 from .bert_mlm_head import BertMLMHead
 from .embed import Embed
 from .gated_mlp import GatedMLP
+from .grouped_query_attention import GroupedQueryAttention
 from .mlp import MLP
 
 # Interdependent modules
 from .bert_block import BertBlock
 from .bert_embed import BertEmbed
+from .moe import MoE
 from .transformer_block import TransformerBlock

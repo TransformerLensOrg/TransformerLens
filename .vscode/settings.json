@@ -1,11 +1,37 @@
 {
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-        "source.organizeImports": true
-    },
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter"
     },
+    "[toml]": {
+        "editor.defaultFormatter": "tamasfe.even-better-toml"
+    },
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": "explicit"
+    },
+    "editor.formatOnSave": true,
+    "editor.rulers": [100],
+    "evenBetterToml.formatter.allowedBlankLines": 1,
+    "evenBetterToml.formatter.arrayAutoCollapse": true,
+    "evenBetterToml.formatter.arrayAutoExpand": true,
+    "evenBetterToml.formatter.arrayTrailingComma": true,
+    "evenBetterToml.formatter.columnWidth": 100,
+    "evenBetterToml.formatter.compactArrays": true,
+    "evenBetterToml.formatter.compactEntries": true,
+    "evenBetterToml.formatter.compactInlineTables": true,
+    "evenBetterToml.formatter.indentEntries": true,
+    "evenBetterToml.formatter.indentString": "    ",
+    "evenBetterToml.formatter.indentTables": true,
+    "evenBetterToml.formatter.inlineTableExpand": true,
+    "evenBetterToml.formatter.reorderArrays": true,
+    "evenBetterToml.formatter.reorderKeys": true,
+    "evenBetterToml.formatter.trailingNewline": true,
+    "evenBetterToml.schema.enabled": true,
+    "evenBetterToml.schema.links": true,
+    "evenBetterToml.syntax.semanticTokens": false,
+    "mypy-type-checker.importStrategy": "fromEnvironment",
+    "notebook.formatOnCellExecution": true,
+    "notebook.formatOnSave.enabled": true,
+    "pylint.importStrategy": "fromEnvironment",
     "python.testing.pytestArgs": [
         "transformer_lens",
     ],
@@ -13,11 +39,9 @@
     "rewrap.autoWrap.enabled": true,
     "rewrap.reformat": true,
     "rewrap.wrappingColumn": 100,
-    "mypy-type-checker.importStrategy": "fromEnvironment",
-    "pylint.importStrategy": "fromEnvironment",
-    "notebook.formatOnCellExecution": true,
-    "notebook.formatOnSave.enabled": true,
-    "cSpell.words": [
-        "accum"
+    "mypy.runUsingActiveInterpreter": true,
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "black-formatter.args": [
+        "-l 100"
     ],
 }
