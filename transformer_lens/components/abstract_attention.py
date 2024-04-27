@@ -58,8 +58,8 @@ class AbstractAttention(ABC, nn.Module):
             self.W_O = nn.Parameter(
                 torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
             )
-        self.W_K: Params4bit | nn.Parameter = abstract_attribute()
-        self.W_V: Params4bit | nn.Parameter = abstract_attribute()
+        self.W_K = abstract_attribute()
+        self.W_V = abstract_attribute()
 
         self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
         self.b_K: nn.Parameter = abstract_attribute()
