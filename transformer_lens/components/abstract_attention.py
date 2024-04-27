@@ -15,10 +15,7 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
-from transformer_lens.utils import (
-    get_offset_position_ids,
-)
-
+from transformer_lens.utils import get_offset_position_ids
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb

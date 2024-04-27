@@ -8,24 +8,22 @@ from typing import Dict, Optional, Union
 import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
-from transformer_lens.utils import (
-    repeat_along_head_dimension,
-)
 
 from transformer_lens.components import (
     MLP,
-    MoE,
     Attention,
     GatedMLP,
     GroupedQueryAttention,
     LayerNorm,
     LayerNormPre,
+    MoE,
     RMSNorm,
     RMSNormPre,
 )
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
+from transformer_lens.utils import repeat_along_head_dimension
 
 
 # Transformer Block

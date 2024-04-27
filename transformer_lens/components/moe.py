@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from fancy_einsum import einsum
 from jaxtyping import Float
 
-from transformer_lens.components import GatedMLP, MLP
+from transformer_lens.components import MLP, GatedMLP
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 

@@ -11,7 +11,6 @@ from transformers.utils import is_bitsandbytes_available
 from transformer_lens.components import AbstractAttention
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
-
 if is_bitsandbytes_available():
     from bitsandbytes.nn.modules import Params4bit
 
