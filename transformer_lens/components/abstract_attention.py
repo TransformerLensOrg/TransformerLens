@@ -579,10 +579,10 @@ class AbstractAttention(ABC, nn.Module):
 
         Examples:
 
-        >>> Attention.create_alibi_multipliers(8)
+        >>> AbstractAttention.create_alibi_multipliers(8)
         tensor([0.5000, 0.2500, 0.1250, 0.0625, 0.0312, 0.0156, 0.0078, 0.0039])
 
-        >>> Attention.create_alibi_multipliers(16)
+        >>> AbstractAttention.create_alibi_multipliers(16)
         tensor([0.7071, 0.5000, 0.3536, 0.2500, 0.1768, 0.1250, 0.0884, 0.0625, 0.0442, 0.0312,
                 0.0221, 0.0156, 0.0110, 0.0078, 0.0055, 0.0039])
 
@@ -620,7 +620,7 @@ class AbstractAttention(ABC, nn.Module):
 
         Examples:
 
-        >>> Attention.create_alibi_bias(2, 4, torch.device('cpu'))
+        >>> AbstractAttention.create_alibi_bias(2, 4, torch.device('cpu'))
         tensor([[[ 0.0000,  0.0000,  0.0000,  0.0000],
             [-0.0625,  0.0000,  0.0000,  0.0000],
             [-0.1250, -0.0625,  0.0000,  0.0000],
