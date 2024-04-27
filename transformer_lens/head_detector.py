@@ -2,6 +2,7 @@
 
 Utilities for detecting specific types of heads (e.g. previous token heads).
 """
+
 import logging
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple, Union, cast
@@ -10,7 +11,8 @@ import numpy as np
 import torch
 from typing_extensions import Literal, get_args
 
-from transformer_lens import ActivationCache, HookedTransformer
+from transformer_lens.ActivationCache import ActivationCache
+from transformer_lens.HookedTransformer import HookedTransformer
 from transformer_lens.utils import is_lower_triangular, is_square
 
 HeadName = Literal["previous_token_head", "duplicate_token_head", "induction_head"]
@@ -24,9 +26,7 @@ INVALID_HEAD_NAME_ERR = (
     f"detection_pattern must be a Tensor or one of head names: {HEAD_NAMES}; got %s"
 )
 
-SEQ_LEN_ERR = (
-    "The sequence must be non-empty and must fit within the model's context window."
-)
+SEQ_LEN_ERR = "The sequence must be non-empty and must fit within the model's context window."
 
 DET_PAT_NOT_SQUARE_ERR = "The detection pattern must be a lower triangular matrix of shape (sequence_length, sequence_length); sequence_length=%d; got detection patern of shape %s"
 
@@ -111,9 +111,7 @@ def detect_head(
 
     # Validate detection pattern if it's a string
     if isinstance(detection_pattern, str):
-        assert detection_pattern in HEAD_NAMES, (
-            INVALID_HEAD_NAME_ERR % detection_pattern
-        )
+        assert detection_pattern in HEAD_NAMES, INVALID_HEAD_NAME_ERR % detection_pattern
         if isinstance(seq, list):
             batch_scores = [detect_head(model, seq, detection_pattern) for seq in seq]
             return torch.stack(batch_scores).mean(0)
@@ -123,9 +121,7 @@ def detect_head(
         ).to(cfg.device)
 
     # if we're using "mul", detection_pattern should consist of zeros and ones
-    if error_measure == "mul" and not set(detection_pattern.unique().tolist()).issubset(
-        {0, 1}
-    ):
+    if error_measure == "mul" and not set(detection_pattern.unique().tolist()).issubset({0, 1}):
         logging.warning(
             "Using detection pattern with values other than 0 or 1 with error_measure 'mul'"
         )
@@ -140,9 +136,7 @@ def detect_head(
         _, cache = model.run_with_cache(tokens, remove_batch_dim=True)
 
     if heads is None:
-        layer2heads = {
-            layer_i: list(range(cfg.n_heads)) for layer_i in range(cfg.n_layers)
-        }
+        layer2heads = {layer_i: list(range(cfg.n_heads)) for layer_i in range(cfg.n_layers)}
     elif isinstance(heads, list):
         layer2heads = defaultdict(list)
         for layer, head in heads:
@@ -198,9 +192,7 @@ def get_duplicate_token_head_detection_pattern(
     # If token_pattern[i][j] matches its transpose, then token j and token i are duplicates.
     eq_mask = np.equal(token_pattern, token_pattern.T).astype(int)
 
-    np.fill_diagonal(
-        eq_mask, 0
-    )  # Current token is always a duplicate of itself. Ignore that.
+    np.fill_diagonal(eq_mask, 0)  # Current token is always a duplicate of itself. Ignore that.
     detection_pattern = eq_mask.astype(int)
     return torch.tril(torch.as_tensor(detection_pattern).float())
 

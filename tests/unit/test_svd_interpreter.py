@@ -114,9 +114,7 @@ def test_svd_interpreter_returns_different_answers_for_different_models():
 def test_svd_interpreter_fails_on_invalid_vector_type():
     svd_interpreter = SVDInterpreter(model)
     with pytest.raises(BeartypeCallHintParamViolation) as e:
-        svd_interpreter.get_singular_vectors(
-            "test", layer_index=0, num_vectors=4, head_index=0
-        )
+        svd_interpreter.get_singular_vectors("test", layer_index=0, num_vectors=4, head_index=0)
 
 
 def test_svd_interpreter_fails_on_not_passing_required_head_index():
@@ -130,9 +128,7 @@ def test_svd_interpreter_fails_on_invalid_layer_index():
     svd_interpreter = SVDInterpreter(model)
     for vector in VECTOR_TYPES:
         with pytest.raises(AssertionError) as e:
-            svd_interpreter.get_singular_vectors(
-                vector, layer_index=2, num_vectors=4, head_index=0
-            )
+            svd_interpreter.get_singular_vectors(vector, layer_index=2, num_vectors=4, head_index=0)
         assert str(e.value) == "Layer index must be between 0 and 1 but got 2"
 
 
@@ -140,7 +136,5 @@ def test_svd_interpreter_fails_on_invalid_head_index():
     # Only OV uses head index.
     svd_interpreter = SVDInterpreter(model)
     with pytest.raises(AssertionError) as e:
-        svd_interpreter.get_singular_vectors(
-            "OV", layer_index=0, num_vectors=4, head_index=8
-        )
+        svd_interpreter.get_singular_vectors("OV", layer_index=0, num_vectors=4, head_index=8)
     assert str(e.value) == "Head index must be between 0 and 7 but got 8"

@@ -38,14 +38,14 @@ def get_device_for_block_index(
     if device is None:
         device = cfg.device
     device = torch.device(device)
+    if device.type == "cpu":
+        return device
     device_index = (device.index or 0) + (index // layers_per_device)
     return torch.device(device.type, device_index)
 
 
 def move_to_and_update_config(
-    model: Union[
-        "transformer_lens.HookedTransformer", "transformer_lens.HookedEncoder"
-    ],
+    model: Union["transformer_lens.HookedTransformer", "transformer_lens.HookedEncoder"],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
 ):

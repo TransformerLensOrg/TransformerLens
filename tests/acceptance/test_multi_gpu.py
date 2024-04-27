@@ -19,9 +19,7 @@ def gpt2_medium_on_4_devices():
     return model
 
 
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 4, reason="Requires at least 4 CUDA devices"
-)
+@pytest.mark.skipif(torch.cuda.device_count() < 4, reason="Requires at least 4 CUDA devices")
 def test_get_device_for_block_index(gpt2_medium_on_4_devices):
     config = gpt2_medium_on_4_devices.cfg
     n_layers = config.n_layers
@@ -44,19 +42,14 @@ def test_get_device_for_block_index(gpt2_medium_on_4_devices):
     device_override_obj = torch.device("cuda")
     for i in range(n_layers):
         expected_device = torch.device(device_override_obj.type, i // layers_per_device)
-        assert (
-            get_device_for_block_index(i, config, device_override_obj)
-            == expected_device
-        )
+        assert get_device_for_block_index(i, config, device_override_obj) == expected_device
 
     # Test when index is out of bounds
     # with pytest.raises(IndexError):
     # get_device_for_block_index(n_layers, config)
 
 
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 4, reason="Requires at least 4 CUDA devices"
-)
+@pytest.mark.skipif(torch.cuda.device_count() < 4, reason="Requires at least 4 CUDA devices")
 @pytest.mark.parametrize("n_devices", [1, 2, 3, 4])
 def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
     model_1_device = gpt2_medium_on_1_device
@@ -96,9 +89,7 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
         cache_device = gpt2_cache_n_devices[f"blocks.{i}.mlp.hook_post"].device
         assert cache_device == expected_device
 
-    assert torch.allclose(
-        gpt2_logits_1_device.to("cpu"), gpt2_logits_n_devices.to("cpu")
-    )
+    assert torch.allclose(gpt2_logits_1_device.to("cpu"), gpt2_logits_n_devices.to("cpu"))
     for key in gpt2_cache_1_device.keys():
         assert torch.allclose(
             gpt2_cache_1_device[key].to("cpu"), gpt2_cache_n_devices[key].to("cpu")
@@ -123,9 +114,7 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
     )
 
 
-@pytest.mark.skipif(
-    torch.cuda.device_count() < 2, reason="Requires at least 2 CUDA devices"
-)
+@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Requires at least 2 CUDA devices")
 def test_cache_device():
     model = HookedTransformer.from_pretrained("gpt2-small", device="cuda:1")
 
@@ -135,15 +124,11 @@ def test_cache_device():
     )
 
     logits, cache = model.run_with_cache("Hello there", device="cpu")
-    assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(
-        torch.device("cpu")
-    )
+    assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(torch.device("cpu"))
 
     model.to("cuda")
     logits, cache = model.run_with_cache("Hello there")
-    assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(
-        logits.device
-    )
+    assert norm_device(cache["blocks.0.mlp.hook_post"].device) == norm_device(logits.device)
 
 
 def norm_device(device):
