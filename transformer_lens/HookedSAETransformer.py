@@ -258,16 +258,22 @@ class HookedSAETransformer(HookedTransformer):
         See HookedTransformer.hooks for a similar context manager for hooks.
         By default will keep track of previously attached SAEs, and restore them when the context manager exits.
 
+        Example:
+
+        .. code-block:: python
+
+            from transformer_lens import HookedSAETransformer, HookedSAE, HookedSAEConfig
+
+            model = HookedSAETransformer.from_pretrained('gpt2-small')
+            sae_cfg = HookedSAEConfig(...)
+            sae = HookedSAE(sae_cfg)
+            with model.saes(saes=[sae]):
+                spliced_logits = model(text)
+
+
         Args:
             saes (Union[HookedSAE, List[HookedSAE]]): SAEs to be attached.
             reset_saes_end (bool): If True, removes all SAEs added by this context manager when the context manager exits, returning previously attached SAEs to their original state.
-
-        Example:
-            ```python
-            hooked_saes = [HookedSAE(...), HookedSAE(...)]
-            with model.saes(saes=hooked_saes):
-                spliced_loss = model(text, return_type="loss")
-            ```
         """
         act_names_to_reset = []
         prev_saes = []
