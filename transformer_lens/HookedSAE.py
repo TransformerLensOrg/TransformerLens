@@ -78,6 +78,7 @@ class HookedSAE(HookedRootModule):
         ), f"Input shape {x.shape} does not match SAE input size {self.cfg.d_in}"
 
         x_cent = x - self.b_dec
+        # WARNING: if editing this block of code, also edit the error computation inside `if self.cfg.use_error_term`
         sae_acts_pre = self.hook_sae_acts_pre(
             einops.einsum(x_cent, self.W_enc, "... d_in, d_in d_sae -> ... d_sae")
             + self.b_enc  # [..., d_sae]
@@ -89,12 +90,14 @@ class HookedSAE(HookedRootModule):
                 + self.b_dec
             ).reshape(input.shape)
         )
+        # END WARNING
 
         if self.cfg.use_error_term:
             with torch.no_grad():
                 # Recompute everything without hooks to get true error term
                 # Otherwise, the output with error term will always equal input, even for causal interventions that affect x_reconstruct
                 # This is in a no_grad context to detach the error, so we can compute SAE feature gradients (eg for attribution patching). See A.3 in https://arxiv.org/pdf/2403.19647.pdf for more detail
+                # NOTE: we can't just use `sae_error = input - x_reconstruct.detach()` or something simpler, since this would mean intervening on features would mean ablating features still results in perfect reconstruction.
                 sae_acts_pre_clean = (
                     einops.einsum(x_cent, self.W_enc, "... d_in, d_in d_sae -> ... d_sae")
                     + self.b_enc
