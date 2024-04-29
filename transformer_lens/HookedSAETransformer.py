@@ -263,11 +263,11 @@ class HookedSAETransformer(HookedTransformer):
             reset_saes_end (bool): If True, removes all SAEs added by this context manager when the context manager exits, returning previously attached SAEs to their original state.
 
         Example:
-        ```python
-        hooked_saes = [HookedSAE(...), HookedSAE(...)]
-        with model.saes(saes=hooked_saes):
-            spliced_loss = model(text, return_type="loss")
-        ```
+            ```python
+            hooked_saes = [HookedSAE(...), HookedSAE(...)]
+            with model.saes(saes=hooked_saes):
+                spliced_loss = model(text, return_type="loss")
+            ```
         """
         act_names_to_reset = []
         prev_saes = []
