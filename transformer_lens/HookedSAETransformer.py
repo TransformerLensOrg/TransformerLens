@@ -259,7 +259,7 @@ class HookedSAETransformer(HookedTransformer):
         By default will keep track of previously attached SAEs, and restore them when the context manager exits.
 
         Args:
-            saes Union[HookedSAE, List[HookedSAE]]: SAEs to be attached.
+            saes (Union[HookedSAE, List[HookedSAE]]): SAEs to be attached.
             reset_saes_end (bool): If True, removes all SAEs added by this context manager when the context manager exits, returning previously attached SAEs to their original state.
 
         Example:
