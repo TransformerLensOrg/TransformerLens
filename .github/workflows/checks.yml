@@ -103,8 +103,6 @@ jobs:
         run: make docstring-test
       - name: Type check
         run: poetry run mypy .
-      - name: Unit Test
-        run: make unit-test
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
       - name: Build check
