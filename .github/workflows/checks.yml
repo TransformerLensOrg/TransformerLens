@@ -72,11 +72,6 @@ jobs:
         run: make acceptance-test
       - name: Build check
         run: poetry build
-      - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: documentation
-          path: htmlcov
 
   code-checks:
     name: Code Checks
