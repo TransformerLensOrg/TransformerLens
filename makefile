@@ -9,10 +9,10 @@ check-format:
 	poetry run black --check .
 
 unit-test:
-	poetry run pytest --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/unit
+	poetry run pytest --cov=transformer_lens/ tests/unit
 
 acceptance-test:
-	poetry run pytest --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/acceptance
+	poetry run pytest --cov=transformer_lens/ tests/acceptance
 
 coverage-report-test:
 	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit tests/acceptance
