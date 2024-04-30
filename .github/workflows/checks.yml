@@ -45,7 +45,6 @@ jobs:
           - "3.8"
           - "3.9"
           - "3.10"
-          - "3.11"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -104,6 +103,8 @@ jobs:
         run: make docstring-test
       - name: Type check
         run: poetry run mypy .
+      - name: Unit Test
+        run: make unit-test
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
       - name: Build check
