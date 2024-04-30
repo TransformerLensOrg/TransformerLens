@@ -115,7 +115,7 @@ jobs:
       - name: Upload Coverage Report Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: documentation
+          name: test-coverage
           path: htmlcov
 
   notebook-checks:
