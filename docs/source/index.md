@@ -31,6 +31,7 @@ content/gallery
 :hidden:
 :caption: Documentation
 
+coverage
 generated/code/modules
 generated/model_properties_table.md
 ```
