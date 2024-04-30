@@ -31,7 +31,6 @@ content/gallery
 :hidden:
 :caption: Documentation
 
-coverage
 generated/code/modules
 generated/model_properties_table.md
 ```
@@ -52,6 +51,7 @@ content/special_cases
 :hidden:
 :caption: Development
 
+coverage
 content/contributing
 Github <https://github.com/neelnanda-io/TransformerLens>
 ```
