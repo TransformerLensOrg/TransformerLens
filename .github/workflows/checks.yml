@@ -36,8 +36,8 @@ permissions:
   contents: write
 
 jobs:
-  checks:
-    name: Checks
+  code-checks:
+    name: Code Checks
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -69,42 +69,19 @@ jobs:
           poetry install --with dev
       - name: Check format
         run: make check-format
-      - name: Unit test
-        run: make unit-test
       - name: Docstring test
         run: make docstring-test
       - name: Type check
         run: poetry run mypy .
+      - name: Test Suite with Coverage Report
+        run: make coverage-report-test
       - name: Build check
         run: poetry build
-
-  # Acceptance tests are run in parallel with unit checks.
-  acceptance-tests:
-    name: Acceptance Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Upload Coverage Report Artifact
+        uses: actions/upload-artifact@v3
         with:
-          python-version: "3.11"
-          cache: "poetry"
-      - name: Cache Models used with Tests
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/huggingface/hub/models--gpt2
-            ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
-            ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-          key: ${{ runner.os }}-huggingface-models
-      - name: Install dependencies
-        run: |
-          poetry lock --check
-          poetry install --with dev
-      - name: Acceptance test
-        run: make acceptance-test
+          name: documentation
+          path: htmlcov
 
   notebook-checks:
     name: Notebook Checks
@@ -135,3 +112,60 @@ jobs:
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
         run: make notebook-test
+
+
+  build-docs:
+    # When running on a PR, this just checks we can build the docs without errors
+    # When running on merge to main, it builds the docs and then another job deploys them
+    name: ${{ github.event_name == 'pull_request' && 'Check Build Docs' || 'Build Docs' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "poetry"
+      - name: Install pandoc
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: pandoc
+          version: 1.0
+      - name: Install dependencies
+        run: poetry install --with docs
+      - name: Build Docs
+        run: HF_TOKEN="$HF_TOKEN" poetry run build-docs
+        env:
+          HF_TOKEN: "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"
+      - name: Upload Docs Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: documentation
+          path: docs/build
+
+  deploy-docs:
+    name: Deploy Docs
+    runs-on: ubuntu-latest
+    # Only run if merging a PR into main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-docs, code-checks]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Docs Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: documentation
+          path: docs/build
+      - name: Download Test Coverage Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: test-coverage
+          path: docs/build/coverage
+      - name: Upload to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: docs/build
+          clean-exclude: |
+            *.*.*/
