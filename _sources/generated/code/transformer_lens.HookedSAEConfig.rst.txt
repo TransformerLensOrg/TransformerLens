@@ -1,0 +1,7 @@
+transformer\_lens.HookedSAEConfig
+=================================
+
+.. automodule:: transformer_lens.HookedSAEConfig
+   :members:
+   :undoc-members:
+   :show-inheritance:
