@@ -154,6 +154,7 @@ jobs:
     # When running on merge to main, it builds the docs and then another job deploys them
     name: ${{ github.event_name == 'pull_request' && 'Check Build Docs' || 'Build Docs' }}
     runs-on: ubuntu-latest
+    needs: code-checks
     steps:
       - uses: actions/checkout@v4
       - name: Install Poetry
@@ -170,6 +171,11 @@ jobs:
           version: 1.0
       - name: Install dependencies
         run: poetry install --with docs
+      - name: Download Test Coverage Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: test-coverage
+          path: docs/source/coverage
       - name: Build Docs
         run: HF_TOKEN="$HF_TOKEN" poetry run build-docs
         env:
@@ -185,7 +191,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if merging a PR into main
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build-docs, code-checks]
+    needs: build-docs
     steps:
       - uses: actions/checkout@v4
       - name: Download Docs Artifact
@@ -193,11 +199,6 @@ jobs:
         with:
           name: documentation
           path: docs/build
-      - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: test-coverage
-          path: docs/build/coverage
       - name: Upload to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
