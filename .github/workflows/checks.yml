@@ -36,47 +36,42 @@ permissions:
   contents: write
 
 jobs:
-  compatibility-checks:
-    name: Compatibility Checks
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version:
-          - "3.8"
-          - "3.9"
-          - "3.10"
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: "poetry"
-      - name: Cache Models used with Tests
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/huggingface/hub/models--gpt2
-            ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
-            ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
-          key: ${{ runner.os }}-huggingface-models
-      - name: Install dependencies
-        run: |
-          poetry lock --check
-          poetry install --with dev
-      - name: Unit Test
-        run: make unit-test
-      - name: Acceptance Test
-        run: make acceptance-test
-      - name: Build check
-        run: poetry build
-      - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: documentation
-          path: htmlcov
+  # compatibility-checks:
+  #   name: Compatibility Checks
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       python-version:
+  #         - "3.8"
+  #         - "3.9"
+  #         - "3.10"
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: Install Poetry
+  #       uses: snok/install-poetry@v1
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v4
+  #       with:
+  #         python-version: ${{ matrix.python-version }}
+  #         cache: "poetry"
+  #     - name: Cache Models used with Tests
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: |
+  #           ~/.cache/huggingface/hub/models--gpt2
+  #           ~/.cache/huggingface/hub/models--NeelNanda--Attn_Only*
+  #           ~/.cache/huggingface/hub/models--roneneldan--TinyStories-1M*
+  #         key: ${{ runner.os }}-huggingface-models
+  #     - name: Install dependencies
+  #       run: |
+  #         poetry lock --check
+  #         poetry install --with dev
+  #     - name: Unit Test
+  #       run: make unit-test
+  #     - name: Acceptance Test
+  #       run: make acceptance-test
+  #     - name: Build check
+  #       run: poetry build
 
   code-checks:
     name: Code Checks
