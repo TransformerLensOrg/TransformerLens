@@ -53,7 +53,7 @@ def load_model(name):
     )
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_logit_attrs_matches_reference_code():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -88,7 +88,7 @@ def test_logit_attrs_matches_reference_code():
     assert torch.isclose(ref_ave_logit_diffs, ave_logit_diffs, atol=1e-7).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_logit_attrs_works_for_all_input_shapes():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -177,7 +177,7 @@ def test_logit_attrs_works_for_all_input_shapes():
     assert torch.isclose(ref_logit_diffs[:, batch], logit_diffs).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_accumulated_resid_with_apply_ln():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -201,7 +201,7 @@ def test_accumulated_resid_with_apply_ln():
     assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_decompose_resid_with_apply_ln():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -221,7 +221,7 @@ def test_decompose_resid_with_apply_ln():
     assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_stack_head_results_with_apply_ln():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -241,7 +241,7 @@ def test_stack_head_results_with_apply_ln():
     assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_stack_neuron_results_with_apply_ln():
     # Load solu-2l
     model = load_model("solu-2l")

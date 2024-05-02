@@ -15,7 +15,7 @@ acceptance-test:
 	poetry run pytest tests/acceptance
 
 coverage-report-test:
-	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit
+	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit tests/acceptance
 
 docstring-test:
 	poetry run pytest transformer_lens/
