@@ -116,6 +116,22 @@ jobs:
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        notebook:
+          # - "Activation_Patching_in_TL_Demo"
+          # - "Attribution_Patching_Demo"
+          - "BERT"
+          - "Exploratory_Analysis_Demo"
+          # - "Grokking_Demo"
+          # - "Head_Detector_Demo"
+          # - "Hooked_SAE_Transformer_Demo"
+          # - "Interactive_Neuroscope"
+          # - "LLaMA"
+          # - "LLaMA2_GPU_Quantized"
+          - "Main_Demo"
+          # - "No_Position_Experiment"
+          - "Othello_GPT"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -141,7 +157,7 @@ jobs:
           version: 1.0
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
-        run: make notebook-test
+        run: poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
 
 
   build-docs:
