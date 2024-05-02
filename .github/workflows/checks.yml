@@ -121,6 +121,12 @@ jobs:
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        notebook:
+          - "BERT"
+          - "Exploratory_Analysis_Demo"
+          - "Main_Demo"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -146,7 +152,7 @@ jobs:
           version: 1.0
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
-        run: make notebook-test
+        run: poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
 
 
   build-docs:
