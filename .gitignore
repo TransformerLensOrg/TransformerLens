@@ -18,3 +18,4 @@ docs/build
 .Ds_Store
 .pylintrc
 docs/source/generated
+**.orig
