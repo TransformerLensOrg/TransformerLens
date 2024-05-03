@@ -72,11 +72,6 @@ jobs:
         run: make acceptance-test
       - name: Build check
         run: poetry build
-      - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: documentation
-          path: htmlcov
 
   code-checks:
     name: Code Checks
@@ -187,15 +182,15 @@ jobs:
           version: 1.0
       - name: Install dependencies
         run: poetry install --with docs
-      - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: test-coverage
-          path: docs/source/coverage
       - name: Build Docs
         run: HF_TOKEN="$HF_TOKEN" poetry run build-docs
         env:
           HF_TOKEN: "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"
+      - name: Download Test Coverage Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: test-coverage
+          path: docs/build/coverage
       - name: Upload Docs Artifact
         uses: actions/upload-artifact@v3
         with:
