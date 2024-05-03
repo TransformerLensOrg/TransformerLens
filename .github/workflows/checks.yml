@@ -191,6 +191,29 @@ jobs:
           name: documentation
           path: docs/build
 
+  debug-docs:
+    name: Debug Docs
+    runs-on: ubuntu-latest
+    # Only run if merging a PR into main
+    needs: [build-docs, code-checks]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Docs Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: documentation
+          path: docs/build
+      - name: Download Test Coverage Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: test-coverage
+          path: docs/build/coverage
+      - name: Upload Debug Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug
+          path: docs/build
+
   deploy-docs:
     name: Deploy Docs
     runs-on: ubuntu-latest
