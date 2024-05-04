@@ -26,4 +26,3 @@ def test_hooked_transformer_config_dict():
     result = HookedTransformerConfig.unwrap(hooked_transformer_config_dict)
     # Assert that the new returned value has been transformed into a config object
     assert isinstance(result, HookedTransformerConfig)
-    
