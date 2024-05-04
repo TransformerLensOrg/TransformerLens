@@ -24,9 +24,7 @@ class LayerNormPre(nn.Module):
         normally d_model, but is d_mlp for softmax. Not needed as a parameter. This
         should only be used in inference mode after folding in LayerNorm weights"""
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.eps = self.cfg.eps
 
         # Adds a hook point for the normalisation scale factor

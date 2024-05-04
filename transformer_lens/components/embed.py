@@ -16,15 +16,13 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 class Embed(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
-            torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=cfg.dtype)
+            torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=self.cfg.dtype)
         )
         # Some models (e.g. Bloom) need post embedding layer norm
-        if cfg.post_embedding_ln:
-            self.ln = LayerNorm(cfg)
+        if self.cfg.post_embedding_ln:
+            self.ln = LayerNorm(self.cfg)
 
     def forward(
         self, tokens: Int[torch.Tensor, "batch pos"]

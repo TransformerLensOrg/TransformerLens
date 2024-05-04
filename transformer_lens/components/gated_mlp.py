@@ -39,27 +39,27 @@ class GatedMLP(nn.Module):
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         assert self.cfg.d_mlp is not None  # keep mypy happy
 
-        if cfg.load_in_4bit:
+        if self.cfg.load_in_4bit:
             nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
             self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
-            self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
+            self.W_in = nn.Parameter(
+                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
+            )
             self.W_gate = nn.Parameter(
-                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype)
+                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
             )
             self.W_out = nn.Parameter(
-                torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype)
+                torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
             )
 
-        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
-        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
         # hook on gate output but before act_fn
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]

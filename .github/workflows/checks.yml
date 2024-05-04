@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev*
     paths:
       - "**" # Include all files by default
       - "!.devcontainer/**"
@@ -15,6 +16,7 @@ on:
   pull_request:
     branches:
       - main
+      - dev*
     paths:
       - "**"
       - "!.devcontainer/**"

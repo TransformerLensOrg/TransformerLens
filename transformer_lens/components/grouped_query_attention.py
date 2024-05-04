@@ -27,8 +27,7 @@ class GroupedQueryAttention(AbstractAttention):
             attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
             layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
+        cfg = HookedTransformerConfig.unwrap(cfg)
         assert cfg.n_key_value_heads is not None
         super().__init__(cfg, attn_type, layer_id)
         self.repeat_kv_heads = cfg.n_heads // cfg.n_key_value_heads

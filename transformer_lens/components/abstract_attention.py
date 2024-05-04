@@ -43,28 +43,32 @@ class AbstractAttention(ABC, nn.Module):
             layer_id (int, optional): The index of the current layer. Used by the Mistral models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
 
         if self.cfg.load_in_4bit:
-            nq = int((cfg.d_model * cfg.d_model) / 2)
+            nq = int((self.cfg.d_model * self.cfg.d_model) / 2)
             self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
             self.W_Q = nn.Parameter(
-                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+                torch.empty(
+                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=self.cfg.dtype
+                )
             )
             self.W_O = nn.Parameter(
-                torch.empty(self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=cfg.dtype)
+                torch.empty(
+                    self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=self.cfg.dtype
+                )
             )
         self.W_K = abstract_attribute()
         self.W_V = abstract_attribute()
 
-        self.b_Q = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_Q = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
+        )
         self.b_K: nn.Parameter = abstract_attribute()
         self.b_V: nn.Parameter = abstract_attribute()
-        self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
+        self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
         self.attn_type = attn_type
         # Create a max_ctx x max_ctx mask, with True iff that query position
