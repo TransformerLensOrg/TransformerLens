@@ -39,9 +39,7 @@ class GatedMLP(nn.Module):
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         assert self.cfg.d_mlp is not None  # keep mypy happy
 
         if cfg.load_in_4bit:

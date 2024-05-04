@@ -20,9 +20,7 @@ class LayerNorm(nn.Module):
         length (Optional[int]): If the dimension of the LayerNorm. If not provided, assumed to be d_model
         """
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.eps = self.cfg.eps
         if length is None:
             self.length = self.cfg.d_model

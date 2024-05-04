@@ -14,9 +14,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 class MoE(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
         assert cfg.num_experts is not None, "num_experts must be specified for MoE layer"
