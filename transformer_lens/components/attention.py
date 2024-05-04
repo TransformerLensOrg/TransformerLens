@@ -42,10 +42,18 @@ class Attention(AbstractAttention):
             self.W_V = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
             self.W_K = nn.Parameter(
-                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=self.cfg.dtype)
+                torch.empty(
+                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=self.cfg.dtype
+                )
             )
             self.W_V = nn.Parameter(
-                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=self.cfg.dtype)
+                torch.empty(
+                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=self.cfg.dtype
+                )
             )
-        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype))
-        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype))
+        self.b_K = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
+        )
+        self.b_V = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
+        )

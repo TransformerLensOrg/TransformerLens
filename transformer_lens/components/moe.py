@@ -25,9 +25,14 @@ class MoE(nn.Module):
         ), "experts_per_token must be less than or equal to num_experts"
 
         self.experts = nn.ModuleList(
-            [GatedMLP(self.cfg) if self.cfg.gated_mlp else MLP(self.cfg) for _ in range(self.cfg.num_experts)]
+            [
+                GatedMLP(self.cfg) if self.cfg.gated_mlp else MLP(self.cfg)
+                for _ in range(self.cfg.num_experts)
+            ]
         )
-        self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=self.cfg.dtype))
+        self.W_gate = nn.Parameter(
+            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=self.cfg.dtype)
+        )
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
         self.hook_expert_weights = HookPoint()

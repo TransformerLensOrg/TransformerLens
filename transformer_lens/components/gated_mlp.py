@@ -48,7 +48,9 @@ class GatedMLP(nn.Module):
             self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
-            self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype))
+            self.W_in = nn.Parameter(
+                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
+            )
             self.W_gate = nn.Parameter(
                 torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
             )
