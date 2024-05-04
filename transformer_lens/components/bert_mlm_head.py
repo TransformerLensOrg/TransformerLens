@@ -21,10 +21,10 @@ class BertMLMHead(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
-        self.W = nn.Parameter(torch.empty(cfg.d_model, cfg.d_model, dtype=cfg.dtype))
-        self.b = nn.Parameter(torch.zeros(cfg.d_model, dtype=cfg.dtype))
+        self.W = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_model, dtype=self.cfg.dtype))
+        self.b = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
         self.act_fn = nn.GELU()
-        self.ln = LayerNorm(cfg)
+        self.ln = LayerNorm(self.cfg)
 
     def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:
         resid = (

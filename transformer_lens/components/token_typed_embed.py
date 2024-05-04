@@ -21,7 +21,7 @@ class TokenTypeEmbed(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
-        self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model, dtype=cfg.dtype))
+        self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model, dtype=self.cfg.dtype))
 
     def forward(self, token_type_ids: Int[torch.Tensor, "batch pos"]):
         return self.W_token_type[token_type_ids, :]

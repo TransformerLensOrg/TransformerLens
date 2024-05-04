@@ -27,8 +27,8 @@ class LayerNorm(nn.Module):
         else:
             self.length = length
 
-        self.w = nn.Parameter(torch.ones(self.length, dtype=cfg.dtype))
-        self.b = nn.Parameter(torch.zeros(self.length, dtype=cfg.dtype))
+        self.w = nn.Parameter(torch.ones(self.length, dtype=self.cfg.dtype))
+        self.b = nn.Parameter(torch.zeros(self.length, dtype=self.cfg.dtype))
 
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos, 1]

@@ -17,17 +17,17 @@ class MoE(nn.Module):
         self.cfg = HookedTransformerConfig.unwrap(cfg)
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
-        assert cfg.num_experts is not None, "num_experts must be specified for MoE layer"
-        assert cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
-        self.experts_per_token: int = cfg.experts_per_token
+        assert self.cfg.num_experts is not None, "num_experts must be specified for MoE layer"
+        assert self.cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
+        self.experts_per_token: int = self.cfg.experts_per_token
         assert (
-            cfg.experts_per_token <= cfg.num_experts
+            self.cfg.experts_per_token <= self.cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
 
         self.experts = nn.ModuleList(
-            [GatedMLP(cfg) if cfg.gated_mlp else MLP(cfg) for _ in range(cfg.num_experts)]
+            [GatedMLP(self.cfg) if self.cfg.gated_mlp else MLP(self.cfg) for _ in range(self.cfg.num_experts)]
         )
-        self.W_gate = nn.Parameter(torch.empty(cfg.d_model, cfg.num_experts, dtype=cfg.dtype))
+        self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=self.cfg.dtype))
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
         self.hook_expert_weights = HookPoint()
