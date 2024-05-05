@@ -35,9 +35,7 @@ def test_attention_mask():
         return attn_scores
 
     def attn_hook(attn, hook):
-        assert torch.all(
-            attn[:, :, masked] == 0
-        ), "Attention pattern attends outside the mask"
+        assert torch.all(attn[:, :, masked] == 0), "Attention pattern attends outside the mask"
 
         return attn
 

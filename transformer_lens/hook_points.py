@@ -2,9 +2,11 @@
 
 Helpers to access activations in models.
 """
+
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from typing import (
     Any,
     Callable,
@@ -16,12 +18,15 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
     runtime_checkable,
 )
 
 import torch
 import torch.nn as nn
 import torch.utils.hooks as hooks
+
+from transformer_lens.utils import Slice
 
 
 @dataclass
@@ -94,50 +99,36 @@ class HookPoint(nn.Module):
         If prepend is True, add this hook before all other hooks
         """
 
+        def full_hook(module, module_input, module_output):
+            if (
+                dir == "bwd"
+            ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
+                module_output = module_output[0]
+            return hook(module_output, hook=self)
+
+        full_hook.__name__ = (
+            hook.__repr__()
+        )  # annotate the `full_hook` with the string representation of the `hook` function
+
         if dir == "fwd":
-
-            def full_forward_hook(
-                module: torch.nn.Module, module_input: Any, module_output: torch.Tensor
-            ):
-                return hook(module_output, hook=self)
-
-            full_forward_hook.__name__ = (
-                hook.__repr__()
-            )  # annotate the `full_forward_hook` with the string representation of the `hook` function
-
-            handle = self.register_forward_hook(full_forward_hook)
-            handle = LensHandle(handle, is_permanent, level)
-
-            if prepend:
-                # we could just pass this as an argument in PyTorch 2.0, but for now we manually do
-                # this...
-
-                self._forward_hooks.move_to_end(handle.hook.id, last=False)  # type: ignore[attr-defined]
-                self.fwd_hooks.insert(0, handle)
-            else:
-                self.fwd_hooks.append(handle)
+            pt_handle = self.register_forward_hook(full_hook)
+            _internal_hooks = self._forward_hooks
+            visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
-            def full_backward_hook(
-                module: torch.nn.Module, module_input: _grad_t, module_output: _grad_t
-            ):
-                return hook(module_output[0], hook=self)
-
-            full_backward_hook.__name__ = (
-                hook.__repr__()
-            )  # annotate the `full_backward_hook` with the string representation of the `hook` function
-
-            handle = self.register_full_backward_hook(full_backward_hook)
-            handle = LensHandle(handle, is_permanent, level)
-
-            if prepend:
-                # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-                self._backward_hooks.move_to_end(handle.hook.id, last=False)  # type: ignore[attr-defined]
-                self.bwd_hooks.insert(0, handle)
-            else:
-                self.bwd_hooks.append(handle)
+            pt_handle = self.register_full_backward_hook(full_hook)
+            _internal_hooks = self._backward_hooks
+            visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
+                handle = LensHandle(pt_handle, is_permanent, level)
+
+       if prepend:
+           # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
+           _internal_hooks.move_to_end(handle.hook.id, last=False)  # type: ignore # TODO: this type error could signify a bug
+           visible_hooks.insert(0, handle)
+        
+        else:
+            visible_hooks.append(handle)
 
     def remove_hooks(
         self,
@@ -150,9 +141,7 @@ class HookPoint(nn.Module):
             for handle in handles:
                 if including_permanent:
                     handle.hook.remove()
-                elif (not handle.is_permanent) and (
-                    level is None or handle.context_level == level
-                ):
+                elif (not handle.is_permanent) and (level is None or handle.context_level == level):
                     handle.hook.remove()
                 else:
                     output_handles.append(handle)
@@ -242,9 +231,7 @@ class HookedRootModule(nn.Module):
         level: Union[int, None] = None,
     ):
         for hp in self.hook_points():
-            hp.remove_hooks(
-                direction, including_permanent=including_permanent, level=level
-            )
+            hp.remove_hooks(direction, including_permanent=including_permanent, level=level)
 
     def clear_contexts(self):
         for hp in self.hook_points():
@@ -282,9 +269,7 @@ class HookedRootModule(nn.Module):
             is_permanent=is_permanent,
             prepend=prepend,
         )
-        hook_point.add_hook(
-            hook, dir=dir, is_permanent=is_permanent, level=level, prepend=prepend
-        )
+        hook_point.add_hook(hook, dir=dir, is_permanent=is_permanent, level=level, prepend=prepend)
 
     def check_hooks_to_add(
         self,
@@ -434,9 +419,7 @@ class HookedRootModule(nn.Module):
                 "WARNING: Hooks will be reset at the end of run_with_hooks. This removes the backward hooks before a backward pass can occur."
             )
 
-        with self.hooks(
-            fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts
-        ) as hooked_model:
+        with self.hooks(fwd_hooks, bwd_hooks, reset_hooks_end, clear_contexts) as hooked_model:
             return hooked_model.forward(*model_args, **model_kwargs)
 
     def add_caching_hooks(
@@ -477,24 +460,19 @@ class HookedRootModule(nn.Module):
         self.is_caching = True
 
         def save_hook(tensor: torch.Tensor, hook: HookPoint):
+            hook_name = hook.name
+            if is_backward:
+                hook_name += "_grad"
             if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
+                cache[hook_name] = tensor.detach().to(device)[0]
             else:
-                cache[hook.name] = tensor.detach().to(device)
-
-        def save_hook_back(tensor: torch.Tensor, hook: HookPoint):
-            if hook.name is None:
-                raise ValueError("hook.name cannot be None")
-            if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
-            else:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)
+                cache[hook_name] = tensor.detach().to(device)
 
         for name, hp in self.hook_dict.items():
             if names_filter(name):
-                hp.add_hook(save_hook, "fwd")
+                hp.add_hook(partial(save_hook, is_backward=False), "fwd")
                 if incl_bwd:
-                    hp.add_hook(save_hook_back, "bwd")
+                    hp.add_hook(partial(save_hook, is_backward=True), "bwd")
         return cache
 
     def run_with_cache(
@@ -506,6 +484,7 @@ class HookedRootModule(nn.Module):
         incl_bwd: bool = False,
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
+        pos_slice=None,
         **model_kwargs: Any,
     ):
         """
@@ -528,14 +507,28 @@ class HookedRootModule(nn.Module):
                 end of the run. Defaults to True.
             clear_contexts (bool, optional): If True, clears hook contexts whenever hooks are reset.
                 Defaults to False.
+            pos_slice:
+                The slice to apply to the cache output. Defaults to None, do nothing.
             **model_kwargs: Keyword arguments for the model.
 
         Returns:
             tuple: A tuple containing the model output and a Cache object.
 
         """
+
+        if not isinstance(pos_slice, Slice):
+            if isinstance(
+                pos_slice, int
+            ):  # slicing with an int collapses the dimension so this stops the pos dimension from collapsing
+                pos_slice = [pos_slice]
+            pos_slice = Slice(pos_slice)
+
         cache_dict, fwd, bwd = self.get_caching_hooks(
-            names_filter, incl_bwd, device, remove_batch_dim=remove_batch_dim
+            names_filter,
+            incl_bwd,
+            device,
+            remove_batch_dim=remove_batch_dim,
+            pos_slice=pos_slice,
         )
 
         with self.hooks(
@@ -557,6 +550,7 @@ class HookedRootModule(nn.Module):
         device: DeviceType = None,
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
+        pos_slice: Optional[Slice] = None,
     ) -> Tuple[dict, list, list]:
         """Creates hooks to cache activations. Note: It does not add the hooks to the model.
 
@@ -593,27 +587,43 @@ class HookedRootModule(nn.Module):
 
         self.is_caching = True
 
-        def save_hook(tensor: torch.Tensor, hook: HookPoint):
-            if remove_batch_dim:
-                cache[hook.name] = tensor.detach().to(device)[0]
-            else:
-                cache[hook.name] = tensor.detach().to(device)
 
-        def save_hook_back(tensor: torch.Tensor, hook: HookPoint):
-            if hook.name is None:
-                raise RuntimeError("hook.name should not be None")
+        def save_hook(tensor: torch.Tensor, hook: HookPoint):
+            hook_name = hook.name
+            if is_backward:
+                hook_name += "_grad"
+            resid_stream = tensor.detach().to(device)
             if remove_batch_dim:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)[0]
+                resid_stream = resid_stream[0]
+
+            # for attention heads the pos dimension is the third from last
+            if (
+                hook.name.endswith("hook_q")
+                or hook.name.endswith("hook_k")
+                or hook.name.endswith("hook_v")
+                or hook.name.endswith("hook_z")
+                or hook.name.endswith("hook_result")
+            ):
+                pos_dim = -3
             else:
-                cache[hook.name + "_grad"] = tensor.detach().to(device)
+                # for all other components the pos dimension is the second from last
+                # including the attn scores where the dest token is the second from last
+                pos_dim = -2
+
+            if (
+                tensor.dim() >= -pos_dim
+            ):  # check if the residual stream has a pos dimension before trying to slice
+                assert pos_slice is not None  # keep mypy happy
+                resid_stream = pos_slice.apply(resid_stream, dim=pos_dim)
+            cache[hook_name] = resid_stream
 
         fwd_hooks = []
         bwd_hooks = []
         for name, _ in self.hook_dict.items():
             if names_filter(name):
-                fwd_hooks.append((name, save_hook))
+                fwd_hooks.append((name, partial(save_hook, is_backward=False)))
                 if incl_bwd:
-                    bwd_hooks.append((name, save_hook_back))
+                    bwd_hooks.append((name, partial(save_hook, is_backward=True)))
 
         return cache, fwd_hooks, bwd_hooks
 
