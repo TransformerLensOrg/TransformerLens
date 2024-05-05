@@ -18,7 +18,6 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    cast,
     runtime_checkable,
 )
 
@@ -26,7 +25,7 @@ import torch
 import torch.nn as nn
 import torch.utils.hooks as hooks
 
-from transformer_lens.utils import Slice
+from transformer_lens.utils import Slice, SliceInput
 
 
 @dataclass
@@ -79,9 +78,7 @@ class HookPoint(nn.Module):
         # module) - this is set by the root module at setup.
         self.name: Union[str, None] = None
 
-    def add_perma_hook(
-        self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd"
-    ) -> None:
+    def add_perma_hook(self, hook: HookFunction, dir: Literal["fwd", "bwd"] = "fwd") -> None:
         self.add_hook(hook, dir=dir, is_permanent=True)
 
     def add_hook(
@@ -99,7 +96,7 @@ class HookPoint(nn.Module):
         If prepend is True, add this hook before all other hooks
         """
 
-        def full_hook(module, module_input, module_output):
+        def full_hook(module: torch.nn.Module, module_input: Any, module_output: torch.Tensor):
             if (
                 dir == "bwd"
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
@@ -120,13 +117,14 @@ class HookPoint(nn.Module):
             visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
-                handle = LensHandle(pt_handle, is_permanent, level)
 
-       if prepend:
-           # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-           _internal_hooks.move_to_end(handle.hook.id, last=False)  # type: ignore # TODO: this type error could signify a bug
-           visible_hooks.insert(0, handle)
-        
+        handle = LensHandle(pt_handle, is_permanent, level)
+
+        if prepend:
+            # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
+            _internal_hooks.move_to_end(handle.hook.id, last=False)  # type: ignore # TODO: this type error could signify a bug
+            visible_hooks.insert(0, handle)
+
         else:
             visible_hooks.append(handle)
 
@@ -358,9 +356,7 @@ class HookedRootModule(nn.Module):
 
             for name, hook in fwd_hooks:
                 if isinstance(name, str):
-                    self.mod_dict[name].add_hook(
-                        hook, dir="fwd", level=self.context_level
-                    )
+                    self.mod_dict[name].add_hook(hook, dir="fwd", level=self.context_level)
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict.items():
@@ -368,9 +364,7 @@ class HookedRootModule(nn.Module):
                             hp.add_hook(hook, dir="fwd", level=self.context_level)
             for name, hook in bwd_hooks:
                 if isinstance(name, str):
-                    self.mod_dict[name].add_hook(
-                        hook, dir="bwd", level=self.context_level
-                    )
+                    self.mod_dict[name].add_hook(hook, dir="bwd", level=self.context_level)
                 else:
                     # Otherwise, name is a Boolean function on names
                     for hook_name, hp in self.hook_dict.items():
@@ -459,7 +453,7 @@ class HookedRootModule(nn.Module):
 
         self.is_caching = True
 
-        def save_hook(tensor: torch.Tensor, hook: HookPoint):
+        def save_hook(tensor: torch.Tensor, hook: HookPoint, is_backward: bool):
             hook_name = hook.name
             if is_backward:
                 hook_name += "_grad"
@@ -484,7 +478,7 @@ class HookedRootModule(nn.Module):
         incl_bwd: bool = False,
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
-        pos_slice=None,
+        pos_slice: SliceInput = None,
         **model_kwargs: Any,
     ):
         """
@@ -580,15 +574,12 @@ class HookedRootModule(nn.Module):
         elif isinstance(names_filter, Callable):
             names_filter = names_filter
         else:
-            raise ValueError(
-                "names_filter must be a string, list of strings, or function"
-            )
+            raise ValueError("names_filter must be a string, list of strings, or function")
         assert isinstance(names_filter, Callable)  # Callable[[str], bool]
 
         self.is_caching = True
 
-
-        def save_hook(tensor: torch.Tensor, hook: HookPoint):
+        def save_hook(tensor: torch.Tensor, hook: HookPoint, is_backward: bool = False):
             hook_name = hook.name
             if is_backward:
                 hook_name += "_grad"
@@ -597,6 +588,9 @@ class HookedRootModule(nn.Module):
                 resid_stream = resid_stream[0]
 
             # for attention heads the pos dimension is the third from last
+            if hook.name is None:
+                raise RuntimeError("Hook should have been provided a name")
+
             if (
                 hook.name.endswith("hook_q")
                 or hook.name.endswith("hook_k")
