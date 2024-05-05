@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev*
     paths:
       - "**" # Include all files by default
       - "!.devcontainer/**"
@@ -15,6 +16,7 @@ on:
   pull_request:
     branches:
       - main
+      - dev*
     paths:
       - "**"
       - "!.devcontainer/**"
@@ -72,11 +74,6 @@ jobs:
         run: make acceptance-test
       - name: Build check
         run: poetry build
-      - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: documentation
-          path: htmlcov
 
   code-checks:
     name: Code Checks
@@ -121,6 +118,22 @@ jobs:
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        notebook:
+          # - "Activation_Patching_in_TL_Demo"
+          # - "Attribution_Patching_Demo"
+          - "BERT"
+          - "Exploratory_Analysis_Demo"
+          # - "Grokking_Demo"
+          # - "Head_Detector_Demo"
+          # - "Hooked_SAE_Transformer_Demo"
+          # - "Interactive_Neuroscope"
+          # - "LLaMA"
+          # - "LLaMA2_GPU_Quantized"
+          - "Main_Demo"
+          # - "No_Position_Experiment"
+          - "Othello_GPT"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -146,7 +159,7 @@ jobs:
           version: 1.0
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
-        run: make notebook-test
+        run: poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
 
 
   build-docs:
@@ -154,7 +167,6 @@ jobs:
     # When running on merge to main, it builds the docs and then another job deploys them
     name: ${{ github.event_name == 'pull_request' && 'Check Build Docs' || 'Build Docs' }}
     runs-on: ubuntu-latest
-    needs: code-checks
     steps:
       - uses: actions/checkout@v4
       - name: Install Poetry
@@ -171,11 +183,6 @@ jobs:
           version: 1.0
       - name: Install dependencies
         run: poetry install --with docs
-      - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: test-coverage
-          path: docs/source/coverage
       - name: Build Docs
         run: HF_TOKEN="$HF_TOKEN" poetry run build-docs
         env:
@@ -191,7 +198,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if merging a PR into main
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: build-docs
+    needs: [build-docs, code-checks]
     steps:
       - uses: actions/checkout@v4
       - name: Download Docs Artifact
@@ -199,6 +206,11 @@ jobs:
         with:
           name: documentation
           path: docs/build
+      - name: Download Test Coverage Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: test-coverage
+          path: docs/build/coverage
       - name: Upload to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:

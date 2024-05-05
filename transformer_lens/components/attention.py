@@ -33,21 +33,27 @@ class Attention(AbstractAttention):
             layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
         super().__init__(cfg, attn_type, layer_id)
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
 
-        if cfg.load_in_4bit:
+        if self.cfg.load_in_4bit:
             # 4-bit quantization convention
-            nq = int((cfg.d_model * cfg.d_model) / 2)
+            nq = int((self.cfg.d_model * self.cfg.d_model) / 2)
             self.W_K = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_V = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
             self.W_K = nn.Parameter(
-                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+                torch.empty(
+                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=self.cfg.dtype
+                )
             )
             self.W_V = nn.Parameter(
-                torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+                torch.empty(
+                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=self.cfg.dtype
+                )
             )
-        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
-        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_K = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
+        )
+        self.b_V = nn.Parameter(
+            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
+        )

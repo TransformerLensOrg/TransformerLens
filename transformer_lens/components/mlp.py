@@ -23,14 +23,16 @@ class MLP(nn.Module):
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig.from_dict(cfg)
-        self.cfg = cfg
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         assert self.cfg.d_mlp is not None  # TODO: should this not be optional?
-        self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=cfg.dtype))
-        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=cfg.dtype))
-        self.W_out = nn.Parameter(torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=cfg.dtype))
-        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=cfg.dtype))
+        self.W_in = nn.Parameter(
+            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
+        )
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
+        self.W_out = nn.Parameter(
+            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
+        )
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
