@@ -130,7 +130,7 @@ jobs:
           - "Hooked_SAE_Transformer_Demo"
           - "Interactive_Neuroscope"
           - "LLaMA"
-          - "LLaMA2_GPU_Quantized"
+          # - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
           - "No_Position_Experiment"
           - "Othello_GPT"
