@@ -149,43 +149,6 @@ class Test_lower_triangular:
         assert not utils.is_lower_triangular(x)
 
 
-@pytest.mark.parametrize(
-    "prepend_space_to_answer, tokenized_prompt, tokenized_answer",
-    [
-        (
-            True,
-            [
-                "<|BOS|>",
-                "The",
-                " circumference",
-                " is",
-                " the",
-                " perimeter",
-                " of",
-                " the",
-                " circ",
-            ],
-            [" le", "."],
-        ),
-        (
-            False,
-            [
-                "<|BOS|>",
-                "The",
-                " circumference",
-                " is",
-                " the",
-                " perimeter",
-                " of",
-                " the",
-                " circ",
-            ],
-            ["le", "."],
-        ),
-    ],
-)
-
-
 def test_override_or_use_default_value():
     # Case when override is not None
     assert utils.override_or_use_default_value(default_flag=True, override=True) == True

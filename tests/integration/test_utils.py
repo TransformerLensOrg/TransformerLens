@@ -65,6 +65,42 @@ def test_to_str_tokens(nested_list_1, nested_list_1x1, nested_list_1x3):
     assert isinstance(squeezable_ndarray_to_str_tokens[1], str)
     assert isinstance(squeezable_ndarray_to_str_tokens[2], str)
 
+
+@pytest.mark.parametrize(
+    "prepend_space_to_answer, tokenized_prompt, tokenized_answer",
+    [
+        (
+            True,
+            [
+                "<|BOS|>",
+                "The",
+                " circumference",
+                " is",
+                " the",
+                " perimeter",
+                " of",
+                " the",
+                " circ",
+            ],
+            [" le", "."],
+        ),
+        (
+            False,
+            [
+                "<|BOS|>",
+                "The",
+                " circumference",
+                " is",
+                " the",
+                " perimeter",
+                " of",
+                " the",
+                " circ",
+            ],
+            ["le", "."],
+        ),
+    ],
+)
 @mock.patch("builtins.print")
 def test_test_prompt(
     mocked_print,
