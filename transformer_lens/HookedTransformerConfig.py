@@ -10,7 +10,7 @@ import logging
 import pprint
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -290,6 +290,13 @@ class HookedTransformerConfig:
             True,
             False,
         ], f"padding_side must be either True or False, but {self.default_prepend_bos} is given"
+
+    @classmethod
+    def unwrap(cls, config: Union[Dict, "HookedTransformerConfig"]) -> HookedTransformerConfig:
+        """
+        Convenience function to avoid duplicate code from a common way config is passed to various components
+        """
+        return HookedTransformerConfig.from_dict(config) if isinstance(config, Dict) else config
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> HookedTransformerConfig:
