@@ -213,6 +213,10 @@ jobs:
         with:
           name: debug
           path: docs/build
+      - name: Upload to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: docs/build
 
   deploy-docs:
     name: Deploy Docs
