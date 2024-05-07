@@ -117,14 +117,13 @@ class HookedTransformer(HookedRootModule):
             default_padding_side: Which side to pad on.
         """
         super().__init__()
-        if isinstance(cfg, Dict):
-            cfg = HookedTransformerConfig(**cfg)
-        elif isinstance(cfg, str):
+        if isinstance(cfg, str):
             raise ValueError(
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a "
                 "pretrained model, use HookedTransformer.from_pretrained() instead."
             )
-        self.cfg: HookedTransformerConfig = cfg
+
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
 
         if tokenizer is not None:
             self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
