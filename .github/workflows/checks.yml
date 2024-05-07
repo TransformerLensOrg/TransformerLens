@@ -129,7 +129,7 @@ jobs:
           - "Head_Detector_Demo"
           - "Hooked_SAE_Transformer_Demo"
           - "Interactive_Neuroscope"
-          - "LLaMA"
+          # - "LLaMA"
           # - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
           - "No_Position_Experiment"
