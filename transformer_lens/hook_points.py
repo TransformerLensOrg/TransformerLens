@@ -12,7 +12,7 @@ from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple, Uni
 import torch.nn as nn
 import torch.utils.hooks as hooks
 
-from transformer_lens.utils import Slice
+from transformer_lens.utils import Slice, SliceInput
 
 
 @dataclass
@@ -485,7 +485,7 @@ class HookedRootModule(nn.Module):
         device=None,
         remove_batch_dim: bool = False,
         cache: Optional[dict] = None,
-        pos_slice: Optional[Union[int, Slice]] = None,
+        pos_slice: Union[Slice, SliceInput] = None,
     ) -> Tuple[dict, list, list]:
         """Creates hooks to cache activations. Note: It does not add the hooks to the model.
 
