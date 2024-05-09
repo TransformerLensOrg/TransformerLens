@@ -1,5 +1,7 @@
 <!--
 When opening your PR, please make sure to only request a merge to `main` when you have found a bug in the currently released version of TransformerLens. All other PRs should go to `dev` in order to keep the docs in sync with the currently released version.
+
+Please also make sure the branch you are attempting to merge from is not named `main`, or `dev`. Branches with these names from a different remote cause conflicting name issues when we periodically attempt to bring your PR up to date with the current stable TransformerLens source.
 -->
 # Description
 
