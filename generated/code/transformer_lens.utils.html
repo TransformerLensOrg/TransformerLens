@@ -353,6 +353,23 @@ elif input_slice is a Tensor, same as list - Tensor is assumed to be a 1D list o
 <span class="sig-name descname"><span class="pre">slice</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">slice</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#transformer_lens.utils.Slice.slice" title="Permalink to this definition">#</a></dt>
 <dd></dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="transformer_lens.utils.Slice.unwrap">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">unwrap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">slice_input</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Tensor</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><span class="pre">Slice</span></a></span></span><a class="headerlink" href="#transformer_lens.utils.Slice.unwrap" title="Permalink to this definition">#</a></dt>
+<dd><p>Takes a Slice-like input and converts it into a Slice, if it is not already.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>slice_input</strong> (<em>Union</em><em>[</em><a class="reference internal" href="#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice"><em>Slice</em></a><em>, </em><em>SliceInput</em><em>]</em>) – The input to turn into a Slice.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A Slice object.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#transformer_lens.utils.Slice" title="transformer_lens.utils.Slice">Slice</a></p>
+</dd>
+</dl>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="py data">
@@ -878,6 +895,7 @@ to use the BOS token as a resting place for attention heads (i.e. a way for them
 <li><a class="reference internal" href="#transformer_lens.utils.Slice.apply"><code class="docutils literal notranslate"><span class="pre">Slice.apply()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.Slice.indices"><code class="docutils literal notranslate"><span class="pre">Slice.indices()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utils.Slice.slice"><code class="docutils literal notranslate"><span class="pre">Slice.slice</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utils.Slice.unwrap"><code class="docutils literal notranslate"><span class="pre">Slice.unwrap()</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#transformer_lens.utils.SliceInput"><code class="docutils literal notranslate"><span class="pre">SliceInput</span></code></a></li>
