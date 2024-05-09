@@ -217,13 +217,6 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: docs/build
-          clean-exclude: |
-            *.*.*/
-      - name: Upload coverage report to GitHub Pages
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          folder: docs/build/coverage
-          target-folder: coverage
 
   deploy-docs:
     name: Deploy Docs
