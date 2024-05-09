@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from jaxtyping import Float
 from torch import nn
 
+from transformer_lens import loading_from_pretrained
 from transformer_lens.hook_points import (  # Hooking utilities
     HookedRootModule,
     HookPoint,
@@ -116,3 +117,28 @@ class HookedSAE(HookedRootModule):
             return self.hook_sae_output(x_reconstruct + sae_error)
 
         return self.hook_sae_output(x_reconstruct)
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        sae_name,
+    ) -> "HookedSAE":
+        # 1) Get the one true name of this SAE.
+        sae_alias_map = loading_from_pretrained.make_sae_alias_map()
+        if sae_name not in sae_alias_map:
+            raise ValueError("SAE name {sae_name} not found in alias map, available SAE names:"
+                             f"{list(sae_alias_map.keys())=}")
+        official_sae_name = sae_alias_map[sae_name]
+
+        # 2) Load the SAE cfg.
+        cfg = loading_from_pretrained.get_pretrained_sae_config(
+            official_sae_name
+        )
+
+        # 3) Load a random weights SAE with this cfg.
+        sae = cls(cfg)
+
+        # 4) Get and load the state dict.
+        sae.load_state_dict(loading_from_pretrained.get_pretrained_sae_state_dict(official_sae_name))
+
+        return sae

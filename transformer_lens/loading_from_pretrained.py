@@ -7,7 +7,7 @@ import dataclasses
 import logging
 import os
 import re
-from typing import Dict, Optional, Union, cast
+from typing import Dict, Optional, Union, cast, Any
 
 import einops
 import torch
@@ -15,6 +15,7 @@ from huggingface_hub import HfApi
 from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 
 import transformer_lens.utils as utils
+from transformer_lens.HookedSAEConfig import HookedSAEConfig
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 OFFICIAL_MODEL_NAMES = [
@@ -2695,6 +2696,106 @@ def get_basic_config(model_name: str, **kwargs) -> Config:
 
 # ---------- SAE specific loading utils ----------
 
+#%%
+
 OFFICIAL_SAE_NAMES = [
-    ""
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L0_Hcat_z_lr1.20e-03_l11.80e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L1_Hcat_z_lr1.20e-03_l18.00e-01_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v5",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L2_Hcat_z_lr1.20e-03_l11.00e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v4",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L3_Hcat_z_lr1.20e-03_l19.00e-01_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L4_Hcat_z_lr1.20e-03_l11.10e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v7",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L5_Hcat_z_lr1.20e-03_l11.00e+00_ds49152_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L6_Hcat_z_lr1.20e-03_l11.10e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L7_Hcat_z_lr1.20e-03_l11.10e+00_ds49152_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L8_Hcat_z_lr1.20e-03_l11.30e+00_ds24576_bs4096_dc1.00e-05_rsanthropic_rie25000_nr4_v6",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L9_Hcat_z_lr1.20e-03_l11.20e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L10_Hcat_z_lr1.20e-03_l11.30e+00_ds24576_bs4096_dc1.00e-05_rsanthropic_rie25000_nr4_v9",
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L11_Hcat_z_lr1.20e-03_l13.00e+00_ds24576_bs4096_dc3.16e-06_rsanthropic_rie25000_nr4_v9",
+    "nev/sae_weights",
+    "nev/gpt2_xl_saes-saex-test/sae_weights"
 ]
+
+SAE_ALIASES = {'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L0_Hcat_z_lr1.20e-03_l11.80e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L0'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L1_Hcat_z_lr1.20e-03_l18.00e-01_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v5': ['gpt2-small-attz-kk-L1'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L2_Hcat_z_lr1.20e-03_l11.00e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v4': ['gpt2-small-attz-kk-L2'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L3_Hcat_z_lr1.20e-03_l19.00e-01_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L3'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L4_Hcat_z_lr1.20e-03_l11.10e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v7': ['gpt2-small-attz-kk-L4'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L5_Hcat_z_lr1.20e-03_l11.00e+00_ds49152_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L5'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L6_Hcat_z_lr1.20e-03_l11.10e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L6'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L7_Hcat_z_lr1.20e-03_l11.10e+00_ds49152_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L7'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L8_Hcat_z_lr1.20e-03_l11.30e+00_ds24576_bs4096_dc1.00e-05_rsanthropic_rie25000_nr4_v6': ['gpt2-small-attz-kk-L8'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L9_Hcat_z_lr1.20e-03_l11.20e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L9'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L10_Hcat_z_lr1.20e-03_l11.30e+00_ds24576_bs4096_dc1.00e-05_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L10'],
+ 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L11_Hcat_z_lr1.20e-03_l13.00e+00_ds24576_bs4096_dc3.16e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L11'],
+ 'nev/sae_weights': ['gpt2-xl-saex-resid-pre-L20']}
+
+
+def make_sae_alias_map():
+    """
+    Equivalent of make_model_alias_map for SAEs.
+
+    Converts OFFICIAL_SAE_NAMES (the list of actual SAE names on
+    HuggingFace) and SAE_ALIASES (a dictionary mapping official SAE names to
+    aliases) into a dictionary mapping all aliases to the official SAE name.
+    """
+    sae_alias_map = {}
+    for official_sae_name in OFFICIAL_SAE_NAMES:
+        aliases = SAE_ALIASES.get(official_sae_name, [])
+        for alias in aliases:
+            sae_alias_map[alias.lower()] = official_sae_name
+        sae_alias_map[official_sae_name.lower()] = official_sae_name
+    return sae_alias_map
+
+
+def convert_ckkissane_sae_cfg(
+    ckkisane_sae_cfg: dict
+) -> HookedSAEConfig:
+    if ckkisane_sae_cfg["enc_dtype"] != "fp32":
+        raise ValueError(f"Expected fp32 dtype, got {ckkisane_sae_cfg['enc_dtype']}")
+    return HookedSAEConfig(
+        d_sae=ckkisane_sae_cfg["dict_size"],
+        d_in=ckkisane_sae_cfg["act_size"],
+        hook_name=ckkisane_sae_cfg["act_name"],
+        dtype=torch.float32,
+    )
+
+
+def convert_nev_sae_cfg(
+    nev_sae_cfg: dict
+) -> HookedSAEConfig:
+    return HookedSAEConfig(
+        d_sae=nev_sae_cfg["d_sae"],
+        d_in=nev_sae_cfg["d_in"],
+        hook_name=nev_sae_cfg["hook_point"]
+        dtype=nev_sae_cfg["dtype"]
+    )
+
+
+def get_pretrained_sae_config(
+    official_sae_name: str,
+    dtype: torch.dtype = torch.float32,
+) -> HookedSAEConfig:
+    repo_creator, repo_name, file_name = official_sae_name.split("/")
+
+    match repo_creator:
+        case "ckkissane":
+            ckkisane_sae_cfg: Dict[str, Any] = utils.download_file_from_hf(
+                repo_name=repo_name,
+                file_name=file_name + ".json",
+            )
+            sae_cfg = convert_ckkissane_sae_cfg(ckkisane_sae_cfg)
+        case "nev":
+            nev_sae_cfg: Dict[str, Any] = utils.download_file_from_hf(
+                repo_name=repo_name,
+                file_name="cfg.json"  # This repo only has one config.  
+            )
+            sae_cfg = convert_nev_sae_cfg(nev_sae_cfg)
+        case _:
+            raise ValueError(f"Creator {repo_creator=} not recognised")
+
+    return sae_cfg
+ 
+def get_pretrained_sae_state_dict(
+    official_sae_name: str,
+) -> Dict[str, torch.tensor]
+    pass
