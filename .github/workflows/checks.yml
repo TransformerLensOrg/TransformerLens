@@ -184,7 +184,7 @@ jobs:
       - name: Build Docs
         run: HF_TOKEN="$HF_TOKEN" poetry run build-docs
         env:
-          HF_TOKEN: "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"
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
         uses: actions/upload-artifact@v3
         with:
