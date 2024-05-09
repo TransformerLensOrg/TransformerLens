@@ -2691,3 +2691,10 @@ def get_basic_config(model_name: str, **kwargs) -> Config:
             ]
         }
     )
+
+
+# ---------- SAE specific loading utils ----------
+
+OFFICIAL_SAE_NAMES = [
+    ""
+]
