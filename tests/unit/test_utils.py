@@ -254,7 +254,7 @@ def test_test_prompt(
 ):
     """
     Tests that utils.test_prompt produces the correct tokenization. In particular, when prepend_space_to_answer = False, the last token of the prompt
-    and the first answer token should not be turned into one token (e.g. 'circ' and 'le' don't become 'circle'). See https://github.com/neelnanda-io/TransformerLens/issues/271
+    and the first answer token should not be turned into one token (e.g. 'circ' and 'le' don't become 'circle'). See https://github.com/TransformerLensOrg/TransformerLens/issues/271
     for a more detailed explanation.
     """
     utils.test_prompt(
