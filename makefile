@@ -9,17 +9,39 @@ check-format:
 	poetry run black --check .
 
 unit-test:
-	poetry run pytest --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/unit
+	poetry run pytest tests/unit
 
 acceptance-test:
-	poetry run pytest --cov=transformer_lens/ --cov-report=term-missing --cov-branch tests/acceptance
+	poetry run pytest tests/acceptance
+
+coverage-report-test:
+	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit
 
 docstring-test:
 	poetry run pytest transformer_lens/
 
 notebook-test:
-	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Main_Demo.ipynb 
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/BERT.ipynb
 	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Exploratory_Analysis_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Main_Demo.ipynb
+
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Head_Detector_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Interactive_Neuroscope.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/LLaMA.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/No_Position_Experiment.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Othello_GPT.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Qwen.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Santa_Coder.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Stable_Lm.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/SVD_Interpreter_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Tracr_to_Transformer_Lens_Demo.ipynb
+
+	# Contains failing cells
+
+	# Causes CI to hang
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Activation_Patching_in_TL_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Attribution_Patching_Demo.ipynb
+	poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/Grokking_Demo.ipynb
 
 test:
 	make unit-test

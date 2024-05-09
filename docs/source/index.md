@@ -52,5 +52,6 @@ content/special_cases
 :caption: Development
 
 content/contributing
+Code Coverage <./coverage/index.html#http://>
 Github <https://github.com/neelnanda-io/TransformerLens>
 ```
