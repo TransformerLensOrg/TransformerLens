@@ -1,3 +1,6 @@
+<!--
+When opening your PR, please make sure to only request a merge to `main` when you have found a bug in the currently released version of TransformerLens. All other PRs should go to `dev` in order to keep the docs in sync with the currently released version.
+-->
 # Description
 
 Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context. List any dependencies that are required for this change.
