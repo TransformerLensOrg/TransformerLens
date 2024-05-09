@@ -11,7 +11,7 @@ import os
 import re
 import shutil
 from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast 
 
 import einops
 import numpy as np
@@ -521,6 +521,28 @@ class Slice:
         self,
     ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
+
+    @classmethod
+    def unwrap(
+        cls,
+        slice_input: Union["Slice", SliceInput],
+    ) -> "Slice":
+        """
+        Takes a Slice-like input and converts it into a Slice, if it is not already.
+
+        Args:
+            slice_input (Union[Slice, SliceInput]): The input to turn into a Slice.
+
+        Returns:
+            Slice: A Slice object.
+        """
+        if not isinstance(slice_input, Slice):
+            if isinstance(
+                slice_input, int
+            ):  # slicing with an int collapses the dimension so this stops the pos dimension from collapsing
+                slice_input = [slice_input]
+            slice_input = Slice(slice_input)
+        return slice_input
 
 
 def get_act_name(
