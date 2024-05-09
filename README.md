@@ -13,7 +13,7 @@ CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/gh-p
 A Library for Mechanistic Interpretability of Generative Language Models.
 
 [![Read the Docs
-Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://neelnanda-io.github.io/TransformerLens/)](https://neelnanda-io.github.io/TransformerLens/)
+Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://TransformerLensOrg.github.io/TransformerLens/)](https://TransformerLensOrg.github.io/TransformerLens/)
 
 This is a library for doing [mechanistic
 interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style language models. The
@@ -138,7 +138,7 @@ yet" is just that there aren't enough people! Key resources:
 ## Support & Community
 
 [![Contributing
-Guide](https://img.shields.io/badge/-Contributing%20Guide-blue?style=for-the-badge&logo=GitHub&logoColor=white)](https://neelnanda-io.github.io/TransformerLens/content/contributing.html)
+Guide](https://img.shields.io/badge/-Contributing%20Guide-blue?style=for-the-badge&logo=GitHub&logoColor=white)](https://TransformerLensOrg.github.io/TransformerLens/content/contributing.html)
 
 If you have issues, questions, feature requests or bug reports, please search the issues to check if
 it's already been answered, and if not please raise an issue!
