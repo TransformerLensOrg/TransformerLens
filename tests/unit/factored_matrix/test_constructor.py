@@ -58,7 +58,7 @@ def test_factored_matrix_broadcast_mismatch():
     AssertionError will not be reached due to jaxtyping argument consistency
     checks, which are enabled at test time but not run time.
 
-    See https://github.com/neelnanda-io/TransformerLens/issues/190
+    See https://github.com/TransformerLensOrg/TransformerLens/issues/190
     """
 )
 def test_factored_matrix_inner_mismatch():

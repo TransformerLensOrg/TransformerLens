@@ -87,7 +87,7 @@ class TestFactoredMatrixProperties:
         I'm not sure why. The error is not very informative. When debugging the shape was equal to mdim, and *leading_dims should
         match zero or more leading dims according to the [docs](https://github.com/google/jaxtyping/blob/main/API.md).
 
-        Sort of related to https://github.com/neelnanda-io/TransformerLens/issues/190 because jaxtyping
+        Sort of related to https://github.com/TransformerLensOrg/TransformerLens/issues/190 because jaxtyping
         is only enabled at test time and not runtime.
         """
     )
