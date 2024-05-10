@@ -186,7 +186,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: test-coverage
-          path: docs/source/_static/coverage
+          path: docs/source/generated/coverage
       - name: Build Docs
         run: HF_TOKEN="$HF_TOKEN" poetry run build-docs
         env:
