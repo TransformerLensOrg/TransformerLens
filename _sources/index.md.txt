@@ -52,6 +52,6 @@ content/special_cases
 :caption: Development
 
 content/contributing
-Code Coverage generated/coverage/
+Code Coverage _static/coverage
 Github <https://github.com/TransformerLensOrg/TransformerLens>
 ```
