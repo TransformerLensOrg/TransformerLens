@@ -941,7 +941,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "window_size": 4096,
+            "window_size": hf_config.sliding_window,  # This will be 4096 on v0.1, None on later models as none was used
             "attn_types": ["local"] * 32,
             "eps": 1e-05,
             "n_key_value_heads": 8,
