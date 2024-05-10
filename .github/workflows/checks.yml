@@ -163,7 +163,7 @@ jobs:
   build-docs:
     # When running on a PR, this just checks we can build the docs without errors
     # When running on merge to main, it builds the docs and then another job deploys them
-    name: ${{ github.event_name == 'pull_request' && 'Check Build Docs' || 'Build Docs' }}
+    name: 'Build Docs'
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     needs: code-checks
