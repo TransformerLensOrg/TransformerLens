@@ -181,6 +181,11 @@ jobs:
           version: 1.0
       - name: Install dependencies
         run: poetry install --with docs
+      - name: Download Test Coverage Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: test-coverage
+          path: docs/source/_static/coverage
       - name: Build Docs
         run: HF_TOKEN="$HF_TOKEN" poetry run build-docs
         env:
@@ -203,11 +208,6 @@ jobs:
         with:
           name: documentation
           path: docs/build
-      - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v3
-        with:
-          name: test-coverage
-          path: docs/build/generated/coverage
       - name: Upload Debug Artifact
         uses: actions/upload-artifact@v3
         with:
