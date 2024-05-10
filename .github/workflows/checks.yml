@@ -207,7 +207,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: test-coverage
-          path: docs/build/_static/coverage
+          path: docs/build/generated/coverage
       - name: Upload Debug Artifact
         uses: actions/upload-artifact@v3
         with:
