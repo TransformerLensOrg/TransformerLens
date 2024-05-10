@@ -2764,7 +2764,6 @@ numpy = [
     {version = ">=1.20.3", markers = "python_version < \"3.10\""},
     {version = ">=1.21.0", markers = "python_version >= \"3.10\""},
     {version = ">=1.23.2", markers = "python_version >= \"3.11\""},
-    {version = ">=1.21.0", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
 ]
 python-dateutil = ">=2.8.2"
 pytz = ">=2020.1"
@@ -5306,4 +5305,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "d4a63d646e95b178c6da8f22f030bfeb4c95dd680c6bcd2cd95630dce4e3ad03"
+content-hash = "2213d5e56b9d4a262cebb4ced694f62c7ce4b26bc8aa3b41165b30e97c91993c"

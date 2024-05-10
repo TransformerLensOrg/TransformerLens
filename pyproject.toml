@@ -28,6 +28,7 @@
         pandas=">=1.1.5"
         python=">=3.8,<4.0"
         rich=">=12.6.0"
+        safetensors = "^0.4.3"
         sentencepiece="*"
         torch=[
             {platform="!=linux", version=">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
@@ -37,8 +38,6 @@
         transformers=">=4.37.2"
         typing-extensions="*"
         wandb=">=0.13.5"
-        sentencepiece = "*"
-        safetensors = "^0.4.3"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
