@@ -51,7 +51,6 @@ napoleon_custom_sections = [
 html_theme = "furo"
 html_title = "TransformerLens Documentation"
 html_static_path = ["_static"]
-html_extra_path = ["coverage"]
 html_logo = "_static/transformer_lens_logo.png"
 html_favicon = "favicon.ico"
 
