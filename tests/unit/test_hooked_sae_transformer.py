@@ -514,13 +514,9 @@ def test_run_with_hooks_with_saes(model, act_names, original_logits):
     model.reset_saes()
     model.remove_all_hook_fns(including_permanent=True)
 
+
 @pytest.mark.parametrize(
-    "sae_name",
-    [
-        "gpt2-small-attz-kk-L0",
-        "gpt2-small-attz-kk-L11",
-        "gpt2-xl-saex-resid-pre-l20"
-    ]
+    "sae_name", ["gpt2-small-attz-kk-L0", "gpt2-small-attz-kk-L11", "gpt2-xl-saex-resid-pre-l20"]
 )
 def test_from_pretrained(sae_name):
     HookedSAE.from_pretrained(sae_name)

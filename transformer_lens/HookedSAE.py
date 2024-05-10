@@ -127,21 +127,25 @@ class HookedSAE(HookedRootModule):
         # 1) Get the one true name of this SAE.
         sae_alias_map = loading_from_pretrained.make_sae_alias_map()
         if sae_name not in sae_alias_map:
-            raise ValueError(f"SAE name {sae_name} not found in alias map, available SAE names:"
-                             f"{list(sae_alias_map.keys())=}")
+            raise ValueError(
+                f"SAE name {sae_name} not found in alias map, available SAE names:"
+                f"{list(sae_alias_map.keys())=}"
+            )
         official_sae_name = sae_alias_map[sae_name]
 
         # 2) Load the SAE cfg.
         cfg = loading_from_pretrained.get_pretrained_sae_config(
-            official_sae_name, 
+            official_sae_name,
             # Only pass the dtype if it's not None
-            **({"dtype": dtype} if dtype is not None else {})
+            **({"dtype": dtype} if dtype is not None else {}),
         )
 
         # 3) Load a random weights SAE with this cfg.
         sae = cls(cfg)
 
         # 4) Get and load the state dict.
-        sae.load_state_dict(loading_from_pretrained.get_and_process_pretrained_sae_state_dict(official_sae_name))
+        sae.load_state_dict(
+            loading_from_pretrained.get_and_process_pretrained_sae_state_dict(official_sae_name)
+        )
 
         return sae

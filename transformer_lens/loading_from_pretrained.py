@@ -2693,7 +2693,8 @@ def get_basic_config(model_name: str, **kwargs) -> Config:
         }
     )
 
-#%% ---------- SAE specific loading utils ----------
+
+# %% ---------- SAE specific loading utils ----------
 
 OFFICIAL_SAE_NAMES = [
     "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L0_Hcat_z_lr1.20e-03_l11.80e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9",
@@ -2711,19 +2712,45 @@ OFFICIAL_SAE_NAMES = [
     "nev/gpt2_xl_saes-saex-test/sae_weights",
 ]
 
-SAE_ALIASES = {'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L0_Hcat_z_lr1.20e-03_l11.80e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L0'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L1_Hcat_z_lr1.20e-03_l18.00e-01_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v5': ['gpt2-small-attz-kk-L1'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L2_Hcat_z_lr1.20e-03_l11.00e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v4': ['gpt2-small-attz-kk-L2'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L3_Hcat_z_lr1.20e-03_l19.00e-01_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L3'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L4_Hcat_z_lr1.20e-03_l11.10e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v7': ['gpt2-small-attz-kk-L4'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L5_Hcat_z_lr1.20e-03_l11.00e+00_ds49152_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L5'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L6_Hcat_z_lr1.20e-03_l11.10e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L6'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L7_Hcat_z_lr1.20e-03_l11.10e+00_ds49152_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L7'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L8_Hcat_z_lr1.20e-03_l11.30e+00_ds24576_bs4096_dc1.00e-05_rsanthropic_rie25000_nr4_v6': ['gpt2-small-attz-kk-L8'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L9_Hcat_z_lr1.20e-03_l11.20e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L9'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L10_Hcat_z_lr1.20e-03_l11.30e+00_ds24576_bs4096_dc1.00e-05_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L10'],
- 'ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L11_Hcat_z_lr1.20e-03_l13.00e+00_ds24576_bs4096_dc3.16e-06_rsanthropic_rie25000_nr4_v9': ['gpt2-small-attz-kk-L11'],
- 'nev/gpt2_xl_saes-saex-test/sae_weights': ['gpt2-xl-saex-resid-pre-l20']}
+SAE_ALIASES = {
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L0_Hcat_z_lr1.20e-03_l11.80e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9": [
+        "gpt2-small-attz-kk-L0"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L1_Hcat_z_lr1.20e-03_l18.00e-01_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v5": [
+        "gpt2-small-attz-kk-L1"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L2_Hcat_z_lr1.20e-03_l11.00e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v4": [
+        "gpt2-small-attz-kk-L2"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L3_Hcat_z_lr1.20e-03_l19.00e-01_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9": [
+        "gpt2-small-attz-kk-L3"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L4_Hcat_z_lr1.20e-03_l11.10e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v7": [
+        "gpt2-small-attz-kk-L4"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L5_Hcat_z_lr1.20e-03_l11.00e+00_ds49152_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9": [
+        "gpt2-small-attz-kk-L5"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L6_Hcat_z_lr1.20e-03_l11.10e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9": [
+        "gpt2-small-attz-kk-L6"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L7_Hcat_z_lr1.20e-03_l11.10e+00_ds49152_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9": [
+        "gpt2-small-attz-kk-L7"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L8_Hcat_z_lr1.20e-03_l11.30e+00_ds24576_bs4096_dc1.00e-05_rsanthropic_rie25000_nr4_v6": [
+        "gpt2-small-attz-kk-L8"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L9_Hcat_z_lr1.20e-03_l11.20e+00_ds24576_bs4096_dc1.00e-06_rsanthropic_rie25000_nr4_v9": [
+        "gpt2-small-attz-kk-L9"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L10_Hcat_z_lr1.20e-03_l11.30e+00_ds24576_bs4096_dc1.00e-05_rsanthropic_rie25000_nr4_v9": [
+        "gpt2-small-attz-kk-L10"
+    ],
+    "ckkissane/attn-saes-gpt2-small-all-layers/gpt2-small_L11_Hcat_z_lr1.20e-03_l13.00e+00_ds24576_bs4096_dc3.16e-06_rsanthropic_rie25000_nr4_v9": [
+        "gpt2-small-attz-kk-L11"
+    ],
+    "nev/gpt2_xl_saes-saex-test/sae_weights": ["gpt2-xl-saex-resid-pre-l20"],
+}
 
 
 def make_sae_alias_map():
@@ -2745,9 +2772,7 @@ def make_sae_alias_map():
     return sae_alias_map
 
 
-def convert_ckkissane_sae_cfg(
-    ckkisane_sae_cfg: dict
-) -> HookedSAEConfig:
+def convert_ckkissane_sae_cfg(ckkisane_sae_cfg: dict) -> HookedSAEConfig:
     if ckkisane_sae_cfg["enc_dtype"] != "fp32":
         raise ValueError(f"Expected fp32 dtype, got {ckkisane_sae_cfg['enc_dtype']}")
     return HookedSAEConfig(
@@ -2758,9 +2783,7 @@ def convert_ckkissane_sae_cfg(
     )
 
 
-def convert_nev_sae_cfg(
-    nev_sae_cfg: dict
-) -> HookedSAEConfig:
+def convert_nev_sae_cfg(nev_sae_cfg: dict) -> HookedSAEConfig:
     return HookedSAEConfig(
         d_sae=nev_sae_cfg["d_sae"],
         d_in=nev_sae_cfg["d_in"],
@@ -2781,42 +2804,35 @@ def get_pretrained_sae_config(
         )
         sae_cfg = convert_ckkissane_sae_cfg(ckkisane_sae_cfg)
     elif repo_creator == "nev":
-            nev_sae_cfg: Dict[str, Any] = utils.download_file_from_hf(
-                repo_name=f"{repo_creator}/{repo_name}",
-                file_name="cfg.json"
-            )
-            sae_cfg = convert_nev_sae_cfg(nev_sae_cfg)
+        nev_sae_cfg: Dict[str, Any] = utils.download_file_from_hf(
+            repo_name=f"{repo_creator}/{repo_name}", file_name="cfg.json"
+        )
+        sae_cfg = convert_nev_sae_cfg(nev_sae_cfg)
     else:
         raise ValueError(f"Creator {repo_creator=} not recognised")
 
-    sae_cfg = dataclasses.replace(
-        sae_cfg,
-        **cfg_overrides
-    )
+    sae_cfg = dataclasses.replace(sae_cfg, **cfg_overrides)
 
     return sae_cfg
- 
+
+
 def get_and_process_pretrained_sae_state_dict(
-    official_sae_name: str,
-    dtype: Optional[torch.dtype] = None
+    official_sae_name: str, dtype: Optional[torch.dtype] = None
 ) -> Dict[str, torch.Tensor]:
     repo_creator, repo_name, file_name = official_sae_name.split("/")
 
     if repo_creator == "ckkissane":
         state_dict = utils.download_file_from_hf(
-            f"{repo_creator}/{repo_name}",
-            file_name=file_name+".pt",
-            force_is_torch=True
+            f"{repo_creator}/{repo_name}", file_name=file_name + ".pt", force_is_torch=True
         )
 
     elif repo_creator == "nev":
         state_dict = utils.download_file_from_hf(
-            f"{repo_creator}/{repo_name}",
-            file_name="sae_weights.safetensors"
+            f"{repo_creator}/{repo_name}", file_name="sae_weights.safetensors"
         )
         dtype = dtype or torch.float32  # This SAE defaults to torch.
         # float16 so probably cast this up
-        state_dict = {k: v.to(dtype) for k, v in state_dict.items()} 
+        state_dict = {k: v.to(dtype) for k, v in state_dict.items()}
         # Adjustment from https://colab.research.google.com/drive/18Toz1BIK8MGv0afC5gIKZ3leIUU_RGLZ#scrollTo=z_pNLXGSKoft
         state_dict["b_enc"] += state_dict["b_dec"] @ state_dict["W_enc"]
         # We don't use scaling factor in TransformerLens currenty, so ignore
