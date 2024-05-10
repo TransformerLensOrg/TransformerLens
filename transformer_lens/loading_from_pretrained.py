@@ -558,7 +558,7 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
-    "mistralai/Mistral-7B-Instruct-v0.2": ["mistral-7b-instruct"],
+    "mistralai/Mistral-7B-Instruct-v0.2": ["mistral-7b-instruct-v0.2"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
     "mistralai/Mixtral-8x7B-Instruct-v0.1": [
         "mixtral-instruct",
