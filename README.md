@@ -4,16 +4,16 @@
 [![Pypi](https://img.shields.io/pypi/v/transformer-lens?color=blue)](https://pypi.org/project/transformer-lens/)
 ![Pypi Total Downloads](https://img.shields.io/pepy/dt/transformer_lens?color=blue) ![PyPI -
 License](https://img.shields.io/pypi/l/transformer_lens?color=blue) [![Release
-CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/release.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/release.yml)
+CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/release.yml/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/release.yml)
 [![Tests
-CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/checks.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/checks.yml)
+CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/checks.yml/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/checks.yml)
 [![Docs
-CD](https://github.com/neelnanda-io/TransformerLens/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/neelnanda-io/TransformerLens/actions/workflows/gh-pages.yml)
+CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment)
 
 A Library for Mechanistic Interpretability of Generative Language Models.
 
 [![Read the Docs
-Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://neelnanda-io.github.io/TransformerLens/)](https://neelnanda-io.github.io/TransformerLens/)
+Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://TransformerLensOrg.github.io/TransformerLens/)](https://TransformerLensOrg.github.io/TransformerLens/)
 
 This is a library for doing [mechanistic
 interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style language models. The
@@ -24,7 +24,7 @@ TransformerLens lets you load in 50+ different open source language models, and 
 activations of the model to you. You can cache any internal activation in the model, and add in
 functions to edit, remove or replace these activations as the model runs.
 
-The library also now supports mechanistic interpretability with SAEs (sparse autoencoders)! With [HookedSAETransformer](https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/hooked-sae-transformer/demos/HookedSAETransformerDemo.ipynb), you can splice in SAEs during inference and cache + intervene on SAE activations. We recommend [SAELens](https://github.com/jbloomAus/SAELens) (built on top of TransformerLens) for training SAEs.
+The library also now supports mechanistic interpretability with SAEs (sparse autoencoders)! With [HookedSAETransformer](https://colab.research.google.com/github/TransformerLensOrg/TransformerLens/blob/main/demos/Hooked_SAE_Transformer_Demo.ipynb), you can splice in SAEs during inference and cache + intervene on SAE activations. We recommend [SAELens](https://github.com/jbloomAus/SAELens) (built on top of TransformerLens) for training SAEs.
 
 ## Quick Start
 
@@ -51,7 +51,7 @@ logits, activations = model.run_with_cache("Hello World")
 * [Introduction to the Library and Mech
   Interp](https://arena-ch1-transformers.streamlit.app/[1.2]_Intro_to_Mech_Interp)
 * [Demo of Main TransformerLens Features](https://neelnanda.io/transformer-lens-demo)
-* [Demo of HookedSAETransformer Features](https://colab.research.google.com/github/neelnanda-io/TransformerLens/blob/hooked-sae-transformer/demos/HookedSAETransformerDemo.ipynb)
+* [Demo of HookedSAETransformer Features](https://colab.research.google.com/github/TransformerLensOrg/TransformerLens/blob/main/demos/Hooked_SAE_Transformer_Demo.ipynb)
 
 ## Gallery
 
@@ -94,7 +94,7 @@ User contributed examples of the library being used in action:
   activations, perform attribution and ablations. A write up of the initial work can be found
   [here](https://www.lesswrong.com/posts/bBuBDJBYHt39Q5zZy/decision-transformer-interpretability).
 
-Check out [our demos folder](https://github.com/neelnanda-io/TransformerLens/tree/main/demos) for
+Check out [our demos folder](https://github.com/TransformerLensOrg/TransformerLens/tree/main/demos) for
 more examples of TransformerLens in practice
 
 ## Getting Started in Mechanistic Interpretability
@@ -138,7 +138,7 @@ yet" is just that there aren't enough people! Key resources:
 ## Support & Community
 
 [![Contributing
-Guide](https://img.shields.io/badge/-Contributing%20Guide-blue?style=for-the-badge&logo=GitHub&logoColor=white)](https://neelnanda-io.github.io/TransformerLens/content/contributing.html)
+Guide](https://img.shields.io/badge/-Contributing%20Guide-blue?style=for-the-badge&logo=GitHub&logoColor=white)](https://TransformerLensOrg.github.io/TransformerLens/content/contributing.html)
 
 If you have issues, questions, feature requests or bug reports, please search the issues to check if
 it's already been answered, and if not please raise an issue!
@@ -180,6 +180,6 @@ Please cite this library as:
     title = {TransformerLens},
     author = {Neel Nanda and Joseph Bloom},
     year = {2022},
-    howpublished = {\url{https://github.com/neelnanda-io/TransformerLens}},
+    howpublished = {\url{https://github.com/TransformerLensOrg/TransformerLens}},
 }
 ```

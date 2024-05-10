@@ -188,9 +188,9 @@ jobs:
           name: test-coverage
           path: docs/source/generated/coverage
       - name: Build Docs
-        run: HF_TOKEN="$HF_TOKEN" poetry run build-docs
+        run: poetry run build-docs
         env:
-          HF_TOKEN: "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"
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
         uses: actions/upload-artifact@v3
         with:

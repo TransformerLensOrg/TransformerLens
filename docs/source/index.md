@@ -53,5 +53,5 @@ content/special_cases
 
 content/contributing
 Code Coverage generated/coverage/
-Github <https://github.com/neelnanda-io/TransformerLens>
+Github <https://github.com/TransformerLensOrg/TransformerLens>
 ```
