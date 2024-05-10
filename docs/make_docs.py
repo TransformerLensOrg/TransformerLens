@@ -114,7 +114,6 @@ def copy_demos(_app: Optional[Any] = None):
     """Copy demo notebooks to the generated directory."""
     copy_to_dir = GENERATED_DIR / "demos"
     notebooks_to_copy = [
-        "BERT.ipynb",
         "Exploratory_Analysis_Demo.ipynb",
         "Main_Demo.ipynb",
     ]
