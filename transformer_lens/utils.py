@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 import einops
 import numpy as np
+import safetensors
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -58,10 +59,16 @@ def download_file_from_hf(
         **select_compatible_kwargs(kwargs, hf_hub_download),
     )
 
-    if file_path.endswith(".pth") or force_is_torch:
+    if file_path.endswith((".pth", ".pt")) or force_is_torch:
         return torch.load(file_path, map_location="cpu")
     elif file_path.endswith(".json"):
         return json.load(open(file_path, "r"))
+    elif file_path.endswith(".safetensors"):
+        tensors = {}
+        with safetensors.safe_open(file_path, framework="pt") as f:
+            for k in f.keys():
+                tensors[k] = f.get_tensor(k)
+        return tensors
     else:
         print("File type not supported:", file_path.split(".")[-1])
         return file_path
