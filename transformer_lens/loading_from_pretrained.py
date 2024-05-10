@@ -2784,6 +2784,7 @@ def convert_ckkissane_sae_cfg(ckkisane_sae_cfg: dict) -> HookedSAEConfig:
 
 
 def convert_nev_sae_cfg(nev_sae_cfg: dict) -> HookedSAEConfig:
+    logging.warning("This SAE was trained without TL centering and bias removal. Make sure to usetransformer_lens.HookedSAETransformer.from_pretrained_no_processing('gpt2-xl')")
     return HookedSAEConfig(
         d_sae=nev_sae_cfg["d_sae"],
         d_in=nev_sae_cfg["d_in"],
