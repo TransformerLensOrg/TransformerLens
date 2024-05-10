@@ -3,7 +3,7 @@ from __future__ import annotations
 import pprint
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -35,7 +35,7 @@ class HookedSAEConfig:
     use_error_term: bool = False
     dtype: torch.dtype = torch.float32
     seed: Optional[int] = None
-    device: Optional[str] = None
+    device: Optional[Union[str, torch.device]] = None
 
     def __post_init__(self):
         if self.seed is not None:
