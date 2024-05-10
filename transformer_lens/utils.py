@@ -65,7 +65,10 @@ def download_file_from_hf(
         return json.load(open(file_path, "r"))
     elif file_path.endswith(".safetensors"):
         tensors = {}
-        with safetensors.safe_open(file_path, framework="pt") as f:
+        # Turn off mypy as it can't understand this
+        # (Despite the ctx manager being the "Getting started"
+        # use in https://github.com/huggingface/safetensors)
+        with safetensors.safe_open(file_path, framework="pt") as f:  # type: ignore
             for k in f.keys():
                 tensors[k] = f.get_tensor(k)
         return tensors
