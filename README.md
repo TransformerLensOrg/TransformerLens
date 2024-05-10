@@ -8,7 +8,7 @@ CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/rele
 [![Tests
 CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/checks.yml/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/checks.yml)
 [![Docs
-CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/gh-pages.yml)
+CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment)
 
 A Library for Mechanistic Interpretability of Generative Language Models.
 
