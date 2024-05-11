@@ -484,7 +484,7 @@ class HookedRootModule(nn.Module):
         incl_bwd: bool = False,
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
-        pos_slice: SliceInput = None,
+        pos_slice: Optional[Union[Slice, SliceInput]] = None,
         **model_kwargs: Any,
     ):
         """
