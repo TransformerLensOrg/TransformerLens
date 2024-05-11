@@ -454,7 +454,7 @@ class HookedRootModule(nn.Module):
             filter_list = names_filter
             names_filter = lambda name: name in filter_list
 
-        assert isinstance(names_filter, Callable), "names_filter must be a callable"
+        assert callable(names_filter), "names_filter must be a callable"
 
         self.is_caching = True
 
@@ -574,11 +574,11 @@ class HookedRootModule(nn.Module):
         elif isinstance(names_filter, list):
             filter_list = names_filter
             names_filter = lambda name: name in filter_list
-        elif isinstance(names_filter, Callable):
+        elif callable(names_filter):
             names_filter = names_filter
         else:
             raise ValueError("names_filter must be a string, list of strings, or function")
-        assert isinstance(names_filter, Callable)  # Callable[[str], bool]
+        assert callable(names_filter)  # Callable[[str], bool]
 
         self.is_caching = True
 
