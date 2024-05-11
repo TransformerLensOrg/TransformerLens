@@ -128,7 +128,7 @@ jobs:
           # - "Grokking_Demo"
           # - "Head_Detector_Demo"
           # - "Hooked_SAE_Transformer_Demo"
-          # - "Interactive_Neuroscope"
+          - "Interactive_Neuroscope"
           # - "LLaMA"
           # - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
