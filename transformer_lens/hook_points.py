@@ -96,7 +96,11 @@ class HookPoint(nn.Module):
         If prepend is True, add this hook before all other hooks
         """
 
-        def full_hook(module: torch.nn.Module, module_input: Any, module_output: torch.Tensor):
+        def full_hook(
+            module: torch.nn.Module,
+            module_input: Any,
+            module_output: Union[torch.Tensor, Tuple[torch.Tensor, ...]],
+        ):
             if (
                 dir == "bwd"
             ):  # For a backwards hook, module_output is a tuple of (grad,) - I don't know why.
