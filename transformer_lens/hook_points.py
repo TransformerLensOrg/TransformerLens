@@ -50,7 +50,9 @@ NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
 class _HookFunctionProtocol(Protocol):
     """Protocol for hook functions."""
 
-    def __call__(self, tensor: torch.Tensor, *, hook: "HookPoint") -> Union[Any, None]:
+    def __call__(
+        self, tensor: Union[torch.Tensor, Tuple[torch.Tensor, ...]], *, hook: "HookPoint"
+    ) -> Union[Any, None]:
         ...
 
 
@@ -452,12 +454,12 @@ class HookedRootModule(nn.Module):
             filter_list = names_filter
             names_filter = lambda name: name in filter_list
 
-        if not isinstance(names_filter, Callable):
-            raise ValueError("names_filter must be a callable")
+        assert isinstance(names_filter, Callable), "names_filter must be a callable"
 
         self.is_caching = True
 
         def save_hook(tensor: torch.Tensor, hook: HookPoint, is_backward: bool):
+            assert hook.name is not None
             hook_name = hook.name
             if is_backward:
                 hook_name += "_grad"
@@ -581,6 +583,7 @@ class HookedRootModule(nn.Module):
         self.is_caching = True
 
         def save_hook(tensor: torch.Tensor, hook: HookPoint, is_backward: bool = False):
+            assert hook.name is not None
             hook_name = hook.name
             if is_backward:
                 hook_name += "_grad"
