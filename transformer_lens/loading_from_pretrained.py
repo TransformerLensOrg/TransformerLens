@@ -147,6 +147,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mistral-7B-Instruct-v0.2",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "bigscience/bloom-560m",
@@ -174,6 +175,7 @@ OFFICIAL_MODEL_NAMES = [
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
+    "microsoft/Phi-3-mini-4k-instruct",
     "google/gemma-2b",
     "google/gemma-7b",
     "google/gemma-2b-it",
@@ -557,6 +559,7 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
+    "mistralai/Mistral-7B-Instruct-v0.2": ["mistral-7b-instruct-v0.2"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
     "mistralai/Mixtral-8x7B-Instruct-v0.1": [
         "mixtral-instruct",
@@ -587,6 +590,7 @@ MODEL_ALIASES = {
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
+    "microsoft/Phi-3-mini-4k-instruct": ["phi-3"],
     "google/gemma-2b": ["gemma-2b"],
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
@@ -615,6 +619,7 @@ NEED_REMOTE_CODE_MODELS = (
     "bigcode/santacoder",
     "Qwen/Qwen-",
     "microsoft/phi-2",
+    "microsoft/Phi-3-mini-4k-instruct",
 )
 
 
@@ -939,7 +944,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "window_size": 4096,
+            "window_size": hf_config.sliding_window,  # This will be 4096 on v0.1, None on later models as none was used
             "attn_types": ["local"] * 32,
             "eps": 1e-05,
             "n_key_value_heads": 8,
@@ -1096,6 +1101,28 @@ def convert_hf_model_config(model_name: str, **kwargs):
         }
         partial_rotary_factor = hf_config.partial_rotary_factor
         cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
+    elif architecture == "Phi3ForCausalLM":
+        # Architecture for microsoft/phi3 models
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "trust_remote_code": True,
+            "rotary_base": hf_config.rope_theta,
+            "use_attn_scale": True,
+            "gated_mlp": True,
+            "parallel_attn_mlp": False,
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+        }
 
     elif official_model_name.startswith("google/gemma-2b"):
         # Architecture for Gemma 2b and Gemma 2b Instruct models
@@ -1500,6 +1527,8 @@ def get_pretrained_state_dict(
             state_dict = convert_qwen2_weights(hf_model, cfg)
         elif cfg.original_architecture == "PhiForCausalLM":
             state_dict = convert_phi_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Phi3ForCausalLM":
+            state_dict = convert_phi3_weights(hf_model, cfg)
         elif cfg.original_architecture == "GemmaForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
         else:
@@ -2585,6 +2614,58 @@ def convert_phi_weights(phi, cfg: HookedTransformerConfig):
 
     state_dict["unembed.W_U"] = phi.lm_head.weight.T
     state_dict["unembed.b_U"] = phi.lm_head.bias
+
+    return state_dict
+
+
+def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = phi.model.embed_tokens.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = phi.model.layers[l].input_layernorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+        W = phi.model.layers[l].self_attn.qkv_proj.weight
+        W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=0)
+        W_Q = einops.rearrange(
+            W_Q, "(n_head d_head) d_model -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        W_K = einops.rearrange(
+            W_K, "(n_head d_head) d_model  -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        W_V = einops.rearrange(
+            W_V, "(n_head d_head) d_model  -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+
+        W_O = phi.model.layers[l].self_attn.o_proj.weight
+        W_O = einops.rearrange(
+            W_O, "d_model (n_head d_head) -> n_head d_head d_model", n_head=cfg.n_heads
+        )
+
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.ln2.w"] = phi.model.layers[l].post_attention_layernorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+        W = phi.model.layers[l].mlp.gate_up_proj.weight.T
+        W_gate, W_in = torch.tensor_split(W, 2, dim=1)
+        state_dict[f"blocks.{l}.mlp.W_in"] = W_in
+        state_dict[f"blocks.{l}.mlp.W_gate"] = W_gate
+        state_dict[f"blocks.{l}.mlp.W_out"] = phi.model.layers[l].mlp.down_proj.weight.T
+
+    state_dict["ln_final.w"] = phi.model.norm.weight
+
+    state_dict["unembed.W_U"] = phi.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
 

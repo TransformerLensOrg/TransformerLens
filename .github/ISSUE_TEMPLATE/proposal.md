@@ -28,4 +28,4 @@ Add any other context or screenshots about the feature request here.
 
 ### Checklist
 
-- [ ] I have checked that there is no similar [issue](https://github.com/neelnanda-io/transformerlens/issues) in the repo (**required**)
+- [ ] I have checked that there is no similar [issue](https://github.com/TransformerLensOrg/Transformerlens/issues) in the repo (**required**)
