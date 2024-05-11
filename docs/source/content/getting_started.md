@@ -14,11 +14,11 @@ One significant design decision made was to have a single transformer implementa
 
 ## Installation
 
-`pip install git+https://github.com/neelnanda-io/TransformerLens`
+`pip install git+https://github.com/TransformerLensOrg/TransformerLens`
 
 Import the library with `import transformer_lens`
 
-(Note: This library used to be known as EasyTransformer, and some breaking changes have been made since the rename. If you need to use the old version with some legacy code, run `pip install git+https://github.com/neelnanda-io/TransformerLens@v1`.)
+(Note: This library used to be known as EasyTransformer, and some breaking changes have been made since the rename. If you need to use the old version with some legacy code, run `pip install git+https://github.com/TransformerLensOrg/TransformerLens@v1`.)
 
 ## Huggingface Gated Access
 
