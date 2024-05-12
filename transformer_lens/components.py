@@ -6,6 +6,7 @@ needed to create many different types of generative language models. They are us
 """
 
 import logging
+import math
 from abc import ABC
 from typing import Callable, Dict, Optional, Tuple, Union
 
@@ -317,6 +318,57 @@ class LayerNorm(nn.Module):
         )
         x = x / scale  # [batch, pos, length]
         return self.hook_normalized(x * self.w + self.b).to(self.cfg.dtype)
+
+
+class T5LayerNorm(nn.Module):
+    def __init__(
+        self,
+        cfg: Union[Dict, HookedTransformerConfig],
+        length: Optional[int] = None,
+        eps=1e-6,
+    ):
+        """
+        Construct a layernorm module in the T5 style. No bias and no subtraction of mean.
+        """
+        super().__init__()
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.eps = self.cfg.eps
+        if length is None:
+            self.length = self.cfg.d_model
+        else:
+            self.length = length
+
+        self.w = nn.Parameter(torch.ones(self.length, dtype=cfg.dtype))
+        self.variance_epsilon = eps
+
+        self.hook_scale = HookPoint()  # [batch, pos, 1]
+        self.hook_normalized = HookPoint()  # [batch, pos, length]
+
+    def forward(
+        self,
+        x: Union[
+            Float[torch.Tensor, "batch pos d_model"],
+            Float[torch.Tensor, "batch pos head_index d_model"],
+        ],
+    ) -> Union[
+        Float[torch.Tensor, "batch pos d_model"],
+        Float[torch.Tensor, "batch pos head_index d_model"],
+    ]:
+        if self.cfg.dtype not in [torch.float32, torch.float64]:
+            x = x.to(torch.float32)
+        # T5 uses a layer_norm which only scales and doesn't shift, which is also known as Root Mean
+        # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus varience is calculated
+        # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
+        # half-precision inputs is done in fp32
+
+        variance = x.pow(2).mean(-1, keepdim=True)
+        hidden_states = self.hook_scale(
+            x * torch.rsqrt(variance + self.variance_epsilon)
+        )
+
+        return self.hook_normalized(self.w * hidden_states)
 
 
 class RMSNormPre(nn.Module):
@@ -1004,6 +1056,128 @@ class AbstractAttention(ABC, nn.Module):
 
         return alibi_bias
 
+class T5Attention(AbstractAttention):
+    """
+    T5 attention - 
+    """
+    def __init__(
+        self,     
+        cfg: Union[Dict, HookedTransformerConfig],
+        has_relative_attention_bias=False,
+        attn_type: str = "global",
+        layer_id: Optional[int] = None,
+        ):
+        super().__init__(cfg, attn_type, layer_id)
+        if isinstance(cfg, Dict):
+            cfg = HookedTransformerConfig.from_dict(cfg)
+        self.cfg = cfg
+        self.relative_attention_num_buckets = cfg.relative_attention_num_buckets
+        self.relative_attention_max_distance = cfg.relative_attention_max_distance
+   
+        self.has_relative_attention_bias = has_relative_attention_bias
+        if self.has_relative_attention_bias:
+            self.rel_pos_bias = nn.Embedding(self.relative_attention_num_buckets, self.cfg.n_heads)
+            self.rel_pos_hook = HookPoint()
+        
+        self.W_K = nn.Parameter(
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self.W_V = nn.Parameter(
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
+        )
+        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+
+
+    @staticmethod
+    def _relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
+        """
+        added from 
+        https://github.com/huggingface/transformers/blob/e0c3cee17085914bbe505c159beeb8ae39bc37dd/src/transformers/models/t5/modeling_t5.py#L382
+
+
+        Translate relative position to a bucket number for relative attention. The relative position is defined as
+        memory_position - query_position, i.e. the distance in tokens from the attending position to the attended-to
+        position. If bidirectional=False, then positive relative positions are invalid. We use smaller buckets for
+        small absolute relative_position and larger buckets for larger absolute relative_positions. All relative
+        positions >=max_distance map to the same bucket. All relative positions <=-max_distance map to the same bucket.
+        This should allow for more graceful generalization to longer sequences than the model has been trained on
+
+        Args:
+            relative_position: an int32 Tensor
+            bidirectional: a boolean - whether the attention is bidirectional
+            num_buckets: an integer
+            max_distance: an integer
+
+        Returns:
+            a Tensor with the same shape as relative_position, containing int32 values in the range [0, num_buckets)
+        """
+        relative_buckets = 0
+        if bidirectional:
+            num_buckets //= 2
+            relative_buckets += (relative_position > 0).to(torch.long) * num_buckets
+            relative_position = torch.abs(relative_position)
+        else:
+            relative_position = -torch.min(relative_position, torch.zeros_like(relative_position))
+        # now relative_position is in the range [0, inf)
+
+        # half of the buckets are for exact increments in positions
+        max_exact = num_buckets // 2
+        is_small = relative_position < max_exact
+
+        # The other half of the buckets are for logarithmically bigger bins in positions up to max_distance
+        relative_position_if_large = max_exact + (
+            torch.log(relative_position.float() / max_exact)
+            / math.log(max_distance / max_exact)
+            * (num_buckets - max_exact)
+        ).to(torch.long)
+        relative_position_if_large = torch.min(
+            relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)
+        )
+
+        relative_buckets += torch.where(is_small, relative_position, relative_position_if_large)
+        return relative_buckets
+    
+    def compute_bias(self, query_length, key_length, device=None):
+        """Compute binned relative position bias"""
+        if device is None:
+            device = self.relative_attention_bias.weight.device
+        context_position = torch.arange(query_length, dtype=torch.long, device=device)[:, None]
+        memory_position = torch.arange(key_length, dtype=torch.long, device=device)[None, :]
+        relative_position = memory_position - context_position  # shape (query_length, key_length)
+        relative_position_bucket = self._relative_position_bucket(
+            relative_position,  # shape (query_length, key_length)
+            bidirectional=True,
+            num_buckets=self.relative_attention_num_buckets,
+            max_distance=self.relative_attention_max_distance,
+        )
+        values = self.rel_pos_bias(relative_position_bucket)  # shape (query_length, key_length, num_heads)
+        values = values.permute([2, 0, 1]).unsqueeze(0)  # shape (1, num_heads, query_length, key_length)
+        return values
+
+    
+    def calculate_attention_scores(
+        self,
+        q: Float[torch.Tensor, "batch query_pos head_index d_head"],
+        k: Float[torch.Tensor, "batch key_pos head_index d_head"],
+    ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
+        attn_scores = (
+            einsum(
+                "batch query_pos head_index d_head, \
+                    batch key_pos head_index d_head \
+                    -> batch head_index query_pos key_pos",
+                q,
+                k,
+            )
+            / self.attn_scale
+        )
+        if self.has_relative_attention_bias:
+            attn_scores += self.rel_pos_hook(self.compute_bias(q.size(1), k.size(1), device=q.device))
+
+        return attn_scores
+
+
+    
 
 # Attention
 class Attention(AbstractAttention):
@@ -1675,3 +1849,108 @@ class BertBlock(nn.Module):
         normalized_resid_post = self.hook_normalized_resid_post(self.ln2(resid_post))
 
         return normalized_resid_post
+
+
+class T5EncoderBlock(TransformerBlock):
+    """
+    t5 Block, same as TransformerBlock but with relative position embeddings and different layer norm 
+    """
+    def __init__(self, cfg: HookedTransformerConfig, block_index: int):
+        super().__init__(cfg, block_index)
+        self.ln1 = T5LayerNorm(cfg)
+        self.ln2 = T5LayerNorm(cfg)
+        self.attn = T5Attention(cfg, has_relative_attention_bias=block_index == 0)
+
+
+
+class T5DecoderBlock(nn.Module):  # just use transformer block
+    """
+    t5 decoder Block. Similar to the TransformerBlock, except that the LayerNorms are applied after the attention and MLP, rather than before.
+    """
+
+    def __init__(self, cfg: HookedTransformerConfig, block_index: int):
+        super().__init__()
+        self.cfg = cfg
+
+        self.attn_ln = T5LayerNorm(cfg)
+        self.attn = T5Attention(cfg,has_relative_attention_bias=block_index==0)
+        self.cross_ln = T5LayerNorm(cfg)
+        self.cross_attn = T5Attention(cfg)
+        self.mlp_ln = T5LayerNorm(cfg)
+        self.mlp = MLP(cfg)
+ # [batch, pos, n_heads]
+
+        self.hook_q_input = HookPoint()  # [batch, pos, n_heads, d_model]
+        self.hook_k_input = HookPoint()  # [batch, pos, n_heads, d_model]
+        self.hook_v_input = HookPoint()  # [batch, pos, n_heads, d_model]
+
+        self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_cross_attn_in = HookPoint()  # [batch, pos, d_model]
+        self.hook_cross_attn_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_mlp_in = HookPoint()  # [batch, pos, d_model]
+        self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_mid_cross = HookPoint()  # [batch, pos, d_model]
+        self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
+
+    def forward(
+        self,
+        resid_pre: Float[torch.Tensor, "batch pos d_model"],
+        encoder_hidden_states: Float[torch.Tensor, "batch encoder_pos d_model"],
+        additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
+    ):
+        resid_pre = self.hook_resid_pre(resid_pre)
+
+        query_input = resid_pre
+        key_input = resid_pre
+        value_input = resid_pre
+
+        if self.cfg.use_split_qkv_input:
+            n_heads = self.cfg.n_heads
+            query_input = self.hook_q_input(
+                repeat_along_head_dimension(query_input, n_heads)
+            )
+            key_input = self.hook_k_input(
+                repeat_along_head_dimension(key_input, n_heads)
+            )
+            value_input = self.hook_v_input(
+                repeat_along_head_dimension(value_input, n_heads)
+            )
+
+        attn_out = self.hook_attn_out(
+            # hook the residual stream states that are used to calculate the
+            # queries, keys and values, independently.
+            # Then take the layer norm of these inputs, and pass these to the attention module.
+            self.attn(
+                query_input=self.attn_ln(query_input),
+                key_input=self.attn_ln(key_input),
+                value_input=self.attn_ln(value_input),
+            )
+        )
+        resid_mid = self.hook_resid_mid(resid_pre + attn_out)
+
+        cross_attn_in = (
+            resid_mid
+            if not self.cfg.use_attn_in
+            else self.hook_cross_attn_in(resid_mid.clone())
+        )
+        cross_attn_out = self.hook_cross_attn_out(
+            self.cross_attn(
+                query_input=self.cross_ln(cross_attn_in),
+                key_input=self.cross_ln(encoder_hidden_states),
+                value_input=self.cross_ln(encoder_hidden_states),
+            )
+        )
+        resid_mid_cross = self.hook_resid_mid_cross(resid_mid + cross_attn_out)
+
+        mlp_in = (
+            resid_mid_cross
+            if not self.cfg.use_hook_mlp_in
+            else self.hook_mlp_in(resid_mid_cross.clone())
+        )
+        normalized_resid_mid = self.mlp_ln(mlp_in)
+        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))
+        resid_post = self.hook_resid_post(normalized_resid_mid + mlp_out)
+
+        return resid_post
