@@ -2591,7 +2591,7 @@ def convert_phi_weights(phi, cfg: HookedTransformerConfig):
 
 def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
     state_dict = {}
-    
+
     assert cfg.n_key_value_heads is not None  # keep mypy happy
     assert cfg.d_mlp is not None  # keep mypy happy
 
