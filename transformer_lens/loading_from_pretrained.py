@@ -2594,7 +2594,9 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
 
     # Gemma Models scale embeddings by multiplying by sqrt(d_model), use hidden state type to match
     # HF implementation
-    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * torch.tensor(cfg.d_model**0.5, dtype=cfg.dtype)
+    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * torch.tensor(
+        cfg.d_model**0.5, dtype=cfg.dtype
+    )
 
     # Gemma has no biases anywhere
     for l in range(cfg.n_layers):
@@ -2615,9 +2617,7 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn._W_K"] = W_K
         state_dict[f"blocks.{l}.attn._W_V"] = W_V
 
-        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
-        )
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
         state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
             cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
         )
@@ -2635,22 +2635,20 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.ln2.w"] = gemma.model.layers[
             l
         ].post_attention_layernorm.weight.float() + torch.ones_like(
-            gemma.model.norm.weight, dtype=torch.float32)
+            gemma.model.norm.weight, dtype=torch.float32
+        )
 
         state_dict[f"blocks.{l}.mlp.W_in"] = gemma.model.layers[l].mlp.up_proj.weight.T
-        state_dict[f"blocks.{l}.mlp.W_gate"] = gemma.model.layers[
-            l
-        ].mlp.gate_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_gate"] = gemma.model.layers[l].mlp.gate_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
 
-        state_dict[f"blocks.{l}.mlp.W_out"] = gemma.model.layers[
-            l
-        ].mlp.down_proj.weight.T
+        state_dict[f"blocks.{l}.mlp.W_out"] = gemma.model.layers[l].mlp.down_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
     # GemmaRMSNorm adds 1 to weights before multiplying by input, keep RMS calcs in float32
     state_dict["ln_final.w"] = gemma.model.norm.weight.float() + torch.ones_like(
-        gemma.model.norm.weight, dtype=torch.float32)
+        gemma.model.norm.weight, dtype=torch.float32
+    )
 
     state_dict["unembed.W_U"] = gemma.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
