@@ -1172,6 +1172,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
     cfg_dict["original_architecture"] = architecture
     # The name such that AutoTokenizer.from_pretrained works
     cfg_dict["tokenizer_name"] = official_model_name
+    if kwargs.get("trust_remote_code", False):
+        cfg_dict["trust_remote_code"] = True
     return cfg_dict
 
 
