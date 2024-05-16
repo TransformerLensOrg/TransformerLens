@@ -40,13 +40,16 @@ permissions:
 jobs:
   compatibility-checks:
     name: Compatibility Checks
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       matrix:
         python-version:
           - "3.8"
           - "3.9"
           - "3.10"
+        runs-on:
+          - ubuntu-latest
+          - macos-latest
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -117,9 +120,12 @@ jobs:
 
   notebook-checks:
     name: Notebook Checks
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       matrix:
+        runs-on:
+          - ubuntu-latest
+          - macos-latest
         notebook:
           # - "Activation_Patching_in_TL_Demo"
           # - "Attribution_Patching_Demo"
