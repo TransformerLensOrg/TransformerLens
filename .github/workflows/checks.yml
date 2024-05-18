@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev*
     paths:
       - "**" # Include all files by default
       - "!.devcontainer/**"
@@ -15,6 +16,7 @@ on:
   pull_request:
     branches:
       - main
+      - dev*
     paths:
       - "**"
       - "!.devcontainer/**"
@@ -125,8 +127,7 @@ jobs:
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
           # - "Head_Detector_Demo"
-          # - "Hooked_SAE_Transformer_Demo"
-          # - "Interactive_Neuroscope"
+          - "Interactive_Neuroscope"
           # - "LLaMA"
           # - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
