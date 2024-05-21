@@ -1057,8 +1057,15 @@ class AbstractAttention(ABC, nn.Module):
         return alibi_bias
 
 class T5Attention(AbstractAttention):
-    """
-    T5 attention - 
+    r"""
+    T5 attention - with relative attention bias and cross-attention support
+    This realisation expects you to precompute relative positional bias, and then feed it to forward
+    like 
+    ```python
+    attn = T5Attention(cfg, has_relative_attention_bias=True)
+    positional_bias = attn.compute_relative_attention_bias(query_len, key_len, device=device)
+    result = attn(query, key, value, position_bias=positional_bias)
+    ```
     """
     def __init__(
         self,     
@@ -1071,11 +1078,11 @@ class T5Attention(AbstractAttention):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.relative_attention_num_buckets = cfg.relative_attention_num_buckets
-        self.relative_attention_max_distance = cfg.relative_attention_max_distance
-   
         self.has_relative_attention_bias = has_relative_attention_bias
+
         if self.has_relative_attention_bias:
+            self.relative_attention_num_buckets = cfg.relative_attention_num_buckets
+            self.relative_attention_max_distance = cfg.relative_attention_max_distance
             self.rel_pos_bias = nn.Embedding(self.relative_attention_num_buckets, self.cfg.n_heads)
             self.rel_pos_hook = HookPoint()
         
@@ -1138,10 +1145,10 @@ class T5Attention(AbstractAttention):
         relative_buckets += torch.where(is_small, relative_position, relative_position_if_large)
         return relative_buckets
     
-    def compute_bias(self, query_length, key_length, device=None):
+    def compute_relative_attention_bias(self, query_length:int, key_length: int, device=None) -> Float[torch.Tensor, "1 head_index pos kv_pos"]:
         """Compute binned relative position bias"""
         if device is None:
-            device = self.relative_attention_bias.weight.device
+            device = self.rel_pos_bias.weight.device
         context_position = torch.arange(query_length, dtype=torch.long, device=device)[:, None]
         memory_position = torch.arange(key_length, dtype=torch.long, device=device)[None, :]
         relative_position = memory_position - context_position  # shape (query_length, key_length)
@@ -1154,30 +1161,6 @@ class T5Attention(AbstractAttention):
         values = self.rel_pos_bias(relative_position_bucket)  # shape (query_length, key_length, num_heads)
         values = values.permute([2, 0, 1]).unsqueeze(0)  # shape (1, num_heads, query_length, key_length)
         return values
-
-    
-    def calculate_attention_scores(
-        self,
-        q: Float[torch.Tensor, "batch query_pos head_index d_head"],
-        k: Float[torch.Tensor, "batch key_pos head_index d_head"],
-    ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
-        attn_scores = (
-            einsum(
-                "batch query_pos head_index d_head, \
-                    batch key_pos head_index d_head \
-                    -> batch head_index query_pos key_pos",
-                q,
-                k,
-            )
-            / self.attn_scale
-        )
-        if self.has_relative_attention_bias:
-            attn_scores += self.rel_pos_hook(self.compute_bias(q.size(1), k.size(1), device=q.device))
-
-        return attn_scores
-
-
-    
 
 # Attention
 class Attention(AbstractAttention):
@@ -1851,106 +1834,141 @@ class BertBlock(nn.Module):
         return normalized_resid_post
 
 
-class T5EncoderBlock(TransformerBlock):
+class T5Block(nn.Module):
     """
-    t5 Block, same as TransformerBlock but with relative position embeddings and different layer norm 
-    """
-    def __init__(self, cfg: HookedTransformerConfig, block_index: int):
-        super().__init__(cfg, block_index)
-        self.ln1 = T5LayerNorm(cfg)
-        self.ln2 = T5LayerNorm(cfg)
-        self.attn = T5Attention(cfg, has_relative_attention_bias=block_index == 0)
-
-
-
-class T5DecoderBlock(nn.Module):  # just use transformer block
-    """
-    t5 decoder Block. Similar to the TransformerBlock, except that the LayerNorms are applied after the attention and MLP, rather than before.
+    T5 decoder Block. Uses T5Layernorm, and T5attention insted of usual ones.
+    Also uses cross attention if is_decoder is True.
     """
 
-    def __init__(self, cfg: HookedTransformerConfig, block_index: int):
+    def __init__(self, cfg: HookedTransformerConfig, block_index: int, is_decoder: bool):
         super().__init__()
         self.cfg = cfg
+        self.is_decoder = is_decoder
 
-        self.attn_ln = T5LayerNorm(cfg)
-        self.attn = T5Attention(cfg,has_relative_attention_bias=block_index==0)
-        self.cross_ln = T5LayerNorm(cfg)
-        self.cross_attn = T5Attention(cfg)
-        self.mlp_ln = T5LayerNorm(cfg)
-        self.mlp = MLP(cfg)
- # [batch, pos, n_heads]
+        self.ln1 = T5LayerNorm(cfg)
+        self.attn = T5Attention(cfg, has_relative_attention_bias=block_index==0)
+        self.ln2 = T5LayerNorm(cfg)
+        if self.is_decoder:
+            self.cross_attn = T5Attention(cfg)
+            self.ln3 = T5LayerNorm(cfg)
+        self.mlp = MLP(cfg)  # [batch, pos, n_heads]
 
         self.hook_q_input = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_k_input = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_v_input = HookPoint()  # [batch, pos, n_heads, d_model]
 
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
-        self.hook_cross_attn_in = HookPoint()  # [batch, pos, d_model]
-        self.hook_cross_attn_out = HookPoint()  # [batch, pos, d_model]
+        if self.is_decoder:
+            self.hook_cross_attn_in = HookPoint()  # [batch, pos, d_model]
+            self.hook_cross_attn_out = HookPoint()  # [batch, pos, d_model]
+            self.hook_resid_mid_cross = HookPoint()  # [batch, pos, d_model]
+
         self.hook_mlp_in = HookPoint()  # [batch, pos, d_model]
         self.hook_mlp_out = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_pre = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_mid = HookPoint()  # [batch, pos, d_model]
-        self.hook_resid_mid_cross = HookPoint()  # [batch, pos, d_model]
         self.hook_resid_post = HookPoint()  # [batch, pos, d_model]
 
     def forward(
         self,
         resid_pre: Float[torch.Tensor, "batch pos d_model"],
-        encoder_hidden_states: Float[torch.Tensor, "batch encoder_pos d_model"],
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
-    ):
-        resid_pre = self.hook_resid_pre(resid_pre)
+        encoder_additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 encoder_pos"]] = None,
+        position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None,
+        encoder_hidden_states: Optional[Float[torch.Tensor, "batch encoder_pos d_model"]] = None,
+        past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
+        """A single Transformer block.
 
-        query_input = resid_pre
-        key_input = resid_pre
-        value_input = resid_pre
+        Args:
+            resid_pre (torch.Tensor): The residual stream - shape [batch, pos, d_model]
+            encoder_hidden_states (torch.Tensor): The hidden states of the encoder for cross attention - shape [batch, encoder_pos, d_model]
+            cache (HookedTransformerKeyValueCache): A cache of previous keys and values, used only when generating text. Defaults to None.
+            attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
+
+        Returns:
+            _type_: _description_
+        """
+        resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
+
+        attn_in = resid_pre
+
+        if self.cfg.use_attn_in:
+            attn_in = self.hook_attn_in(
+                repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
+            )
 
         if self.cfg.use_split_qkv_input:
-            n_heads = self.cfg.n_heads
+            n_kv_heads = (
+                self.cfg.n_key_value_heads
+                if self.cfg.n_key_value_heads is not None
+                else self.cfg.n_heads
+            )
             query_input = self.hook_q_input(
-                repeat_along_head_dimension(query_input, n_heads)
+                repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
             )
             key_input = self.hook_k_input(
-                repeat_along_head_dimension(key_input, n_heads)
+                repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
             )
             value_input = self.hook_v_input(
-                repeat_along_head_dimension(value_input, n_heads)
+                repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
             )
+        else:
+            query_input = attn_in
+            key_input = attn_in
+            value_input = attn_in
 
         attn_out = self.hook_attn_out(
             # hook the residual stream states that are used to calculate the
             # queries, keys and values, independently.
             # Then take the layer norm of these inputs, and pass these to the attention module.
             self.attn(
-                query_input=self.attn_ln(query_input),
-                key_input=self.attn_ln(key_input),
-                value_input=self.attn_ln(value_input),
+                query_input=self.ln1(query_input),
+                key_input=self.ln1(key_input),
+                value_input=self.ln1(value_input),
+                past_kv_cache_entry=past_kv_cache_entry,
+                additive_attention_mask=additive_attention_mask,
+                position_bias=position_bias,
             )
         )
-        resid_mid = self.hook_resid_mid(resid_pre + attn_out)
+        
+          # [batch, pos, d_model]
 
-        cross_attn_in = (
-            resid_mid
-            if not self.cfg.use_attn_in
-            else self.hook_cross_attn_in(resid_mid.clone())
-        )
-        cross_attn_out = self.hook_cross_attn_out(
-            self.cross_attn(
-                query_input=self.cross_ln(cross_attn_in),
-                key_input=self.cross_ln(encoder_hidden_states),
-                value_input=self.cross_ln(encoder_hidden_states),
+        resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
+
+        if self.is_decoder:
+
+            cross_attn_in = (
+                resid_mid
+                if not self.cfg.use_attn_in
+                else self.hook_cross_attn_in(resid_mid.clone())
             )
-        )
-        resid_mid_cross = self.hook_resid_mid_cross(resid_mid + cross_attn_out)
 
-        mlp_in = (
-            resid_mid_cross
-            if not self.cfg.use_hook_mlp_in
-            else self.hook_mlp_in(resid_mid_cross.clone())
-        )
-        normalized_resid_mid = self.mlp_ln(mlp_in)
-        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))
-        resid_post = self.hook_resid_post(normalized_resid_mid + mlp_out)
+            if encoder_hidden_states is None:
+                raise ValueError("Encoder hidden states must be provided for cross attention!")
+
+            cross_attn_out = self.hook_cross_attn_out(
+                self.cross_attn(
+                    query_input=self.ln2(cross_attn_in),
+                    key_input=encoder_hidden_states,
+                    value_input=encoder_hidden_states,
+                    additive_attention_mask=encoder_additive_attention_mask,
+                )
+            )
+            resid_mid_cross = self.hook_resid_mid_cross(resid_mid + cross_attn_out)
+
+            mlp_in = (
+                resid_mid_cross
+                if not self.cfg.use_hook_mlp_in
+                else self.hook_mlp_in(resid_mid_cross.clone())
+            )
+
+            normalized_resid_mid = self.ln3(mlp_in)
+        else:
+            mlp_in = resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
+            normalized_resid_mid = self.ln2(mlp_in)
+            
+        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))  # [batch, pos, d_model]
+        resid_post = self.hook_resid_post(mlp_in + mlp_out)  # [batch, pos, d_model]
 
         return resid_post
