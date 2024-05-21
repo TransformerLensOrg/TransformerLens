@@ -164,6 +164,7 @@ class HookedTransformerConfig:
         relative_attention_num_buckets (int, *optional*): The number of buckets to use for relative attention.
             If set, relative_attention_max_distance must also be set.Only used in EncoderDecoder models, like T5.
         decoder_start_token_id (int, *optional*): The start token id for the decoder. Only used in EncoderDecoder models, like T5.
+        tie_word_embeddings (bool): Whether to tie the word embeddings and the output layer weights. Defaults to False. Only used in EncoderDecoder (T5) by now.
     """
 
     n_layers: int
@@ -222,6 +223,7 @@ class HookedTransformerConfig:
     relative_attention_max_distance: Optional[int] = None
     relative_attention_num_buckets: Optional[int] = None
     decoder_start_token_id: Optional[int] = None
+    tie_word_embeddings: bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:
