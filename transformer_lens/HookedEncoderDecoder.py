@@ -23,8 +23,7 @@ from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import (
     Embed,
     Unembed,
-    T5DecoderBlock,
-    T5EncoderBlock,
+    T5Block,
     T5LayerNorm,
 )
 from transformer_lens.FactoredMatrix import FactoredMatrix
@@ -78,17 +77,18 @@ class HookedEncoderDecoder(HookedRootModule):
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
 
+
         self.embed = Embed(self.cfg)
         self.encoder = nn.ModuleList(
             [
-                T5EncoderBlock(self.cfg, num_layer)
+                T5Block(self.cfg, num_layer, is_decoder=False)
                 for num_layer in range(self.cfg.n_layers)
             ]
         )
         self.encoder_final_ln = T5LayerNorm(self.cfg)
         self.decoder = nn.ModuleList(
             [
-                T5DecoderBlock(self.cfg, num_layer)
+                T5Block(self.cfg, num_layer, is_decoder=True)
                 for num_layer in range(self.cfg.n_layers)
             ]
         )
@@ -96,43 +96,24 @@ class HookedEncoderDecoder(HookedRootModule):
         # self.lm_head = nn.Linear(self.cfg.d_model, self.cfg.d_vocab_out)
         self.unembed = Unembed(self.cfg)
 
-        self.hook_full_embed = HookPoint()
+        self.hook_embed = HookPoint()
 
         if move_to_device:
             self.to(self.cfg.device)
 
         self.setup()
 
-    @overload
-    def forward(
-        self,
-        input: Int[torch.Tensor, "batch pos"],
-        decoder_input: Int[torch.Tensor, "batch pos"],
-        return_type: Literal["logits"],
-        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Float[torch.Tensor, "batch pos d_vocab"]: ...
-
-    @overload
-    def forward(
-        self,
-        input: Int[torch.Tensor, "batch pos"],
-        decoder_input: Int[torch.Tensor, "batch pos"],
-        return_type: Literal[None],
-        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]: ...
 
     def forward(
         self,
         input: Int[torch.Tensor, "batch pos"],
-        decoder_input: Int[torch.Tensor, "batch pos"],
+        decoder_input: Int[torch.Tensor, "batch decoder_pos"],
         return_type: Optional[str] = "logits",
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
+    ) -> Optional[Float[torch.Tensor, "batch decoder_pos d_vocab"]]:
         """Input must be a batch of tokens. Strings and lists of strings are not yet supported.
 
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), or 'logits' (return logits).
-
-        token_type_ids Optional[torch.Tensor]: Binary ids indicating whether a token belongs to sequence A or B. For example, for two sentences: "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be [0, 0, ..., 0, 1, ..., 1, 1]. `0` represents tokens from Sentence A, `1` from Sentence B. If not provided, BERT assumes a single sequence input. Typically, shape is (batch_size, sequence_length).
 
         one_zero_attention_mask: Optional[torch.Tensor]: A binary mask which indicates which tokens should be attended to (1) and which should be ignored (0). Primarily used for padding variable-length sentences in a batch. For instance, in a batch with sentences of differing lengths, shorter sentences are padded with 0s on the right. If not provided, the model assumes all tokens should be attended to.
         """
@@ -144,30 +125,49 @@ class HookedEncoderDecoder(HookedRootModule):
             if one_zero_attention_mask is not None:
                 one_zero_attention_mask = one_zero_attention_mask.to(self.cfg.device)
 
-        resid = self.hook_full_embed(self.embed(tokens))
+        resid = self.hook_embed(self.embed(tokens))
 
-        large_negative_number = -torch.inf
-        mask = (
-            repeat(1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos")
-            if one_zero_attention_mask is not None
-            else None
-        )
+        if one_zero_attention_mask is not None:
+            additive_attention_mask = (repeat(1 - one_zero_attention_mask, "batch pos -> batch 1 1 pos")
+            ) * torch.finfo(self.cfg.dtype).min
+        else:
+            additive_attention_mask = None
+
+        query_len = key_len = input.shape[1]
+
+        encoder_positional_bias = self.encoder[0].attn.compute_relative_attention_bias(query_len, key_len, device=self.cfg.device)
 
         for encoder_block in self.encoder:
-            resid = encoder_block(resid)
+            resid = encoder_block(
+                resid_pre=resid,
+                additive_attention_mask=additive_attention_mask,
+                position_bias=encoder_positional_bias,
+            )
 
-        resid = self.encoder_final_ln(resid)
+        encoder_resid = self.encoder_final_ln(resid)
 
         decoder_resid = self.embed(decoder_input)
+        decoder_query_len = decoder_key_len = decoder_input.shape[1]
+        decoder_positional_bias = self.decoder[0].attn.compute_relative_attention_bias(decoder_query_len, decoder_key_len, device=self.cfg.device)
 
         for decoder_block in self.decoder:
-            decoder_resid = decoder_block(decoder_resid, resid)
+            decoder_resid = decoder_block(
+                resid_pre=decoder_resid,
+                position_bias=decoder_positional_bias,
+                encoder_hidden_states=encoder_resid,
+                encoder_additive_attention_mask=additive_attention_mask,
+            )
 
         decoder_resid = self.decoder_final_ln(decoder_resid)
-        if return_type is None:
-            return None
+
+        if self.cfg.tie_word_embeddings:
+            # Rescale output before projecting on vocab
+            # See https://github.com/tensorflow/mesh/blob/fa19d69eafc9a482aff0b59ddd96b025c0cb207d/mesh_tensorflow/transformer/transformer.py#L586
+            decoder_resid *= (self.cfg.d_model**-0.5)
 
         logits = self.unembed(decoder_resid)
+        if return_type is None:
+            return None
         return logits
 
     @overload
