@@ -188,6 +188,9 @@ OFFICIAL_MODEL_NAMES = [
     "01-ai/Yi-34B",
     "01-ai/Yi-6B-Chat",
     "01-ai/Yi-34B-Chat",
+    "google-t5/t5-small",
+    "google-t5/t5-base",
+    "google-t5/t5-large",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -601,6 +604,9 @@ MODEL_ALIASES = {
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
     "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
     "01-ai/Yi-34B-Chat": ["yi-34b-chat", "Yi-34B-Chat"],
+    "google-t5/t5-small": ["t5-small"],
+    "google-t5/t5-base": ["t5-base"],
+    "google-t5/t5-large": ["t5-large"]
 }
 """Model aliases for models on HuggingFace."""
 
@@ -1163,10 +1169,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_ctx": hf_config.max_length,
             "eps": hf_config.layer_norm_epsilon,
             "act_fn": hf_config.feed_forward_proj,
+            "positional_embedding_type": "relative_positional_bias",
             "relative_attention_max_distance": hf_config.relative_attention_max_distance,
             "relative_attention_num_buckets": hf_config.relative_attention_num_buckets,
             "decoder_start_token_id": hf_config.decoder_start_token_id,
             "attention_dir": "bidirectional",
+            "use_attn_scale": False,
+            "tie_word_embeddings": hf_config.tie_word_embeddings,
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
@@ -2464,7 +2473,7 @@ def convert_t5_weights(t5, cfg: HookedTransformerConfig):
     state_dict = {
         "embed.W_E": t5.encoder.embed_tokens.weight,
         "unembed.W_U":  t5.encoder.embed_tokens.weight.T,
-        "encoder.0.rel_pos_bias.weight": t5.encoder.block[0].layer[0].SelfAttention.relative_attention_bias
+        "encoder.0.attn.rel_pos_bias.weight": t5.encoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight
     }
 
 
@@ -2500,8 +2509,8 @@ def convert_t5_weights(t5, cfg: HookedTransformerConfig):
 
     state_dict["encoder_final_ln.w"] = t5.encoder.final_layer_norm.weight
 
-    state_dict["decoder.0.rel_pos_bias.weight"] = (
-        t5.decoder.block[0].layer[0].SelfAttention.relative_attention_bias
+    state_dict["decoder.0.attn.rel_pos_bias.weight"] = (
+        t5.decoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight
     )
 
     for l in range(cfg.n_layers):
@@ -2523,7 +2532,7 @@ def convert_t5_weights(t5, cfg: HookedTransformerConfig):
             i=cfg.n_heads,
         )
 
-        state_dict[f"decoder.{l}.attn_ln.w"] = block.layer[0].layer_norm.weight
+        state_dict[f"decoder.{l}.ln1.w"] = block.layer[0].layer_norm.weight
 
         state_dict[f"decoder.{l}.cross_attn.W_Q"] = einops.rearrange(
             block.layer[1].EncDecAttention.q.weight, "(i h) m -> i m h", i=cfg.n_heads
@@ -2541,7 +2550,7 @@ def convert_t5_weights(t5, cfg: HookedTransformerConfig):
             "m (i h) -> i h m",
             i=cfg.n_heads,
         )
-        state_dict[f"decoder.{l}.attn_ln.w"] = block.layer[1].layer_norm.weight
+        state_dict[f"decoder.{l}.ln2.w"] = block.layer[1].layer_norm.weight
 
         # fixme DenseReluDense may be T5DenseGatedActDense instead
         state_dict[f"decoder.{l}.mlp.W_in"] = einops.rearrange(
@@ -2550,7 +2559,7 @@ def convert_t5_weights(t5, cfg: HookedTransformerConfig):
         state_dict[f"decoder.{l}.mlp.W_out"] = einops.rearrange(
             block.layer[2].DenseReluDense.wo.weight, "model mlp -> mlp model"
         )
-        state_dict[f"decoder.{l}.mlp_ln.w"] = block.layer[2].layer_norm.weight
+        state_dict[f"decoder.{l}.ln3.w"] = block.layer[2].layer_norm.weight
 
     state_dict["decoder_final_ln.w"] = t5.decoder.final_layer_norm.weight
 
