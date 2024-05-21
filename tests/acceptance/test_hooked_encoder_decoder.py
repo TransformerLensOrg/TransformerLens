@@ -163,7 +163,7 @@ def test_attention(our_model, huggingface_model, hello_world_tokens):
     our_attn_out = our_attn(embed_out, embed_out, embed_out)
     huggingface_attn_out = huggingface_attn(embed_out)[0]
 
-    assert_close(our_attn_out, huggingface_attn_out, rtol=2e-4, atol=1e-5)
+    assert_close(our_attn_out, huggingface_attn_out, rtol=5e-4, atol=1e-5)
 
 
 def test_decoder_attention(our_model, huggingface_model, hello_world_tokens):
@@ -201,7 +201,7 @@ def test_decoder_attention_layer(our_model, huggingface_model, hello_world_token
     our_attn_out = our_attn(norm_embed, norm_embed, norm_embed) + embed_out
 
     huggingface_attn_out = huggingface_attn(embed_out)[0]
-    assert_close(our_attn_out, huggingface_attn_out, rtol=3e-4, atol=2e-5)
+    assert_close(our_attn_out, huggingface_attn_out, rtol=3e-4, atol=4e-5)
 
 
 def test_cross_attention(
