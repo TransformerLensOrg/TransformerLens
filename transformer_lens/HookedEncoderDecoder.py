@@ -112,9 +112,8 @@ class HookedEncoderDecoder(HookedRootModule):
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch decoder_pos d_vocab"]]:
         """Input must be a batch of tokens. Strings and lists of strings are not yet supported.
-
+        decoder_input: Int[torch.Tensor, "batch decoder_pos"]: The input to the decoder. This is the sequence of tokens that the model will generate, usually with a start token at the beginning
         return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), or 'logits' (return logits).
-
         one_zero_attention_mask: Optional[torch.Tensor]: A binary mask which indicates which tokens should be attended to (1) and which should be ignored (0). Primarily used for padding variable-length sentences in a batch. For instance, in a batch with sentences of differing lengths, shorter sentences are padded with 0s on the right. If not provided, the model assumes all tokens should be attended to.
         """
 
@@ -243,9 +242,9 @@ class HookedEncoderDecoder(HookedRootModule):
             "compatibility is not guaranteed. Please see the docs for information on the limitations of the current "
             "implementation."
             "\n"
-            "If using BERT for interpretability research, keep in mind that BERT has some significant architectural "
-            "differences to GPT. For example, LayerNorms are applied *after* the attention and MLP components, meaning "
-            "that the last LayerNorm in a block cannot be folded."
+            "If using T5 for interpretability research, keep in mind that T5 has some significant architectural "
+            "differences to GPT. The major one is that T5 is an Encoder-Decoder model"
+            "Also, it uses relative positional embeddings, different types of Attention (without bias) and LayerNorm"
         )
 
         assert not (
