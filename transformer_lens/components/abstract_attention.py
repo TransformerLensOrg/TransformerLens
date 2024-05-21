@@ -126,6 +126,11 @@ class AbstractAttention(ABC, nn.Module):
             # ALiBi bias wil be constructed on the first forward pass.
             # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
             self.alibi = None
+        
+        elif self.cfg.positional_embedding_type == "relative_positional_bias":
+            # will be overwritten by the child T5Attention class
+            self.has_relative_attention_bias = False
+
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -159,18 +164,19 @@ class AbstractAttention(ABC, nn.Module):
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
         key_input: Union[
-            Float[torch.Tensor, "batch pos d_model"],
-            Float[torch.Tensor, "batch pos head_index d_model"],
-            Float[torch.Tensor, "batch pos kv_head_index d_model"],
+            Float[torch.Tensor, "batch kv_pos d_model"],
+            Float[torch.Tensor, "batch kv_pos head_index d_model"],
+            Float[torch.Tensor, "batch kv_pos kv_head_index d_model"],
         ],
         value_input: Union[
-            Float[torch.Tensor, "batch pos d_model"],
-            Float[torch.Tensor, "batch pos head_index d_model"],
-            Float[torch.Tensor, "batch pos kv_head_index d_model"],
+            Float[torch.Tensor, "batch kv_pos d_model"],
+            Float[torch.Tensor, "batch kv_pos head_index d_model"],
+            Float[torch.Tensor, "batch kv_pos kv_head_index d_model"],
         ],
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
-        additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 pos"]] = None,
+        additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 kv_pos"]] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
+        position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
@@ -218,7 +224,19 @@ class AbstractAttention(ABC, nn.Module):
             attn_scores += self.alibi[
                 :, :query_ctx, :key_ctx
             ]  # [batch, head_index, query_pos, key_pos]
-
+        elif self.cfg.positional_embedding_type == "relative_positional_bias":
+            if position_bias is None:
+                if self.has_relative_attention_bias:
+                    raise ValueError("Positional bias is required for relative_positional_bias")
+                else:
+                    position_bias = torch.zeros(
+                        1, self.cfg.n_heads,
+                        attn_scores.shape[2],
+                        attn_scores.shape[3],
+                        device=attn_scores.device,
+                    )
+                    
+            attn_scores += position_bias
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
@@ -293,17 +311,17 @@ class AbstractAttention(ABC, nn.Module):
             Float[torch.Tensor, "batch pos head_index d_model"],
         ],
         key_input: Union[
-            Float[torch.Tensor, "batch pos d_model"],
-            Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch kv_pos d_model"],
+            Float[torch.Tensor, "batch kv_pos head_index d_model"],
         ],
         value_input: Union[
-            Float[torch.Tensor, "batch pos d_model"],
-            Float[torch.Tensor, "batch pos head_index d_model"],
+            Float[torch.Tensor, "batch kv_pos d_model"],
+            Float[torch.Tensor, "batch kv_pos head_index d_model"],
         ],
     ) -> Tuple[
         Float[torch.Tensor, "batch pos head_index d_head"],
-        Float[torch.Tensor, "batch pos head_index d_head"],
-        Float[torch.Tensor, "batch pos head_index d_head"],
+        Float[torch.Tensor, "batch kv_pos head_index d_head"],
+        Float[torch.Tensor, "batch kv_pos head_index d_head"],
     ]:
         if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
             qkv_einops_string = "batch pos head_index d_model"
