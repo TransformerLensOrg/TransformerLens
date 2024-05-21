@@ -608,7 +608,7 @@ MODEL_ALIASES = {
     "01-ai/Yi-34B-Chat": ["yi-34b-chat", "Yi-34B-Chat"],
     "google-t5/t5-small": ["t5-small"],
     "google-t5/t5-base": ["t5-base"],
-    "google-t5/t5-large": ["t5-large"]
+    "google-t5/t5-large": ["t5-large"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -674,7 +674,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
         official_model_name = model_name
     else:
         official_model_name = get_official_model_name(model_name)
-    
+
     # Load HuggingFace model config
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
@@ -2501,10 +2501,11 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
 def convert_t5_weights(t5, cfg: HookedTransformerConfig):
     state_dict = {
         "embed.W_E": t5.encoder.embed_tokens.weight,
-        "unembed.W_U":  t5.encoder.embed_tokens.weight.T,
-        "encoder.0.attn.rel_pos_bias.weight": t5.encoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight
+        "unembed.W_U": t5.encoder.embed_tokens.weight.T,
+        "encoder.0.attn.rel_pos_bias.weight": t5.encoder.block[0]
+        .layer[0]
+        .SelfAttention.relative_attention_bias.weight,
     }
-
 
     for l in range(cfg.n_layers):
         block = t5.encoder.block[l]
@@ -2566,11 +2567,11 @@ def convert_t5_weights(t5, cfg: HookedTransformerConfig):
         state_dict[f"decoder.{l}.cross_attn.W_Q"] = einops.rearrange(
             block.layer[1].EncDecAttention.q.weight, "(i h) m -> i m h", i=cfg.n_heads
         )
-        
+
         state_dict[f"decoder.{l}.cross_attn.W_K"] = einops.rearrange(
             block.layer[1].EncDecAttention.k.weight, "(i h) m -> i m h", i=cfg.n_heads
         )
-        
+
         state_dict[f"decoder.{l}.cross_attn.W_V"] = einops.rearrange(
             block.layer[1].EncDecAttention.v.weight, "(i h) m -> i m h", i=cfg.n_heads
         )
@@ -2591,7 +2592,6 @@ def convert_t5_weights(t5, cfg: HookedTransformerConfig):
         state_dict[f"decoder.{l}.ln3.w"] = block.layer[2].layer_norm.weight
 
     state_dict["decoder_final_ln.w"] = t5.decoder.final_layer_norm.weight
-
 
     return state_dict
 

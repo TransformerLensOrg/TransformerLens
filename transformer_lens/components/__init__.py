@@ -4,6 +4,7 @@ This module contains all the components (e.g. :class:`Attention`, :class:`MLP`, 
 needed to create many different types of generative language models. They are used by
 :class:`transformer_lens.HookedTransformer`.
 """
+
 # Independent classes
 from .abstract_attention import AbstractAttention
 from .layer_norm import LayerNorm

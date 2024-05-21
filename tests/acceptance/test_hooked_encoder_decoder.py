@@ -67,9 +67,7 @@ def test_encoder(our_model, huggingface_model, hello_world_tokens):
 
     our_encoder_out = our_model.encoder_final_ln(our_embeds)
 
-    huggingface_encoder_out = huggingface_model.encoder(
-        hello_world_tokens
-    ).last_hidden_state
+    huggingface_encoder_out = huggingface_model.encoder(hello_world_tokens).last_hidden_state
 
     assert_close(our_encoder_out, huggingface_encoder_out, rtol=1.3e-6, atol=4e-5)
 
@@ -82,9 +80,7 @@ def test_decoder(our_model, huggingface_model, hello_world_tokens, decoder_input
         decoder_input_ids.shape[1], decoder_input_ids.shape[1]
     )
     for layer in our_model.decoder:
-        embeds = layer(
-            embeds, encoder_hidden_states=encoder_hidden, position_bias=pos_bias
-        )
+        embeds = layer(embeds, encoder_hidden_states=encoder_hidden, position_bias=pos_bias)
 
     our_decoder_out = our_model.decoder_final_ln(embeds)
     hf_decoder_out = huggingface_model.decoder(
@@ -112,16 +108,12 @@ def test_relative_attention_bias(our_model, huggingface_model, hello_world_token
     assert huggingface_attn.has_relative_attention_bias
     assert our_attn.has_relative_attention_bias
     assert (
-        our_attn.relative_attention_num_buckets
-        == huggingface_attn.relative_attention_num_buckets
+        our_attn.relative_attention_num_buckets == huggingface_attn.relative_attention_num_buckets
     )
     assert (
-        our_attn.relative_attention_max_distance
-        == huggingface_attn.relative_attention_max_distance
+        our_attn.relative_attention_max_distance == huggingface_attn.relative_attention_max_distance
     )
-    assert_close(
-        our_attn.rel_pos_bias.weight, huggingface_attn.relative_attention_bias.weight
-    )
+    assert_close(our_attn.rel_pos_bias.weight, huggingface_attn.relative_attention_bias.weight)
 
     input_len = hello_world_tokens.shape[1]
     our_bias = our_attn.compute_relative_attention_bias(input_len, input_len)
@@ -145,9 +137,7 @@ def test_relative_attention_layer(our_model, huggingface_model, hello_world_toke
     input_len = hello_world_tokens.shape[1]
     our_bias = our_block.attn.compute_relative_attention_bias(input_len, input_len)
     resid_norm = our_block.ln1(resid)
-    our_out = resid + our_block.attn(
-        resid_norm, resid_norm, resid_norm, position_bias=our_bias
-    )
+    our_out = resid + our_block.attn(resid_norm, resid_norm, resid_norm, position_bias=our_bias)
 
     hf_out = hf_block(resid)[0]
     assert_close(our_out, hf_out, rtol=1.3e-6, atol=4e-5)
@@ -204,9 +194,7 @@ def test_decoder_attention_layer(our_model, huggingface_model, hello_world_token
     assert_close(our_attn_out, huggingface_attn_out, rtol=3e-4, atol=4e-5)
 
 
-def test_cross_attention(
-    our_model, huggingface_model, hello_world_tokens, decoder_input_ids
-):
+def test_cross_attention(our_model, huggingface_model, hello_world_tokens, decoder_input_ids):
     encoder_hidden = huggingface_model.encoder(hello_world_tokens).last_hidden_state
     decoder_hidden = huggingface_model.decoder.embed_tokens(decoder_input_ids)
 
@@ -220,9 +208,7 @@ def test_cross_attention(
     assert_close(our_cross_attn_out, huggingface_cross_attn_out, rtol=2e-4, atol=1e-5)
 
 
-def test_cross_attention_layer(
-    our_model, huggingface_model, hello_world_tokens, decoder_input_ids
-):
+def test_cross_attention_layer(our_model, huggingface_model, hello_world_tokens, decoder_input_ids):
     encoder_hidden = huggingface_model.encoder(hello_world_tokens).last_hidden_state
     decoder_hidden = huggingface_model.decoder.embed_tokens(decoder_input_ids)
 
@@ -232,14 +218,10 @@ def test_cross_attention_layer(
     assert_close(hf_layer.layer_norm.weight, our_layer.ln2.w)
 
     our_cross_attn_out = (
-        our_layer.cross_attn(
-            our_layer.ln2(decoder_hidden), encoder_hidden, encoder_hidden
-        )
+        our_layer.cross_attn(our_layer.ln2(decoder_hidden), encoder_hidden, encoder_hidden)
         + decoder_hidden
     )
-    huggingface_cross_attn_out = hf_layer(
-        decoder_hidden, key_value_states=encoder_hidden
-    )[0]
+    huggingface_cross_attn_out = hf_layer(decoder_hidden, key_value_states=encoder_hidden)[0]
     assert_close(our_cross_attn_out, huggingface_cross_attn_out, rtol=2e-4, atol=1e-5)
 
 
@@ -256,17 +238,13 @@ def test_encoder_block(our_model, huggingface_model, hello_world_tokens):
     assert_close(our_out, hf_out, rtol=2e-4, atol=2e-5)
 
 
-def test_decoder_block(
-    our_model, huggingface_model, hello_world_tokens, decoder_input_ids
-):
+def test_decoder_block(our_model, huggingface_model, hello_world_tokens, decoder_input_ids):
     huggingface_embed = huggingface_model.decoder.embed_tokens
     huggingface_block = huggingface_model.decoder.block[1]
     our_block = our_model.decoder[1]
 
     encoder_hidden = huggingface_model.encoder(hello_world_tokens)[0]
-    decoder_hidden = huggingface_model.decoder.block[0](
-        huggingface_embed(decoder_input_ids)
-    )[0]
+    decoder_hidden = huggingface_model.decoder.block[0](huggingface_embed(decoder_input_ids))[0]
 
     our_out = our_block(decoder_hidden, encoder_hidden_states=encoder_hidden)
     hf_out = huggingface_block(decoder_hidden, encoder_hidden_states=encoder_hidden)[0]
@@ -287,9 +265,7 @@ def test_layernorm(our_model, huggingface_model, hello_world_tokens):
 
 
 def test_unembed(our_model, huggingface_model, hello_world_tokens):
-    huggingface_model_hidden = huggingface_model.decoder(
-        hello_world_tokens
-    ).last_hidden_state
+    huggingface_model_hidden = huggingface_model.decoder(hello_world_tokens).last_hidden_state
 
     our_model_logits = our_model.unembed(huggingface_model_hidden)
     huggingface_model_logits = huggingface_model.lm_head(huggingface_model_hidden)
@@ -298,9 +274,7 @@ def test_unembed(our_model, huggingface_model, hello_world_tokens):
 
 
 def test_run_with_cache(our_model, hello_world_tokens, decoder_input_ids):
-    logits, cache = our_model.run_with_cache(
-        hello_world_tokens, decoder_input=decoder_input_ids
-    )
+    logits, cache = our_model.run_with_cache(hello_world_tokens, decoder_input=decoder_input_ids)
 
     # check that an arbitrary subset of the keys exist and have the right shape
     seq_len = 5
@@ -330,9 +304,7 @@ def test_from_pretrained_revision():
     _ = HookedEncoderDecoder.from_pretrained(MODEL_NAME, revision="main")
 
     try:
-        _ = HookedEncoderDecoder.from_pretrained(
-            MODEL_NAME, revision="inexistent_branch_name"
-        )
+        _ = HookedEncoderDecoder.from_pretrained(MODEL_NAME, revision="inexistent_branch_name")
     except:
         pass
     else:
@@ -340,9 +312,9 @@ def test_from_pretrained_revision():
 
 
 def test_predictions(our_model, huggingface_model, tokenizer, decoder_input_ids):
-    input_ids = tokenizer(
-        "My name is Wolfgang and I live in Berlin", return_tensors="pt"
-    )["input_ids"]
+    input_ids = tokenizer("My name is Wolfgang and I live in Berlin", return_tensors="pt")[
+        "input_ids"
+    ]
 
     def get_predictions(logits: Float[torch.Tensor, "batch pos d_vocab"]):
         predicted_tokens = logits[0].argmax(dim=-1)

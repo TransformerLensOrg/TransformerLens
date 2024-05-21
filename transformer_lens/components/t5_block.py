@@ -17,9 +17,7 @@ class T5Block(nn.Module):
     Also uses cross attention if is_decoder is True.
     """
 
-    def __init__(
-        self, cfg: HookedTransformerConfig, block_index: int, is_decoder: bool
-    ):
+    def __init__(self, cfg: HookedTransformerConfig, block_index: int, is_decoder: bool):
         super().__init__()
         self.cfg = cfg
         self.is_decoder = is_decoder
@@ -56,9 +54,7 @@ class T5Block(nn.Module):
             Float[torch.Tensor, "batch 1 1 encoder_pos"]
         ] = None,
         position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None,
-        encoder_hidden_states: Optional[
-            Float[torch.Tensor, "batch encoder_pos d_model"]
-        ] = None,
+        encoder_hidden_states: Optional[Float[torch.Tensor, "batch encoder_pos d_model"]] = None,
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """A single Transformer block.
@@ -127,9 +123,7 @@ class T5Block(nn.Module):
             )
 
             if encoder_hidden_states is None:
-                raise ValueError(
-                    "Encoder hidden states must be provided for cross attention!"
-                )
+                raise ValueError("Encoder hidden states must be provided for cross attention!")
 
             cross_attn_out = self.hook_cross_attn_out(
                 self.cross_attn(
@@ -150,15 +144,11 @@ class T5Block(nn.Module):
             normalized_resid_mid = self.ln3(mlp_in)
         else:
             mlp_in = (
-                resid_mid
-                if not self.cfg.use_hook_mlp_in
-                else self.hook_mlp_in(resid_mid.clone())
+                resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
             normalized_resid_mid = self.ln2(mlp_in)
 
-        mlp_out = self.hook_mlp_out(
-            self.mlp(normalized_resid_mid)
-        )  # [batch, pos, d_model]
+        mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))  # [batch, pos, d_model]
         resid_post = self.hook_resid_post(mlp_in + mlp_out)  # [batch, pos, d_model]
 
         return resid_post

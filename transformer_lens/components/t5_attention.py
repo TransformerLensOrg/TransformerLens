@@ -38,27 +38,17 @@ class T5Attention(AbstractAttention):
         if self.has_relative_attention_bias:
             self.relative_attention_num_buckets = cfg.relative_attention_num_buckets
             self.relative_attention_max_distance = cfg.relative_attention_max_distance
-            self.rel_pos_bias = nn.Embedding(
-                self.relative_attention_num_buckets, self.cfg.n_heads
-            )
+            self.rel_pos_bias = nn.Embedding(self.relative_attention_num_buckets, self.cfg.n_heads)
             self.rel_pos_hook = HookPoint()
 
         self.W_K = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-            )
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
         )
         self.W_V = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype
-            )
+            torch.empty(self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=cfg.dtype)
         )
-        self.b_K = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
-        self.b_V = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
+        self.b_K = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
+        self.b_V = nn.Parameter(torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=cfg.dtype))
 
     @staticmethod
     def _relative_position_bucket(
@@ -91,9 +81,7 @@ class T5Attention(AbstractAttention):
             relative_buckets += (relative_position > 0).to(torch.long) * num_buckets
             relative_position = torch.abs(relative_position)
         else:
-            relative_position = -torch.min(
-                relative_position, torch.zeros_like(relative_position)
-            )
+            relative_position = -torch.min(relative_position, torch.zeros_like(relative_position))
         # now relative_position is in the range [0, inf)
 
         # half of the buckets are for exact increments in positions
@@ -111,9 +99,7 @@ class T5Attention(AbstractAttention):
             torch.full_like(relative_position_if_large, num_buckets - 1),
         )
 
-        relative_buckets += torch.where(
-            is_small, relative_position, relative_position_if_large
-        )
+        relative_buckets += torch.where(is_small, relative_position, relative_position_if_large)
         return relative_buckets
 
     def compute_relative_attention_bias(
@@ -122,15 +108,9 @@ class T5Attention(AbstractAttention):
         """Compute binned relative position bias"""
         if device is None:
             device = self.rel_pos_bias.weight.device
-        context_position = torch.arange(query_length, dtype=torch.long, device=device)[
-            :, None
-        ]
-        memory_position = torch.arange(key_length, dtype=torch.long, device=device)[
-            None, :
-        ]
-        relative_position = (
-            memory_position - context_position
-        )  # shape (query_length, key_length)
+        context_position = torch.arange(query_length, dtype=torch.long, device=device)[:, None]
+        memory_position = torch.arange(key_length, dtype=torch.long, device=device)[None, :]
+        relative_position = memory_position - context_position  # shape (query_length, key_length)
         relative_position_bucket = self._relative_position_bucket(
             relative_position,  # shape (query_length, key_length)
             bidirectional=True,

@@ -49,9 +49,7 @@ class HookedEncoderDecoder(HookedRootModule):
             )
         self.cfg = cfg
 
-        assert (
-            self.cfg.n_devices == 1
-        ), "Multiple devices not supported for HookedEncoderDecoder"
+        assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedEncoderDecoder"
         if tokenizer is not None:
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
@@ -65,9 +63,7 @@ class HookedEncoderDecoder(HookedRootModule):
 
         if self.cfg.d_vocab == -1:
             # If we have a tokenizer, vocab size can be inferred from it.
-            assert (
-                self.tokenizer is not None
-            ), "Must provide a tokenizer if d_vocab is not provided"
+            assert self.tokenizer is not None, "Must provide a tokenizer if d_vocab is not provided"
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
@@ -194,9 +190,7 @@ class HookedEncoderDecoder(HookedRootModule):
             *model_args, remove_batch_dim=remove_batch_dim, **kwargs
         )
         if return_cache_object:
-            cache = ActivationCache(
-                cache_dict, self, has_batch_dim=not remove_batch_dim
-            )
+            cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)
             return out, cache
         else:
             return out, cache_dict
@@ -254,9 +248,7 @@ class HookedEncoderDecoder(HookedRootModule):
             dtype = from_pretrained_kwargs["torch_dtype"]
 
         name_or_path = (
-            model_name
-            if Path(model_name).exists
-            else loading.get_official_model_name(model_name)
+            model_name if Path(model_name).exists else loading.get_official_model_name(model_name)
         )
 
         cfg = loading.get_pretrained_model_config(
@@ -441,12 +433,6 @@ class HookedEncoderDecoder(HookedRootModule):
 
     def all_head_labels(self) -> List[str]:
         """Returns a list of strings with the format "L{l}H{h}", where l is the layer index and h is the head index."""
-        return [
-            f"EL{l}H{h}"
-            for l in range(self.cfg.n_layers)
-            for h in range(self.cfg.n_heads)
-        ] + [
-            f"DL{l}H{h}"
-            for l in range(self.cfg.n_layers)
-            for h in range(self.cfg.n_heads)
+        return [f"EL{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)] + [
+            f"DL{l}H{h}" for l in range(self.cfg.n_layers) for h in range(self.cfg.n_heads)
         ]

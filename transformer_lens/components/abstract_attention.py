@@ -126,11 +126,10 @@ class AbstractAttention(ABC, nn.Module):
             # ALiBi bias wil be constructed on the first forward pass.
             # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
             self.alibi = None
-        
+
         elif self.cfg.positional_embedding_type == "relative_positional_bias":
             # will be overwritten by the child T5Attention class
             self.has_relative_attention_bias = False
-
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -176,7 +175,7 @@ class AbstractAttention(ABC, nn.Module):
         past_kv_cache_entry: Optional[HookedTransformerKeyValueCacheEntry] = None,
         additive_attention_mask: Optional[Float[torch.Tensor, "batch 1 1 kv_pos"]] = None,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
-        position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None
+        position_bias: Optional[Float[torch.Tensor, "1 head_index pos kv_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """
         shortformer_pos_embed is only used if self.cfg.positional_embedding_type == "shortformer", else defaults to None and is irrelevant. See HookedTransformerConfig for more details
@@ -230,12 +229,13 @@ class AbstractAttention(ABC, nn.Module):
                     raise ValueError("Positional bias is required for relative_positional_bias")
                 else:
                     position_bias = torch.zeros(
-                        1, self.cfg.n_heads,
+                        1,
+                        self.cfg.n_heads,
                         attn_scores.shape[2],
                         attn_scores.shape[3],
                         device=attn_scores.device,
                     )
-                    
+
             attn_scores += position_bias
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
