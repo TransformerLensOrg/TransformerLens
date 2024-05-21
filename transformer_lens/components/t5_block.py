@@ -1,12 +1,14 @@
 from typing import Optional
+
 import torch
 import torch.nn as nn
-from transformer_lens.components import MLP, T5Attention, RMSNorm
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from jaxtyping import Float
+
+from transformer_lens.components import MLP, RMSNorm, T5Attention
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utils import repeat_along_head_dimension
-from jaxtyping import Float
 
 
 class T5Block(nn.Module):

@@ -2,7 +2,6 @@ import pytest
 import torch
 from jaxtyping import Float
 from torch.testing import assert_close
-
 from transformers import AutoTokenizer, T5ForConditionalGeneration
 
 from transformer_lens import HookedEncoderDecoder

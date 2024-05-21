@@ -1,12 +1,13 @@
 import math
-
 from typing import Dict, Optional, Union
+
 import torch
 import torch.nn as nn
-from transformer_lens.components.abstract_attention import AbstractAttention
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.hook_points import HookPoint
 from jaxtyping import Float
+
+from transformer_lens.components.abstract_attention import AbstractAttention
+from transformer_lens.hook_points import HookPoint
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class T5Attention(AbstractAttention):
