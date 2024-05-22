@@ -50,9 +50,7 @@ NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
 class _HookFunctionProtocol(Protocol):
     """Protocol for hook functions."""
 
-    def __call__(
-        self, tensor: torch.Tensor, *, hook: "HookPoint"
-    ) -> Union[Any, None]:
+    def __call__(self, tensor: torch.Tensor, *, hook: "HookPoint") -> Union[Any, None]:
         ...
 
 
@@ -586,15 +584,13 @@ class HookedRootModule(nn.Module):
             # for attention heads the pos dimension is the third from last
             if hook.name is None:
                 raise RuntimeError("Hook should have been provided a name")
-            
+
             hook_name = hook.name
             if is_backward:
                 hook_name += "_grad"
             resid_stream = tensor.detach().to(device)
             if remove_batch_dim:
                 resid_stream = resid_stream[0]
-
-            
 
             if (
                 hook.name.endswith("hook_q")
