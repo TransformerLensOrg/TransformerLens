@@ -99,7 +99,7 @@ class HookPoint(nn.Module):
         def full_hook(
             module: torch.nn.Module,
             module_input: Any,
-            module_output: Union[torch.Tensor, Tuple[torch.Tensor, ...]],
+            module_output: torch.Tensor,
         ):
             if (
                 dir == "bwd"
