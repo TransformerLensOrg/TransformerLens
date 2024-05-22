@@ -3,7 +3,7 @@ from typing import Dict, Optional, Union
 
 import torch
 import torch.nn as nn
-from jaxtyping import Float
+from jaxtyping import Float, Int
 
 from transformer_lens.components.abstract_attention import AbstractAttention
 from transformer_lens.hook_points import HookPoint
@@ -25,7 +25,7 @@ class T5Attention(AbstractAttention):
     def __init__(
         self,
         cfg: Union[Dict, HookedTransformerConfig],
-        has_relative_attention_bias=False,
+        has_relative_attention_bias: bool = False,
         attn_type: str = "global",
         layer_id: Optional[int] = None,
     ):
@@ -33,9 +33,14 @@ class T5Attention(AbstractAttention):
         if isinstance(cfg, Dict):
             cfg = HookedTransformerConfig.from_dict(cfg)
         self.cfg = cfg
-        self.has_relative_attention_bias = has_relative_attention_bias
+        self.has_relative_attention_bias: bool = has_relative_attention_bias
 
         if self.has_relative_attention_bias:
+            if cfg.relative_attention_num_buckets is None or cfg.relative_attention_max_distance is None:
+                raise ValueError(
+                    "You need to specify relative_attention_num_buckets and relative_attention_max_distance  in config to use relative attention bias"
+                )
+
             self.relative_attention_num_buckets = cfg.relative_attention_num_buckets
             self.relative_attention_max_distance = cfg.relative_attention_max_distance
             self.rel_pos_bias = nn.Embedding(self.relative_attention_num_buckets, self.cfg.n_heads)
@@ -52,11 +57,14 @@ class T5Attention(AbstractAttention):
 
     @staticmethod
     def _relative_position_bucket(
-        relative_position, bidirectional=True, num_buckets=32, max_distance=128
-    ):
+        relative_position: Int[torch.Tensor, "query_pos kv_pos"],
+          bidirectional=True, num_buckets=32, max_distance=128
+    ) -> Int[torch.Tensor, "query_pos kv_pos"]:
         """
         added from
         https://github.com/huggingface/transformers/blob/e0c3cee17085914bbe505c159beeb8ae39bc37dd/src/transformers/models/t5/modeling_t5.py#L382
+        which is adapted from 
+        https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
 
 
         Translate relative position to a bucket number for relative attention. The relative position is defined as
@@ -75,7 +83,8 @@ class T5Attention(AbstractAttention):
         Returns:
             a Tensor with the same shape as relative_position, containing int32 values in the range [0, num_buckets)
         """
-        relative_buckets = 0
+        relative_buckets = torch.zeros_like(relative_position)
+
         if bidirectional:
             num_buckets //= 2
             relative_buckets += (relative_position > 0).to(torch.long) * num_buckets

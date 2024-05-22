@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from itertools import chain
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, cast, overload
 
@@ -250,7 +251,7 @@ class HookedEncoderDecoder(HookedRootModule):
             dtype = from_pretrained_kwargs["torch_dtype"]
 
         name_or_path = (
-            model_name if Path(model_name).exists else loading.get_official_model_name(model_name)
+            model_name if Path(model_name).exists() else loading.get_official_model_name(model_name)
         )
 
         cfg = loading.get_pretrained_model_config(
@@ -298,129 +299,85 @@ class HookedEncoderDecoder(HookedRootModule):
         """
         Convenience to get the embedding matrix
         """
-        return self.embed.embed.W_E
+        return self.embed.W_E
 
     @property
-    def W_pos(self) -> Float[torch.Tensor, "n_ctx d_model"]:
+    def W_pos(self) -> None:
         """
         Convenience function to get the positional embedding. Only works on models with absolute positional embeddings!
         """
-        return self.embed.pos_embed.W_pos
+        raise NotImplementedError("T5 does not have absolute positional embeddings. Uses relative positional embeddings instead.")
 
-    @property
-    def W_E_pos(self) -> Float[torch.Tensor, "d_vocab+n_ctx d_model"]:
-        """
-        Concatenated W_E and W_pos. Used as a full (overcomplete) basis of the input space, useful for full QK and full OV circuits.
-        """
-        return torch.cat([self.W_E, self.W_pos], dim=0)
 
     @property
     def W_K(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the key weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_K for block in self.encoder]
-            + [cast(T5Block, block).attn.W_K for block in self.decoder],
-            dim=0,
-        )
+            [cast(T5Block, block).attn.W_K for block in chain(self.encoder, self.decoder)], dim=0)
 
     @property
     def W_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the query weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_Q for block in self.encoder]
-            + [cast(T5Block, block).attn.W_Q for block in self.decoder],
-            dim=0,
-        )
+            [cast(T5Block, block).attn.W_Q for block in chain(self.encoder, self.decoder)], dim=0)
 
     @property
     def W_V(self) -> Float[torch.Tensor, "n_layers n_heads d_model d_head"]:
         """Stacks the value weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_V for block in self.encoder]
-            + [cast(T5Block, block).attn.W_V for block in self.decoder],
-            dim=0,
-        )
+            [cast(T5Block, block).attn.W_V for block in chain(self.encoder, self.decoder)] ,dim=0)
 
     @property
     def W_O(self) -> Float[torch.Tensor, "n_layers n_heads d_head d_model"]:
         """Stacks the attn output weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.W_O for block in self.encoder]
-            + [cast(T5Block, block).attn.W_O for block in self.decoder],
-            dim=0,
-        )
+            [cast(T5Block, block).attn.W_O for block in chain(self.encoder, self.decoder)],dim=0)
 
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).mlp.W_in for block in self.encoder]
-            + [cast(T5Block, block).mlp.W_in for block in self.decoder],
-            dim=0,
-        )
+            [cast(T5Block, block).mlp.W_in for block in chain(self.encoder, self.decoder)], dim=0)
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).mlp.W_out for block in self.encoder]
-            + [cast(T5Block, block).mlp.W_out for block in self.decoder],
-            dim=0,
-        )
+            [cast(T5Block, block).mlp.W_out for block in chain(self.encoder, self.decoder)],dim=0)
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the key biases across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).attn.b_K for block in self.encoder]
-            + [cast(T5Block, block).attn.b_K for block in self.decoder],
-            dim=0,
-        )
+        return torch.stack([cast(T5Block, block).attn.b_K for block in chain(self.encoder, self.decoder)], dim=0)
 
     @property
     def b_Q(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the query biases across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).attn.b_Q for block in self.encoder]
-            + [cast(T5Block, block).attn.b_Q for block in self.decoder],
-            dim=0,
-        )
+        return torch.stack([cast(T5Block, block).attn.b_Q for block in chain(self.encoder, self.decoder)], dim=0)
 
     @property
     def b_V(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
         """Stacks the value biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).attn.b_V for block in self.encoder]
-            + [cast(T5Block, block).attn.b_V for block in self.decoder],
+            [cast(T5Block, block).attn.b_V for block in chain(self.encoder, self.decoder)],
             dim=0,
         )
 
     @property
     def b_O(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the attn output biases across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).attn.b_O for block in self.encoder]
-            + [cast(T5Block, block).attn.b_O for block in self.decoder],
-            dim=0,
-        )
+        return torch.stack([cast(T5Block, block).attn.b_O for block in chain(self.encoder, self.decoder)],dim=0)
+
 
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).mlp.b_in for block in self.encoder]
-            + [cast(T5Block, block).mlp.b_in for block in self.decoder],
-            dim=0,
-        )
+        return torch.stack([cast(T5Block, block).mlp.b_in for block in chain(self.encoder, self.decoder)] ,dim=0)
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
-        return torch.stack(
-            [cast(T5Block, block).mlp.b_out for block in self.encoder]
-            + [cast(T5Block, block).mlp.b_out for block in self.decoder],
-            dim=0,
-        )
+        return torch.stack([cast(T5Block, block).mlp.b_out for block in chain(self.encoder, self.decoder)], dim=0)
 
     @property
     def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]

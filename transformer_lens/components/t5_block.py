@@ -34,6 +34,7 @@ class T5Block(nn.Module):
         self.hook_k_input = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_v_input = HookPoint()  # [batch, pos, n_heads, d_model]
 
+        self.hook_attn_in = HookPoint()  # [batch, pos, d_model]
         self.hook_attn_out = HookPoint()  # [batch, pos, d_model]
         if self.is_decoder:
             self.hook_cross_attn_in = HookPoint()  # [batch, pos, d_model]
