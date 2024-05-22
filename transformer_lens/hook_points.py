@@ -51,7 +51,7 @@ class _HookFunctionProtocol(Protocol):
     """Protocol for hook functions."""
 
     def __call__(
-        self, tensor: Union[torch.Tensor, Tuple[torch.Tensor, ...]], *, hook: "HookPoint"
+        self, tensor: torch.Tensor, *, hook: "HookPoint"
     ) -> Union[Any, None]:
         ...
 
@@ -583,7 +583,10 @@ class HookedRootModule(nn.Module):
         self.is_caching = True
 
         def save_hook(tensor: torch.Tensor, hook: HookPoint, is_backward: bool = False):
-            assert hook.name is not None
+            # for attention heads the pos dimension is the third from last
+            if hook.name is None:
+                raise RuntimeError("Hook should have been provided a name")
+            
             hook_name = hook.name
             if is_backward:
                 hook_name += "_grad"
@@ -591,9 +594,7 @@ class HookedRootModule(nn.Module):
             if remove_batch_dim:
                 resid_stream = resid_stream[0]
 
-            # for attention heads the pos dimension is the third from last
-            if hook.name is None:
-                raise RuntimeError("Hook should have been provided a name")
+            
 
             if (
                 hook.name.endswith("hook_q")
