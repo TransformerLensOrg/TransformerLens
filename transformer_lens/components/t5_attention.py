@@ -36,7 +36,10 @@ class T5Attention(AbstractAttention):
         self.has_relative_attention_bias: bool = has_relative_attention_bias
 
         if self.has_relative_attention_bias:
-            if cfg.relative_attention_num_buckets is None or cfg.relative_attention_max_distance is None:
+            if (
+                cfg.relative_attention_num_buckets is None
+                or cfg.relative_attention_max_distance is None
+            ):
                 raise ValueError(
                     "You need to specify relative_attention_num_buckets and relative_attention_max_distance  in config to use relative attention bias"
                 )
@@ -58,12 +61,14 @@ class T5Attention(AbstractAttention):
     @staticmethod
     def _relative_position_bucket(
         relative_position: Int[torch.Tensor, "query_pos kv_pos"],
-          bidirectional=True, num_buckets=32, max_distance=128
+        bidirectional=True,
+        num_buckets=32,
+        max_distance=128,
     ) -> Int[torch.Tensor, "query_pos kv_pos"]:
         """
         added from
         https://github.com/huggingface/transformers/blob/e0c3cee17085914bbe505c159beeb8ae39bc37dd/src/transformers/models/t5/modeling_t5.py#L382
-        which is adapted from 
+        which is adapted from
         https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
 
 
