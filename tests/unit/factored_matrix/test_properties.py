@@ -66,9 +66,7 @@ class TestFactoredMatrixProperties:
     def test_svd_property(self, factored_matrices):
         for factored_matrix in factored_matrices:
             U, S, Vh = factored_matrix.svd()
-            assert torch.allclose(
-                factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.T, atol=1e-5
-            )
+            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.T, atol=1e-5)
             # test that U and Vh are unitary
             assert torch.allclose(U.T @ U, torch.eye(U.shape[-1]), atol=1e-5)
             assert torch.allclose(Vh.T @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
@@ -76,9 +74,7 @@ class TestFactoredMatrixProperties:
     def test_svd_property_leading_ones(self, factored_matrices_leading_ones):
         for factored_matrix in factored_matrices_leading_ones:
             U, S, Vh = factored_matrix.svd()
-            assert torch.allclose(
-                factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.mT, atol=1e-5
-            )
+            assert torch.allclose(factored_matrix.AB, U @ torch.diag_embed(S) @ Vh.mT, atol=1e-5)
             # test that U and Vh are unitary
             assert torch.allclose(U.mT @ U, torch.eye(U.shape[-1]), atol=1e-5)
             assert torch.allclose(Vh.mT @ Vh, torch.eye(Vh.shape[-1]), atol=1e-5)
@@ -91,7 +87,7 @@ class TestFactoredMatrixProperties:
         I'm not sure why. The error is not very informative. When debugging the shape was equal to mdim, and *leading_dims should
         match zero or more leading dims according to the [docs](https://github.com/google/jaxtyping/blob/main/API.md).
 
-        Sort of related to https://github.com/neelnanda-io/TransformerLens/issues/190 because jaxtyping
+        Sort of related to https://github.com/TransformerLensOrg/TransformerLens/issues/190 because jaxtyping
         is only enabled at test time and not runtime.
         """
     )
@@ -123,9 +119,7 @@ class TestFactoredMatrixProperties:
 
     def test_norm_property(self, factored_matrices):
         for factored_matrix in factored_matrices:
-            assert torch.allclose(
-                factored_matrix.norm(), factored_matrix.AB.norm(), atol=1e-5
-            )
+            assert torch.allclose(factored_matrix.norm(), factored_matrix.AB.norm(), atol=1e-5)
 
     def test_get_corner(self, factored_matrices):
         for factored_matrix in factored_matrices:
@@ -143,9 +137,7 @@ class TestFactoredMatrixProperties:
     def test_collapse_l(self, factored_matrices):
         for factored_matrix in factored_matrices:
             result = factored_matrix.collapse_l()
-            expected = factored_matrix.S[..., :, None] * utils.transpose(
-                factored_matrix.Vh
-            )
+            expected = factored_matrix.S[..., :, None] * utils.transpose(factored_matrix.Vh)
             assert torch.allclose(result, expected)
 
     def test_collapse_r(self, factored_matrices):

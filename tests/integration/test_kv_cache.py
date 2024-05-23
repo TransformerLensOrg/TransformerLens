@@ -6,7 +6,7 @@ from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCac
 
 
 # Pythia models seem to have some kind of numerical stability issue.
-# See: https://github.com/neelnanda-io/TransformerLens/issues/385
+# See: https://github.com/TransformerLensOrg/TransformerLens/issues/385
 @pytest.fixture(scope="session", params=[("gpt2-small", 1e-4), ("pythia-14m", 1e-2)])
 def model_and_atol(request):
     return request.param
@@ -69,9 +69,7 @@ def test_multiple_new_tokens(pretrained):
         past_kv_cache=past_kv_cache,
     )
     assert t.allclose(no_cache_logits[:, -1], with_cache_logits[:, -1], atol=atol)
-    assert t.allclose(
-        no_cache_logits[:, -new_tokens_len:], with_cache_logits, atol=atol
-    )
+    assert t.allclose(no_cache_logits[:, -new_tokens_len:], with_cache_logits, atol=atol)
 
 
 @pytest.mark.parametrize("pre_padding", ["left", "right", None])
@@ -95,17 +93,13 @@ def test_multi_token_batch(pretrained, pre_padding, post_padding):
         " by the candidate",
     ]
 
-    first_post_prompt_tokens = model.to_tokens(
-        padded_batch_post_prompts[0], prepend_bos=False
-    )
+    first_post_prompt_tokens = model.to_tokens(padded_batch_post_prompts[0], prepend_bos=False)
     first_full_prompt_tokens = t.cat(
         [model.to_tokens(padded_batch_pre_prompts[0]), first_post_prompt_tokens], dim=-1
     )
     first_post_prompt_len = first_post_prompt_tokens.shape[-1]
     first_prompt_no_cache_logits = model(first_full_prompt_tokens)
-    first_post_prompt_no_cache_logits = first_prompt_no_cache_logits[
-        0, -first_post_prompt_len:
-    ]
+    first_post_prompt_no_cache_logits = first_prompt_no_cache_logits[0, -first_post_prompt_len:]
 
     if pre_padding is None:
         batch_pre_prompt_tokens = model.to_tokens(unpadded_batch_pre_prompts)
@@ -116,9 +110,7 @@ def test_multi_token_batch(pretrained, pre_padding, post_padding):
         )
 
     if post_padding is None:
-        batch_post_prompt_tokens = model.to_tokens(
-            unpadded_batch_post_prompts, prepend_bos=False
-        )
+        batch_post_prompt_tokens = model.to_tokens(unpadded_batch_post_prompts, prepend_bos=False)
     else:
         assert post_padding == "left" or post_padding == "right"
         batch_post_prompt_tokens = model.to_tokens(
@@ -130,9 +122,7 @@ def test_multi_token_batch(pretrained, pre_padding, post_padding):
     past_kv_cache = HookedTransformerKeyValueCache.init_cache(
         model.cfg, model.cfg.device, batch_pre_prompt_tokens.shape[0]
     )
-    model(
-        batch_pre_prompt_tokens, past_kv_cache=past_kv_cache, padding_side=pre_padding
-    )
+    model(batch_pre_prompt_tokens, past_kv_cache=past_kv_cache, padding_side=pre_padding)
     past_kv_cache.freeze()
     with_cache_logits = model(
         batch_post_prompt_tokens,
@@ -141,14 +131,10 @@ def test_multi_token_batch(pretrained, pre_padding, post_padding):
         prepend_bos=False,
     )
     if post_padding == "left" or post_padding is None:
-        first_post_prompt_with_cache_logits = with_cache_logits[
-            0, -first_post_prompt_len:
-        ]
+        first_post_prompt_with_cache_logits = with_cache_logits[0, -first_post_prompt_len:]
     else:
         assert post_padding == "right"
-        first_post_prompt_with_cache_logits = with_cache_logits[
-            0, :first_post_prompt_len
-        ]
+        first_post_prompt_with_cache_logits = with_cache_logits[0, :first_post_prompt_len]
 
     no_cache_probs = t.softmax(first_post_prompt_no_cache_logits, dim=-1)
     with_cache_probs = t.softmax(first_post_prompt_with_cache_logits, dim=-1)
@@ -249,9 +235,7 @@ def test_kv_cache_and_start_at_layer(pretrained):
     _, toks, shortformer_pos_embed, attn_mask = model.input_to_embed(
         single_new_token, past_kv_cache=past_kv_cache
     )
-    _, cache = model.run_with_cache(
-        single_new_token, stop_at_layer=4, past_kv_cache=past_kv_cache
-    )
+    _, cache = model.run_with_cache(single_new_token, stop_at_layer=4, past_kv_cache=past_kv_cache)
     resid_3 = cache["blocks.3.hook_resid_pre"]
     with_cache_logits = model(
         resid_3,

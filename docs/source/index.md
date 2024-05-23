@@ -44,6 +44,7 @@ content/citation
 content/contributing
 generated/demos/Main_Demo
 generated/demos/Exploratory_Analysis_Demo
+content/special_cases
 ```
 
 ```{toctree}
@@ -51,5 +52,6 @@ generated/demos/Exploratory_Analysis_Demo
 :caption: Development
 
 content/contributing
-Github <https://github.com/neelnanda-io/TransformerLens>
+Code Coverage <https://transformerlensorg.github.io/TransformerLens/_static/coverage/>
+Github <https://github.com/TransformerLensOrg/TransformerLens>
 ```

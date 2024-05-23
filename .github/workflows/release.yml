@@ -8,7 +8,7 @@ on:
 jobs:
   checks:
     name: Run checks workflow
-    uses: neelnanda-io/TransformerLens/.github/workflows/checks.yml@main
+    uses: TransformerLensOrg/TransformerLens/.github/workflows/checks.yml@main
 
   semver-parser:
     name: Parse the semantic version from the release

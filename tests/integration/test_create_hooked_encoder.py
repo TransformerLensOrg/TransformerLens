@@ -6,9 +6,7 @@ from transformer_lens import HookedEncoder, HookedTransformerConfig
 
 @pytest.fixture
 def cfg():
-    return HookedTransformerConfig(
-        d_head=4, d_model=12, n_ctx=5, n_layers=3, act_fn="gelu"
-    )
+    return HookedTransformerConfig(d_head=4, d_model=12, n_ctx=5, n_layers=3, act_fn="gelu")
 
 
 def test_pass_tokenizer(cfg):

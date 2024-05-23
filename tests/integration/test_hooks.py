@@ -116,9 +116,7 @@ def test_remove_hook():
     model.add_perma_hook(embed, c.inc)
     assert len(model.hook_dict["hook_embed"].fwd_hooks) == 1  # 1 after adding
     model.remove_all_hook_fns()
-    assert (
-        len(model.hook_dict["hook_embed"].fwd_hooks) == 1
-    )  # permanent not removed without flag
+    assert len(model.hook_dict["hook_embed"].fwd_hooks) == 1  # permanent not removed without flag
     model.remove_all_hook_fns(including_permanent=True)
     assert len(model.hook_dict["hook_embed"].fwd_hooks) == 0  # removed now
     model.run_with_hooks(prompt, fwd_hooks=[])
@@ -182,11 +180,7 @@ def test_conditional_hooks():
 
 @pytest.mark.parametrize(
     "zero_attach_pos,prepend",
-    [
-        (zero_attach_pos, prepend)
-        for zero_attach_pos in range(2)
-        for prepend in [True, False]
-    ],
+    [(zero_attach_pos, prepend) for zero_attach_pos in range(2) for prepend in [True, False]],
 )
 def test_prepending_hooks(zero_attach_pos, prepend):
     """Add two hooks to a model: one that sets last layer activations to all 0s

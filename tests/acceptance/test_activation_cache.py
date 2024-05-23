@@ -53,7 +53,7 @@ def load_model(name):
     )
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_logit_attrs_matches_reference_code():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -64,18 +64,12 @@ def test_logit_attrs_matches_reference_code():
     _, cache = model.run_with_cache(tokens)
 
     # Get accumulated resid
-    accumulated_residual = cache.accumulated_resid(
-        layer=-1, incl_mid=True, pos_slice=-1
-    )
+    accumulated_residual = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1)
 
     # Get ref ave logit diffs (cribbed notebook code)
     answer_residual_directions = model.tokens_to_residual_directions(answer_tokens)
-    logit_diff_directions = (
-        answer_residual_directions[:, 0] - answer_residual_directions[:, 1]
-    )
-    scaled_residual_stack = cache.apply_ln_to_stack(
-        accumulated_residual, layer=-1, pos_slice=-1
-    )
+    logit_diff_directions = answer_residual_directions[:, 0] - answer_residual_directions[:, 1]
+    scaled_residual_stack = cache.apply_ln_to_stack(accumulated_residual, layer=-1, pos_slice=-1)
     ref_ave_logit_diffs = einsum(
         "... batch d_model, batch d_model -> ...",
         scaled_residual_stack,
@@ -94,7 +88,7 @@ def test_logit_attrs_matches_reference_code():
     assert torch.isclose(ref_ave_logit_diffs, ave_logit_diffs, atol=1e-7).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_logit_attrs_works_for_all_input_shapes():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -111,12 +105,8 @@ def test_logit_attrs_works_for_all_input_shapes():
 
     # Get ref logit diffs (cribbed notebook code)
     answer_residual_directions = model.tokens_to_residual_directions(answer_tokens)
-    logit_diff_directions = (
-        answer_residual_directions[:, 0] - answer_residual_directions[:, 1]
-    )
-    scaled_residual_stack = cache.apply_ln_to_stack(
-        accumulated_residual, layer=-1, pos_slice=-1
-    )
+    logit_diff_directions = answer_residual_directions[:, 0] - answer_residual_directions[:, 1]
+    scaled_residual_stack = cache.apply_ln_to_stack(accumulated_residual, layer=-1, pos_slice=-1)
     ref_logit_diffs = einsum(
         "... d_model, ... d_model -> ...", scaled_residual_stack, logit_diff_directions
     )
@@ -187,7 +177,7 @@ def test_logit_attrs_works_for_all_input_shapes():
     assert torch.isclose(ref_logit_diffs[:, batch], logit_diffs).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_accumulated_resid_with_apply_ln():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -198,9 +188,7 @@ def test_accumulated_resid_with_apply_ln():
     _, cache = model.run_with_cache(tokens)
 
     # Get accumulated resid and apply ln seperately (cribbed notebook code)
-    accumulated_residual = cache.accumulated_resid(
-        layer=-1, incl_mid=True, pos_slice=-1
-    )
+    accumulated_residual = cache.accumulated_resid(layer=-1, incl_mid=True, pos_slice=-1)
     ref_scaled_residual_stack = cache.apply_ln_to_stack(
         accumulated_residual, layer=-1, pos_slice=-1
     )
@@ -210,12 +198,10 @@ def test_accumulated_resid_with_apply_ln():
         layer=-1, incl_mid=True, pos_slice=-1, apply_ln=True
     )
 
-    assert torch.isclose(
-        ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7
-    ).all()
+    assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_decompose_resid_with_apply_ln():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -227,19 +213,15 @@ def test_decompose_resid_with_apply_ln():
 
     # Get decomposed resid and apply ln seperately (cribbed notebook code)
     per_layer_residual = cache.decompose_resid(layer=-1, pos_slice=-1)
-    ref_scaled_residual_stack = cache.apply_ln_to_stack(
-        per_layer_residual, layer=-1, pos_slice=-1
-    )
+    ref_scaled_residual_stack = cache.apply_ln_to_stack(per_layer_residual, layer=-1, pos_slice=-1)
 
     # Get scaled_residual_stack using apply_ln parameter
     scaled_residual_stack = cache.decompose_resid(layer=-1, pos_slice=-1, apply_ln=True)
 
-    assert torch.isclose(
-        ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7
-    ).all()
+    assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_stack_head_results_with_apply_ln():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -251,21 +233,15 @@ def test_stack_head_results_with_apply_ln():
 
     # Get per head resid stack and apply ln seperately (cribbed notebook code)
     per_head_residual = cache.stack_head_results(layer=-1, pos_slice=-1)
-    ref_scaled_residual_stack = cache.apply_ln_to_stack(
-        per_head_residual, layer=-1, pos_slice=-1
-    )
+    ref_scaled_residual_stack = cache.apply_ln_to_stack(per_head_residual, layer=-1, pos_slice=-1)
 
     # Get scaled_residual_stack using apply_ln parameter
-    scaled_residual_stack = cache.stack_head_results(
-        layer=-1, pos_slice=-1, apply_ln=True
-    )
+    scaled_residual_stack = cache.stack_head_results(layer=-1, pos_slice=-1, apply_ln=True)
 
-    assert torch.isclose(
-        ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7
-    ).all()
+    assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
 
 
-@torch.set_grad_enabled(False)
+@torch.no_grad
 def test_stack_neuron_results_with_apply_ln():
     # Load solu-2l
     model = load_model("solu-2l")
@@ -277,15 +253,9 @@ def test_stack_neuron_results_with_apply_ln():
 
     # Get neuron result stack and apply ln seperately
     neuron_result_stack = cache.stack_neuron_results(layer=-1, pos_slice=-1)
-    ref_scaled_residual_stack = cache.apply_ln_to_stack(
-        neuron_result_stack, layer=-1, pos_slice=-1
-    )
+    ref_scaled_residual_stack = cache.apply_ln_to_stack(neuron_result_stack, layer=-1, pos_slice=-1)
 
     # Get scaled_residual_stack using apply_ln parameter
-    scaled_residual_stack = cache.stack_neuron_results(
-        layer=-1, pos_slice=-1, apply_ln=True
-    )
+    scaled_residual_stack = cache.stack_neuron_results(layer=-1, pos_slice=-1, apply_ln=True)
 
-    assert torch.isclose(
-        ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7
-    ).all()
+    assert torch.isclose(ref_scaled_residual_stack, scaled_residual_stack, atol=1e-7).all()
