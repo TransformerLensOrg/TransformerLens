@@ -24,4 +24,4 @@ Add any other context about the problem here.
 
 ### Checklist
 
-- [ ] I have checked that there is no similar [issue](https://github.com/neelnanda-io/TransformerLens/issues) in the repo (**required**)
+- [ ] I have checked that there is no similar [issue](https://github.com/TransformerLensOrg/TransformerLens/issues) in the repo (**required**)
