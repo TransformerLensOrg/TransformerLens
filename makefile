@@ -11,11 +11,14 @@ check-format:
 unit-test:
 	poetry run pytest tests/unit
 
+integration-test:
+	poetry run pytest tests/integration
+
 acceptance-test:
 	poetry run pytest tests/acceptance
 
 coverage-report-test:
-	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit
+	poetry run pytest --cov=transformer_lens/ --cov-report=html --cov-branch tests/unit tests/integration tests/acceptance
 
 docstring-test:
 	poetry run pytest transformer_lens/
