@@ -14,8 +14,18 @@ One significant design decision made was to have a single transformer implementa
 
 ## Installation
 
-`pip install git+https://github.com/neelnanda-io/TransformerLens`
+`pip install git+https://github.com/TransformerLensOrg/TransformerLens`
 
 Import the library with `import transformer_lens`
 
-(Note: This library used to be known as EasyTransformer, and some breaking changes have been made since the rename. If you need to use the old version with some legacy code, run `pip install git+https://github.com/neelnanda-io/TransformerLens@v1`.)
+(Note: This library used to be known as EasyTransformer, and some breaking changes have been made since the rename. If you need to use the old version with some legacy code, run `pip install git+https://github.com/TransformerLensOrg/TransformerLens@v1`.)
+
+## Huggingface Gated Access
+
+Some of the models available in TransformerLens require gated access to be used. Luckily TransformerLens provides a way to access those models via the configuration of an environmental variable. Simply configure your access token found [here](https://huggingface.co/settings/tokens) as `HF_TOKEN` in your environment.
+
+You will need to make sure you accept the agreements for any gated models, but once you do, the models will work with TransformerLens without issue. If you attempt to ues one of these models before you have accepted any related agreements, the console output will be very helpful and point you to the URL where you need to accept an agreement. As of 23/4/24, the current list of gated models supported by TransformerLens is as follows.
+
+* https://huggingface.co/mistralai/Mixtral-8x7B-v0.1
+* https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1
+* https://huggingface.co/mistralai/Mistral-7B-v0.1

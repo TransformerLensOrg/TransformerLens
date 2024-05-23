@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import re
 import shutil
 from copy import deepcopy
@@ -521,6 +522,28 @@ class Slice:
     ) -> str:
         return f"Slice: {self.slice} Mode: {self.mode} "
 
+    @classmethod
+    def unwrap(
+        cls,
+        slice_input: Union["Slice", SliceInput],
+    ) -> "Slice":
+        """
+        Takes a Slice-like input and converts it into a Slice, if it is not already.
+
+        Args:
+            slice_input (Union[Slice, SliceInput]): The input to turn into a Slice.
+
+        Returns:
+            Slice: A Slice object.
+        """
+        if not isinstance(slice_input, Slice):
+            if isinstance(
+                slice_input, int
+            ):  # slicing with an int collapses the dimension so this stops the pos dimension from collapsing
+                slice_input = [slice_input]
+            slice_input = Slice(slice_input)
+        return slice_input
+
 
 def get_act_name(
     name: str,
@@ -957,6 +980,23 @@ def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> to
     return attention_mask
 
 
+def repeat_along_head_dimension(
+    tensor: Float[torch.Tensor, "batch pos d_model"],
+    n_heads: int,
+    clone_tensor=True,
+    # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
+):
+    repeated_tensor = einops.repeat(
+        tensor,
+        "batch pos d_model -> batch pos n_heads d_model",
+        n_heads=n_heads,
+    )
+    if clone_tensor:
+        return repeated_tensor.clone()
+    else:
+        return repeated_tensor
+
+
 def get_nested_attr(obj, attr_str):
     """
     Retrieves a nested attribute from an object based on a dot-separated string.
@@ -1103,9 +1143,11 @@ def get_tokenizer_with_bos(tokenizer):
     if add_bos_token:
         tokenizer_with_bos = tokenizer
     else:
+        huggingface_token = os.environ.get("HF_TOKEN", None)
         tokenizer_with_bos = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path,
             add_bos_token=True,
+            token=huggingface_token,
             **init_kwargs,
         )
 

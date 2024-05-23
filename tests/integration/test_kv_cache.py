@@ -6,7 +6,7 @@ from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCac
 
 
 # Pythia models seem to have some kind of numerical stability issue.
-# See: https://github.com/neelnanda-io/TransformerLens/issues/385
+# See: https://github.com/TransformerLensOrg/TransformerLens/issues/385
 @pytest.fixture(scope="session", params=[("gpt2-small", 1e-4), ("pythia-14m", 1e-2)])
 def model_and_atol(request):
     return request.param

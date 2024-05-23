@@ -5,6 +5,7 @@ This module contains functions for loading pretrained models from the Hugging Fa
 
 import dataclasses
 import logging
+import os
 import re
 from typing import Dict, Optional, Union, cast
 
@@ -120,7 +121,10 @@ OFFICIAL_MODEL_NAMES = [
     "CodeLlama-7b-hf",
     "CodeLlama-7b-Python-hf",
     "CodeLlama-7b-Instruct-hf",
-    # TODO Llama-2-70b-hf requires Grouped-Query Attention, see the paper https://arxiv.org/pdf/2307.09288.pdf
+    "meta-llama/Meta-Llama-3-8B",
+    "meta-llama/Meta-Llama-3-8B-Instruct",
+    "meta-llama/Meta-Llama-3-70B",
+    "meta-llama/Meta-Llama-3-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
     "roneneldan/TinyStories-1M",
@@ -170,6 +174,7 @@ OFFICIAL_MODEL_NAMES = [
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
+    "microsoft/Phi-3-mini-4k-instruct",
     "google/gemma-2b",
     "google/gemma-7b",
     "google/gemma-2b-it",
@@ -583,6 +588,7 @@ MODEL_ALIASES = {
     "microsoft/phi-1": ["phi-1"],
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
+    "microsoft/Phi-3-mini-4k-instruct": ["phi-3"],
     "google/gemma-2b": ["gemma-2b"],
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
@@ -600,7 +606,7 @@ NON_HF_HOSTED_MODEL_NAMES = [
     "llama-30b-hf",
     "llama-65b-hf",
 ]
-"""Official model names for models that not hosted on HuggingFace."""
+"""Official model names for models not hosted on HuggingFace."""
 
 # Sets a default model alias, by convention the first one in the model alias table, else the official name if it has no aliases
 DEFAULT_MODEL_ALIASES = [
@@ -610,9 +616,8 @@ DEFAULT_MODEL_ALIASES = [
 NEED_REMOTE_CODE_MODELS = (
     "bigcode/santacoder",
     "Qwen/Qwen-",
-    "microsoft/phi-1",
-    "microsoft/phi-1_5",
     "microsoft/phi-2",
+    "microsoft/Phi-3-mini-4k-instruct",
 )
 
 
@@ -659,8 +664,14 @@ def convert_hf_model_config(model_name: str, **kwargs):
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
-        hf_config = AutoConfig.from_pretrained(official_model_name, **kwargs)
+        huggingface_token = os.environ.get("HF_TOKEN", None)
+        hf_config = AutoConfig.from_pretrained(
+            official_model_name,
+            token=huggingface_token,
+            **kwargs,
+        )
         architecture = hf_config.architectures[0]
+
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -768,6 +779,44 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_ctx": 4096,
             "eps": 1e-5,
             "d_vocab": 32000,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 128,
+            "final_rms": True,
+            "gated_mlp": True,
+        }
+    elif "Meta-Llama-3-8B" in official_model_name:
+        cfg_dict = {
+            "d_model": 4096,
+            "d_head": 128,
+            "n_heads": 32,
+            "d_mlp": 14336,
+            "n_layers": 32,
+            "n_ctx": 8192,
+            "eps": 1e-5,
+            "d_vocab": 128256,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 128,
+            "final_rms": True,
+            "gated_mlp": True,
+        }
+    elif "Meta-Llama-3-70B" in official_model_name:
+        cfg_dict = {
+            "d_model": 8192,
+            "d_head": 128,
+            "n_heads": 64,
+            "d_mlp": 28672,
+            "n_layers": 80,
+            "n_ctx": 8192,
+            "eps": 1e-5,
+            "d_vocab": 128256,
             "act_fn": "silu",
             "n_key_value_heads": 8,
             "normalization_type": "RMS",
@@ -1050,6 +1099,28 @@ def convert_hf_model_config(model_name: str, **kwargs):
         }
         partial_rotary_factor = hf_config.partial_rotary_factor
         cfg_dict["rotary_dim"] = round(partial_rotary_factor * cfg_dict["d_head"])
+    elif architecture == "Phi3ForCausalLM":
+        # Architecture for microsoft/phi3 models
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "trust_remote_code": True,
+            "rotary_base": hf_config.rope_theta,
+            "use_attn_scale": True,
+            "gated_mlp": True,
+            "parallel_attn_mlp": False,
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+        }
 
     elif official_model_name.startswith("google/gemma-2b"):
         # Architecture for Gemma 2b and Gemma 2b Instruct models
@@ -1062,7 +1133,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu",
+            "act_fn": "gelu_new",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
@@ -1084,7 +1155,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu",
+            "act_fn": "gelu_new",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
@@ -1101,6 +1172,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
     cfg_dict["original_architecture"] = architecture
     # The name such that AutoTokenizer.from_pretrained works
     cfg_dict["tokenizer_name"] = official_model_name
+    if kwargs.get("trust_remote_code", False):
+        cfg_dict["trust_remote_code"] = True
     return cfg_dict
 
 
@@ -1145,6 +1218,7 @@ def convert_neel_model_config(official_model_name: str, **kwargs):
 
 def get_pretrained_model_config(
     model_name: str,
+    hf_cfg: Optional[dict] = None,
     checkpoint_index: Optional[int] = None,
     checkpoint_value: Optional[int] = None,
     fold_ln: bool = False,
@@ -1164,6 +1238,8 @@ def get_pretrained_model_config(
         model_name: The name of the model. This can be either the official
             HuggingFace model name, or the name of a model trained by me
             (NeelNanda).
+        hf_cfg (dict, optional): Config of a loaded pretrained HF model,
+            converted to a dictionary.
         checkpoint_index (int, optional): If loading from a
             checkpoint, the index of the checkpoint to load. Defaults to None.
         checkpoint_value (int, optional): If loading from a checkpoint, the
@@ -1255,6 +1331,8 @@ def get_pretrained_model_config(
     cfg_dict["device"] = device
     cfg_dict["n_devices"] = n_devices
     cfg_dict["default_prepend_bos"] = default_prepend_bos
+    if hf_cfg is not None:
+        cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
@@ -1378,11 +1456,13 @@ def get_pretrained_state_dict(
         return state_dict
     else:
         if cfg.from_checkpoint:
+            huggingface_token = os.environ.get("HF_TOKEN", None)
             if official_model_name.startswith("stanford-crfm"):
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
                     torch_dtype=dtype,
+                    token=huggingface_token,
                     **kwargs,
                 )
             elif official_model_name.startswith("EleutherAI/pythia"):
@@ -1390,20 +1470,28 @@ def get_pretrained_state_dict(
                     official_model_name,
                     revision=f"step{cfg.checkpoint_value}",
                     torch_dtype=dtype,
+                    token=huggingface_token,
                     **kwargs,
                 )
             else:
                 raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
+            huggingface_token = os.environ.get("HF_TOKEN", None)
             if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
                 raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
-                    official_model_name, torch_dtype=dtype, **kwargs
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token,
+                    **kwargs,
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
-                    official_model_name, torch_dtype=dtype, **kwargs
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token,
+                    **kwargs,
                 )
 
             # Load model weights, and fold in layer norm weights
@@ -1439,6 +1527,8 @@ def get_pretrained_state_dict(
             state_dict = convert_qwen2_weights(hf_model, cfg)
         elif cfg.original_architecture == "PhiForCausalLM":
             state_dict = convert_phi_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Phi3ForCausalLM":
+            state_dict = convert_phi3_weights(hf_model, cfg)
         elif cfg.original_architecture == "GemmaForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
         else:
@@ -1705,9 +1795,14 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         W_Q = llama.model.layers[l].self_attn.q_proj.weight
         W_K = llama.model.layers[l].self_attn.k_proj.weight
         W_V = llama.model.layers[l].self_attn.v_proj.weight
-        W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=n_kv_heads)
-        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=n_kv_heads)
+
+        # in case of quantization,
+        # parameters should stay as bitsandbytes.nn.modules.Params4bit
+        if not cfg.load_in_4bit:
+            W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
+            W_K = einops.rearrange(W_K, "(n h) m->n m h", n=n_kv_heads)
+            W_V = einops.rearrange(W_V, "(n h) m->n m h", n=n_kv_heads)
+
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_V"] = W_V
@@ -1729,7 +1824,10 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
         )
 
         W_O = llama.model.layers[l].self_attn.o_proj.weight
-        W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+
+        if not cfg.load_in_4bit:
+            W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+
         state_dict[f"blocks.{l}.attn.W_O"] = W_O.to(device=cfg.device)
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(
@@ -1738,13 +1836,20 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.ln2.w"] = llama.model.layers[l].post_attention_layernorm.weight
 
-        state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
-        state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight.T
+        # in case of quantization,
+        # parameters should stay as bitsandbytes.nn.modules.Params4bit
+        if not cfg.load_in_4bit:
+            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight.T
+            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight.T
+            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight.T
+        else:
+            state_dict[f"blocks.{l}.mlp.W_in"] = llama.model.layers[l].mlp.up_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_gate"] = llama.model.layers[l].mlp.gate_proj.weight
+            state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight
+
         state_dict[f"blocks.{l}.mlp.b_in"] = torch.zeros(
             cfg.d_mlp, dtype=cfg.dtype, device=cfg.device
         )
-
-        state_dict[f"blocks.{l}.mlp.W_out"] = llama.model.layers[l].mlp.down_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(
             cfg.d_model, dtype=cfg.dtype, device=cfg.device
         )
@@ -2513,22 +2618,77 @@ def convert_phi_weights(phi, cfg: HookedTransformerConfig):
     return state_dict
 
 
+def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
+    state_dict = {}
+
+    state_dict["embed.W_E"] = phi.model.embed_tokens.weight
+
+    for l in range(cfg.n_layers):
+        state_dict[f"blocks.{l}.ln1.w"] = phi.model.layers[l].input_layernorm.weight
+        state_dict[f"blocks.{l}.ln1.b"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+        W = phi.model.layers[l].self_attn.qkv_proj.weight
+        W_Q, W_K, W_V = torch.tensor_split(W, 3, dim=0)
+        W_Q = einops.rearrange(
+            W_Q, "(n_head d_head) d_model -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        W_K = einops.rearrange(
+            W_K, "(n_head d_head) d_model  -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        W_V = einops.rearrange(
+            W_V, "(n_head d_head) d_model  -> n_head d_model d_head", n_head=cfg.n_heads
+        )
+        state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.W_K"] = W_K
+        state_dict[f"blocks.{l}.attn.b_K"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+        state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+
+        W_O = phi.model.layers[l].self_attn.o_proj.weight
+        W_O = einops.rearrange(
+            W_O, "d_model (n_head d_head) -> n_head d_head d_model", n_head=cfg.n_heads
+        )
+
+        state_dict[f"blocks.{l}.attn.W_O"] = W_O
+        state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
+
+        state_dict[f"blocks.{l}.ln2.w"] = phi.model.layers[l].post_attention_layernorm.weight
+        state_dict[f"blocks.{l}.ln2.b"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+        W = phi.model.layers[l].mlp.gate_up_proj.weight.T
+        W_gate, W_in = torch.tensor_split(W, 2, dim=1)
+        state_dict[f"blocks.{l}.mlp.W_in"] = W_in
+        state_dict[f"blocks.{l}.mlp.W_gate"] = W_gate
+        state_dict[f"blocks.{l}.mlp.W_out"] = phi.model.layers[l].mlp.down_proj.weight.T
+
+    state_dict["ln_final.w"] = phi.model.norm.weight
+
+    state_dict["unembed.W_U"] = phi.lm_head.weight.T
+    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+
+    return state_dict
+
+
 def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
     state_dict = {}
 
-    assert cfg.n_key_value_heads is not None  # mypy
-    assert cfg.d_mlp is not None  # mypy
+    assert cfg.n_key_value_heads is not None  # keep mypy happy
+    assert cfg.d_mlp is not None  # keep mypy happy
 
-    # Gemma Models scale embeddings by multiplying by sqrt(d_model)
-    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * (cfg.d_model**0.5)
+    # Gemma Models scale embeddings by multiplying by sqrt(d_model), use hidden state type to match
+    # HF implementation
+    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * torch.tensor(
+        cfg.d_model**0.5, dtype=cfg.dtype
+    )
 
     # Gemma has no biases anywhere
     for l in range(cfg.n_layers):
-        # GemmaRMSNorm adds 1 to weights before multiplying by input
+        # GemmaRMSNorm adds 1 to weights before multiplying by input, keep RMS calcs in float32
         state_dict[f"blocks.{l}.ln1.w"] = gemma.model.layers[
             l
-        ].input_layernorm.weight + torch.ones_like(
-            gemma.model.layers[l].input_layernorm.weight, dtype=cfg.dtype
+        ].input_layernorm.weight.float() + torch.ones_like(
+            gemma.model.layers[l].input_layernorm.weight, dtype=torch.float32
         )
 
         W_Q = gemma.model.layers[l].self_attn.q_proj.weight
@@ -2555,11 +2715,11 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
-        # GemmaRMSNorm adds 1 to weights before multiplying by input
+        # GemmaRMSNorm adds 1 to weights before multiplying by input, keep RMS calcs in float32
         state_dict[f"blocks.{l}.ln2.w"] = gemma.model.layers[
             l
-        ].post_attention_layernorm.weight + torch.ones_like(
-            gemma.model.norm.weight, dtype=cfg.dtype
+        ].post_attention_layernorm.weight.float() + torch.ones_like(
+            gemma.model.norm.weight, dtype=torch.float32
         )
 
         state_dict[f"blocks.{l}.mlp.W_in"] = gemma.model.layers[l].mlp.up_proj.weight.T
@@ -2569,9 +2729,9 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_out"] = gemma.model.layers[l].mlp.down_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
-    # GemmaRMSNorm adds 1 to weights before multiplying by input
-    state_dict["ln_final.w"] = gemma.model.norm.weight + torch.ones_like(
-        gemma.model.norm.weight, dtype=cfg.dtype
+    # GemmaRMSNorm adds 1 to weights before multiplying by input, keep RMS calcs in float32
+    state_dict["ln_final.w"] = gemma.model.norm.weight.float() + torch.ones_like(
+        gemma.model.norm.weight, dtype=torch.float32
     )
 
     state_dict["unembed.W_U"] = gemma.lm_head.weight.T

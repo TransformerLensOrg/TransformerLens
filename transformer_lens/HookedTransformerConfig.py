@@ -10,7 +10,7 @@ import logging
 import pprint
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -149,6 +149,8 @@ class HookedTransformerConfig:
         tokenizer_prepends_bos (bool, *optional*): This flag is set by set_tokenizer. It is set to True only
             when the tokenizer automatically prepends the BOS token if initialized with add_bos_token=True.
             We need this information to dynamically control bos prepending.
+        load_in_4bit(bool): If this flag is set, then it's assumed that parameters are 4-bit quantized
+            with bitsandbytes. Currently only supported for Llama.
         n_key_value_heads (int, *optional*): The number of groups of heads that use the same key and value matrix.
             Only for models that use Grouped Query Attention.
         post_embedding_ln (bool): Whether to apply layer normalization after embedding the tokens. Defaults
@@ -209,6 +211,7 @@ class HookedTransformerConfig:
     rotary_base: int = 10000
     trust_remote_code: bool = False
     rotary_adjacent_pairs: bool = False
+    load_in_4bit: bool = False
     num_experts: Optional[int] = None
     experts_per_token: Optional[int] = None
 
@@ -287,6 +290,13 @@ class HookedTransformerConfig:
             True,
             False,
         ], f"padding_side must be either True or False, but {self.default_prepend_bos} is given"
+
+    @classmethod
+    def unwrap(cls, config: Union[Dict, "HookedTransformerConfig"]) -> HookedTransformerConfig:
+        """
+        Convenience function to avoid duplicate code from a common way config is passed to various components
+        """
+        return HookedTransformerConfig.from_dict(config) if isinstance(config, Dict) else config
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> HookedTransformerConfig:

@@ -1,5 +1,5 @@
 [tool.poetry]
-    authors=["Neel Nanda <77788841+neelnanda-io@users.noreply.github.com>"]
+    authors=["Neel Nanda <77788841+TransformerLensOrg@users.noreply.github.com>"]
     description="An implementation of transformers tailored for mechanistic interpretability."
     license="MIT"
     name="transformer-lens"
@@ -28,15 +28,15 @@
         pandas=">=1.1.5"
         python=">=3.8,<4.0"
         rich=">=12.6.0"
-        torch = [
-            {platform = "linux", version = ">=1.10"}, # We can use any torch version on Linux (e.g colab)
-            {platform = "!=linux", version = ">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
+        sentencepiece="*"
+        torch=[
+            {platform="!=linux", version=">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
+            {platform="linux", version=">=1.10"},                 # We can use any torch version on Linux (e.g colab)
         ]
         tqdm=">=4.64.1"
         transformers=">=4.37.2"
         typing-extensions="*"
         wandb=">=0.13.5"
-        sentencepiece = "*"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
@@ -95,7 +95,7 @@
     ignore_missing_imports=true
 
 [tool.black]
-    line-length=100  # Set line length to 100 to match other tools
+    line-length=100 # Set line length to 100 to match other tools
     # Exclude snapshot tests & .venv
     exclude='''
 (

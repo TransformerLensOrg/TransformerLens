@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev*
     paths:
       - "**" # Include all files by default
       - "!.devcontainer/**"
@@ -15,6 +16,7 @@ on:
   pull_request:
     branches:
       - main
+      - dev*
     paths:
       - "**"
       - "!.devcontainer/**"
@@ -36,8 +38,8 @@ permissions:
   contents: write
 
 jobs:
-  checks:
-    name: Checks
+  compatibility-checks:
+    name: Compatibility Checks
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -45,7 +47,6 @@ jobs:
           - "3.8"
           - "3.9"
           - "3.10"
-          - "3.11"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -67,20 +68,15 @@ jobs:
         run: |
           poetry lock --check
           poetry install --with dev
-      - name: Check format
-        run: make check-format
-      - name: Unit test
+      - name: Unit Test
         run: make unit-test
-      - name: Docstring test
-        run: make docstring-test
-      - name: Type check
-        run: poetry run mypy .
+      - name: Acceptance Test
+        run: make acceptance-test
       - name: Build check
         run: poetry build
 
-  # Acceptance tests are run in parallel with unit checks.
-  acceptance-tests:
-    name: Acceptance Tests
+  code-checks:
+    name: Code Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -103,12 +99,40 @@ jobs:
         run: |
           poetry lock --check
           poetry install --with dev
-      - name: Acceptance test
-        run: make acceptance-test
+      - name: Check format
+        run: make check-format
+      - name: Docstring test
+        run: make docstring-test
+      - name: Type check
+        run: poetry run mypy .
+      - name: Test Suite with Coverage Report
+        run: make coverage-report-test
+      - name: Build check
+        run: poetry build
+      - name: Upload Coverage Report Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-coverage
+          path: htmlcov
 
   notebook-checks:
     name: Notebook Checks
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        notebook:
+          # - "Activation_Patching_in_TL_Demo"
+          # - "Attribution_Patching_Demo"
+          - "BERT"
+          - "Exploratory_Analysis_Demo"
+          # - "Grokking_Demo"
+          # - "Head_Detector_Demo"
+          - "Interactive_Neuroscope"
+          # - "LLaMA"
+          # - "LLaMA2_GPU_Quantized"
+          - "Main_Demo"
+          # - "No_Position_Experiment"
+          - "Othello_GPT"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -134,4 +158,63 @@ jobs:
           version: 1.0
       - name: Check Notebook Output Consistency
         # Note: currently only checks notebooks we have specifically setup for this
-        run: make notebook-test
+        run: poetry run pytest --nbval-sanitize-with demos/doc_sanitize.cfg demos/${{ matrix.notebook }}.ipynb
+
+
+  build-docs:
+    # When running on a PR, this just checks we can build the docs without errors
+    # When running on merge to main, it builds the docs and then another job deploys them
+    name: 'Build Docs'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    needs: code-checks
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "poetry"
+      - name: Install pandoc
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: pandoc
+          version: 1.0
+      - name: Install dependencies
+        run: poetry install --with docs
+      - name: Download Test Coverage Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: test-coverage
+          path: docs/source/_static/coverage
+      - name: Build Docs
+        run: poetry run build-docs
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+      - name: Upload Docs Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: documentation
+          path: docs/build
+
+  deploy-docs:
+    name: Deploy Docs
+    runs-on: ubuntu-latest
+    # Only run if merging a PR into main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-docs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Docs Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: documentation
+          path: docs/build
+      - name: Upload to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: docs/build
+          clean-exclude: |
+            *.*.*/

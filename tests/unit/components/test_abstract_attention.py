@@ -1,6 +1,6 @@
 import torch
 
-from transformer_lens.components import Attention
+from transformer_lens.components import AbstractAttention
 
 
 def test_create_alibi_slope():
@@ -13,7 +13,7 @@ def test_create_alibi_slope():
             expected[row, col] = float(min(col - row, 0))
 
     # Check against the method's vectorized version
-    result = Attention.create_alibi_slope(n_ctx)
+    result = AbstractAttention.create_alibi_slope(n_ctx)
     assert torch.allclose(expected, result)
 
 
@@ -21,7 +21,7 @@ def test_create_alibi_bias():
     n_heads = 2
     n_ctx = 4
 
-    result = Attention.create_alibi_bias(n_heads, n_ctx, torch.device("cpu"))
+    result = AbstractAttention.create_alibi_bias(n_heads, n_ctx, torch.device("cpu"))
 
     for matrix in result:
         n_row, n_col = matrix.size()
