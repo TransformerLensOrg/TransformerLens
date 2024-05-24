@@ -99,7 +99,7 @@ class HookPoint(nn.Module):
         def full_hook(
             module: torch.nn.Module,
             module_input: Any,
-            module_output: torch.Tensor,
+            module_output: Any,
         ):
             if (
                 dir == "bwd"
@@ -116,7 +116,7 @@ class HookPoint(nn.Module):
             _internal_hooks = self._forward_hooks
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            pt_handle = self.register_full_backward_hook(full_hook)
+            pt_handle = self.register_backward_hook(full_hook)
             _internal_hooks = self._backward_hooks
             visible_hooks = self.bwd_hooks
         else:
