@@ -41,6 +41,9 @@ def test_get_property():
     d_mlp = get_property("d_mlp", "attn-only-1l")
     assert d_mlp == 2048
 
+    n_key_value_heads = get_property("n_key_value_heads", "attn-only-1l")
+    assert n_key_value_heads is None
+
     # Test an unknown property
     with pytest.raises(KeyError):
         get_property("unknown_property", "attn-only-1l")
