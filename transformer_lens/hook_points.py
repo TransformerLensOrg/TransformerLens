@@ -7,7 +7,18 @@ import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple, Union, cast
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    cast,
+)
 
 import torch.nn as nn
 import torch.utils.hooks as hooks
@@ -267,6 +278,50 @@ class HookedRootModule(nn.Module):
     def add_perma_hook(self, name, hook, dir="fwd") -> None:
         self.add_hook(name, hook, dir=dir, is_permanent=True)
 
+    def _enable_hook_with_name(self, name: str, hook: Callable, dir: Literal["fwd", "bwd"]):
+        """This function takes a key for the mod_dict and enables the related hook for that module
+
+        Args:
+            name (str): The module name
+            hook (Callable): The hook to add
+            dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
+        """
+        self.mod_dict[name].add_hook(hook, dir=dir, level=self.context_level)
+
+    def _enable_hooks_for_points(
+        self,
+        hook_points: Iterable[Tuple[str, HookPoint]],
+        enabled: Callable,
+        hook: Callable,
+        dir: Literal["fwd", "bwd"],
+    ):
+        """Enables hooks for a list of points
+
+        Args:
+            hook_points (Dict[str, HookPoint]): The hook points
+            enabled (Callable): _description_
+            hook (Callable): _description_
+            dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): _description_
+        """
+        for hook_name, hook_point in hook_points:
+            if enabled(hook_name):
+                hook_point.add_hook(hook, dir=dir, level=self.context_level)
+
+    def _enable_hook(self, name: Union[str, Callable], hook: Callable, dir: Literal["fwd", "bwd"]):
+        """Enables an individual hook on a hook point
+
+        Args:
+            name (str): The name of the hook
+            hook (Callable): The actual hook
+            dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;], optional): The direction of the hook. Defaults to "fwd".
+        """
+        if isinstance(name, str):
+            self._enable_hook_with_name(name=name, hook=hook, dir=dir)
+        else:
+            self._enable_hooks_for_points(
+                hook_points=self.hook_dict.items(), enabled=name, hook=hook, dir=dir
+            )
+
     @contextmanager
     def hooks(
         self,
@@ -296,21 +351,9 @@ class HookedRootModule(nn.Module):
             self.context_level += 1
 
             for name, hook in fwd_hooks:
-                if isinstance(name, str):
-                    self.mod_dict[name].add_hook(hook, dir="fwd", level=self.context_level)
-                else:
-                    # Otherwise, name is a Boolean function on names
-                    for hook_name, hp in self.hook_dict.items():
-                        if name(hook_name):
-                            hp.add_hook(hook, dir="fwd", level=self.context_level)
+                self._enable_hook(name=name, hook=hook, dir="fwd")
             for name, hook in bwd_hooks:
-                if isinstance(name, str):
-                    self.mod_dict[name].add_hook(hook, dir="bwd", level=self.context_level)
-                else:
-                    # Otherwise, name is a Boolean function on names
-                    for hook_name, hp in self.hook_dict:  # type: ignore
-                        if name(hook_name):
-                            hp.add_hook(hook, dir="bwd", level=self.context_level)
+                self._enable_hook(name=name, hook=hook, dir="bwd")
             yield self
         finally:
             if reset_hooks_end:
