@@ -182,6 +182,7 @@ OFFICIAL_MODEL_NAMES = [
     "01-ai/Yi-34B",
     "01-ai/Yi-6B-Chat",
     "01-ai/Yi-34B-Chat",
+    "ai-forever/mGPT",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -595,6 +596,7 @@ MODEL_ALIASES = {
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
     "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
     "01-ai/Yi-34B-Chat": ["yi-34b-chat", "Yi-34B-Chat"],
+    "ai-forever/mGPT": ["mGPT"],
 }
 """Model aliases for models on HuggingFace."""
 
