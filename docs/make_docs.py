@@ -90,6 +90,7 @@ def generate_model_table(_app: Optional[Any] = None):
         "d_vocab",
         "d_head",
         "d_mlp",
+        "n_key_value_heads",
     ]
     df = pd.DataFrame(
         {
@@ -100,6 +101,7 @@ def generate_model_table(_app: Optional[Any] = None):
     )
 
     # Convert to markdown (with a title)
+    df["n_key_value_heads"] = df["n_key_value_heads"].fillna(-1).astype(int).replace(-1, "")
     markdown_string = df.to_markdown()
     markdown_string = "# Model Properties Table\n\n" + markdown_string
 
