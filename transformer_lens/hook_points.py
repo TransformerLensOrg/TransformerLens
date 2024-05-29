@@ -19,7 +19,6 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    cast,
     runtime_checkable,
 )
 
