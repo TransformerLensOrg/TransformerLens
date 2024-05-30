@@ -147,7 +147,6 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
-    "mistralai/Mistral-7B-Instruct-v0.2",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "bigscience/bloom-560m",
@@ -184,6 +183,7 @@ OFFICIAL_MODEL_NAMES = [
     "01-ai/Yi-34B",
     "01-ai/Yi-6B-Chat",
     "01-ai/Yi-34B-Chat",
+    "ai-forever/mGPT",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -559,7 +559,6 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
-    "mistralai/Mistral-7B-Instruct-v0.2": ["mistral-7b-instruct-v0.2"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
     "mistralai/Mixtral-8x7B-Instruct-v0.1": [
         "mixtral-instruct",
@@ -599,6 +598,7 @@ MODEL_ALIASES = {
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
     "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
     "01-ai/Yi-34B-Chat": ["yi-34b-chat", "Yi-34B-Chat"],
+    "ai-forever/mGPT": ["mGPT"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -944,7 +944,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "window_size": hf_config.sliding_window,  # This will be 4096 on v0.1, None on later models as none was used
+            "window_size": 4096,
             "attn_types": ["local"] * 32,
             "eps": 1e-05,
             "n_key_value_heads": 8,
@@ -1135,7 +1135,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu",
+            "act_fn": "gelu_new",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
@@ -1157,7 +1157,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_ctx": 8192,
             "eps": 1e-06,
             "d_vocab": 256000,
-            "act_fn": "gelu",
+            "act_fn": "gelu_new",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_base": 10000.0,
@@ -1174,6 +1174,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
     cfg_dict["original_architecture"] = architecture
     # The name such that AutoTokenizer.from_pretrained works
     cfg_dict["tokenizer_name"] = official_model_name
+    if kwargs.get("trust_remote_code", False):
+        cfg_dict["trust_remote_code"] = True
     return cfg_dict
 
 
@@ -2673,19 +2675,22 @@ def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
 def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
     state_dict = {}
 
-    assert cfg.n_key_value_heads is not None  # mypy
-    assert cfg.d_mlp is not None  # mypy
+    assert cfg.n_key_value_heads is not None  # keep mypy happy
+    assert cfg.d_mlp is not None  # keep mypy happy
 
-    # Gemma Models scale embeddings by multiplying by sqrt(d_model)
-    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * (cfg.d_model**0.5)
+    # Gemma Models scale embeddings by multiplying by sqrt(d_model), use hidden state type to match
+    # HF implementation
+    state_dict["embed.W_E"] = gemma.model.embed_tokens.weight * torch.tensor(
+        cfg.d_model**0.5, dtype=cfg.dtype
+    )
 
     # Gemma has no biases anywhere
     for l in range(cfg.n_layers):
-        # GemmaRMSNorm adds 1 to weights before multiplying by input
+        # GemmaRMSNorm adds 1 to weights before multiplying by input, keep RMS calcs in float32
         state_dict[f"blocks.{l}.ln1.w"] = gemma.model.layers[
             l
-        ].input_layernorm.weight + torch.ones_like(
-            gemma.model.layers[l].input_layernorm.weight, dtype=cfg.dtype
+        ].input_layernorm.weight.float() + torch.ones_like(
+            gemma.model.layers[l].input_layernorm.weight, dtype=torch.float32
         )
 
         W_Q = gemma.model.layers[l].self_attn.q_proj.weight
@@ -2712,11 +2717,11 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
-        # GemmaRMSNorm adds 1 to weights before multiplying by input
+        # GemmaRMSNorm adds 1 to weights before multiplying by input, keep RMS calcs in float32
         state_dict[f"blocks.{l}.ln2.w"] = gemma.model.layers[
             l
-        ].post_attention_layernorm.weight + torch.ones_like(
-            gemma.model.norm.weight, dtype=cfg.dtype
+        ].post_attention_layernorm.weight.float() + torch.ones_like(
+            gemma.model.norm.weight, dtype=torch.float32
         )
 
         state_dict[f"blocks.{l}.mlp.W_in"] = gemma.model.layers[l].mlp.up_proj.weight.T
@@ -2726,9 +2731,9 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_out"] = gemma.model.layers[l].mlp.down_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
-    # GemmaRMSNorm adds 1 to weights before multiplying by input
-    state_dict["ln_final.w"] = gemma.model.norm.weight + torch.ones_like(
-        gemma.model.norm.weight, dtype=cfg.dtype
+    # GemmaRMSNorm adds 1 to weights before multiplying by input, keep RMS calcs in float32
+    state_dict["ln_final.w"] = gemma.model.norm.weight.float() + torch.ones_like(
+        gemma.model.norm.weight, dtype=torch.float32
     )
 
     state_dict["unembed.W_U"] = gemma.lm_head.weight.T
