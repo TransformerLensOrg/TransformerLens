@@ -1,0 +1,7 @@
+transformer\_lens.components.grouped\_query\_attention
+======================================================
+
+.. automodule:: transformer_lens.components.grouped_query_attention
+   :members:
+   :undoc-members:
+   :show-inheritance:

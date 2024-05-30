@@ -1,0 +1,7 @@
+transformer\_lens.components.layer\_norm
+========================================
+
+.. automodule:: transformer_lens.components.layer_norm
+   :members:
+   :undoc-members:
+   :show-inheritance:

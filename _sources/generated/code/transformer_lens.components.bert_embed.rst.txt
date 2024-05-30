@@ -1,0 +1,7 @@
+transformer\_lens.components.bert\_embed
+========================================
+
+.. automodule:: transformer_lens.components.bert_embed
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,0 +1,7 @@
+transformer\_lens.components.mlp
+================================
+
+.. automodule:: transformer_lens.components.mlp
+   :members:
+   :undoc-members:
+   :show-inheritance:

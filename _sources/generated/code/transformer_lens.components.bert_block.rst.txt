@@ -1,0 +1,7 @@
+transformer\_lens.components.bert\_block
+========================================
+
+.. automodule:: transformer_lens.components.bert_block
+   :members:
+   :undoc-members:
+   :show-inheritance:

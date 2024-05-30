@@ -1,0 +1,7 @@
+transformer\_lens.components.bert\_mlm\_head
+============================================
+
+.. automodule:: transformer_lens.components.bert_mlm_head
+   :members:
+   :undoc-members:
+   :show-inheritance:

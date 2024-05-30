@@ -10,13 +10,9 @@ Submodules
    transformer_lens.ActivationCache
    transformer_lens.FactoredMatrix
    transformer_lens.HookedEncoder
-   transformer_lens.HookedSAE
-   transformer_lens.HookedSAEConfig
-   transformer_lens.HookedSAETransformer
    transformer_lens.HookedTransformer
    transformer_lens.HookedTransformerConfig
    transformer_lens.SVDInterpreter
-   transformer_lens.components
    transformer_lens.evals
    transformer_lens.head_detector
    transformer_lens.hook_points
@@ -32,4 +28,5 @@ Subpackages
 .. toctree::
    :maxdepth: 1
 
+   transformer_lens.components
    transformer_lens.utilities

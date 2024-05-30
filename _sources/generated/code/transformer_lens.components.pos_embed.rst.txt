@@ -1,0 +1,7 @@
+transformer\_lens.components.pos\_embed
+=======================================
+
+.. automodule:: transformer_lens.components.pos_embed
+   :members:
+   :undoc-members:
+   :show-inheritance:

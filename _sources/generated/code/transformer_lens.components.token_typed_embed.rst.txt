@@ -1,0 +1,7 @@
+transformer\_lens.components.token\_typed\_embed
+================================================
+
+.. automodule:: transformer_lens.components.token_typed_embed
+   :members:
+   :undoc-members:
+   :show-inheritance:

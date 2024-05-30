@@ -1,0 +1,7 @@
+transformer\_lens.components.rms\_norm
+======================================
+
+.. automodule:: transformer_lens.components.rms_norm
+   :members:
+   :undoc-members:
+   :show-inheritance:

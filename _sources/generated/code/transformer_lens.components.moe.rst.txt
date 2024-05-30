@@ -1,0 +1,7 @@
+transformer\_lens.components.moe
+================================
+
+.. automodule:: transformer_lens.components.moe
+   :members:
+   :undoc-members:
+   :show-inheritance:
