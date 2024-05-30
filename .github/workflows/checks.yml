@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev*
     paths:
       - "**" # Include all files by default
       - "!.devcontainer/**"
@@ -15,6 +16,7 @@ on:
   pull_request:
     branches:
       - main
+      - dev*
     paths:
       - "**"
       - "!.devcontainer/**"
@@ -125,8 +127,7 @@ jobs:
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
           # - "Head_Detector_Demo"
-          # - "Hooked_SAE_Transformer_Demo"
-          # - "Interactive_Neuroscope"
+          - "Interactive_Neuroscope"
           # - "LLaMA"
           # - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
@@ -165,7 +166,7 @@ jobs:
     # When running on merge to main, it builds the docs and then another job deploys them
     name: 'Build Docs'
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') || contains(github.head_ref, 'docs')
     needs: code-checks
     steps:
       - uses: actions/checkout@v4
