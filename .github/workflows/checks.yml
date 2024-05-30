@@ -166,7 +166,7 @@ jobs:
     # When running on merge to main, it builds the docs and then another job deploys them
     name: 'Build Docs'
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || contains(github.head_ref, 'docs'))
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') || contains(github.head_ref, 'docs')
     needs: code-checks
     steps:
       - uses: actions/checkout@v4
