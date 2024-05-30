@@ -49,6 +49,11 @@ content/special_cases
 
 ```{toctree}
 :hidden:
+:caption: News
+content/news/release-2.0
+
+```{toctree}
+:hidden:
 :caption: Development
 
 content/contributing
