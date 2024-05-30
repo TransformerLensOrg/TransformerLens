@@ -122,16 +122,16 @@ jobs:
       matrix:
         notebook:
           - "Activation_Patching_in_TL_Demo"
-          - "Attribution_Patching_Demo"
+          # - "Attribution_Patching_Demo"
           - "BERT"
           - "Exploratory_Analysis_Demo"
           - "Grokking_Demo"
-          - "Head_Detector_Demo"
+          # - "Head_Detector_Demo"
           - "Interactive_Neuroscope"
           # - "LLaMA"
           # - "LLaMA2_GPU_Quantized"
           - "Main_Demo"
-          - "No_Position_Experiment"
+          # - "No_Position_Experiment"
           - "Othello_GPT"
     steps:
       - uses: actions/checkout@v3
