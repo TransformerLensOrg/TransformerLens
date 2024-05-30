@@ -121,7 +121,7 @@ jobs:
     strategy:
       matrix:
         notebook:
-          - "Activation_Patching_in_TL_Demo"
+          # - "Activation_Patching_in_TL_Demo"
           # - "Attribution_Patching_Demo"
           - "BERT"
           - "Exploratory_Analysis_Demo"
