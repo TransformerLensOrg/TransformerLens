@@ -1402,7 +1402,7 @@ def get_checkpoint_labels(model_name: str, **kwargs):
 
 # %% Loading state dicts
 def get_pretrained_state_dict(
-    official_model_name: str,
+    official_model_name: str | None,
     cfg: HookedTransformerConfig,
     hf_model=None,
     dtype: torch.dtype = torch.float32,
@@ -1422,8 +1422,7 @@ def get_pretrained_state_dict(
     if "torch_dtype" in kwargs:
         dtype = kwargs["torch_dtype"]
         del kwargs["torch_dtype"]
-    official_model_name = get_official_model_name(official_model_name)
-    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
+    if official_model_name is not None and official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
         "trust_remote_code", False
     ):
         logging.warning(
@@ -1431,9 +1430,7 @@ def get_pretrained_state_dict(
         )
         kwargs["trust_remote_code"] = True
     if (
-        official_model_name.startswith("NeelNanda")
-        or official_model_name.startswith("ArthurConmy")
-        or official_model_name.startswith("Baidicoot")
+        official_name is not None and official_model_name.startswith(("NeelNanda", "ArthurConmy", "Baidicoot"))
     ):
         api = HfApi()
         repo_files = api.list_repo_files(
