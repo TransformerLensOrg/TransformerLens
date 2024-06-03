@@ -9,19 +9,14 @@ from transformer_lens.loading_from_pretrained import fill_missing_keys
 
 def get_default_config():
     return HookedTransformerConfig(
-        d_model=128,
-        d_head=8,
-        n_heads=16,
-        n_ctx=128,
-        n_layers=1,
-        d_vocab=50257,
-        attn_only=True
+        d_model=128, d_head=8, n_heads=16, n_ctx=128, n_layers=1, d_vocab=50257, attn_only=True
     )
 
 
 # Successes
 
-@mock.patch('logging.warning')
+
+@mock.patch("logging.warning")
 def test_fill_missing_keys(mock_warning):
     cfg = get_default_config()
     model = HookedTransformer(cfg)
@@ -36,7 +31,9 @@ def test_fill_missing_keys(mock_warning):
     # Check that warnings were issued for missing weight matrices
     for key in default_state_dict:
         if "W_" in key and key not in incomplete_state_dict:
-            mock_warning.assert_any_call(f"Missing key for a weight matrix in pretrained, filled in with an empty tensor: {key}")
+            mock_warning.assert_any_call(
+                f"Missing key for a weight matrix in pretrained, filled in with an empty tensor: {key}"
+            )
 
 
 def test_fill_missing_keys_with_hf_model_keys():
@@ -48,7 +45,9 @@ def test_fill_missing_keys_with_hf_model_keys():
 
     filled_state_dict = fill_missing_keys(model, incomplete_state_dict)
 
-    expected_keys = set(default_state_dict.keys()) - {k for k in default_state_dict.keys() if "hf_model" in k}
+    expected_keys = set(default_state_dict.keys()) - {
+        k for k in default_state_dict.keys() if "hf_model" in k
+    }
     assert set(filled_state_dict.keys()) == expected_keys
 
 
@@ -62,8 +61,8 @@ def test_fill_missing_keys_no_missing_keys():
     assert filled_state_dict == default_state_dict
 
 
-
 # Failures
+
 
 def test_fill_missing_keys_raises_error_on_invalid_model():
     invalid_model = None
