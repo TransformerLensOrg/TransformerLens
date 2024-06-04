@@ -79,7 +79,8 @@ class AbstractAttention(ABC, nn.Module):
             self.register_buffer("mask", causal_mask)
         elif self.attn_type == "local":
             # For local, this is banded, query - window_size < key <= query
-            assert isinstance(self.cfg.window_size, int)
+            if not isinstance(self.cfg.window_size, int):
+                raise ValueError("Window size must be an integer for local attention")
             self.register_buffer("mask", torch.triu(causal_mask, 1 - self.cfg.window_size))
         else:
             raise ValueError(f"Invalid attention type: {self.attn_type}")
@@ -94,7 +95,8 @@ class AbstractAttention(ABC, nn.Module):
         else:
             self.attn_scale = 1.0
         if self.cfg.scale_attn_by_inverse_layer_idx:
-            assert self.layer_id is not None  # keep mypy happy
+            if self.layer_id is None:  # keep mypy happy
+                raise ValueError("Layer ID must be provided to scale attention scores")
             self.attn_scale *= self.layer_id + 1
 
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
@@ -113,7 +115,8 @@ class AbstractAttention(ABC, nn.Module):
             # Applies a rotation to each two-element chunk of keys and queries pre dot producting to bake in relative position. See HookedTransformerConfig for details
             self.hook_rot_k = HookPoint()
             self.hook_rot_q = HookPoint()
-            assert self.cfg.rotary_dim is not None  # keep mypy happy
+            if self.cfg.rotary_dim is None:  # keep mypy happy
+                raise ValueError("Rotary dim must be provided for rotary positional embeddings")
             sin, cos = self.calculate_sin_cos_rotary(
                 self.cfg.rotary_dim,
                 self.cfg.n_ctx,
@@ -355,7 +358,8 @@ class AbstractAttention(ABC, nn.Module):
                 + self.b_Q
             )  # [batch, pos, head_index, d_head]
         if self.cfg.load_in_4bit:
-            assert isinstance(self.W_K, Params4bit)
+            if not isinstance(self.W_K, Params4bit):
+                raise ValueError("W_K must be a Params4bit object if load_in_4bit is True")
             k = self.hook_k(
                 # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
@@ -380,7 +384,8 @@ class AbstractAttention(ABC, nn.Module):
             )  # [batch, pos, head_index, d_head]
 
         if self.cfg.load_in_4bit:
-            assert isinstance(self.W_V, Params4bit)
+            if not isinstance(self.W_V, Params4bit):
+                raise ValueError("W_V must be a Params4bit object if load_in_4bit is True")
             v = self.hook_v(
                 # call bitsandbytes method to dequantize and multiply
                 bnb.matmul_4bit(
@@ -453,9 +458,10 @@ class AbstractAttention(ABC, nn.Module):
         # If not caching, query_ctx_length == key_ctx_length
         key_ctx_length = attn_scores.size(-1)
 
-        assert (
-            query_ctx_length + past_kv_pos_offset == key_ctx_length
-        ), f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
+        if query_ctx_length + past_kv_pos_offset != key_ctx_length:
+            raise ValueError(
+                f"query_ctx_length {query_ctx_length} + past_kv_pos_offset {past_kv_pos_offset} != key_ctx_length {key_ctx_length} - you likely have a bug."
+            )
 
         # Index back to front to ensure local attention works
         final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]

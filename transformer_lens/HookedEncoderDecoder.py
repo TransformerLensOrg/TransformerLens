@@ -50,7 +50,8 @@ class HookedEncoderDecoder(HookedRootModule):
             )
         self.cfg = cfg
 
-        assert self.cfg.n_devices == 1, "Multiple devices not supported for HookedEncoderDecoder"
+        if self.cfg.n_devices != 1:
+            raise ValueError("Multiple devices not supported for HookedEncoderDecoder")
         if tokenizer is not None:
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
@@ -64,7 +65,9 @@ class HookedEncoderDecoder(HookedRootModule):
 
         if self.cfg.d_vocab == -1:
             # If we have a tokenizer, vocab size can be inferred from it.
-            assert self.tokenizer is not None, "Must provide a tokenizer if d_vocab is not provided"
+            if self.tokenizer is None:
+                raise ValueError("Must provide a tokenizer if d_vocab is not provided")
+
             self.cfg.d_vocab = max(self.tokenizer.vocab.values()) + 1
         if self.cfg.d_vocab_out == -1:
             self.cfg.d_vocab_out = self.cfg.d_vocab
@@ -242,10 +245,10 @@ class HookedEncoderDecoder(HookedRootModule):
             "Also, it uses relative positional embeddings, different types of Attention (without bias) and LayerNorm"
         )
 
-        assert not (
-            from_pretrained_kwargs.get("load_in_8bit", False)
-            or from_pretrained_kwargs.get("load_in_4bit", False)
-        ), "Quantization not supported"
+        if from_pretrained_kwargs.get("load_in_8bit", False) or from_pretrained_kwargs.get(
+            "load_in_4bit", False
+        ):
+            raise ValueError("Quantization not supported")
 
         if "torch_dtype" in from_pretrained_kwargs:
             dtype = from_pretrained_kwargs["torch_dtype"]
