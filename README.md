@@ -19,7 +19,10 @@ Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-
 |-----------------------------------------------|
 
 Hooked SAE has been removed from TransformerLens 2.0. The functionality is being moved to
-[SAELens](http://github.com/jbloomAus/SAELens).
+[SAELens](http://github.com/jbloomAus/SAELens). For more information on this release, please see the
+accompanying
+[announcement](https://transformerlensorg.github.io/TransformerLens/content/news/release-2.0.html)
+for details on what's new, and the future of TransformerLens.
 
 This is a library for doing [mechanistic
 interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style language models. The

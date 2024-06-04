@@ -124,3 +124,68 @@
 [build-system]
     build-backend="poetry.core.masonry.api"
     requires=["poetry-core"]
+
+[tool.pyright]
+    # All rules apart from base are shown explicitly below
+    deprecateTypingAliases=true
+    disableBytesTypePromotions=true
+    exclude = [
+        "*/**/*.py",
+        "!/transformer_lens/hook_points.py"
+    ]
+    reportAssertAlwaysTrue=true
+    reportConstantRedefinition=true
+    reportDeprecated=true
+    reportDuplicateImport=true
+    reportFunctionMemberAccess=true
+    reportGeneralTypeIssues=true
+    reportIncompatibleMethodOverride=true
+    reportIncompatibleVariableOverride=true
+    reportIncompleteStub=true
+    reportInconsistentConstructor=true
+    reportInvalidStringEscapeSequence=true
+    reportInvalidStubStatement=true
+    reportInvalidTypeVarUse=true
+    reportMatchNotExhaustive=true
+    reportMissingParameterType=true
+    reportMissingTypeArgument=false
+    reportMissingTypeStubs=false
+    reportOptionalCall=true
+    reportOptionalContextManager=true
+    reportOptionalIterable=true
+    reportOptionalMemberAccess=true
+    reportOptionalOperand=true
+    reportOptionalSubscript=true
+    reportOverlappingOverload=true
+    reportPrivateImportUsage=true
+    reportPrivateUsage=true
+    reportSelfClsParameterName=true
+    reportTypeCommentUsage=true
+    reportTypedDictNotRequiredAccess=true
+    reportUnboundVariable=true
+    reportUnknownArgumentType=false
+    reportUnknownLambdaType=true
+    reportUnknownMemberType=false
+    reportUnknownParameterType=false
+    reportUnknownVariableType=false
+    reportUnnecessaryCast=true
+    reportUnnecessaryComparison=true
+    reportUnnecessaryContains=true
+    reportUnnecessaryIsInstance=true
+    reportUnsupportedDunderAll=true
+    reportUntypedBaseClass=true
+    reportUntypedClassDecorator=true
+    reportUntypedFunctionDecorator=true
+    reportUntypedNamedTuple=true
+    reportUnusedClass=true
+    reportUnusedCoroutine=true
+    reportUnusedExpression=true
+    reportUnusedFunction=true
+    reportUnusedImport=true
+    reportUnusedVariable=true
+    reportWildcardImportFromLibrary=true
+    strictDictionaryInference=true
+    strictListInference=true
+    strictParameterNoneValue=true
+    strictSetInference=true
+    
