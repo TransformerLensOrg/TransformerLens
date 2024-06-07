@@ -55,4 +55,5 @@ __all__ = [
     "override_or_use_default_value",
     "LocallyOverridenDefaults",
     "USE_DEFAULT_VALUE",
+    "test_prompt",
 ]

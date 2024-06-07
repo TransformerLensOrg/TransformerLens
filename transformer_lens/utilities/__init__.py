@@ -44,3 +44,4 @@ from transformer_lens.utilities.defaults_utils import (
     LocallyOverridenDefaults,
     USE_DEFAULT_VALUE,
 )
+from transformer_lens.utilities.exploratory_utils import test_prompt
