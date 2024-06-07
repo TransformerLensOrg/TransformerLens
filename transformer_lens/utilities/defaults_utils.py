@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from transformer_lens.utilities import get_nested_attr, set_nested_attr
 
-USE_DEFAULT_VALUE = None
+USE_DEFAULT_VALUE: Optional[bool] = None
 
 
 def override_or_use_default_value(

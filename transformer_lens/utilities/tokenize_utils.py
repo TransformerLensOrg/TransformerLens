@@ -15,7 +15,8 @@ import torch
 from datasets.arrow_dataset import Dataset
 from transformers import AutoTokenizer
 
-from transformer_lens.utilities import get_cumsum_along_dim
+from transformer_lens.utilities.hf_utils import keep_single_column
+from transformer_lens.utilities.tensor_utils import get_cumsum_along_dim
 
 
 def tokenize_and_concatenate(
@@ -160,7 +161,7 @@ def get_tokens_with_bos_removed(tokenizer, tokens):
 
         if tokenizer.bos_token_id == tokenizer.pad_token_id:
             is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
-            is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
+            is_leading_pad = f(is_not_pad_token, -1, reverse=False) == 0
             real_bos_positions = is_leading_pad.sum(-1) - 1
         else:
             real_bos_positions = (tokens == tokenizer.bos_token_id).int().argmax(-1)
