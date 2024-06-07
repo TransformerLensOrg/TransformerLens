@@ -11,6 +11,7 @@ import torch
 from rich import print as rprint
 
 from transformer_lens.utilities.defaults_utils import USE_DEFAULT_VALUE
+from transformer_lens.utilities.tensor_utils import remove_batch_dim
 
 
 def test_prompt(
