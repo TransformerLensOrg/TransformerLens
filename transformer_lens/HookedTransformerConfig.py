@@ -159,6 +159,11 @@ class HookedTransformerConfig:
             must also be set. Set to None if not using MoE.
         experts_per_token (int, *optional*): The number of experts to use for each pass in the MoE layer. If set,
             num_experts must also be set. Set to None if not using MoE.
+        use_fast_attn (bool): Whether to use torch.nn.functional.scaled_dot_product_attention. This
+            implementation includes FlashAttention-2, as well as, two other alternative (potentially faster) attention
+            implmentations. PyTorch attempts to automatically select the most optimal implementation
+            based on inputs. Note, using these implementations will mean loss of some intermediate hooks
+            (ie. hook_attn_scores and hook_pattern). Defaults to False.
     """
 
     n_layers: int
@@ -214,6 +219,7 @@ class HookedTransformerConfig:
     load_in_4bit: bool = False
     num_experts: Optional[int] = None
     experts_per_token: Optional[int] = None
+    use_fast_attn: bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:
