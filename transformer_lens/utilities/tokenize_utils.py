@@ -161,7 +161,7 @@ def get_tokens_with_bos_removed(tokenizer, tokens):
 
         if tokenizer.bos_token_id == tokenizer.pad_token_id:
             is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
-            is_leading_pad = f(is_not_pad_token, -1, reverse=False) == 0
+            is_leading_pad = get_cumsum_along_dim(is_not_pad_token, -1, reverse=False) == 0
             real_bos_positions = is_leading_pad.sum(-1) - 1
         else:
             real_bos_positions = (tokens == tokenizer.bos_token_id).int().argmax(-1)
