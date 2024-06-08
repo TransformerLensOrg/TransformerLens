@@ -1,4 +1,3 @@
-import os
 from functools import lru_cache
 
 import pytest
@@ -6,7 +5,6 @@ import pytest
 from transformer_lens import loading
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
-os.environ["HF_TOKEN"] = "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"
 
 @lru_cache(maxsize=None)
 def get_cached_config(model_name: str) -> HookedTransformerConfig:
