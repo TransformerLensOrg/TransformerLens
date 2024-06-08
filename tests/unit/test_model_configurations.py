@@ -1,8 +1,12 @@
+import os
 from functools import lru_cache
+
+import pytest
 
 from transformer_lens import loading
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
+os.environ["HF_TOKEN"] = "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"
 
 @lru_cache(maxsize=None)
 def get_cached_config(model_name: str) -> HookedTransformerConfig:
@@ -17,10 +21,10 @@ def get_cached_config(model_name: str) -> HookedTransformerConfig:
     return loading.get_pretrained_model_config(model_name)
 
 
-def test_model_configurations():
+
+@pytest.mark.parametrize("model_name", loading.DEFAULT_MODEL_ALIASES)
+def test_model_configurations(model_name: str):
     """Tests that all of the model configurations are in fact loaded (e.g. are not None).
     """
-    
-    for model_name in loading.DEFAULT_MODEL_ALIASES:
-        assert get_cached_config(model_name) is not None, f"Configuration for {model_name} is None"
+    assert get_cached_config(model_name) is not None, f"Configuration for {model_name} is None"
      

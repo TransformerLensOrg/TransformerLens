@@ -1336,8 +1336,8 @@ def get_pretrained_model_config(
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
 
-    if "rotary_base" in cfg_dict:
-        cfg_dict["rotary_base"] = int(cfg_dict["rotary_base"])
+    # if "rotary_base" in cfg_dict:
+    #     cfg_dict["rotary_base"] = int(cfg_dict["rotary_base"])
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
