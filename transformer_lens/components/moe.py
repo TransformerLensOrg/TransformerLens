@@ -51,8 +51,8 @@ class MoE(nn.Module):
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
-        weights, expert_indices = torch.topk(gate_logits, self.experts_per_token)
-        weights = self.hook_expert_weights(F.softmax(weights, dim=-1))
+        expert_weights, expert_indices = torch.topk(gate_logits, self.experts_per_token)
+        expert_weights = self.hook_expert_weights(F.softmax(expert_weights, dim=-1))
         expert_indices = self.hook_expert_indices(expert_indices)
 
         results = torch.zeros_like(x)
@@ -60,6 +60,6 @@ class MoE(nn.Module):
             # find the batch, pos, and expert indices which use this expert
             batch, pos, expert = torch.where(expert_indices == i)
             # accumulate the weighted outputs from the expert
-            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(x[batch])
+            results[batch] += expert_weights[batch, pos, expert, None, None] * expert_mlp(x[batch])
 
         return results
