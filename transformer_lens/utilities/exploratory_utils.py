@@ -10,7 +10,6 @@ from typing import Optional
 import torch
 from rich import print as rprint
 
-from transformer_lens.utilities.defaults_utils import USE_DEFAULT_VALUE
 from transformer_lens.utilities.tensor_utils import remove_batch_dim
 
 
@@ -20,7 +19,7 @@ def test_prompt(
     model,  # Can't give type hint due to circular imports
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
+    prepend_bos: bool = False,
     top_k: int = 10,
 ) -> None:
     """Test if the Model Can Give the Correct Answer to a Prompt.
