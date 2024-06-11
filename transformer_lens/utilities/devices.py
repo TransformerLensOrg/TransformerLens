@@ -3,6 +3,7 @@
 Utilities to get the correct device, and assist in distributing model layers across multiple
 devices.
 """
+
 from __future__ import annotations
 
 from typing import Optional, Union
@@ -45,7 +46,11 @@ def get_device_for_block_index(
 
 
 def move_to_and_update_config(
-    model: Union["transformer_lens.HookedTransformer", "transformer_lens.HookedEncoder"],
+    model: Union[
+        "transformer_lens.HookedTransformer",
+        "transformer_lens.HookedEncoder",
+        "transformer_lens.HookedEncoderDecoder",
+    ],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
 ):
