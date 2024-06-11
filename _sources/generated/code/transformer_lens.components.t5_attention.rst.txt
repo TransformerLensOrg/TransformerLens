@@ -1,0 +1,7 @@
+transformer\_lens.components.t5\_attention
+==========================================
+
+.. automodule:: transformer_lens.components.t5_attention
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -10,6 +10,7 @@ Submodules
    transformer_lens.ActivationCache
    transformer_lens.FactoredMatrix
    transformer_lens.HookedEncoder
+   transformer_lens.HookedEncoderDecoder
    transformer_lens.HookedTransformer
    transformer_lens.HookedTransformerConfig
    transformer_lens.SVDInterpreter

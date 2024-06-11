@@ -22,6 +22,8 @@ Submodules
    transformer_lens.components.pos_embed
    transformer_lens.components.rms_norm
    transformer_lens.components.rms_norm_pre
+   transformer_lens.components.t5_attention
+   transformer_lens.components.t5_block
    transformer_lens.components.token_typed_embed
    transformer_lens.components.transformer_block
    transformer_lens.components.unembed

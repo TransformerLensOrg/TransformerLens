@@ -170,6 +170,7 @@
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.ActivationCache.html">transformer_lens.ActivationCache</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder</a></li>
+<li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.HookedEncoderDecoder.html">transformer_lens.HookedEncoderDecoder</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.HookedTransformer.html">transformer_lens.HookedTransformer</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.HookedTransformerConfig.html">transformer_lens.HookedTransformerConfig</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.SVDInterpreter.html">transformer_lens.SVDInterpreter</a></li>
@@ -197,6 +198,8 @@
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.pos_embed.html">transformer_lens.components.pos_embed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.rms_norm.html">transformer_lens.components.rms_norm</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.rms_norm_pre.html">transformer_lens.components.rms_norm_pre</a></li>
+<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.t5_attention.html">transformer_lens.components.t5_attention</a></li>
+<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.t5_block.html">transformer_lens.components.t5_block</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.token_typed_embed.html">transformer_lens.components.token_typed_embed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.transformer_block.html">transformer_lens.components.transformer_block</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.unembed.html">transformer_lens.components.unembed</a></li>
@@ -2266,7 +2269,43 @@
 <td class="text-right"><p>20480</p></td>
 <td class="text-left"><p>8</p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>mGPT</p></td>
+<tr class="row-odd"><td class="text-left"><p>t5-small</p></td>
+<td class="text-left"><p>19M</p></td>
+<td class="text-right"><p>6</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>8</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>20</p></td>
+<td class="text-right"><p>32128</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-left"><p></p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>t5-base</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>20</p></td>
+<td class="text-right"><p>32128</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+<td class="text-left"><p></p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>t5-large</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>relu</p></td>
+<td class="text-right"><p>20</p></td>
+<td class="text-right"><p>32128</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+<td class="text-left"><p></p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>mGPT</p></td>
 <td class="text-left"><p>1.2B</p></td>
 <td class="text-right"><p>24</p></td>
 <td class="text-right"><p>2048</p></td>

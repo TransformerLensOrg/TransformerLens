@@ -1,0 +1,7 @@
+transformer\_lens.HookedEncoderDecoder
+======================================
+
+.. automodule:: transformer_lens.HookedEncoderDecoder
+   :members:
+   :undoc-members:
+   :show-inheritance:
