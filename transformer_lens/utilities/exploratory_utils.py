@@ -17,7 +17,7 @@ def test_prompt(
     model,  # Can't give type hint due to circular imports
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
-    prepend_bos: bool = False,
+    prepend_bos: Optional[bool] = None,
     top_k: int = 10,
 ) -> None:
     """Test if the Model Can Give the Correct Answer to a Prompt.
