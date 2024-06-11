@@ -7,12 +7,18 @@ import dataclasses
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Dict, Optional, Union, cast
 
 import einops
 import torch
 from huggingface_hub import HfApi
-from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    BertForPreTraining,
+    T5ForConditionalGeneration,
+)
 
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -183,6 +189,9 @@ OFFICIAL_MODEL_NAMES = [
     "01-ai/Yi-34B",
     "01-ai/Yi-6B-Chat",
     "01-ai/Yi-34B-Chat",
+    "google-t5/t5-small",
+    "google-t5/t5-base",
+    "google-t5/t5-large",
     "ai-forever/mGPT",
 ]
 """Official model names for models on HuggingFace."""
@@ -598,6 +607,9 @@ MODEL_ALIASES = {
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
     "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
     "01-ai/Yi-34B-Chat": ["yi-34b-chat", "Yi-34B-Chat"],
+    "google-t5/t5-small": ["t5-small"],
+    "google-t5/t5-base": ["t5-base"],
+    "google-t5/t5-large": ["t5-large"],
     "ai-forever/mGPT": ["mGPT"],
 }
 """Model aliases for models on HuggingFace."""
@@ -659,7 +671,12 @@ def convert_hf_model_config(model_name: str, **kwargs):
     Takes the official_model_name as an input.
     """
     # In case the user passed in an alias
-    official_model_name = get_official_model_name(model_name)
+    if (Path(model_name) / "config.json").exists():
+        logging.info("Loading model config from local directory")
+        official_model_name = model_name
+    else:
+        official_model_name = get_official_model_name(model_name)
+
     # Load HuggingFace model config
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
@@ -1168,6 +1185,25 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
             "final_rms": True,
         }
+    elif architecture == "T5ForConditionalGeneration":
+        cfg_dict = {
+            "d_model": hf_config.d_model,
+            "d_head": hf_config.d_kv,
+            "n_heads": hf_config.num_heads,
+            "d_mlp": hf_config.d_ff,
+            "d_vocab": hf_config.vocab_size,
+            "n_layers": hf_config.num_layers,
+            "n_ctx": hf_config.max_length,
+            "eps": hf_config.layer_norm_epsilon,
+            "act_fn": hf_config.feed_forward_proj,
+            "positional_embedding_type": "relative_positional_bias",
+            "relative_attention_max_distance": hf_config.relative_attention_max_distance,
+            "relative_attention_num_buckets": hf_config.relative_attention_num_buckets,
+            "decoder_start_token_id": hf_config.decoder_start_token_id,
+            "attention_dir": "bidirectional",
+            "use_attn_scale": False,
+            "tie_word_embeddings": hf_config.tie_word_embeddings,
+        }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
@@ -1266,7 +1302,12 @@ def get_pretrained_model_config(
             Also given to other HuggingFace functions when compatible.
 
     """
-    official_model_name = get_official_model_name(model_name)
+    if Path(model_name).exists():
+        # If the model_name is a path, it's a local model
+        cfg_dict = convert_hf_model_config(model_name, **kwargs)
+        official_model_name = model_name
+    else:
+        official_model_name = get_official_model_name(model_name)
     if (
         official_model_name.startswith("NeelNanda")
         or official_model_name.startswith("ArthurConmy")
@@ -1422,7 +1463,11 @@ def get_pretrained_state_dict(
     if "torch_dtype" in kwargs:
         dtype = kwargs["torch_dtype"]
         del kwargs["torch_dtype"]
-    official_model_name = get_official_model_name(official_model_name)
+    if Path(official_model_name).exists():
+        official_model_name = str(Path(official_model_name).resolve())
+        logging.info(f"Loading model from local path {official_model_name}")
+    else:
+        official_model_name = get_official_model_name(official_model_name)
     if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
         "trust_remote_code", False
     ):
@@ -1488,6 +1533,13 @@ def get_pretrained_state_dict(
                     token=huggingface_token,
                     **kwargs,
                 )
+            elif "t5" in official_model_name:
+                hf_model = T5ForConditionalGeneration.from_pretrained(
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token,
+                    **kwargs,
+                )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
@@ -1515,6 +1567,8 @@ def get_pretrained_state_dict(
             state_dict = convert_llama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
+        elif cfg.original_architecture == "T5ForConditionalGeneration":
+            state_dict = convert_t5_weights(hf_model, cfg)
         elif cfg.original_architecture == "MistralForCausalLM":
             state_dict = convert_mistral_weights(hf_model, cfg)
         elif cfg.original_architecture == "MixtralForCausalLM":
@@ -2099,7 +2153,7 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
         # w1 -> W_gate
         # w2 -> W_out
         # w3 -> W_in
-        # See https://github.com/mistralai/mistral-src/blob/main/mistral/model.py#L128 for reference
+        # See https://github.com/mistralai/mistral-inference/blob/8598cf582091a596671be31990448e0620017851/mistral/model.py#L128 for reference
         for e in range(cfg.num_experts):
             state_dict[f"blocks.{l}.mlp.experts.{e}.W_in"] = (
                 mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight.T
@@ -2442,6 +2496,104 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
     state_dict["unembed.W_U"] = embeddings.word_embeddings.weight.T
     # "unembed.W_U": mlm_head.decoder.weight.T,
     state_dict["unembed.b_U"] = mlm_head.bias
+
+    return state_dict
+
+
+def convert_t5_weights(t5, cfg: HookedTransformerConfig):
+    state_dict = {
+        "embed.W_E": t5.encoder.embed_tokens.weight,
+        "unembed.W_U": t5.encoder.embed_tokens.weight.T,
+        "encoder.0.attn.rel_pos_bias.weight": t5.encoder.block[0]
+        .layer[0]
+        .SelfAttention.relative_attention_bias.weight,
+    }
+
+    for l in range(cfg.n_layers):
+        block = t5.encoder.block[l]
+        state_dict[f"encoder.{l}.attn.W_Q"] = einops.rearrange(
+            block.layer[0].SelfAttention.q.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+        state_dict[f"encoder.{l}.attn.W_K"] = einops.rearrange(
+            block.layer[0].SelfAttention.k.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+
+        state_dict[f"encoder.{l}.attn.W_V"] = einops.rearrange(
+            block.layer[0].SelfAttention.v.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+
+        state_dict[f"encoder.{l}.attn.W_O"] = einops.rearrange(
+            block.layer[0].SelfAttention.o.weight,
+            "m (i h) -> i h m",
+            i=cfg.n_heads,
+        )
+        state_dict[f"encoder.{l}.ln1.w"] = block.layer[0].layer_norm.weight
+
+        # fixme DenseReluDense may be T5DenseGatedActDense instead
+        state_dict[f"encoder.{l}.mlp.W_in"] = einops.rearrange(
+            block.layer[1].DenseReluDense.wi.weight, "mlp model -> model mlp"
+        )
+
+        state_dict[f"encoder.{l}.mlp.W_out"] = einops.rearrange(
+            block.layer[1].DenseReluDense.wo.weight, "model mlp -> mlp model"
+        )
+        state_dict[f"encoder.{l}.ln2.w"] = block.layer[1].layer_norm.weight
+
+    state_dict["encoder_final_ln.w"] = t5.encoder.final_layer_norm.weight
+
+    state_dict["decoder.0.attn.rel_pos_bias.weight"] = (
+        t5.decoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight
+    )
+
+    for l in range(cfg.n_layers):
+        block = t5.decoder.block[l]
+        state_dict[f"decoder.{l}.attn.W_Q"] = einops.rearrange(
+            block.layer[0].SelfAttention.q.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+
+        state_dict[f"decoder.{l}.attn.W_K"] = einops.rearrange(
+            block.layer[0].SelfAttention.k.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+        state_dict[f"decoder.{l}.attn.W_V"] = einops.rearrange(
+            block.layer[0].SelfAttention.v.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+
+        state_dict[f"decoder.{l}.attn.W_O"] = einops.rearrange(
+            block.layer[0].SelfAttention.o.weight,
+            "m (i h) -> i h m",
+            i=cfg.n_heads,
+        )
+
+        state_dict[f"decoder.{l}.ln1.w"] = block.layer[0].layer_norm.weight
+
+        state_dict[f"decoder.{l}.cross_attn.W_Q"] = einops.rearrange(
+            block.layer[1].EncDecAttention.q.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+
+        state_dict[f"decoder.{l}.cross_attn.W_K"] = einops.rearrange(
+            block.layer[1].EncDecAttention.k.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+
+        state_dict[f"decoder.{l}.cross_attn.W_V"] = einops.rearrange(
+            block.layer[1].EncDecAttention.v.weight, "(i h) m -> i m h", i=cfg.n_heads
+        )
+        state_dict[f"decoder.{l}.cross_attn.W_O"] = einops.rearrange(
+            block.layer[1].EncDecAttention.o.weight,
+            "m (i h) -> i h m",
+            i=cfg.n_heads,
+        )
+        state_dict[f"decoder.{l}.ln2.w"] = block.layer[1].layer_norm.weight
+
+        # fixme DenseReluDense may be T5DenseGatedActDense instead
+        state_dict[f"decoder.{l}.mlp.W_in"] = einops.rearrange(
+            block.layer[2].DenseReluDense.wi.weight, "mlp model -> model mlp"
+        )
+        state_dict[f"decoder.{l}.mlp.W_out"] = einops.rearrange(
+            block.layer[2].DenseReluDense.wo.weight, "model mlp -> mlp model"
+        )
+        state_dict[f"decoder.{l}.ln3.w"] = block.layer[2].layer_norm.weight
+
+    state_dict["decoder_final_ln.w"] = t5.decoder.final_layer_norm.weight
 
     return state_dict
 
