@@ -47,6 +47,7 @@ def get_device_for_block_index(
         return device
     device_index = (device.index or 0) + (index // layers_per_device)
     print("device_index = " + str(device_index))
+    print("device", str(torch.device(device.type, device_index)))
     return torch.device(device.type, device_index)
 
 
