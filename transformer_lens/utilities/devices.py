@@ -41,7 +41,7 @@ def get_device_for_block_index(
     print("layers_per_device = " + str(layers_per_device))
     if device is None:
         device = cfg.device
-    print("device = " + device)
+    print("device = " + str(device))
     device = torch.device(device)
     if device.type == "cpu":
         return device
