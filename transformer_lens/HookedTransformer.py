@@ -1285,7 +1285,6 @@ class HookedTransformer(HookedRootModule):
             default_padding_side=default_padding_side,
         )
 
-        print("cfg = " + str(cfg))
         model.load_and_process_state_dict(
             state_dict,
             fold_ln=fold_ln,
