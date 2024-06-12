@@ -36,7 +36,7 @@ def get_device_for_block_index(
     """
     assert cfg.device is not None
     print("index = " + str(index))
-    layers_per_device = cfg.n_layers // cfg.n_devices
+    layers_per_device = (cfg.n_layers) // cfg.n_devices
     print("layers_per_device = " + str(layers_per_device))
     if device is None:
         device = cfg.device

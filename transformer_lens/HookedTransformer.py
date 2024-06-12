@@ -1023,11 +1023,13 @@ class HookedTransformer(HookedRootModule):
         return self.to("mps")
 
     def move_model_modules_to_device(self):
+        # Disperse these blocks a bit to avoid everything going to a single device
         self.embed.to(devices.get_device_for_block_index(0, self.cfg))
-        self.hook_embed.to(devices.get_device_for_block_index(0, self.cfg))
+        self.hook_embed.to(devices.get_device_for_block_index(self.cfg.n_layers / 2, self.cfg))
         if self.cfg.positional_embedding_type != "rotary":
-            self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
-            self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+            self.pos_embed.to(devices.get_device_for_block_index(self.cfg.n_layers / 4, self.cfg))
+            self.hook_pos_embed.to(devices.get_device_for_block_index(self.cfg.n_layers / 4 * 3, self.cfg))
+        
         if hasattr(self, "ln_final"):
             self.ln_final.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
         self.unembed.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
