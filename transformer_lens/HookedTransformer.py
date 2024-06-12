@@ -1269,15 +1269,15 @@ class HookedTransformer(HookedRootModule):
 
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to
         # match the HookedTransformer parameter names.
-        print("state_dict = " + str(n_devices))
         state_dict = loading.get_pretrained_state_dict(
             official_model_name,
             cfg,
             hf_model,
             dtype=dtype,
-            n_devices=n_devices,
             **from_pretrained_kwargs
         )
+        print("model = " + str(n_devices))
+        print("cfg = " + str(cfg))
 
         # Create the HookedTransformer object
         model = cls(
@@ -1287,6 +1287,7 @@ class HookedTransformer(HookedRootModule):
             default_padding_side=default_padding_side,
         )
 
+        print("model = " + str(model))
         model.load_and_process_state_dict(
             state_dict,
             fold_ln=fold_ln,
