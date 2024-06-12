@@ -1276,8 +1276,6 @@ class HookedTransformer(HookedRootModule):
             dtype=dtype,
             **from_pretrained_kwargs
         )
-        print("model = " + str(n_devices))
-        print("cfg = " + str(cfg))
 
         # Create the HookedTransformer object
         model = cls(
@@ -1287,7 +1285,7 @@ class HookedTransformer(HookedRootModule):
             default_padding_side=default_padding_side,
         )
 
-        print("model = " + str(model))
+        print("cfg = " + str(cfg))
         model.load_and_process_state_dict(
             state_dict,
             fold_ln=fold_ln,
