@@ -1234,6 +1234,7 @@ class HookedTransformer(HookedRootModule):
         # Load the config into an HookedTransformerConfig object. If loading from a
         # checkpoint, the config object will contain the information about the
         # checkpoint
+        print("get_pretrained_model_config = " + str(n_devices))
         cfg = loading.get_pretrained_model_config(
             official_model_name,
             hf_cfg=hf_cfg,
