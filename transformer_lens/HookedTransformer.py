@@ -1234,7 +1234,6 @@ class HookedTransformer(HookedRootModule):
         # Load the config into an HookedTransformerConfig object. If loading from a
         # checkpoint, the config object will contain the information about the
         # checkpoint
-        print("get_pretrained_model_config = " + str(n_devices))
         cfg = loading.get_pretrained_model_config(
             official_model_name,
             hf_cfg=hf_cfg,
@@ -1270,8 +1269,14 @@ class HookedTransformer(HookedRootModule):
 
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to
         # match the HookedTransformer parameter names.
+        print("state_dict = " + str(n_devices))
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
+            official_model_name,
+            cfg,
+            hf_model,
+            dtype=dtype,
+            n_devices=n_devices,
+            **from_pretrained_kwargs
         )
 
         # Create the HookedTransformer object
