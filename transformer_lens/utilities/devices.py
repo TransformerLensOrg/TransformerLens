@@ -35,13 +35,12 @@ def get_device_for_block_index(
         torch.device: The device for the specified layer index.
     """
     assert cfg.device is not None
-    print("n_layers = " + str(cfg.n_layers))
-    print("n_devices = " + str(cfg.n_devices))
+    print("index = " + str(index))
     layers_per_device = cfg.n_layers // cfg.n_devices
     print("layers_per_device = " + str(layers_per_device))
     if device is None:
         device = cfg.device
-    print("device = " + str(device))
+    print("index = " + str(index))
     device = torch.device(device)
     if device.type == "cpu":
         return device
