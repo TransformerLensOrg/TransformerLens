@@ -263,7 +263,7 @@ class HookedEncoderDecoder(HookedRootModule):
             checkpoint_value=checkpoint_value,
             fold_ln=False,
             device=device,
-            n_devices=1,
+            # n_devices=1,
             dtype=dtype,
             **from_pretrained_kwargs,
         )
