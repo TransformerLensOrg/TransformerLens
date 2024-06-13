@@ -59,8 +59,6 @@ class MoE(nn.Module):
             self.W_gate,
         )
         batch_size, sequence_length, hidden_dim = gate_logits.shape
-        if self.training and self.jitter_noise > 0:
-            gate_logits *= torch.empty_like(gate_logits).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
         hidden_states = gate_logits.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
