@@ -38,6 +38,7 @@ class MoE(nn.Module):
         self.hook_expert_weights = HookPoint()
         # Hook on the indices of selected experts [batch pos experts_per_token]
         self.hook_expert_indices = HookPoint()
+        self.gate = nn.Linear(self.cfg.d_model, self.cfg.num_experts, bias=False)
         
     def calculate_expert_weights(
         self,
@@ -64,7 +65,7 @@ class MoE(nn.Module):
         router_logits = self.gate(hidden_states)
 
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+        routing_weights, selected_experts = torch.topk(routing_weights, self.experts_per_token, dim=-1)
         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
         # we cast back to the input dtype
         routing_weights = routing_weights.to(hidden_states.dtype)
