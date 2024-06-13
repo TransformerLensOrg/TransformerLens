@@ -73,7 +73,7 @@ class MoE(nn.Module):
 
         # One hot encode the selected experts to create an expert mask
         # this will be used to easily index which expert is going to be sollicitated
-        expert_mask = F.one_hot(selected_experts, num_classes=self.cfg.num_experts).permute(2, 1, 0)
+        expert_mask = F.one_hot(selected_experts, num_classes=self.cfg.num_experts).permute(1, 0)
 
         # Loop over all available experts in the model and perform the computation on each expert
         for expert_idx in range(self.cfg.num_experts):
