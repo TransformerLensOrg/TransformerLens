@@ -44,7 +44,7 @@ class MoE(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # [batch, pos, d_model] -> [batch, pos, num_experts]
         gate_logits = einsum(
-            "batch pos d_model, d_model num_experts -> batch pos num_experts",
+            "batch pos d_model, d_model num_experts -> (batch pos) num_experts",
             x,
             self.W_gate,
         )
