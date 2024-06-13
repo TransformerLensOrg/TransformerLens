@@ -54,13 +54,9 @@ class MoE(nn.Module):
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # [batch, pos, d_model] -> [batch, pos, num_experts]
-        gate_logits = einsum(
-            "batch pos d_model, d_model num_experts -> batch pos num_experts",
-            x,
-            self.W_gate,
-        )
-        batch_size, sequence_length, hidden_dim = gate_logits.shape
-        hidden_states = gate_logits.view(-1, hidden_dim)
+
+        batch_size, sequence_length, hidden_dim = x.shape
+        hidden_states = x.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
 
