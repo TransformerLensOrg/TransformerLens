@@ -51,8 +51,9 @@ class MoE(nn.Module):
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
-        weights, expert_indices = torch.topk(gate_logits, self.experts_per_token)
-        weights = self.hook_expert_weights(F.softmax(weights, dim=-1))
+        weights = self.hook_expert_weights(F.softmax(gate_logits, dim=-1))
+        weights, expert_indices = torch.topk(weights, self.experts_per_token, dim=-1)
+        weights /= weights.sum(dim=-1, keepdim=True)
         expert_indices = self.hook_expert_indices(expert_indices)
 
         results = torch.zeros_like(x)
