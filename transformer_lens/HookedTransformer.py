@@ -1295,7 +1295,6 @@ class HookedTransformer(HookedRootModule):
             fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
         )
-        print("n_devices = " + str(model.blocks))
 
         if move_to_device:
             model.move_model_modules_to_device()
