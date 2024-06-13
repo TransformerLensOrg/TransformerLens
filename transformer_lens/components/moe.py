@@ -70,14 +70,8 @@ class MoE(nn.Module):
             mask = (expert_indices == i)
             if not mask.any():
                 continue
-            # find the batch, pos, and expert indices which use this expert
-            batch, pos = torch.where(mask)[:2]
-
-            # Calculate the weighted output for this expert
-            expert_output = expert_mlp(x[batch, pos])
-            weighted_output = weights[mask].unsqueeze(-1) * expert_output
-
-            # Accumulate the results
-            results[batch, pos] += weighted_output
+            batch, pos, expert = torch.where(mask)
+            # accumulate the weighted outputs from the expert
+            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(x[batch])
 
         return results
