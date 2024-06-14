@@ -44,12 +44,12 @@ class MoE(nn.Module):
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # [batch, pos, d_model] -> [batch, pos, num_experts]
-        gate_logits = einsum(
-            "batch pos d_model, d_model num_experts -> batch pos num_experts",
-            x,
-            self.W_gate,
-        )
-        gate_logits = self.gate(gate_logits)
+        # gate_logits = einsum(
+        #     "batch pos d_model, d_model num_experts -> batch pos num_experts",
+        #     x,
+        #     self.W_gate,
+        # )
+        gate_logits = self.gate(x)
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
