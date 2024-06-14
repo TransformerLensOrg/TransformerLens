@@ -49,6 +49,7 @@ class MoE(nn.Module):
             x,
             self.W_gate,
         )
+        gate_logits = self.gate(gate_logits)
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
