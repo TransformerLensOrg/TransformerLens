@@ -31,9 +31,8 @@ class MoE(nn.Module):
             ]
         )
         self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=self.cfg.dtype)
+            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=torch.float)
         )
-        self.gate = nn.Linear(self.cfg.d_model, self.cfg.num_experts, bias=False)
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
         self.hook_expert_weights = HookPoint()
@@ -44,12 +43,11 @@ class MoE(nn.Module):
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # [batch, pos, d_model] -> [batch, pos, num_experts]
-        # gate_logits = einsum(
-        #     "batch pos d_model, d_model num_experts -> batch pos num_experts",
-        #     x,
-        #     self.W_gate,
-        # )
-        gate_logits = self.gate(x)
+        gate_logits = einsum(
+            "batch pos d_model, d_model num_experts -> batch pos num_experts",
+            x,
+            self.W_gate,
+        )
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
