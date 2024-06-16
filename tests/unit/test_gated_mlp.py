@@ -1,4 +1,4 @@
-from typing import Any, Callable
+from typing import Any, Callable, Dict
 
 import pytest
 import torch
@@ -10,7 +10,7 @@ from transformer_lens.utils import gelu_fast, gelu_new, solu
 
 
 @pytest.fixture
-def cfg() -> dict[str, Any]:
+def cfg() -> Dict[str, Any]:
     return {
         "n_layers": 12,
         "n_ctx": 1024,
