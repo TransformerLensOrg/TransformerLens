@@ -1,4 +1,4 @@
-from typing import Callable, Any
+from typing import Any, Callable
 
 import pytest
 import torch
@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from transformer_lens.components import GatedMLP, LayerNorm
 from transformer_lens.utils import gelu_fast, gelu_new, solu
+
 
 @pytest.fixture
 def cfg() -> dict[str, Any]:
@@ -21,6 +22,7 @@ def cfg() -> dict[str, Any]:
         "normalization_type": "LN",
         "load_in_4bit": False,
     }
+
 
 def test_initialization(cfg: dict[str, Any]):
     model = GatedMLP(cfg)
