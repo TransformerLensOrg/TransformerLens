@@ -90,53 +90,24 @@ class GatedMLP(nn.Module):
         else:
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 
-    def forward(
-        self, x: Float[torch.Tensor, "batch pos d_model"]
-    ) -> Float[torch.Tensor, "batch pos d_model"]:
-        # Technically, all these einsums could be done with a single matmul, but this is more readable.
-        if self.cfg.load_in_4bit:
-            pre_act = self.hook_pre(
-                bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
-            )
-        else:
-            pre_act = self.hook_pre(
-                einsum(
-                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                    x,
-                    self.W_gate,
-                )
-            )  # [batch, pos, d_mlp]
+    def forward(self, x: Float[torch.Tensor, "batch pos d_model"]) -> Float[torch.Tensor, "batch pos d_model"]:
+        pre_act = self._apply_weight(self.W_gate, x)
+        pre_act = self.hook_pre(pre_act)  # Apply hook to the intermediate result
 
         if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
-            if self.cfg.load_in_4bit:
-                pre_linear = self.hook_pre_linear(
-                    bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
-                )
-            else:
-                pre_linear = self.hook_pre_linear(
-                    einsum(
-                        "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                        x,
-                        self.W_in,
-                    )
-                )
-
-            post_act = self.hook_post(
-                (self.act_fn(pre_act) * pre_linear) + self.b_in
-            )  # [batch, pos, d_mlp]
+            pre_linear = self._apply_weight(self.W_in, x)
+            pre_linear = self.hook_pre_linear(pre_linear)  # Apply hook to the intermediate result
+            post_act = self.hook_post((self.act_fn(pre_act) * pre_linear) + self.b_in)
         else:
-            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+            mid_act = self.hook_mid(self.act_fn(pre_act))
             post_act = self.hook_post(self.ln(mid_act))
 
         if self.cfg.load_in_4bit:
-            return bnb.matmul_4bit(
-                post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
-            )
-        return (
-            einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
-                self.W_out,
-            )
-            + self.b_out
-        )
+            return bnb.matmul_4bit(post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state)
+
+        return einsum("batch pos d_mlp, d_mlp d_model -> batch pos d_model", post_act, self.W_out) + self.b_out
+
+    def _apply_weight(self, weight: nn.Parameter, x: Float[torch.Tensor, "batch pos d_model"]) -> Float[torch.Tensor, "batch pos d_mlp"]:
+        if self.cfg.load_in_4bit:
+            return bnb.matmul_4bit(x, weight.t(), bias=None, quant_state=weight.quant_state)
+        return einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, weight)
