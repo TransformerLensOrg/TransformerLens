@@ -61,7 +61,7 @@ class MoE(nn.Module):
         expert_indices = self.hook_expert_indices(expert_indices)
         weights = weights.to(gate_logits.dtype)
 
-        results = torch.zeros_like(x)
+        results = torch.zeros_like(x, dtype=type.float)
         for i, expert_mlp in enumerate(self.experts):
             batch, pos, expert = torch.where(expert_indices == i)
             # accumulate the weighted outputs from the expert
