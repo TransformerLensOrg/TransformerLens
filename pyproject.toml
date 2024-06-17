@@ -58,7 +58,6 @@
 
         [tool.poetry.group.docs.dependencies]
             furo={version=">=2022.12.7"}
-            muutils="^0.5.12"
             myst-parser={version=">=0.18.1"}
             nbconvert="^7.9.2"
             nbsphinx="^0.9.3"
