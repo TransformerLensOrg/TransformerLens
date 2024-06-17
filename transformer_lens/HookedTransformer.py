@@ -280,8 +280,6 @@ class HookedTransformer(HookedRootModule):
         if len(tokens.shape) == 1:
             # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
             tokens = tokens[None]
-        print("tokens device = " + tokens.device.type)
-        print("cfg device = " + str(self.cfg.device))
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_best_available_device(self.cfg.device))
 

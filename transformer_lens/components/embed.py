@@ -31,4 +31,7 @@ class Embed(nn.Module):
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
         if self.cfg.post_embedding_ln:
             return self.ln(self.W_E[tokens, :])
+        print("cfg device = " + str(self.cfg.device))
+        print("we device = " + self.W_E.device)
+        print("tokens device = " + tokens.device.type)
         return self.W_E[tokens, :]
