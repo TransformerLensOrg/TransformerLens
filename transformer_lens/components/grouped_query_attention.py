@@ -37,7 +37,6 @@ class GroupedQueryAttention(AbstractAttention):
                 self.cfg.d_model,
                 self.cfg.d_head,
                 dtype=cfg.dtype,
-                device=cfg.device,
             )
         )
         self._W_V = nn.Parameter(
@@ -46,14 +45,13 @@ class GroupedQueryAttention(AbstractAttention):
                 self.cfg.d_model,
                 self.cfg.d_head,
                 dtype=cfg.dtype,
-                device=cfg.device,
             )
         )
         self._b_K = nn.Parameter(
-            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype, device=cfg.device)
+            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
         )
         self._b_V = nn.Parameter(
-            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype, device=cfg.device)
+            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
         )
 
     @property
