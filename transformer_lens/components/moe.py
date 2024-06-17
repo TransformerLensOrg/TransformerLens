@@ -52,15 +52,12 @@ class MoE(nn.Module):
             x,
             self.W_gate,
         )
-        self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=torch.float)
-        )
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
-        weights = self.hook_expert_weights(F.softmax(gate_logits, dim=1, dtype=torch.float))
-        weights, expert_indices = torch.topk(weights, self.experts_per_token, dim=-1)
-        weights /= weights.sum(dim=-1, keepdim=True)
+        weights = self.hook_expert_weights(F.softmax(gate_logits, dim=-1, dtype=torch.float))
+        weights, expert_indices = torch.topk(weights, self.experts_per_token, dim=1)
+        weights /= weights.sum(dim=1, keepdim=True)
         expert_indices = self.hook_expert_indices(expert_indices)
         weights = weights.to(gate_logits.dtype)
 
