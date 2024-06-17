@@ -21,9 +21,9 @@ class MLP(nn.Module):
     act_fn: Callable[..., torch.Tensor]
     ln: nn.Module
 
-    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(cfg)
+        self.cfg = HookedTransformerConfig.unwrap(config)
         assert self.cfg.d_mlp is not None  # TODO: should this not be optional?
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)

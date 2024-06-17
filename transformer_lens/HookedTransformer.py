@@ -96,7 +96,7 @@ class HookedTransformer(HookedRootModule):
 
     def __init__(
         self,
-        cfg: Union[HookedTransformerConfig, Dict],
+        config: Union[HookedTransformerConfig, Dict],
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
         move_to_device: bool = True,
         default_padding_side: Literal["left", "right"] = "right",
@@ -107,7 +107,7 @@ class HookedTransformer(HookedRootModule):
         :meth:`from_pretrained` instead.
 
         Args:
-            cfg: The config to use for the model.
+            config: The config to use for the model.
             tokenizer: The tokenizer to use for the model. If not provided, it is inferred from
                 `cfg.tokenizer_name` or initialized to `None`. If `None`, then the model cannot be
                 passed strings, and d_vocab must be explicitly set.
@@ -117,13 +117,13 @@ class HookedTransformer(HookedRootModule):
             default_padding_side: Which side to pad on.
         """
         super().__init__()
-        if isinstance(cfg, str):
+        if isinstance(config, str):
             raise ValueError(
                 "Please pass in a config dictionary or HookedTransformerConfig object. If you want to load a "
                 "pretrained model, use HookedTransformer.from_pretrained() instead."
             )
 
-        self.cfg = HookedTransformerConfig.unwrap(cfg)
+        self.cfg = HookedTransformerConfig.unwrap(config)
 
         if tokenizer is not None:
             self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
@@ -2155,6 +2155,10 @@ class HookedTransformer(HookedRootModule):
                 if stop_at_eos and finished_sequences.all():
                     break
 
+
+            self.blocks = nn.ModuleList(
+                [TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg.n_layers)]
+            )
             if return_type == "str":
                 if self.cfg.default_prepend_bos:
                     # If we prepended a BOS token, remove it when returning output.

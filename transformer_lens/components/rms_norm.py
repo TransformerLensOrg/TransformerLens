@@ -13,14 +13,14 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class RMSNorm(nn.Module):
-    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
+    def __init__(self, config: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         RMSNorm - LayerNorm without the centering and bias (RMS = Root Mean Square)
 
         length (Optional[int]): If the dimension of the RMSNorm. If not provided, assumed to be d_model
         """
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(cfg)
+        self.cfg = HookedTransformerConfig.unwrap(config)
         self.eps = self.cfg.eps
         if length is None:
             self.length = self.cfg.d_model

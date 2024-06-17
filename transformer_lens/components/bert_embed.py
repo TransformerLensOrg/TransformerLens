@@ -19,13 +19,13 @@ class BertEmbed(nn.Module):
     Custom embedding layer for a BERT-like model. This module computes the sum of the token, positional and token-type embeddings and takes the layer norm of the result.
     """
 
-    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
-        self.embed = Embed(cfg)
-        self.pos_embed = PosEmbed(cfg)
-        self.token_type_embed = TokenTypeEmbed(cfg)
-        self.ln = LayerNorm(cfg)
+        self.embed = Embed(self.cfg)
+        self.pos_embed = PosEmbed(self.cfg)
+        self.token_type_embed = TokenTypeEmbed(self.cfg)
+        self.ln = LayerNorm(self.cfg)
 
         self.hook_embed = HookPoint()
         self.hook_pos_embed = HookPoint()

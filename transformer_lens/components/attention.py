@@ -19,7 +19,7 @@ if is_bitsandbytes_available():
 class Attention(AbstractAttention):
     def __init__(
         self,
-        cfg: Union[Dict, HookedTransformerConfig],
+        config: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
         layer_id: Optional[int] = None,
     ):
