@@ -18,7 +18,7 @@ class Embed(nn.Module):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
-            torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=self.cfg.dtype)
+            torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=self.cfg.dtype, device=self.cfg.device)
         )
         # Some models (e.g. Bloom) need post embedding layer norm
         if self.cfg.post_embedding_ln:
