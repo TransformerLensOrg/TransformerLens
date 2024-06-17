@@ -27,7 +27,7 @@ class RMSNorm(nn.Module):
         else:
             self.length = length
 
-        self.w = nn.Parameter(torch.ones(self.length, dtype=self.cfg.dtype, device=self.cfg.device))
+        self.w = nn.Parameter(torch.ones(self.length, dtype=self.cfg.dtype))
 
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos, 1]
