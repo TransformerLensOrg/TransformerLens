@@ -13,6 +13,7 @@ from typing import Any, Callable, Literal, Optional
 
 import pandas as pd
 import torch
+import tqdm
 import yaml
 from muutils.dictmagic import condense_tensor_dict
 from muutils.json_serialize import json_serialize
@@ -328,7 +329,7 @@ def make_model_table(
     allow_except: bool = False,
     parallelize: bool | int = True,
     model_names_pattern: str | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> pd.DataFrame:
     """make table of all models. kwargs passed to `get_model_info()`"""
     model_names: list[str] = list(transformer_lens.loading.DEFAULT_MODEL_ALIASES)
@@ -419,7 +420,8 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
     """convert the huggingface model name to a url"""
     df_new: pd.DataFrame = df.copy()
     df_new["name.huggingface"] = df_new["name.huggingface"].map(
-        lambda x: f"[{x}](https://huggingface.co/{x})" if x else x
+        # not sure how to make this type error go away, but it will propagate a None if it's None and be a string otherwise
+        lambda x: f"[{x}](https://huggingface.co/{x})" if x else x # type: ignore
     )
     return df_new
 
