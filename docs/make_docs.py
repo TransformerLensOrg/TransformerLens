@@ -16,7 +16,6 @@ import torch
 import tqdm
 import yaml
 from muutils.dictmagic import condense_tensor_dict
-from muutils.json_serialize import json_serialize
 from muutils.misc import shorten_numerical_to_str
 from transformers import PreTrainedTokenizer
 
@@ -30,7 +29,7 @@ torch.set_default_device(DEVICE)
 # make sure we have a HuggingFace token
 try:
     _hf_token = os.environ.get("HF_TOKEN", None)
-    if not _hf_token.startswith("hf_"):
+    if not _hf_token[:2] == "hf_": # type: ignore
         raise ValueError("Invalid HuggingFace token")
 except Exception as e:
     warnings.warn(
@@ -258,9 +257,12 @@ def get_model_info(
         for key, func_process in CONFIG_VALUES_PROCESS.items():
             if key in model_cfg_dict:
                 model_cfg_dict[key] = func_process(model_cfg_dict[key])
-        # dump to yaml
-        model_cfg_dict = json_serialize(model_cfg_dict)
+                
+        # HACK: convert dtype to string (all other values should already be json-safe)
+        model_cfg_dict["dtype"] = str(model_cfg_dict["dtype"])
+        # raw config
         model_info["config.raw__"] = model_cfg_dict
+        # dump to yaml
         model_info["config"] = yaml.dump(
             model_cfg_dict,
             default_flow_style=False,
@@ -497,7 +499,7 @@ def abridge_model_table(
     return output
 
 
-def generate_model_table(
+def get_model_table(
     base_path: Path|str = GENERATED_DIR,
     verbose: bool = True,
     parallelize: bool | int = True,
