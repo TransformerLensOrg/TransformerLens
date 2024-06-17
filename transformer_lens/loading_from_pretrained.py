@@ -971,6 +971,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
         }
     elif architecture == "MixtralForCausalLM":
         cfg_dict = {
+            "dtype": torch.bfloat16,
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
@@ -981,6 +982,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": hf_config.hidden_act,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
+            "rotary_base": hf_config.rope_theta,
             "window_size": hf_config.sliding_window,  # This is None, as no sliding window was used
             "attn_types": ["global"] * 32,
             "eps": hf_config.rms_norm_eps,
