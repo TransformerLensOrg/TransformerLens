@@ -11,6 +11,7 @@ import torch
 from jaxtyping import Float, Int
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.utilities.devices import get_best_available_device
 
 
 @dataclass
@@ -78,7 +79,7 @@ class HookedTransformerKeyValueCache:
             entries=[
                 HookedTransformerKeyValueCacheEntry.init_cache_entry(
                     cfg,
-                    devices.get_best_available_device(device),
+                    get_best_available_device(device),
                     batch_size,
                 )
                 for i in range(cfg.n_layers)
