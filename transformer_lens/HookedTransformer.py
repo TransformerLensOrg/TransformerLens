@@ -1023,11 +1023,13 @@ class HookedTransformer(HookedRootModule):
         return self.to("mps")
 
     def move_model_modules_to_device(self):
-        self.embed.to(devices.get_best_available_device(self.cfg.device))
-        self.hook_embed.to(devices.get_best_available_device(self.cfg.device))
+        embed_device = devices.get_best_available_device(self.cfg.device)
+        self.embed.to(embed_device)
+        self.hook_embed.to(embed_device)
         if self.cfg.positional_embedding_type != "rotary":
-            self.pos_embed.to(devices.get_best_available_device(self.cfg.device))
-            self.hook_pos_embed.to(devices.get_best_available_device(self.cfg.device))
+            pos_embed_device = devices.get_best_available_device(self.cfg.device)
+            self.pos_embed.to(pos_embed_device)
+            self.hook_pos_embed.to(pos_embed_device)
         if hasattr(self, "ln_final"):
             self.ln_final.to(devices.get_best_available_device(self.cfg.device))
         self.unembed.to(devices.get_best_available_device(self.cfg.device))
