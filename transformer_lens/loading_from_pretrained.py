@@ -982,7 +982,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "window_size": hf_config.sliding_window,  # This is None, as no sliding window was used
-            "attn_types": ["local"] * 32,
+            "attn_types": ["global"] * 32,
             "eps": hf_config.rms_norm_eps,
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
