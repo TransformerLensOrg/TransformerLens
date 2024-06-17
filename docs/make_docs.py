@@ -29,7 +29,7 @@ torch.set_default_device(DEVICE)
 # make sure we have a HuggingFace token
 try:
     _hf_token = os.environ.get("HF_TOKEN", None)
-    if not _hf_token[:3] == "hf_": # type: ignore
+    if not _hf_token[:3] == "hf_":  # type: ignore
         raise ValueError("Invalid HuggingFace token")
 except Exception as e:
     warnings.warn(
@@ -111,24 +111,24 @@ CONFIG_VALUES_PROCESS: dict[str, Callable] = {
 }
 
 COLUMNS_ABRIDGED: Sequence[str] = (
-    'name.default_alias',
-    'name.huggingface',
-    'n_params.as_str',
-    'n_params.as_int',
-    'cfg.n_params',
-    'cfg.n_layers',
-    'cfg.n_heads',
-    'cfg.d_model',
-    'cfg.d_vocab',
-    'cfg.act_fn',
-    'cfg.positional_embedding_type',
-    'cfg.parallel_attn_mlp',
-    'cfg.original_architecture',
-    'cfg.normalization_type',
-    'tokenizer.name',
-    'tokenizer.class',
-    'tokenizer.vocab_size',
-    'tokenizer.vocab_hash',
+    "name.default_alias",
+    "name.huggingface",
+    "n_params.as_str",
+    "n_params.as_int",
+    "cfg.n_params",
+    "cfg.n_layers",
+    "cfg.n_heads",
+    "cfg.d_model",
+    "cfg.d_vocab",
+    "cfg.act_fn",
+    "cfg.positional_embedding_type",
+    "cfg.parallel_attn_mlp",
+    "cfg.original_architecture",
+    "cfg.normalization_type",
+    "tokenizer.name",
+    "tokenizer.class",
+    "tokenizer.vocab_size",
+    "tokenizer.vocab_hash",
 )
 
 
@@ -151,9 +151,7 @@ def get_tensor_shapes(model: HookedTransformer, tensor_dims_fmt: str = "yaml") -
     }
     # run with cache to activation cache
     with torch.no_grad():
-        _, cache = model.run_with_cache(
-            torch.empty(input_shape, dtype=torch.long, device=DEVICE)
-        )
+        _, cache = model.run_with_cache(torch.empty(input_shape, dtype=torch.long, device=DEVICE))
     # condense using muutils and store
     model_info["tensor_shapes.activation_cache"] = condense_tensor_dict(
         cache,
@@ -256,10 +254,7 @@ def get_model_info(
     # search for model size in name
     param_count_from_name: str | None = None
     for part in parts:
-        if (
-            part[-1].lower() in ["m", "b", "k"]
-            and part[:-1].replace(".", "", 1).isdigit()
-        ):
+        if part[-1].lower() in ["m", "b", "k"] and part[:-1].replace(".", "", 1).isdigit():
             param_count_from_name = part
             break
 
@@ -305,9 +300,7 @@ def get_model_info(
                 # don't need to download the tokenizer
                 model_cfg_copy.tokenizer_name = None
             # init the fake model
-            model: HookedTransformer = HookedTransformer(
-                model_cfg_copy, move_to_device=True
-            )
+            model: HookedTransformer = HookedTransformer(model_cfg_copy, move_to_device=True)
             got_model = True
         except Exception as e:
             warnings.warn(
@@ -320,25 +313,19 @@ def get_model_info(
                     tokenizer_info: dict = get_tokenizer_info(model)
                     model_info.update(tokenizer_info)
                 except Exception as e:
-                    warnings.warn(
-                        f"Failed to get tokenizer info for model {model_name}:\n{e}"
-                    )
+                    warnings.warn(f"Failed to get tokenizer info for model {model_name}:\n{e}")
 
             if include_tensor_dims:
                 try:
                     tensor_shapes_info: dict = get_tensor_shapes(model, tensor_dims_fmt)
                     model_info.update(tensor_shapes_info)
                 except Exception as e:
-                    warnings.warn(
-                        f"Failed to get tensor shapes for model {model_name}:\n{e}"
-                    )
+                    warnings.warn(f"Failed to get tensor shapes for model {model_name}:\n{e}")
 
     return model_name, model_info
 
 
-def safe_try_get_model_info(
-    model_name: str, kwargs: dict | None = None
-) -> dict | Exception:
+def safe_try_get_model_info(model_name: str, kwargs: dict | None = None) -> dict | Exception:
     """for parallel processing, to catch exceptions and return the exception instead of raising them"""
     if kwargs is None:
         kwargs = {}
@@ -363,16 +350,12 @@ def make_model_table(
     # filter by regex pattern if provided
     if model_names_pattern:
         model_names = [
-            model_name
-            for model_name in model_names
-            if model_names_pattern in model_name
+            model_name for model_name in model_names if model_names_pattern in model_name
         ]
 
     if parallelize:
         # parallel
-        n_processes: int = (
-            parallelize if int(parallelize) > 1 else multiprocessing.cpu_count()
-        )
+        n_processes: int = parallelize if int(parallelize) > 1 else multiprocessing.cpu_count()
         with multiprocessing.Pool(processes=n_processes) as pool:
             # Use imap for ordered results, wrapped with tqdm for progress bar
             imap_results: list[dict | Exception] = list(
@@ -408,21 +391,15 @@ def make_model_table(
                     else:
                         # raise exception right away if we don't allow exceptions
                         # note that this differs from the parallel version, which will only except at the end
-                        raise ValueError(
-                            f"Failed to get model info for {model_name}"
-                        ) from e
+                        raise ValueError(f"Failed to get model info for {model_name}") from e
 
     # figure out what to do with failed models
     failed_models: dict[str, Exception] = {
-        model_name: result
-        for model_name, result in model_data
-        if isinstance(result, Exception)
+        model_name: result for model_name, result in model_data if isinstance(result, Exception)
     }
     msg: str = (
         f"Failed to get model info for {len(failed_models)}/{len(model_names)} models: {failed_models}\n"
-        + "\n".join(
-            f"\t{model_name}: {expt}" for model_name, expt in failed_models.items()
-        )
+        + "\n".join(f"\t{model_name}: {expt}" for model_name, expt in failed_models.items())
     )
     if not allow_except:
         if failed_models:
@@ -447,7 +424,9 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
     df_new: pd.DataFrame = df.copy()
     df_new["name.huggingface"] = df_new["name.huggingface"].map(
         # not sure how to make this type error go away, but it will propagate a None if it's None and be a string otherwise
-        lambda x: f"[{x}](https://huggingface.co/{x})" if x else x # type: ignore
+        lambda x: f"[{x}](https://huggingface.co/{x})"
+        if x
+        else x  # type: ignore
     )
     return df_new
 
@@ -473,9 +452,7 @@ def write_model_table(
 
             tl_version = version("transformer_lens")
         except PackageNotFoundError as e:
-            warnings.warn(
-                f"Failed to get transformer_lens version: package not found\n{e}"
-            )
+            warnings.warn(f"Failed to get transformer_lens version: package not found\n{e}")
         except Exception as e:
             warnings.warn(f"Failed to get transformer_lens version: {e}")
 
@@ -484,9 +461,7 @@ def write_model_table(
 
     match format:
         case "jsonl":
-            model_table.to_json(
-                path.with_suffix(".jsonl"), orient="records", lines=True
-            )
+            model_table.to_json(path.with_suffix(".jsonl"), orient="records", lines=True)
         case "csv":
             model_table.to_csv(path.with_suffix(".csv"), index=False)
         case "md":
@@ -494,7 +469,7 @@ def write_model_table(
             # convert huggingface name to url
             if md_hf_links:
                 model_table_processed = huggingface_name_to_url(model_table_processed)
-            
+
             model_table_md: str = md_header + model_table_processed.to_markdown(index=False)
             with open(path.with_suffix(".md"), "w") as f:
                 f.write(model_table_md)
@@ -574,7 +549,6 @@ def get_model_table(
     )
 
     return model_table
-
 
 
 def copy_demos(_app: Optional[Any] = None):
