@@ -281,7 +281,7 @@ class HookedTransformer(HookedRootModule):
             # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
-            tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
+            tokens = tokens.to(devices.get_best_available_device(self.cfg.device))
 
         if (self.tokenizer and self.tokenizer.padding_side == "left") or past_kv_cache is not None:
             # If the padding side is left or we are using caching, we need to compute the attention
@@ -540,10 +540,10 @@ class HookedTransformer(HookedRootModule):
                 # Note that each block includes skip connections, so we don't need
                 # residual + block(residual)
                 # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
-                residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
+                residual = residual.to(devices.get_best_available_device(self.cfg.device))
                 if shortformer_pos_embed is not None:
                     shortformer_pos_embed = shortformer_pos_embed.to(
-                        devices.get_device_for_block_index(i, self.cfg)
+                        devices.get_best_available_device(self.cfg.device)
                     )
 
                 residual = block(
@@ -1023,16 +1023,16 @@ class HookedTransformer(HookedRootModule):
         return self.to("mps")
 
     def move_model_modules_to_device(self):
-        self.embed.to(devices.get_device_for_block_index(0, self.cfg))
-        self.hook_embed.to(devices.get_device_for_block_index(0, self.cfg))
+        self.embed.to(devices.get_best_available_device(self.cfg.device))
+        self.hook_embed.to(devices.get_best_available_device(self.cfg.device))
         if self.cfg.positional_embedding_type != "rotary":
-            self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
-            self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+            self.pos_embed.to(devices.get_best_available_device(self.cfg.device))
+            self.hook_pos_embed.to(devices.get_best_available_device(self.cfg.device))
         if hasattr(self, "ln_final"):
-            self.ln_final.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
-        self.unembed.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
+            self.ln_final.to(devices.get_best_available_device(self.cfg.device))
+        self.unembed.to(devices.get_best_available_device(self.cfg.device))
         for i, block in enumerate(self.blocks):
-            block.to(devices.get_device_for_block_index(i, self.cfg))
+            block.to(devices.get_best_available_device(self.cfg.device))
 
     @classmethod
     def from_pretrained(
@@ -2046,7 +2046,7 @@ class HookedTransformer(HookedRootModule):
 
             assert isinstance(tokens, torch.Tensor)
             batch_size, ctx_length = tokens.shape
-            device = devices.get_device_for_block_index(0, self.cfg)
+            device = devices.get_best_available_device(self.cfg.device)
             tokens = tokens.to(device)
             if use_past_kv_cache:
                 past_kv_cache = HookedTransformerKeyValueCache.init_cache(
@@ -2126,10 +2126,10 @@ class HookedTransformer(HookedRootModule):
                         temperature=temperature,
                         freq_penalty=freq_penalty,
                         tokens=tokens,
-                    ).to(devices.get_device_for_block_index(0, self.cfg))
+                    ).to(devices.get_best_available_device(self.cfg.device))
                 else:
                     sampled_tokens = final_logits.argmax(-1).to(
-                        devices.get_device_for_block_index(0, self.cfg)
+                        devices.get_best_available_device(self.cfg.device)
                     )
 
                 if stop_at_eos:
