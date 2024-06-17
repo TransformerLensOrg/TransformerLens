@@ -42,6 +42,17 @@ class MoE(nn.Module):
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
+        
+
+        self.experts = nn.ModuleList(
+            [
+                GatedMLP(self.cfg) if self.cfg.gated_mlp else MLP(self.cfg)
+                for _ in range(self.cfg.num_experts)
+            ]
+        )
+        self.W_gate = nn.Parameter(
+            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=torch.float)
+        )
         # [batch, pos, d_model] -> [batch, pos, num_experts]
         gate_logits = einsum(
             "batch pos d_model, d_model num_experts -> batch pos num_experts",
@@ -53,7 +64,7 @@ class MoE(nn.Module):
         # both are [batch, pos, experts_per_token]
         weights = self.hook_expert_weights(F.softmax(gate_logits, dim=-1, dtype=torch.float))
         weights, expert_indices = torch.topk(weights, self.experts_per_token, dim=-1)
-        # weights /= weights.sum(dim=-1, keepdim=True)
+        weights /= weights.sum(dim=-1, keepdim=True)
         expert_indices = self.hook_expert_indices(expert_indices)
         weights = weights.to(gate_logits.dtype)
 
