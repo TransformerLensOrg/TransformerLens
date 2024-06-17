@@ -971,6 +971,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
         }
     elif architecture == "MixtralForCausalLM":
         cfg_dict = {
+            "dtype": torch.bfloat16,
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
