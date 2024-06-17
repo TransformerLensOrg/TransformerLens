@@ -67,6 +67,7 @@
             sphinx-autobuild={version=">=2021.3.14"}
             sphinxcontrib-napoleon={version=">=0.7"}
             tabulate={version=">=0.9.0"}
+            tiktoken={version=">=0.7.0"}
 
 [tool.pytest]
     [tool.pytest.ini_options]
