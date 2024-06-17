@@ -20,7 +20,10 @@ class MoE(nn.Module):
         # Ensure that num_experts and experts_per_token are specified and non-zero
         assert self.cfg.num_experts is not None, "num_experts must be specified for MoE layer"
         assert self.cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
+        
+        self.num_experts: int = self.cfg.num_experts
         self.experts_per_token: int = self.cfg.experts_per_token
+
         assert (
             self.cfg.experts_per_token <= self.cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
@@ -58,7 +61,7 @@ class MoE(nn.Module):
         expert_indices = self.hook_expert_indices(expert_indices)
         weights = weights.to(gate_logits.dtype)
 
-        results = torch.zeros_like(x)
+        results = torch.zeros_like(x, dtype=x.dtype)
         for i, expert_mlp in enumerate(self.experts):
             batch, pos, expert = torch.where(expert_indices == i)
             # accumulate the weighted outputs from the expert
