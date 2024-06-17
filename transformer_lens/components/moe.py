@@ -1,5 +1,6 @@
 from typing import Dict, Union
 
+import gc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -44,6 +45,9 @@ class MoE(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         
 
+        self.experts = None
+        self.W_gate = None
+        gc.collect()
         self.experts = nn.ModuleList(
             [
                 GatedMLP(self.cfg) if self.cfg.gated_mlp else MLP(self.cfg)
