@@ -281,6 +281,7 @@ class HookedTransformer(HookedRootModule):
             # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
+            print(" tokens = " + str(self.cfg.device))
             tokens = tokens.to(devices.get_best_available_device(self.cfg.device))
 
         if (self.tokenizer and self.tokenizer.padding_side == "left") or past_kv_cache is not None:
@@ -540,8 +541,10 @@ class HookedTransformer(HookedRootModule):
                 # Note that each block includes skip connections, so we don't need
                 # residual + block(residual)
                 # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
+                print(" residual = " + str(self.cfg.device))
                 residual = residual.to(devices.get_best_available_device(self.cfg.device))
                 if shortformer_pos_embed is not None:
+                    print(" shortformer_pos_embed = " + str(self.cfg.device))
                     shortformer_pos_embed = shortformer_pos_embed.to(
                         devices.get_best_available_device(self.cfg.device)
                     )
@@ -1023,16 +1026,21 @@ class HookedTransformer(HookedRootModule):
         return self.to("mps")
 
     def move_model_modules_to_device(self):
+        print(" embed_device = " + str(self.cfg.device))
         embed_device = devices.get_best_available_device(self.cfg.device)
         self.embed.to(embed_device)
         self.hook_embed.to(embed_device)
         if self.cfg.positional_embedding_type != "rotary":
+            print(" rotary = " + str(self.cfg.device))
             pos_embed_device = devices.get_best_available_device(self.cfg.device)
             self.pos_embed.to(pos_embed_device)
             self.hook_pos_embed.to(pos_embed_device)
         if hasattr(self, "ln_final"):
+            print(" ln_final = " + str(self.cfg.device))
             self.ln_final.to(devices.get_best_available_device(self.cfg.device))
+        print(" unembed = " + str(self.cfg.device))
         self.unembed.to(devices.get_best_available_device(self.cfg.device))
+        print(" blocks = " + str(self.cfg.device))
         for i, block in enumerate(self.blocks):
             block.to(devices.get_best_available_device(self.cfg.device))
 
@@ -2048,6 +2056,7 @@ class HookedTransformer(HookedRootModule):
 
             assert isinstance(tokens, torch.Tensor)
             batch_size, ctx_length = tokens.shape
+            print(" LocallyOverridenDefaults = " + str(self.cfg.device))
             device = devices.get_best_available_device(self.cfg.device)
             tokens = tokens.to(device)
             if use_past_kv_cache:
@@ -2121,6 +2130,7 @@ class HookedTransformer(HookedRootModule):
                 final_logits = logits[:, -1, :]
 
                 if do_sample:
+                    print(" sampled_tokens = " + str(self.cfg.device))
                     sampled_tokens = utils.sample_logits(
                         final_logits,
                         top_k=top_k,
@@ -2130,6 +2140,7 @@ class HookedTransformer(HookedRootModule):
                         tokens=tokens,
                     ).to(devices.get_best_available_device(self.cfg.device))
                 else:
+                    print(" sampled_tokens else = " + str(self.cfg.device))
                     sampled_tokens = final_logits.argmax(-1).to(
                         devices.get_best_available_device(self.cfg.device)
                     )
