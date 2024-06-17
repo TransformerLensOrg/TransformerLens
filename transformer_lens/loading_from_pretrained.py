@@ -981,7 +981,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": hf_config.hidden_act,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": hf_config.rope_theta,
             "window_size": hf_config.sliding_window,  # This is None, as no sliding window was used
             "attn_types": ["local"] * 32,
             "eps": hf_config.rms_norm_eps,
