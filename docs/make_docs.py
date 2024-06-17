@@ -437,6 +437,10 @@ def write_model_table(
     md_header: str = "# Model Properties Table\nalso see the [interactive model table](model_properties_table_interactive.html)\n",
 ) -> None:
     """write the model table to disk in the specified format"""
+
+    # make sure the directory exists
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     if include_TL_version:
         # get `transformer_lens` version
         tl_version: str = "unknown"
