@@ -6,12 +6,39 @@ devices.
 
 from __future__ import annotations
 
-from typing import Optional, Union
+from typing import List, Optional, Union, Tuple
 
 import torch
 from torch import nn
 
 import transformer_lens
+
+
+def calculate_available_device_cuda_memory(i: int) -> int:
+    total = torch.cuda.get_device_properties(i).total_memory
+    allocated = torch.cuda.memory_allocated(i)
+    return total - allocated
+
+
+def get_best_available_cuda_device() -> torch.device:
+    devices = []
+    for i in range(torch.cuda.device_count()):
+        devices.append((i, calculate_available_device_cuda_memory(i)))
+        
+    sorted_devices = sorted(devices, key=lambda x: x[1])
+        
+    return torch.device("cuda", sorted_devices[0][0])
+        
+
+def get_best_available_device(
+    device: Union[torch.device, str]
+) -> torch.device:
+    device = torch.device(device) if isinstance(device, str) else device
+    
+    if device.type == "cuda":
+        get_best_available_cuda_device()
+    else:
+        return device
 
 
 def get_device_for_block_index(
@@ -41,7 +68,10 @@ def get_device_for_block_index(
     device = torch.device(device)
     if device.type == "cpu":
         return device
-    device_index = (device.index or 0) + (index // layers_per_device)
+    device_index = (device.index or 0) + (layers_per_device // index)
+    print("index = " + str(index))
+    print("device_index = " + str(device_index))
+    print("layers_per_device = " + str(layers_per_device))
     return torch.device(device.type, device_index)
 
 
