@@ -282,7 +282,7 @@ class HookedTransformer(HookedRootModule):
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
             print(" tokens = " + str(self.cfg.device))
-            tokens = tokens.to(devices.get_best_available_device(self.cfg.device))
+            tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
         if (self.tokenizer and self.tokenizer.padding_side == "left") or past_kv_cache is not None:
             # If the padding side is left or we are using caching, we need to compute the attention
@@ -542,11 +542,11 @@ class HookedTransformer(HookedRootModule):
                 # residual + block(residual)
                 # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
                 print(" residual = " + str(self.cfg.device))
-                residual = residual.to(devices.get_best_available_device(self.cfg.device))
+                residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
                 if shortformer_pos_embed is not None:
                     print(" shortformer_pos_embed = " + str(self.cfg.device))
                     shortformer_pos_embed = shortformer_pos_embed.to(
-                        devices.get_best_available_device(self.cfg.device)
+                        devices.get_device_for_block_index(i, self.cfg)
                     )
 
                 residual = block(
@@ -1026,20 +1026,15 @@ class HookedTransformer(HookedRootModule):
         return self.to("mps")
 
     def move_model_modules_to_device(self):
-        print(" embed_device = " + str(self.cfg.device))
-        embed_device = devices.get_best_available_device(self.cfg.device)
-        self.embed.to(embed_device)
-        self.hook_embed.to(embed_device)
+        self.embed.to(devices.get_device_for_block_index(0, self.cfg))
+        self.hook_embed.to(devices.get_device_for_block_index(0, self.cfg))
         if self.cfg.positional_embedding_type != "rotary":
-            print(" rotary = " + str(self.cfg.device))
-            pos_embed_device = devices.get_best_available_device(self.cfg.device)
-            self.pos_embed.to(pos_embed_device)
-            self.hook_pos_embed.to(pos_embed_device)
+            self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+            self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
         if hasattr(self, "ln_final"):
-            print(" ln_final = " + str(self.cfg.device))
-            self.ln_final.to(devices.get_best_available_device(self.cfg.device))
+            self.ln_final.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
         print(" unembed = " + str(self.cfg.device))
-        self.unembed.to(devices.get_best_available_device(self.cfg.device))
+        self.unembed.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
         print(" blocks = " + str(self.cfg.device))
         for i, block in enumerate(self.blocks):
             block.to(devices.get_best_available_device(self.cfg.device))
@@ -2057,7 +2052,7 @@ class HookedTransformer(HookedRootModule):
             assert isinstance(tokens, torch.Tensor)
             batch_size, ctx_length = tokens.shape
             print(" LocallyOverridenDefaults = " + str(self.cfg.device))
-            device = devices.get_best_available_device(self.cfg.device)
+            device = devices.get_device_for_block_index(0, self.cfg)
             tokens = tokens.to(device)
             if use_past_kv_cache:
                 past_kv_cache = HookedTransformerKeyValueCache.init_cache(
@@ -2138,11 +2133,11 @@ class HookedTransformer(HookedRootModule):
                         temperature=temperature,
                         freq_penalty=freq_penalty,
                         tokens=tokens,
-                    ).to(devices.get_best_available_device(self.cfg.device))
+                    ).to(devices.get_device_for_block_index(0, self.cfg))
                 else:
                     print(" sampled_tokens else = " + str(self.cfg.device))
                     sampled_tokens = final_logits.argmax(-1).to(
-                        devices.get_best_available_device(self.cfg.device)
+                        devices.get_device_for_block_index(0, self.cfg)
                     )
 
                 if stop_at_eos:
