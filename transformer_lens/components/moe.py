@@ -52,6 +52,9 @@ class MoE(nn.Module):
             x,
             self.W_gate,
         )
+        self.W_gate = nn.Parameter(
+            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=torch.float)
+        )
 
         # choose the top k(=experts_per_token) experts to use
         # both are [batch, pos, experts_per_token]
@@ -61,7 +64,7 @@ class MoE(nn.Module):
         expert_indices = self.hook_expert_indices(expert_indices)
         weights = weights.to(gate_logits.dtype)
 
-        results = torch.zeros_like(x, dtype=torch.float)
+        results = torch.zeros_like(x)
         for i, expert_mlp in enumerate(self.experts):
             batch, pos, expert = torch.where(expert_indices == i)
             # accumulate the weighted outputs from the expert
