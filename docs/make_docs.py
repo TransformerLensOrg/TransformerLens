@@ -458,7 +458,7 @@ def write_model_table(
     format: OutputFormat = "jsonl",
     include_TL_version: bool = True,
     md_hf_links: bool = True,
-    md_header: str = "# Model Properties Table\nalso see the interactive model table\n",
+    md_header: str = "# Model Properties Table\nalso see the [interactive model table](../_static/model_properties_table_interactive.html)\n",
 ) -> None:
     """write the model table to disk in the specified format"""
 
