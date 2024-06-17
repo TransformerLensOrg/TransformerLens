@@ -11,6 +11,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
+import pandas as pd
 import torch
 import yaml
 from muutils.dictmagic import condense_tensor_dict
@@ -45,7 +46,7 @@ GENERATED_DIR = CURRENT_DIR.parent / "docs/source/generated"
 
 
 @lru_cache(maxsize=None)
-def get_config(model_name):
+def get_config(model_name: str):
     """Retrieve the configuration of a pretrained model.
 
     Args:
@@ -238,7 +239,7 @@ def get_model_info(
             break
 
     # update model info from config
-    model_cfg: HookedTransformerConfig = get_pretrained_model_config(model_name)
+    model_cfg: HookedTransformerConfig = get_config(model_name)
     model_info.update(
         {
             "name.from_cfg": model_cfg.model_name,
@@ -344,7 +345,7 @@ def make_model_table(
     if parallelize:
         # parallel
         n_processes: int = (
-            parallelize if isinstance(parallelize, int) else multiprocessing.cpu_count()
+            parallelize if int(parallelize) > 1 else multiprocessing.cpu_count()
         )
         with multiprocessing.Pool(processes=n_processes) as pool:
             # Use imap for ordered results, wrapped with tqdm for progress bar
