@@ -20,7 +20,7 @@ class BertMLMHead(nn.Module):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(cfg)
+        self.cfg = HookedTransformerConfig.unwrap(config)
         self.W = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_model, dtype=self.cfg.dtype))
         self.b = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
         self.act_fn = nn.GELU()

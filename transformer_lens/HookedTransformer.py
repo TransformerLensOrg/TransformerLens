@@ -172,10 +172,6 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.use_hook_tokens:
             self.hook_tokens = HookPoint()  # [batch, pos]
 
-        self.blocks = nn.ModuleList(
-            [TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg.n_layers)]
-        )
-
         if self.cfg.normalization_type == "RMS":
             self.ln_final = RMSNorm(self.cfg)
         elif self.cfg.normalization_type == "RMSPre":

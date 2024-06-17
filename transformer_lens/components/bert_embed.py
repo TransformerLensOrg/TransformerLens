@@ -21,7 +21,7 @@ class BertEmbed(nn.Module):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(cfg)
+        self.cfg = HookedTransformerConfig.unwrap(config)
         self.embed = Embed(self.cfg)
         self.pos_embed = PosEmbed(self.cfg)
         self.token_type_embed = TokenTypeEmbed(self.cfg)
