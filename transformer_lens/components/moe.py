@@ -45,15 +45,6 @@ class MoE(nn.Module):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         
 
-        self.experts = nn.ModuleList(
-            [
-                GatedMLP(self.cfg) if self.cfg.gated_mlp else MLP(self.cfg)
-                for _ in range(self.cfg.num_experts)
-            ]
-        )
-        self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=torch.float)
-        )
         # [batch, pos, d_model] -> [batch, pos, num_experts]
         gate_logits = einsum(
             "batch pos d_model, d_model num_experts -> batch pos num_experts",
