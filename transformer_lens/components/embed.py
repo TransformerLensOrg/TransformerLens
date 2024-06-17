@@ -32,6 +32,6 @@ class Embed(nn.Module):
         if self.cfg.post_embedding_ln:
             return self.ln(self.W_E[tokens, :])
         print("cfg device = " + str(self.cfg.device))
-        print("we device = " + self.W_E.device)
+        print("we device = " + self.W_E.device.type)
         print("tokens device = " + tokens.device.type)
         return self.W_E[tokens, :]
