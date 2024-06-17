@@ -149,9 +149,10 @@ def get_tensor_shapes(model: HookedTransformer, tensor_dims_fmt: str = "yaml") -
         input_shape[1]: "seq_len",
     }
     # run with cache to activation cache
-    _, cache = model.run_with_cache(
-        torch.empty(input_shape, dtype=torch.long, device=DEVICE)
-    )
+    with torch.no_grad():
+        _, cache = model.run_with_cache(
+            torch.empty(input_shape, dtype=torch.long, device=DEVICE)
+        )
     # condense using muutils and store
     model_info["tensor_shapes.activation_cache"] = condense_tensor_dict(
         cache,
