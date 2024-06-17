@@ -55,7 +55,7 @@
 
 		async function fetchVersion() {
 			try {
-				const response = await fetch('model_table.version');
+				const response = await fetch('model_table/data.version');
 				return response.text().then(text => text.trim());
 			} catch (error) {
 				console.error('Could not fetch version: ', error);
@@ -131,7 +131,7 @@
 			document.querySelector('header').innerHTML = `Model table for <a href="https://github.com/neelnanda-io/TransformerLens">TransformerLens</a> v${version}. Source code: <a href="https://github.com/mivanit/transformerlens-model-table">github.com/mivanit/transformerlens-model-table</a>. Hover a cell with [${CLICK_TO_COPY_EMOJI}] to view full text, left click to copy to clipboard, right click to open contents in new tab.`;
 
 			// read the data
-			const rowData = await fetchJsonlData('model_table.jsonl');
+			const rowData = await fetchJsonlData('model_table/data.jsonl');
 			const columnGroups = {};
 
 			// create the column definitions
