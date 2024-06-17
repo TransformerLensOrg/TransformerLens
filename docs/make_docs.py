@@ -37,12 +37,13 @@ except Exception as e:
     )
 
 # Docs Directories
-CURRENT_DIR = Path(__file__).parent
-SOURCE_PATH = CURRENT_DIR / "../docs/source"
-BUILD_PATH = CURRENT_DIR / "../docs/build"
-PACKAGE_DIR = CURRENT_DIR.parent
-DEMOS_DIR = CURRENT_DIR.parent / "demos"
-GENERATED_DIR = CURRENT_DIR.parent / "docs/source/generated"
+CURRENT_DIR: Path = Path(__file__).parent
+SOURCE_PATH: Path = CURRENT_DIR / "../docs/source"
+BUILD_PATH: Path = CURRENT_DIR / "../docs/build"
+PACKAGE_DIR: Path = CURRENT_DIR.parent
+DEMOS_DIR: Path = CURRENT_DIR.parent / "demos"
+GENERATED_DIR: Path = CURRENT_DIR.parent / "docs/source/generated"
+STATIC_DIR: Path = CURRENT_DIR.parent / "docs/source/_static"
 
 
 @lru_cache(maxsize=None)
@@ -457,7 +458,7 @@ def write_model_table(
     format: OutputFormat = "jsonl",
     include_TL_version: bool = True,
     md_hf_links: bool = True,
-    md_header: str = "# Model Properties Table\nalso see the [interactive model table](model_properties_table_interactive.html)\n",
+    md_header: str = "# Model Properties Table\nalso see the interactive model table\n",
 ) -> None:
     """write the model table to disk in the specified format"""
 
@@ -525,7 +526,6 @@ def abridge_model_table(
 
 
 def get_model_table(
-    base_path: Path|str = GENERATED_DIR,
     verbose: bool = True,
     parallelize: bool | int = True,
     **kwargs: Any,
@@ -533,8 +533,6 @@ def get_model_table(
     """get the model table either by generating or reading from jsonl file
 
     # Parameters:
-     - `base_path : Path|str`
-        base path of where to save the tables
      - `verbose : bool`
         whether to show progress bar
        (defaults to `True`)
@@ -549,9 +547,6 @@ def get_model_table(
         the model table. rows are models, columns are model attributes
     """
 
-    # convert to Path, and modify the name if a pattern is provided
-    base_path = Path(base_path)
-
     # generate the table
     model_table: pd.DataFrame = make_model_table(
         verbose=verbose,
@@ -562,19 +557,19 @@ def get_model_table(
     # full data as jsonl
     write_model_table(
         model_table=model_table,
-        path=base_path / "model_properties_data" / "data.jsonl",
+        path=STATIC_DIR / "model_table" / "data.jsonl",
         format="jsonl",
     )
     # abridged data as csv, md
     abridged_table: pd.DataFrame = abridge_model_table(model_table)
     write_model_table(
         model_table=abridged_table,
-        path=base_path / "model_properties_data" / "data.csv",
+        path=STATIC_DIR / "model_table" / "data.csv",
         format="csv",
     )
     write_model_table(
         model_table=abridged_table,
-        path=base_path / "model_properties_table.md",
+        path=GENERATED_DIR / "model_properties_table.md",
         format="md",
     )
 
