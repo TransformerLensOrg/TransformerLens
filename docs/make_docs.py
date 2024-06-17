@@ -428,10 +428,11 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
 
 def write_model_table(
     model_table: pd.DataFrame,
-    path: Path = _MODEL_TABLE_PATH,
+    path: Path,
     format: OutputFormat = "jsonl",
     include_TL_version: bool = True,
     md_hf_links: bool = True,
+    md_header: str = "# Model Properties Table\nalso see the [interactive model table](model_properties_table_interactive.html)\n",
 ) -> None:
     """write the model table to disk in the specified format"""
     if include_TL_version:
@@ -463,7 +464,11 @@ def write_model_table(
             # convert huggingface name to url
             if md_hf_links:
                 model_table_processed = huggingface_name_to_url(model_table_processed)
-            model_table_processed.to_markdown(path.with_suffix(".md"), index=False)
+            
+            model_table_md: str = md_header + model_table_processed.to_markdown(index=False)
+            with open(path.with_suffix(".md"), "w") as f:
+                f.write(model_table_md)
+
         case _:
             raise KeyError(f"Invalid format: {format}")
 
@@ -492,29 +497,19 @@ def abridge_model_table(
     return output
 
 
-def get_model_table(
-    model_table_path: Path|str = _MODEL_TABLE_PATH,
+def generate_model_table(
+    base_path: Path|str = GENERATED_DIR,
     verbose: bool = True,
-    force_reload: bool = True,
-    do_write: bool = True,
     parallelize: bool | int = True,
-    model_names_pattern: str | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> pd.DataFrame:
     """get the model table either by generating or reading from jsonl file
 
     # Parameters:
-     - `model_table_path : Path|str`
-        the path to the model table file, and the base name for the csv and md files
-        (defaults to `_MODEL_TABLE_PATH`)
+     - `base_path : Path|str`
+        base path of where to save the tables
      - `verbose : bool`
         whether to show progress bar
-       (defaults to `True`)
-     - `force_reload : bool`
-        force creating the table from scratch, even if file exists
-       (defaults to `True`)
-     - `do_write : bool`
-        whether to write the table to disk, if generating
        (defaults to `True`)
      - `model_names_pattern : str|None`
         filter the model names by making them include this string. passed to `make_model_table()`. no filtering if `None`
@@ -528,33 +523,33 @@ def get_model_table(
     """
 
     # convert to Path, and modify the name if a pattern is provided
-    model_table_path = Path(model_table_path)
-    
-    if model_names_pattern is not None:
-        model_table_path = model_table_path.with_name(
-            model_table_path.stem + f"-{model_names_pattern}"
-        )
+    base_path = Path(base_path)
 
-    if not model_table_path.exists() or force_reload:
-        # generate it from scratch
-        model_table: pd.DataFrame = make_model_table(
-            verbose=verbose,
-            parallelize=parallelize,
-            model_names_pattern=model_names_pattern,
-            **kwargs,
-        )
-        if do_write:
-            # full data as jsonl
-            write_model_table(model_table, model_table_path, format="jsonl")
-            # abridged data as csv, md
-            abridged_table: pd.DataFrame = abridge_model_table(model_table)
-            write_model_table(abridged_table, model_table_path, format="csv")
-            write_model_table(abridged_table, model_table_path, format="md")
-    else:
-        # read the table from jsonl
-        model_table: pd.DataFrame = pd.read_json(
-            model_table_path, orient="records", lines=True
-        )
+    # generate the table
+    model_table: pd.DataFrame = make_model_table(
+        verbose=verbose,
+        parallelize=parallelize,
+        **kwargs,
+    )
+
+    # full data as jsonl
+    write_model_table(
+        model_table=model_table,
+        path=base_path / "model_properties_data" / "data.jsonl",
+        format="jsonl",
+    )
+    # abridged data as csv, md
+    abridged_table: pd.DataFrame = abridge_model_table(model_table)
+    write_model_table(
+        model_table=abridged_table,
+        path=base_path / "model_properties_table.md",
+        format="csv",
+    )
+    write_model_table(
+        model_table=abridged_table,
+        path=base_path / "model_properties_data" / "data.csv",
+        format="md",
+    )
 
     return model_table
 
