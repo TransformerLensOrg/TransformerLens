@@ -568,12 +568,12 @@ def get_model_table(
     abridged_table: pd.DataFrame = abridge_model_table(model_table)
     write_model_table(
         model_table=abridged_table,
-        path=base_path / "model_properties_table.md",
+        path=base_path / "model_properties_data" / "data.csv",
         format="csv",
     )
     write_model_table(
         model_table=abridged_table,
-        path=base_path / "model_properties_data" / "data.csv",
+        path=base_path / "model_properties_table.md",
         format="md",
     )
 
