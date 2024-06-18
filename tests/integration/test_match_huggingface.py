@@ -1,3 +1,4 @@
+import math
 import torch
 import pytest
 from transformers import AutoModelForCausalLM
@@ -17,10 +18,11 @@ class TestMatchHuggingFace:
             model_name, device="cpu"
         )
         hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu")
-        test_tensor = torch.randn((2, 2, tl_model.cfg.d_model))
+        tensor_shape = (3, 5, tl_model.cfg.d_model)
+        test_tensor = torch.randn(tensor_shape)
 
         for layer_n in range(len(tl_model.blocks)):
             tl_out = tl_model.blocks[layer_n].mlp(test_tensor)
             hf_out = hf_model.transformer.h[layer_n].mlp(test_tensor)
 
-            assert torch.sum(tl_out == hf_out) == 2 * 2 * tl_model.cfg.d_model
+            assert torch.sum(tl_out == hf_out) == math.prod(tensor_shape)
