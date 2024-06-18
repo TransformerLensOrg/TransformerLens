@@ -6,6 +6,7 @@ from transformer_lens.components import MoE
 def test_forward():
     cfg = {
         "d_model": 32,
+        "d_mlp": 14336,
         "d_head": 4,
         "num_experts": 32,
         "n_layers": 16,
