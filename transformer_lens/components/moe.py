@@ -35,7 +35,7 @@ class MoE(nn.Module):
             ]
         )
         self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=torch.float)
+            torch.empty(self.cfg.d_model, self.cfg.num_experts, dtype=self.cfg.dtype)
         )
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
