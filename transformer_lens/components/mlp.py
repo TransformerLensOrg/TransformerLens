@@ -2,18 +2,31 @@
 
 This module contains all the component :class:`MLP`.
 """
+
 from typing import Callable, Dict, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from fancy_einsum import einsum
 from jaxtyping import Float
 
 from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utils import gelu_fast, gelu_new, solu
+
+
+def addmm(bias, weight, x):
+    """Fused addmm.
+
+    Must match the Huggingface Conv1D implementation exactly.
+    https://github.com/huggingface/transformers/blob/9ba9369a2557e53a01378199a9839ec6e82d8bc7/src/transformers/pytorch_utils.py#L102-L106
+    """
+    nf = weight.shape[1]
+    size_out = x.size()[:-1] + (nf,)
+    x = torch.addmm(bias, x.view(-1, x.size(-1)), weight)
+    x = x.view(size_out)
+    return x
 
 
 # MLP Layers
@@ -62,20 +75,13 @@ class MLP(nn.Module):
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
-        # Technically, all these einsums could be done with a single matmul, but this is more readable.
-        pre_act = self.hook_pre(
-            einsum("batch pos d_model, d_model d_mlp -> batch pos d_mlp", x, self.W_in) + self.b_in
-        )  # [batch, pos, d_mlp]
+        # This is equivalent to (roughly) W_in @ x + b_in. It's important to
+        # use a fused addmm to ensure it matches the Huggingface implementation
+        # exactly.
+        pre_act = addmm(self.b_in, self.W_in, x)  # [batch, pos, d_mlp]
         if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
-        return (
-            einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
-                self.W_out,
-            )
-            + self.b_out
-        )
+        return addmm(self.b_out, self.W_out, post_act)
