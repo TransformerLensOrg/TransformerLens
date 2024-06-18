@@ -989,7 +989,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": hf_config.num_key_value_heads,
             "gated_mlp": True,
             "use_local_attn": False,
-            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            # "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "num_experts": hf_config.num_local_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
         }
