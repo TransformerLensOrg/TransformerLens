@@ -6,11 +6,11 @@ from typing import Dict, Union
 
 import torch
 import torch.nn as nn
-from fancy_einsum import einsum
 from jaxtyping import Float
 
 from transformer_lens.components import LayerNorm
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.util import addmm
 
 
 class BertMLMHead(nn.Module):
@@ -27,14 +27,7 @@ class BertMLMHead(nn.Module):
         self.ln = LayerNorm(self.cfg)
 
     def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:
-        resid = (
-            einsum(
-                "batch pos d_model_in, d_model_out d_model_in -> batch pos d_model_out",
-                resid,
-                self.W,
-            )
-            + self.b
-        )
+        resid = addmm(self.b, self.W, resid)
         resid = self.act_fn(resid)
         resid = self.ln(resid)
         return resid
