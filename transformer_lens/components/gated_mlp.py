@@ -15,7 +15,8 @@ from transformers.utils import is_bitsandbytes_available
 from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utils import addmm, gelu_fast, gelu_new, solu
+from transformer_lens.utilities.addmm import batch_addmm
+from transformer_lens.utils import gelu_fast, gelu_new, solu
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
@@ -45,15 +46,9 @@ class GatedMLP(nn.Module):
 
         if self.cfg.load_in_4bit:
             nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
-            self.W_in = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_gate = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_out = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
+            self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
             self.W_in = nn.Parameter(
                 torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
@@ -103,9 +98,7 @@ class GatedMLP(nn.Module):
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         if self.cfg.load_in_4bit:
             pre_act = self.hook_pre(
-                bnb.matmul_4bit(
-                    x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state
-                )
+                bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
             )
         else:
             pre_act = self.hook_pre(
@@ -119,9 +112,7 @@ class GatedMLP(nn.Module):
         if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             if self.cfg.load_in_4bit:
                 pre_linear = self.hook_pre_linear(
-                    bnb.matmul_4bit(
-                        x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state
-                    )
+                    bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
                 )
             else:
                 pre_linear = self.hook_pre_linear(
@@ -144,4 +135,4 @@ class GatedMLP(nn.Module):
                 post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
             )
         else:
-            return addmm(self.b_out, self.W_out, post_act)
+            return batch_addmm(self.b_out, self.W_out, post_act)

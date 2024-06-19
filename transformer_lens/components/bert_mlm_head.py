@@ -10,7 +10,7 @@ from jaxtyping import Float
 
 from transformer_lens.components import LayerNorm
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.util import addmm
+from transformer_lens.utilities.addmm import batch_addmm
 
 
 class BertMLMHead(nn.Module):
@@ -27,7 +27,7 @@ class BertMLMHead(nn.Module):
         self.ln = LayerNorm(self.cfg)
 
     def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:
-        resid = addmm(self.b, self.W, resid)
+        resid = batch_addmm(self.b, self.W, resid)
         resid = self.act_fn(resid)
         resid = self.ln(resid)
         return resid

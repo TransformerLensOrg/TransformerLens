@@ -10,7 +10,7 @@ import torch.nn as nn
 from jaxtyping import Float
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.util import addmm
+from transformer_lens.utilities.addmm import batch_addmm
 
 
 class Unembed(nn.Module):
@@ -28,4 +28,4 @@ class Unembed(nn.Module):
     def forward(
         self, residual: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
-        return addmm(self.b_U, self.W_U, residual)
+        return batch_addmm(self.b_U, self.W_U, residual)
