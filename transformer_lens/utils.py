@@ -1234,7 +1234,7 @@ def batch_addmm(
     Must match the Huggingface Conv1D implementation exactly.
     https://github.com/huggingface/transformers/blob/9ba9369a2557e53a01378199a9839ec6e82d8bc7/src/transformers/pytorch_utils.py#L102-L106
     """
-    n_output_features = weight.shape[-2]
+    n_output_features = weight.shape[-1]
     size_out = x.size()[:-1] + (n_output_features,)
     x = vanilla_addmm(bias, x.view(-1, x.size(-1)), weight)
     x = x.view(size_out)
