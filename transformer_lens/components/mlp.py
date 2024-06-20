@@ -66,7 +66,7 @@ class MLP(nn.Module):
         # This is equivalent to (roughly) W_in @ x + b_in. It's important to
         # use a fused addmm to ensure it matches the Huggingface implementation
         # exactly.
-        pre_act = batch_addmm(self.b_in, self.W_in, x)  # [batch, pos, d_mlp]
+        pre_act = self.hook_pre(batch_addmm(self.b_in, self.W_in, x))  # [batch, pos, d_mlp]
         if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             post_act = self.hook_post(self.act_fn(pre_act))  # [batch, pos, d_mlp]
         else:
