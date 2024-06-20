@@ -1,6 +1,7 @@
 import math
-import torch
+
 import pytest
+import torch
 from transformers import AutoModelForCausalLM
 
 from transformer_lens import HookedTransformer
@@ -14,9 +15,7 @@ class TestMatchHuggingFace:
 
     # tests
     def test_compare_huggingface_logits_match_local_implementation(self, model_name):
-        tl_model = HookedTransformer.from_pretrained_no_processing(
-            model_name, device="cpu"
-        )
+        tl_model = HookedTransformer.from_pretrained_no_processing(model_name, device="cpu")
         hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu")
         tensor_shape = (3, 5, tl_model.cfg.d_model)
         test_tensor = torch.randn(tensor_shape)
