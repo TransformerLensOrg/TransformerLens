@@ -24,7 +24,7 @@ def cfg() -> Dict[str, Any]:
     }
 
 
-def test_initialization(cfg: dict[str, Any]):
+def test_initialization(cfg: Dict[str, Any]):
     model = GatedMLP(cfg)
     assert isinstance(model.W_in, nn.Parameter)
     assert isinstance(model.W_gate, nn.Parameter)
@@ -35,7 +35,7 @@ def test_initialization(cfg: dict[str, Any]):
     assert isinstance(model.ln, LayerNorm)
 
 
-def test_forward(cfg: dict[str, Any]):
+def test_forward(cfg: Dict[str, Any]):
     model = GatedMLP(cfg)
     x = torch.randn(2, 10, cfg["d_model"])
     output = model(x)
