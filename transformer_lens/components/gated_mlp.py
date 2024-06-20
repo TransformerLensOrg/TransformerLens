@@ -132,11 +132,11 @@ class GatedMLP(nn.Module):
             return bnb.matmul_4bit(
                 post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
             )
-            return (
-                einsum(
-                    "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                    post_act,
-                    self.W_out,
-                )
-                + self.b_out
+        return (
+            einsum(
+                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
+                post_act,
+                self.W_out,
             )
+            + self.b_out
+        )
