@@ -44,7 +44,7 @@ class MoE(nn.Module):
             self.cfg.experts_per_token <= self.cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
 
-        self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(self.cfg) for _ in range(self.num_experts)])
+        self.experts = nn.ModuleList([GatedMLP(self.cfg) for _ in range(self.num_experts)])
         self.W_gate = nn.Linear(self.cfg.d_model, self.cfg.num_experts, bias=False)
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
@@ -79,6 +79,7 @@ class MoE(nn.Module):
             # Index the correct hidden states and compute the expert hidden state for
             # the current expert. We need to make sure to multiply the output hidden
             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
+            print("x shape" + str(x[None, top_x].shape))
             current_state = x[None, top_x].reshape(-1, d_model)
             current_hidden_states = expert_layer(current_state) * x[top_x, idx, None]
 
