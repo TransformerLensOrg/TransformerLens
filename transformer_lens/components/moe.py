@@ -18,46 +18,16 @@ class MixtralBlockSparseTop2MLP(nn.Module):
         self.ffn_dim = config.d_mlp
         self.hidden_dim = config.d_model
 
-        self.w1 = nn.Parameter(
-            torch.empty(self.hidden_dim, self.ffn_dim, dtype=config.dtype)
-        )
-        self.w2 = nn.Parameter(
-            torch.empty(self.ffn_dim, self.hidden_dim, dtype=config.dtype)
-        )
-        self.w3 = nn.Parameter(
-            torch.empty(self.hidden_dim, self.ffn_dim, dtype=config.dtype)
-        )
+        self.w1 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
+        self.w2 = nn.Linear(self.ffn_dim, self.hidden_dim, bias=False)
+        self.w3 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
 
         self.act_fn = F.silu
-        
-        self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
-        self.hook_post = HookPoint()  # [batch, pos, d_mlp]
-        self.hook_pre_linear = HookPoint()
-
 
     def forward(self, hidden_states):
-        pre_act = self.hook_pre(
-            einsum(
-                "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                hidden_states,
-                self.w1,
-            )
-        )
-        pre_linear = self.hook_pre_linear(
-            einsum(
-                "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                hidden_states,
-                self.w3,
-            )
-        )
-        post_act = self.hook_post(
-            (self.act_fn(pre_act) * pre_linear)
-        )
-        return einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
-                self.w2,
-            )
+        current_hidden_states = self.act_fn(self.w1(hidden_states)) * self.w3(hidden_states)
+        current_hidden_states = self.w2(current_hidden_states)
+        return current_hidden_states
 
 class MoE(nn.Module):
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
