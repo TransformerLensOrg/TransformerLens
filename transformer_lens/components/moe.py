@@ -67,7 +67,7 @@ class MoE(nn.Module):
         weights, expert_indices = torch.topk(weights, self.experts_per_token, dim=-1)
         weights /= weights.sum(dim=-1, keepdim=True)
         expert_indices = self.hook_expert_indices(expert_indices)
-        weights = weights.to(gate_logits.dtype)
+        weights = weights.to(x.dtype)
 
         results = torch.zeros(
             (batch * pos, d_model), dtype=x.dtype, device=x.device
