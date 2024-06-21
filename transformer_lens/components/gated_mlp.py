@@ -122,7 +122,7 @@ class GatedMLP(nn.Module):
                 )
 
             post_act = self.hook_post(
-                (self.act_fn(pre_act) * pre_linear) + self.b_in
+                (self.act_fn(pre_act) * pre_linear)# + self.b_in
             )  # [batch, pos, d_mlp]
         else:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
@@ -133,11 +133,8 @@ class GatedMLP(nn.Module):
                 post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
             )
         else:
-            return (
-                einsum(
+            return einsum(
                     "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
                     post_act,
                     self.W_out,
                 )
-                + self.b_out
-            )
