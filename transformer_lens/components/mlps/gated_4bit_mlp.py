@@ -39,39 +39,28 @@ class GatedMLP(BaseMLP):
     ln: nn.Module
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
-        super().__init__(config=config)
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
-        )
-        self.W_out = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
-        )
-        self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
-        )
+        super().__init__(config)
+
+        nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
+        self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+        self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
 
         # hook on the linear component of the input
         self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
+
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum(
-                "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                x,
-                self.W_gate,
-            )
-        )  # [batch, pos, d_mlp]
+            bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
+        )
 
         if self.is_layer_norm_activation():
             pre_linear = self.hook_pre_linear(
-                einsum(
-                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                    x,
-                    self.W_in,
-                )
+                bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
             )
 
             post_act = self.hook_post(
@@ -81,11 +70,6 @@ class GatedMLP(BaseMLP):
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
 
-        return (
-            einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
-                self.W_out,
-            )
-            + self.b_out
+        return bnb.matmul_4bit(
+            post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
         )

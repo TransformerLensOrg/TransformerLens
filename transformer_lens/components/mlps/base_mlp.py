@@ -21,6 +21,12 @@ class BaseMLP(nn.Module):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(config)
         assert self.cfg.d_mlp is not None
+        
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
+
+        self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
+        self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
         if self.cfg.act_fn == "relu":
             self.act_fn = F.relu
@@ -43,3 +49,6 @@ class BaseMLP(nn.Module):
 
         else:
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
+        
+    def is_layer_norm_activation(self) -> bool:
+        return self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln")
