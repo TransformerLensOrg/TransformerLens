@@ -682,10 +682,10 @@ class ActivationCache:
         incl_remainder: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         apply_ln: bool = False,
-    ) -> (
-        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]
-        | Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]]
-    ):
+    ) -> Union[
+        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
+    ]:
         """Stack Head Results.
 
         Returns a stack of all head results (ie residual stream contribution) up to layer L. A good
@@ -1015,10 +1015,10 @@ class ActivationCache:
         apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
-    ) -> (
-        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]
-        | Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]]
-    ):
+    ) -> Union[
+        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
+    ]:
         """Get the full Residual Decomposition.
 
         Returns the full decomposition of the residual stream into embed, pos_embed, each head
