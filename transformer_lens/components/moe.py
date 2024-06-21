@@ -80,9 +80,8 @@ class MoE(nn.Module):
             # Index the correct hidden states and compute the expert hidden state for
             # the current expert. We need to make sure to multiply the output hidden
             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
-            print("x shape" + str(x[None, top_x].shape))
             current_state = x[None, top_x].reshape(-1, d_model)
-            current_hidden_states = expert_layer(current_state) * x[top_x, idx, None]
+            current_hidden_states = expert_layer(current_state) * weights[top_x, idx, None]
 
             # However `index_add_` only support torch tensors for indexing so we'll use
             # the `top_x` tensor here.
