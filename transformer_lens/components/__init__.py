@@ -19,9 +19,9 @@ from .unembed import Unembed
 from .attention import Attention
 from .bert_mlm_head import BertMLMHead
 from .embed import Embed
-from .gated_mlp import GatedMLP
 from .grouped_query_attention import GroupedQueryAttention
-from .mlp import MLP
+from .mlps.gated_mlp import GatedMLP
+from .mlps.mlp import MLP
 
 # Interdependent modules
 from .bert_block import BertBlock

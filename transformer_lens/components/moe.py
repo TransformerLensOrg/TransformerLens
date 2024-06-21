@@ -1,6 +1,6 @@
+import gc
 from typing import Dict, Union
 
-import gc
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +10,7 @@ from jaxtyping import Float
 from transformer_lens.components import MLP, GatedMLP
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+
 
 class MixtralBlockSparseTop2MLP(nn.Module):
     def __init__(self, config):
@@ -44,7 +45,7 @@ class MoE(nn.Module):
             self.cfg.experts_per_token <= self.cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
 
-        self.experts = nn.ModuleList([GatedMLP(self.cfg) for _ in range(self.num_experts)])
+        self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(self.cfg) for _ in range(self.num_experts)])
         self.W_gate = nn.Linear(self.cfg.d_model, self.cfg.num_experts, bias=False)
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
@@ -88,4 +89,5 @@ class MoE(nn.Module):
             results.index_add_(0, top_x, current_hidden_states.to(x.dtype))
 
         results = results.reshape(batch, pos, d_model)
+        return results
         return results

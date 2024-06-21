@@ -3,29 +3,24 @@
 This module contains all the component :class:`MLP`.
 """
 
-from typing import Callable, Dict, Union
+from typing import Dict, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from jaxtyping import Float
 
-from transformer_lens.components import LayerNorm, LayerNormPre
+from transformer_lens.components.mlps.base_mlp import BaseMLP
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.addmm import batch_addmm
-from transformer_lens.utils import gelu_fast, gelu_new, solu
 
 
 # MLP Layers
-class MLP(nn.Module):
-    act_fn: Callable[..., torch.Tensor]
-    ln: nn.Module
+class MLP(BaseMLP):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
-        super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
-        assert self.cfg.d_mlp is not None  # TODO: should this not be optional?
+        super().__init__(config)
+
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
         )
@@ -37,28 +32,6 @@ class MLP(nn.Module):
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
-
-        if self.cfg.act_fn == "relu":
-            self.act_fn = F.relu
-        elif self.cfg.act_fn == "gelu":
-            self.act_fn = F.gelu
-        elif self.cfg.act_fn == "silu":
-            self.act_fn = F.silu
-        elif self.cfg.act_fn == "gelu_new":
-            self.act_fn = gelu_new
-        elif self.cfg.act_fn == "gelu_fast":
-            self.act_fn = gelu_fast
-        elif self.cfg.act_fn == "solu_ln":
-            self.act_fn = solu
-            # Hook taken between activation and layer norm
-            self.hook_mid = HookPoint()  # [batch, pos, d_mlp]
-            if self.cfg.normalization_type == "LN":
-                self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
-            else:
-                self.ln = LayerNormPre(self.cfg)
-
-        else:
-            raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
