@@ -20,13 +20,19 @@ class MLP(CanBeUsedAsMLP):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__(config)
-
+        
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
         )
         self.W_out = nn.Parameter(
             torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
         )
+
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
+
+        self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
+        self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]

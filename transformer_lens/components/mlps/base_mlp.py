@@ -21,9 +21,3 @@ class BaseMLP(nn.Module):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(config)
         assert self.cfg.d_mlp is not None
-        
-        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
-        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
-
-        self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
-        self.hook_post = HookPoint()  # [batch, pos, d_mlp]

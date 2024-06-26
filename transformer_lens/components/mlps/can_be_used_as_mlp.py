@@ -47,7 +47,7 @@ class CanBeUsedAsMLP(nn.Module):
         
         self.act_fn = activation_function
         
-        if self.cfg.act_fn == "solu_ln":
+        if self.cfg.is_layer_norm_activation():
             self.hook_mid = HookPoint()  # [batch, pos, d_mlp]
             if self.cfg.normalization_type == "LN":
                 self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
