@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from transformer_lens.components import LayerNorm, LayerNormPre
+from transformer_lens.hook_points import HookPoint
 from transformer_lens.components.mlps.can_be_used_as_mlp import ActivationFunction, CanBeUsedAsMLP
 from transformer_lens.utils import gelu_fast, gelu_new, solu
 
@@ -74,5 +75,24 @@ def test_select_activation_function_with_layer_norm():
     model = CanBeUsedAsMLP(cfg)
     model.select_activation_function()
     assert model.act_fn == solu
-    assert model.hook_mid is not None
-    assert model.ln is LayerNorm
+    assert isinstance(model.hook_mid, HookPoint)
+    assert isinstance(model.ln, LayerNorm)
+
+def test_select_activation_function_with_layer_norm_pre():
+    cfg = {
+        "n_layers": 12,
+        "n_ctx": 1024,
+        "d_head": 64,
+        "d_model": 128,
+        "d_mlp": 256,
+        "dtype": torch.float32,
+        "act_fn": "solu_ln",
+        "normalization_type": "LNPre",
+        "load_in_4bit": False,
+    }
+
+    model = CanBeUsedAsMLP(cfg)
+    model.select_activation_function()
+    assert model.act_fn == solu
+    assert isinstance(model.hook_mid, HookPoint)
+    assert isinstance(model.ln, LayerNormPre)

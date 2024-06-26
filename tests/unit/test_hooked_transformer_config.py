@@ -35,7 +35,7 @@ def test_is_layer_norm_activation_passes():
         "n_ctx": 5,
         "d_head": 2,
         "attn_only": True,
-        "act_fn": "silu_ln",
+        "act_fn": "solu_ln",
     }
     config = HookedTransformerConfig.unwrap(hooked_transformer_config_dict)
     assert config.is_layer_norm_activation()
