@@ -27,28 +27,3 @@ class BaseMLP(nn.Module):
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
-
-        if self.cfg.act_fn == "relu":
-            self.act_fn = F.relu
-        elif self.cfg.act_fn == "gelu":
-            self.act_fn = F.gelu
-        elif self.cfg.act_fn == "silu":
-            self.act_fn = F.silu
-        elif self.cfg.act_fn == "gelu_new":
-            self.act_fn = gelu_new
-        elif self.cfg.act_fn == "gelu_fast":
-            self.act_fn = gelu_fast
-        elif self.cfg.act_fn == "solu_ln":
-            self.act_fn = solu
-            # Hook taken between activation and layer norm
-            self.hook_mid = HookPoint()  # [batch, pos, d_mlp]
-            if self.cfg.normalization_type == "LN":
-                self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
-            else:
-                self.ln = LayerNormPre(self.cfg)
-
-        else:
-            raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
-        
-    def is_layer_norm_activation(self) -> bool:
-        return self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln")
