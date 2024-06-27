@@ -214,6 +214,7 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-base",
     "google-t5/t5-large",
     "ai-forever/mGPT",
+    "baichuan-inc/Baichuan-7B",
     "baichuan-inc/Baichuan-13B-Base",
     "baichuan-inc/Baichuan-13B-Chat",
 ]
@@ -634,6 +635,7 @@ MODEL_ALIASES = {
     "google-t5/t5-base": ["t5-base"],
     "google-t5/t5-large": ["t5-large"],
     "ai-forever/mGPT": ["mGPT"],
+    "baichuan-inc/Baichuan-7B": ["Baichuan-7B"],
     "baichuan-inc/Baichuan-13B-Base": ["Baichuan-13B-Base"],
     "baichuan-inc/Baichuan-13B-Chat": ["Baichuan-13B-Chat"],
 }
@@ -1229,7 +1231,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "use_attn_scale": False,
             "tie_word_embeddings": hf_config.tie_word_embeddings,
         }
-    elif architecture == "BaichuanForCausalLM":
+    elif architecture.startswith("Bai"):
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
@@ -1608,7 +1610,7 @@ def get_pretrained_state_dict(
             state_dict = convert_neox_weights(hf_model, cfg)
         elif cfg.original_architecture == "LlamaForCausalLM":
             state_dict = convert_llama_weights(hf_model, cfg)
-        elif cfg.original_architecture == "BaichuanForCausalLM":
+        elif cfg.original_architecture.startswith("Bai"):
             state_dict = convert_baichuan_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
