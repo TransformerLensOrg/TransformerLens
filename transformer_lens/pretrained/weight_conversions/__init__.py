@@ -1,4 +1,3 @@
-from .mixtral import convert_mixtral_weights
 from .neo import convert_neo_weights
 from .gpt2 import convert_gpt2_weights
 from .opt import convert_opt_weights
@@ -7,6 +6,7 @@ from .neox import convert_neox_weights
 from .llama import convert_llama_weights
 from .bert import convert_bert_weights
 from .mistral import convert_mistral_weights
+from .mixtral import convert_mixtral_weights
 from .bloom import convert_bloom_weights
 from .coder import convert_coder_weights
 from .qwen import convert_qwen_weights
