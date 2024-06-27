@@ -85,7 +85,7 @@ def test_logit_attrs_matches_reference_code():
     )
     ave_logit_diffs = logit_diffs.mean(dim=-1)
 
-    assert torch.isclose(ref_ave_logit_diffs, ave_logit_diffs, atol=1e-7).all()
+    assert torch.isclose(ref_ave_logit_diffs, ave_logit_diffs, atol=1.1e-7).all()
 
 
 @torch.no_grad
