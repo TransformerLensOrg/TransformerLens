@@ -612,6 +612,7 @@ MODEL_ALIASES = {
     "google-t5/t5-base": ["t5-base"],
     "google-t5/t5-large": ["t5-large"],
     "ai-forever/mGPT": ["mGPT"],
+    "baichuan-inc/Baichuan-13B-Base": ["Baichuan-13B-Base"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -1220,6 +1221,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "post_embedding_ln": True,
             "positional_embedding_type": "alibi",
+            "tie_word_embeddings": hf_config.tie_word_embeddings,
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
