@@ -12,6 +12,7 @@ def get_default_config():
         d_model=128, d_head=8, n_heads=16, n_ctx=128, n_layers=1, d_vocab=50257, attn_only=True
     )
 
+
 def test_convert_neo_weights_exposed():
     cfg = get_default_config()
 
