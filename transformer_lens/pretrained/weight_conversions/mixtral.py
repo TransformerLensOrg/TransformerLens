@@ -4,7 +4,6 @@ import torch
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-
 def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
     # The same as Mistral, but with the MLP replaced with MoE
     # As with Mistral, Mixtral has no biases
