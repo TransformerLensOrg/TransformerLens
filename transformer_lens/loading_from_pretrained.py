@@ -193,6 +193,7 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-base",
     "google-t5/t5-large",
     "ai-forever/mGPT",
+    "baichuan-inc/Baichuan-13B-Base",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -1203,6 +1204,22 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attention_dir": "bidirectional",
             "use_attn_scale": False,
             "tie_word_embeddings": hf_config.tie_word_embeddings,
+        }
+    elif "Baichuan-13B" in official_model_name:
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 2048,  # Capped due to HF Tokenizer Constraints
+            "d_vocab": hf_config.vocab_size,
+            "eps": hf_config.rms_norm_eps,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "post_embedding_ln": True,
+            "positional_embedding_type": "alibi",
         }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
