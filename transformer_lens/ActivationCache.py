@@ -682,7 +682,10 @@ class ActivationCache:
         incl_remainder: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         apply_ln: bool = False,
-    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
+    ) -> Union[
+        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
+    ]:
         """Stack Head Results.
 
         Returns a stack of all head results (ie residual stream contribution) up to layer L. A good
@@ -736,7 +739,10 @@ class ActivationCache:
                 labels.append("remainder")
         elif incl_remainder:
             # There are no components, so the remainder is the entire thing.
-            components = [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)]
+            components = torch.cat(
+                [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)[None]], dim=0
+            )
+            labels.append("remainder")
         else:
             # If this is called with layer 0, we return an empty tensor of the right shape to be
             # stacked correctly. This uses the shape of hook_embed, which is pretty janky since it
@@ -752,7 +758,7 @@ class ActivationCache:
             components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
 
         if return_labels:
-            return components, labels  # type: ignore # TODO: fix this properly
+            return components, labels
         else:
             return components
 
@@ -896,11 +902,16 @@ class ActivationCache:
             )
 
             if incl_remainder:
-                remainder = self[("resid_post", layer - 1)] - components.sum(dim=0)
+                remainder = pos_slice.apply(
+                    self[("resid_post", layer - 1)], dim=-2
+                ) - components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
                 labels.append("remainder")
         elif incl_remainder:
-            components = [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)]
+            components = torch.cat(
+                [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)[None]], dim=0
+            )
+            labels.append("remainder")
         else:
             # Returning empty, give it the right shape to stack properly
             components = torch.zeros(
@@ -1004,7 +1015,10 @@ class ActivationCache:
         apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
-    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
+    ) -> Union[
+        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
+    ]:
         """Get the full Residual Decomposition.
 
         Returns the full decomposition of the residual stream into embed, pos_embed, each head
@@ -1081,6 +1095,6 @@ class ActivationCache:
             )
 
         if return_labels:
-            return residual_stack, labels  # type: ignore # TODO: fix this properly
+            return residual_stack, labels
         else:
             return residual_stack
