@@ -2281,7 +2281,7 @@ class HookedTransformer(HookedRootModule):
     # Various utility functions
     def accumulated_bias(
         self, layer: int, mlp_input: bool = False, include_mlp_biases=True
-    ) -> Float[torch.Tensor, "layers_accumulated_over d_model"]:
+    ) -> Float[torch.Tensor, "d_model"]:
         """Accumulated Bias.
 
         Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the
