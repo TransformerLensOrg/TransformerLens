@@ -140,7 +140,7 @@ class HookedTransformer(HookedRootModule):
                 # Phi & Baichuan model's fast tokenizer does not support adding a BOS token, use_fast
                 # should be False
                 tokenizer_name = self.cfg.tokenizer_name.lower()
-                if "phi" in tokenizer_name or "bai" in tokenizer_name:
+                if "phi" in tokenizer_name:
                     use_fast = False
                 huggingface_token = os.environ.get("HF_TOKEN", None)
                 tokenizer = AutoTokenizer.from_pretrained(
