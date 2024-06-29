@@ -7,7 +7,6 @@ from typing import Callable, Dict, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from jaxtyping import Float
 
 from transformer_lens.components import LayerNorm, LayerNormPre

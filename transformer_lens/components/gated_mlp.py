@@ -7,7 +7,6 @@ from typing import Callable, Dict, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from fancy_einsum import einsum
 from jaxtyping import Float
 from transformers.utils import is_bitsandbytes_available

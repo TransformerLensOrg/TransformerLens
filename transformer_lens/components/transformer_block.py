@@ -3,7 +3,6 @@
 This module contains all the component :class:`TransformerBlock`.
 """
 
-import logging
 from typing import Dict, Optional, Union
 
 import torch
