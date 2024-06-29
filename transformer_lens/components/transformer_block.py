@@ -2,6 +2,7 @@
 
 This module contains all the component :class:`TransformerBlock`.
 """
+
 import logging
 from typing import Dict, Optional, Union
 
@@ -38,7 +39,7 @@ class TransformerBlock(nn.Module):
 
         if self.cfg.normalization_type == "LN":
             normalization_layer = LayerNorm
-        elif self.cfg.normalization_type == "LN":
+        elif self.cfg.normalization_type == "LNPre":
             # We've folded in LayerNorm weights, so just need the center + scale parts
             normalization_layer = LayerNormPre
         elif self.cfg.normalization_type == "RMS":
