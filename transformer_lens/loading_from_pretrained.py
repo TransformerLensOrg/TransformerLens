@@ -1237,7 +1237,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 8,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 21, # Alternate global and local attn
+            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,
@@ -1261,11 +1261,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_base": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": 12.,
+            "attn_scale": 12.0,
             "n_key_value_heads": 16,
             "window_size": 4096,
             "use_local_attn": True,
-            "attn_types": ["global", "local"] * 23, # Alternate global and local attn
+            "attn_types": ["global", "local"] * 23,  # Alternate global and local attn
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "gated_mlp": True,

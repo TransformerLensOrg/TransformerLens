@@ -178,6 +178,7 @@ def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "
     """
     return input * F.softmax(input, dim=-1)
 
+
 ACTIVATION_FN_DICT = {
     "solu": solu,
     "solu_ln": solu,
@@ -186,7 +187,7 @@ ACTIVATION_FN_DICT = {
     "silu": F.silu,
     "relu": F.relu,
     "gelu": F.gelu,
-    "gelu_pytorch_tanh": lambda tensor: F.gelu(tensor, approximate="tanh")
+    "gelu_pytorch_tanh": lambda tensor: F.gelu(tensor, approximate="tanh"),
 }
 
 

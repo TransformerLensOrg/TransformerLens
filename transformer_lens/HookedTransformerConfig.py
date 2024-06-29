@@ -195,7 +195,7 @@ class HookedTransformerConfig:
     eps: float = 1e-5
     use_attn_result: bool = False
     use_attn_scale: bool = True
-    attn_scale: float = -1.
+    attn_scale: float = -1.0
     use_split_qkv_input: bool = False
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
@@ -242,8 +242,8 @@ class HookedTransformerConfig:
     decoder_start_token_id: Optional[int] = None
     tie_word_embeddings: bool = False
     use_normalization_before_and_after: bool = False
-    attn_scores_soft_cap: float = -1.
-    output_logits_soft_cap: float = -1.
+    attn_scores_soft_cap: float = -1.0
+    output_logits_soft_cap: float = -1.0
 
     def __post_init__(self):
         if self.n_heads == -1:
@@ -316,7 +316,7 @@ class HookedTransformerConfig:
                 torch.cuda.device_count() >= self.n_devices
             ), f"Not enough CUDA devices to support n_devices {self.n_devices}"
 
-        if self.use_attn_scale and self.attn_scale == -1.:
+        if self.use_attn_scale and self.attn_scale == -1.0:
             self.attn_scale = np.sqrt(self.d_head)
 
         assert self.default_prepend_bos in [

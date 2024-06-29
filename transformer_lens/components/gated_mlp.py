@@ -74,7 +74,7 @@ class GatedMLP(nn.Module):
             self.act_fn = ACTIVATION_FN_DICT[self.cfg.act_fn]
         else:
             raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
-        
+
         if self.cfg.act_fn == "solu_ln":
             # Hook taken between activation and layer norm
             self.hook_mid = HookPoint()  # [batch, pos, d_mlp]

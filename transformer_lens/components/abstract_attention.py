@@ -97,7 +97,7 @@ class AbstractAttention(ABC, nn.Module):
 
         # attn_scale is a constant that we divide the attention scores by pre-softmax. I'm not entirely sure why it matters, but it's probably a mix of softmax not being scale invariant and numerical stability?
         if self.cfg.use_attn_scale:
-            self.attn_scale = self.cfg.attn_scale # Defaults to sqrt(d_head)
+            self.attn_scale = self.cfg.attn_scale  # Defaults to sqrt(d_head)
         else:
             self.attn_scale = 1.0
         if self.cfg.scale_attn_by_inverse_layer_idx:

@@ -371,8 +371,7 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Loss:
-        ...
+    ) -> Loss: ...
 
     @overload
     def forward(
@@ -388,8 +387,7 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Loss:
-        ...
+    ) -> Loss: ...
 
     @overload
     def forward(
@@ -405,8 +403,7 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
-        ...
+    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]: ...
 
     @overload
     def forward(
@@ -422,8 +419,7 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def forward(
         self,
@@ -566,8 +562,10 @@ class HookedTransformer(HookedRootModule):
                 return None
             else:
                 logits = self.unembed(residual)  # [batch, pos, d_vocab]
-                if self.cfg.output_logits_soft_cap > 0.:
-                    logits = self.cfg.output_logits_soft_cap * F.tanh(logits / self.cfg.output_logits_soft_cap)
+                if self.cfg.output_logits_soft_cap > 0.0:
+                    logits = self.cfg.output_logits_soft_cap * F.tanh(
+                        logits / self.cfg.output_logits_soft_cap
+                    )
                 if return_type == "logits":
                     return logits
                 else:
@@ -600,14 +598,12 @@ class HookedTransformer(HookedRootModule):
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[True] = True, **kwargs
-    ) -> Tuple[Output, ActivationCache]:
-        ...
+    ) -> Tuple[Output, ActivationCache]: ...
 
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[False], **kwargs
-    ) -> Tuple[Output, Dict[str, torch.Tensor]]:
-        ...
+    ) -> Tuple[Output, Dict[str, torch.Tensor]]: ...
 
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
@@ -1269,7 +1265,7 @@ class HookedTransformer(HookedRootModule):
                     "Setting center_writing_weights=False instead."
                 )
                 center_writing_weights = False
-        if cfg.output_logits_soft_cap>0.:
+        if cfg.output_logits_soft_cap > 0.0:
             logging.warning(
                 "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant"
                 "Setting center_unembed=False instead."
