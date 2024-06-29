@@ -97,7 +97,7 @@ class AbstractAttention(ABC, nn.Module):
 
         # attn_scale is a constant that we divide the attention scores by pre-softmax. I'm not entirely sure why it matters, but it's probably a mix of softmax not being scale invariant and numerical stability?
         if self.cfg.use_attn_scale:
-            self.attn_scale = np.sqrt(self.cfg.d_head)
+            self.attn_scale = self.cfg.attn_scale # Defaults to sqrt(d_head)
         else:
             self.attn_scale = 1.0
         if self.cfg.scale_attn_by_inverse_layer_idx:
@@ -398,7 +398,12 @@ class AbstractAttention(ABC, nn.Module):
         k_ = einops.rearrange(
             k, "batch key_pos head_index d_head -> batch head_index d_head key_pos"
         )
-        return q_ @ k_ / self.attn_scale
+        attn_scores = q_ @ k_ / self.attn_scale
+        if self.cfg.attn_scores_soft_cap > 0:
+            attn_scores = self.cfg.attn_scores_soft_cap * F.tanh(
+                attn_scores / self.cfg.attn_scores_soft_cap
+            )
+        return attn_scores
 
     def calculate_z_scores(
         self,

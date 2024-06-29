@@ -35,29 +35,40 @@ class TransformerBlock(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
+
         if self.cfg.normalization_type == "LN":
-            self.ln1 = LayerNorm(cfg)
-            if not self.cfg.attn_only:
-                self.ln2 = LayerNorm(cfg)
-        elif self.cfg.normalization_type == "LNPre":
+            normalization_layer = LayerNorm
+        elif self.cfg.normalization_type == "LN":
             # We've folded in LayerNorm weights, so just need the center + scale parts
-            self.ln1 = LayerNormPre(cfg)
-            if not self.cfg.attn_only:
-                self.ln2 = LayerNormPre(cfg)
+            normalization_layer = LayerNormPre
         elif self.cfg.normalization_type == "RMS":
-            self.ln1 = RMSNorm(cfg)
-            if not self.cfg.attn_only:
-                self.ln2 = RMSNorm(cfg)
+            normalization_layer = RMSNorm
         elif self.cfg.normalization_type == "RMSPre":
-            self.ln1 = RMSNormPre(cfg)
-            if not self.cfg.attn_only:
-                self.ln2 = RMSNormPre(cfg)
+            normalization_layer = RMSNormPre
         elif self.cfg.normalization_type is None:
-            self.ln1 = nn.Identity()
-            if not self.cfg.attn_only:
-                self.ln2 = nn.Identity()
+            # This should just be the identity.
+            # We need to make this a lambda so we can call it on the config, just like the others
+            normalization_layer = lambda cfg: nn.Identity()
         else:
-            logging.warning(f"Invalid normalization_type passed in {self.cfg.normalization_type}")
+            raise ValueError(f"Invalid normalization_type passed in: {self.cfg.normalization_type}")
+
+        if self.cfg.use_normalization_before_and_after:
+            # If we use LN before and after, we do *not* fold in the weights to the LN
+            # after, though we can fold for the one before.
+            if self.cfg.normalization_type.startswith("RMS"):
+                normalization_layer_after = RMSNorm
+            elif self.cfg.normalization_type.startswith("LayerNorm"):
+                normalization_layer_after = LayerNorm
+            else:
+                normalization_layer_after = lambda cfg: nn.Identity()
+
+        self.ln1 = normalization_layer(cfg)
+        if self.cfg.use_normalization_before_and_after:
+            self.ln1_post = normalization_layer_after(cfg)
+        if not self.cfg.attn_only:
+            self.ln2 = normalization_layer(cfg)
+            if self.cfg.use_normalization_before_and_after:
+                self.ln2_post = normalization_layer_after(cfg)
 
         attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
         if not self.cfg.use_local_attn:
@@ -143,7 +154,7 @@ class TransformerBlock(nn.Module):
             key_input = attn_in
             value_input = attn_in
 
-        attn_out = self.hook_attn_out(
+        attn_out = (
             # hook the residual stream states that are used to calculate the
             # queries, keys and values, independently.
             # Then take the layer norm of these inputs, and pass these to the attention module.
@@ -157,13 +168,22 @@ class TransformerBlock(nn.Module):
                 attention_mask=attention_mask,
             )
         )  # [batch, pos, d_model]
+        if self.cfg.use_normalization_before_and_after:
+            # If we use LayerNorm both before and after, then apply the second LN after the layer
+            # and before the hook. We do it before the hook so hook_attn_out captures "that which
+            # is added to the residual stream"
+            attn_out = self.ln1_post(attn_out)
+        attn_out = self.hook_attn_out(attn_out)
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
             normalized_resid_mid = self.ln2(mlp_in)
-            mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_mid))  # [batch, pos, d_model]
+            mlp_out = self.mlp(normalized_resid_mid)  # [batch, pos, d_model]
+            if self.cfg.use_normalization_before_and_after:
+                mlp_out = self.ln2_post(mlp_out)
+            mlp_out = self.hook_mlp_out(mlp_out)
             resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
@@ -171,7 +191,10 @@ class TransformerBlock(nn.Module):
             normalized_resid_pre_2 = self.ln2(
                 resid_pre if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_pre.clone())
             )
-            mlp_out = self.hook_mlp_out(self.mlp(normalized_resid_pre_2))  # [batch, pos, d_model]
+            mlp_out = self.mlp(normalized_resid_pre_2)  # [batch, pos, d_model]
+            if self.cfg.use_normalization_before_and_after:
+                mlp_out = self.ln2_post(mlp_out)
+            mlp_out = self.hook_mlp_out(mlp_out)
             resid_post = self.hook_resid_post(
                 resid_pre + attn_out + mlp_out
             )  # [batch, pos, d_model]

@@ -9,6 +9,7 @@ import os
 import re
 from pathlib import Path
 from typing import Dict, Optional, Union
+import math
 
 import torch
 from huggingface_hub import HfApi
@@ -205,6 +206,10 @@ OFFICIAL_MODEL_NAMES = [
     "google/gemma-7b",
     "google/gemma-2b-it",
     "google/gemma-7b-it",
+    "google/gemma-2-9b",
+    "google/gemma-2-9b-it",
+    "google/gemma-2-27b",
+    "google/gemma-2-27b-it",
     "01-ai/Yi-6B",
     "01-ai/Yi-34B",
     "01-ai/Yi-6B-Chat",
@@ -623,6 +628,10 @@ MODEL_ALIASES = {
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
     "google/gemma-7b-it": ["gemma-7b-it"],
+    "google/gemma-2-9b": ["gemma-2-9b"],
+    "google/gemma-2-27b": ["gemma-2-27b"],
+    "google/gemma-2-9b-it": ["gemma-2-9b-it"],
+    "google/gemma-2-27b-it": ["gemma-2-27b-it"],
     "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
     "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
@@ -700,6 +709,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # Load HuggingFace model config
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
+    elif "gemma-2" in official_model_name.lower():
+        architecture = "Gemma2ForCausalLM"
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
@@ -1205,6 +1216,62 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
             "final_rms": True,
         }
+    elif official_model_name.startswith("google/gemma-2-9b"):
+        # Architecture for Gemma-2 9b and Gemma-2 9b Instruct models
+        cfg_dict = {
+            "d_model": 3584,
+            "d_head": 256,
+            "n_heads": 16,
+            "d_mlp": 14336,
+            "n_layers": 42,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu_pytorch_tanh",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "attn_scale": math.sqrt(224),
+            "n_key_value_heads": 8,
+            "window_size": 4096,
+            "use_local_attn": True,
+            "attn_types": ["global", "local"] * 21, # Alternate global and local attn
+            "attn_scores_soft_cap": 50.0,
+            "output_logits_soft_cap": 30.0,
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_normalization_before_and_after": True,
+        }
+    elif official_model_name.startswith("google/gemma-2-27b"):
+        # Architecture for Gemma-2 27b and Gemma-2 27b Instruct models
+        cfg_dict = {
+            "d_model": 4608,
+            "d_head": 128,
+            "n_heads": 32,
+            "d_mlp": 36864,
+            "n_layers": 46,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu_pytorch_tanh",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "attn_scale": 12.,
+            "n_key_value_heads": 16,
+            "window_size": 4096,
+            "use_local_attn": True,
+            "attn_types": ["global", "local"] * 23, # Alternate global and local attn
+            "attn_scores_soft_cap": 50.0,
+            "output_logits_soft_cap": 30.0,
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_normalization_before_and_after": True,
+        }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
             "d_model": hf_config.d_model,
@@ -1606,6 +1673,8 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "Phi3ForCausalLM":
             state_dict = convert_phi3_weights(hf_model, cfg)
         elif cfg.original_architecture == "GemmaForCausalLM":
+            state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Gemma2ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
         else:
             raise ValueError(
