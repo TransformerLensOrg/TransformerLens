@@ -3,6 +3,7 @@ import torch
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
+
 def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
     state_dict = {}
 
