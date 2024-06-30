@@ -45,7 +45,7 @@ class AbstractAttention(ABC, nn.Module):
         self.cfg = HookedTransformerConfig.unwrap(cfg)
 
         if self.cfg.load_in_4bit:
-            nq = int((self.cfg.d_model * self.cfg.d_model) / 2)
+            nq = int((self.cfg.d_model * self.cfg.d_head * self.cfg.n_heads) / 2)
             self.W_Q = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
             self.W_O = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
@@ -264,7 +264,7 @@ class AbstractAttention(ABC, nn.Module):
             if self.cfg.load_in_4bit:
                 # call bitsandbytes method to dequantize and multiply
                 out = bnb.matmul_4bit(
-                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
+                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                     self.W_O.t(),
                     # bias=self.W_O.t(),
                     bias=None,
@@ -275,14 +275,18 @@ class AbstractAttention(ABC, nn.Module):
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
-                out = F.linear(z.reshape(z.shape[0], z.shape[1], self.cfg.d_model), w, self.b_O)
+                out = F.linear(
+                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
+                    w,
+                    self.b_O,
+                )
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
             if self.cfg.load_in_4bit:
                 result = self.hook_result(
                     bnb.matmul_4bit(
-                        z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
+                        z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                         self.W_O.t(),
                         bias=None,
                         quant_state=self.W_O.quant_state,
