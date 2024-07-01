@@ -371,7 +371,8 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Loss: ...
+    ) -> Loss:
+        ...
 
     @overload
     def forward(
@@ -387,7 +388,8 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Loss: ...
+    ) -> Loss:
+        ...
 
     @overload
     def forward(
@@ -403,7 +405,8 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]: ...
+    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]:
+        ...
 
     @overload
     def forward(
@@ -419,7 +422,8 @@ class HookedTransformer(HookedRootModule):
         attention_mask: Optional[torch.Tensor] = None,  # [batch pos]
         stop_at_layer: Optional[int] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
-    ) -> None: ...
+    ) -> None:
+        ...
 
     def forward(
         self,
@@ -598,12 +602,14 @@ class HookedTransformer(HookedRootModule):
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[True] = True, **kwargs
-    ) -> Tuple[Output, ActivationCache]: ...
+    ) -> Tuple[Output, ActivationCache]:
+        ...
 
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[False], **kwargs
-    ) -> Tuple[Output, Dict[str, torch.Tensor]]: ...
+    ) -> Tuple[Output, Dict[str, torch.Tensor]]:
+        ...
 
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
