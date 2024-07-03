@@ -175,6 +175,7 @@ OFFICIAL_MODEL_NAMES = [
     "mistralai/Mistral-7B-Instruct-v0.1",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
+    "joelb/Mixtral-8x7B-1l",
     "bigscience/bloom-560m",
     "bigscience/bloom-1b1",
     "bigscience/bloom-1b7",
@@ -710,6 +711,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
             **kwargs,
         )
         architecture = hf_config.architectures[0]
+        if official_model_name == "joelb/Mixtral-8x7B-1l":
+            architecture = "MixtralForCausalLM"
 
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
