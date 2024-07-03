@@ -6,16 +6,12 @@ from typing import Callable, Dict, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from fancy_einsum import einsum
 from jaxtyping import Float
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
-from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utils import gelu_fast, gelu_new, solu
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
