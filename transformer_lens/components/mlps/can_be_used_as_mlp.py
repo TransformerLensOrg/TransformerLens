@@ -4,30 +4,18 @@ This module serves as the base for everything within TransformerLens that can be
 This does not necessarily mean that every component extending this class will be an MLP, but 
 everything extending this class can be used interchangeably for an MLP.
 """
-from typing import Callable, Dict, Optional, Union
+from typing import Dict, Optional, Union
 
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
 from jaxtyping import Float
 
 from transformer_lens.components import LayerNorm, LayerNormPre
+from transformer_lens.factories.activation_function_factory import ActivationFunctionFactory
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utils import gelu_fast, gelu_new, solu
+from transformer_lens.utilities.activation_functions import ActivationFunction
 
-# Convenient type for the format of each activation function
-ActivationFunction = Callable[..., torch.Tensor]
-# All currently supported activation functions. To add a new function, simply
-# put the name of the function as the key, and the value as the actual callable.
-SUPPORTED_ACTIVATION_FUNCTIONS: dict[str, ActivationFunction] = {
-    "relu": F.relu,
-    "gelu": F.gelu,
-    "silu": F.silu,
-    "gelu_new": gelu_new,
-    "gelu_fast": gelu_fast,
-    "solu_ln": solu,
-}
 
 class CanBeUsedAsMLP(nn.Module):
     
@@ -53,6 +41,8 @@ class CanBeUsedAsMLP(nn.Module):
         self.cfg = HookedTransformerConfig.unwrap(config)
         if self.cfg.d_mlp is None:
             raise ValueError("d_mlp must be set to use an MLP")
+        self.hook_mid = None
+        self.ln = None
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
@@ -69,12 +59,7 @@ class CanBeUsedAsMLP(nn.Module):
             ValueError: If the configure activation function is not supported.
         """
         
-        activation_function = SUPPORTED_ACTIVATION_FUNCTIONS.get(self.cfg.act_fn)
-            
-        if (activation_function is None):
-            raise ValueError(f"Invalid activation function name: {self.cfg.act_fn}")
-        
-        self.act_fn = activation_function
+        self.act_fn = ActivationFunctionFactory.pick_activation_function(self.cfg)
         
         if self.cfg.is_layer_norm_activation():
             self.hook_mid = HookPoint()

@@ -16,8 +16,7 @@ import numpy as np
 import torch
 
 from transformer_lens import utils
-
-SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
+from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 
 @dataclass

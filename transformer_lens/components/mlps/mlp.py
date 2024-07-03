@@ -15,7 +15,6 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.addmm import batch_addmm
 
 
-# MLP Layers
 class MLP(CanBeUsedAsMLP):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):

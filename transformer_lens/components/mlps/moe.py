@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from fancy_einsum import einsum
 from jaxtyping import Float
 
-from transformer_lens.components import MLP, GatedMLP
+from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
@@ -29,7 +29,7 @@ class MixtralBlockSparseTop2MLP(nn.Module):
         current_hidden_states = self.w2(current_hidden_states)
         return current_hidden_states
 
-class MoE(nn.Module):
+class MoE(CanBeUsedAsMLP):
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(config)

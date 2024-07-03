@@ -11,7 +11,7 @@ from fancy_einsum import einsum
 from jaxtyping import Float
 from transformers.utils import is_bitsandbytes_available
 
-from transformer_lens.components.mlps.base_mlp import BaseMLP
+from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -22,9 +22,7 @@ if is_bitsandbytes_available():
     from bitsandbytes.nn.modules import Params4bit
 
 
-# TODO
-# not sure whether to fold this into MLP or not
-class GatedMLP(BaseMLP):
+class GatedMLP(CanBeUsedAsMLP):
     """
     The equation of a gated MLP:
     pre = x @ W_gate
