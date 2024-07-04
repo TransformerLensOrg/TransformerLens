@@ -27,13 +27,13 @@ class CanBeUsedAsMLP(nn.Module):
     cfg: HookedTransformerConfig
 
     # The d mlp value pulled out of the config to make sure it always has a value
-    d_mlp: int = 0
+    d_mlp: int
 
     # The middle hook point will be None unless it specifically should be used
-    hook_mid: Optional[HookPoint] = None  # [batch, pos, d_mlp]
+    hook_mid: Optional[HookPoint]  # [batch, pos, d_mlp]
 
     # The layer norm component if the activation function is a layer norm
-    ln: Optional[nn.Module] = None
+    ln: Optional[nn.Module]
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """The base init for all MLP like components
