@@ -1,3 +1,8 @@
+"""Activation Function Factory
+
+Centralized location for selection supported activation functions throughout TransformerLens
+"""
+
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.activation_functions import (
     SUPPORTED_ACTIVATIONS,
