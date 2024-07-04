@@ -264,14 +264,16 @@ class AbstractAttention(ABC, nn.Module):
         if not self.cfg.use_attn_result:
             if self.cfg.load_in_4bit:
                 # call bitsandbytes method to dequantize and multiply
-                out = bnb.matmul_4bit(
-                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
-                    self.W_O.t(),
-                    # bias=self.W_O.t(),
-                    bias=None,
-                    quant_state=self.W_O.quant_state,
+                out = (
+                    bnb.matmul_4bit(
+                        z.reshape(z.shape[0], z.shape[1], self.cfg.d_model),
+                        self.W_O.t(),
+                        # bias=self.W_O.t(),
+                        bias=None,
+                        quant_state=self.W_O.quant_state,
+                    )
+                    + self.b_O
                 )
-                +self.b_O
             else:
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
