@@ -66,7 +66,6 @@ class MoE(CanBeUsedAsMLP):
                 expert_layer(current_state).reshape(-1, d_model) * weights[top_x, idx, None]
             )
 
-            print("current_hidden_states = " + str(current_hidden_states.shape))
             # However `index_add_` only support torch tensors for indexing so we'll use
             # the `top_x` tensor here.
             results.index_add_(0, top_x, current_hidden_states.to(x.dtype))
