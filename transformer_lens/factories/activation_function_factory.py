@@ -8,12 +8,11 @@ from transformer_lens.utilities.activation_functions import (
 class ActivationFunctionFactory:
     @staticmethod
     def pick_activation_function(cfg: HookedTransformerConfig) -> ActivationFunction:
-        
         act_fn = cfg.act_fn
-        
+
         if act_fn is None:
             raise ValueError("act_fn not set when trying to select Activation Function")
-        
+
         activation_function = SUPPORTED_ACTIVATIONS.get(act_fn)
 
         if activation_function is None:
