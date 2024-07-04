@@ -55,7 +55,7 @@ class CanBeUsedAsMLP(nn.Module):
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         """The format for all forward functions for any MLP"""
-        pass
+        return x
 
     def select_activation_function(self) -> None:
         """This function should be called by all components in their init to get everything needed
