@@ -747,7 +747,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 4096 // 32,
             "final_rms": True,
             "gated_mlp": True,
-            "rotary_base": 1000000,
+            "rotary_base": 1000000.0,
         }
         if "python" in official_model_name.lower():
             # The vocab size of python version of CodeLlama-7b is 32000
@@ -1396,9 +1396,6 @@ def get_pretrained_model_config(
     cfg_dict["default_prepend_bos"] = default_prepend_bos
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
-
-    # if "rotary_base" in cfg_dict:
-    #     cfg_dict["rotary_base"] = int(cfg_dict["rotary_base"])
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
