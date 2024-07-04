@@ -9,14 +9,12 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
+from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.components import (
-    MLP,
     Attention,
-    GatedMLP,
     GroupedQueryAttention,
     LayerNorm,
     LayerNormPre,
-    MoE,
     RMSNorm,
     RMSNormPre,
 )
@@ -33,7 +31,7 @@ from transformer_lens.utils import repeat_along_head_dimension
 class TransformerBlock(nn.Module):
     ln1: nn.Module
     ln2: nn.Module
-    mlp: nn.Module
+    mlp: CanBeUsedAsMLP
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
         super().__init__()
