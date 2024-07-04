@@ -21,9 +21,9 @@ class MLP(CanBeUsedAsMLP):
         self.select_activation_function()
 
         self.W_in = nn.Parameter(torch.empty(self.cfg.d_model, self.d_mlp, dtype=self.cfg.dtype))
-        self.W_out = nn.Parameter(torch.empty(self.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype))
-
         self.b_in = nn.Parameter(torch.zeros(self.d_mlp, dtype=self.cfg.dtype))
+
+        self.W_out = nn.Parameter(torch.empty(self.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
