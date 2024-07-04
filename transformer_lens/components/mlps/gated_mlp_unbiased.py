@@ -28,20 +28,17 @@ class GatedMLPUnbiased(CanBeUsedAsMLP):
     In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in) + b_in) @ W_out + b_out
     """
 
-    act_fn: Callable[..., torch.Tensor]
-    ln: nn.Module
-
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__(cfg)
         self.select_activation_function()
         self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
+            torch.empty(self.cfg.d_model, self.d_mlp, dtype=self.cfg.dtype)
         )
         self.W_out = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
+            torch.empty(self.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
         )
         self.W_gate = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
+            torch.empty(self.cfg.d_model, self.d_mlp, dtype=self.cfg.dtype)
         )
 
         # hook on gate output but before act_fn
@@ -59,7 +56,7 @@ class GatedMLPUnbiased(CanBeUsedAsMLP):
             torch.matmul(x, self.W_gate)  # batch pos d_model, d_model d_mlp -> batch pos d_mlp
         )  # [batch, pos, d_mlp]
 
-        if self.cfg.is_layer_norm_activation():
+        if self.cfg.is_layer_norm_activation() and self.hook_mid is not None and self.ln is not None:
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
         else:

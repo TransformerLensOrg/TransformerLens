@@ -29,19 +29,16 @@ class GatedMLP4Bit(CanBeUsedAsMLP):
     In one equation, mlp_out = (Gelu(x @ W_gate) * (x @ W_in) + b_in) @ W_out + b_out
     """
 
-    act_fn: Callable[..., torch.Tensor]
-    ln: nn.Module
-
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__(cfg)
         self.select_activation_function()
 
-        nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
+        nq = int((self.cfg.d_model * self.d_mlp) / 2)
         self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
 
-        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
+        self.b_in = nn.Parameter(torch.zeros(self.d_mlp, dtype=self.cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
         # hook on gate output but before act_fn
@@ -59,7 +56,10 @@ class GatedMLP4Bit(CanBeUsedAsMLP):
             bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
         )
 
-        if self.cfg.is_layer_norm_activation():
+        if self.cfg.is_layer_norm_activation() and self.hook_mid is not None and self.ln is not None:
+            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+            post_act = self.hook_post(self.ln(mid_act))
+        else:
             pre_linear = self.hook_pre_linear(
                 bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
             )
@@ -67,9 +67,6 @@ class GatedMLP4Bit(CanBeUsedAsMLP):
             post_act = self.hook_post(
                 (self.act_fn(pre_act) * pre_linear) + self.b_in
             )  # [batch, pos, d_mlp]
-        else:
-            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
-            post_act = self.hook_post(self.ln(mid_act))
 
         return bnb.matmul_4bit(
             post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state

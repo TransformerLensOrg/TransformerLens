@@ -25,12 +25,15 @@ class CanBeUsedAsMLP(nn.Module):
 
     # The full config object for the model
     cfg: HookedTransformerConfig
+    
+    # The d mlp value pulled out of the config to make sure it always has a value
+    d_mlp: int = 0
 
     # The middle hook point will be None unless it specifically should be used
-    hook_mid: Optional[HookPoint]  # [batch, pos, d_mlp]
+    hook_mid: Optional[HookPoint] = None  # [batch, pos, d_mlp]
 
     # The layer norm component if the activation function is a layer norm
-    ln: Optional[nn.Module]
+    ln: Optional[nn.Module] = None
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """The base init for all MLP like components
@@ -45,8 +48,8 @@ class CanBeUsedAsMLP(nn.Module):
         self.cfg = HookedTransformerConfig.unwrap(cfg)
         if self.cfg.d_mlp is None:
             raise ValueError("d_mlp must be set to use an MLP")
-        self.hook_mid = None
-        self.ln = None
+        
+        self.d_mlp = self.cfg.d_mlp
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
@@ -67,6 +70,6 @@ class CanBeUsedAsMLP(nn.Module):
         if self.cfg.is_layer_norm_activation():
             self.hook_mid = HookPoint()
             if self.cfg.normalization_type == "LN":
-                self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
+                self.ln = LayerNorm(self.cfg, self.d_mlp)
             else:
                 self.ln = LayerNormPre(self.cfg)
