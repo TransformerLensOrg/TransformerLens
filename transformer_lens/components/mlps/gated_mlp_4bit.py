@@ -2,7 +2,7 @@
 
 This module contains all the component :class:`GatedMLP`.
 """
-from typing import Callable, Dict, Union
+from typing import Dict, Union
 
 import torch
 import torch.nn as nn
@@ -56,7 +56,11 @@ class GatedMLP4Bit(CanBeUsedAsMLP):
             bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
         )
 
-        if self.cfg.is_layer_norm_activation() and self.hook_mid is not None and self.ln is not None:
+        if (
+            self.cfg.is_layer_norm_activation()
+            and self.hook_mid is not None
+            and self.ln is not None
+        ):
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
         else:

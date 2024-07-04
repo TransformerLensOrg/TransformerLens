@@ -25,7 +25,7 @@ class CanBeUsedAsMLP(nn.Module):
 
     # The full config object for the model
     cfg: HookedTransformerConfig
-    
+
     # The d mlp value pulled out of the config to make sure it always has a value
     d_mlp: int = 0
 
@@ -48,7 +48,7 @@ class CanBeUsedAsMLP(nn.Module):
         self.cfg = HookedTransformerConfig.unwrap(cfg)
         if self.cfg.d_mlp is None:
             raise ValueError("d_mlp must be set to use an MLP")
-        
+
         self.d_mlp = self.cfg.d_mlp
 
     def forward(
