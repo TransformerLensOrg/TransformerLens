@@ -22,6 +22,9 @@ from transformer_lens.utilities.activation_functions import ActivationFunction
 class CanBeUsedAsMLP(nn.Module):
     # The actual activation function
     act_fn: ActivationFunction
+    
+    # The full config object for the model
+    cfg: HookedTransformerConfig
 
     # The middle hook point will be None unless it specifically should be used
     hook_mid: Optional[HookPoint]  # [batch, pos, d_mlp]

@@ -12,8 +12,8 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class MoE(CanBeUsedAsMLP):
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
-        super().__init__(config)
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__(cfg)
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
         assert self.cfg.num_experts is not None, "num_experts must be specified for MoE layer"

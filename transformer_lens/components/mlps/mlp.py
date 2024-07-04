@@ -16,8 +16,8 @@ from transformer_lens.utilities.addmm import batch_addmm
 
 
 class MLP(CanBeUsedAsMLP):
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
-        super().__init__(config)
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__(cfg)
         self.select_activation_function()
 
         self.W_in = nn.Parameter(

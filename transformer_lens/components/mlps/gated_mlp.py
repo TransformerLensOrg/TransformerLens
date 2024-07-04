@@ -32,8 +32,8 @@ class GatedMLP(CanBeUsedAsMLP):
     act_fn: Callable[..., torch.Tensor]
     ln: nn.Module
 
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
-        super().__init__(config=config)
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
+        super().__init__(cfg)
         self.select_activation_function()
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
