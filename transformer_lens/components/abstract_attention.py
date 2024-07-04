@@ -270,8 +270,7 @@ class AbstractAttention(ABC, nn.Module):
                     # bias=self.W_O.t(),
                     bias=None,
                     quant_state=self.W_O.quant_state,
-                )
-                +self.b_O
+                ) + self.b_O
             else:
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
