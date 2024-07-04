@@ -9,7 +9,6 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float, Int
 
-from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
 from transformer_lens.components import (
     Attention,
     GroupedQueryAttention,
@@ -18,9 +17,8 @@ from transformer_lens.components import (
     RMSNorm,
     RMSNormPre,
 )
-from transformer_lens.factories.mlp_factory import (
-    MLPFactory,
-)
+from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry

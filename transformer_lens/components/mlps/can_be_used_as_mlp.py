@@ -11,23 +11,24 @@ import torch.nn as nn
 from jaxtyping import Float
 
 from transformer_lens.components import LayerNorm, LayerNormPre
-from transformer_lens.factories.activation_function_factory import ActivationFunctionFactory
+from transformer_lens.factories.activation_function_factory import (
+    ActivationFunctionFactory,
+)
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.activation_functions import ActivationFunction
 
 
 class CanBeUsedAsMLP(nn.Module):
-    
     # The actual activation function
     act_fn: ActivationFunction
-    
+
     # The middle hook point will be None unless it specifically should be used
-    hook_mid: Optional[HookPoint] # [batch, pos, d_mlp]
-    
+    hook_mid: Optional[HookPoint]  # [batch, pos, d_mlp]
+
     # The layer norm component if the activation function is a layer norm
     ln: Optional[nn.Module]
-    
+
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """The base init for all MLP like components
 
@@ -47,10 +48,9 @@ class CanBeUsedAsMLP(nn.Module):
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
-        """The format for all forward functions for any MLP
-        """
+        """The format for all forward functions for any MLP"""
         pass
-        
+
     def select_activation_function(self):
         """This function should be called by all components in their init to get everything needed
         for activation functions setup.
@@ -58,9 +58,9 @@ class CanBeUsedAsMLP(nn.Module):
         Raises:
             ValueError: If the configure activation function is not supported.
         """
-        
+
         self.act_fn = ActivationFunctionFactory.pick_activation_function(self.cfg)
-        
+
         if self.cfg.is_layer_norm_activation():
             self.hook_mid = HookPoint()
             if self.cfg.normalization_type == "LN":

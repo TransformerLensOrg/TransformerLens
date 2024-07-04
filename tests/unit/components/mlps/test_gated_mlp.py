@@ -1,12 +1,11 @@
-from typing import Any, Callable, Dict
+from typing import Any, Dict
 
 import pytest
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from transformer_lens.components import GatedMLP, LayerNorm
-from transformer_lens.utils import gelu_fast, gelu_new, solu
+from transformer_lens.utils import solu
 
 
 @pytest.fixture
@@ -40,5 +39,3 @@ def test_forward(cfg: Dict[str, Any]):
     x = torch.randn(2, 10, cfg["d_model"])
     output = model(x)
     assert output.shape == (2, 10, cfg["d_model"])
-
-

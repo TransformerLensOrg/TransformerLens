@@ -26,7 +26,8 @@ def test_hooked_transformer_config_dict():
     result = HookedTransformerConfig.unwrap(hooked_transformer_config_dict)
     # Assert that the new returned value has been transformed into a config object
     assert isinstance(result, HookedTransformerConfig)
-    
+
+
 def test_is_layer_norm_activation_passes():
     hooked_transformer_config_dict = {
         "n_layers": 2,
@@ -39,7 +40,8 @@ def test_is_layer_norm_activation_passes():
     }
     config = HookedTransformerConfig.unwrap(hooked_transformer_config_dict)
     assert config.is_layer_norm_activation()
-    
+
+
 def test_is_layer_norm_activation_fails():
     hooked_transformer_config_dict = {
         "n_layers": 2,
@@ -52,4 +54,3 @@ def test_is_layer_norm_activation_fails():
     }
     config = HookedTransformerConfig.unwrap(hooked_transformer_config_dict)
     assert not config.is_layer_norm_activation()
-    

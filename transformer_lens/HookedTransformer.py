@@ -1028,7 +1028,7 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.positional_embedding_type != "rotary":
             self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
             self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
-        
+
         if hasattr(self, "ln_final"):
             self.ln_final.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
         self.unembed.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
@@ -1271,11 +1271,7 @@ class HookedTransformer(HookedRootModule):
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to
         # match the HookedTransformer parameter names.
         state_dict = loading.get_pretrained_state_dict(
-            official_model_name,
-            cfg,
-            hf_model,
-            dtype=dtype,
-            **from_pretrained_kwargs
+            official_model_name, cfg, hf_model, dtype=dtype, **from_pretrained_kwargs
         )
 
         # Create the HookedTransformer object
@@ -2153,7 +2149,6 @@ class HookedTransformer(HookedRootModule):
 
                 if stop_at_eos and finished_sequences.all():
                     break
-
 
             if return_type == "str":
                 if self.cfg.default_prepend_bos:

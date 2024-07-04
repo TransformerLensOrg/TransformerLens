@@ -1,10 +1,8 @@
-import gc
 from typing import Dict, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from fancy_einsum import einsum
 from jaxtyping import Float
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
@@ -20,7 +18,7 @@ class MoE(CanBeUsedAsMLP):
         # Ensure that num_experts and experts_per_token are specified and non-zero
         assert self.cfg.num_experts is not None, "num_experts must be specified for MoE layer"
         assert self.cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
-        
+
         self.num_experts: int = self.cfg.num_experts
         self.experts_per_token: int = self.cfg.experts_per_token
 
@@ -52,10 +50,10 @@ class MoE(CanBeUsedAsMLP):
         expert_indices = self.hook_expert_indices(expert_indices)
         weights = weights.to(x.dtype)
 
-        results = torch.zeros(
-            (batch * pos, d_model), dtype=x.dtype, device=x.device
-        )
-        expert_mask = torch.nn.functional.one_hot(expert_indices, num_classes=self.num_experts).permute(2, 1, 0)
+        results = torch.zeros((batch * pos, d_model), dtype=x.dtype, device=x.device)
+        expert_mask = torch.nn.functional.one_hot(
+            expert_indices, num_classes=self.num_experts
+        ).permute(2, 1, 0)
         for expert_idx in range(self.num_experts):
             expert_layer = self.experts[expert_idx]
             idx, top_x = torch.where(expert_mask[expert_idx])
@@ -64,7 +62,9 @@ class MoE(CanBeUsedAsMLP):
             # the current expert. We need to make sure to multiply the output hidden
             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
             current_state = x[None, top_x]
-            current_hidden_states = expert_layer(current_state).reshape(-1, d_model) * weights[top_x, idx, None]
+            current_hidden_states = (
+                expert_layer(current_state).reshape(-1, d_model) * weights[top_x, idx, None]
+            )
 
             print("current_hidden_states = " + str(current_hidden_states.shape))
             # However `index_add_` only support torch tensors for indexing so we'll use

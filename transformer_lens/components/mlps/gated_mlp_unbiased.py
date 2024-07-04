@@ -6,20 +6,15 @@ from typing import Callable, Dict, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from fancy_einsum import einsum
 from jaxtyping import Float
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
-from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utils import gelu_fast, gelu_new, solu
 
 if is_bitsandbytes_available():
-    import bitsandbytes as bnb
-    from bitsandbytes.nn.modules import Params4bit
+    pass
 
 
 class GatedMLPUnbiased(CanBeUsedAsMLP):
@@ -61,7 +56,7 @@ class GatedMLPUnbiased(CanBeUsedAsMLP):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            torch.matmul(x, self.W_gate) # batch pos d_model, d_model d_mlp -> batch pos d_mlp
+            torch.matmul(x, self.W_gate)  # batch pos d_model, d_model d_mlp -> batch pos d_mlp
         )  # [batch, pos, d_mlp]
 
         if self.cfg.is_layer_norm_activation():
@@ -69,13 +64,11 @@ class GatedMLPUnbiased(CanBeUsedAsMLP):
             post_act = self.hook_post(self.ln(mid_act))
         else:
             pre_linear = self.hook_pre_linear(
-                torch.matmul(x, self.W_in) # batch pos d_model, d_model d_mlp -> batch pos d_mlp
+                torch.matmul(x, self.W_in)  # batch pos d_model, d_model d_mlp -> batch pos d_mlp
             )
 
-            post_act = self.hook_post(
-                (self.act_fn(pre_act) * pre_linear)
-            )  # [batch, pos, d_mlp]
+            post_act = self.hook_post((self.act_fn(pre_act) * pre_linear))  # [batch, pos, d_mlp]
 
-        return (
-            torch.matmul(post_act, self.W_out) # batch pos d_model, d_model d_mlp -> batch pos d_mlp
-        )
+        return torch.matmul(
+            post_act, self.W_out
+        )  # batch pos d_model, d_model d_mlp -> batch pos d_mlp

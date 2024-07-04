@@ -325,6 +325,6 @@ class HookedTransformerConfig:
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
-        
+
     def is_layer_norm_activation(self) -> bool:
         return self.act_fn is not None and self.act_fn.endswith("_ln")
