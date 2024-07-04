@@ -2,6 +2,7 @@
 
 This module contains all the component :class:`GatedMLP`.
 """
+
 from typing import Callable, Dict, Union
 
 import torch
@@ -14,6 +15,7 @@ from transformers.utils import is_bitsandbytes_available
 from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.utilities.addmm import batch_addmm
 from transformer_lens.utils import gelu_fast, gelu_new, solu
 
 if is_bitsandbytes_available():
@@ -133,11 +135,4 @@ class GatedMLP(nn.Module):
                 post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state
             )
         else:
-            return (
-                einsum(
-                    "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                    post_act,
-                    self.W_out,
-                )
-                + self.b_out
-            )
+            return batch_addmm(self.b_out, self.W_out, post_act)

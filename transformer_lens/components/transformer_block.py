@@ -63,7 +63,8 @@ class TransformerBlock(nn.Module):
         if not self.cfg.use_local_attn:
             self.attn = attention(cfg, "global", block_index)
         else:
-            assert self.cfg.attn_types is not None
+            if self.cfg.attn_types is None:
+                raise ValueError("attn_types must be set when using local attention")
             attn_type = self.cfg.attn_types[block_index]
             self.attn = attention(cfg, attn_type, block_index)
         if not self.cfg.attn_only:
