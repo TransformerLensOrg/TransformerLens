@@ -22,7 +22,7 @@ from transformer_lens.utilities.activation_functions import ActivationFunction
 class CanBeUsedAsMLP(nn.Module):
     # The actual activation function
     act_fn: ActivationFunction
-    
+
     # The full config object for the model
     cfg: HookedTransformerConfig
 
