@@ -12,10 +12,9 @@ from jaxtyping import Float
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
-from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utils import gelu_fast, gelu_new, solu
+from transformer_lens.utilities.addmm import batch_addmm
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
@@ -48,12 +47,15 @@ class GatedMLP(CanBeUsedAsMLP):
         self.W_gate = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
         )
-    
+
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
         self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
+        # hook on gate output but before act_fn
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
+        # hook on the linear component of the input
         self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
+        # hook on act_fn(gate_output) * W_in(x) + b_in
         self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
     def forward(
@@ -84,11 +86,4 @@ class GatedMLP(CanBeUsedAsMLP):
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
 
-        return (
-            einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
-                self.W_out,
-            )
-            + self.b_out
-        )
+        return batch_addmm(self.b_out, self.W_out, post_act)

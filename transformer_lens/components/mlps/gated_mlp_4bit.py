@@ -41,8 +41,15 @@ class GatedMLP4Bit(CanBeUsedAsMLP):
         self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
 
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
+
+        # hook on gate output but before act_fn
+        self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         # hook on the linear component of the input
         self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
+        # hook on act_fn(gate_output) * W_in(x) + b_in
+        self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
 
     def forward(

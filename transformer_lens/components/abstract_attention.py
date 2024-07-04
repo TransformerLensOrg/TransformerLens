@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from better_abc import abstract_attribute
-from fancy_einsum import einsum
 from jaxtyping import Float, Int
 from transformers.utils import is_bitsandbytes_available
 
@@ -15,6 +14,7 @@ from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
+from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 from transformer_lens.utils import get_offset_position_ids
 
 if is_bitsandbytes_available():
@@ -52,12 +52,18 @@ class AbstractAttention(ABC, nn.Module):
         else:
             self.W_Q = nn.Parameter(
                 torch.empty(
-                    self.cfg.n_heads, self.cfg.d_model, self.cfg.d_head, dtype=self.cfg.dtype
+                    self.cfg.n_heads,
+                    self.cfg.d_model,
+                    self.cfg.d_head,
+                    dtype=self.cfg.dtype,
                 )
             )
             self.W_O = nn.Parameter(
                 torch.empty(
-                    self.cfg.n_heads, self.cfg.d_head, self.cfg.d_model, dtype=self.cfg.dtype
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                    self.cfg.d_model,
+                    dtype=self.cfg.dtype,
                 )
             )
         self.W_K = abstract_attribute()
@@ -267,18 +273,10 @@ class AbstractAttention(ABC, nn.Module):
                 )
                 +self.b_O
             else:
-                out = (
-                    (
-                        einsum(
-                            "batch pos head_index d_head, \
-                                head_index d_head d_model -> \
-                                batch pos d_model",
-                            z,
-                            self.W_O,
-                        )
-                    )
-                    + self.b_O
-                )  # [batch, pos, d_model]
+                w = einops.rearrange(
+                    self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
+                )
+                out = F.linear(z.reshape(z.shape[0], z.shape[1], self.cfg.d_model), w, self.b_O)
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
@@ -292,15 +290,14 @@ class AbstractAttention(ABC, nn.Module):
                     )
                 )
             else:
-                result = self.hook_result(
-                    einsum(
-                        "batch pos head_index d_head, \
-                            head_index d_head d_model -> \
-                            batch pos head_index d_model",
-                        z,
-                        self.W_O,
-                    )
-                )  # [batch, pos, head_index, d_model]
+                w = einops.rearrange(
+                    self.W_O,
+                    "head_index d_head d_model -> d_model (head_index d_head)",
+                )
+                input = einops.rearrange(
+                    z, "batch pos head_index d_head -> batch pos (head_index d_head)"
+                )
+                result = self.hook_result(F.linear(input, w))  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(result, "batch position index model->batch position model", "sum")
                 + self.b_O
@@ -326,11 +323,11 @@ class AbstractAttention(ABC, nn.Module):
         Float[torch.Tensor, "batch kv_pos head_index d_head"],
         Float[torch.Tensor, "batch kv_pos head_index d_head"],
     ]:
-        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
-            qkv_einops_string = "batch pos head_index d_model"
-        else:
-            qkv_einops_string = "batch pos d_model"
-
+        attn_fn = (
+            complex_attn_linear
+            if self.cfg.use_split_qkv_input or self.cfg.use_attn_in
+            else simple_attn_linear
+        )
         if self.cfg.load_in_4bit:
             q = self.hook_q(
                 # call bitsandbytes method to dequantize and multiply
@@ -348,15 +345,7 @@ class AbstractAttention(ABC, nn.Module):
                 + self.b_Q
             )
         else:
-            q = self.hook_q(
-                einsum(
-                    f"{qkv_einops_string}, head_index d_model d_head \
-                    -> batch pos head_index d_head",
-                    query_input,
-                    self.W_Q,
-                )
-                + self.b_Q
-            )  # [batch, pos, head_index, d_head]
+            q = self.hook_q(attn_fn(query_input, self.W_Q, self.b_Q))
         if self.cfg.load_in_4bit:
             if not isinstance(self.W_K, Params4bit):
                 raise ValueError("W_K must be a Params4bit object if load_in_4bit is True")
@@ -373,15 +362,7 @@ class AbstractAttention(ABC, nn.Module):
                 + self.b_K
             )
         else:
-            k = self.hook_k(
-                einsum(
-                    f"{qkv_einops_string}, head_index d_model d_head \
-                    -> batch pos head_index d_head",
-                    key_input,
-                    self.W_K,
-                )
-                + self.b_K
-            )  # [batch, pos, head_index, d_head]
+            k = self.hook_k(attn_fn(key_input, self.W_K, self.b_K))
 
         if self.cfg.load_in_4bit:
             if not isinstance(self.W_V, Params4bit):
@@ -402,15 +383,8 @@ class AbstractAttention(ABC, nn.Module):
                 + self.b_V
             )
         else:
-            v = self.hook_v(
-                einsum(
-                    f"{qkv_einops_string}, head_index d_model d_head \
-                    -> batch pos head_index d_head",
-                    value_input,
-                    self.W_V,
-                )
-                + self.b_V
-            )  # [batch, pos, head_index, d_head]
+            v = self.hook_v(attn_fn(value_input, self.W_V, self.b_V))
+
         return q, k, v
 
     def calculate_attention_scores(
@@ -418,30 +392,30 @@ class AbstractAttention(ABC, nn.Module):
         q: Float[torch.Tensor, "batch query_pos head_index d_head"],
         k: Float[torch.Tensor, "batch key_pos head_index d_head"],
     ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
-        attn_scores = (
-            einsum(
-                "batch query_pos head_index d_head, \
-                    batch key_pos head_index d_head \
-                    -> batch head_index query_pos key_pos",
-                q,
-                k,
-            )
-            / self.attn_scale
+        q_ = einops.rearrange(
+            q, "batch query_pos head_index d_head -> batch head_index query_pos d_head"
         )
-        return attn_scores
+        k_ = einops.rearrange(
+            k, "batch key_pos head_index d_head -> batch head_index d_head key_pos"
+        )
+        return q_ @ k_ / self.attn_scale
 
     def calculate_z_scores(
         self,
         v: Float[torch.Tensor, "batch key_pos head_index d_head"],
         pattern: Float[torch.Tensor, "batch head_index query_pos key_pos"],
     ) -> Float[torch.Tensor, "batch query_pos head_index d_head"]:
+        v_ = einops.rearrange(
+            v, "batch key_pos head_index d_head -> batch head_index key_pos d_head"
+        )
+        pattern_ = einops.rearrange(
+            pattern,
+            "batch head_index query_pos key_pos -> batch head_index query_pos key_pos",
+        )
         z = self.hook_z(
-            einsum(
-                "batch key_pos head_index d_head, \
-                batch head_index query_pos key_pos -> \
-                batch query_pos head_index d_head",
-                v,
-                pattern,
+            einops.rearrange(
+                pattern_ @ v_,
+                "batch head_index query_pos d_head -> batch query_pos head_index d_head",
             )
         )
         return z
