@@ -20,6 +20,9 @@ from transformer_lens.components import (
     RMSNorm,
     RMSNormPre,
 )
+from transformer_lens.factories.mlp_factory import (
+    MLPFactory,
+)
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
@@ -68,12 +71,7 @@ class TransformerBlock(nn.Module):
             attn_type = self.cfg.attn_types[block_index]
             self.attn = attention(self.cfg, attn_type, block_index)
         if not self.cfg.attn_only:
-            if self.cfg.num_experts:
-                self.mlp = MoE(self.cfg)
-            elif self.cfg.gated_mlp:
-                self.mlp = GatedMLP(self.cfg)
-            else:
-                self.mlp = MLP(self.cfg)
+            self.mlp = MLPFactory.create_mlp(self.cfg)
 
         self.hook_attn_in = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_q_input = HookPoint()  # [batch, pos, n_heads, d_model]

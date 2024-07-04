@@ -29,23 +29,18 @@ def test_forward_without_layer_norm(cfg: Dict[str, Any]):
     cfg["act_fn"] = "solu"
 
     model = MLP(cfg)
-    model.select_activation_function()
-    # assert model.hook_mid is None
-    # assert not hasattr(model, "ln")
     
     input = torch.full((1, 1, 128), 0.085)
-    print(input.shape)
     
     result = model(input)
     
-    print("result" + str(result))
-    assert result[0][0][1] == 0.85
+    assert result.shape == (1, 1, 128)
 
 def test_forward_with_layer_norm(cfg: Dict[str, Any]):
     model = MLP(cfg)
-    model.select_activation_function()
     assert isinstance(model.hook_mid, HookPoint)
     assert isinstance(model.ln, LayerNorm)
 
     input = torch.full((1, 1, 128), 0.85)
     result = model(input)
+    assert result.shape == (1, 1, 128)

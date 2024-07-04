@@ -34,6 +34,7 @@ class GatedMLP4Bit(CanBeUsedAsMLP):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__(config)
+        self.select_activation_function()
 
         nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
         self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
@@ -52,7 +53,7 @@ class GatedMLP4Bit(CanBeUsedAsMLP):
             bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
         )
 
-        if self.is_layer_norm_activation():
+        if self.cfg.is_layer_norm_activation():
             pre_linear = self.hook_pre_linear(
                 bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
             )

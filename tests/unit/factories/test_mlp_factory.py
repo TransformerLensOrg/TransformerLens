@@ -1,3 +1,5 @@
+import pytest
+
 from transformers.utils import is_bitsandbytes_available
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.factories.mlp_factory import (
@@ -32,20 +34,23 @@ def test_create_mlp_gated():
     mlp = MLPFactory.create_mlp(config)
     assert isinstance(mlp, GatedMLP)
 
+@pytest.mark.skipif(
+    not is_bitsandbytes_available(),
+    reason="4 bit not available on current architecture",
+)
 def test_create_mlp_gated_4bit():
     
-    if is_bitsandbytes_available():
-        config = HookedTransformerConfig.unwrap({
-            "n_layers": 12,
-            "n_ctx": 1024,
-            "d_head": 64,
-            "d_model": 128,
-            "act_fn": "solu",
-            "gated_mlp": True,
-            "load_in_4bit": True,
-        })
-        mlp = MLPFactory.create_mlp(config)
-        assert isinstance(mlp, GatedMLP4Bit)
+    config = HookedTransformerConfig.unwrap({
+        "n_layers": 12,
+        "n_ctx": 1024,
+        "d_head": 64,
+        "d_model": 128,
+        "act_fn": "solu",
+        "gated_mlp": True,
+        "load_in_4bit": True,
+    })
+    mlp = MLPFactory.create_mlp(config)
+    assert isinstance(mlp, GatedMLP4Bit)
 
 def test_create_moe():
     

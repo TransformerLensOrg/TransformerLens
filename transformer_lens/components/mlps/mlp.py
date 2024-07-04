@@ -19,6 +19,7 @@ class MLP(CanBeUsedAsMLP):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__(config)
+        self.select_activation_function()
         
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)

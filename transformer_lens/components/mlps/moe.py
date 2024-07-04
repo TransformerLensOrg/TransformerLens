@@ -31,8 +31,7 @@ class MixtralBlockSparseTop2MLP(nn.Module):
 
 class MoE(CanBeUsedAsMLP):
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
-        super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        super().__init__(config)
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
         assert self.cfg.num_experts is not None, "num_experts must be specified for MoE layer"
@@ -88,5 +87,4 @@ class MoE(CanBeUsedAsMLP):
             results.index_add_(0, top_x, current_hidden_states.to(x.dtype))
 
         results = results.reshape(batch, pos, d_model)
-        return results
         return results

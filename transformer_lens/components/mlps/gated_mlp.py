@@ -38,6 +38,7 @@ class GatedMLP(CanBeUsedAsMLP):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__(config=config)
+        self.select_activation_function()
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
         )
@@ -47,9 +48,13 @@ class GatedMLP(CanBeUsedAsMLP):
         self.W_gate = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
         )
+    
+        self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
+        self.b_out = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
-        # hook on the linear component of the input
+        self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
+        self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
@@ -63,7 +68,7 @@ class GatedMLP(CanBeUsedAsMLP):
             )
         )  # [batch, pos, d_mlp]
 
-        if self.is_layer_norm_activation():
+        if self.cfg.is_layer_norm_activation():
             pre_linear = self.hook_pre_linear(
                 einsum(
                     "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
