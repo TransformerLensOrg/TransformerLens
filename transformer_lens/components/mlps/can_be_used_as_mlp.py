@@ -57,7 +57,7 @@ class CanBeUsedAsMLP(nn.Module):
         """The format for all forward functions for any MLP"""
         pass
 
-    def select_activation_function(self):
+    def select_activation_function(self) -> None:
         """This function should be called by all components in their init to get everything needed
         for activation functions setup.
 
