@@ -42,7 +42,7 @@ class MLP(CanBeUsedAsMLP):
         # exactly.
         pre_act = self.hook_pre(batch_addmm(self.b_in, self.W_in, x))  # [batch, pos, d_mlp]
         
-        if self.hook_mid is not None and self.ln is not None:
+        if self.cfg.is_layer_norm_activation():
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
         else:

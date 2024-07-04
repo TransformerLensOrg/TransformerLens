@@ -38,6 +38,7 @@ class GatedMLPUnbiased(CanBeUsedAsMLP):
 
     def __init__(self, config: Union[Dict, HookedTransformerConfig]):
         super().__init__(config=config)
+        self.select_activation_function()
         self.W_in = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
         )
@@ -48,42 +49,33 @@ class GatedMLPUnbiased(CanBeUsedAsMLP):
             torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
         )
 
+        # hook on gate output but before act_fn
+        self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         # hook on the linear component of the input
         self.hook_pre_linear = HookPoint()  # [batch, pos, d_mlp]
+        # hook on act_fn(gate_output) * W_in(x) + b_in
+        self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum(
-                "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                x,
-                self.W_gate,
-            )
+            torch.matmul(x, self.W_gate) # batch pos d_model, d_model d_mlp -> batch pos d_mlp
         )  # [batch, pos, d_mlp]
 
-        if self.is_layer_norm_activation():
+        if self.cfg.is_layer_norm_activation():
+            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+            post_act = self.hook_post(self.ln(mid_act))
+        else:
             pre_linear = self.hook_pre_linear(
-                einsum(
-                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                    x,
-                    self.W_in,
-                )
+                torch.matmul(x, self.W_in) # batch pos d_model, d_model d_mlp -> batch pos d_mlp
             )
 
             post_act = self.hook_post(
-                (self.act_fn(pre_act) * pre_linear) + self.b_in
+                (self.act_fn(pre_act) * pre_linear)
             )  # [batch, pos, d_mlp]
-        else:
-            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
-            post_act = self.hook_post(self.ln(mid_act))
 
         return (
-            einsum(
-                "batch pos d_mlp, d_mlp d_model -> batch pos d_model",
-                post_act,
-                self.W_out,
-            )
-            + self.b_out
+            torch.matmul(post_act, self.W_out) # batch pos d_model, d_model d_mlp -> batch pos d_mlp
         )

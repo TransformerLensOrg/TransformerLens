@@ -63,27 +63,19 @@ class GatedMLP(CanBeUsedAsMLP):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         pre_act = self.hook_pre(
-            einsum(
-                "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                x,
-                self.W_gate,
-            )
+            torch.matmul(x, self.W_gate) # batch pos d_model, d_model d_mlp -> batch pos d_mlp
         )  # [batch, pos, d_mlp]
 
         if self.cfg.is_layer_norm_activation():
+            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
+            post_act = self.hook_post(self.ln(mid_act))
+        else:
             pre_linear = self.hook_pre_linear(
-                einsum(
-                    "batch pos d_model, d_model d_mlp -> batch pos d_mlp",
-                    x,
-                    self.W_in,
-                )
+                torch.matmul(x, self.W_in) # batch pos d_model, d_model d_mlp -> batch pos d_mlp
             )
 
             post_act = self.hook_post(
                 (self.act_fn(pre_act) * pre_linear) + self.b_in
             )  # [batch, pos, d_mlp]
-        else:
-            mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
-            post_act = self.hook_post(self.ln(mid_act))
 
         return batch_addmm(self.b_out, self.W_out, post_act)
