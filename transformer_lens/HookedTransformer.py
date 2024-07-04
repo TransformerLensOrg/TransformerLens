@@ -107,7 +107,7 @@ class HookedTransformer(HookedRootModule):
         :meth:`from_pretrained` instead.
 
         Args:
-            config: The config to use for the model.
+            cfg: The config to use for the model.
             tokenizer: The tokenizer to use for the model. If not provided, it is inferred from
                 `cfg.tokenizer_name` or initialized to `None`. If `None`, then the model cannot be
                 passed strings, and d_vocab must be explicitly set.
