@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Dict
 
 import torch
 import torch.nn.functional as F
@@ -10,7 +10,7 @@ ActivationFunction = Callable[..., torch.Tensor]
 
 # All currently supported activation functions. To add a new function, simply
 # put the name of the function as the key, and the value as the actual callable.
-SUPPORTED_ACTIVATIONS: dict[str, ActivationFunction] = {
+SUPPORTED_ACTIVATIONS: Dict[str, ActivationFunction] = {
     "solu": solu,
     "solu_ln": solu,
     "gelu_new": gelu_new,
