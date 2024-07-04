@@ -28,7 +28,7 @@ class CanBeUsedAsMLP(nn.Module):
     # The layer norm component if the activation function is a layer norm
     ln: Optional[nn.Module]
     
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """The base init for all MLP like components
 
         Args:
@@ -38,7 +38,7 @@ class CanBeUsedAsMLP(nn.Module):
             ValueError: If there is a misconfiguration
         """
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         if self.cfg.d_mlp is None:
             raise ValueError("d_mlp must be set to use an MLP")
         self.hook_mid = None

@@ -19,12 +19,12 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 # and is equivalent to centering the weight matrices of everything writing to the residual stream
 # Normalising is a funkier non-linear operation, that projects the residual stream onto the unit hypersphere
 class LayerNormPre(nn.Module):
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """LayerNormPre - the 'center and normalise' part of LayerNorm. Length is
         normally d_model, but is d_mlp for softmax. Not needed as a parameter. This
         should only be used in inference mode after folding in LayerNorm weights"""
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.eps = self.cfg.eps
 
         # Adds a hook point for the normalisation scale factor

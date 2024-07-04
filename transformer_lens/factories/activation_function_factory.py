@@ -4,10 +4,10 @@ from transformer_lens.utilities.activation_functions import ActivationFunction, 
 class ActivationFunctionFactory:
     
     @staticmethod
-    def pick_activation_function(config: HookedTransformerConfig) -> ActivationFunction:
-        activation_function = SUPPORTED_ACTIVATIONS.get(config.act_fn)
+    def pick_activation_function(cfg: HookedTransformerConfig) -> ActivationFunction:
+        activation_function = SUPPORTED_ACTIVATIONS.get(cfg.act_fn)
             
         if (activation_function is None):
-            raise ValueError(f"Invalid activation function name: {config.act_fn}")
+            raise ValueError(f"Invalid activation function name: {cfg.act_fn}")
         
         return activation_function

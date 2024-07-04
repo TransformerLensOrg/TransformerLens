@@ -14,9 +14,9 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 # Embed & Unembed
 class Embed(nn.Module):
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.W_E: Float[torch.Tensor, "d_vocab d_model"] = nn.Parameter(
             torch.empty(self.cfg.d_vocab, self.cfg.d_model, dtype=self.cfg.dtype)
         )

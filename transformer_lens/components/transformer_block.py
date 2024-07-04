@@ -35,9 +35,9 @@ class TransformerBlock(nn.Module):
     ln2: nn.Module
     mlp: nn.Module
 
-    def __init__(self, config: Union[Dict, HookedTransformerConfig], block_index):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         if self.cfg.normalization_type == "LN":
             self.ln1 = LayerNorm(self.cfg)
             if not self.cfg.attn_only:

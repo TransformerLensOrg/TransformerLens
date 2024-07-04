@@ -27,7 +27,7 @@ class AbstractAttention(ABC, nn.Module):
 
     def __init__(
         self,
-        config: Union[Dict, HookedTransformerConfig],
+        cfg: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
         layer_id: Optional[int] = None,
     ):
@@ -43,7 +43,7 @@ class AbstractAttention(ABC, nn.Module):
             layer_id (int, optional): The index of the current layer. Used by the Mistral models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
 
         if self.cfg.load_in_4bit:
             nq = int((self.cfg.d_model * self.cfg.d_model) / 2)

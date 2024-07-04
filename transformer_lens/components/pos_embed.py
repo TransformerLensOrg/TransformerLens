@@ -15,9 +15,9 @@ from transformer_lens.utils import get_offset_position_ids
 
 # Positional Embeddings
 class PosEmbed(nn.Module):
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.W_pos = nn.Parameter(
             torch.empty(self.cfg.n_ctx, self.cfg.d_model, dtype=self.cfg.dtype)
         )

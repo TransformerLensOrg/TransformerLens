@@ -13,10 +13,10 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class RMSNormPre(nn.Module):
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         """RMSNormPre - LayerNormPre without the centering and bias (RMS = Root Mean Square)"""
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.eps = self.cfg.eps
 
         # Adds a hook point for the normalisation scale factor

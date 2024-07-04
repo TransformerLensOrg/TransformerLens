@@ -8,11 +8,11 @@ from transformer_lens.components.mlps.moe import MoE
 class MLPFactory:
     
     @staticmethod
-    def create_mlp(config: HookedTransformerConfig) -> CanBeUsedAsMLP:
+    def create_mlp(cfg: HookedTransformerConfig) -> CanBeUsedAsMLP:
 
-        if config.num_experts:
-            return MoE(config)
-        elif config.gated_mlp:
-            return GatedMLP(config) if not config.load_in_4bit else GatedMLP4Bit(config)
+        if cfg.num_experts:
+            return MoE(cfg)
+        elif cfg.gated_mlp:
+            return GatedMLP(cfg) if not cfg.load_in_4bit else GatedMLP4Bit(cfg)
         else:
-            return MLP(config)
+            return MLP(cfg)

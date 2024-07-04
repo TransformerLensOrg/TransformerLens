@@ -13,14 +13,14 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class LayerNorm(nn.Module):
-    def __init__(self, config: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         LayerNorm with optional length parameter
 
         length (Optional[int]): If the dimension of the LayerNorm. If not provided, assumed to be d_model
         """
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.eps = self.cfg.eps
         if length is None:
             self.length = self.cfg.d_model

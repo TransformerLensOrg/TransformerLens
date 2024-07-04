@@ -18,9 +18,9 @@ class TokenTypeEmbed(nn.Module):
     See the BERT paper for more information: https://arxiv.org/pdf/1810.04805.pdf
     """
 
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.W_token_type = nn.Parameter(torch.empty(2, self.cfg.d_model, dtype=self.cfg.dtype))
 
     def forward(self, token_type_ids: Int[torch.Tensor, "batch pos"]):

@@ -18,9 +18,9 @@ class BertMLMHead(nn.Module):
     Transforms BERT embeddings into logits. The purpose of this module is to predict masked tokens in a sentence.
     """
 
-    def __init__(self, config: Union[Dict, HookedTransformerConfig]):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
-        self.cfg = HookedTransformerConfig.unwrap(config)
+        self.cfg = HookedTransformerConfig.unwrap(cfg)
         self.W = nn.Parameter(torch.empty(self.cfg.d_model, self.cfg.d_model, dtype=self.cfg.dtype))
         self.b = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
         self.act_fn = nn.GELU()
