@@ -3,7 +3,7 @@
 This module contains all the component :class:`TransformerBlock`.
 """
 
-from typing import Dict, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -34,6 +34,8 @@ class TransformerBlock(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
+        normalization_layer: Callable  # type: ignore
+        normalization_layer_after: Callable  # type: ignore
 
         if self.cfg.normalization_type == "LN":
             normalization_layer = LayerNorm
