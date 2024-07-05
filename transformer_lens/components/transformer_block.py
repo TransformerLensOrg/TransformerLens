@@ -37,28 +37,35 @@ class TransformerBlock(nn.Module):
         normalization_layer: Callable  # type: ignore
         normalization_layer_after: Callable  # type: ignore
 
-        if self.cfg.normalization_type == "LN":
+        self.normalization_type = self.cfg.normalization_type
+
+        if self.normalization_type is None:
+            raise ValueError(
+                "Your normalization type must be set for models that use a TransformerBlock"
+            )
+
+        if self.normalization_type == "LN":
             normalization_layer = LayerNorm
-        elif self.cfg.normalization_type == "LNPre":
+        elif self.normalization_type == "LNPre":
             # We've folded in LayerNorm weights, so just need the center + scale parts
             normalization_layer = LayerNormPre
-        elif self.cfg.normalization_type == "RMS":
+        elif self.normalization_type == "RMS":
             normalization_layer = RMSNorm
-        elif self.cfg.normalization_type == "RMSPre":
+        elif self.normalization_type == "RMSPre":
             normalization_layer = RMSNormPre
-        elif self.cfg.normalization_type is None:
+        elif self.normalization_type is None:
             # This should just be the identity.
             # We need to make this a lambda so we can call it on the config, just like the others
             normalization_layer = lambda cfg: nn.Identity()
         else:
-            raise ValueError(f"Invalid normalization_type passed in: {self.cfg.normalization_type}")
+            raise ValueError(f"Invalid normalization_type passed in: {self.normalization_type}")
 
         if self.cfg.use_normalization_before_and_after:
             # If we use LN before and after, we do *not* fold in the weights to the LN
             # after, though we can fold for the one before.
-            if self.cfg.normalization_type.startswith("RMS"):
+            if self.normalization_type.startswith("RMS"):
                 normalization_layer_after = RMSNorm
-            elif self.cfg.normalization_type.startswith("LayerNorm"):
+            elif self.normalization_type.startswith("LayerNorm"):
                 normalization_layer_after = LayerNorm
             else:
                 normalization_layer_after = lambda cfg: nn.Identity()
