@@ -2,14 +2,15 @@
 
 This module contains all the component :class:`Unembed`.
 """
+
 from typing import Dict, Union
 
 import torch
 import torch.nn as nn
-from fancy_einsum import einsum
 from jaxtyping import Float
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.utilities.addmm import batch_addmm
 
 
 class Unembed(nn.Module):
@@ -27,11 +28,4 @@ class Unembed(nn.Module):
     def forward(
         self, residual: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
-        return (
-            einsum(
-                "batch pos d_model, d_model vocab -> batch pos vocab",
-                residual,
-                self.W_U,
-            )
-            + self.b_U
-        )
+        return batch_addmm(self.b_U, self.W_U, residual)
