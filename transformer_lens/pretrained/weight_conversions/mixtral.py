@@ -16,6 +16,8 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
 
     state_dict["embed.W_E"] = mixtral.model.embed_tokens.weight
 
+    print("mapping")
+    print(mixtral.model)
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = mixtral.model.layers[l].input_layernorm.weight
 
@@ -47,7 +49,7 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.mlp.W_gate"] = mixtral.model.layers[
             l
-        ].block_sparse_moe.gate.weight.T
+        ].block_sparse_moe.gate.weight
 
         # The mapping here from wn to W_{in/out/gate} is a bit confusing:
         # w1 -> W_gate
@@ -56,13 +58,13 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
         # See https://github.com/mistralai/mistral-inference/blob/8598cf582091a596671be31990448e0620017851/mistral/model.py#L128 for reference
         for e in range(cfg.num_experts):
             state_dict[f"blocks.{l}.mlp.experts.{e}.W_in"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight.T
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight
             )
             state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight.T
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight
             )
             state_dict[f"blocks.{l}.mlp.experts.{e}.W_out"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight.T
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight
             )
 
     state_dict["ln_final.w"] = mixtral.model.norm.weight.data

@@ -32,10 +32,10 @@ class MoEGatedMLP(nn.Module):
 
     def forward(self, x: Float[torch.Tensor, "pos d_model"]) -> Float[torch.Tensor, "pos d_model"]:
         gated_x = self.hook_gate(
-            self.W_gate(x) 
+            self.W_gate(x)
         )
         pre_act = self.hook_pre(
-            self.W_in(x) 
+            self.W_in(x)
         )
         post_act = self.hook_post(self.act_fn(gated_x) * pre_act)
         return self.W_out(post_act)
