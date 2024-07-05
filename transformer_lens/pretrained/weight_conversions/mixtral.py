@@ -45,9 +45,9 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
 
         state_dict[f"blocks.{l}.ln2.w"] = mixtral.model.layers[l].post_attention_layernorm.weight
 
-        state_dict[f"blocks.{l}.mlp.W_gate"] = mixtral.model.layers[
+        state_dict[f"blocks.{l}.mlp.W_gate.weight"] = mixtral.model.layers[
             l
-        ].block_sparse_moe.gate.weight.T
+        ].block_sparse_moe.gate.weight
 
         # The mapping here from wn to W_{in/out/gate} is a bit confusing:
         # w1 -> W_gate
@@ -55,18 +55,14 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
         # w3 -> W_in
         # See https://github.com/mistralai/mistral-inference/blob/8598cf582091a596671be31990448e0620017851/mistral/model.py#L128 for reference
         for e in range(cfg.num_experts):
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight.T
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w3.weight
             )
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight.T
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w1.weight
             )
-            state_dict[f"blocks.{l}.mlp.experts.{e}.b_in"] = torch.zeros(cfg.d_mlp, dtype=cfg.dtype)
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out"] = (
-                mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight.T
-            )
-            state_dict[f"blocks.{l}.mlp.experts.{e}.b_out"] = torch.zeros(
-                cfg.d_model, dtype=cfg.dtype
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = (
+                mixtral.model.layers[l].block_sparse_moe.experts[e].w2.weight
             )
 
     state_dict["ln_final.w"] = mixtral.model.norm.weight.data

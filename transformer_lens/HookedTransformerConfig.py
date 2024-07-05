@@ -16,8 +16,7 @@ import numpy as np
 import torch
 
 from transformer_lens import utils
-
-SUPPORTED_ACTIVATIONS = list(utils.ACTIVATION_FN_DICT.keys())
+from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 
 @dataclass
@@ -54,7 +53,7 @@ class HookedTransformerConfig:
         use_attn_in (bool): whether to explicitly calculate the input of each
             attention head separately, with a hook. Defaults to false to save memory
         use_attn_scale (bool): whether to scale the attention weights by
-            attn_scale
+            1/sqrt(d_head)
         attn_scale (float): The amount to divide attention scores by (if applicable). Defaults to
             sqrt(d_head)
         model_name (str): the name of the model, used to load
@@ -349,3 +348,6 @@ class HookedTransformerConfig:
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
+
+    def is_layer_norm_activation(self) -> bool:
+        return self.act_fn is not None and self.act_fn.endswith("_ln")

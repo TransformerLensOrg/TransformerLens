@@ -1,3 +1,7 @@
+"""Attention.
+
+Utilities for attention components.
+"""
 import einops
 import torch
 import torch.nn.functional as F
