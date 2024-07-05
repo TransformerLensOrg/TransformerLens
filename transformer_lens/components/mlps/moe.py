@@ -12,6 +12,7 @@ from transformer_lens.factories.activation_function_factory import (
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
+
 class MoEGatedMLP(nn.Module):
     def __init__(self, cfg: HookedTransformerConfig):
         super().__init__()
@@ -31,14 +32,11 @@ class MoEGatedMLP(nn.Module):
         self.act_fn = ActivationFunctionFactory.pick_activation_function(self.cfg)
 
     def forward(self, x: Float[torch.Tensor, "pos d_model"]) -> Float[torch.Tensor, "pos d_model"]:
-        gated_x = self.hook_gate(
-            self.W_gate(x)
-        )
-        pre_act = self.hook_pre(
-            self.W_in(x)
-        )
+        gated_x = self.hook_gate(self.W_gate(x))
+        pre_act = self.hook_pre(self.W_in(x))
         post_act = self.hook_post(self.act_fn(gated_x) * pre_act)
         return self.W_out(post_act)
+
 
 class MoE(CanBeUsedAsMLP):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
@@ -90,9 +88,7 @@ class MoE(CanBeUsedAsMLP):
             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
             current_state = x[None, top_x].reshape(-1, d_model)
 
-            current_hidden_states = (
-                expert_layer(current_state) * weights[top_x, idx, None]
-            )
+            current_hidden_states = expert_layer(current_state) * weights[top_x, idx, None]
 
             # However `index_add_` only support torch tensors for indexing so we'll use
             # the `top_x` tensor here.
