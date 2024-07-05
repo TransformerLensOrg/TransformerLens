@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn as nn
 from transformers.utils import is_bitsandbytes_available
@@ -42,6 +43,7 @@ def test_attention_hooked_transformer_config():
     assert torch.all(attn.b_V == 0)
 
 
+@pytest.mark.skipif(not is_bitsandbytes_available(), reason="bitsandbytes is not available")
 def test_attention_load_in_4bit():
     cfg = HookedTransformerConfig(
         n_layers=12,
