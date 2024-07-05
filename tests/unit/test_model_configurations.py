@@ -19,10 +19,7 @@ def get_cached_config(model_name: str) -> HookedTransformerConfig:
     return loading.get_pretrained_model_config(model_name)
 
 
-
 @pytest.mark.parametrize("model_name", loading.DEFAULT_MODEL_ALIASES)
 def test_model_configurations(model_name: str):
-    """Tests that all of the model configurations are in fact loaded (e.g. are not None).
-    """
+    """Tests that all of the model configurations are in fact loaded (e.g. are not None)."""
     assert get_cached_config(model_name) is not None, f"Configuration for {model_name} is None"
-     
