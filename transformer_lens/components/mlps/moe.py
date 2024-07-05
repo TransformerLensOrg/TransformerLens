@@ -14,13 +14,28 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
 class MoEGatedMLP(nn.Module):
+    """MoEGated MLP
+
+    This MLP matches the implementation for Mixtral on HuggingFace. It is meant to stay within our
+    MoE, since the format of this MLP is different from the standard MLPs throughout
+    TransformerLens.
+
+    It may be possible to rework this to follow the same interface as other MLPs, but for the
+    time being it is being left as is to ensure accuracy.
+    """
+
     def __init__(self, cfg: HookedTransformerConfig):
         super().__init__()
         self.cfg = cfg
 
-        self.W_in = nn.Linear(self.cfg.d_model, self.cfg.d_mlp, bias=False)
-        self.W_out = nn.Linear(self.cfg.d_mlp, self.cfg.d_model, bias=False)
-        self.W_gate = nn.Linear(self.cfg.d_model, self.cfg.d_mlp, bias=False)
+        self.d_mlp = self.cfg.d_mlp
+
+        if self.d_mlp is None:
+            raise ValueError("d_mlp must be set to use an MLP")
+
+        self.W_in = nn.Linear(self.cfg.d_model, self.d_mlp, bias=False)
+        self.W_out = nn.Linear(self.d_mlp, self.cfg.d_model, bias=False)
+        self.W_gate = nn.Linear(self.cfg.d_model, self.d_mlp, bias=False)
 
         # hook on gate output but before act_fn
         self.hook_gate = HookPoint()  # [batch, pos, d_mlp]
