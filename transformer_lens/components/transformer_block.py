@@ -49,7 +49,7 @@ class TransformerBlock(nn.Module):
             normalization_layer = RMSNorm
         elif self.normalization_type == "RMSPre":
             normalization_layer = RMSNormPre
-        elif normalization_type_empty
+        elif normalization_type_empty:
             # This should just be the identity.
             # We need to make this a lambda so we can call it on the config, just like the others
             normalization_layer = lambda cfg: nn.Identity()
