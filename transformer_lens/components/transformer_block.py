@@ -119,7 +119,7 @@ class TransformerBlock(nn.Module):
             attention_mask (torch.Tensor, optional): The attention mask for padded tokens. Defaults to None.
 
         Returns:
-            _type_: _description_
+            Float[torch.Tensor, "batch pos d_model"]: Our resulting tensor
         """
         resid_pre = self.hook_resid_pre(resid_pre)  # [batch, pos, d_model]
 
@@ -183,10 +183,7 @@ class TransformerBlock(nn.Module):
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
             normalized_resid_mid = self.ln2(mlp_in)
-            mlp_out = self.mlp(normalized_resid_mid)  # [batch, pos, d_model]
-            if self.cfg.use_normalization_before_and_after:
-                mlp_out = self.ln2_post(mlp_out)
-            mlp_out = self.hook_mlp_out(mlp_out)
+            mlp_out = self.apply_mlp(normalized_resid_mid)
             resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
@@ -194,13 +191,23 @@ class TransformerBlock(nn.Module):
             normalized_resid_pre_2 = self.ln2(
                 resid_pre if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_pre.clone())
             )
-            mlp_out = self.mlp(normalized_resid_pre_2)  # [batch, pos, d_model]
-            if self.cfg.use_normalization_before_and_after:
-                mlp_out = self.ln2_post(mlp_out)
-            mlp_out = self.hook_mlp_out(mlp_out)
+            mlp_out = self.apply_mlp(normalized_resid_pre_2)
             resid_post = self.hook_resid_post(
                 resid_pre + attn_out + mlp_out
             )  # [batch, pos, d_model]
         else:
             resid_post = self.hook_resid_post(resid_pre + attn_out)  # [batch, pos, d_model]
         return resid_post
+
+    def apply_mlp(
+        self, normalized_resid: Float[torch.Tensor, "batch pos d_model"]
+    ) -> Float[torch.Tensor, "batch pos d_model"]:
+        """Centralized point where the MLP is applied to the forward pass
+
+        Returns:
+            Float[torch.Tensor, "batch pos d_model"]: Our resulting tensor
+        """
+        mlp_out = self.mlp(normalized_resid)  # [batch, pos, d_model]
+        if self.cfg.use_normalization_before_and_after:
+            mlp_out = self.ln2_post(mlp_out)
+        return self.hook_mlp_out(mlp_out)
