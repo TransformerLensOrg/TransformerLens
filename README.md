@@ -56,7 +56,7 @@ logits, activations = model.run_with_cache("Hello World")
 ## Key Tutorials
 
 * [Introduction to the Library and Mech
-  Interp](https://arena-ch1-transformers.streamlit.app/[1.2]_Intro_to_Mech_Interp)
+  Interp](https://arena3-chapter1-transformer-interp.streamlit.app/[1.2]_Intro_to_Mech_Interp)
 * [Demo of Main TransformerLens Features](https://neelnanda.io/transformer-lens-demo)
 
 ## Gallery
@@ -111,20 +111,20 @@ you would like to help, please try working on one! The standard answer to "why h
 yet" is just that there aren't enough people! Key resources:
 
 * [A Guide to Getting Started in Mechanistic Interpretability](https://neelnanda.io/getting-started)
-* [ARENA Mechanistic Interpretability Tutorials](https://arena-ch1-transformers.streamlit.app/) from
+* [ARENA Mechanistic Interpretability Tutorials](https://arena3-chapter1-transformer-interp.streamlit.app/) from
   Callum McDougall. A comprehensive practical introduction to mech interp, written in
   TransformerLens - full of snippets to copy and they come with exercises and solutions! Notable
   tutorials:
   * [Coding GPT-2 from
-    scratch](https://arena-ch1-transformers.streamlit.app/[1.1]_Transformer_from_Scratch), with
+    scratch](https://arena3-chapter1-transformer-interp.streamlit.app/[1.1]_Transformer_from_Scratch), with
     accompanying video tutorial from me ([1](https://neelnanda.io/transformer-tutorial)
     [2](https://neelnanda.io/transformer-tutorial-2)) - a good introduction to transformers
   * [Introduction to Mech Interp and
-    TransformerLens](https://arena-ch1-transformers.streamlit.app/[1.2]_Intro_to_Mech_Interp): An
+    TransformerLens](https://arena3-chapter1-transformer-interp.streamlit.app/[1.2]_Intro_to_Mech_Interp): An
     introduction to TransformerLens and mech interp via studying induction heads. Covers the
     foundational concepts of the library
   * [Indirect Object
-    Identification](https://arena-ch1-transformers.streamlit.app/[1.3]_Indirect_Object_Identification):
+    Identification](https://arena3-chapter1-transformer-interp.streamlit.app/[1.3]_Indirect_Object_Identification):
     a replication of interpretability in the wild, that covers standard techniques in mech interp
     such as [direct logit
     attribution](https://dynalist.io/d/n2ZWtnoYHrU1s4vnFSAQ519J#z=disz2gTx-jooAcR0a5r8e7LZ),
