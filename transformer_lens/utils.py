@@ -179,6 +179,18 @@ def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "
     return input * F.softmax(input, dim=-1)
 
 
+ACTIVATION_FN_DICT = {
+    "solu": solu,
+    "solu_ln": solu,
+    "gelu_new": gelu_new,
+    "gelu_fast": gelu_fast,
+    "silu": F.silu,
+    "relu": F.relu,
+    "gelu": F.gelu,
+    "gelu_pytorch_tanh": lambda tensor: F.gelu(tensor, approximate="tanh"),
+}
+
+
 def calc_fan_in_and_fan_out(tensor):
     """
     Calculate the fan in and fan out of a tensor. We define it ourselves because Torch uses a

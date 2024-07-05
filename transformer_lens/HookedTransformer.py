@@ -17,6 +17,7 @@ import einops
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
@@ -565,6 +566,10 @@ class HookedTransformer(HookedRootModule):
                 return None
             else:
                 logits = self.unembed(residual)  # [batch, pos, d_vocab]
+                if self.cfg.output_logits_soft_cap > 0.0:
+                    logits = self.cfg.output_logits_soft_cap * F.tanh(
+                        logits / self.cfg.output_logits_soft_cap
+                    )
                 if return_type == "logits":
                     return logits
                 else:
@@ -1028,6 +1033,7 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.positional_embedding_type != "rotary":
             self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
             self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+
         if hasattr(self, "ln_final"):
             self.ln_final.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
         self.unembed.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
@@ -1266,6 +1272,12 @@ class HookedTransformer(HookedRootModule):
                     "Setting center_writing_weights=False instead."
                 )
                 center_writing_weights = False
+        if center_unembed and cfg.output_logits_soft_cap > 0.0:
+            logging.warning(
+                "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant"
+                "Setting center_unembed=False instead."
+            )
+            center_unembed = False
 
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to
         # match the HookedTransformer parameter names.
@@ -1938,7 +1950,7 @@ class HookedTransformer(HookedRootModule):
             for layer in self.blocks:
                 layer.ln1 = LayerNormPre(self.cfg)
                 layer.ln2 = LayerNormPre(self.cfg)
-                if self.cfg.act_fn is not None and self.cfg.act_fn.endswith("_ln"):
+                if self.cfg.is_layer_norm_activation():
                     layer.mlp.ln = LayerNormPre(self.cfg)
         elif fold_ln and self.cfg.normalization_type == "RMS":
             # We do the same for RMSNorm if used
@@ -1947,7 +1959,7 @@ class HookedTransformer(HookedRootModule):
             for layer in self.blocks:
                 layer.ln1 = RMSNormPre(self.cfg)
                 layer.ln2 = RMSNormPre(self.cfg)
-                if self.cfg.act_fn is not None and self.cfg.act_fn.endswith("_ln"):
+                if self.cfg.is_layer_norm_activation():
                     layer.mlp.ln = RMSNormPre(self.cfg)
 
         self.load_and_process_state_dict(
