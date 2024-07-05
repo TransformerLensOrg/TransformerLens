@@ -10,16 +10,15 @@ import torch.nn as nn
 from jaxtyping import Float, Int
 
 from transformer_lens.components import (
-    MLP,
     Attention,
-    GatedMLP,
     GroupedQueryAttention,
     LayerNorm,
     LayerNormPre,
-    MoE,
     RMSNorm,
     RMSNormPre,
 )
+from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
+from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
@@ -30,28 +29,28 @@ from transformer_lens.utils import repeat_along_head_dimension
 class TransformerBlock(nn.Module):
     ln1: nn.Module
     ln2: nn.Module
-    mlp: nn.Module
+    mlp: CanBeUsedAsMLP
 
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
         if self.cfg.normalization_type == "LN":
-            self.ln1 = LayerNorm(cfg)
+            self.ln1 = LayerNorm(self.cfg)
             if not self.cfg.attn_only:
-                self.ln2 = LayerNorm(cfg)
+                self.ln2 = LayerNorm(self.cfg)
         elif self.cfg.normalization_type == "LNPre":
             # We've folded in LayerNorm weights, so just need the center + scale parts
-            self.ln1 = LayerNormPre(cfg)
+            self.ln1 = LayerNormPre(self.cfg)
             if not self.cfg.attn_only:
-                self.ln2 = LayerNormPre(cfg)
+                self.ln2 = LayerNormPre(self.cfg)
         elif self.cfg.normalization_type == "RMS":
-            self.ln1 = RMSNorm(cfg)
+            self.ln1 = RMSNorm(self.cfg)
             if not self.cfg.attn_only:
-                self.ln2 = RMSNorm(cfg)
+                self.ln2 = RMSNorm(self.cfg)
         elif self.cfg.normalization_type == "RMSPre":
-            self.ln1 = RMSNormPre(cfg)
+            self.ln1 = RMSNormPre(self.cfg)
             if not self.cfg.attn_only:
-                self.ln2 = RMSNormPre(cfg)
+                self.ln2 = RMSNormPre(self.cfg)
         elif self.cfg.normalization_type is None:
             self.ln1 = nn.Identity()
             if not self.cfg.attn_only:
@@ -61,19 +60,14 @@ class TransformerBlock(nn.Module):
 
         attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
         if not self.cfg.use_local_attn:
-            self.attn = attention(cfg, "global", block_index)
+            self.attn = attention(self.cfg, "global", block_index)
         else:
             if self.cfg.attn_types is None:
                 raise ValueError("attn_types must be set when using local attention")
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = attention(cfg, attn_type, block_index)
+            self.attn = attention(self.cfg, attn_type, block_index)
         if not self.cfg.attn_only:
-            if self.cfg.num_experts:
-                self.mlp = MoE(cfg)
-            elif self.cfg.gated_mlp:
-                self.mlp = GatedMLP(cfg)
-            else:
-                self.mlp = MLP(cfg)
+            self.mlp = MLPFactory.create_mlp(self.cfg)
 
         self.hook_attn_in = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_q_input = HookPoint()  # [batch, pos, n_heads, d_model]

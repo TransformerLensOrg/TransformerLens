@@ -16,8 +16,7 @@ import numpy as np
 import torch
 
 from transformer_lens import utils
-
-SUPPORTED_ACTIVATIONS = ["relu", "gelu", "silu", "gelu_new", "solu_ln", "gelu_fast"]
+from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 
 @dataclass
@@ -326,3 +325,6 @@ class HookedTransformerConfig:
         torch.manual_seed(seed)
         random.seed(seed)
         np.random.seed(seed)
+
+    def is_layer_norm_activation(self) -> bool:
+        return self.act_fn is not None and self.act_fn.endswith("_ln")
