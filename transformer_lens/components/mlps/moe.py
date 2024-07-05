@@ -37,7 +37,7 @@ class MoEGatedMLP(nn.Module):
         pre_act = self.hook_pre(
             self.W_in(x) 
         )
-        post_act = self.hook_post(self.act_fn(pre_act) * gated_x)
+        post_act = self.hook_post(self.act_fn(gated_x) * pre_act)
         return self.W_out(post_act)
 
 class MoE(CanBeUsedAsMLP):
