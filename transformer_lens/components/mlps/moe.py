@@ -6,26 +6,39 @@ import torch.nn.functional as F
 from jaxtyping import Float
 
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
-from transformer_lens.components.mlps.gated_mlp_unbiased import GatedMLPUnbiased
+from transformer_lens.factories.activation_function_factory import (
+    ActivationFunctionFactory,
+)
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
-class MixtralBlockSparseTop2MLP(nn.Module):
-    def __init__(self, config):
+class MoEGatedMLP(nn.Module):
+    def __init__(self, cfg: HookedTransformerConfig):
         super().__init__()
-        self.ffn_dim = config.d_mlp
-        self.hidden_dim = config.d_model
+        self.cfg = cfg
 
-        self.w1 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
-        self.w2 = nn.Linear(self.ffn_dim, self.hidden_dim, bias=False)
-        self.w3 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
+        self.W_in = nn.Linear(self.cfg.d_model, self.cfg.d_mlp, bias=False)
+        self.W_out = nn.Linear(self.cfg.d_mlp, self.cfg.d_model, bias=False)
+        self.W_gate = nn.Linear(self.cfg.d_model, self.cfg.d_mlp, bias=False)
 
-        self.act_fn = F.silu
+        # hook on gate output but before act_fn
+        self.hook_gate = HookPoint()  # [batch, pos, d_mlp]
+        # hook on the linear component of the input
+        self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
+        # hook on act_fn(gate_output) * W_in(x) + b_in
+        self.hook_post = HookPoint()  # [batch, pos, d_mlp]
 
-    def forward(self, hidden_states):
-        current_hidden_states = self.act_fn(self.w1(hidden_states)) * self.w3(hidden_states)
-        current_hidden_states = self.w2(current_hidden_states)
-        return current_hidden_states
+        self.act_fn = ActivationFunctionFactory.pick_activation_function(self.cfg)
+
+    def forward(self, x: Float[torch.Tensor, "pos d_model"]) -> Float[torch.Tensor, "pos d_model"]:
+        gated_x = self.hook_gate(
+            self.W_gate(x) 
+        )
+        pre_act = self.hook_pre(
+            self.W_in(x) 
+        )
+        post_act = self.hook_post(self.act_fn(pre_act) * gated_x)
+        return self.W_out(post_act)
 
 class MoE(CanBeUsedAsMLP):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
@@ -42,7 +55,7 @@ class MoE(CanBeUsedAsMLP):
             self.cfg.experts_per_token <= self.cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
 
-        self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(self.cfg) for _ in range(self.num_experts)])
+        self.experts = nn.ModuleList([MoEGatedMLP(self.cfg) for _ in range(self.num_experts)])
         self.W_gate = nn.Linear(self.cfg.d_model, self.cfg.num_experts, bias=False)
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
