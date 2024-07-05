@@ -38,7 +38,6 @@ class TransformerBlock(nn.Module):
         normalization_layer_after: Callable  # type: ignore
 
         self.normalization_type = self.cfg.normalization_type
-        normalization_type_empty = self.normalization_type is None
 
         if self.normalization_type == "LN":
             normalization_layer = LayerNorm
@@ -49,7 +48,7 @@ class TransformerBlock(nn.Module):
             normalization_layer = RMSNorm
         elif self.normalization_type == "RMSPre":
             normalization_layer = RMSNormPre
-        elif normalization_type_empty:
+        elif self.normalization_type is None:
             # This should just be the identity.
             # We need to make this a lambda so we can call it on the config, just like the others
             normalization_layer = lambda cfg: nn.Identity()
@@ -59,7 +58,7 @@ class TransformerBlock(nn.Module):
         if self.cfg.use_normalization_before_and_after:
             # If we use LN before and after, we do *not* fold in the weights to the LN
             # after, though we can fold for the one before.
-            if normalization_type_empty:
+            if self.normalization_type is None:
                 normalization_layer_after = lambda cfg: nn.Identity()
             elif self.normalization_type.startswith("RMS"):
                 normalization_layer_after = RMSNorm
