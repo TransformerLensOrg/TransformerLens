@@ -43,6 +43,7 @@ class MoEGatedMLP(nn.Module):
 class MoE(CanBeUsedAsMLP):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__(cfg)
+        print("newest version")
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
         assert self.cfg.num_experts is not None, "num_experts must be specified for MoE layer"
