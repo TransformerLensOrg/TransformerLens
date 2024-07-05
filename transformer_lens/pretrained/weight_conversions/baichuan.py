@@ -59,6 +59,7 @@ def convert_baichuan_weights(baichuan, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=W_O.dtype)
 
     state_dict["ln_final.w"] = baichuan.model.norm.weight
+    state_dict["pos_embed.W_pos"] = baichuan.model.transformer.wpe.weight
     state_dict["unembed.W_U"] = baichuan.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=W_O.dtype)
 
