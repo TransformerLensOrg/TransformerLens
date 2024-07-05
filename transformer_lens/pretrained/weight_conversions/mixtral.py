@@ -16,11 +16,6 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
 
     state_dict["embed.W_E"] = mixtral.model.embed_tokens.weight
 
-    print("mapping")
-    print(mixtral.model)
-    print( mixtral.model.layers[
-            0
-        ].block_sparse_moe.gate)
     for l in range(cfg.n_layers):
         state_dict[f"blocks.{l}.ln1.w"] = mixtral.model.layers[l].input_layernorm.weight
 
