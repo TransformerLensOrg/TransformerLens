@@ -10,6 +10,22 @@ from transformer_lens.components.mlps.gated_mlp_unbiased import GatedMLPUnbiased
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
+class MixtralBlockSparseTop2MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.ffn_dim = config.d_mlp
+        self.hidden_dim = config.d_model
+
+        self.w1 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
+        self.w2 = nn.Linear(self.ffn_dim, self.hidden_dim, bias=False)
+        self.w3 = nn.Linear(self.hidden_dim, self.ffn_dim, bias=False)
+
+        self.act_fn = F.silu
+
+    def forward(self, hidden_states):
+        current_hidden_states = self.act_fn(self.w1(hidden_states)) * self.w3(hidden_states)
+        current_hidden_states = self.w2(current_hidden_states)
+        return current_hidden_states
 
 class MoE(CanBeUsedAsMLP):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
@@ -26,7 +42,7 @@ class MoE(CanBeUsedAsMLP):
             self.cfg.experts_per_token <= self.cfg.num_experts
         ), "experts_per_token must be less than or equal to num_experts"
 
-        self.experts = nn.ModuleList([GatedMLPUnbiased(self.cfg) for _ in range(self.num_experts)])
+        self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(self.cfg) for _ in range(self.num_experts)])
         self.W_gate = nn.Linear(self.cfg.d_model, self.cfg.num_experts, bias=False)
 
         # Hook on the weights of selected experts [batch pos experts_per_token]
@@ -59,11 +75,11 @@ class MoE(CanBeUsedAsMLP):
             # Index the correct hidden states and compute the expert hidden state for
             # the current expert. We need to make sure to multiply the output hidden
             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
-            current_state = x[None, top_x]
+            current_state = x[None, top_x].reshape(-1, d_model)
 
             current_hidden_states = (
                 expert_layer(current_state) * weights[top_x, idx, None]
-            ).reshape(-1, d_model)
+            )
 
             # However `index_add_` only support torch tensors for indexing so we'll use
             # the `top_x` tensor here.
