@@ -1,3 +1,7 @@
+"""Activation Functions.
+
+Utilities for interacting with all supported activation functions.
+"""
 from typing import Callable, Dict
 
 import torch

@@ -51,9 +51,7 @@ class MoE(CanBeUsedAsMLP):
         weights = weights.to(x.dtype)
 
         results = torch.zeros((batch * pos, d_model), dtype=x.dtype, device=x.device)
-        expert_mask = torch.nn.functional.one_hot(
-            expert_indices, num_classes=self.num_experts
-        ).permute(2, 1, 0)
+        expert_mask = F.one_hot(expert_indices, num_classes=self.num_experts).permute(2, 1, 0)
         for expert_idx in range(self.num_experts):
             expert_layer = self.experts[expert_idx]
             idx, top_x = torch.where(expert_mask[expert_idx])
@@ -62,9 +60,10 @@ class MoE(CanBeUsedAsMLP):
             # the current expert. We need to make sure to multiply the output hidden
             # states by `routing_weights` on the corresponding tokens (top-1 and top-2)
             current_state = x[None, top_x]
+
             current_hidden_states = (
-                expert_layer(current_state).reshape(-1, d_model) * weights[top_x, idx, None]
-            )
+                expert_layer(current_state) * weights[top_x, idx, None]
+            ).reshape(-1, d_model)
 
             # However `index_add_` only support torch tensors for indexing so we'll use
             # the `top_x` tensor here.
