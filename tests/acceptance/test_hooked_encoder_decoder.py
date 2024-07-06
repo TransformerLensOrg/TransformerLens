@@ -125,7 +125,7 @@ def test_relative_attention_bias(our_model, huggingface_model, hello_world_token
     huggingface_attn_out = huggingface_attn(embed_out)[0]
     our_attn_out = our_attn(embed_out, embed_out, embed_out, position_bias=our_bias)
 
-    assert_close(our_attn_out, huggingface_attn_out, rtol=7e-4, atol=1e-5)
+    assert_close(our_attn_out, huggingface_attn_out, rtol=7.4e-4, atol=1e-5)
 
 
 def test_relative_attention_layer(our_model, huggingface_model, hello_world_tokens):

@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.components import MLP, RMSNorm, T5Attention
+from transformer_lens.components import RMSNorm, T5Attention
+from transformer_lens.factories.mlp_factory import MLPFactory
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
@@ -28,7 +29,7 @@ class T5Block(nn.Module):
         if self.is_decoder:
             self.cross_attn = T5Attention(cfg)
             self.ln3 = RMSNorm(cfg)
-        self.mlp = MLP(cfg)  # [batch, pos, n_heads]
+        self.mlp = MLPFactory.create_mlp(self.cfg)  # [batch, pos, n_heads]
 
         self.hook_q_input = HookPoint()  # [batch, pos, n_heads, d_model]
         self.hook_k_input = HookPoint()  # [batch, pos, n_heads, d_model]
