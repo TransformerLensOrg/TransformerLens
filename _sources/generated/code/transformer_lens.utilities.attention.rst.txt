@@ -1,0 +1,7 @@
+transformer\_lens.utilities.attention
+=====================================
+
+.. automodule:: transformer_lens.utilities.attention
+   :members:
+   :undoc-members:
+   :show-inheritance:

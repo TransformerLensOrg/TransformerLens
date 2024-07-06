@@ -13,12 +13,9 @@ Submodules
    transformer_lens.components.bert_embed
    transformer_lens.components.bert_mlm_head
    transformer_lens.components.embed
-   transformer_lens.components.gated_mlp
    transformer_lens.components.grouped_query_attention
    transformer_lens.components.layer_norm
    transformer_lens.components.layer_norm_pre
-   transformer_lens.components.mlp
-   transformer_lens.components.moe
    transformer_lens.components.pos_embed
    transformer_lens.components.rms_norm
    transformer_lens.components.rms_norm_pre

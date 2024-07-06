@@ -1,7 +1,0 @@
-transformer\_lens.components.gated\_mlp
-=======================================
-
-.. automodule:: transformer_lens.components.gated_mlp
-   :members:
-   :undoc-members:
-   :show-inheritance:

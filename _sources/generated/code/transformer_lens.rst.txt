@@ -30,4 +30,5 @@ Subpackages
    :maxdepth: 1
 
    transformer_lens.components
+   transformer_lens.pretrained
    transformer_lens.utilities

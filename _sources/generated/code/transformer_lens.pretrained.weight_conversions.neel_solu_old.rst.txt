@@ -1,0 +1,7 @@
+transformer\_lens.pretrained.weight\_conversions.neel\_solu\_old
+================================================================
+
+.. automodule:: transformer_lens.pretrained.weight_conversions.neel_solu_old
+   :members:
+   :undoc-members:
+   :show-inheritance:

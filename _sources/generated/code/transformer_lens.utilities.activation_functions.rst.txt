@@ -1,0 +1,7 @@
+transformer\_lens.utilities.activation\_functions
+=================================================
+
+.. automodule:: transformer_lens.utilities.activation_functions
+   :members:
+   :undoc-members:
+   :show-inheritance:

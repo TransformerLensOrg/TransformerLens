@@ -1,0 +1,29 @@
+transformer\_lens.pretrained.weight\_conversions
+================================================
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   transformer_lens.pretrained.weight_conversions.bert
+   transformer_lens.pretrained.weight_conversions.bloom
+   transformer_lens.pretrained.weight_conversions.coder
+   transformer_lens.pretrained.weight_conversions.gemma
+   transformer_lens.pretrained.weight_conversions.gpt2
+   transformer_lens.pretrained.weight_conversions.gptj
+   transformer_lens.pretrained.weight_conversions.llama
+   transformer_lens.pretrained.weight_conversions.mingpt
+   transformer_lens.pretrained.weight_conversions.mistral
+   transformer_lens.pretrained.weight_conversions.mixtral
+   transformer_lens.pretrained.weight_conversions.nanogpt
+   transformer_lens.pretrained.weight_conversions.neel_solu_old
+   transformer_lens.pretrained.weight_conversions.neo
+   transformer_lens.pretrained.weight_conversions.neox
+   transformer_lens.pretrained.weight_conversions.opt
+   transformer_lens.pretrained.weight_conversions.phi
+   transformer_lens.pretrained.weight_conversions.phi3
+   transformer_lens.pretrained.weight_conversions.qwen
+   transformer_lens.pretrained.weight_conversions.qwen2
+   transformer_lens.pretrained.weight_conversions.t5

@@ -1,0 +1,7 @@
+transformer\_lens.utilities.addmm
+=================================
+
+.. automodule:: transformer_lens.utilities.addmm
+   :members:
+   :undoc-members:
+   :show-inheritance:
