@@ -89,7 +89,11 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
         gemma.model.norm.weight, dtype=torch.float32
     )
 
-    state_dict["unembed.W_U"] = gemma.lm_head.weight.T
+    if cfg.tie_word_embeddings:
+        state_dict["unembed.W_U"] = state_dict["embed.W_E"].T
+    else:
+        state_dict["unembed.W_U"] = gemma.lm_head.weight.T
+
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
