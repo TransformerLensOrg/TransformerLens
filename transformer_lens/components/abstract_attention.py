@@ -2,7 +2,6 @@ from abc import ABC
 from typing import Dict, Optional, Tuple, Union
 
 import einops
-from fancy_einsum import einsum
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
