@@ -2,6 +2,7 @@ from abc import ABC
 from typing import Dict, Optional, Tuple, Union
 
 import einops
+from fancy_einsum import einsum
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -302,11 +303,8 @@ class AbstractAttention(ABC, nn.Module):
                 input = einops.rearrange(
                     z, "batch pos head_index d_head -> batch pos (head_index d_head)"
                 )
-                result = self.hook_result(F.linear(input, w))  # [batch, pos, head_index, d_model]
-            out = (
-                einops.reduce(result, "batch position index model->batch position model", "sum")
-                + self.b_O
-            )  # [batch, pos, d_model]
+                result = self.hook_result(F.linear(input, w))  # [batch, pos, d_model]
+            out = result + self.b_O
         return out
 
     def calculate_qkv_matrices(
