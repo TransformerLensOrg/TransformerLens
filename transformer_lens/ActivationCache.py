@@ -988,8 +988,9 @@ class ActivationCache:
             # Apply batch slice to the stack
             residual_stack = batch_slice.apply(residual_stack, dim=1)
 
-        # Center the stack
-        residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
+        # Center the stack onlny if the model uses LayerNorm
+        if self.model.cfg.normalization_type in ["LN", "LNPre"]:
+            residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         if layer == self.model.cfg.n_layers or layer is None:
             scale = self["ln_final.hook_scale"]
