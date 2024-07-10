@@ -30,7 +30,7 @@ def test_atten_result_normal_attn_correct():
     normal_output = model(x)
 
     model.set_use_attn_result(True)
-    assert model.cfg.use_attn_result  is True
+    assert model.cfg.use_attn_result is True
 
     split_output = model(x)
 
