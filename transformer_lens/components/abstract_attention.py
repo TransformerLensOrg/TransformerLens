@@ -299,10 +299,13 @@ class AbstractAttention(ABC, nn.Module):
                     self.W_O,
                     "head_index d_head d_model -> d_model head_index d_head",
                 )
-                result = self.hook_result(einops.einsum(
-                    z, w, 
-                    "... head_index d_head, d_model head_index d_head -> ... head_index d_model"
-                ))  # [batch, pos, head_index, d_model]
+                result = self.hook_result(
+                    einops.einsum(
+                        z,
+                        w,
+                        "... head_index d_head, d_model head_index d_head -> ... head_index d_model",
+                    )
+                )  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(result, "batch position index model->batch position model", "sum")
                 + self.b_O
