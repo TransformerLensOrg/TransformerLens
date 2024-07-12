@@ -10,7 +10,7 @@ CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/chec
 [![Docs
 CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment)
 
-A Library for Mechanistic Interpretability of Generative Language Models.
+A Library for Mechanistic Interpretability of Generative Language Models. Maintained by [Bryce Meyer](https://github.com/bryce13950) and created by [Neel Nanda](https://neelnanda.io/about)
 
 [![Read the Docs
 Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://TransformerLensOrg.github.io/TransformerLens/)](https://TransformerLensOrg.github.io/TransformerLens/)
@@ -158,8 +158,7 @@ share your projects on the Slack!
 
 ## Credits
 
-This library was created by **[Neel Nanda](https://neelnanda.io)** and is maintained by **Joseph
-Bloom**.
+This library was created by **[Neel Nanda](https://neelnanda.io)** and is maintained by **[Bryce Meyer](https://github.com/bryce13950)**.
 
 The core features of TransformerLens were heavily inspired by the interface to [Anthropic's
 excellent Garcon tool](https://transformer-circuits.pub/2021/garcon/index.html). Credit to Nelson
