@@ -15,15 +15,6 @@ A Library for Mechanistic Interpretability of Generative Language Models. Mainta
 [![Read the Docs
 Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://TransformerLensOrg.github.io/TransformerLens/)](https://TransformerLensOrg.github.io/TransformerLens/)
 
-| :exclamation:  HookedSAETransformer Removed   |
-|-----------------------------------------------|
-
-Hooked SAE has been removed from TransformerLens 2.0. The functionality is being moved to
-[SAELens](http://github.com/jbloomAus/SAELens). For more information on this release, please see the
-accompanying
-[announcement](https://transformerlensorg.github.io/TransformerLens/content/news/release-2.0.html)
-for details on what's new, and the future of TransformerLens.
-
 This is a library for doing [mechanistic
 interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style language models. The
 goal of mechanistic interpretability is to take a trained model and reverse engineer the algorithms
@@ -155,6 +146,15 @@ Please use issues for concrete discussions about the package, and Slack for high
 discussions about eg supporting important new use cases, or if you want to make substantial
 contributions to the library and want a maintainer's opinion. We'd also love for you to come and
 share your projects on the Slack!
+
+| :exclamation:  HookedSAETransformer Removed   |
+|-----------------------------------------------|
+
+Hooked SAE has been removed from TransformerLens in version 2.0. The functionality is being moved to
+[SAELens](http://github.com/jbloomAus/SAELens). For more information on this release, please see the
+accompanying
+[announcement](https://transformerlensorg.github.io/TransformerLens/content/news/release-2.0.html)
+for details on what's new, and the future of TransformerLens.
 
 ## Credits
 
