@@ -17,8 +17,12 @@ class MoE(nn.Module):
         self.cfg = HookedTransformerConfig.unwrap(cfg)
 
         # Ensure that num_experts and experts_per_token are specified and non-zero
-        assert self.cfg.num_experts is not None, "num_experts must be specified for MoE layer"
-        assert self.cfg.experts_per_token, "experts_per_token must be specified for MoE layer"
+        assert (
+            self.cfg.num_experts is not None
+        ), "num_experts must be specified for MoE layer"
+        assert (
+            self.cfg.experts_per_token
+        ), "experts_per_token must be specified for MoE layer"
         self.experts_per_token: int = self.cfg.experts_per_token
         assert (
             self.cfg.experts_per_token <= self.cfg.num_experts
@@ -42,24 +46,42 @@ class MoE(nn.Module):
     def forward(
         self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:
-        # [batch, pos, d_model] -> [batch, pos, num_experts]
-        gate_logits = einsum(
-            "batch pos d_model, d_model num_experts -> batch pos num_experts",
-            x,
-            self.W_gate,
+        router_logits = F.linear(x, self.W_gate.T)
+        router_logits = router_logits.view(
+            x.shape[0] * x.shape[1], self.cfg.num_experts
         )
+        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
 
-        # choose the top k(=experts_per_token) experts to use
-        # both are [batch, pos, experts_per_token]
-        weights, expert_indices = torch.topk(gate_logits, self.experts_per_token)
-        weights = self.hook_expert_weights(F.softmax(weights, dim=-1))
+        routing_weights, expert_indices = torch.topk(
+            routing_weights, self.experts_per_token
+        )
+        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        routing_weights = routing_weights.to(x.dtype)
+        routing_weights = self.hook_expert_weights(
+            routing_weights
+        )  # F.softmax(weights, dim=-1))
         expert_indices = self.hook_expert_indices(expert_indices)
+        expert_mask = F.one_hot(
+            expert_indices, num_classes=self.cfg.num_experts
+        ).permute(2, 1, 0)
 
-        results = torch.zeros_like(x)
+        results = torch.zeros(
+            x.shape[0] * x.shape[1], self.cfg.d_model, device=x.device
+        )
+        hidden_states = x.view(-1, self.cfg.d_model)
         for i, expert_mlp in enumerate(self.experts):
             # find the batch, pos, and expert indices which use this expert
-            batch, pos, expert = torch.where(expert_indices == i)
-            # accumulate the weighted outputs from the expert
-            results[batch] += weights[batch, pos, expert, None, None] * expert_mlp(x[batch])
+            idx, top_x = torch.where(expert_mask[i])
 
-        return results
+            current_state = hidden_states[None, top_x].reshape(-1, self.cfg.d_model)
+
+            expert_hidden_state = expert_mlp.act_fn(
+                F.linear(current_state, expert_mlp.W_gate.T)
+            ) * F.linear(current_state, expert_mlp.W_in.T)
+            expert_output = F.linear(expert_hidden_state, expert_mlp.W_out.T)
+
+            current_hidden_states = expert_output * routing_weights[top_x, idx, None]
+
+            results.index_add_(0, top_x, current_hidden_states.to(x.dtype))
+
+        return results.reshape_as(x)
