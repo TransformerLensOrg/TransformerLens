@@ -15,9 +15,7 @@ class TestMatchHuggingFace:
 
     # tests
     def test_compare_huggingface_mlp_match_local_implementation(self, model_name):
-        tl_model = HookedTransformer.from_pretrained_no_processing(
-            model_name, device="cpu"
-        )
+        tl_model = HookedTransformer.from_pretrained_no_processing(model_name, device="cpu")
         hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="cpu")
         tensor_shape = (3, 5, tl_model.cfg.d_model)
         test_tensor = torch.randn(tensor_shape)
@@ -25,9 +23,7 @@ class TestMatchHuggingFace:
         for layer_n in range(len(tl_model.blocks)):
             tl_out = tl_model.blocks[layer_n].mlp(test_tensor)
             # hf_out = hf_model.transformer.h[layer_n].mlp(test_tensor)
-            hf_out, router_logits = hf_model.model.layers[layer_n].block_sparse_moe(
-                test_tensor
-            )
+            hf_out, router_logits = hf_model.model.layers[layer_n].block_sparse_moe(test_tensor)
 
             print(f"test: {tl_out[:2, :2, :2]=}")
             print(f"test: {hf_out[:2, :2, :2]=}")
