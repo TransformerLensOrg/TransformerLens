@@ -130,8 +130,6 @@ class GatedMLP(nn.Module):
             mid_act = self.hook_mid(self.act_fn(pre_act))  # [batch, pos, d_mlp]
             post_act = self.hook_post(self.ln(mid_act))
 
-        # print(f"tl: {post_act[:2, :2, :2]=}")
-
         if self.cfg.load_in_4bit:
             return bnb.matmul_4bit(
                 post_act, self.W_out.t(), bias=None, quant_state=self.W_out.quant_state

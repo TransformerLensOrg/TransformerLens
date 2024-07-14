@@ -25,10 +25,6 @@ class TestMatchHuggingFace:
             # hf_out = hf_model.transformer.h[layer_n].mlp(test_tensor)
             hf_out, router_logits = hf_model.model.layers[layer_n].block_sparse_moe(test_tensor)
 
-            print(f"test: {tl_out[:2, :2, :2]=}")
-            print(f"test: {hf_out[:2, :2, :2]=}")
-            print(f"test: {(tl_out - hf_out)[:5, :5, :5]=}")
-            print(f"test: {torch.sum(tl_out - hf_out)=}")
             assert torch.sum(tl_out == hf_out) == math.prod(tensor_shape)
 
     # def test_compare_huggingface_attention_match_local_implementation(self, model_name):
@@ -50,6 +46,4 @@ class TestMatchHuggingFace:
     #         # hf_out, _ = hf_model.transformer.h[layer_n].attn(hidden_states=input)
     #         hf_out, _, _ = hf_model.model.layers[layer_n].self_attn(hidden_states=input)
     #
-    #         print(f"{tl_out[:2, :2, :2]=}")
-    #         print(f"{hf_out[:2, :2, :2]=}")
     #         assert torch.sum(tl_out == hf_out) == math.prod(tl_out.shape)

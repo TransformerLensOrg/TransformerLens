@@ -1649,7 +1649,6 @@ class HookedTransformer(HookedRootModule):
                 )
 
                 if self.cfg.gated_mlp:
-                    print("folding in ln to W_gate")
                     state_dict[f"blocks.{l}.mlp.W_gate"] = (
                         state_dict[f"blocks.{l}.mlp.W_gate"]
                         * state_dict[f"blocks.{l}.ln2.w"][:, None]
