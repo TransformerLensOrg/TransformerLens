@@ -46,24 +46,18 @@ class GatedMLP(nn.Module):
 
         if self.cfg.load_in_4bit:
             nq = int((self.cfg.d_model * self.cfg.d_mlp) / 2)
-            self.W_in = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_gate = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
-            self.W_out = Params4bit(
-                torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False
-            )
+            self.W_in = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_gate = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
+            self.W_out = Params4bit(torch.empty(nq, 1, dtype=torch.uint8), requires_grad=False)
         else:
             self.W_in = nn.Parameter(
-                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
+                torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
             )
             self.W_gate = nn.Parameter(
-                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
+                torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
             )
             self.W_out = nn.Parameter(
-                torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
+                torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
             )
 
         self.b_in = nn.Parameter(torch.zeros(self.cfg.d_mlp, dtype=self.cfg.dtype))
@@ -104,9 +98,7 @@ class GatedMLP(nn.Module):
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         if self.cfg.load_in_4bit:
             pre_act = self.hook_pre(
-                bnb.matmul_4bit(
-                    x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state
-                )
+                bnb.matmul_4bit(x, self.W_gate.t(), bias=None, quant_state=self.W_gate.quant_state)
             )
         else:
             pre_act = self.hook_pre(
@@ -120,9 +112,7 @@ class GatedMLP(nn.Module):
         if self.cfg.act_fn is not None and not self.cfg.act_fn.endswith("_ln"):
             if self.cfg.load_in_4bit:
                 pre_linear = self.hook_pre_linear(
-                    bnb.matmul_4bit(
-                        x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state
-                    )
+                    bnb.matmul_4bit(x, self.W_in.t(), bias=None, quant_state=self.W_in.quant_state)
                 )
             else:
                 pre_linear = self.hook_pre_linear(
