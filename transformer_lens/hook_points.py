@@ -44,7 +44,7 @@ class LensHandle:
 
 
 # Define type aliases
-NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
+NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str], str]]
 
 
 @runtime_checkable
@@ -117,7 +117,7 @@ class HookPoint(nn.Module):
             _internal_hooks = self._forward_hooks
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            pt_handle = self.register_backward_hook(full_hook)
+            pt_handle = self.register_full_backward_hook(full_hook)
             _internal_hooks = self._backward_hooks
             visible_hooks = self.bwd_hooks
         else:
