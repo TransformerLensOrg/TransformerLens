@@ -10,19 +10,10 @@ CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/chec
 [![Docs
 CD](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment/badge.svg)](https://github.com/TransformerLensOrg/TransformerLens/actions/workflows/pages/pages-build-deployment)
 
-A Library for Mechanistic Interpretability of Generative Language Models.
+A Library for Mechanistic Interpretability of Generative Language Models. Maintained by [Bryce Meyer](https://github.com/bryce13950) and created by [Neel Nanda](https://neelnanda.io/about)
 
 [![Read the Docs
 Here](https://img.shields.io/badge/-Read%20the%20Docs%20Here-blue?style=for-the-badge&logo=Read-the-Docs&logoColor=white&link=https://TransformerLensOrg.github.io/TransformerLens/)](https://TransformerLensOrg.github.io/TransformerLens/)
-
-| :exclamation:  HookedSAETransformer Removed   |
-|-----------------------------------------------|
-
-Hooked SAE has been removed from TransformerLens 2.0. The functionality is being moved to
-[SAELens](http://github.com/jbloomAus/SAELens). For more information on this release, please see the
-accompanying
-[announcement](https://transformerlensorg.github.io/TransformerLens/content/news/release-2.0.html)
-for details on what's new, and the future of TransformerLens.
 
 This is a library for doing [mechanistic
 interpretability](https://distill.pub/2020/circuits/zoom-in/) of GPT-2 Style language models. The
@@ -156,10 +147,18 @@ discussions about eg supporting important new use cases, or if you want to make 
 contributions to the library and want a maintainer's opinion. We'd also love for you to come and
 share your projects on the Slack!
 
+| :exclamation:  HookedSAETransformer Removed   |
+|-----------------------------------------------|
+
+Hooked SAE has been removed from TransformerLens in version 2.0. The functionality is being moved to
+[SAELens](http://github.com/jbloomAus/SAELens). For more information on this release, please see the
+accompanying
+[announcement](https://transformerlensorg.github.io/TransformerLens/content/news/release-2.0.html)
+for details on what's new, and the future of TransformerLens.
+
 ## Credits
 
-This library was created by **[Neel Nanda](https://neelnanda.io)** and is maintained by **Joseph
-Bloom**.
+This library was created by **[Neel Nanda](https://neelnanda.io)** and is maintained by **[Bryce Meyer](https://github.com/bryce13950)**.
 
 The core features of TransformerLens were heavily inspired by the interface to [Anthropic's
 excellent Garcon tool](https://transformer-circuits.pub/2021/garcon/index.html). Credit to Nelson

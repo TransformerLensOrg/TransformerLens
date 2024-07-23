@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 import torch
 
@@ -69,6 +71,24 @@ def test_context_manager_run_with_cache():
         model.run_with_cache(prompt)
         assert len(model.hook_dict["hook_embed"].fwd_hooks) == 1
     assert len(model.hook_dict["hook_embed"].fwd_hooks) == 0
+    assert c.count == 1
+    model.remove_all_hook_fns(including_permanent=True)
+
+
+def test_backward_hook_runs_successfully():
+    c = Counter()
+
+    def skip_grad(output_grad: torch.Tensor, hook: Any):
+        c.inc()
+        return (output_grad,)
+
+    with model.hooks(bwd_hooks=[(embed, skip_grad)]):
+        assert len(model.hook_dict["hook_embed"].bwd_hooks) == 1
+        out = model(prompt)
+        assert c.count == 0
+        out.sum().backward()  # this should run the hook
+        assert len(model.hook_dict["hook_embed"].bwd_hooks) == 1
+    assert len(model.hook_dict["hook_embed"].bwd_hooks) == 0
     assert c.count == 1
     model.remove_all_hook_fns(including_permanent=True)
 
