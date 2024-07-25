@@ -1,8 +1,8 @@
 import einops
 import torch
 
+# from transformer_lens.pretrained import BaseWeightConversion
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-
 
 def convert_neo_weights(neo, cfg: HookedTransformerConfig):
     state_dict = {}
@@ -47,3 +47,22 @@ def convert_neo_weights(neo, cfg: HookedTransformerConfig):
     state_dict["unembed.W_U"] = neo.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
     return state_dict
+
+
+class NEOConverter(BaseWeightConversion):
+    
+    def __init__(self):
+        super().__init__({
+            "embed.W_E": "transformer.wte.weight",
+            "pos_embed.W_pos": "transformer.wpe.weight",
+            "ln_final.w": "transformer.ln_f.weight",
+            "unembed.W_U": "lm_head.weight.T",
+            "blocks." : {
+                "ln1.w": "ln_1.weight",
+            }
+            f"blocks.{l}.attn.W_Q": {
+                "key": "transformer.h[l].attn.attention.q_proj.weight",
+                "transform": 
+            },
+            f"blocks.{l}.attn.b_Q": torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+        })
