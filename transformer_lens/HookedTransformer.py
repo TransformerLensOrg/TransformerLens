@@ -49,6 +49,7 @@ from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCac
 from transformer_lens.utilities import devices
 from transformer_lens.utils import (
     USE_DEFAULT_VALUE,
+    Slice,
     init_kaiming_normal_,
     init_kaiming_uniform_,
     init_xavier_normal_,
@@ -1986,6 +1987,7 @@ class HookedTransformer(HookedRootModule):
         prepend_bos: Optional[bool] = USE_DEFAULT_VALUE,
         padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
+        return_cache: bool = False,
         verbose: bool = True,
     ) -> Union[Int[torch.Tensor, "batch pos_plus_new_tokens"], str]:
         """Sample Tokens from the Model.
@@ -2038,6 +2040,7 @@ class HookedTransformer(HookedRootModule):
                 (by default returns same type as input).
         """
 
+        from jax.tree_util import tree_map, tree_map_with_path
         with utils.LocallyOverridenDefaults(
             self, prepend_bos=prepend_bos, padding_side=padding_side
         ):
@@ -2097,14 +2100,58 @@ class HookedTransformer(HookedRootModule):
             # Currently nothing in HookedTransformer changes with eval, but this is here in case
             # that changes in the future.
             self.eval()
+            logits_tape = None
+            cache_dict_tape = None
+            token_tape = None
+
+            if return_cache:
+                # defaults from https://github.com/japhba/TransformerLens/blob/bf64ede92220166471ff259fa6a8193297253dea/transformer_lens/hook_points.py#L510
+                names_filter = None
+                device = None
+                remove_batch_dim: bool = False
+                incl_bwd: bool = False
+                reset_hooks_end: bool = True
+                clear_contexts: bool = False
+                pos_slice = None
+
+                pos_slice = Slice.unwrap(pos_slice)
+
+                cache_dict, fwd, bwd = self.get_caching_hooks(
+                    names_filter,
+                    incl_bwd,
+                    device,
+                    remove_batch_dim=remove_batch_dim,
+                    pos_slice=pos_slice,
+                )
+
+            def forward_(*model_args, **model_kwargs):
+                if return_cache:
+                    with self.hooks(
+                        fwd_hooks=fwd,
+                        bwd_hooks=bwd,
+                        reset_hooks_end=reset_hooks_end,
+                        clear_contexts=clear_contexts,
+                    ):
+                        model_out = self(*model_args, **model_kwargs)
+                        if incl_bwd:
+                            model_out.backward()
+                        return model_out, cache_dict
+                else:
+                    model_out = self.forward(*model_args,
+                            **model_kwargs,
+                        )
+                    return model_out, None
+
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 # While generating, we keep generating logits, throw away all but the final logits,
                 # and then use those logits to sample from the distribution We keep adding the
                 # sampled tokens to the end of tokens.
+
+                # forwarding
                 if use_past_kv_cache:
                     # We just take the final tokens, as a [batch, 1] tensor
                     if index > 0:
-                        logits = self.forward(
+                        logits, cache_dict = forward_(
                             tokens[:, -1:],
                             return_type="logits",
                             prepend_bos=prepend_bos,
@@ -2112,7 +2159,7 @@ class HookedTransformer(HookedRootModule):
                             past_kv_cache=past_kv_cache,
                         )
                     else:
-                        logits = self.forward(
+                        logits, cache_dict = forward_(
                             tokens,
                             return_type="logits",
                             prepend_bos=prepend_bos,
@@ -2122,7 +2169,7 @@ class HookedTransformer(HookedRootModule):
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using
                     # the cache.
-                    logits = self.forward(
+                    logits, cache_dict = forward_(
                         tokens,
                         return_type="logits",
                         prepend_bos=prepend_bos,
@@ -2130,6 +2177,7 @@ class HookedTransformer(HookedRootModule):
                     )
                 final_logits = logits[:, -1, :]
 
+                # SAMPLING
                 if do_sample:
                     sampled_tokens = utils.sample_logits(
                         final_logits,
@@ -2156,7 +2204,27 @@ class HookedTransformer(HookedRootModule):
                         )
                     )
 
-                tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
+                # APPEND
+                token_tape = torch.cat([token_tape, sampled_tokens.unsqueeze(-1)], dim=-1) if token_tape is not None else tokens[:, -ctx_length:]  # appends to the prompt tokens
+                # tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict)
+                cache_dict_tape = (
+                    tree_map(
+                        lambda var_tape, var: (
+                            torch.cat([var_tape, var[:, -1:]], dim=1)
+                            if var_tape.shape[2:] == var.shape[2:]  # only if commensurable – figure this out for attention!
+                            else var_tape
+                        ),
+                        cache_dict_tape,
+                        cache_dict,
+                    )
+                    if cache_dict_tape is not None
+                    else cache_dict
+                )  # tree_map(lambda var: var[:, :], cache_dict)
+                logits_tape = (
+                    torch.cat([logits_tape, logits[:, -1:]], dim=1)
+                    if logits_tape is not None
+                    else logits[:, -ctx_length:]
+                )
 
                 if stop_at_eos and finished_sequences.all():
                     break
@@ -2169,7 +2237,10 @@ class HookedTransformer(HookedRootModule):
                     return self.tokenizer.decode(tokens[0])
 
             else:
-                return tokens
+                if return_cache:
+                    return token_tape, logits_tape, cache_dict_tape  # consider wrapping in ActivationCache()
+                else:
+                    return tokens
 
     # Give access to all weights as properties.
     @property
