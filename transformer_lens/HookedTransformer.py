@@ -2111,7 +2111,7 @@ class HookedTransformer(HookedRootModule):
                 remove_batch_dim: bool = False
                 incl_bwd: bool = False
                 reset_hooks_end: bool = True
-                clear_contexts: bool = False
+                clear_contexts: bool = True#False
                 pos_slice = None
 
                 pos_slice = Slice.unwrap(pos_slice)
@@ -2126,6 +2126,7 @@ class HookedTransformer(HookedRootModule):
 
             def forward_(*model_args, **model_kwargs):
                 if return_cache:
+                    # cache_dict is changed in-place?
                     with self.hooks(
                         fwd_hooks=fwd,
                         bwd_hooks=bwd,
@@ -2135,7 +2136,7 @@ class HookedTransformer(HookedRootModule):
                         model_out = self(*model_args, **model_kwargs)
                         if incl_bwd:
                             model_out.backward()
-                        return model_out, cache_dict
+                        return model_out
                 else:
                     model_out = self.forward(*model_args,
                             **model_kwargs,
@@ -2151,7 +2152,7 @@ class HookedTransformer(HookedRootModule):
                 if use_past_kv_cache:
                     # We just take the final tokens, as a [batch, 1] tensor
                     if index > 0:
-                        logits, cache_dict = forward_(
+                        logits = forward_(
                             tokens[:, -1:],
                             return_type="logits",
                             prepend_bos=prepend_bos,
@@ -2159,7 +2160,7 @@ class HookedTransformer(HookedRootModule):
                             past_kv_cache=past_kv_cache,
                         )
                     else:
-                        logits, cache_dict = forward_(
+                        logits = forward_(
                             tokens,
                             return_type="logits",
                             prepend_bos=prepend_bos,
@@ -2169,7 +2170,7 @@ class HookedTransformer(HookedRootModule):
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using
                     # the cache.
-                    logits, cache_dict = forward_(
+                    logits = forward_(
                         tokens,
                         return_type="logits",
                         prepend_bos=prepend_bos,
@@ -2204,26 +2205,28 @@ class HookedTransformer(HookedRootModule):
                         )
                     )
 
-                # APPEND
-                token_tape = torch.cat([token_tape, sampled_tokens.unsqueeze(-1)], dim=-1) if token_tape is not None else tokens[:, -ctx_length:]  # appends to the prompt tokens
+                # APPEND – we need to clone on the first pass to prevent overwrite
+                token_tape = torch.cat([token_tape, sampled_tokens.unsqueeze(-1)], dim=-1) if token_tape is not None else torch.clone(tokens[:, -ctx_length:])  # appends to the prompt tokens
                 # tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict)
+                def cat_cache_var(kp, var_tape, var):
+                    if var_tape.ndim == 3:  # only for the vector-valued thingies
+                        cat_var = torch.cat([var_tape, var[:, -1:]], dim=1)
+                        # print(var_tape.shape, var[:, -1:].shape, cat_var.shape)
+                        return cat_var
+                    else:
+                        # print(f"skipped {kp}")
+                        return var_tape
+                # if cache_dict_tape is not None:
+                #     tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict_tape)
                 cache_dict_tape = (
-                    tree_map(
-                        lambda var_tape, var: (
-                            torch.cat([var_tape, var[:, -1:]], dim=1)
-                            if var_tape.shape[2:] == var.shape[2:]  # only if commensurable – figure this out for attention!
-                            else var_tape
-                        ),
-                        cache_dict_tape,
-                        cache_dict,
-                    )
+                    tree_map_with_path(cat_cache_var, cache_dict_tape, cache_dict)
                     if cache_dict_tape is not None
-                    else cache_dict
+                    else tree_map_with_path(lambda kp, var: torch.clone(var), cache_dict)
                 )  # tree_map(lambda var: var[:, :], cache_dict)
                 logits_tape = (
                     torch.cat([logits_tape, logits[:, -1:]], dim=1)
                     if logits_tape is not None
-                    else logits[:, -ctx_length:]
+                    else torch.clone(logits[:, -ctx_length:])
                 )
 
                 if stop_at_eos and finished_sequences.all():
