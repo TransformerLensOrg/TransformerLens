@@ -58,6 +58,7 @@
 
         [tool.poetry.group.docs.dependencies]
             furo={version=">=2022.12.7"}
+            muutils={version="^0.5.12", python=">=3.10"}
             myst-parser={version=">=0.18.1"}
             nbconvert="^7.9.2"
             nbsphinx="^0.9.3"
@@ -67,6 +68,7 @@
             sphinx-autobuild={version=">=2021.3.14"}
             sphinxcontrib-napoleon={version=">=0.7"}
             tabulate={version=">=0.9.0"}
+            tiktoken={version=">=0.7.0"}
 
 [tool.pytest]
     [tool.pytest.ini_options]
@@ -129,10 +131,7 @@
     # All rules apart from base are shown explicitly below
     deprecateTypingAliases=true
     disableBytesTypePromotions=true
-    exclude = [
-        "*/**/*.py",
-        "!/transformer_lens/hook_points.py"
-    ]
+    exclude=["!/transformer_lens/hook_points.py", "*/**/*.py"]
     reportAssertAlwaysTrue=true
     reportConstantRedefinition=true
     reportDeprecated=true
@@ -188,4 +187,3 @@
     strictListInference=true
     strictParameterNoneValue=true
     strictSetInference=true
-    
