@@ -2111,7 +2111,7 @@ class HookedTransformer(HookedRootModule):
                 remove_batch_dim: bool = False
                 incl_bwd: bool = False
                 reset_hooks_end: bool = True
-                clear_contexts: bool = True#False
+                clear_contexts: bool = False#False
                 pos_slice = None
 
                 pos_slice = Slice.unwrap(pos_slice)
@@ -2141,7 +2141,7 @@ class HookedTransformer(HookedRootModule):
                     model_out = self.forward(*model_args,
                             **model_kwargs,
                         )
-                    return model_out, None
+                    return model_out
 
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 # While generating, we keep generating logits, throw away all but the final logits,
@@ -2205,24 +2205,28 @@ class HookedTransformer(HookedRootModule):
                         )
                     )
 
+                # update the tokens!
+                tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
+
                 # APPEND – we need to clone on the first pass to prevent overwrite
                 token_tape = torch.cat([token_tape, sampled_tokens.unsqueeze(-1)], dim=-1) if token_tape is not None else torch.clone(tokens[:, -ctx_length:])  # appends to the prompt tokens
-                # tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict)
-                def cat_cache_var(kp, var_tape, var):
-                    if var_tape.ndim == 3:  # only for the vector-valued thingies
-                        cat_var = torch.cat([var_tape, var[:, -1:]], dim=1)
-                        # print(var_tape.shape, var[:, -1:].shape, cat_var.shape)
-                        return cat_var
-                    else:
-                        # print(f"skipped {kp}")
-                        return var_tape
-                # if cache_dict_tape is not None:
-                #     tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict_tape)
-                cache_dict_tape = (
-                    tree_map_with_path(cat_cache_var, cache_dict_tape, cache_dict)
-                    if cache_dict_tape is not None
-                    else tree_map_with_path(lambda kp, var: torch.clone(var), cache_dict)
-                )  # tree_map(lambda var: var[:, :], cache_dict)
+                if return_cache:
+                    # tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict)
+                    def cat_cache_var(kp, var_tape, var):
+                        if var_tape.ndim == 3:  # only for the vector-valued thingies
+                            cat_var = torch.cat([var_tape, var[:, -1:]], dim=1)
+                            # print(var_tape.shape, var[:, -1:].shape, cat_var.shape)
+                            return cat_var
+                        else:
+                            # print(f"skipped {kp}")
+                            return var_tape
+                    # if cache_dict_tape is not None:
+                    #     tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict_tape)
+                    cache_dict_tape = (
+                        tree_map_with_path(cat_cache_var, cache_dict_tape, cache_dict)
+                        if cache_dict_tape is not None
+                        else tree_map_with_path(lambda kp, var: torch.clone(var), cache_dict)
+                    )  # tree_map(lambda var: var[:, :], cache_dict)
                 logits_tape = (
                     torch.cat([logits_tape, logits[:, -1:]], dim=1)
                     if logits_tape is not None
