@@ -495,7 +495,7 @@ component of the residual stream contributes to that layer’s input.</p>
 <p>The layernorm scale is global across the entire residual stream for each layer, batch
 element and position, which is why we need to use the cached scale factors rather than just
 applying a new LayerNorm.</p>
-<p>If the model does not use LayerNorm, it returns the residual stack unchanged.</p>
+<p>If the model does not use LayerNorm or RMSNorm, it returns the residual stack unchanged.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
