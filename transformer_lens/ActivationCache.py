@@ -948,7 +948,7 @@ class ActivationCache:
         element and position, which is why we need to use the cached scale factors rather than just
         applying a new LayerNorm.
 
-        If the model does not use LayerNorm, it returns the residual stack unchanged.
+        If the model does not use LayerNorm or RMSNorm, it returns the residual stack unchanged.
 
         Args:
             residual_stack:
@@ -972,7 +972,7 @@ class ActivationCache:
                 Whether residual_stack has a batch dimension.
 
         """
-        if self.model.cfg.normalization_type not in ["LN", "LNPre"]:
+        if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
             # The model does not use LayerNorm, so we don't need to do anything.
             return residual_stack
         if not isinstance(pos_slice, Slice):
@@ -988,8 +988,9 @@ class ActivationCache:
             # Apply batch slice to the stack
             residual_stack = batch_slice.apply(residual_stack, dim=1)
 
-        # Center the stack
-        residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
+        # Center the stack onlny if the model uses LayerNorm
+        if self.model.cfg.normalization_type in ["LN", "LNPre"]:
+            residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         if layer == self.model.cfg.n_layers or layer is None:
             scale = self["ln_final.hook_scale"]
