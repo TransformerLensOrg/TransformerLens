@@ -28,4 +28,5 @@ You will need to make sure you accept the agreements for any gated models, but o
 
 * https://huggingface.co/mistralai/Mixtral-8x7B-v0.1
 * https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1
+* https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2
 * https://huggingface.co/mistralai/Mistral-7B-v0.1
