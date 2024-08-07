@@ -1784,18 +1784,23 @@ class HookedTransformer(HookedRootModule):
         sum_head(b_V_head @ W_O_head).
         """
         for layer in range(self.cfg.n_layers):
+            # Determine the device
+            device = state_dict[f"blocks.{layer}.attn.W_O"].device
+
             # shape [head_index, d_head]
             if self.cfg.n_key_value_heads is None:
-                b_V = state_dict[f"blocks.{layer}.attn.b_V"]
+                b_V = state_dict[f"blocks.{layer}.attn.b_V"].to(device)
             else:
-                b_V = state_dict[f"blocks.{layer}.attn._b_V"]
+                b_V = state_dict[f"blocks.{layer}.attn._b_V"].to(device)
                 b_V = torch.repeat_interleave(
                     b_V, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads
                 )
+
             # [head_index, d_head, d_model]
-            W_O = state_dict[f"blocks.{layer}.attn.W_O"]
+            W_O = state_dict[f"blocks.{layer}.attn.W_O"].to(device)
+
             # [d_model]
-            b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
+            b_O_original = state_dict[f"blocks.{layer}.attn.b_O"].to(device)
             folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
 
             state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
