@@ -1773,39 +1773,45 @@ class HookedTransformer(HookedRootModule):
         return state_dict
 
     def fold_value_biases(self, state_dict: Dict[str, torch.Tensor]):
-        """Fold the value biases into the output bias.
+     """Fold the value biases into the output bias.
 
-        Because attention patterns add up to 1, the value biases always have a constant effect on a
-        head's output. Further, as the outputs of each head in a layer add together, each head's
-        value bias has a constant effect on the *layer's* output, which can make it harder to
-        interpret the effect of any given head, and it doesn't matter which head a bias is
-        associated with. We can factor this all into a single output bias to the layer, and make it
-        easier to interpret the head's output. Formally, we take b_O_new = b_O_original +
-        sum_head(b_V_head @ W_O_head).
-        """
-        for layer in range(self.cfg.n_layers):
-            # shape [head_index, d_head]
-            if self.cfg.n_key_value_heads is None:
-                b_V = state_dict[f"blocks.{layer}.attn.b_V"]
-            else:
-                b_V = state_dict[f"blocks.{layer}.attn._b_V"]
-                b_V = torch.repeat_interleave(
-                    b_V, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads
-                )
-            # [head_index, d_head, d_model]
-            W_O = state_dict[f"blocks.{layer}.attn.W_O"]
-            # [d_model]
-            b_O_original = state_dict[f"blocks.{layer}.attn.b_O"]
-            folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
+    Because attention patterns add up to 1, the value biases always have a constant effect on a
+    head's output. Further, as the outputs of each head in a layer add together, each head's
+    value bias has a constant effect on the *layer's* output, which can make it harder to
+    interpret the effect of any given head, and it doesn't matter which head a bias is
+    associated with. We can factor this all into a single output bias to the layer, and make it
+    easier to interpret the head's output. Formally, we take b_O_new = b_O_original +
+    sum_head(b_V_head @ W_O_head).
+     """
+     for layer in range(self.cfg.n_layers):
+        # Determine the device
+        device = state_dict[f"blocks.{layer}.attn.W_O"].device
 
-            state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
-            if self.cfg.n_key_value_heads is None:
-                state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
-            else:
-                state_dict[f"blocks.{layer}.attn._b_V"] = torch.zeros_like(
-                    state_dict[f"blocks.{layer}.attn._b_V"]
-                )
-        return state_dict
+        # shape [head_index, d_head]
+        if self.cfg.n_key_value_heads is None:
+            b_V = state_dict[f"blocks.{layer}.attn.b_V"].to(device)
+        else:
+            b_V = state_dict[f"blocks.{layer}.attn._b_V"].to(device)
+            b_V = torch.repeat_interleave(
+                b_V, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads
+            )
+
+        # [head_index, d_head, d_model]
+        W_O = state_dict[f"blocks.{layer}.attn.W_O"].to(device)
+        
+        # [d_model]
+        b_O_original = state_dict[f"blocks.{layer}.attn.b_O"].to(device)
+        folded_b_O = b_O_original + (b_V[:, :, None] * W_O).sum([0, 1])
+
+        state_dict[f"blocks.{layer}.attn.b_O"] = folded_b_O
+        if self.cfg.n_key_value_heads is None:
+            state_dict[f"blocks.{layer}.attn.b_V"] = torch.zeros_like(b_V)
+        else:
+            state_dict[f"blocks.{layer}.attn._b_V"] = torch.zeros_like(
+                state_dict[f"blocks.{layer}.attn._b_V"]
+            )
+     return state_dict
+
 
     def refactor_factored_attn_matrices(self, state_dict: Dict[str, torch.Tensor]):
         """Experimental method for managing queries, keys and values.
