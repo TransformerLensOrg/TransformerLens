@@ -5,7 +5,6 @@ This module contains functions for loading pretrained models from the Hugging Fa
 
 import dataclasses
 import logging
-import math
 import os
 import re
 from pathlib import Path
