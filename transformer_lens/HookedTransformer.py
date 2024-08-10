@@ -587,7 +587,7 @@ class HookedTransformer(HookedRootModule):
                     assert (
                         tokens is not None
                     ), "tokens must be passed in if return_type is 'loss' or 'both'"
-                    loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
+                    loss = self.loss_fn(logits, tokens, attention_mask, per_token=loss_per_token)
                     if return_type == "loss":
                         return loss
                     elif return_type == "both":
@@ -600,6 +600,7 @@ class HookedTransformer(HookedRootModule):
         self,
         logits: Float[torch.Tensor, "batch pos d_vocab"],
         tokens: Int[torch.Tensor, "batch pos"],
+        attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
         per_token: bool = False,
     ):
         """Wrapper around `utils.lm_cross_entropy_loss`.
@@ -608,7 +609,7 @@ class HookedTransformer(HookedRootModule):
         """
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
-        return utils.lm_cross_entropy_loss(logits, tokens, per_token)
+        return utils.lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
 
     @overload
     def run_with_cache(
