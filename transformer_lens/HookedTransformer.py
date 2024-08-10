@@ -248,6 +248,7 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
+        attention_mask: Optional[torch.Tensor] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
@@ -284,7 +285,15 @@ class HookedTransformer(HookedRootModule):
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
-        if (self.tokenizer and self.tokenizer.padding_side == "left") or past_kv_cache is not None:
+        if attention_mask is not None:
+            assert attention_mask.shape == tokens.shape, (
+                f"Attention mask shape {attention_mask.shape} does not match tokens shape "
+                f"{tokens.shape}"
+            )
+            attention_mask = attention_mask.to(devices.get_device_for_block_index(0, self.cfg))
+        elif (
+            self.tokenizer and self.tokenizer.padding_side == "left"
+        ) or past_kv_cache is not None:
             # If the padding side is left or we are using caching, we need to compute the attention
             # mask for the adjustment of absolute positional embeddings and attention masking so
             # that pad tokens are not attended.
@@ -489,9 +498,10 @@ class HookedTransformer(HookedRootModule):
             shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]]: Positional
                 embedding for shortformer models. Only use if start_at_layer is not None and
                 self.cfg.positional_embedding_type == "shortformer".
-            attention_mask: Optional[torch.Tensor]: The attention mask for padded tokens. Only use
-                if start_at_layer is not None and (self.tokenizer.padding_side == "left" or
-                past_kv_cache is not None).
+            attention_mask: Optional[torch.Tensor]: Override the attention mask used to ignore
+                padded tokens. If start_at_layer is not None and (self.tokenizer.padding_side ==
+                "left" or past_kv_cache is not None), this should be passed as the attention mask
+                is not computed automatically. Defaults to None.
             stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer.
                 Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer =
                 1 will run the embedding layer and the first transformer block, etc. Supports
@@ -523,6 +533,7 @@ class HookedTransformer(HookedRootModule):
                     input,
                     prepend_bos=prepend_bos,
                     padding_side=padding_side,
+                    attention_mask=attention_mask,
                     past_kv_cache=past_kv_cache,
                 )
             else:
