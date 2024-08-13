@@ -5,7 +5,6 @@ This module contains functions for loading pretrained models from the Hugging Fa
 
 import dataclasses
 import logging
-import math
 import os
 import re
 from pathlib import Path
@@ -1246,7 +1245,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_base": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": math.sqrt(224),
             "n_key_value_heads": 4,
             "window_size": 4096,
             "use_local_attn": True,
@@ -1274,7 +1272,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_base": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": math.sqrt(224),
             "n_key_value_heads": 8,
             "window_size": 4096,
             "use_local_attn": True,
