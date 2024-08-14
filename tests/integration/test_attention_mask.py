@@ -45,3 +45,35 @@ def test_attention_mask():
     ]
 
     model.run_with_hooks(input, fwd_hooks=fwd_hooks)
+
+
+def test_masked_tokens():
+    """Test that masking tokens works as expected."""
+    MODEL = "solu-1l"
+    prompts = [
+        "Hello world!",
+        "The quick brown fox jumps over the lazy dog.",
+    ]
+    model = HookedTransformer.from_pretrained(MODEL)
+    tokens = model.to_tokens(prompts)
+
+    # Part 1: If the mask is all ones, the output should be the same as if there was no mask.
+    full_mask = torch.ones_like(tokens)
+    no_mask_out = model(tokens)
+    full_mask_out = model(tokens, attention_mask=full_mask)
+    assert torch.allclose(no_mask_out, full_mask_out), "Full mask should be equivalent to no mask"
+
+    # Part 2: If the mask has a column of zeros, the output should be the same as if that token
+    # position was removed from the input.
+    remove_tok_idx = 2
+    edited_tokens = torch.cat([tokens[:, :remove_tok_idx], tokens[:, remove_tok_idx + 1 :]], dim=1)
+    edited_mask = full_mask.clone()
+    edited_mask[:, remove_tok_idx] = 0
+    edited_no_mask_out = model(edited_tokens)
+    edited_mask_out = model(tokens, attention_mask=edited_mask)
+    edited_mask_out = torch.cat(
+        [edited_mask_out[:, :remove_tok_idx], edited_mask_out[:, remove_tok_idx + 1 :]], dim=1
+    )
+    assert torch.allclose(
+        edited_no_mask_out, edited_mask_out, atol=1e-4
+    ), "Edited mask should be equivalent to no mask"
