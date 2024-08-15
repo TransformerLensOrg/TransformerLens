@@ -5,7 +5,6 @@ This module contains functions for loading pretrained models from the Hugging Fa
 
 import dataclasses
 import logging
-import math
 import os
 import re
 from pathlib import Path
@@ -198,6 +197,12 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen1.5-7B-Chat",
     "Qwen/Qwen1.5-14B",
     "Qwen/Qwen1.5-14B-Chat",
+    "Qwen/Qwen2-0.5B",
+    "Qwen/Qwen2-0.5B-Instruct",
+    "Qwen/Qwen2-1.5B",
+    "Qwen/Qwen2-1.5B-Instruct",
+    "Qwen/Qwen2-7B",
+    "Qwen/Qwen2-7B-Instruct",
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
@@ -206,6 +211,8 @@ OFFICIAL_MODEL_NAMES = [
     "google/gemma-7b",
     "google/gemma-2b-it",
     "google/gemma-7b-it",
+    "google/gemma-2-2b",
+    "google/gemma-2-2b-it",
     "google/gemma-2-9b",
     "google/gemma-2-9b-it",
     "google/gemma-2-27b",
@@ -628,8 +635,10 @@ MODEL_ALIASES = {
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
     "google/gemma-7b-it": ["gemma-7b-it"],
+    "google/gemma-2-2b": ["gemma-2-2b"],
     "google/gemma-2-9b": ["gemma-2-9b"],
     "google/gemma-2-27b": ["gemma-2-27b"],
+    "google/gemma-2-2b-it": ["gemma-2-2b-it"],
     "google/gemma-2-9b-it": ["gemma-2-9b-it"],
     "google/gemma-2-27b-it": ["gemma-2-27b-it"],
     "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
@@ -1112,6 +1121,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
+            "n_key_value_heads": hf_config.num_key_value_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
             "n_ctx": 2048,  # Capped bc the actual ctx length is 30k and the attn mask would be too big
@@ -1218,6 +1228,33 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "gated_mlp": True,
             "final_rms": True,
         }
+    elif official_model_name.startswith("google/gemma-2-2b"):
+        # Architecture for Gemma-2 2b and Gemma-2 2b Instruct models
+        cfg_dict = {
+            "d_model": 2304,
+            "d_head": 256,
+            "n_heads": 8,
+            "d_mlp": 9216,
+            "n_layers": 26,
+            "n_ctx": 8192,
+            "eps": 1e-06,
+            "d_vocab": 256000,
+            "act_fn": "gelu_pytorch_tanh",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 10000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 4,
+            "window_size": 4096,
+            "use_local_attn": True,
+            "attn_types": ["global", "local"] * 21,  # Alternate global and local attn
+            "attn_scores_soft_cap": 50.0,
+            "output_logits_soft_cap": 30.0,
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_normalization_before_and_after": True,
+        }
     elif official_model_name.startswith("google/gemma-2-9b"):
         # Architecture for Gemma-2 9b and Gemma-2 9b Instruct models
         cfg_dict = {
@@ -1235,7 +1272,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_base": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": math.sqrt(224),
             "n_key_value_heads": 8,
             "window_size": 4096,
             "use_local_attn": True,
