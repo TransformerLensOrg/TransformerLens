@@ -1565,12 +1565,7 @@ class HookedTransformer(HookedRootModule):
         if refactor_factored_attn_matrices:
             state_dict = self.refactor_factored_attn_matrices(state_dict)
 
-        if self.cfg.load_in_4bit:
-            # with quantization, parameters should be assigned
-            # so that quantization settings are not lost
-            self.load_state_dict(state_dict, assign=True, strict=False)
-        else:
-            self.load_state_dict(state_dict, strict=False)
+        self.load_state_dict(state_dict, assign=True, strict=False)
 
     def fill_missing_keys(self, state_dict):
         return loading.fill_missing_keys(self, state_dict)
