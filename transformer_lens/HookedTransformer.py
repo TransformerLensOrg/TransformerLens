@@ -17,6 +17,7 @@ import einops
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import tqdm.auto as tqdm
 from fancy_einsum import einsum
 from jaxtyping import Float, Int
@@ -247,6 +248,7 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
+        attention_mask: Optional[torch.Tensor] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
@@ -284,7 +286,15 @@ class HookedTransformer(HookedRootModule):
             print(" tokens = " + str(self.cfg.device))
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
-        if (self.tokenizer and self.tokenizer.padding_side == "left") or past_kv_cache is not None:
+        if attention_mask is not None:
+            assert attention_mask.shape == tokens.shape, (
+                f"Attention mask shape {attention_mask.shape} does not match tokens shape "
+                f"{tokens.shape}"
+            )
+            attention_mask = attention_mask.to(devices.get_device_for_block_index(0, self.cfg))
+        elif (
+            self.tokenizer and self.tokenizer.padding_side == "left"
+        ) or past_kv_cache is not None:
             # If the padding side is left or we are using caching, we need to compute the attention
             # mask for the adjustment of absolute positional embeddings and attention masking so
             # that pad tokens are not attended.
@@ -489,9 +499,10 @@ class HookedTransformer(HookedRootModule):
             shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]]: Positional
                 embedding for shortformer models. Only use if start_at_layer is not None and
                 self.cfg.positional_embedding_type == "shortformer".
-            attention_mask: Optional[torch.Tensor]: The attention mask for padded tokens. Only use
-                if start_at_layer is not None and (self.tokenizer.padding_side == "left" or
-                past_kv_cache is not None).
+            attention_mask: Optional[torch.Tensor]: Override the attention mask used to ignore
+                padded tokens. If start_at_layer is not None and (self.tokenizer.padding_side ==
+                "left" or past_kv_cache is not None), this should be passed as the attention mask
+                is not computed automatically. Defaults to None.
             stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer.
                 Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer =
                 1 will run the embedding layer and the first transformer block, etc. Supports
@@ -523,6 +534,7 @@ class HookedTransformer(HookedRootModule):
                     input,
                     prepend_bos=prepend_bos,
                     padding_side=padding_side,
+                    attention_mask=attention_mask,
                     past_kv_cache=past_kv_cache,
                 )
             else:
@@ -568,13 +580,17 @@ class HookedTransformer(HookedRootModule):
                 return None
             else:
                 logits = self.unembed(residual)  # [batch, pos, d_vocab]
+                if self.cfg.output_logits_soft_cap > 0.0:
+                    logits = self.cfg.output_logits_soft_cap * F.tanh(
+                        logits / self.cfg.output_logits_soft_cap
+                    )
                 if return_type == "logits":
                     return logits
                 else:
                     assert (
                         tokens is not None
                     ), "tokens must be passed in if return_type is 'loss' or 'both'"
-                    loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
+                    loss = self.loss_fn(logits, tokens, attention_mask, per_token=loss_per_token)
                     if return_type == "loss":
                         return loss
                     elif return_type == "both":
@@ -587,6 +603,7 @@ class HookedTransformer(HookedRootModule):
         self,
         logits: Float[torch.Tensor, "batch pos d_vocab"],
         tokens: Int[torch.Tensor, "batch pos"],
+        attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
         per_token: bool = False,
     ):
         """Wrapper around `utils.lm_cross_entropy_loss`.
@@ -595,7 +612,7 @@ class HookedTransformer(HookedRootModule):
         """
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
-        return utils.lm_cross_entropy_loss(logits, tokens, per_token)
+        return utils.lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
 
     @overload
     def run_with_cache(
@@ -1031,6 +1048,7 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.positional_embedding_type != "rotary":
             self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
             self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+
         if hasattr(self, "ln_final"):
             self.ln_final.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
         print(" unembed = " + str(self.cfg.device))
@@ -1271,6 +1289,12 @@ class HookedTransformer(HookedRootModule):
                     "Setting center_writing_weights=False instead."
                 )
                 center_writing_weights = False
+        if center_unembed and cfg.output_logits_soft_cap > 0.0:
+            logging.warning(
+                "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant"
+                "Setting center_unembed=False instead."
+            )
+            center_unembed = False
 
         # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to
         # match the HookedTransformer parameter names.
@@ -1943,7 +1967,7 @@ class HookedTransformer(HookedRootModule):
             for layer in self.blocks:
                 layer.ln1 = LayerNormPre(self.cfg)
                 layer.ln2 = LayerNormPre(self.cfg)
-                if self.cfg.act_fn is not None and self.cfg.act_fn.endswith("_ln"):
+                if self.cfg.is_layer_norm_activation():
                     layer.mlp.ln = LayerNormPre(self.cfg)
         elif fold_ln and self.cfg.normalization_type == "RMS":
             # We do the same for RMSNorm if used
@@ -1952,7 +1976,7 @@ class HookedTransformer(HookedRootModule):
             for layer in self.blocks:
                 layer.ln1 = RMSNormPre(self.cfg)
                 layer.ln2 = RMSNormPre(self.cfg)
-                if self.cfg.act_fn is not None and self.cfg.act_fn.endswith("_ln"):
+                if self.cfg.is_layer_norm_activation():
                     layer.mlp.ln = RMSNormPre(self.cfg)
 
         self.load_and_process_state_dict(
@@ -2289,7 +2313,7 @@ class HookedTransformer(HookedRootModule):
     # Various utility functions
     def accumulated_bias(
         self, layer: int, mlp_input: bool = False, include_mlp_biases=True
-    ) -> Float[torch.Tensor, "layers_accumulated_over d_model"]:
+    ) -> Float[torch.Tensor, "d_model"]:
         """Accumulated Bias.
 
         Returns the accumulated bias from all layer outputs (ie the b_Os and b_outs), up to the
