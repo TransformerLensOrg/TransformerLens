@@ -2213,20 +2213,28 @@ class HookedTransformer(HookedRootModule):
                 if return_cache:
                     # tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict)
                     def cat_cache_var(kp, var_tape, var):
-                        if var_tape.ndim == 3:  # only for the vector-valued thingies
+                        if not any(key in kp[0].key for key in ['attn_scores', 'hook_pattern']):  # only for the vector-valued vars
                             cat_var = torch.cat([var_tape, var[:, -1:]], dim=1)
                             # print(var_tape.shape, var[:, -1:].shape, cat_var.shape)
                             return cat_var
                         else:
-                            # print(f"skipped {kp}")
+                            var_tape = torch.nn.functional.pad(var_tape, (0,1,0,1), value=0)  # right-pads the last two dimensions
+                            slice1 = var[:, :, -1:, :]
+                            T = slice1.shape[-1]
+                            var_tape[..., -1:, -T:] = slice1
+
+                            # Update for x[:, :, :, -1]
+                            slice2 = var[:, :, :, -1:]
+                            var_tape[..., -T:, -1:] = slice2
                             return var_tape
                     # if cache_dict_tape is not None:
                     #     tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict_tape)
                     cache_dict_tape = (
                         tree_map_with_path(cat_cache_var, cache_dict_tape, cache_dict)
                         if cache_dict_tape is not None
-                        else tree_map_with_path(lambda kp, var: torch.clone(var), cache_dict)
+                        else tree_map_with_path(lambda kp, var: torch.clone(var), cache_dict)  # initializes the dict with the initial cache
                     )  # tree_map(lambda var: var[:, :], cache_dict)
+
                 logits_tape = (
                     torch.cat([logits_tape, logits[:, -1:]], dim=1)
                     if logits_tape is not None
