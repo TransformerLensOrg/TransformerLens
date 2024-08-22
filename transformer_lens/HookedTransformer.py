@@ -8,7 +8,7 @@ attaching hooks to every notable activation within the model. This enables the i
 alteration of activations in individual components like attention heads and MLP layers, facilitating
 a deeper understanding of the internal workings of transformers like GPT-2.
 """
-
+import gc
 import logging
 import os
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union, cast, overload
@@ -1570,7 +1570,11 @@ class HookedTransformer(HookedRootModule):
             # so that quantization settings are not lost
             self.load_state_dict(state_dict, assign=True, strict=False)
         else:
-            self.load_state_dict(state_dict, strict=False)
+            state_dict_keys = list(state_dict.keys())
+            for key in state_dict_keys:
+                gc.collect()
+                self.load_state_dict({key: state_dict[key]}, strict=False)
+                del state_dict[key]
 
     def fill_missing_keys(self, state_dict):
         return loading.fill_missing_keys(self, state_dict)
