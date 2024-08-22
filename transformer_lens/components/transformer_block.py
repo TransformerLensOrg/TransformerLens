@@ -31,7 +31,7 @@ class TransformerBlock(nn.Module):
     ln2: nn.Module
     mlp: CanBeUsedAsMLP
 
-    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index):
+    def __init__(self, cfg: Union[Dict, HookedTransformerConfig], block_index, zero_pod_embed=False):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
         normalization_layer: Callable  # type: ignore
@@ -75,12 +75,12 @@ class TransformerBlock(nn.Module):
 
         attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
         if not self.cfg.use_local_attn:
-            self.attn = attention(self.cfg, "global", block_index)
+            self.attn = attention(self.cfg, "global", block_index, zero_pod_embed)
         else:
             if self.cfg.attn_types is None:
                 raise ValueError("attn_types must be set when using local attention")
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = attention(self.cfg, attn_type, block_index)
+            self.attn = attention(self.cfg, attn_type, block_index, zero_pod_embed)
         if not self.cfg.attn_only:
             self.mlp = MLPFactory.create_mlp(self.cfg)
 

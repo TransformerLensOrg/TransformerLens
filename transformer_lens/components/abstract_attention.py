@@ -29,6 +29,7 @@ class AbstractAttention(ABC, nn.Module):
         cfg: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
         layer_id: Optional[int] = None,
+        zero_pos_embed: bool = False,
     ):
         """Abstract Base Class of Attention Blocks, featuring common functionality of both Attention and GroupedQueryAttention blocks.
 
@@ -43,6 +44,7 @@ class AbstractAttention(ABC, nn.Module):
         """
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
+        self.zero_pos_embed = zero_pos_embed
 
         if self.cfg.load_in_4bit:
             nq = int((self.cfg.d_model * self.cfg.d_head * self.cfg.n_heads) / 2)
@@ -244,7 +246,7 @@ class AbstractAttention(ABC, nn.Module):
                         device=attn_scores.device,
                     )
 
-            attn_scores += position_bias
+            attn_scores += position_bias * (1.0 if not self.zero_pos_embedding else 0.0)
         if self.cfg.attention_dir == "causal":
             # If causal attention, we mask it to only attend backwards. If bidirectional, we don't mask.
             attn_scores = self.apply_causal_mask(
@@ -515,6 +517,7 @@ class AbstractAttention(ABC, nn.Module):
         past_kv_pos_offset=0,
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
+
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
@@ -528,12 +531,19 @@ class AbstractAttention(ABC, nn.Module):
             rotary_sin = self.rotary_sin[
                 None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
             ]
+            if self.zero_pos_embed:
+                rotary_cos = rotary_cos * 0.0 + 1/2**.5
+                rotary_sin = rotary_sin * 0.0 + 1/2**.5
             x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
         else:
             offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
             offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
             mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
             mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
+            if self.zero_pos_embed:
+                mask_rotary_cos = mask_rotary_cos * 0.0 + 1/2**.5
+                mask_rotary_sin = mask_rotary_sin * 0.0 + 1/2**.5
+
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)

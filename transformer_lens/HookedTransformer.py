@@ -102,6 +102,7 @@ class HookedTransformer(HookedRootModule):
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
         move_to_device: bool = True,
         default_padding_side: Literal["left", "right"] = "right",
+        zero_pos_embed: bool = False,
     ):
         """Model initialization.
 
@@ -126,6 +127,7 @@ class HookedTransformer(HookedRootModule):
             )
 
         self.cfg = HookedTransformerConfig.unwrap(cfg)
+        self.zero_pos_embed = zero_pos_embed
 
         if tokenizer is not None:
             self.set_tokenizer(tokenizer, default_padding_side=default_padding_side)
@@ -175,7 +177,7 @@ class HookedTransformer(HookedRootModule):
             self.hook_tokens = HookPoint()  # [batch, pos]
 
         self.blocks = nn.ModuleList(
-            [TransformerBlock(self.cfg, block_index) for block_index in range(self.cfg.n_layers)]
+            [TransformerBlock(self.cfg, block_index, self.zero_pos_embed) for block_index in range(self.cfg.n_layers)]
         )
 
         if self.cfg.normalization_type == "RMS":
@@ -333,7 +335,7 @@ class HookedTransformer(HookedRootModule):
             pos_embed = self.hook_pos_embed(
                 self.pos_embed(tokens, pos_offset, attention_mask)
             )  # [batch, pos, d_model]
-            residual = embed + pos_embed  # [batch, pos, d_model]
+            residual = embed + pos_embed * (1. if not self.zero_pos_embed else 0.)  # [batch, pos, d_model]
             shortformer_pos_embed = None
         elif self.cfg.positional_embedding_type == "shortformer":
             # If we're using shortformer style attention, we don't add the positional embedding to
@@ -342,7 +344,7 @@ class HookedTransformer(HookedRootModule):
                 self.pos_embed(tokens, pos_offset, attention_mask)
             )  # [batch, pos, d_model]
             residual = embed
-            shortformer_pos_embed = pos_embed
+            shortformer_pos_embed = pos_embed * (1. if not self.zero_pos_embed else 0.)
         elif self.cfg.positional_embedding_type == "rotary":
             # Rotary doesn't use positional embeddings, instead they're applied when dot producting
             # keys and queries. See HookedTransformerConfig for details
@@ -546,7 +548,7 @@ class HookedTransformer(HookedRootModule):
                 if shortformer_pos_embed is not None:
                     shortformer_pos_embed = shortformer_pos_embed.to(
                         devices.get_device_for_block_index(i, self.cfg)
-                    )
+                    ) * (1. if not self.zero_pos_embed else 0.)
 
                 residual = block(
                     residual,
@@ -1060,6 +1062,7 @@ class HookedTransformer(HookedRootModule):
         default_prepend_bos: bool = True,
         default_padding_side: Literal["left", "right"] = "right",
         dtype="float32",
+        zero_pos_embed: bool = False,
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Load in a Pretrained Model.
@@ -1292,6 +1295,7 @@ class HookedTransformer(HookedRootModule):
             tokenizer,
             move_to_device=False,
             default_padding_side=default_padding_side,
+            zero_pos_embed=zero_pos_embed,
         )
 
         model.load_and_process_state_dict(

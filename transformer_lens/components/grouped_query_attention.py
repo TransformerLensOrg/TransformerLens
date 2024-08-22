@@ -15,6 +15,7 @@ class GroupedQueryAttention(AbstractAttention):
         cfg: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
         layer_id: Union[int, None] = None,
+        zero_pos_embed: bool = False,
     ):
         """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245 for details.
         Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head].
@@ -29,7 +30,7 @@ class GroupedQueryAttention(AbstractAttention):
         """
         cfg = HookedTransformerConfig.unwrap(cfg)
         assert cfg.n_key_value_heads is not None
-        super().__init__(cfg, attn_type, layer_id)
+        super().__init__(cfg, attn_type, layer_id, zero_pos_embed=zero_pos_embed)
         self.repeat_kv_heads = cfg.n_heads // cfg.n_key_value_heads
         self._W_K = nn.Parameter(
             torch.empty(
