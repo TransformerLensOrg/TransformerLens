@@ -546,7 +546,7 @@ class AbstractAttention(ABC, nn.Module):
 
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
-        return torch.cat([x_rotated, x_pass], dim=-1)
+        return torch.cat([x_rotated * (0. if self.zero_pos_embed else 1.), x_pass], dim=-1)  # stitch back together
 
     @staticmethod
     def create_alibi_slope(
