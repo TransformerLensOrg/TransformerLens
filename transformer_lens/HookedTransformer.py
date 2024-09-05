@@ -1935,6 +1935,12 @@ class HookedTransformer(HookedRootModule):
         """
         self.cfg.use_attn_in = use_attn_in
 
+    def set_ungroup_gqa(self, ungroup_gqa: bool):
+        """
+        Toggles whether to ungroup the grouped key and value heads in models with grouped query attention (GQA).
+        """
+        self.cfg.ungroup_gqa = ungroup_gqa
+
     def process_weights_(
         self,
         fold_ln: bool = True,

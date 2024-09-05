@@ -135,7 +135,7 @@ class TransformerBlock(nn.Module):
         if self.cfg.use_split_qkv_input:
             n_kv_heads = (
                 self.cfg.n_key_value_heads
-                if self.cfg.n_key_value_heads is not None
+                if self.cfg.n_key_value_heads is not None and not self.cfg.ungroup_gqa
                 else self.cfg.n_heads
             )
             query_input = self.hook_q_input(
