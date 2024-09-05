@@ -243,6 +243,7 @@ class HookedTransformerConfig:
     use_normalization_before_and_after: bool = False
     attn_scores_soft_cap: float = -1.0
     output_logits_soft_cap: float = -1.0
+    ungroup_gqa: bool = False
 
     def __post_init__(self):
         if self.n_heads == -1:
