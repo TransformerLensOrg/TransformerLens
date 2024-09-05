@@ -225,6 +225,7 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-base",
     "google-t5/t5-large",
     "ai-forever/mGPT",
+    "LLM360/Amber",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -1531,6 +1532,8 @@ PYTHIA_CHECKPOINTS = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(
 # Pythia V1 has log-spaced early checkpoints (see line above), but V0 doesn't
 PYTHIA_V0_CHECKPOINTS = list(range(1000, 143000 + 1, 1000))
 
+# The steps for which there are checkpoints in the LLM360/Amber model
+AMBER_CHECKPOINTS = [f"{i:03}" for i in range(0, 359)]
 
 def get_checkpoint_labels(model_name: str, **kwargs):
     """Returns the checkpoint labels for a given model, and the label_type
@@ -1562,6 +1565,8 @@ def get_checkpoint_labels(model_name: str, **kwargs):
         else:
             label_type = "step"
         return labels, label_type
+    elif official_model_name.startswith("LLM360/Amber"):
+        return AMBER_CHECKPOINTS, "ckpt_"
     else:
         raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
@@ -1641,6 +1646,14 @@ def get_pretrained_state_dict(
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"step{cfg.checkpoint_value}",
+                    torch_dtype=dtype,
+                    token=huggingface_token,
+                    **kwargs,
+                )
+            elif official_model_name.startswith("LLM360/Amber"):
+                hf_model = AutoModelForCausalLM.from_pretrained(
+                    official_model_name,
+                    revision=f"ckpt_{cfg.checkpoint_value}",
                     torch_dtype=dtype,
                     token=huggingface_token,
                     **kwargs,
