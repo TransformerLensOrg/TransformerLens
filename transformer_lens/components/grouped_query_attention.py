@@ -128,10 +128,14 @@ class GroupedQueryAttention(AbstractAttention):
         )  # [batch, pos, head_index, d_head]
 
         k = self.hook_k(
-            attn_fn(key_input, self.W_K, self.b_K) if self.cfg.ungroup_gqa else attn_fn(key_input, self._W_K, self._b_K)
+            attn_fn(key_input, self.W_K, self.b_K)
+            if self.cfg.ungroup_gqa
+            else attn_fn(key_input, self._W_K, self._b_K)
         )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
-            attn_fn(value_input, self.W_V, self.b_V) if self.cfg.ungroup_gqa else attn_fn(value_input, self._W_V, self._b_V)
+            attn_fn(value_input, self.W_V, self.b_V)
+            if self.cfg.ungroup_gqa
+            else attn_fn(value_input, self._W_V, self._b_V)
         )  # [batch, pos, head_index, d_head]
         return q, k, v
 
