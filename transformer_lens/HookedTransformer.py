@@ -2115,7 +2115,7 @@ class HookedTransformer(HookedRootModule):
                 remove_batch_dim: bool = False
                 incl_bwd: bool = False
                 reset_hooks_end: bool = True
-                clear_contexts: bool = False#False
+                clear_contexts: bool = True#False
                 pos_slice = None
 
                 pos_slice = Slice.unwrap(pos_slice)
