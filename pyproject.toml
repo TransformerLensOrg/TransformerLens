@@ -34,7 +34,7 @@
             {platform="linux", version=">=1.10"},                 # We can use any torch version on Linux (e.g colab)
         ]
         tqdm=">=4.64.1"
-        transformers=">=4.37.2"
+        transformers={ git = "https://github.com/huggingface/transformers.git" }
         typing-extensions="*"
         wandb=">=0.13.5"
 
