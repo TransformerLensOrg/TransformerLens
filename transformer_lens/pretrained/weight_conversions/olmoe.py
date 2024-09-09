@@ -3,6 +3,7 @@ import torch
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
+
 def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
     state_dict = {}
 
