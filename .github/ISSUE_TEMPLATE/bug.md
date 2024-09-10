@@ -17,7 +17,7 @@ Please try to provide a minimal example to reproduce the bug. Error messages and
 Describe the characteristic of your environment:
  * Describe how `transformer_lens` was installed (pip, docker, source, ...)
  * What OS are you using? (Linux, MacOS, Windows) 
- * Python version (We suppourt 3.7 -3.10 currently)
+ * Python version (We support 3.7--3.10 currently)
 
 **Additional context**
 Add any other context about the problem here.
