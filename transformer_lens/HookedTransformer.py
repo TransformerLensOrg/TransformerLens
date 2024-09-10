@@ -1070,6 +1070,7 @@ class HookedTransformer(HookedRootModule):
         default_prepend_bos: bool = True,
         default_padding_side: Literal["left", "right"] = "right",
         dtype="float32",
+        first_n_layers: Optional[int] = None,
         **from_pretrained_kwargs,
     ) -> "HookedTransformer":
         """Load in a Pretrained Model.
@@ -1204,6 +1205,7 @@ class HookedTransformer(HookedRootModule):
                 the model.
             default_padding_side: Which side to pad on when tokenizing. Defaults to
                 "right".
+            first_n_layers: If specified, only load the first n layers of the model.
         """
 
         assert not (
@@ -1261,6 +1263,7 @@ class HookedTransformer(HookedRootModule):
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
             dtype=dtype,
+            first_n_layers=first_n_layers,
             **from_pretrained_kwargs,
         )
 

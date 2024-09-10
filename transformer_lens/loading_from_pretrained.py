@@ -1389,6 +1389,7 @@ def get_pretrained_model_config(
     n_devices: int = 1,
     default_prepend_bos: bool = True,
     dtype: torch.dtype = torch.float32,
+    first_n_layers: Optional[int] = None,
     **kwargs,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -1501,6 +1502,8 @@ def get_pretrained_model_config(
     cfg_dict["default_prepend_bos"] = default_prepend_bos
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
+    if first_n_layers is not None:
+        cfg_dict["n_layers"] = first_n_layers
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
