@@ -227,6 +227,8 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-large",
     "ai-forever/mGPT",
     "allenai/OLMoE-1B-7B-0924",
+    "allenai/OLMoE-1B-7B-0924-SFT",
+    "allenai/OLMoE-1B-7B-0924-Instruct",
 ]
 """Official model names for models on HuggingFace."""
 
