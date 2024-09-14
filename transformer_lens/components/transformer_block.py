@@ -136,6 +136,7 @@ class TransformerBlock(nn.Module):
             n_kv_heads = (
                 self.cfg.n_key_value_heads
                 if self.cfg.n_key_value_heads is not None
+                and not self.cfg.ungroup_grouped_query_attention
                 else self.cfg.n_heads
             )
             query_input = self.hook_q_input(
