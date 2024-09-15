@@ -1570,7 +1570,7 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.load_in_4bit or (version.parse(torch.__version__) >= version.parse("2.1.0")):
             # with quantization, parameters should be assigned
             # so that quantization settings are not lost
-            # Also, generally use `assign` if we're on a recent enough version, 
+            # Also, generally use `assign` if we're on a recent enough version,
             # to save memory.
             self.load_state_dict(state_dict, assign=True, strict=False)
         else:
