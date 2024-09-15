@@ -1060,6 +1060,7 @@ class HookedTransformer(HookedRootModule):
         center_writing_weights: bool = True,
         center_unembed: bool = True,
         refactor_factored_attn_matrices: bool = False,
+        force_load_with_assign: bool = False,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
         hf_model: Optional[AutoModelForCausalLM] = None,
@@ -1151,6 +1152,8 @@ class HookedTransformer(HookedRootModule):
                 keepdim=True)``.
             refactor_factored_attn_matrices: Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
+            force_load_with_assign: Whether to load the state dict with
+                `assign=True` if the torch version supports it. Can save on memory.
             checkpoint_index: If loading from a checkpoint, the index of
                 the checkpoint to load.
             checkpoint_value: If loading from a checkpoint, the value of
@@ -1315,6 +1318,7 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            force_load_with_assign=force_load_with_assign,
         )
 
         if move_to_device:
