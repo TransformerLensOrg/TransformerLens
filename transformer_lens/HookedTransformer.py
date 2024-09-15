@@ -1516,7 +1516,7 @@ class HookedTransformer(HookedRootModule):
                 make it easier to interpret the head's output.
             refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False.
-            force_load_with_assign (bool, optional): Whether to load the state dict with 
+            force_load_with_assign (bool, optional): Whether to load the state dict with
                 `assign=True` if the torch version supports it. Can save on memory.
             model_name (str, optional): checks the model name for special cases of state dict
                 loading. Only used for Redwood 2L model currently.
