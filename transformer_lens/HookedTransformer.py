@@ -8,6 +8,7 @@ attaching hooks to every notable activation within the model. This enables the i
 alteration of activations in individual components like attention heads and MLP layers, facilitating
 a deeper understanding of the internal workings of transformers like GPT-2.
 """
+
 import logging
 import os
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union, cast, overload
@@ -1488,6 +1489,7 @@ class HookedTransformer(HookedRootModule):
         center_unembed: bool = True,
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
+        force_load_with_assign: bool = False,
     ):
         """Load & Process State Dict.
 
@@ -1514,6 +1516,8 @@ class HookedTransformer(HookedRootModule):
                 make it easier to interpret the head's output.
             refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False.
+            force_load_with_assign (bool, optional): Whether to load the state dict with 
+                `assign=True` if the torch version supports it. Can save on memory.
             model_name (str, optional): checks the model name for special cases of state dict
                 loading. Only used for Redwood 2L model currently.
         """
@@ -1567,11 +1571,13 @@ class HookedTransformer(HookedRootModule):
         if refactor_factored_attn_matrices:
             state_dict = self.refactor_factored_attn_matrices(state_dict)
 
-        if self.cfg.load_in_4bit or (version.parse(torch.__version__) >= version.parse("2.1.0")):
+        if self.cfg.load_in_4bit or (
+            # Allow users to force `assign` to save memory.
+            force_load_with_assign
+            and version.parse(torch.__version__) >= version.parse("2.1.0")
+        ):
             # with quantization, parameters should be assigned
             # so that quantization settings are not lost
-            # Also, generally use `assign` if we're on a recent enough version,
-            # to save memory.
             self.load_state_dict(state_dict, assign=True, strict=False)
         else:
             state_dict_keys = list(state_dict.keys())
