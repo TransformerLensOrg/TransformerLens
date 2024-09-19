@@ -451,9 +451,7 @@ class AbstractAttention(ABC, nn.Module):
             )
 
         # Index back to front to ensure local attention works
-        final_mask = self.mask[
-            None, None, -query_ctx_length:, -key_ctx_length:
-        ].bool()  # [1, 1, pos, pos]
+        final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
             einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"

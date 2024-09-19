@@ -1060,6 +1060,7 @@ class HookedTransformer(HookedRootModule):
         center_writing_weights: bool = True,
         center_unembed: bool = True,
         refactor_factored_attn_matrices: bool = False,
+        force_load_with_assign: bool = False,
         checkpoint_index: Optional[int] = None,
         checkpoint_value: Optional[int] = None,
         hf_model: Optional[AutoModelForCausalLM] = None,
@@ -1151,6 +1152,8 @@ class HookedTransformer(HookedRootModule):
                 keepdim=True)``.
             refactor_factored_attn_matrices: Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False
+            force_load_with_assign: Whether to load the state dict with
+                `assign=True` if the torch version supports it. Can save on memory.
             checkpoint_index: If loading from a checkpoint, the index of
                 the checkpoint to load.
             checkpoint_value: If loading from a checkpoint, the value of
@@ -1315,6 +1318,7 @@ class HookedTransformer(HookedRootModule):
             center_unembed=center_unembed,
             fold_value_biases=fold_value_biases,
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            force_load_with_assign=force_load_with_assign,
         )
 
         if move_to_device:
@@ -1489,6 +1493,7 @@ class HookedTransformer(HookedRootModule):
         center_unembed: bool = True,
         fold_value_biases: bool = True,
         refactor_factored_attn_matrices: bool = False,
+        force_load_with_assign: bool = False,
     ):
         """Load & Process State Dict.
 
@@ -1515,6 +1520,8 @@ class HookedTransformer(HookedRootModule):
                 make it easier to interpret the head's output.
             refactor_factored_attn_matrices (bool, optional): Whether to convert the factored
                 matrices (W_Q & W_K, and W_O & W_V) to be "even". Defaults to False.
+            force_load_with_assign (bool, optional): Whether to load the state dict with
+                `assign=True` if the torch version supports it. Can save on memory.
             model_name (str, optional): checks the model name for special cases of state dict
                 loading. Only used for Redwood 2L model currently.
         """
@@ -1568,7 +1575,11 @@ class HookedTransformer(HookedRootModule):
         if refactor_factored_attn_matrices:
             state_dict = self.refactor_factored_attn_matrices(state_dict)
 
-        if self.cfg.load_in_4bit or version.parse(torch.__version__) >= version.parse("2.1.0"):
+        if self.cfg.load_in_4bit or (
+            # Allow users to force `assign` to save memory.
+            force_load_with_assign
+            and version.parse(torch.__version__) >= version.parse("2.1.0")
+        ):
             # with quantization, parameters should be assigned
             # so that quantization settings are not lost
             self.load_state_dict(state_dict, assign=True, strict=False)
@@ -2431,4 +2442,40 @@ class HookedTransformer(HookedRootModule):
         self,
         tokenize: bool = False,
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
-  
+        padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
+    ) -> Union[str, Float[torch.Tensor, "1 pos"]]:
+        """Sample Data Point from Dataset.
+
+        Helper function to randomly sample a data point from self.dataset, a small dataset from the
+        data distribution the model was trained on.
+
+        Implicitly calls self.load_sample_training_dataset if it hasn't already been called. Only
+        works for pretrained models with an associated dataset. But you can manually replace
+        self.dataset with a dataset of your choice if you want.
+
+        Args:
+            tokenize (bool): Whether to return tokens (instead of text). Defaults to False. Note
+                that the returned tokens will be automatically truncated to the model's max context
+                size.
+            prepend_bos (bool, optional): Overrides self.cfg.default_prepend_bos. Whether to prepend
+                the BOS token to the input (applicable when input is a string). Defaults to None,
+                implying usage of self.cfg.default_prepend_bos (default is True unless specified
+                otherwise). Pass True or False to override the default.
+            padding_side (Union[Literal["left", "right"], None], optional): Overrides
+                self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
+                strings of different lengths.
+        """
+        if self.dataset is None:
+            self.load_sample_training_dataset()
+        assert self.dataset is not None  # keep mypy happy
+        sample_dataset_size = len(self.dataset)
+        index = np.random.randint(0, sample_dataset_size)
+        if not tokenize:
+            return self.dataset[index]["text"]
+        else:
+            return self.to_tokens(
+                self.dataset[index]["text"],
+                prepend_bos=prepend_bos,
+                padding_side=padding_side,
+                truncate=True,
+            )
