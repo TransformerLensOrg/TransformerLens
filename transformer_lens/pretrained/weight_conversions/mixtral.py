@@ -73,32 +73,32 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
     return state_dict
 
 
-class NEOConverter(BaseWeightConversion):
+# class NEOConverter(BaseWeightConversion):
     
-    def __init__(self):
-        super().__init__({
-            "embed.W_E": "model.embed_tokens.weight",
-            "pos_embed.W_pos": "transformer.wpe.weight",
-            "ln_final.w": "transformer.ln_f.weight",
-            "unembed.W_U": "lm_head.weight.T",
-            "blocks" : {
-                "path": "model.layers",
-                "conversions": {
-                    "ln1.w": "input_layernorm.weight",
-                    "attn.W_Q": {
-                        "path": self_attn.q_proj.weight,
-                        "rearrange": {
-                            "einops": "(n h) m->n m h",
-                            "input": cfg.n_heads,
-                        }
-                    },
-                    "attn.b_O": torch.zeros(cfg.d_model, dtype=cfg.dtype),
+#     def __init__(self):
+#         super().__init__({
+#             "embed.W_E": "model.embed_tokens.weight",
+#             "pos_embed.W_pos": "transformer.wpe.weight",
+#             "ln_final.w": "transformer.ln_f.weight",
+#             "unembed.W_U": "lm_head.weight.T",
+#             "blocks" : {
+#                 "path": "model.layers",
+#                 "conversions": {
+#                     "ln1.w": "input_layernorm.weight",
+#                     "attn.W_Q": {
+#                         "path": self_attn.q_proj.weight,
+#                         "rearrange": {
+#                             "einops": "(n h) m->n m h",
+#                             "input": cfg.n_heads,
+#                         }
+#                     },
+#                     "attn.b_O": torch.zeros(cfg.d_model, dtype=cfg.dtype),
                     
-                }
-            }),
-            f"blocks.{l}.attn.W_Q": {
-                "key": "transformer.h[l].attn.attention.q_proj.weight",
-                "transform": 
-            },
-            f"blocks.{l}.attn.b_Q": torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-        })
+#                 }
+#             }),
+#             f"blocks.{l}.attn.W_Q": {
+#                 "key": "transformer.h[l].attn.attention.q_proj.weight",
+#                 "transform": 
+#             },
+#             f"blocks.{l}.attn.b_Q": torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
+#         })

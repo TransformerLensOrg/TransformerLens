@@ -5,9 +5,6 @@ from .weight_conversion import WeightConversion
 
 
 
-
-
-
 class BaseWithConversion:
     
     def __init__(self, root_layers: LayerSet):

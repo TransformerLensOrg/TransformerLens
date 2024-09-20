@@ -1,10 +1,10 @@
 from unittest import mock
 
 import torch
-from transformer_lens.pretrained.weight_conversion import WeightConversion
+from transformer_lens.pretrained.conversion_types.direct_conversion import DirectConversion
 
 def test_weight_conversion_with_string_path():
-    conversion = WeightConversion("transformer.wpe.weight")
+    conversion = DirectConversion("transformer.wpe.weight")
     
     expected = torch.rand((1, 1, 1))
     

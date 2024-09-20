@@ -11,7 +11,6 @@ class WeightConversion:
         return self.select_weight(transformers_model)
     
     def select_weight(self, transformers_model):
-        
         return self.select_next_level(self.parts, transformers_model)
     
     def select_next_level(self, levels: List, previous_level):
@@ -23,9 +22,5 @@ class WeightConversion:
             return self.select_next_level(levels, current_level)
         
         return current_level
-    
-    
-    
-    def revert():
-        pass
+
     
