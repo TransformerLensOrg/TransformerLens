@@ -681,7 +681,7 @@ def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor
 
 def test_prompt(
     prompt: str,
-    answer: str | list[str],
+    answer: Union[str, list[str]],
     model,  # Can't give type hint due to circular imports
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
