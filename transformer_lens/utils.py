@@ -820,8 +820,10 @@ def test_prompt(
 
     # If n_answers = 1 then unwrap answer ranks, so printed output matches original version of function
     if not using_multiple_answers:
-        answer_ranks = [r[0] for r in answer_ranks]
-    rprint(f"[b]Ranks of the answer tokens:[/b] {answer_ranks}")
+        single_answer_ranks = [r[0] for r in answer_ranks]
+        rprint(f"[b]Ranks of the answer tokens:[/b] {single_answer_ranks}")
+    else:
+        rprint(f"[b]Ranks of the answer tokens:[/b] {answer_ranks}")
 
 
 def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "... b a"]:
