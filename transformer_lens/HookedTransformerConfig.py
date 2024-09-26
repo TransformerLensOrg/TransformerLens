@@ -54,6 +54,8 @@ class HookedTransformerConfig:
             attention head separately, with a hook. Defaults to false to save memory
         use_attn_scale (bool): whether to scale the attention weights by
             1/sqrt(d_head)
+        ungroup_grouped_query_attention (bool): whether to ungroup key and value heads, for models that use
+            grouped query attention.
         attn_scale (float): The amount to divide attention scores by (if applicable). Defaults to
             sqrt(d_head)
         model_name (str): the name of the model, used to load
@@ -199,6 +201,7 @@ class HookedTransformerConfig:
     use_hook_mlp_in: bool = False
     use_attn_in: bool = False
     use_local_attn: bool = False
+    ungroup_grouped_query_attention: bool = False
     original_architecture: Optional[str] = None
     from_checkpoint: bool = False
     checkpoint_index: Optional[int] = None
