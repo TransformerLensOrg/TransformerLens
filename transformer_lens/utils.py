@@ -720,7 +720,7 @@ def test_prompt(
     Top 7th token. Logit: 13.75 Prob:  2.16% Token: | hill|
     Top 8th token. Logit: 13.64 Prob:  1.92% Token: | swing|
     Top 9th token. Logit: 13.46 Prob:  1.61% Token: | park|
-    Ranks of the answer tokens: [(' road', 2)]
+    Ranks of the answer tokens: [[(' road', 2)]]
 
     Args:
         prompt:
