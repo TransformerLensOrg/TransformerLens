@@ -817,6 +817,10 @@ def test_prompt(
                 print(
                     f"Top {i}th token. Logit: {logits[0, index-1, sorted_token_positions[0, i]].item():5.2f} Prob: {sorted_token_probs[0, i].item():6.2%} Token: |{model.to_string(sorted_token_positions[0, i])}|"
                 )
+
+    # If n_answers = 1 then unwrap answer ranks, so printed output matches original version of function
+    if not using_multiple_answers:
+        answer_ranks = [r[0] for r in answer_ranks]
     rprint(f"[b]Ranks of the answer tokens:[/b] {answer_ranks}")
 
 
