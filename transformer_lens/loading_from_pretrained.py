@@ -161,6 +161,7 @@ OFFICIAL_MODEL_NAMES = [
     "mylesgoose/Llama-3.1-8B-Instruct",
     "mylesgoose/Llama-3.1-8B",
     "mylesgoose/Llama-3.1-70B-Instruct",
+    "mylesgoose/Llama-3.1-70B-Instruct-abliterated"
     "mylesgoose/Llama-3.1-70B",
     "mylesgoose/Llama-3.1-405B-Instruct",
     "mylesgoose/Llama-3.1-405B",
