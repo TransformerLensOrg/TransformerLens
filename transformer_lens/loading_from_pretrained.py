@@ -1201,7 +1201,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "final_rms": True,
             "gated_mlp": True,
-        }       
+        }
     elif architecture == "QWenLMHeadModel":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
