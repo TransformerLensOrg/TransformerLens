@@ -16,6 +16,7 @@ from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     BertForPreTraining,
+    MllamaForConditionalGeneration,
     T5ForConditionalGeneration,
 )
 
@@ -32,6 +33,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_mingpt_weights,
     convert_mistral_weights,
     convert_mixtral_weights,
+    convert_mllama_weights,
     convert_neel_solu_old_weights,
     convert_neo_weights,
     convert_neox_weights,
@@ -151,10 +153,30 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "meta-llama/Meta-Llama-3-70B",
     "meta-llama/Meta-Llama-3-70B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "meta-llama/Llama-3.1-8B",
+    "meta-llama/Llama-3.1-70B-Instruct",
+    "meta-llama/Llama-3.1-70B",
+    "meta-llama/Llama-3.1-405B-Instruct",
+    "meta-llama/Llama-3.1-405B",
+    "mylesgoose/Llama-3.1-8B-Instruct",
+    "mylesgoose/Llama-3.1-8B",
+    "mylesgoose/Llama-3.1-70B-Instruct",
+    "mylesgoose/Llama-3.1-70B",
+    "mylesgoose/Llama-3.1-405B-Instruct",
+    "mylesgoose/Llama-3.1-405B",
     "meta-llama/Llama-3.2-1B",
     "meta-llama/Llama-3.2-3B",
     "meta-llama/Llama-3.2-1B-Instruct",
     "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.2-11B-Vision-Instruct",
+    "meta-llama/Llama-3.2-11B-Vision",
+    "meta-llama/Llama-3.2-90B-Vision-Instruct",
+    "meta-llama/Llama-3.2-90B-Vision",
+    "mylesgoose/Llama-3.2-11B-Vision-Instruct",
+    "mylesgoose/Llama-3.2-11B-Vision",
+    "mylesgoose/Llama-3.2-90B-Vision-Instruct",
+    "mylesgoose/Llama-3.2-90B-Vision",
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
     "roneneldan/TinyStories-1M",
@@ -719,8 +741,15 @@ def convert_hf_model_config(model_name: str, **kwargs):
     else:
         official_model_name = get_official_model_name(model_name)
 
-    # Load HuggingFace model config
-    if "llama" in official_model_name.lower():
+    if "vision" in official_model_name.lower():
+        architecture = "MllamaForConditionalGeneration"
+        huggingface_token = os.environ.get("HF_TOKEN", None)
+        hf_config = MllamaForConditionalGeneration.from_pretrained(
+            official_model_name,
+            token=huggingface_token,
+            **kwargs,
+        )
+    elif "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
     elif "gemma-2" in official_model_name.lower():
         architecture = "Gemma2ForCausalLM"
@@ -1173,6 +1202,10 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "gated_mlp": True,
         }
+    elif architecture == "MllamaForConditionalGeneration":
+        cfg_dict = hf_config.config.to_dict()
+        #print(cfg_dict) # Send the compleate subnested dict.
+        
     elif architecture == "QWenLMHeadModel":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
@@ -1748,6 +1781,13 @@ def get_pretrained_state_dict(
                     token=huggingface_token,
                     **kwargs,
                 )
+            elif "Vision" in official_model_name:
+                hf_model = MllamaForConditionalGeneration.from_pretrained(
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token,
+                    **kwargs,
+                )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
@@ -1773,6 +1813,8 @@ def get_pretrained_state_dict(
             state_dict = convert_neox_weights(hf_model, cfg)
         elif cfg.original_architecture == "LlamaForCausalLM":
             state_dict = convert_llama_weights(hf_model, cfg)
+        elif cfg.original_architecture == "MllamaForConditionalGeneration":
+            state_dict = convert_mllama_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
         elif cfg.original_architecture == "T5ForConditionalGeneration":
