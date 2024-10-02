@@ -16,6 +16,7 @@ from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     BertForPreTraining,
+    LlamaForCausalLM,
     MllamaForConditionalGeneration,
     T5ForConditionalGeneration,
 )
@@ -169,6 +170,10 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Llama-3.2-3B",
     "meta-llama/Llama-3.2-1B-Instruct",
     "meta-llama/Llama-3.2-3B-Instruct",
+    "mylesgoose/Llama-3.2-1B",
+    "mylesgoose/Llama-3.2-3B",
+    "mylesgoose/Llama-3.2-1B-Instruct",
+    "mylesgoose/Llama-3.2-3B-Instruct",
     "meta-llama/Llama-3.2-11B-Vision-Instruct",
     "meta-llama/Llama-3.2-11B-Vision",
     "meta-llama/Llama-3.2-90B-Vision-Instruct",
@@ -734,6 +739,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
 
     Takes the official_model_name as an input.
     """
+    hf_config = None
     # In case the user passed in an alias
     if (Path(model_name) / "config.json").exists():
         logging.info("Loading model config from local directory")
@@ -741,10 +747,19 @@ def convert_hf_model_config(model_name: str, **kwargs):
     else:
         official_model_name = get_official_model_name(model_name)
 
+    huggingface_token = os.environ.get("HF_TOKEN", None)
+
     if "vision" in official_model_name.lower():
         architecture = "MllamaForConditionalGeneration"
-        huggingface_token = os.environ.get("HF_TOKEN", None)
         hf_config = MllamaForConditionalGeneration.from_pretrained(
+            official_model_name,
+            token=huggingface_token,
+            **kwargs,
+        )
+
+    elif "llama-3.1" in official_model_name.lower():
+        architecture = "LlamaForCausalLM"
+        hf_config = AutoConfig.from_pretrained(
             official_model_name,
             token=huggingface_token,
             **kwargs,
@@ -756,13 +771,16 @@ def convert_hf_model_config(model_name: str, **kwargs):
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
-        huggingface_token = os.environ.get("HF_TOKEN", None)
         hf_config = AutoConfig.from_pretrained(
             official_model_name,
             token=huggingface_token,
             **kwargs,
         )
-        architecture = hf_config.architectures[0]
+        architecture = hf_config.architectures[0] if hf_config.architectures else None
+
+    # Ensure hf_config is defined before this point
+    if not hf_config:
+        raise ValueError(f"Could not load config for model: {official_model_name}")
 
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
@@ -1788,6 +1806,13 @@ def get_pretrained_state_dict(
                     token=huggingface_token,
                     **kwargs,
                 )
+            elif "Llama-3.1" in official_model_name:
+                hf_model = LlamaForCausalLM.from_pretrained(
+                    official_model_name,
+                    torch_dtype=dtype,
+                    token=huggingface_token,
+                    **kwargs,
+                )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
@@ -1796,7 +1821,7 @@ def get_pretrained_state_dict(
                     **kwargs,
                 )
 
-            # Load model weights, and fold in layer norm weights
+            # Load model weights, and fold in layer norm weights LlamaForCausalLM
 
         for param in hf_model.parameters():
             param.requires_grad = False
