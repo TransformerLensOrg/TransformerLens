@@ -4,6 +4,7 @@ from .opt import convert_opt_weights
 from .gptj import convert_gptj_weights
 from .neox import convert_neox_weights
 from .llama import convert_llama_weights
+from .mllama import convert_mllama_weights
 from .bert import convert_bert_weights
 from .mistral import convert_mistral_weights
 from .mixtral import convert_mixtral_weights
