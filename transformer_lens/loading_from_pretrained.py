@@ -1821,7 +1821,7 @@ def get_pretrained_state_dict(
                     **kwargs,
                 )
 
-            # Load model weights, and fold in layer norm weights LlamaForCausalLM
+            # Load model weights, and fold in layer norm weights
 
         for param in hf_model.parameters():
             param.requires_grad = False
