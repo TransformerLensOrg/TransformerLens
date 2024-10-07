@@ -10,7 +10,18 @@ a deeper understanding of the internal workings of transformers like GPT-2.
 """
 import logging
 import os
-from typing import Dict, List, NamedTuple, Optional, Tuple, Union, cast, overload
+from typing import (
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 import einops
 import numpy as np
@@ -66,6 +77,8 @@ DTYPE_FROM_STRING = {
     "bfloat16": torch.bfloat16,
     "bf16": torch.bfloat16,
 }
+
+T = TypeVar("T", bound="HookedTransformer")
 
 
 class Output(NamedTuple):
@@ -1053,7 +1066,7 @@ class HookedTransformer(HookedRootModule):
 
     @classmethod
     def from_pretrained(
-        cls,
+        cls: Type[T],
         model_name: str,
         fold_ln: bool = True,
         center_writing_weights: bool = True,
@@ -1070,8 +1083,9 @@ class HookedTransformer(HookedRootModule):
         default_prepend_bos: bool = True,
         default_padding_side: Literal["left", "right"] = "right",
         dtype="float32",
+        first_n_layers: Optional[int] = None,
         **from_pretrained_kwargs,
-    ) -> "HookedTransformer":
+    ) -> T:
         """Load in a Pretrained Model.
 
         Load in pretrained model weights to the HookedTransformer format and optionally to do some
@@ -1204,6 +1218,7 @@ class HookedTransformer(HookedRootModule):
                 the model.
             default_padding_side: Which side to pad on when tokenizing. Defaults to
                 "right".
+            first_n_layers: If specified, only load the first n layers of the model.
         """
 
         assert not (
@@ -1261,6 +1276,7 @@ class HookedTransformer(HookedRootModule):
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
             dtype=dtype,
+            first_n_layers=first_n_layers,
             **from_pretrained_kwargs,
         )
 
@@ -1936,6 +1952,12 @@ class HookedTransformer(HookedRootModule):
         Toggles whether to allow editing of inputs to each attention head.
         """
         self.cfg.use_attn_in = use_attn_in
+
+    def set_ungroup_grouped_query_attention(self, ungroup_grouped_query_attention: bool):
+        """
+        Toggles whether to ungroup the grouped key and value heads in models with grouped query attention (GQA).
+        """
+        self.cfg.ungroup_grouped_query_attention = ungroup_grouped_query_attention
 
     def process_weights_(
         self,
