@@ -144,9 +144,9 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Llama-2-13b-hf",
     "meta-llama/Llama-2-13b-chat-hf",
     "meta-llama/Llama-2-70b-chat-hf",
-    "CodeLlama-7b-hf",
-    "CodeLlama-7b-Python-hf",
-    "CodeLlama-7b-Instruct-hf",
+    "codellama/CodeLlama-7b-hf",
+    "codellama/CodeLlama-7b-Python-hf",
+    "codellama/CodeLlama-7b-Instruct-hf",
     "meta-llama/Meta-Llama-3-8B",
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "meta-llama/Meta-Llama-3-70B",
@@ -562,12 +562,12 @@ MODEL_ALIASES = {
         "meta-llama/Llama-2-13b-chat-hf",
     ],
     "meta-llama/Llama-2-70b-chat-hf": ["Llama-2-70b-chat", "meta-llama-2-70b-chat-hf"],
-    "CodeLlama-7b-hf": ["CodeLlamallama-2-7b", "codellama/CodeLlama-7b-hf"],
-    "CodeLlama-7b-Python-hf": [
+    "codellama/CodeLlama-7b-hf": ["CodeLlamallama-2-7b", "codellama/CodeLlama-7b-hf"],
+    "codellama/CodeLlama-7b-Python-hf": [
         "CodeLlama-7b-python",
         "codellama/CodeLlama-7b-Python-hf",
     ],
-    "CodeLlama-7b-Instruct-hf": [
+    "codellama/CodeLlama-7b-Instruct-hf": [
         "CodeLlama-7b-instruct",
         "codellama/CodeLlama-7b-Instruct-hf",
     ],
