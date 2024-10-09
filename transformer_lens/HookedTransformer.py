@@ -158,7 +158,7 @@ class HookedTransformer(HookedRootModule):
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
                         self.cfg.tokenizer_name,
-                        add_bos_token=True,
+                        # add_bos_token=True,
                         trust_remote_code=self.cfg.trust_remote_code,
                         use_fast=use_fast,
                         token=huggingface_token,
