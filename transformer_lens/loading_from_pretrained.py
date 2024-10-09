@@ -1072,7 +1072,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attention_dir": "bidirectional",
         }
     elif architecture == "MistralForCausalLM":
-        use_local_attn = (True if hf_config.sliding_window else None,)
+        use_local_attn = (True if hf_config.sliding_window else False,)
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
