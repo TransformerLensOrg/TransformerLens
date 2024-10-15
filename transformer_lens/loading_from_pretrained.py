@@ -177,6 +177,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mistral-Nemo-Base-2407",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "bigscience/bloom-560m",
@@ -604,6 +605,7 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
+    "mistralai/Mistral-Nemo-Base-2407": ["mistral-nemo-base-2407"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
     "mistralai/Mixtral-8x7B-Instruct-v0.1": [
         "mixtral-instruct",
@@ -1070,24 +1072,25 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attention_dir": "bidirectional",
         }
     elif architecture == "MistralForCausalLM":
+        use_local_attn = True if hf_config.sliding_window else False
         cfg_dict = {
-            "d_model": 4096,
-            "d_head": 4096 // 32,
-            "n_heads": 32,
-            "d_mlp": 14336,
-            "n_layers": 32,
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim or hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
             "n_ctx": 2048,  # Capped due to memory issues
-            "d_vocab": 32000,
-            "act_fn": "silu",
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "window_size": hf_config.sliding_window,  # None if no sliding window was used
+            "attn_types": ["local"] * hf_config.num_hidden_layers if use_local_attn else None,
+            "eps": hf_config.rms_norm_eps,
+            "rotary_base": hf_config.rope_theta,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "use_local_attn": use_local_attn,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "window_size": 4096,
-            "attn_types": ["local"] * 32,
-            "eps": 1e-05,
-            "n_key_value_heads": 8,
             "gated_mlp": True,
-            "use_local_attn": True,
-            "rotary_dim": 4096 // 32,
         }
     elif architecture == "MixtralForCausalLM":
         cfg_dict = {
