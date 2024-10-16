@@ -1075,11 +1075,9 @@ def convert_hf_model_config(model_name: str, **kwargs):
         use_local_attn = True if hf_config.sliding_window else False
         cfg_dict = {
             "d_model": hf_config.hidden_size,
-            "d_head": {
-                hf_config.head_dim
-                if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
-                else hf_config.hidden_size // hf_config.num_attention_heads
-            },
+            "d_head": hf_config.head_dim
+            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
