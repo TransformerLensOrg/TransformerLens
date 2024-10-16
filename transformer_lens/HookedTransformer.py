@@ -1221,7 +1221,9 @@ class HookedTransformer(HookedRootModule):
             first_n_layers: If specified, only load the first n layers of the model.
         """
         if model_name.lower().startswith("t5"):
-            raise RuntimeError("Execution stopped: Please use HookedEncoderDecoder to load T5 models instead of HookedTransformer.")
+            raise RuntimeError(
+                "Execution stopped: Please use HookedEncoderDecoder to load T5 models instead of HookedTransformer."
+            )
 
         assert not (
             from_pretrained_kwargs.get("load_in_8bit", False)
