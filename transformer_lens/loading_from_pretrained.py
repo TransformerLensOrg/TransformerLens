@@ -974,7 +974,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": 32,
             "d_mlp": 14336,
             "n_layers": 32,
-            "n_ctx": 2048,  #capped due to memory issues   #missing
+            "n_ctx": 2048,  # capped due to memory issues   #missing
             "eps": 1e-5,
             "d_vocab": 128256,
             "act_fn": "silu",
