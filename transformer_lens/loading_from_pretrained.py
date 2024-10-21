@@ -177,6 +177,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mistral-7B-Instruct-v0.2",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "bigscience/bloom-560m",
@@ -604,6 +605,7 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
+    "mistralai/Mistral-7B-Instruct-v0.2": ["mistral-7b-instruct-v0.2"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
     "mistralai/Mixtral-8x7B-Instruct-v0.1": [
         "mixtral-instruct",
@@ -1081,7 +1083,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "silu",
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "window_size": 4096,
+            "window_size": hf_config.sliding_window,  # This will be 4096 on v0.1, None on later models as none was used
             "attn_types": ["local"] * 32,
             "eps": 1e-05,
             "n_key_value_heads": 8,
