@@ -155,6 +155,10 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Llama-3.2-3B",
     "meta-llama/Llama-3.2-1B-Instruct",
     "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.1-70B",
+    "meta-llama/Llama-3.1-8B",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "meta-llama/Llama-3.1-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
     "roneneldan/TinyStories-1M",
@@ -929,13 +933,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "gated_mlp": True,
         }
-    elif "Llama-3.2-1B-Instruct" in official_model_name:
+    elif "Llama-3.1-8B" in official_model_name:
         cfg_dict = {
-            "d_model": 2048,
-            "d_head": 64,
+            "d_model": 4096,
+            "d_head": 128,
             "n_heads": 32,
-            "d_mlp": 8192,
-            "n_layers": 16,
+            "d_mlp": 14336,
+            "n_layers": 32,
             "n_ctx": 2048,  # capped due to memory issues
             "eps": 1e-5,
             "d_vocab": 128256,
@@ -944,17 +948,17 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
-            "rotary_dim": 64,
+            "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
         }
-    elif "Llama-3.2-3B-Instruct" in official_model_name:
+    elif "Llama-3.1-70B" in official_model_name:
         cfg_dict = {
-            "d_model": 3072,
+            "d_model": 8192,
             "d_head": 128,
-            "n_heads": 24,
-            "d_mlp": 8192,
-            "n_layers": 28,
+            "n_heads": 64,
+            "d_mlp": 28672,
+            "n_layers": 80,
             "n_ctx": 2048,  # capped due to memory issues
             "eps": 1e-5,
             "d_vocab": 128256,
