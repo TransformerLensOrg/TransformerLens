@@ -485,9 +485,9 @@ class AbstractAttention(ABC, nn.Module):
             inv_freq = 1.0 / (
                 base ** (torch.arange(0, rotary_dim, 2, dtype=torch.int64).float() / rotary_dim)
             )
-            factor = self.cfg.factor
-            low_freq_factor = self.cfg.low_freq_factor
-            high_freq_factor = self.cfg.high_freq_factor
+            factor = self.cfg.NTK_by_parts_factor
+            low_freq_factor = self.cfg.NTK_by_parts_low_freq_factor
+            high_freq_factor = self.cfg.NTK_by_parts_high_freq_factor
             old_context_len = n_ctx
 
             low_freq_wavelen = old_context_len / low_freq_factor
