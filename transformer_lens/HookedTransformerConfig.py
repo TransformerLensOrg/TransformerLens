@@ -246,6 +246,10 @@ class HookedTransformerConfig:
     use_normalization_before_and_after: bool = False
     attn_scores_soft_cap: float = -1.0
     output_logits_soft_cap: float = -1.0
+    use_NTK_by_parts_rope: bool = False
+    low_freq_factor: float = 1.0
+    high_freq_factor: float = 4.0
+    factor: float = 8.0
 
     def __post_init__(self):
         if self.n_heads == -1:

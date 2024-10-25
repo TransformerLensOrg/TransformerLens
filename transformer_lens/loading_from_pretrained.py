@@ -951,6 +951,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
         }
     elif "Llama-3.1-70B" in official_model_name:
         cfg_dict = {
