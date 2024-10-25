@@ -1,6 +1,6 @@
+import math
 from abc import ABC
 from typing import Dict, Optional, Tuple, Union
-import math
 
 import einops
 import torch
