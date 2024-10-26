@@ -875,6 +875,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
         }
     elif "Meta-Llama-3-70B" in official_model_name:
         cfg_dict = {
@@ -894,6 +895,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
         }
     elif "Llama-3.2-1B" in official_model_name:
         cfg_dict = {
