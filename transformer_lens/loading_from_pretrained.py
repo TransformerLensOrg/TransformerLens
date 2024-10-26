@@ -875,6 +875,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
         }
     elif "Meta-Llama-3-70B" in official_model_name:
         cfg_dict = {
@@ -894,6 +895,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
         }
     elif "Llama-3.2-1B" in official_model_name:
         cfg_dict = {
@@ -913,6 +915,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 64,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 32.0,
         }
     elif "Llama-3.2-3B" in official_model_name:
         cfg_dict = {
@@ -932,6 +939,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 32.0,
         }
     elif "Llama-3.1-8B" in official_model_name:
         cfg_dict = {
@@ -951,6 +963,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
         }
     elif "Llama-3.1-70B" in official_model_name:
         cfg_dict = {
@@ -970,6 +987,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
         }
     elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
