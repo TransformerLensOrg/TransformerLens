@@ -14,7 +14,7 @@
 
     [tool.poetry.dependencies]
         accelerate=">=0.23.0" # Needed for Llama Models
-        beartype="^0.14.1"
+        beartype="^0.18.5"
         better-abc="^0.0.3"
         datasets=">=2.7.1"
         einops=">=0.6.0"
@@ -29,10 +29,7 @@
         python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
-        torch=[
-            {platform="!=linux", version=">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
-            {platform="linux", version=">=1.10"},                 # We can use any torch version on Linux (e.g colab)
-        ]
+        torch=">=2.2,<2.4"
         tqdm=">=4.64.1"
         transformers=">=4.37.2"
         typing-extensions="*"
@@ -44,7 +41,7 @@
             circuitsvis=">=1.38.1"
             isort="5.8.0"
             jupyter=">=1.0.0"
-            mypy=">=1.8.0"
+            mypy=">=1.8.0,<1.11"
             nbval="^0.10.0"
             plotly=">=5.12.0"
             pycln="^2.1.3"
