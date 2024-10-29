@@ -1,4 +1,5 @@
 """Build the API Documentation."""
+
 import base64
 import hashlib
 import json
@@ -18,13 +19,16 @@ import tqdm  # type: ignore[import-untyped]
 import yaml  # type: ignore[import-untyped]
 from muutils.dictmagic import TensorDictFormats, condense_tensor_dict
 from muutils.misc import shorten_numerical_to_str
-from transformers import (
-    AutoTokenizer,  # type: ignore[import-untyped]
-    PreTrainedTokenizer,
-)
+from transformers import AutoTokenizer  # type: ignore[import-untyped]
+from transformers import PreTrainedTokenizer
 
 import transformer_lens  # type: ignore[import-untyped]
-from transformer_lens import HookedTransformer, HookedTransformerConfig, loading
+from transformer_lens import (
+    ActivationCache,
+    HookedTransformer,
+    HookedTransformerConfig,
+    loading,
+)
 from transformer_lens.loading_from_pretrained import (  # type: ignore[import-untyped]
     NON_HF_HOSTED_MODEL_NAMES,
     get_pretrained_model_config,
@@ -171,17 +175,18 @@ def get_tensor_shapes(
         }
         # run with cache to activation cache
         with torch.no_grad():
+            cache: ActivationCache
             _, cache = model.run_with_cache(
                 torch.empty(input_shape, dtype=torch.long, device=DEVICE)
             )
         # condense using muutils and store
         model_info["tensor_shapes.activation_cache"] = condense_tensor_dict(
-            cache,
+            cache.cache_dict,
             fmt=tensor_dims_fmt,
             dims_names_map=dims_names_map,
         )
         model_info["tensor_shapes.activation_cache.raw__"] = condense_tensor_dict(
-            cache,
+            cache.cache_dict,
             fmt="dict",
             dims_names_map=dims_names_map,
         )
@@ -268,7 +273,7 @@ def get_model_info(
         "name.default_alias": model_name,
         "name.huggingface": official_name,
         "name.aliases": ", ".join(
-            list(transformer_lens.loading.MODEL_ALIASES.get(official_name, []))
+            list(transformer_lens.loading.MODEL_ALIASES.get(official_name, []))  # type: ignore[arg-type]
         ),
         "model_type": None,
     }
@@ -294,7 +299,7 @@ def get_model_info(
     model_info.update(
         {
             "name.from_cfg": model_cfg.model_name,
-            "n_params.as_str": shorten_numerical_to_str(model_cfg.n_params),
+            "n_params.as_str": shorten_numerical_to_str(model_cfg.n_params),  # type: ignore[arg-type]
             "n_params.as_int": model_cfg.n_params,
             "n_params.from_name": param_count_from_name,
             **{f"cfg.{attr}": getattr(model_cfg, attr) for attr in CONFIG_ATTRS_COPY},
@@ -326,7 +331,7 @@ def get_model_info(
             # copy the config, so we can modify it
             model_cfg_copy: HookedTransformerConfig = deepcopy(model_cfg)
             # set device to "meta" -- don't actually initialize the model with real tensors
-            model_cfg_copy.device = DEVICE
+            model_cfg_copy.device = str(DEVICE)
             if not include_tokenizer_info:
                 # don't need to download the tokenizer
                 model_cfg_copy.tokenizer_name = None
@@ -412,7 +417,7 @@ def make_model_table(
         # parallel
         n_processes: int = parallelize if int(parallelize) > 1 else multiprocessing.cpu_count()
         if verbose:
-            print(f"running in parallel with {n_processes = }")
+            print(f"running in parallel with {n_processes=}")
         with multiprocessing.Pool(processes=n_processes) as pool:
             # Use imap for ordered results, wrapped with tqdm for progress bar
             imap_results: list[tuple[str, dict | Exception]] = list(
@@ -647,6 +652,7 @@ def build_docs():
         ],
         check=True,
     )
+
 
 def get_property(name, model_name):
     """Retrieve a specific property of a pretrained model.
