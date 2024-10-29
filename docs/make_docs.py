@@ -259,10 +259,6 @@ def get_model_info(
         the format of the tensor shapes. one of "yaml", "json", "dict"
        (defaults to `"yaml"`)
     """
-    # set default device to meta, so that we don't actually allocate tensors
-    # this can't be done at the root level because it would break other tests when we import this file
-    # and it has to be done inside this function due to usage of multiprocessing
-    torch.set_default_device(DEVICE)
 
     # assumes the input is a default alias
     if model_name not in transformer_lens.loading.DEFAULT_MODEL_ALIASES:
@@ -327,59 +323,63 @@ def get_model_info(
 
     # get tensor shapes
     if include_tensor_dims or include_tokenizer_info:
-        got_model: bool = False
-        try:
-            # copy the config, so we can modify it
-            model_cfg_copy: HookedTransformerConfig = deepcopy(model_cfg)
-            # set device to "meta" -- don't actually initialize the model with real tensors
-            model_cfg_copy.device = str(DEVICE)
-            if not include_tokenizer_info:
-                # don't need to download the tokenizer
-                model_cfg_copy.tokenizer_name = None
-            # init the fake model
-            model: HookedTransformer = HookedTransformer(model_cfg_copy, move_to_device=True)
-            # HACK: use https://huggingface.co/huggyllama to get tokenizers for original llama models
-            if model.cfg.tokenizer_name in NON_HF_HOSTED_MODEL_NAMES:
-                model.set_tokenizer(
-                    AutoTokenizer.from_pretrained(
-                        f"huggyllama/{model.cfg.tokenizer_name.removesuffix('-hf')}",
-                        add_bos_token=True,
-                        token=HF_TOKEN,
-                        legacy=False,
+        # set default device to meta, so that we don't actually allocate tensors
+        # this can't be done at the root level because it would break other tests when we import this file
+        # and it has to be done inside this function due to usage of multiprocessing
+        with torch.device(DEVICE):
+            got_model: bool = False
+            try:
+                # copy the config, so we can modify it
+                model_cfg_copy: HookedTransformerConfig = deepcopy(model_cfg)
+                # set device to "meta" -- don't actually initialize the model with real tensors
+                model_cfg_copy.device = str(DEVICE)
+                if not include_tokenizer_info:
+                    # don't need to download the tokenizer
+                    model_cfg_copy.tokenizer_name = None
+                # init the fake model
+                model: HookedTransformer = HookedTransformer(model_cfg_copy, move_to_device=True)
+                # HACK: use https://huggingface.co/huggyllama to get tokenizers for original llama models
+                if model.cfg.tokenizer_name in NON_HF_HOSTED_MODEL_NAMES:
+                    model.set_tokenizer(
+                        AutoTokenizer.from_pretrained(
+                            f"huggyllama/{model.cfg.tokenizer_name.removesuffix('-hf')}",
+                            add_bos_token=True,
+                            token=HF_TOKEN,
+                            legacy=False,
+                        )
                     )
+                got_model = True
+            except Exception as e:
+                msg: str = (
+                    f"Failed to init model '{model_name}', can't get tensor shapes or tokenizer info"
                 )
-            got_model = True
-        except Exception as e:
-            msg: str = (
-                f"Failed to init model '{model_name}', can't get tensor shapes or tokenizer info"
-            )
-            if allow_warn:
-                warnings.warn(f"{msg}:\n{e}")
-            else:
-                raise ValueError(msg) from e
+                if allow_warn:
+                    warnings.warn(f"{msg}:\n{e}")
+                else:
+                    raise ValueError(msg) from e
 
-        if got_model:
-            if include_tokenizer_info:
-                try:
-                    tokenizer_info: dict = get_tokenizer_info(model)
-                    model_info.update(tokenizer_info)
-                except Exception as e:
-                    msg = f"Failed to get tokenizer info for model '{model_name}'"
-                    if allow_warn:
-                        warnings.warn(f"{msg}:\n{e}")
-                    else:
-                        raise ValueError(msg) from e
+            if got_model:
+                if include_tokenizer_info:
+                    try:
+                        tokenizer_info: dict = get_tokenizer_info(model)
+                        model_info.update(tokenizer_info)
+                    except Exception as e:
+                        msg = f"Failed to get tokenizer info for model '{model_name}'"
+                        if allow_warn:
+                            warnings.warn(f"{msg}:\n{e}")
+                        else:
+                            raise ValueError(msg) from e
 
-            if include_tensor_dims:
-                try:
-                    tensor_shapes_info: dict = get_tensor_shapes(model, tensor_dims_fmt)
-                    model_info.update(tensor_shapes_info)
-                except Exception as e:
-                    msg = f"Failed to get tensor shapes for model '{model_name}'"
-                    if allow_warn:
-                        warnings.warn(f"{msg}:\n{e}")
-                    else:
-                        raise ValueError(msg) from e
+                if include_tensor_dims:
+                    try:
+                        tensor_shapes_info: dict = get_tensor_shapes(model, tensor_dims_fmt)
+                        model_info.update(tensor_shapes_info)
+                    except Exception as e:
+                        msg = f"Failed to get tensor shapes for model '{model_name}'"
+                        if allow_warn:
+                            warnings.warn(f"{msg}:\n{e}")
+                        else:
+                            raise ValueError(msg) from e
 
     return model_name, model_info
 
