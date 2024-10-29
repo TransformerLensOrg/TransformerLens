@@ -513,19 +513,18 @@ def write_model_table(
         with open(path.with_suffix(".version"), "w") as f:
             json.dump({"version": tl_version}, f)
 
-    match format:
-        case "jsonl":
-            model_table.to_json(path.with_suffix(".jsonl"), orient="records", lines=True)
-        case "csv":
-            model_table.to_csv(path.with_suffix(".csv"), index=False)
-        case "md":
-            model_table_processed: pd.DataFrame = model_table
-            # convert huggingface name to url
-            if md_hf_links:
-                model_table_processed = huggingface_name_to_url(model_table_processed)
-            model_table_processed.to_markdown(path.with_suffix(".md"), index=False)
-        case _:
-            raise KeyError(f"Invalid format: {format}")
+    if format == "jsonl":
+        model_table.to_json(path.with_suffix(".jsonl"), orient="records", lines=True)
+    elif format == "csv":
+        model_table.to_csv(path.with_suffix(".csv"), index=False)
+    elif format == "md":
+        model_table_processed: pd.DataFrame = model_table
+        # convert huggingface name to url
+        if md_hf_links:
+            model_table_processed = huggingface_name_to_url(model_table_processed)
+        model_table_processed.to_markdown(path.with_suffix(".md"), index=False)
+    else:
+        raise KeyError(f"Invalid format: {format}")
 
 
 def abridge_model_table(
