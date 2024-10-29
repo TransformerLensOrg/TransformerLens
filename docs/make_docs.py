@@ -1,6 +1,7 @@
 """Build the API Documentation."""
 import base64
 import hashlib
+import json
 import multiprocessing
 import os
 import shutil
@@ -9,28 +10,39 @@ import warnings
 from copy import deepcopy
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Sequence
+from typing import Callable, Literal, Optional, Sequence
 
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
 import torch
-import tqdm
-import yaml
-from muutils.dictmagic import condense_tensor_dict
+import tqdm  # type: ignore[import-untyped]
+import yaml  # type: ignore[import-untyped]
+from muutils.dictmagic import TensorDictFormats, condense_tensor_dict
 from muutils.misc import shorten_numerical_to_str
+from transformers import AutoTokenizer  # type: ignore[import-untyped]
 from transformers import PreTrainedTokenizer
 
-import transformer_lens
+import transformer_lens  # type: ignore[import-untyped]
 from transformer_lens import HookedTransformer, HookedTransformerConfig, loading
+from transformer_lens.loading_from_pretrained import (  # type: ignore[import-untyped]
+    NON_HF_HOSTED_MODEL_NAMES,
+    get_pretrained_model_config,
+)
 
 DEVICE: torch.device = torch.device("meta")
+# forces everything to meta tensors
 torch.set_default_device(DEVICE)
 
+# disable the symlink warning
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-# make sure we have a HuggingFace token
+
+_MODEL_TABLE_PATH: Path = Path("docs/model_table.jsonl")
+# where to save the model table
+
 try:
-    _hf_token = os.environ.get("HF_TOKEN", None)
-    if not _hf_token[:3] == "hf_":  # type: ignore
-        raise ValueError("Invalid HuggingFace token")
+    HF_TOKEN = os.environ.get("HF_TOKEN", "")
+    if not HF_TOKEN.startswith("hf_"):
+        raise ValueError("Invalid Hugging Face token")
 except Exception as e:
     warnings.warn(
         f"Failed to get Hugging Face token -- info about certain models will be limited\n{e}"
@@ -85,6 +97,8 @@ KNOWN_MODEL_TYPES: Sequence[str] = (
     "gemma",
     "yi",
     "t5",
+    "mixtral",
+    "Qwen2",
 )
 
 MODEL_ALIASES_MAP: dict[str, str] = transformer_lens.loading.make_model_alias_map()
@@ -132,7 +146,11 @@ COLUMNS_ABRIDGED: Sequence[str] = (
 )
 
 
-def get_tensor_shapes(model: HookedTransformer, tensor_dims_fmt: str = "yaml") -> dict:
+def get_tensor_shapes(
+    model: HookedTransformer,
+    tensor_dims_fmt: TensorDictFormats = "yaml",
+    except_if_forward_fails: bool = False,
+) -> dict:
     """get the tensor shapes from a model"""
     model_info: dict = dict()
     # state dict
@@ -142,50 +160,63 @@ def get_tensor_shapes(model: HookedTransformer, tensor_dims_fmt: str = "yaml") -
     model_info["tensor_shapes.state_dict.raw__"] = condense_tensor_dict(
         model.state_dict(), fmt="dict"
     )
-    # input shape for activations -- "847"~="bat", subtract 7 for the context window to make it unique
-    input_shape: tuple[int, int, int] = (847, model.cfg.n_ctx - 7)
-    # why? to replace the batch and seq_len dims with "batch" and "seq_len" in the yaml
-    dims_names_map: dict[int, str] = {
-        input_shape[0]: "batch",
-        input_shape[1]: "seq_len",
-    }
-    # run with cache to activation cache
-    with torch.no_grad():
-        _, cache = model.run_with_cache(torch.empty(input_shape, dtype=torch.long, device=DEVICE))
-    # condense using muutils and store
-    model_info["tensor_shapes.activation_cache"] = condense_tensor_dict(
-        cache,
-        fmt=tensor_dims_fmt,
-        dims_names_map=dims_names_map,
-    )
-    model_info["tensor_shapes.activation_cache.raw__"] = condense_tensor_dict(
-        cache,
-        fmt="dict",
-        dims_names_map=dims_names_map,
-    )
+
+    try:
+
+        # input shape for activations -- "847"~="bat", subtract 7 for the context window to make it unique
+        input_shape: tuple[int, int] = (847, model.cfg.n_ctx - 7)
+        # why? to replace the batch and seq_len dims with "batch" and "seq_len" in the yaml
+        dims_names_map: dict[int, str] = {
+            input_shape[0]: "batch",
+            input_shape[1]: "seq_len",
+        }
+        # run with cache to activation cache
+        with torch.no_grad():
+            _, cache = model.run_with_cache(
+                torch.empty(input_shape, dtype=torch.long, device=DEVICE)
+            )
+        # condense using muutils and store
+        model_info["tensor_shapes.activation_cache"] = condense_tensor_dict(
+            cache,
+            fmt=tensor_dims_fmt,
+            dims_names_map=dims_names_map,
+        )
+        model_info["tensor_shapes.activation_cache.raw__"] = condense_tensor_dict(
+            cache,
+            fmt="dict",
+            dims_names_map=dims_names_map,
+        )
+    except Exception as e:
+        msg: str = f"Failed to get activation cache for '{model.cfg.model_name}':\n{e}"
+        if except_if_forward_fails:
+            raise ValueError(msg) from e
+        else:
+            warnings.warn(msg)
 
     return model_info
 
 
 def tokenizer_vocab_hash(tokenizer: PreTrainedTokenizer) -> str:
     # sort
+    vocab: dict[str, int]
+    try:
+        vocab = tokenizer.vocab
+    except Exception:
+        vocab = tokenizer.get_vocab()
+
     vocab_hashable: list[tuple[str, int]] = list(
         sorted(
-            tokenizer.vocab.items(),
+            vocab.items(),
             key=lambda x: x[1],
         )
     )
     # hash it
     hash_obj = hashlib.sha1(bytes(str(vocab_hashable), "UTF-8"))
     # convert to base64
-    return (
-        base64.b64encode(
-            hash_obj.digest(),
-            altchars=b"-_",  # - and _ as altchars
-        )
-        .decode("UTF-8")
-        .rstrip("=")
-    )
+    return base64.b64encode(
+        hash_obj.digest(),
+        altchars=b"-_",  # - and _ as altchars
+    ).decode("UTF-8")
 
 
 def get_tokenizer_info(model: HookedTransformer) -> dict:
@@ -207,8 +238,9 @@ def get_model_info(
     include_cfg: bool = True,
     include_tensor_dims: bool = True,
     include_tokenizer_info: bool = True,
-    tensor_dims_fmt: str = "yaml",
-) -> dict:
+    tensor_dims_fmt: TensorDictFormats = "yaml",
+    allow_warn: bool = True,
+) -> tuple[str, dict]:
     """get information about the model from the default alias model name
 
     # Parameters:
@@ -223,16 +255,16 @@ def get_model_info(
      - `include_tokenizer_info : bool`
         whether to include the tokenizer info
         (defaults to `True`)
-     - `tensor_dims_fmt : str`
+     - `tensor_dims_fmt : TensorDictFormats`
         the format of the tensor shapes. one of "yaml", "json", "dict"
        (defaults to `"yaml"`)
     """
     # assumes the input is a default alias
     if model_name not in transformer_lens.loading.DEFAULT_MODEL_ALIASES:
-        raise ValueError(f"Model name {model_name} not found in default aliases")
+        raise ValueError(f"Model name '{model_name}' not found in default aliases")
 
     # get the names and model types
-    official_name: str = MODEL_ALIASES_MAP.get(model_name, None)
+    official_name: Optional[str] = MODEL_ALIASES_MAP.get(model_name, None)
     model_info: dict = {
         "name.default_alias": model_name,
         "name.huggingface": official_name,
@@ -254,12 +286,15 @@ def get_model_info(
     # search for model size in name
     param_count_from_name: str | None = None
     for part in parts:
-        if part[-1].lower() in ["m", "b", "k"] and part[:-1].replace(".", "", 1).isdigit():
+        if (
+            part[-1].lower() in ["m", "b", "k"]
+            and part[:-1].replace(".", "", 1).isdigit()
+        ):
             param_count_from_name = part
             break
 
     # update model info from config
-    model_cfg: HookedTransformerConfig = get_config(model_name)
+    model_cfg: HookedTransformerConfig = get_pretrained_model_config(model_name)
     model_info.update(
         {
             "name.from_cfg": model_cfg.model_name,
@@ -274,7 +309,11 @@ def get_model_info(
     if include_cfg:
         # modify certain values to make them pretty-printable
         model_cfg_dict: dict = {
-            key: val if key not in CONFIG_VALUES_PROCESS else CONFIG_VALUES_PROCESS[key](val)
+            key: (
+                val
+                if key not in CONFIG_VALUES_PROCESS
+                else CONFIG_VALUES_PROCESS[key](val)
+            )
             for key, val in model_cfg.to_dict().items()
         }
 
@@ -300,12 +339,28 @@ def get_model_info(
                 # don't need to download the tokenizer
                 model_cfg_copy.tokenizer_name = None
             # init the fake model
-            model: HookedTransformer = HookedTransformer(model_cfg_copy, move_to_device=True)
+            model: HookedTransformer = HookedTransformer(
+                model_cfg_copy, move_to_device=True
+            )
+            # HACK: use https://huggingface.co/huggyllama to get tokenizers for original llama models
+            if model.cfg.tokenizer_name in NON_HF_HOSTED_MODEL_NAMES:
+                model.set_tokenizer(
+                    AutoTokenizer.from_pretrained(
+                        f"huggyllama/{model.cfg.tokenizer_name.removesuffix('-hf')}",
+                        add_bos_token=True,
+                        token=HF_TOKEN,
+                        legacy=False,
+                    )
+                )
             got_model = True
         except Exception as e:
-            warnings.warn(
-                f"Failed to init model {model_name}, can't get tensor shapes or tokenizer info:\n{e}"
+            msg: str = (
+                f"Failed to init model '{model_name}', can't get tensor shapes or tokenizer info"
             )
+            if allow_warn:
+                warnings.warn(f"{msg}:\n{e}")
+            else:
+                raise ValueError(msg) from e
 
         if got_model:
             if include_tokenizer_info:
@@ -313,35 +368,45 @@ def get_model_info(
                     tokenizer_info: dict = get_tokenizer_info(model)
                     model_info.update(tokenizer_info)
                 except Exception as e:
-                    warnings.warn(f"Failed to get tokenizer info for model {model_name}:\n{e}")
+                    msg = f"Failed to get tokenizer info for model '{model_name}'"
+                    if allow_warn:
+                        warnings.warn(f"{msg}:\n{e}")
+                    else:
+                        raise ValueError(msg) from e
 
             if include_tensor_dims:
                 try:
                     tensor_shapes_info: dict = get_tensor_shapes(model, tensor_dims_fmt)
                     model_info.update(tensor_shapes_info)
                 except Exception as e:
-                    warnings.warn(f"Failed to get tensor shapes for model {model_name}:\n{e}")
+                    msg = f"Failed to get tensor shapes for model '{model_name}'"
+                    if allow_warn:
+                        warnings.warn(f"{msg}:\n{e}")
+                    else:
+                        raise ValueError(msg) from e
 
     return model_name, model_info
 
 
-def safe_try_get_model_info(model_name: str, kwargs: dict | None = None) -> dict | Exception:
+def safe_try_get_model_info(
+    model_name: str, kwargs: dict | None = None
+) -> tuple[str, dict | Exception]:
     """for parallel processing, to catch exceptions and return the exception instead of raising them"""
     if kwargs is None:
         kwargs = {}
     try:
         return get_model_info(model_name, **kwargs)
     except Exception as e:
-        warnings.warn(f"Failed to get model info for {model_name}: {e}")
+        warnings.warn(f"Failed to get model info for '{model_name}': {e}")
         return model_name, e
 
 
 def make_model_table(
     verbose: bool,
-    allow_except: bool = True,
+    allow_except: bool = False,
     parallelize: bool | int = True,
     model_names_pattern: str | None = None,
-    **kwargs: Any,
+    **kwargs,
 ) -> pd.DataFrame:
     """make table of all models. kwargs passed to `get_model_info()`"""
     model_names: list[str] = list(transformer_lens.loading.DEFAULT_MODEL_ALIASES)
@@ -350,15 +415,21 @@ def make_model_table(
     # filter by regex pattern if provided
     if model_names_pattern:
         model_names = [
-            model_name for model_name in model_names if model_names_pattern in model_name
+            model_name
+            for model_name in model_names
+            if model_names_pattern in model_name
         ]
 
     if parallelize:
         # parallel
-        n_processes: int = parallelize if int(parallelize) > 1 else multiprocessing.cpu_count()
+        n_processes: int = (
+            parallelize if int(parallelize) > 1 else multiprocessing.cpu_count()
+        )
+        if verbose:
+            print(f"running in parallel with {n_processes = }")
         with multiprocessing.Pool(processes=n_processes) as pool:
             # Use imap for ordered results, wrapped with tqdm for progress bar
-            imap_results: list[dict | Exception] = list(
+            imap_results: list[tuple[str, dict | Exception]] = list(
                 tqdm.tqdm(
                     pool.imap(
                         partial(safe_try_get_model_info, **kwargs),
@@ -380,26 +451,34 @@ def make_model_table(
             disable=not verbose,
         ) as pbar:
             for model_name in pbar:
-                pbar.set_postfix_str(f"model: {model_name}")
+                pbar.set_postfix_str(f"model: '{model_name}'")
                 try:
                     model_data.append(get_model_info(model_name, **kwargs))
                 except Exception as e:
                     if allow_except:
                         # warn and continue if we allow exceptions
-                        warnings.warn(f"Failed to get model info for {model_name}: {e}")
-                        model_data.append(e)
+                        warnings.warn(
+                            f"Failed to get model info for '{model_name}': {e}"
+                        )
+                        model_data.append((model_name, e))
                     else:
                         # raise exception right away if we don't allow exceptions
                         # note that this differs from the parallel version, which will only except at the end
-                        raise ValueError(f"Failed to get model info for {model_name}") from e
+                        raise ValueError(
+                            f"Failed to get model info for '{model_name}'"
+                        ) from e
 
     # figure out what to do with failed models
     failed_models: dict[str, Exception] = {
-        model_name: result for model_name, result in model_data if isinstance(result, Exception)
+        model_name: result
+        for model_name, result in model_data
+        if isinstance(result, Exception)
     }
     msg: str = (
         f"Failed to get model info for {len(failed_models)}/{len(model_names)} models: {failed_models}\n"
-        + "\n".join(f"\t{model_name}: {expt}" for model_name, expt in failed_models.items())
+        + "\n".join(
+            f"\t'{model_name}': {expt}" for model_name, expt in failed_models.items()
+        )
     )
     if not allow_except:
         if failed_models:
@@ -423,17 +502,14 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
     """convert the huggingface model name to a url"""
     df_new: pd.DataFrame = df.copy()
     df_new["name.huggingface"] = df_new["name.huggingface"].map(
-        # not sure how to make this type error go away, but it will propagate a None if it's None and be a string otherwise
-        lambda x: f"[{x}](https://huggingface.co/{x})"
-        if x
-        else x  # type: ignore
+        lambda x: f"[{x}](https://huggingface.co/{x})" if x else x
     )
     return df_new
 
 
 def write_model_table(
     model_table: pd.DataFrame,
-    path: Path,
+    path: Path = _MODEL_TABLE_PATH,
     format: OutputFormat = "jsonl",
     include_TL_version: bool = True,
     md_hf_links: bool = True,
@@ -452,28 +528,30 @@ def write_model_table(
 
             tl_version = version("transformer_lens")
         except PackageNotFoundError as e:
-            warnings.warn(f"Failed to get transformer_lens version: package not found\n{e}")
+            warnings.warn(
+                f"Failed to get transformer_lens version: package not found\n{e}"
+            )
         except Exception as e:
             warnings.warn(f"Failed to get transformer_lens version: {e}")
 
         with open(path.with_suffix(".version"), "w") as f:
-            f.write(tl_version)
+            json.dump({"version": tl_version}, f)
 
-    if format == "jsonl":
-        model_table.to_json(path.with_suffix(".jsonl"), orient="records", lines=True)
-    elif format == "csv":
-        model_table.to_csv(path.with_suffix(".csv"), index=False)
-    elif format == "md":
-        model_table_processed: pd.DataFrame = model_table
-        # convert huggingface name to url
-        if md_hf_links:
-            model_table_processed = huggingface_name_to_url(model_table_processed)
-
-        model_table_md: str = md_header + model_table_processed.to_markdown(index=False)
-        with open(path.with_suffix(".md"), "w") as f:
-            f.write(model_table_md)
-    else:
-        raise KeyError(f"Invalid format: {format}")
+    match format:
+        case "jsonl":
+            model_table.to_json(
+                path.with_suffix(".jsonl"), orient="records", lines=True
+            )
+        case "csv":
+            model_table.to_csv(path.with_suffix(".csv"), index=False)
+        case "md":
+            model_table_processed: pd.DataFrame = model_table
+            # convert huggingface name to url
+            if md_hf_links:
+                model_table_processed = huggingface_name_to_url(model_table_processed)
+            model_table_processed.to_markdown(path.with_suffix(".md"), index=False)
+        case _:
+            raise KeyError(f"Invalid format: {format}")
 
 
 def abridge_model_table(
@@ -499,15 +577,28 @@ def abridge_model_table(
 
 
 def get_model_table(
+    model_table_path: Path | str = _MODEL_TABLE_PATH,
     verbose: bool = True,
+    force_reload: bool = True,
+    do_write: bool = True,
     parallelize: bool | int = True,
-    **kwargs: Any,
+    model_names_pattern: str | None = None,
+    **kwargs,
 ) -> pd.DataFrame:
     """get the model table either by generating or reading from jsonl file
 
     # Parameters:
+     - `model_table_path : Path|str`
+        the path to the model table file, and the base name for the csv and md files
+        (defaults to `_MODEL_TABLE_PATH`)
      - `verbose : bool`
         whether to show progress bar
+       (defaults to `True`)
+     - `force_reload : bool`
+        force creating the table from scratch, even if file exists
+       (defaults to `True`)
+     - `do_write : bool`
+        whether to write the table to disk, if generating
        (defaults to `True`)
      - `model_names_pattern : str|None`
         filter the model names by making them include this string. passed to `make_model_table()`. no filtering if `None`
@@ -520,31 +611,33 @@ def get_model_table(
         the model table. rows are models, columns are model attributes
     """
 
-    # generate the table
-    model_table: pd.DataFrame = make_model_table(
-        verbose=verbose,
-        parallelize=parallelize,
-        **kwargs,
-    )
+    # convert to Path, and modify the name if a pattern is provided
+    model_table_path = Path(model_table_path)
 
-    # full data as jsonl
-    write_model_table(
-        model_table=model_table,
-        path=STATIC_DIR / "model_table" / "data.jsonl",
-        format="jsonl",
-    )
-    # abridged data as csv, md
-    abridged_table: pd.DataFrame = abridge_model_table(model_table)
-    write_model_table(
-        model_table=abridged_table,
-        path=STATIC_DIR / "model_table" / "data.csv",
-        format="csv",
-    )
-    write_model_table(
-        model_table=abridged_table,
-        path=GENERATED_DIR / "model_properties_table.md",
-        format="md",
-    )
+    if model_names_pattern is not None:
+        model_table_path = model_table_path.with_name(
+            model_table_path.stem + f"-{model_names_pattern}"
+        )
+
+    model_table: pd.DataFrame
+    if not model_table_path.exists() or force_reload:
+        # generate it from scratch
+        model_table = make_model_table(
+            verbose=verbose,
+            parallelize=parallelize,
+            model_names_pattern=model_names_pattern,
+            **kwargs,
+        )
+        if do_write:
+            # full data as jsonl
+            write_model_table(model_table, model_table_path, format="jsonl")
+            # abridged data as csv, md
+            abridged_table: pd.DataFrame = abridge_model_table(model_table)
+            write_model_table(abridged_table, model_table_path, format="csv")
+            write_model_table(abridged_table, model_table_path, format="md")
+    else:
+        # read the table from jsonl
+        model_table = pd.read_json(model_table_path, orient="records", lines=True)
 
     return model_table
 
