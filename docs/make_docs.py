@@ -582,7 +582,7 @@ def get_model_table(
         filter the model names by making them include this string. passed to `make_model_table()`. no filtering if `None`
         (defaults to `None`)
      - `**kwargs`
-        eventually passed to `get_model_info()`
+        passed to `make_model_table()`
 
     # Returns:
      - `pd.DataFrame`
@@ -636,7 +636,14 @@ def copy_demos(_app: Optional[Any] = None):
 
 def build_docs():
     """Build the docs."""
-    get_model_table(model_table_path=GENERATED_DIR / "model_table.jsonl", force_reload=True)
+    get_model_table(
+        model_table_path=GENERATED_DIR / "model_table.jsonl",
+        force_reload=True,
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        allow_except=True,  # TEMPORARY: until HF_TOKEN in secrets allows access to models:
+        # mistral-7b mistral-7b-instruct mistral-nemo-base-2407 mixtral mixtral-instruct
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    )
     copy_demos()
 
     # Generating docs
