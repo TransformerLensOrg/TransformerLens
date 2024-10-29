@@ -10,7 +10,7 @@ import warnings
 from copy import deepcopy
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Callable, Literal, Optional, Sequence
+from typing import Any, Callable, Literal, Optional, Sequence
 
 import pandas as pd  # type: ignore[import-untyped]
 import torch
@@ -18,8 +18,10 @@ import tqdm  # type: ignore[import-untyped]
 import yaml  # type: ignore[import-untyped]
 from muutils.dictmagic import TensorDictFormats, condense_tensor_dict
 from muutils.misc import shorten_numerical_to_str
-from transformers import AutoTokenizer  # type: ignore[import-untyped]
-from transformers import PreTrainedTokenizer
+from transformers import (
+    AutoTokenizer,  # type: ignore[import-untyped]
+    PreTrainedTokenizer,
+)
 
 import transformer_lens  # type: ignore[import-untyped]
 from transformer_lens import HookedTransformer, HookedTransformerConfig, loading
@@ -29,8 +31,6 @@ from transformer_lens.loading_from_pretrained import (  # type: ignore[import-un
 )
 
 DEVICE: torch.device = torch.device("meta")
-# forces everything to meta tensors
-torch.set_default_device(DEVICE)
 
 # disable the symlink warning
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -647,6 +647,45 @@ def build_docs():
         ],
         check=True,
     )
+
+def get_property(name, model_name):
+    """Retrieve a specific property of a pretrained model.
+
+    Args:
+        name (str): Name of the property to retrieve.
+        model_name (str): Name of the pretrained model.
+
+    Returns:
+        str: Value of the specified property.
+    """
+    cfg = get_config(model_name)
+
+    if name == "act_fn":
+        if cfg.attn_only:
+            return "attn_only"
+        if cfg.act_fn == "gelu_new":
+            return "gelu"
+        if cfg.act_fn == "gelu_fast":
+            return "gelu"
+        if cfg.act_fn == "solu_ln":
+            return "solu"
+        return cfg.act_fn
+    if name == "n_params":
+        n_params = cfg.n_params
+        if n_params < 1e4:
+            return f"{n_params/1e3:.1f}K"
+        if n_params < 1e6:
+            return f"{round(n_params/1e3)}K"
+        if n_params < 1e7:
+            return f"{n_params/1e6:.1f}M"
+        if n_params < 1e9:
+            return f"{round(n_params/1e6)}M"
+        if n_params < 1e10:
+            return f"{n_params/1e9:.1f}B"
+        if n_params < 1e12:
+            return f"{round(n_params/1e9)}B"
+        raise ValueError(f"Passed in {n_params} above 1T?")
+    return cfg.to_dict()[name]
 
 
 def docs_hot_reload():
