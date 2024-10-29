@@ -39,10 +39,6 @@ DEVICE: torch.device = torch.device("meta")
 # disable the symlink warning
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-
-_MODEL_TABLE_PATH: Path = Path("docs/model_table.jsonl")
-# where to save the model table
-
 try:
     HF_TOKEN = os.environ.get("HF_TOKEN", "")
     if not HF_TOKEN.startswith("hf_"):
@@ -263,6 +259,11 @@ def get_model_info(
         the format of the tensor shapes. one of "yaml", "json", "dict"
        (defaults to `"yaml"`)
     """
+    # set default device to meta, so that we don't actually allocate tensors
+    # this can't be done at the root level because it would break other tests when we import this file
+    # and it has to be done inside this function due to usage of multiprocessing
+    torch.set_default_device(DEVICE)
+
     # assumes the input is a default alias
     if model_name not in transformer_lens.loading.DEFAULT_MODEL_ALIASES:
         raise ValueError(f"Model name '{model_name}' not found in default aliases")
@@ -492,7 +493,7 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
 
 def write_model_table(
     model_table: pd.DataFrame,
-    path: Path = _MODEL_TABLE_PATH,
+    path: Path,
     format: OutputFormat = "jsonl",
     include_TL_version: bool = True,
     md_hf_links: bool = True,
@@ -555,7 +556,7 @@ def abridge_model_table(
 
 
 def get_model_table(
-    model_table_path: Union[Path, str] = _MODEL_TABLE_PATH,
+    model_table_path: Path,
     verbose: bool = True,
     force_reload: bool = True,
     do_write: bool = True,
@@ -566,9 +567,8 @@ def get_model_table(
     """get the model table either by generating or reading from jsonl file
 
     # Parameters:
-     - `model_table_path : Union[Path, str]`
+     - `model_table_path : Path`
         the path to the model table file, and the base name for the csv and md files
-        (defaults to `_MODEL_TABLE_PATH`)
      - `verbose : bool`
         whether to show progress bar
        (defaults to `True`)
@@ -589,9 +589,7 @@ def get_model_table(
         the model table. rows are models, columns are model attributes
     """
 
-    # convert to Path, and modify the name if a pattern is provided
-    model_table_path = Path(model_table_path)
-
+    # modify the name if a pattern is provided
     if model_names_pattern is not None:
         model_table_path = model_table_path.with_name(
             model_table_path.stem + f"-{model_names_pattern}"
@@ -638,7 +636,7 @@ def copy_demos(_app: Optional[Any] = None):
 
 def build_docs():
     """Build the docs."""
-    get_model_table()
+    get_model_table(model_table_path=GENERATED_DIR / "model_table.jsonl", force_reload=True)
     copy_demos()
 
     # Generating docs
@@ -696,7 +694,7 @@ def get_property(name, model_name):
 
 def docs_hot_reload():
     """Hot reload the docs."""
-    get_model_table()
+    get_model_table(model_table_path=GENERATED_DIR / "model_table.jsonl", force_reload=False)
     copy_demos()
 
     subprocess.run(
