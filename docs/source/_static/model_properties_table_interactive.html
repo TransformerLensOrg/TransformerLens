@@ -55,8 +55,9 @@
 
 		async function fetchVersion() {
 			try {
-				const response = await fetch('model_table/data.version');
-				return response.text().then(text => text.trim());
+				const response = await fetch('model_table.version');
+				// load the contents of the file as json
+				return response.json().then(json => json.version);
 			} catch (error) {
 				console.error('Could not fetch version: ', error);
 				return 'unknown';
