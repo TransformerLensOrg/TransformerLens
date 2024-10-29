@@ -129,10 +129,7 @@
     # All rules apart from base are shown explicitly below
     deprecateTypingAliases=true
     disableBytesTypePromotions=true
-    exclude = [
-        "*/**/*.py",
-        "!/transformer_lens/hook_points.py"
-    ]
+    exclude=["!/transformer_lens/hook_points.py", "*/**/*.py"]
     reportAssertAlwaysTrue=true
     reportConstantRedefinition=true
     reportDeprecated=true
@@ -188,4 +185,3 @@
     strictListInference=true
     strictParameterNoneValue=true
     strictSetInference=true
-    
