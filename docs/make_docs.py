@@ -162,7 +162,6 @@ def get_tensor_shapes(
     )
 
     try:
-
         # input shape for activations -- "847"~="bat", subtract 7 for the context window to make it unique
         input_shape: tuple[int, int] = (847, model.cfg.n_ctx - 7)
         # why? to replace the batch and seq_len dims with "batch" and "seq_len" in the yaml
@@ -286,10 +285,7 @@ def get_model_info(
     # search for model size in name
     param_count_from_name: str | None = None
     for part in parts:
-        if (
-            part[-1].lower() in ["m", "b", "k"]
-            and part[:-1].replace(".", "", 1).isdigit()
-        ):
+        if part[-1].lower() in ["m", "b", "k"] and part[:-1].replace(".", "", 1).isdigit():
             param_count_from_name = part
             break
 
@@ -309,11 +305,7 @@ def get_model_info(
     if include_cfg:
         # modify certain values to make them pretty-printable
         model_cfg_dict: dict = {
-            key: (
-                val
-                if key not in CONFIG_VALUES_PROCESS
-                else CONFIG_VALUES_PROCESS[key](val)
-            )
+            key: (val if key not in CONFIG_VALUES_PROCESS else CONFIG_VALUES_PROCESS[key](val))
             for key, val in model_cfg.to_dict().items()
         }
 
@@ -339,9 +331,7 @@ def get_model_info(
                 # don't need to download the tokenizer
                 model_cfg_copy.tokenizer_name = None
             # init the fake model
-            model: HookedTransformer = HookedTransformer(
-                model_cfg_copy, move_to_device=True
-            )
+            model: HookedTransformer = HookedTransformer(model_cfg_copy, move_to_device=True)
             # HACK: use https://huggingface.co/huggyllama to get tokenizers for original llama models
             if model.cfg.tokenizer_name in NON_HF_HOSTED_MODEL_NAMES:
                 model.set_tokenizer(
@@ -415,16 +405,12 @@ def make_model_table(
     # filter by regex pattern if provided
     if model_names_pattern:
         model_names = [
-            model_name
-            for model_name in model_names
-            if model_names_pattern in model_name
+            model_name for model_name in model_names if model_names_pattern in model_name
         ]
 
     if parallelize:
         # parallel
-        n_processes: int = (
-            parallelize if int(parallelize) > 1 else multiprocessing.cpu_count()
-        )
+        n_processes: int = parallelize if int(parallelize) > 1 else multiprocessing.cpu_count()
         if verbose:
             print(f"running in parallel with {n_processes = }")
         with multiprocessing.Pool(processes=n_processes) as pool:
@@ -457,28 +443,20 @@ def make_model_table(
                 except Exception as e:
                     if allow_except:
                         # warn and continue if we allow exceptions
-                        warnings.warn(
-                            f"Failed to get model info for '{model_name}': {e}"
-                        )
+                        warnings.warn(f"Failed to get model info for '{model_name}': {e}")
                         model_data.append((model_name, e))
                     else:
                         # raise exception right away if we don't allow exceptions
                         # note that this differs from the parallel version, which will only except at the end
-                        raise ValueError(
-                            f"Failed to get model info for '{model_name}'"
-                        ) from e
+                        raise ValueError(f"Failed to get model info for '{model_name}'") from e
 
     # figure out what to do with failed models
     failed_models: dict[str, Exception] = {
-        model_name: result
-        for model_name, result in model_data
-        if isinstance(result, Exception)
+        model_name: result for model_name, result in model_data if isinstance(result, Exception)
     }
     msg: str = (
         f"Failed to get model info for {len(failed_models)}/{len(model_names)} models: {failed_models}\n"
-        + "\n".join(
-            f"\t'{model_name}': {expt}" for model_name, expt in failed_models.items()
-        )
+        + "\n".join(f"\t'{model_name}': {expt}" for model_name, expt in failed_models.items())
     )
     if not allow_except:
         if failed_models:
@@ -528,9 +506,7 @@ def write_model_table(
 
             tl_version = version("transformer_lens")
         except PackageNotFoundError as e:
-            warnings.warn(
-                f"Failed to get transformer_lens version: package not found\n{e}"
-            )
+            warnings.warn(f"Failed to get transformer_lens version: package not found\n{e}")
         except Exception as e:
             warnings.warn(f"Failed to get transformer_lens version: {e}")
 
@@ -539,9 +515,7 @@ def write_model_table(
 
     match format:
         case "jsonl":
-            model_table.to_json(
-                path.with_suffix(".jsonl"), orient="records", lines=True
-            )
+            model_table.to_json(path.with_suffix(".jsonl"), orient="records", lines=True)
         case "csv":
             model_table.to_csv(path.with_suffix(".csv"), index=False)
         case "md":
