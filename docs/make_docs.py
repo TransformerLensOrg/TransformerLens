@@ -350,9 +350,7 @@ def get_model_info(
                     )
                 got_model = True
             except Exception as e:
-                msg: str = (
-                    f"Failed to init model '{model_name}', can't get tensor shapes or tokenizer info"
-                )
+                msg: str = f"Failed to init model '{model_name}', can't get tensor shapes or tokenizer info"
                 if allow_warn:
                     warnings.warn(f"{msg}:\n{e}")
                 else:
