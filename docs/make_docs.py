@@ -11,7 +11,7 @@ import warnings
 from copy import deepcopy
 from functools import lru_cache, partial
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Sequence
+from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 import pandas as pd  # type: ignore[import-untyped]
 import torch
@@ -288,7 +288,7 @@ def get_model_info(
             break
 
     # search for model size in name
-    param_count_from_name: str | None = None
+    param_count_from_name: Optional[str] = None
     for part in parts:
         if part[-1].lower() in ["m", "b", "k"] and part[:-1].replace(".", "", 1).isdigit():
             param_count_from_name = part
@@ -384,8 +384,8 @@ def get_model_info(
 
 
 def safe_try_get_model_info(
-    model_name: str, kwargs: dict | None = None
-) -> tuple[str, dict | Exception]:
+    model_name: str, kwargs: Optional[dict] = None
+) -> tuple[str, Union[dict, Exception]]:
     """for parallel processing, to catch exceptions and return the exception instead of raising them"""
     if kwargs is None:
         kwargs = {}
@@ -399,13 +399,13 @@ def safe_try_get_model_info(
 def make_model_table(
     verbose: bool,
     allow_except: bool = False,
-    parallelize: bool | int = True,
-    model_names_pattern: str | None = None,
+    parallelize: Union[bool, int] = True,
+    model_names_pattern: Optional[str] = None,
     **kwargs,
 ) -> pd.DataFrame:
     """make table of all models. kwargs passed to `get_model_info()`"""
     model_names: list[str] = list(transformer_lens.loading.DEFAULT_MODEL_ALIASES)
-    model_data: list[tuple[str, dict | Exception]] = list()
+    model_data: list[tuple[str, Union[dict, Exception]]] = list()
 
     # filter by regex pattern if provided
     if model_names_pattern:
@@ -420,7 +420,7 @@ def make_model_table(
             print(f"running in parallel with {n_processes=}")
         with multiprocessing.Pool(processes=n_processes) as pool:
             # Use imap for ordered results, wrapped with tqdm for progress bar
-            imap_results: list[tuple[str, dict | Exception]] = list(
+            imap_results: list[tuple[str, Union[dict, Exception]]] = list(
                 tqdm.tqdm(
                     pool.imap(
                         partial(safe_try_get_model_info, **kwargs),
@@ -555,18 +555,18 @@ def abridge_model_table(
 
 
 def get_model_table(
-    model_table_path: Path | str = _MODEL_TABLE_PATH,
+    model_table_path: Union[Path, str] = _MODEL_TABLE_PATH,
     verbose: bool = True,
     force_reload: bool = True,
     do_write: bool = True,
-    parallelize: bool | int = True,
-    model_names_pattern: str | None = None,
+    parallelize: Union[bool, int] = True,
+    model_names_pattern: Optional[str] = None,
     **kwargs,
 ) -> pd.DataFrame:
     """get the model table either by generating or reading from jsonl file
 
     # Parameters:
-     - `model_table_path : Path|str`
+     - `model_table_path : Union[Path, str]`
         the path to the model table file, and the base name for the csv and md files
         (defaults to `_MODEL_TABLE_PATH`)
      - `verbose : bool`
@@ -578,7 +578,7 @@ def get_model_table(
      - `do_write : bool`
         whether to write the table to disk, if generating
        (defaults to `True`)
-     - `model_names_pattern : str|None`
+     - `model_names_pattern : Optional[str]`
         filter the model names by making them include this string. passed to `make_model_table()`. no filtering if `None`
         (defaults to `None`)
      - `**kwargs`
