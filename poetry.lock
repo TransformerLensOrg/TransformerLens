@@ -2210,6 +2210,24 @@ files = [
 dill = ">=0.3.8"
 
 [[package]]
+name = "muutils"
+version = "0.6.15"
+description = "miscellaneous python utilities"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "muutils-0.6.15-py3-none-any.whl", hash = "sha256:5a12944dd13009a2fa15fd8f8c0d4baf6996cb554e0ddc513f1ba5b05b513e90"},
+    {file = "muutils-0.6.15.tar.gz", hash = "sha256:fa3d08cd18471d6a1feec4ed7f6517a833cd70e6a2b046b0f5b62c8f7b811a19"},
+]
+
+[package.extras]
+array = ["jaxtyping (>=0.2.12)", "numpy (>=1.24.4,<2)", "torch (>=1.13.1)"]
+array-nb-zanj = ["ipython (>=8.0.0)", "jaxtyping (>=0.2.12)", "numpy (>=1.24.4,<2)", "torch (>=1.13.1)", "zanj (>=0.3.0)"]
+array-no-torch = ["jaxtyping (>=0.2.12)", "numpy (>=1.24.4,<2)"]
+notebook = ["ipython (>=8.0.0)"]
+zanj = ["zanj (>=0.3.0)"]
+
+[[package]]
 name = "mypy"
 version = "1.9.0"
 description = "Optional static typing for Python"
@@ -5379,4 +5397,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "27842470e162c9c697bc539c9bcea00d319604f59fa2ccf84b9f1e655d5dab1d"
+content-hash = "bb4608a85ee0577e407aeb683180be94d0437506d1abb8140f349d7a8fb873a2"
