@@ -9,6 +9,8 @@ import pandas as pd
 
 from transformer_lens import loading
 
+# temp comment, just run the tests in CI
+
 # Docs Directories
 CURRENT_DIR = Path(__file__).parent
 SOURCE_PATH = CURRENT_DIR / "../docs/source"
