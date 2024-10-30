@@ -72,33 +72,47 @@ def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
 
     return state_dict
 
-
-# class NEOConverter(BaseWeightConversion):
+class MixtralWeightConversion:
     
-#     def __init__(self):
-#         super().__init__({
-#             "embed.W_E": "model.embed_tokens.weight",
-#             "pos_embed.W_pos": "transformer.wpe.weight",
-#             "ln_final.w": "transformer.ln_f.weight",
-#             "unembed.W_U": "lm_head.weight.T",
-#             "blocks" : {
-#                 "path": "model.layers",
-#                 "conversions": {
-#                     "ln1.w": "input_layernorm.weight",
-#                     "attn.W_Q": {
-#                         "path": self_attn.q_proj.weight,
-#                         "rearrange": {
-#                             "einops": "(n h) m->n m h",
-#                             "input": cfg.n_heads,
-#                         }
-#                     },
-#                     "attn.b_O": torch.zeros(cfg.d_model, dtype=cfg.dtype),
-                    
-#                 }
-#             }),
-#             f"blocks.{l}.attn.W_Q": {
-#                 "key": "transformer.h[l].attn.attention.q_proj.weight",
-#                 "transform": 
-#             },
-#             f"blocks.{l}.attn.b_Q": torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
-#         })
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        super({
+            "embed.W_E": WeightConversionStep.direct("embed_tokens.weight"),
+            "pos_embed.W_pos": WeightConversionStep.direct("wpe.weight"),
+            "ln_final.w": WeightConversionStep.direct("ln_f.weight"),
+            "unembed.W_U": WeightConversionStep.direct("lm_head.weight.T"),
+            "unembed.b_U": WeightConversionStep.zeroes(cfg.d_vocab),
+            "blocks": WeigntConversionStep.set("layers", cfg.n_layers, {
+                "ln1.w": WeightConversionStep.direct("input_layernorm.weight"),
+                "attn.W_Q": WeightConversionStep.rearrange(
+                    "self_attn.q_proj.weight",
+                    "(n h) m->n m h",
+                    n=cfg.n_heads
+                ),
+                "attn._W_K": WeightConversionStep.rearrange(
+                    "self_attn.k_proj.weight",
+                    "(n h) m->n m h",
+                    n=cfg.n_key_value_heads
+                ),
+                "attn._W_V": WeightConversionStep.rearrange(
+                    "self_attn.v_proj.weight",
+                    "(n h) m->n m h",
+                    n=cfg.n_key_value_heads
+                ),
+                "attn.W_O" : WeightConversionStep.rearrange(
+                    "self_attn.o_proj.weight",
+                    "m (n h)->n h m",
+                    n=cfg.n_heads
+                ),
+                "attn.b_O": WeightConversionStep.zeroes(cfg.d_model),
+                "attn.b_Q": WeightConversionStep.zeroes(cfg.n_heads, cfg.d_head),
+                "attn._b_K": WeightConversionStep.zeroes(cfg.n_key_value_heads, cfg.d_head),
+                "attn._b_V": WeightConversionStep.zeroes(cfg.n_key_value_heads, cfg.d_head),
+                "ln2.w": WeightConversionStep.direct("post_attention_layernorm.weight"),
+                "mlp.W_gate.weight": WeightConversionStep.direct("block_sparse_moe.gate.weight"),
+                "mlp.experts": WeigntConversionStep.set("block_sparse_moe.experts", cfg.num_experts, {
+                    "W_in.weight": WeightConversionStep.direct("w3.weight"),
+                    "W_gate.weight": WeightConversionStep.direct("w1.weight"),
+                    "W_out.weight": WeightConversionStep.direct("w2.weight"),
+                }),
+            })
+        })
