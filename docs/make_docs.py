@@ -635,7 +635,7 @@ def copy_demos(_app: Optional[Any] = None):
 def build_docs():
     """Build the docs."""
     get_model_table(
-        model_table_path=GENERATED_DIR / "model_table.jsonl",
+        model_table_path=GENERATED_DIR / "model_properties_table.jsonl",
         force_reload=True,
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         allow_except=True,  # TEMPORARY: until HF_TOKEN in secrets allows access to models:
@@ -699,7 +699,9 @@ def get_property(name, model_name):
 
 def docs_hot_reload():
     """Hot reload the docs."""
-    get_model_table(model_table_path=GENERATED_DIR / "model_table.jsonl", force_reload=False)
+    get_model_table(
+        model_table_path=GENERATED_DIR / "model_properties_table.jsonl", force_reload=False
+    )
     copy_demos()
 
     subprocess.run(
