@@ -2,6 +2,7 @@ import einops
 import torch
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.pretrained.conversion_utils.conversion_steps import DirectWeightConversion
 
 
 def convert_mixtral_weights(mixtral, cfg: HookedTransformerConfig):
@@ -76,13 +77,13 @@ class MixtralWeightConversion:
     
     def __init__(self, cfg: HookedTransformerConfig) -> None:
         super({
-            "embed.W_E": WeightConversionStep.direct("embed_tokens.weight"),
-            "pos_embed.W_pos": WeightConversionStep.direct("wpe.weight"),
-            "ln_final.w": WeightConversionStep.direct("ln_f.weight"),
-            "unembed.W_U": WeightConversionStep.direct("lm_head.weight.T"),
+            "embed.W_E": DirectWeightConversion("embed_tokens.weight"),
+            "pos_embed.W_pos": DirectWeightConversion("wpe.weight"),
+            "ln_final.w": DirectWeightConversion("ln_f.weight"),
+            "unembed.W_U": DirectWeightConversion("lm_head.weight.T"),
             "unembed.b_U": WeightConversionStep.zeroes(cfg.d_vocab),
             "blocks": WeigntConversionStep.set("layers", cfg.n_layers, {
-                "ln1.w": WeightConversionStep.direct("input_layernorm.weight"),
+                "ln1.w": DirectWeightConversion("input_layernorm.weight"),
                 "attn.W_Q": WeightConversionStep.rearrange(
                     "self_attn.q_proj.weight",
                     "(n h) m->n m h",
@@ -107,12 +108,12 @@ class MixtralWeightConversion:
                 "attn.b_Q": WeightConversionStep.zeroes(cfg.n_heads, cfg.d_head),
                 "attn._b_K": WeightConversionStep.zeroes(cfg.n_key_value_heads, cfg.d_head),
                 "attn._b_V": WeightConversionStep.zeroes(cfg.n_key_value_heads, cfg.d_head),
-                "ln2.w": WeightConversionStep.direct("post_attention_layernorm.weight"),
-                "mlp.W_gate.weight": WeightConversionStep.direct("block_sparse_moe.gate.weight"),
+                "ln2.w": DirectWeightConversion("post_attention_layernorm.weight"),
+                "mlp.W_gate.weight": DirectWeightConversion("block_sparse_moe.gate.weight"),
                 "mlp.experts": WeigntConversionStep.set("block_sparse_moe.experts", cfg.num_experts, {
-                    "W_in.weight": WeightConversionStep.direct("w3.weight"),
-                    "W_gate.weight": WeightConversionStep.direct("w1.weight"),
-                    "W_out.weight": WeightConversionStep.direct("w2.weight"),
+                    "W_in.weight": DirectWeightConversion("w3.weight"),
+                    "W_gate.weight": DirectWeightConversion("w1.weight"),
+                    "W_out.weight": DirectWeightConversion("w2.weight"),
                 }),
             })
         })
