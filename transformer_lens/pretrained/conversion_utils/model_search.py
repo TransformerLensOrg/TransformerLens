@@ -5,6 +5,6 @@ def find_weight(needle: str, haystack):
     current_level = getattr(haystack, first_key)
     
     if len(needle_levels) > 0:
-        return search_next_level(".".join(needle_levels), current_level)
+        return find_weight(".".join(needle_levels), current_level)
     
     return current_level
