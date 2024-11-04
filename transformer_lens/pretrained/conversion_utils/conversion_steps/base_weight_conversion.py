@@ -6,3 +6,6 @@ class BaseWeightConversion:
         
     def convert(self, remote_field):
         raise Exception(f"The conversion function for {type(self).__name__} needs to be implemented.")
+    
+
+FIELD_SET = dict[str, BaseWeightConversion]

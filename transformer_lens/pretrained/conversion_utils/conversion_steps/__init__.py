@@ -1,2 +1,5 @@
-from .base_weight_conversion import BaseWeightConversion
+from .base_weight_conversion import BaseWeightConversion, FIELD_SET
+from .zeros_weight_conversion import ZerosWeightConversion
 from .direct_weight_conversion import DirectWeightConversion
+from .rearrange_weight_conversion import RearrangeWeightConversion
+from .weight_conversion_set import WeightConversionSet

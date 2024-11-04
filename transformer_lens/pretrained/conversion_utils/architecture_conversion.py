@@ -1,9 +1,8 @@
 from typing import List
 
-from .conversion_steps.base_weight_conversion import BaseWeightConversion
+from .conversion_steps.base_weight_conversion import BaseWeightConversion, FIELD_SET
 
 
-FIELD_SET = dict[str, BaseWeightConversion]
 
 class ArchitectureConversion:
     def __init__(self, fields: FIELD_SET) -> None:
