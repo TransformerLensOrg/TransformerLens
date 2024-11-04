@@ -489,13 +489,22 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
     return df_new
 
 
+MD_TABLE_HEARDER: str = """---
+title: Model Properties Table
+---
+# Model Properties Table
+
+also see the [interactive model table](../_static/model_properties_table_interactive.html)
+"""
+
+
 def write_model_table(
     model_table: pd.DataFrame,
     path: Path,
     format: OutputFormat = "jsonl",
     include_TL_version: bool = True,
     md_hf_links: bool = True,
-    md_header: str = "# Model Properties Table\nalso see the [interactive model table](../_static/model_properties_table_interactive.html)\n",
+    md_header: str = MD_TABLE_HEARDER,
 ) -> None:
     """write the model table to disk in the specified format"""
 
@@ -526,7 +535,9 @@ def write_model_table(
         # convert huggingface name to url
         if md_hf_links:
             model_table_processed = huggingface_name_to_url(model_table_processed)
-        model_table_processed.to_markdown(path.with_suffix(".md"), index=False)
+        model_table_md_text: str = md_header + model_table_processed.to_markdown(index=False)
+        with open(path.with_suffix(".md"), "w") as f:
+            f.write(model_table_md_text)
     else:
         raise KeyError(f"Invalid format: {format}")
 
