@@ -1,9 +1,9 @@
 from unittest import mock
 
 import torch
-from transformer_lens.pretrained.conversion_utils.model_search import find_weight
+from transformer_lens.pretrained.conversion_utils.model_search import find_property
 
-def test_find_weight():
+def test_find_property():
     
     expected = torch.rand((1, 1, 1))
     
@@ -12,7 +12,7 @@ def test_find_weight():
     transformers_model.transformer.wpe = mock.Mock()
     transformers_model.transformer.wpe.weight = expected
     
-    result = find_weight("transformer.wpe.weight", transformers_model)
+    result = find_property("transformer.wpe.weight", transformers_model)
     
     assert result == expected
     
