@@ -491,6 +491,7 @@ def huggingface_name_to_url(df: pd.DataFrame) -> pd.DataFrame:
 
 MD_TABLE_HEARDER: str = """---
 title: Model Properties Table
+hide-toc: true
 ---
 # Model Properties Table
 
