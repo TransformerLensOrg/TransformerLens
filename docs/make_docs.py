@@ -649,10 +649,6 @@ def build_docs():
     get_model_table(
         model_table_path=GENERATED_DIR / "model_properties_table.jsonl",
         force_reload=True,
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        allow_except=True,  # TEMPORARY: until HF_TOKEN in secrets allows access to models:
-        # mistral-7b mistral-7b-instruct mistral-nemo-base-2407 mixtral mixtral-instruct
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     )
     copy_demos()
 
