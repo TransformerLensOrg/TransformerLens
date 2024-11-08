@@ -1208,6 +1208,8 @@ class HookedTransformer(HookedRootModule):
                 results. To change the default behavior to False, pass in default_prepend_bos=False.
                 Note that you can also locally override the default behavior by passing in
                 prepend_bos=True/False when you call a method that processes the input string.
+                If model is part of the Bloom model family, default_prepend_bos is set to False
+                by default and has to be locally overriden to True when you call a method if needed.
             from_pretrained_kwargs: Any other optional argument passed to
                 HuggingFace's from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to
                 other HuggingFace functions when compatible. For some models or arguments it doesn't
