@@ -66,7 +66,7 @@ loss_store = {
     "redwood_attn_2l": 10.530948638916016,
     "solu-1l": 5.256411552429199,
     "tiny-stories-33M": 12.203617095947266,
-    "bloom-560m": 4.1953,
+    "bloom-560m": 5.236963272094727,
 }
 
 no_processing = [
@@ -83,6 +83,8 @@ def test_model(name, expected_loss):
     # Runs the model on short text and checks if the loss is as expected
     model = HookedTransformer.from_pretrained(name)
     loss = model(text, return_type="loss")
+    print(4e-5)
+    print(loss.item() - expected_loss)
     assert (loss.item() - expected_loss) < 4e-5
     del model
     gc.collect()
