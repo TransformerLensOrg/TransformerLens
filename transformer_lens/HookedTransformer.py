@@ -1267,7 +1267,8 @@ class HookedTransformer(HookedRootModule):
         # Get the model name used in HuggingFace, rather than the alias.
         official_model_name = loading.get_official_model_name(model_name)
 
-        if("bloom" in official_model_name):
+        # Set prepend_bos to False by default if the model is part of the bloom model family
+        if "bloom" in official_model_name:
             default_prepend_bos = False
 
         # Load the config into an HookedTransformerConfig object. If loading from a
