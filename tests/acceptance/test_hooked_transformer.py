@@ -180,20 +180,17 @@ def test_similarity_with_hf_model_with_kv_cache_activated_bloom():
     hf_model = AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m")
     hf_tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m")
 
-    max_new_tokens = 10
-
     output_tf = tf_model.generate(
-        text, do_sample=False, use_past_kv_cache=True, verbose=False, max_new_tokens=max_new_tokens
+        text, do_sample=False, use_past_kv_cache=True, verbose=False, max_new_tokens=10
     )
     output_hf_tokens = hf_model.generate(
         hf_tokenizer(text, return_tensors="pt").input_ids,
         do_sample=False,
-        max_length=len(text) + max_new_tokens,
+        max_length=14,
     )
     output_hf_str = hf_tokenizer.decode(output_hf_tokens[0], skip_special_tokens=True)
 
     assert output_tf == output_hf_str
-
 
 def check_norm_folding(
     model_name,
