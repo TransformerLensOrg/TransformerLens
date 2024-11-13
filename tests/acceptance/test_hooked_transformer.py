@@ -176,7 +176,9 @@ def test_from_pretrained_revision():
 
 
 def test_bloom_similarity_with_hf_model_with_kv_cache_activated():
-    tf_model = HookedTransformer.from_pretrained("bigscience/bloom-560m", default_prepend_bos=False, device="cpu")
+    tf_model = HookedTransformer.from_pretrained(
+        "bigscience/bloom-560m", default_prepend_bos=False, device="cpu"
+    )
     hf_model = AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m")
     hf_tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m")
 
@@ -191,6 +193,7 @@ def test_bloom_similarity_with_hf_model_with_kv_cache_activated():
     output_hf_str = hf_tokenizer.decode(output_hf_tokens[0], skip_special_tokens=True)
 
     assert output_tf == output_hf_str
+
 
 def check_norm_folding(
     model_name,
