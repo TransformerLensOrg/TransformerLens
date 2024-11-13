@@ -175,8 +175,8 @@ def test_from_pretrained_revision():
         raise AssertionError("Should have raised an error")
 
 
-def test_similarity_with_hf_model_with_kv_cache_activated_bloom():
-    tf_model = HookedTransformer.from_pretrained("bigscience/bloom-560m", default_prepend_bos=False)
+def test_bloom_similarity_with_hf_model_with_kv_cache_activated():
+    tf_model = HookedTransformer.from_pretrained("bigscience/bloom-560m", default_prepend_bos=False, device="cpu")
     hf_model = AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m")
     hf_tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m")
 
@@ -186,7 +186,7 @@ def test_similarity_with_hf_model_with_kv_cache_activated_bloom():
     output_hf_tokens = hf_model.generate(
         hf_tokenizer(text, return_tensors="pt").input_ids,
         do_sample=False,
-        max_length=14,
+        max_length=13,
     )
     output_hf_str = hf_tokenizer.decode(output_hf_tokens[0], skip_special_tokens=True)
 
