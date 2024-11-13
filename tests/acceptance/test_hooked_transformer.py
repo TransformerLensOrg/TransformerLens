@@ -186,7 +186,7 @@ def test_bloom_similarity_with_hf_model_with_kv_cache_activated():
     output_hf_tokens = hf_model.generate(
         hf_tokenizer(text, return_tensors="pt").input_ids,
         do_sample=False,
-        max_length=13,
+        max_new_tokens=10,
     )
     output_hf_str = hf_tokenizer.decode(output_hf_tokens[0], skip_special_tokens=True)
 
