@@ -1202,13 +1202,13 @@ class HookedTransformer(HookedRootModule):
                 remains exactly the same, and so is just broadcast across the destination positions.
             default_prepend_bos: Default behavior of whether to prepend the BOS
                 token when the methods of HookedTransformer process input text to tokenize (only
-                when input is a string). 
+                when input is a string).
                 Resolution order for default_prepend_bos:
                 1. If user passes value explicitly, use that value
                 2. Model-specific default from cfg_dict if it exists (e.g. for bloom models it's False)
                 3. Global default (True)
 
-                Even for models not explicitly trained with the BOS token, heads often use the first position as a resting position 
+                Even for models not explicitly trained with the BOS token, heads often use the first position as a resting position
                 and accordingly lose information from the first token, so this empirically seems to give better
                 results. Note that you can also locally override the default behavior by passing in
                 prepend_bos=True/False when you call a method that processes the input string.

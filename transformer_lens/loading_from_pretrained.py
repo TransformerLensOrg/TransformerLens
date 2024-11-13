@@ -1536,7 +1536,7 @@ def get_pretrained_model_config(
 
             Even for models not explicitly trained with the BOS token, heads often use the
             first position as a resting position and accordingly lose information from the first token,
-            so this empirically seems to give better results. Note that you can also locally override the default behavior 
+            so this empirically seems to give better results. Note that you can also locally override the default behavior
             by passing in prepend_bos=True/False when you call a method that processes the input string.
         dtype (torch.dtype, optional): The dtype to load the TransformerLens model in.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
@@ -1621,7 +1621,7 @@ def get_pretrained_model_config(
     elif "default_prepend_bos" not in cfg_dict:
         # No config value or user override, set default value (True)
         cfg_dict["default_prepend_bos"] = True
-        
+
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
     if first_n_layers is not None:
