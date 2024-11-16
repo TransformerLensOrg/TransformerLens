@@ -229,8 +229,9 @@ class AbstractAttention(ABC, nn.Module):
                     self.cfg.n_heads, key_ctx, self.cfg.device
                 )
 
+            # Take the last query_ctx positions so it also works with past_kv_cache
             attn_scores += self.alibi[
-                :, :query_ctx, :key_ctx
+                :, -query_ctx:, :key_ctx
             ]  # [batch, head_index, query_pos, key_pos]
         elif self.cfg.positional_embedding_type == "relative_positional_bias":
             if position_bias is None:
