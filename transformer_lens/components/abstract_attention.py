@@ -456,9 +456,16 @@ class AbstractAttention(ABC, nn.Module):
         final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
-            einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
+
+            # Add singleton dimensions to the attention mask to match the shape of the final mask
+            attention_mask = einops.rearrange(
+                attention_mask, "batch offset_pos -> batch 1 1 offset_pos"
+            )
+
             final_mask = final_mask.to(attention_mask.device)
-            final_mask = einops.einsum(final_mask, attention_mask, einsum_str).bool()
+
+            # Element-wise multiplication of the final mask and the attention mask and cast to boolean
+            final_mask = (final_mask * attention_mask).bool()  # [batch, head, pos, offset_pos]
 
         attn_scores = attn_scores.to(final_mask.device)
         return torch.where(final_mask, attn_scores, self.IGNORE)
