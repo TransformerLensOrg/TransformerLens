@@ -690,7 +690,11 @@ class AbstractAttention(ABC, nn.Module):
             n_heads, device
         )
 
-        # The ALiBi bias is then m * slope_matrix
-        alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
+        # Add singleton dimensions to make shapes compatible for broadcasting:
+        slope = einops.rearrange(slope, "query key -> 1 query key")
+        multipliers = einops.rearrange(multipliers, "head_idx -> head_idx 1 1")
+
+        # Element-wise multiplication of the slope and multipliers
+        alibi_bias = multipliers * slope
 
         return alibi_bias
