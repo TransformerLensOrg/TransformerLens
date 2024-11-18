@@ -5,7 +5,7 @@ import torch
 from transformer_lens.pretrained.conversion_utils.conversion_steps.direct_weight_conversion import DirectWeightConversion
 
 
-def test_base_weight_conversion_convert_throws_error():
+def test_direct_weight_conversion():
     
     conversion = DirectWeightConversion("transformer.wpe.weight")
     

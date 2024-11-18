@@ -5,7 +5,7 @@ import torch
 from transformer_lens.pretrained.conversion_utils.conversion_steps.rearrange_weight_conversion import RearrangeWeightConversion
 
 
-def test_base_weight_conversion_convert_throws_error():
+def test_rearrange_weight_conversion():
     
     conversion = RearrangeWeightConversion("transformer.wpe.weight", "(n h) m->n m h", n=8)
     
