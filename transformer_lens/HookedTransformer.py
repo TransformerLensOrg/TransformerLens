@@ -1925,9 +1925,17 @@ class HookedTransformer(HookedRootModule):
             # Factors the bias to be consistent.
             b_V = state_dict[f"blocks.{l}.attn.b_V"]
             b_O = state_dict[f"blocks.{l}.attn.b_O"]
-            effective_bias = b_O + einsum(
-                "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
-            )
+
+            # Add singleton dimension for broadcasting
+            b_V_expanded = einops.rearrange(b_V, "head_index d_head -> head_index d_head 1")
+
+            # Element-wise multiplication of b_V and W_O
+            b_V_times_W_O = b_V_expanded * W_O
+
+            # Sum over d_head and head_index dimensions
+            b_V_contribution = b_V_times_W_O.sum(1).sum(0)
+
+            effective_bias = b_O + b_V_contribution
             state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros_like(b_V)
             state_dict[f"blocks.{l}.attn.b_O"] = effective_bias
 
