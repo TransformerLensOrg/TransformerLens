@@ -10,6 +10,6 @@ class RearrangeWeightConversion(BaseWeightConversion):
         self.pattern = pattern
         self.axes_lengths = axes_lengths
         
-    def convert(self, remote_model):
-        field = find_property(self.original_key, remote_model)
+    def convert(self, remote_weights: dict):
+        field = find_property(self.original_key, remote_weights)
         return einops.rearrange(field, self.pattern, **self.axes_lengths)

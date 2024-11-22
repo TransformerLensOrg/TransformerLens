@@ -15,8 +15,8 @@ class ArithmeticWeightConversion(BaseWeightConversion):
         self.operation = operation
         self.value = value
     
-    def convert(self, remote_field):
-        field = find_property(self.original_key, remote_field)
+    def convert(self, remote_weights: dict):
+        field = find_property(self.original_key, remote_weights)
         match self.operation:
             case OperationTypes.ADDITION:
                 return field + self.value

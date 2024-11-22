@@ -6,5 +6,5 @@ class ZerosWeightConversion(BaseWeightConversion):
     def __init__(self, *size: int):
         self.size = size
     
-    def convert(self, remote_field):
+    def convert(self, remote_weights: dict):
         return torch.zeros(self.size)

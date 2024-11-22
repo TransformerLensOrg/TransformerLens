@@ -7,8 +7,8 @@ class WeightConversionSet(BaseWeightConversion):
         super().__init__(original_key)
         self.fields = fields
     
-    def convert(self, remote_model):
-        modules = find_property(self.original_key, remote_model)
+    def convert(self, remote_weights: dict):
+        modules = find_property(self.original_key, remote_weights)
         result = []
         for module in modules:
             field_set = {}
