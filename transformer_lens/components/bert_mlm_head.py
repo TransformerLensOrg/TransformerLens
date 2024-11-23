@@ -4,9 +4,9 @@ This module contains all the component :class:`BertMLMHead`.
 """
 from typing import Dict, Union
 
+import einops
 import torch
 import torch.nn as nn
-import einops
 from jaxtyping import Float
 
 from transformer_lens.components import LayerNorm
