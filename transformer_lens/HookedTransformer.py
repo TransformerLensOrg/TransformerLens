@@ -30,7 +30,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import tqdm.auto as tqdm
-from fancy_einsum import einsum
 from jaxtyping import Float, Int
 from packaging import version
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
