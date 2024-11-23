@@ -141,7 +141,7 @@ If you have issues, questions, feature requests or bug reports, please search th
 it's already been answered, and if not please raise an issue!
 
 You're also welcome to join the open source mech interp community on
-[Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-1qosyh8g3-9bF3gamhLNJiqCL_QqLFrA).
+[Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-2n26nfoh1-TzMHrzyW6HiOsmCESxXtyw).
 Please use issues for concrete discussions about the package, and Slack for higher bandwidth
 discussions about eg supporting important new use cases, or if you want to make substantial
 contributions to the library and want a maintainer's opinion. We'd also love for you to come and

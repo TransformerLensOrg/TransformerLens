@@ -181,6 +181,18 @@ class HookedTransformerConfig:
         output_logits_soft_cap (float): An optional softcap for output logits, currently only used
             in Gemma-2 (see attn_scores_soft_cap for details). Defaults to -1.0, which means not
             set.
+        use_NTK_by_parts_rope (bool): Whether to apply the "NTK-by-parts" method when using Rotary
+            Positional Embedding. This method adjusts the interpolation based on frequency factors
+            for different parts of the hidden dimensions. See Section 3.2 in
+            https://arxiv.org/pdf/2309.00071 for details. Defaults to False.
+        NTK_by_parts_low_freq_factor (float): The threshold applied to low-frequency hidden
+            dimensions during interpolation when using the "NTK-by-parts" method. Defaults to 1.0.
+        NTK_by_parts_high_freq_factor (float): The threshold applied to high-frequency hidden
+            dimensions during interpolation in the "NTK-by-parts" method. Defaults to 4.0.
+        NTK_by_parts_factor (float): The overall factor used in the "NTK-by-parts" method that
+            affects the rate of change between low and high-frequency interpolation strategies.
+            Defaults to 8.0.
+
 
     """
 
@@ -246,6 +258,10 @@ class HookedTransformerConfig:
     use_normalization_before_and_after: bool = False
     attn_scores_soft_cap: float = -1.0
     output_logits_soft_cap: float = -1.0
+    use_NTK_by_parts_rope: bool = False
+    NTK_by_parts_low_freq_factor: float = 1.0
+    NTK_by_parts_high_freq_factor: float = 4.0
+    NTK_by_parts_factor: float = 8.0
 
     def __post_init__(self):
         if self.n_heads == -1:
