@@ -6,7 +6,6 @@ Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
 
 from typing import Optional, Union
 
-import fancy_einsum as einsum
 import torch
 from typeguard import typechecked
 from typing_extensions import Literal
