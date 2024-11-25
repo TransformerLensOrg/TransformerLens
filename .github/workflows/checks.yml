@@ -13,7 +13,7 @@ on:
       - "!*.md"
       - "!.github/**"
       - ".github/workflows/checks.yml" # Still include current workflow
-  pull_request:
+  pull_request_target:
     branches:
       - main
       - dev*
@@ -70,7 +70,7 @@ jobs:
       - name: Unit Test
         run: make unit-test
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Acceptance Test
         run: make acceptance-test
       - name: Build check
@@ -109,7 +109,7 @@ jobs:
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Build check
         run: poetry build
       - name: Upload Coverage Report Artifact
@@ -199,7 +199,7 @@ jobs:
       - name: Build Docs
         run: poetry run build-docs
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
         uses: actions/upload-artifact@v3
         with:
