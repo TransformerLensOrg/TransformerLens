@@ -1,6 +1,7 @@
 import einops
 import torch
 
+from transformer_lens import HookedTransformer
 from transformer_lens.components import Attention, GroupedQueryAttention
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
@@ -55,7 +56,7 @@ def test_grouped_query_attention_output_is_correct():
         "mask": regular_attention.state_dict()["mask"],
         "IGNORE": regular_attention.state_dict()["IGNORE"],
     }
-    grouped_query_attemtion_state_dict = {
+    grouped_query_attention_state_dict = {
         "W_Q": W_Q,
         "b_Q": b_Q,
         "W_O": W_O,
@@ -69,7 +70,7 @@ def test_grouped_query_attention_output_is_correct():
     }
 
     regular_attention.load_state_dict(regular_attention_state_dict)
-    grouped_query_attention.load_state_dict(grouped_query_attemtion_state_dict)
+    grouped_query_attention.load_state_dict(grouped_query_attention_state_dict)
 
     query_input = torch.rand((1, 5, d_model))
     key_input = torch.rand((1, 5, d_model))
@@ -92,3 +93,143 @@ def test_grouped_query_attention_output_is_correct():
     )
 
     assert torch.allclose(regular_attn_output, split_grouped_query_attn_output, rtol=1e-6)
+
+
+def test_ungroup_grouped_query_attention_flag_produces_same_result():
+    d_model = 512
+    d_head = 32
+    n_heads = 16
+    n_ctx = 128
+    n_key_value_heads = 4
+    n_layers = 1
+
+    cfg_flag_off = HookedTransformerConfig(
+        d_model=d_model,
+        d_head=d_head,
+        n_heads=n_heads,
+        n_ctx=n_ctx,
+        n_key_value_heads=n_key_value_heads,
+        n_layers=n_layers,
+        act_fn="silu",
+        ungroup_grouped_query_attention=False,
+    )
+    grouped_query_attention_flag_off = GroupedQueryAttention(cfg_flag_off)
+
+    cfg_flag_on = HookedTransformerConfig(
+        d_model=d_model,
+        d_head=d_head,
+        n_heads=n_heads,
+        n_ctx=n_ctx,
+        n_key_value_heads=n_key_value_heads,
+        n_layers=n_layers,
+        act_fn="silu",
+        ungroup_grouped_query_attention=True,
+    )
+    grouped_query_attention_flag_on = GroupedQueryAttention(cfg_flag_on)
+
+    W_Q = torch.rand((n_heads, d_model, d_head))
+    b_Q = torch.rand((n_heads, d_head))
+    _W_K = torch.rand((n_key_value_heads, d_model, d_head))
+    _b_K = torch.rand((n_key_value_heads, d_head))
+    _W_V = torch.rand((n_key_value_heads, d_model, d_head))
+    _b_V = torch.rand((n_key_value_heads, d_head))
+    W_O = torch.rand((n_heads, d_head, d_model))
+    b_O = torch.rand(d_model)
+
+    grouped_query_attention_state_dict = {
+        "W_Q": W_Q,
+        "b_Q": b_Q,
+        "W_O": W_O,
+        "b_O": b_O,
+        "_W_K": _W_K,
+        "_b_K": _b_K,
+        "_W_V": _W_V,
+        "_b_V": _b_V,
+        "mask": grouped_query_attention_flag_off.state_dict()["mask"],
+        "IGNORE": grouped_query_attention_flag_off.state_dict()["IGNORE"],
+    }
+
+    grouped_query_attention_flag_off.load_state_dict(grouped_query_attention_state_dict)
+    grouped_query_attention_flag_on.load_state_dict(grouped_query_attention_state_dict)
+
+    query_input = torch.rand((1, 5, d_model))
+    key_input = torch.rand((1, 5, d_model))
+    value_input = torch.rand((1, 5, d_model))
+
+    grouped_query_attn_flag_off_output = grouped_query_attention_flag_off(
+        query_input, key_input, value_input
+    )
+    grouped_query_attn_flag_on_output = grouped_query_attention_flag_on(
+        query_input, key_input, value_input
+    )
+
+    assert torch.equal(grouped_query_attn_flag_off_output, grouped_query_attn_flag_on_output)
+
+
+def test_ungroup_grouped_query_attention_flag_changes_k_v_hooks_shape():
+    d_model = 512
+    d_head = 32
+    n_heads = 16
+    n_ctx = 128
+    n_key_value_heads = 4
+    n_layers = 1
+    d_vocab = 10
+
+    cfg = HookedTransformerConfig(
+        d_model=d_model,
+        d_head=d_head,
+        n_heads=n_heads,
+        n_ctx=n_ctx,
+        n_key_value_heads=n_key_value_heads,
+        n_layers=n_layers,
+        act_fn="silu",
+        d_vocab=d_vocab,
+        use_split_qkv_input=True,
+        ungroup_grouped_query_attention=False,
+    )
+
+    model = HookedTransformer(cfg)
+    assert model.cfg.ungroup_grouped_query_attention is False
+
+    x = torch.arange(1, 9).unsqueeze(0)
+    flag_off_output, flag_off_cache = model.run_with_cache(
+        x,
+        names_filter=[
+            "blocks.0.attn.hook_k",
+            "blocks.0.attn.hook_v",
+            "blocks.0.hook_k_input",
+            "blocks.0.hook_v_input",
+        ],
+    )
+
+    model.set_ungroup_grouped_query_attention(True)
+    assert model.cfg.ungroup_grouped_query_attention is True
+
+    flag_on_output, flag_on_cache = model.run_with_cache(
+        x,
+        names_filter=[
+            "blocks.0.attn.hook_k",
+            "blocks.0.attn.hook_v",
+            "blocks.0.hook_k_input",
+            "blocks.0.hook_v_input",
+        ],
+    )
+
+    assert (
+        flag_on_cache["blocks.0.attn.hook_k"].shape[2]
+        == flag_off_cache["blocks.0.attn.hook_k"].shape[2] * n_key_value_heads
+    )
+    assert (
+        flag_on_cache["blocks.0.attn.hook_v"].shape[2]
+        == flag_off_cache["blocks.0.attn.hook_v"].shape[2] * n_key_value_heads
+    )
+    assert (
+        flag_on_cache["blocks.0.hook_k_input"].shape[2]
+        == flag_off_cache["blocks.0.hook_k_input"].shape[2] * n_key_value_heads
+    )
+    assert (
+        flag_on_cache["blocks.0.hook_v_input"].shape[2]
+        == flag_off_cache["blocks.0.hook_v_input"].shape[2] * n_key_value_heads
+    )
+
+    assert torch.equal(flag_off_output, flag_on_output)

@@ -255,7 +255,7 @@ class HookedEncoder(HookedRootModule):
         if move_to_device:
             model.to(cfg.device)
 
-        print(f"Loaded pretrained model {model_name} into HookedTransformer")
+        print(f"Loaded pretrained model {model_name} into HookedEncoder")
 
         return model
 
