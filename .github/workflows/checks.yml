@@ -108,6 +108,8 @@ jobs:
         run: poetry run mypy .
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Build check
         run: poetry build
       - name: Upload Coverage Report Artifact
