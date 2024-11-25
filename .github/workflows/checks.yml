@@ -14,6 +14,7 @@ on:
       - "!.github/**"
       - ".github/workflows/checks.yml" # Still include current workflow
   pull_request_target:
+    types: [assigned, opened, synchronize, reopened]
     branches:
       - main
       - dev*
