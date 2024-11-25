@@ -11,7 +11,18 @@ a deeper understanding of the internal workings of transformers like GPT-2.
 
 import logging
 import os
-from typing import Dict, List, NamedTuple, Optional, Tuple, Union, cast, overload
+from typing import (
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
 import einops
 import numpy as np
@@ -67,6 +78,8 @@ DTYPE_FROM_STRING = {
     "bfloat16": torch.bfloat16,
     "bf16": torch.bfloat16,
 }
+
+T = TypeVar("T", bound="HookedTransformer")
 
 
 class Output(NamedTuple):
@@ -248,6 +261,7 @@ class HookedTransformer(HookedRootModule):
         input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
         prepend_bos: Optional[Union[bool, None]] = USE_DEFAULT_VALUE,
         padding_side: Optional[Union[Literal["left", "right"], None]] = USE_DEFAULT_VALUE,
+        attention_mask: Optional[torch.Tensor] = None,
         past_kv_cache: Optional[HookedTransformerKeyValueCache] = None,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos d_model"],  # residual
@@ -284,15 +298,25 @@ class HookedTransformer(HookedRootModule):
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
-        if (self.tokenizer and self.tokenizer.padding_side == "left") or past_kv_cache is not None:
-            # If the padding side is left or we are using caching, we need to compute the attention
-            # mask for the adjustment of absolute positional embeddings and attention masking so
-            # that pad tokens are not attended.
+        if (
+            (self.tokenizer and self.tokenizer.padding_side == "left")
+            or attention_mask is not None
+            or past_kv_cache is not None
+        ):
+            # This means we need to have an explicit attention mask.
+            if attention_mask is None:
+                # If the padding side is left or we are using caching, we need to compute the attention
+                # mask for the adjustment of absolute positional embeddings and attention masking so
+                # that pad tokens are not attended.
+                if prepend_bos is USE_DEFAULT_VALUE:
+                    prepend_bos = self.cfg.default_prepend_bos
+                attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
 
-            if prepend_bos is USE_DEFAULT_VALUE:
-                prepend_bos = self.cfg.default_prepend_bos
-            attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
-
+            assert attention_mask.shape == tokens.shape, (
+                f"Attention mask shape {attention_mask.shape} does not match tokens shape "
+                f"{tokens.shape}"
+            )
+            attention_mask = attention_mask.to(devices.get_device_for_block_index(0, self.cfg))
             if past_kv_cache is not None:
                 # past_kv_cache is not None, so we're doing caching.
                 # We need to extend the previous attention_mask.
@@ -489,9 +513,10 @@ class HookedTransformer(HookedRootModule):
             shortformer_pos_embed: Optional[Float[torch.Tensor, "batch pos d_model"]]: Positional
                 embedding for shortformer models. Only use if start_at_layer is not None and
                 self.cfg.positional_embedding_type == "shortformer".
-            attention_mask: Optional[torch.Tensor]: The attention mask for padded tokens. Only use
-                if start_at_layer is not None and (self.tokenizer.padding_side == "left" or
-                past_kv_cache is not None).
+            attention_mask: Optional[torch.Tensor]: Override the attention mask used to ignore
+                padded tokens. If start_at_layer is not None and (self.tokenizer.padding_side ==
+                "left" or past_kv_cache is not None), this should be passed as the attention mask
+                is not computed automatically. Defaults to None.
             stop_at_layer Optional[int]: If not None, stop the forward pass at the specified layer.
                 Exclusive - ie, stop_at_layer = 0 will only run the embedding layer, stop_at_layer =
                 1 will run the embedding layer and the first transformer block, etc. Supports
@@ -523,6 +548,7 @@ class HookedTransformer(HookedRootModule):
                     input,
                     prepend_bos=prepend_bos,
                     padding_side=padding_side,
+                    attention_mask=attention_mask,
                     past_kv_cache=past_kv_cache,
                 )
             else:
@@ -576,7 +602,7 @@ class HookedTransformer(HookedRootModule):
                     assert (
                         tokens is not None
                     ), "tokens must be passed in if return_type is 'loss' or 'both'"
-                    loss = self.loss_fn(logits, tokens, per_token=loss_per_token)
+                    loss = self.loss_fn(logits, tokens, attention_mask, per_token=loss_per_token)
                     if return_type == "loss":
                         return loss
                     elif return_type == "both":
@@ -589,6 +615,7 @@ class HookedTransformer(HookedRootModule):
         self,
         logits: Float[torch.Tensor, "batch pos d_vocab"],
         tokens: Int[torch.Tensor, "batch pos"],
+        attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
         per_token: bool = False,
     ):
         """Wrapper around `utils.lm_cross_entropy_loss`.
@@ -597,7 +624,7 @@ class HookedTransformer(HookedRootModule):
         """
         if tokens.device != logits.device:
             tokens = tokens.to(logits.device)
-        return utils.lm_cross_entropy_loss(logits, tokens, per_token)
+        return utils.lm_cross_entropy_loss(logits, tokens, attention_mask, per_token)
 
     @overload
     def run_with_cache(
@@ -1042,7 +1069,7 @@ class HookedTransformer(HookedRootModule):
 
     @classmethod
     def from_pretrained(
-        cls,
+        cls: Type[T],
         model_name: str,
         fold_ln: bool = True,
         center_writing_weights: bool = True,
@@ -1056,11 +1083,12 @@ class HookedTransformer(HookedRootModule):
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
         move_to_device: bool = True,
         fold_value_biases: bool = True,
-        default_prepend_bos: bool = True,
+        default_prepend_bos: Optional[bool] = None,
         default_padding_side: Literal["left", "right"] = "right",
         dtype="float32",
+        first_n_layers: Optional[int] = None,
         **from_pretrained_kwargs,
-    ) -> "HookedTransformer":
+    ) -> T:
         """Load in a Pretrained Model.
 
         Load in pretrained model weights to the HookedTransformer format and optionally to do some
@@ -1177,11 +1205,15 @@ class HookedTransformer(HookedRootModule):
                 remains exactly the same, and so is just broadcast across the destination positions.
             default_prepend_bos: Default behavior of whether to prepend the BOS
                 token when the methods of HookedTransformer process input text to tokenize (only
-                when input is a string). Defaults to True - even for models not explicitly trained
-                with this, heads often use the first position as a resting position and accordingly
-                lose information from the first token, so this empirically seems to give better
-                results. To change the default behavior to False, pass in default_prepend_bos=False.
-                Note that you can also locally override the default behavior by passing in
+                when input is a string).
+                Resolution order for default_prepend_bos:
+                1. If user passes value explicitly, use that value
+                2. Model-specific default from cfg_dict if it exists (e.g. for bloom models it's False)
+                3. Global default (True)
+
+                Even for models not explicitly trained with the BOS token, heads often use the first position as a resting position
+                and accordingly lose information from the first token, so this empirically seems to give better
+                results. Note that you can also locally override the default behavior by passing in
                 prepend_bos=True/False when you call a method that processes the input string.
             from_pretrained_kwargs: Any other optional argument passed to
                 HuggingFace's from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to
@@ -1193,7 +1225,12 @@ class HookedTransformer(HookedRootModule):
                 the model.
             default_padding_side: Which side to pad on when tokenizing. Defaults to
                 "right".
+            first_n_layers: If specified, only load the first n layers of the model.
         """
+        if model_name.lower().startswith("t5"):
+            raise RuntimeError(
+                "Execution stopped: Please use HookedEncoderDecoder to load T5 models instead of HookedTransformer."
+            )
 
         assert not (
             from_pretrained_kwargs.get("load_in_8bit", False)
@@ -1250,6 +1287,7 @@ class HookedTransformer(HookedRootModule):
             n_devices=n_devices,
             default_prepend_bos=default_prepend_bos,
             dtype=dtype,
+            first_n_layers=first_n_layers,
             **from_pretrained_kwargs,
         )
 
@@ -1319,7 +1357,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices=False,
         fold_value_biases=False,
         dtype=torch.float32,
-        default_prepend_bos=True,
+        default_prepend_bos=None,
         default_padding_side="right",
         **from_pretrained_kwargs,
     ):
@@ -1558,7 +1596,10 @@ class HookedTransformer(HookedRootModule):
             # so that quantization settings are not lost
             self.load_state_dict(state_dict, assign=True, strict=False)
         else:
-            self.load_state_dict(state_dict, strict=False)
+            state_dict_keys = list(state_dict.keys())
+            for key in state_dict_keys:
+                self.load_state_dict({key: state_dict[key]}, strict=False)
+                del state_dict[key]
 
     def fill_missing_keys(self, state_dict):
         return loading.fill_missing_keys(self, state_dict)
@@ -1922,6 +1963,12 @@ class HookedTransformer(HookedRootModule):
         Toggles whether to allow editing of inputs to each attention head.
         """
         self.cfg.use_attn_in = use_attn_in
+
+    def set_ungroup_grouped_query_attention(self, ungroup_grouped_query_attention: bool):
+        """
+        Toggles whether to ungroup the grouped key and value heads in models with grouped query attention (GQA).
+        """
+        self.cfg.ungroup_grouped_query_attention = ungroup_grouped_query_attention
 
     def process_weights_(
         self,
