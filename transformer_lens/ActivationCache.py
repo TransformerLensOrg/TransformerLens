@@ -557,10 +557,8 @@ class ActivationCache:
             has_batch_dim=has_batch_dim,
         )
 
-        logit_attrs = einsum(
-            "... d_model, ... d_model -> ...", scaled_residual_stack, logit_directions
-        )
-
+        # Element-wise multiplication and sum over the d_model dimension
+        logit_attrs = (scaled_residual_stack * logit_directions).sum(dim=-1)
         return logit_attrs
 
     def decompose_resid(

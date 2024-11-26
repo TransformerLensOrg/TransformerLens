@@ -69,6 +69,8 @@ jobs:
           poetry install --with dev
       - name: Unit Test
         run: make unit-test
+        env:
+          HF_TOKEN:  ${{ vars.HF_TOKEN }}
       - name: Acceptance Test
         run: make acceptance-test
       - name: Build check
@@ -106,6 +108,8 @@ jobs:
         run: poetry run mypy .
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
+        env:
+          HF_TOKEN:  ${{ vars.HF_TOKEN }}
       - name: Build check
         run: poetry build
       - name: Upload Coverage Report Artifact
@@ -195,7 +199,7 @@ jobs:
       - name: Build Docs
         run: poetry run build-docs
         env:
-          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
+          HF_TOKEN:  ${{ vars.HF_TOKEN }}
       - name: Upload Docs Artifact
         uses: actions/upload-artifact@v3
         with:
