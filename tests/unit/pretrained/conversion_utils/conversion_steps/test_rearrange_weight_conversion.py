@@ -11,8 +11,6 @@ def test_rearrange_weight_conversion():
     
     starting = torch.rand(80, 5)
     
-    print(starting.shape)
-    
     transformers_model = mock.Mock()
     transformers_model.transformer = mock.Mock()
     transformers_model.transformer.wpe = mock.Mock()
