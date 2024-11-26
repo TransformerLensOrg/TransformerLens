@@ -20,7 +20,6 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 import einops
 import numpy as np
 import torch
-from fancy_einsum import einsum
 from jaxtyping import Float, Int
 from typing_extensions import Literal
 
@@ -664,14 +663,21 @@ class ActivationCache:
         if "blocks.0.attn.hook_result" in self.cache_dict:
             logging.warning("Tried to compute head results when they were already cached")
             return
-        for l in range(self.model.cfg.n_layers):
+        for layer in range(self.model.cfg.n_layers):
             # Note that we haven't enabled set item on this object so we need to edit the underlying
             # cache_dict directly.
-            self.cache_dict[f"blocks.{l}.attn.hook_result"] = einsum(
-                "... head_index d_head, head_index d_head d_model -> ... head_index d_model",
-                self[("z", l, "attn")],
-                self.model.blocks[l].attn.W_O,
+
+            # Add singleton dimension to match W_O's shape for broadcasting
+            z = einops.rearrange(
+                self[("z", layer, "attn")],
+                "... head_index d_head -> ... head_index d_head 1",
             )
+
+            # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
+            result = z * self.model.blocks[layer].attn.W_O
+
+            # Sum over d_head to get the contribution of each head to the residual stream
+            self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
 
     def stack_head_results(
         self,
