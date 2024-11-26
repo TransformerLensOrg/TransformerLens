@@ -20,7 +20,6 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 import einops
 import numpy as np
 import torch
-from fancy_einsum import einsum
 from jaxtyping import Float, Int
 from typing_extensions import Literal
 
