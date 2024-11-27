@@ -5,10 +5,10 @@ from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
+from transformer_lens.utilities.activation_functions import ACTIVATION_FN_DICT
 
 
-@pytest.mark.parametrize("act_function", SUPPORTED_ACTIVATIONS.keys())
+@pytest.mark.parametrize("act_function", ACTIVATION_FN_DICT.keys())
 def test_pick_activation_function_runs(act_function):
     config = HookedTransformerConfig.unwrap(
         {"n_layers": 12, "n_ctx": 1024, "d_head": 64, "d_model": 128, "act_fn": act_function}

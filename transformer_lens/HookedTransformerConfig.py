@@ -16,7 +16,7 @@ import numpy as np
 import torch
 
 from transformer_lens import utils
-from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
+from transformer_lens.utilities.activation_functions import ACTIVATION_FN_DICT
 
 
 @dataclass
@@ -287,8 +287,8 @@ class HookedTransformerConfig:
                 self.d_mlp: int = self.d_model * 4
             assert self.act_fn is not None, "act_fn must be specified for non-attn-only models"
             assert (
-                self.act_fn in SUPPORTED_ACTIVATIONS
-            ), f"act_fn={self.act_fn} must be one of {SUPPORTED_ACTIVATIONS}"
+                self.act_fn in ACTIVATION_FN_DICT
+            ), f"act_fn={self.act_fn} must be one of {ACTIVATION_FN_DICT}"
         if self.initializer_range < 0 and self.init_mode == "gpt2":
             # Roughly copy the GPT-2 value, but proportional to sqrt(1/d_model)
             self.initializer_range = 0.8 / np.sqrt(self.d_model)

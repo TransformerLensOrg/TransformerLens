@@ -5,7 +5,7 @@ Centralized location for selection supported activation functions throughout Tra
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.activation_functions import (
-    SUPPORTED_ACTIVATIONS,
+    ACTIVATION_FN_DICT,
     ActivationFunction,
 )
 
@@ -29,7 +29,7 @@ class ActivationFunctionFactory:
         if act_fn is None:
             raise ValueError("act_fn not set when trying to select Activation Function")
 
-        activation_function = SUPPORTED_ACTIVATIONS.get(act_fn)
+        activation_function = ACTIVATION_FN_DICT.get(act_fn)
 
         if activation_function is None:
             raise ValueError(f"Invalid activation function name: {act_fn}")
