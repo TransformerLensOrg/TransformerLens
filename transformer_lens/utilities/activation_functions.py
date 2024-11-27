@@ -14,7 +14,7 @@ ActivationFunction = Callable[..., torch.Tensor]
 
 # All currently supported activation functions. To add a new function, simply
 # put the name of the function as the key, and the value as the actual callable.
-SUPPORTED_ACTIVATIONS: Dict[str, ActivationFunction] = {
+ACTIVATION_FN_DICT = {
     "solu": solu,
     "solu_ln": solu,
     "gelu_new": gelu_new,
@@ -24,3 +24,4 @@ SUPPORTED_ACTIVATIONS: Dict[str, ActivationFunction] = {
     "gelu": F.gelu,
     "gelu_pytorch_tanh": lambda tensor: F.gelu(tensor, approximate="tanh"),
 }
+
