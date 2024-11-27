@@ -5,7 +5,7 @@ This module contains utility functions related to langauge models
 
 from __future__ import annotations
 
-from typing import Union
+from typing import Union, Optional
 
 import torch
 import torch.nn.functional as F
