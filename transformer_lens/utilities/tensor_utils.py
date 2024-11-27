@@ -12,6 +12,7 @@ import numpy as np
 import torch
 from jaxtyping import Float, Int
 
+
 class BaseTransformerLensMatrix:
     def __init__(
         self,
