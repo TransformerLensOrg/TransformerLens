@@ -7,7 +7,7 @@ import warnings
 from transformer_lens.utilities import *
 
 warnings.warn(
-    "The 'utils' module has been deprecated. Please use 'transformer_lens.utilities' instead.",
+    "The 'utils' module has been deprecated. Please use 'transformer_lens.utilities' instead. Importing from utils.py will be removed in TransformerLens 4.0.",
     DeprecationWarning,
     stacklevel=2,
 )
