@@ -7,11 +7,8 @@ from __future__ import annotations
 
 import inspect
 import json
-import os
-import re
 import shutil
-from copy import deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import einops
 import numpy as np
@@ -20,10 +17,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import transformers
 from datasets.arrow_dataset import Dataset
-from datasets.load import load_dataset
 from huggingface_hub import hf_hub_download
 from jaxtyping import Float, Int
-from rich import print as rprint
 from transformers import AutoTokenizer
 
 from transformer_lens.FactoredMatrix import FactoredMatrix

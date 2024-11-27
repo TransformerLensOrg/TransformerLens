@@ -2,7 +2,7 @@
 
 Utilities for interacting with all supported activation functions.
 """
-from typing import Callable, Dict
+from typing import Callable
 
 import torch
 import torch.nn.functional as F
@@ -24,4 +24,3 @@ ACTIVATION_FN_DICT = {
     "gelu": F.gelu,
     "gelu_pytorch_tanh": lambda tensor: F.gelu(tensor, approximate="tanh"),
 }
-
