@@ -15,7 +15,6 @@ from jaxtyping import Float
 import transformer_lens.utilities.tensor_utils as tensor_utils
 
 
-
 class FactoredMatrix(tensor_utils.BaseTransformerLensMatrix):
     """
     Class to represent low rank factored matrices, where the matrix is represented as a product of two matrices. Has utilities for efficient calculation of eigenvalues, norm and SVD.
