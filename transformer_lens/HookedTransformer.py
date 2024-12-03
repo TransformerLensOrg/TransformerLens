@@ -1232,6 +1232,11 @@ class HookedTransformer(HookedRootModule):
                 "Execution stopped: Please use HookedEncoderDecoder to load T5 models instead of HookedTransformer."
             )
 
+        if model_name.lower().startswith("bert"):
+            raise RuntimeError(
+                "Execution stopped: Please use HookedEncoder to load BERT-style models instead of HookedTransformer."
+            )
+
         assert not (
             from_pretrained_kwargs.get("load_in_8bit", False)
             or from_pretrained_kwargs.get("load_in_4bit", False)
