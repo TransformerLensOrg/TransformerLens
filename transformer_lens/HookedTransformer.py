@@ -8,6 +8,7 @@ attaching hooks to every notable activation within the model. This enables the i
 alteration of activations in individual components like attention heads and MLP layers, facilitating
 a deeper understanding of the internal workings of transformers like GPT-2.
 """
+
 import logging
 import os
 from typing import (
@@ -297,23 +298,25 @@ class HookedTransformer(HookedRootModule):
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
-        if attention_mask is not None:
+        if (
+            (self.tokenizer and self.tokenizer.padding_side == "left")
+            or attention_mask is not None
+            or past_kv_cache is not None
+        ):
+            # This means we need to have an explicit attention mask.
+            if attention_mask is None:
+                # If the padding side is left or we are using caching, we need to compute the attention
+                # mask for the adjustment of absolute positional embeddings and attention masking so
+                # that pad tokens are not attended.
+                if prepend_bos is USE_DEFAULT_VALUE:
+                    prepend_bos = self.cfg.default_prepend_bos
+                attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
+
             assert attention_mask.shape == tokens.shape, (
                 f"Attention mask shape {attention_mask.shape} does not match tokens shape "
                 f"{tokens.shape}"
             )
             attention_mask = attention_mask.to(devices.get_device_for_block_index(0, self.cfg))
-        elif (
-            self.tokenizer and self.tokenizer.padding_side == "left"
-        ) or past_kv_cache is not None:
-            # If the padding side is left or we are using caching, we need to compute the attention
-            # mask for the adjustment of absolute positional embeddings and attention masking so
-            # that pad tokens are not attended.
-
-            if prepend_bos is USE_DEFAULT_VALUE:
-                prepend_bos = self.cfg.default_prepend_bos
-            attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
-
             if past_kv_cache is not None:
                 # past_kv_cache is not None, so we're doing caching.
                 # We need to extend the previous attention_mask.
