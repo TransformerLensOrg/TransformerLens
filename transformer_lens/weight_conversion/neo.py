@@ -1,7 +1,6 @@
 import einops
 import torch
 
-# from transformer_lens.pretrained import BaseWeightConversion
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 def convert_neo_weights(neo, cfg: HookedTransformerConfig):

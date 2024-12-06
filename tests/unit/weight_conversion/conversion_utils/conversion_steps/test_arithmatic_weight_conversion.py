@@ -2,7 +2,7 @@ from unittest import mock
 
 
 import torch
-from transformer_lens.pretrained.conversion_utils.conversion_steps.arithmetic_weight_conversion import ArithmeticWeightConversion, OperationTypes
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps.arithmetic_weight_conversion import ArithmeticWeightConversion, OperationTypes
 
 
 def test_arithmatic_weight_conversion_addition():

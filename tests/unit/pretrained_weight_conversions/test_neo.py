@@ -4,7 +4,7 @@ import torch
 
 from transformer_lens import HookedTransformer
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.pretrained.weight_conversions.neo import convert_neo_weights
+from transformer_lens.weight_conversion.neo import convert_neo_weights
 
 
 def get_default_config():

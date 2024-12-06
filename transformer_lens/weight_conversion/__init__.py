@@ -6,7 +6,7 @@ from .neox import convert_neox_weights
 from .llama import convert_llama_weights
 from .bert import convert_bert_weights
 from .mistral import convert_mistral_weights
-from .mixtral import convert_mixtral_weights
+from .mixtral import MixtralWeightConversion
 from .bloom import convert_bloom_weights
 from .coder import convert_coder_weights
 from .qwen import convert_qwen_weights

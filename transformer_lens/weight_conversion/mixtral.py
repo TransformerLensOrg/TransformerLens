@@ -1,6 +1,6 @@
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.weight_conversions.conversion_utils.conversion_steps import DirectWeightConversion, ZerosWeightConversion, WeightConversionSet, RearrangeWeightConversion
-from transformer_lens.weight_conversions.conversion_utils import ArchitectureConversion
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps import DirectWeightConversion, ZerosWeightConversion, WeightConversionSet, RearrangeWeightConversion
+from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
 
 class MixtralWeightConversion(ArchitectureConversion):
     
