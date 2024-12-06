@@ -93,3 +93,23 @@ def convert_gemma_weights(gemma, cfg: HookedTransformerConfig):
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
+
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps import ArithmeticWeightConversion, DirectWeightConversion, WeightConversionSet, RearrangeWeightConversion, OperationTypes
+from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
+
+class GemmalWeightConversion(ArchitectureConversion):
+    
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        number_key_value_heads = cfg.n_key_value_heads if cfg.n_key_value_heads is not None else 0
+        super().__init__({
+            "embed.W_E": ArithmeticWeightConversion(
+                "model.embed_tokens.weight",
+                OperationTypes.MULTIPLICATION,
+                torch.tensor(
+                    cfg.d_model**0.5, dtype=cfg.dtype
+                )
+            ),
+            "unembed.W_U": DirectWeightConversion("lm_head.weight.T"),
+            "unembed.b_U": ZerosWeightConversion(cfg.d_vocab),
+        })

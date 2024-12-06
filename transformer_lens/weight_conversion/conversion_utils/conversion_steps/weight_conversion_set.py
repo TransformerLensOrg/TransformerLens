@@ -1,18 +1,27 @@
+import torch
 from transformer_lens.weight_conversion.conversion_utils.model_search import find_property
-from .base_weight_conversion import BaseWeightConversion, FIELD_SET
+from .base_weight_conversion import BaseWeightConversion, CONVERSION, FIELD_SET
 
 class WeightConversionSet(BaseWeightConversion):
     
-    def __init__(self, original_key: str, weights: FIELD_SET):
-        super().__init__(original_key)
+    def __init__(self, weights: FIELD_SET):
         self.weights = weights
     
-    def convert(self, remote_weights):
-        weights = find_property(self.original_key, remote_weights) if self.original_key else remote_weights
+    def convert(self, input_value):
         result = {}
         for weight_name in self.weights:
-            field = self.weights[weight_name]
-            result[weight_name] = field.convert(weights)
+            result[weight_name] = self.process_weight_conversion(
+                input_value,
+                conversion_details=self.weights[weight_name],
+            )
                 
             
         return result
+    
+    def process_weight_conversion(self, input_value, conversion_details: torch.Tensor|CONVERSION):
+        if isinstance(conversion_details,  torch.Tensor):
+            return conversion_details
+        else: 
+            (remote_field, conversion) = conversion_details
+            weight = find_property(remote_field, input_value)
+            return conversion.convert(weight)

@@ -1,4 +1,5 @@
 from enum import Enum
+import torch
 from transformer_lens.weight_conversion.conversion_utils.model_search import find_property
 from .base_weight_conversion import BaseWeightConversion
 
@@ -10,19 +11,17 @@ class OperationTypes(Enum):
 
 class ArithmeticWeightConversion(BaseWeightConversion):
     
-    def __init__(self, original_key: str, operation: OperationTypes, value: float|int):
-        super().__init__(original_key)
+    def __init__(self, operation: OperationTypes, value: float|int|torch.Tensor):
         self.operation = operation
         self.value = value
     
-    def convert(self, remote_weights: dict):
-        field = find_property(self.original_key, remote_weights)
+    def convert(self, input_value):
         match self.operation:
             case OperationTypes.ADDITION:
-                return field + self.value
+                return input_value + self.value
             case OperationTypes.SUBTRACTION:
-                return field - self.value
+                return input_value - self.value
             case OperationTypes.MULTIPLICATION:
-                return field * self.value
+                return input_value * self.value
             case OperationTypes.DIVISION:
-                return field / self.value
+                return input_value / self.value
