@@ -37,6 +37,7 @@
         transformers=">=4.37.2"
         typing-extensions="*"
         wandb=">=0.13.5"
+        typeguard = "^4.2"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]

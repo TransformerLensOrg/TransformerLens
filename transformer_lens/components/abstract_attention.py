@@ -229,8 +229,9 @@ class AbstractAttention(ABC, nn.Module):
                     self.cfg.n_heads, key_ctx, self.cfg.device
                 )
 
+            # Take the last query_ctx positions so it also works with past_kv_cache
             attn_scores += self.alibi[
-                :, :query_ctx, :key_ctx
+                :, -query_ctx:, :key_ctx
             ]  # [batch, head_index, query_pos, key_pos]
         elif self.cfg.positional_embedding_type == "relative_positional_bias":
             if position_bias is None:
@@ -296,17 +297,19 @@ class AbstractAttention(ABC, nn.Module):
                     )
                 )
             else:
+                # Add singleton dimensions to make shapes compatible for broadcasting:
                 w = einops.rearrange(
                     self.W_O,
-                    "head_index d_head d_model -> d_model head_index d_head",
+                    "head_index d_head d_model -> 1 1 head_index d_head d_model",
                 )
-                result = self.hook_result(
-                    einops.einsum(
-                        z,
-                        w,
-                        "... head_index d_head, d_model head_index d_head -> ... head_index d_model",
-                    )
-                )  # [batch, pos, head_index, d_model]
+                z = einops.rearrange(
+                    z, "batch pos head_index d_head -> batch pos head_index d_head 1"
+                )
+
+                # Multiply the z tensor by the W_O tensor, summing over the d_head dimension
+                unhooked_result = (z * w).sum(-2)
+
+                result = self.hook_result(unhooked_result)  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(result, "batch position index model->batch position model", "sum")
                 + self.b_O
@@ -455,9 +458,16 @@ class AbstractAttention(ABC, nn.Module):
         final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
-            einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
+
+            # Add singleton dimensions to the attention mask to match the shape of the final mask
+            attention_mask = einops.rearrange(
+                attention_mask, "batch offset_pos -> batch 1 1 offset_pos"
+            )
+
             final_mask = final_mask.to(attention_mask.device)
-            final_mask = einops.einsum(final_mask, attention_mask, einsum_str).bool()
+
+            # Element-wise multiplication of the final mask and the attention mask and cast to boolean
+            final_mask = (final_mask * attention_mask).bool()  # [batch, head, pos, offset_pos]
 
         attn_scores = attn_scores.to(final_mask.device)
         return torch.where(final_mask, attn_scores, self.IGNORE)
@@ -689,7 +699,11 @@ class AbstractAttention(ABC, nn.Module):
             n_heads, device
         )
 
-        # The ALiBi bias is then m * slope_matrix
-        alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
+        # Add singleton dimensions to make shapes compatible for broadcasting:
+        slope = einops.rearrange(slope, "query key -> 1 query key")
+        multipliers = einops.rearrange(multipliers, "head_idx -> head_idx 1 1")
+
+        # Element-wise multiplication of the slope and multipliers
+        alibi_bias = multipliers * slope
 
         return alibi_bias
