@@ -1157,6 +1157,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "LN",
             "post_embedding_ln": True,
             "positional_embedding_type": "alibi",
+            "default_prepend_bos": False,
         }
     elif architecture == "GPT2LMHeadCustomModel":
         # santacoder
