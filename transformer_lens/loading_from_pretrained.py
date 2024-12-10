@@ -213,7 +213,7 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen2-7B",
     "Qwen/Qwen2-7B-Instruct",
     "Qwen/Qwen2.5-0.5B",
-    "Qwen/Qwen2.5-0.5B-Instruct"
+    "Qwen/Qwen2.5-0.5B-Instruct",
     "Qwen/Qwen2.5-1.5B",
     "Qwen/Qwen2.5-1.5B-Instruct",
     "Qwen/Qwen2.5-3B",
