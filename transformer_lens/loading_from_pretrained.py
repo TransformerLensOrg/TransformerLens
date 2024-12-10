@@ -22,6 +22,7 @@ from transformers import (
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
+    convert_baichuan_weights,
     convert_bert_weights,
     convert_bloom_weights,
     convert_coder_weights,
@@ -234,6 +235,9 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-base",
     "google-t5/t5-large",
     "ai-forever/mGPT",
+    "baichuan-inc/Baichuan-7B",
+    "baichuan-inc/Baichuan-13B-Base",
+    "baichuan-inc/Baichuan-13B-Chat",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -659,6 +663,9 @@ MODEL_ALIASES = {
     "google-t5/t5-base": ["t5-base"],
     "google-t5/t5-large": ["t5-large"],
     "ai-forever/mGPT": ["mGPT"],
+    "baichuan-inc/Baichuan-7B": ["Baichuan-7B"],
+    "baichuan-inc/Baichuan-13B-Base": ["Baichuan-13B-Base"],
+    "baichuan-inc/Baichuan-13B-Chat": ["Baichuan-13B-Chat"],
 }
 """Model aliases for models on HuggingFace."""
 
@@ -1441,6 +1448,24 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "use_attn_scale": False,
             "tie_word_embeddings": hf_config.tie_word_embeddings,
         }
+    elif architecture.startswith("Bai"):
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": 2048,  # Capped due to HF Tokenizer Constraints
+            "d_vocab": hf_config.vocab_size,
+            "eps": hf_config.rms_norm_eps,
+            "trust_remote_code": True,
+            "act_fn": hf_config.hidden_act,
+            "initializer_range": hf_config.initializer_range,
+            "normalization_type": "RMS",
+            "post_embedding_ln": True,
+            "positional_embedding_type": "alibi",
+            "tie_word_embeddings": hf_config.tie_word_embeddings,
+        }
     else:
         raise NotImplementedError(f"{architecture} is not currently supported.")
     # All of these models use LayerNorm
@@ -1816,6 +1841,8 @@ def get_pretrained_state_dict(
             state_dict = convert_neox_weights(hf_model, cfg)
         elif cfg.original_architecture == "LlamaForCausalLM":
             state_dict = convert_llama_weights(hf_model, cfg)
+        elif cfg.original_architecture.startswith("Bai"):
+            state_dict = convert_baichuan_weights(hf_model, cfg)
         elif cfg.original_architecture == "BertForMaskedLM":
             state_dict = convert_bert_weights(hf_model, cfg)
         elif cfg.original_architecture == "T5ForConditionalGeneration":
