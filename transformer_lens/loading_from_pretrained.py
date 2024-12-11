@@ -20,6 +20,7 @@ from transformers import (
 )
 
 import transformer_lens.utils as utils
+from transformer_lens.factories import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.weight_conversion import (
     convert_bert_weights,
@@ -1803,52 +1804,9 @@ def get_pretrained_state_dict(
         for param in hf_model.parameters():
             param.requires_grad = False
             
-        # TODO add weight conversion config, and load state dict
+        weight_conversion_config = WeightConversionFactory.select_weight_conversion_config(cfg)
 
-        # if cfg.original_architecture == "GPT2LMHeadModel":
-        #     state_dict = convert_gpt2_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "GPTNeoForCausalLM":
-        #     state_dict = convert_neo_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "OPTForCausalLM":
-        #     state_dict = convert_opt_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "GPTJForCausalLM":
-        #     state_dict = convert_gptj_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "GPTNeoXForCausalLM":
-        #     state_dict = convert_neox_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "LlamaForCausalLM":
-        #     state_dict = convert_llama_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "BertForMaskedLM":
-        #     state_dict = convert_bert_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "T5ForConditionalGeneration":
-        #     state_dict = convert_t5_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "MistralForCausalLM":
-        #     state_dict = convert_mistral_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "MixtralForCausalLM":
-        #     state_dict = convert_mixtral_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "BloomForCausalLM":
-        #     state_dict = convert_bloom_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "GPT2LMHeadCustomModel":
-        #     state_dict = convert_coder_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "QWenLMHeadModel":
-        #     state_dict = convert_qwen_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "Qwen2ForCausalLM":
-        #     state_dict = convert_qwen2_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "PhiForCausalLM":
-        #     state_dict = convert_phi_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "Phi3ForCausalLM":
-        #     state_dict = convert_phi3_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "GemmaForCausalLM":
-        #     state_dict = convert_gemma_weights(hf_model, cfg)
-        # elif cfg.original_architecture == "Gemma2ForCausalLM":
-        #     state_dict = convert_gemma_weights(hf_model, cfg)
-        # else:
-        #     raise ValueError(
-        #         f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
-        #     )
-        #
-        # return state_dict
-
-        return {}
+        return weight_conversion_config.convert(hf_model)
 
 
 def fill_missing_keys(model, state_dict):

@@ -2,16 +2,16 @@ from unittest import mock
 
 
 import torch
-from transformer_lens.pretrained.conversion_utils.conversion_steps.weight_conversion_set import WeightConversionSet
-from transformer_lens.pretrained.conversion_utils.conversion_steps.direct_weight_conversion import DirectWeightConversion
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps.weight_conversion_set import WeightConversionSet
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps.direct_weight_conversion import DirectWeightConversion
 
 
 def test_weight_conversion_for_root():
     
-    conversion = WeightConversionSet("", {
-        "embed.W_E": DirectWeightConversion("embed_tokens.weight"),
-        "pos_embed.W_pos": DirectWeightConversion("wpe.weight"),
-        "ln_final.w": DirectWeightConversion("ln_f.weight"),
+    conversion = WeightConversionSet({
+        "embed.W_E", ("embed_tokens.weight", DirectWeightConversion()),
+        "pos_embed.W_pos", ("wpe.weight", DirectWeightConversion()),
+        "ln_final.w", ("ln_f.weight", DirectWeightConversion()),
     })
     
     embed_tokens = torch.rand(2, 3)

@@ -7,7 +7,7 @@ class ArchitectureConversion:
     def __init__(self, fields: FIELD_SET) -> None:
         self.field_set = WeightConversionSet(fields)
         
-    def convert(self, remote_model: dict):
-        return self.field_set.convert(remote_weights=remote_model)
+    def convert(self, remote_model):
+        return self.field_set.convert(input_value=remote_model)
     
 

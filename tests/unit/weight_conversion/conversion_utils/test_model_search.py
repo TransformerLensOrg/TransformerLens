@@ -1,7 +1,7 @@
 from unittest import mock
 
 import torch
-from transformer_lens.pretrained.conversion_utils.model_search import find_property
+from transformer_lens.weight_conversion.conversion_utils.model_search import find_property
 
 def test_find_property():
     

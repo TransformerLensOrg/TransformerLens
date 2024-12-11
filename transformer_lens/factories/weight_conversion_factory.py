@@ -4,9 +4,9 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 class WeightConversionFactory:
     @staticmethod
-    def select_weight_conversion_config(cfg: HookedTransformerConfig, architecture: str) -> ArchitectureConversion:
-        match architecture:
+    def select_weight_conversion_config(cfg: HookedTransformerConfig) -> ArchitectureConversion:
+        match cfg.original_architecture:
             case "MixtralForCausalLM":
                 return MixtralWeightConversion(cfg)
             case _:
-                raise NotImplementedError(f"{architecture} is not currently supported.")
+                raise NotImplementedError(f"{cfg.original_architecture} is not currently supported.")
