@@ -1310,7 +1310,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "gelu_new",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
-            "rotary_base": 10000.0,
+            "rotary_base": 10000,
             "rotary_dim": 256,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
