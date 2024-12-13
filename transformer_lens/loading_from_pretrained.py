@@ -1448,7 +1448,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "d_model": 4096,
             "d_head": 128,
             "n_heads": 32,
-            "d_mlp": 8192,
+            "d_mlp": 11008,
             "n_layers": 32,
             "n_ctx": 2048,
             "eps": 1e-05,
