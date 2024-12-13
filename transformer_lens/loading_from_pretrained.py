@@ -226,6 +226,7 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen2.5-32B-Instruct",
     "Qwen/Qwen2.5-72B",
     "Qwen/Qwen2.5-72B-Instruct",
+    "Qwen/QwQ-32B-Preview",
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
