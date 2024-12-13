@@ -236,7 +236,15 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-large",
     "ai-forever/mGPT",
     "allenai/OLMo-1B-hf",
-    "allenai/OLMo-7B-hf"
+    "allenai/OLMo-7B-hf",
+    "allenai/OLMo-7B-0724-hf",
+    "allenai/OLMo-7B-0724-SFT-hf",
+    "allenai/OLMo-7B-0724-Instruct-hf",
+    "allenai/OLMo-7B-0424-hf",
+    "allenai/OLMo-7B-Twin-2T-hf",
+    "allenai/OLMo-1B-0724-hf",
+    "allenai/OLMo-7B-Instruct-hf",
+    "allenai/OLMo-7B-SFT-hf",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -1425,7 +1433,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "use_normalization_before_and_after": True,
         }
-    elif official_model_name.startswith("allenai/OLMo-1B-hf"):
+    elif official_model_name.startswith("allenai/OLMo-1B") and official_model_name.endswith("hf"):
         cfg_dict = {
             "d_model": 2048,
             "d_head": 128,
@@ -1443,7 +1451,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "positional_embedding_type": "rotary",
             "gated_mlp": True,
         }
-    elif official_model_name.startswith("allenai/OLMo-7B-hf"):
+    elif official_model_name.startswith("allenai/OLMo-7B") and official_model_name.endswith("hf"):
         cfg_dict = {
             "d_model": 4096,
             "d_head": 128,

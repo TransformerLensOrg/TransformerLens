@@ -19,3 +19,4 @@ docs/build
 .pylintrc
 docs/source/generated
 **.orig
+.venv
