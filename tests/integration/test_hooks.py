@@ -238,6 +238,6 @@ def test_prepending_hooks(zero_attach_pos, prepend):
 
 def test_use_attn_in_with_gqa_raises_error():
     # Create model that uses GroupedQueryAttention
-    model = HookedTransformer.from_pretrained("google/gemma-2b")
+    model = HookedTransformer.from_pretrained("Qwen/Qwen2-0.5B")
     with pytest.raises(AssertionError):
         model.set_use_attn_in(True)
