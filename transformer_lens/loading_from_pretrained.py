@@ -1241,6 +1241,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "trust_remote_code": True,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": False,
         }
     elif architecture == "Qwen2ForCausalLM":
         # Note that Qwen1.5 models have architecture type Qwen2ForCausalLM.
@@ -1265,6 +1266,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "tokenizer_prepends_bos": True,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": False,
         }
     elif architecture == "PhiForCausalLM":
         # Architecture for microsoft/phi models
