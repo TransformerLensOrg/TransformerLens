@@ -1486,11 +1486,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": hf_config.hidden_act,
             "num_experts": hf_config.num_experts,
             "experts_per_token": hf_config.num_experts_per_tok,
-            # TODO: implement!
-            # "router_aux_loss_coef": hf_config.router_aux_loss_coef,
-            # "router_z_loss_coef": hf_config.router_z_loss_coef,
-            # "norm_topk_prob": hf_config.norm_topk_prob,
-            # end
+            "norm_topk_prob": hf_config.norm_topk_prob,
             "n_key_value_heads": hf_config.num_key_value_heads,
             "rotary_base": hf_config.rope_theta,
             "tie_word_embeddings": hf_config.tie_word_embeddings,
