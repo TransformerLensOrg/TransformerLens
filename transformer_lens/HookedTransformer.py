@@ -170,9 +170,9 @@ class HookedTransformer(HookedRootModule):
             # will pass in tokens directly. In this case, we don't need a tokenizer.
             assert self.cfg.d_vocab != -1, "Must provide a tokenizer if d_vocab is not provided"
             self.tokenizer = None
-            if default_padding_side != "right":
+            if default_padding_side != None:
                 logging.warning(
-                    "default_padding_side is explictly given but ignored because tokenizer is not set."
+                    "default_padding_side is explicitly given but ignored because tokenizer is not set."
                 )
 
         self.embed = Embed(self.cfg)
