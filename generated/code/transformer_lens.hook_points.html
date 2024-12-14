@@ -537,7 +537,8 @@ end of the run. Defaults to True.</p></li>
 <li><p><strong>clear_contexts</strong> (<em>bool</em><em>, </em><em>optional</em>) – If True, clears hook contexts whenever hooks are reset.
 Defaults to False.</p></li>
 <li><p><strong>pos_slice</strong> – The slice to apply to the cache output. Defaults to None, do nothing.</p></li>
-<li><p><strong>**model_kwargs</strong> – Keyword arguments for the model.</p></li>
+<li><p><strong>**model_kwargs</strong> – Keyword arguments for the model’s forward function. See your related
+models forward pass for details as to what sort of arguments you can pass through.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -567,7 +568,8 @@ during this run. Default is True.</p></li>
 <li><p><strong>clear_contexts</strong> (<em>bool</em>) – If True, clears hook contexts whenever hooks are reset. Default is
 False.</p></li>
 <li><p><strong>*model_args</strong> – Positional arguments for the model.</p></li>
-<li><p><strong>**model_kwargs</strong> – Keyword arguments for the model.</p></li>
+<li><p><strong>**model_kwargs</strong> – Keyword arguments for the model’s forward function. See your related
+models forward pass for details as to what sort of arguments you can pass through.</p></li>
 </ul>
 </dd>
 </dl>
