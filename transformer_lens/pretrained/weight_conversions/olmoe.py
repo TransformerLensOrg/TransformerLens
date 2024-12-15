@@ -29,9 +29,7 @@ def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.attn.q_norm.w"] = olmoe_layer.self_attn.q_norm.weight
         state_dict[f"blocks.{l}.attn.k_norm.w"] = olmoe_layer.self_attn.k_norm.weight
 
-        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(
-            cfg.n_heads, cfg.d_head, dtype=cfg.dtype
-        )
+        state_dict[f"blocks.{l}.attn.b_Q"] = torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
         state_dict[f"blocks.{l}.attn._b_K"] = torch.zeros(
             cfg.n_key_value_heads, cfg.d_head, dtype=cfg.dtype
         )
@@ -50,15 +48,15 @@ def convert_olmoe_weights(olmoe, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_gate.weight"] = olmoe_layer.mlp.gate.weight
 
         for e in range(cfg.num_experts):
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = (
-                olmoe_layer.mlp.experts[e].up_proj.weight
-            )
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = (
-                olmoe_layer.mlp.experts[e].gate_proj.weight
-            )
-            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = (
-                olmoe_layer.mlp.experts[e].down_proj.weight
-            )
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_in.weight"] = olmoe_layer.mlp.experts[
+                e
+            ].up_proj.weight
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_gate.weight"] = olmoe_layer.mlp.experts[
+                e
+            ].gate_proj.weight
+            state_dict[f"blocks.{l}.mlp.experts.{e}.W_out.weight"] = olmoe_layer.mlp.experts[
+                e
+            ].down_proj.weight
 
     state_dict["ln_final.w"] = olmoe.model.norm.weight
 
