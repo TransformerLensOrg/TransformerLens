@@ -1495,7 +1495,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "final_rms": True,
             "gated_mlp": True,
-            "normalization_type": "RMS",
+            "normalization_type": "LN",
         }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
