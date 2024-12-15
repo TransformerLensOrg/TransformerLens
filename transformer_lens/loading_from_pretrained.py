@@ -36,6 +36,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_neo_weights,
     convert_neox_weights,
     convert_olmo_weights,
+    convert_olmoe_weights,
     convert_opt_weights,
     convert_phi3_weights,
     convert_phi_weights,
@@ -245,6 +246,9 @@ OFFICIAL_MODEL_NAMES = [
     "allenai/OLMo-1B-0724-hf",
     "allenai/OLMo-7B-Instruct-hf",
     "allenai/OLMo-7B-SFT-hf",
+    "allenai/OLMoE-1B-7B-0924",
+    "allenai/OLMoE-1B-7B-0924-SFT",
+    "allenai/OLMoE-1B-7B-0924-Instruct",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -1469,6 +1473,30 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "positional_embedding_type": "rotary",
             "gated_mlp": True,
         }
+    elif architecture == "OlmoeForCausalLM":
+        cfg_dict = {
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
+            "n_ctx": hf_config.max_position_embeddings,
+            "eps": hf_config.rms_norm_eps,
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "num_experts": hf_config.num_experts,
+            "experts_per_token": hf_config.num_experts_per_tok,
+            "norm_topk_prob": hf_config.norm_topk_prob,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "rotary_base": hf_config.rope_theta,
+            "tie_word_embeddings": hf_config.tie_word_embeddings,
+            "initializer_range": hf_config.initializer_range,
+            "positional_embedding_type": "rotary",
+            "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
+            "final_rms": True,
+            "gated_mlp": True,
+            "normalization_type": "LN",
+        }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
             "d_model": hf_config.d_model,
@@ -1889,6 +1917,8 @@ def get_pretrained_state_dict(
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "OlmoForCausalLM":
             state_dict = convert_olmo_weights(hf_model, cfg)
+        elif cfg.original_architecture == "OlmoeForCausalLM":
+            state_dict = convert_olmoe_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
