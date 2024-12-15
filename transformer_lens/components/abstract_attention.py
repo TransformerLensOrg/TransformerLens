@@ -16,6 +16,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 from transformer_lens.utils import get_offset_position_ids
+from transformer_lens.components.rms_norm import RMSNorm
 
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
@@ -140,6 +141,10 @@ class AbstractAttention(ABC, nn.Module):
             # will be overwritten by the child T5Attention class
             self.has_relative_attention_bias = False
 
+        if self.cfg.original_architecture == "OlmoeForCausalLM":
+            self.q_norm = RMSNorm(cfg, cfg.d_model)
+            self.k_norm = RMSNorm(cfg, cfg.d_head * cfg.n_key_value_heads)
+
     @property
     def OV(self) -> FactoredMatrix:
         """
@@ -194,6 +199,29 @@ class AbstractAttention(ABC, nn.Module):
         """
 
         q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
+
+        # OLMoE uses QK-norm.
+        if self.cfg.original_architecture == "OlmoeForCausalLM":
+            q = einops.rearrange(
+                self.q_norm(
+                    einops.rearrange(
+                        q,
+                        "batch pos head_index d_head -> batch pos (head_index d_head)",
+                    )
+                ),
+                "batch kv_pos (head_index d_head) -> batch kv_pos head_index d_head",
+                head_index=q.shape[2],
+            )
+            k = einops.rearrange(
+                self.k_norm(
+                    einops.rearrange(
+                        k,
+                        "batch pos head_index d_head -> batch pos (head_index d_head)",
+                    )
+                ),
+                "batch kv_pos (head_index d_head) -> batch kv_pos head_index d_head",
+                head_index=k.shape[2],
+            )
 
         if past_kv_cache_entry is not None:
             # Appends the new keys and values to the cached values, and automatically updates the cache
