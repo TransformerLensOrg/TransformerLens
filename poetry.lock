@@ -2343,13 +2343,13 @@ dill = ">=0.3.8"
 
 [[package]]
 name = "muutils"
-version = "0.6.18"
+version = "0.6.19"
 description = "miscellaneous python utilities"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "muutils-0.6.18-py3-none-any.whl", hash = "sha256:ed65f8dbd5f0de61d7e29a7b634dbdaaa358c2f8fbe1e5b8e6c27b727a4b30a9"},
-    {file = "muutils-0.6.18.tar.gz", hash = "sha256:355e27a788493a7963a83b80f102a8cbcb664927d920f0413b19d59a9c7ebb8e"},
+    {file = "muutils-0.6.19-py3-none-any.whl", hash = "sha256:a22a782ea5eeceb267a2aa08359f542faf5fbf4ecbca2e23c42fcfc2e9301de9"},
+    {file = "muutils-0.6.19.tar.gz", hash = "sha256:2b24c7b92a13539a39f25c5a683744ed2db0c38c653c1b12995aa184970840e9"},
 ]
 
 [package.extras]
