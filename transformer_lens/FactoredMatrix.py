@@ -243,7 +243,13 @@ class FactoredMatrix:
         )
 
     def get_corner(self, k=3):
-        return tensor_utils.get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
+        result = tensor_utils.get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
+
+        if isinstance(result, FactoredMatrix):
+            return result.AB
+
+        # This should never happen, but if it does, it means a bug has been added to the util function
+        raise TypeError("tensor_utils.get_corner returned the wrong type")
 
     @property
     def ndim(self) -> int:

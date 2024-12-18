@@ -30,6 +30,11 @@ def to_numpy(tensor):
         raise ValueError(f"Input to to_numpy has invalid type: {type(tensor)}")
 
 
+def get_corner(tensor, n=3):
+    # Prints the top left corner of the tensor
+    return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
+
+
 def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
     """
     Removes the first dimension of a tensor if it is size 1, otherwise returns the tensor unchanged
