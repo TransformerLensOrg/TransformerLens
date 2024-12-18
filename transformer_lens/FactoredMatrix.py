@@ -12,13 +12,34 @@ from typing import List, Tuple, Union, overload
 import torch
 from jaxtyping import Float
 
-import transformer_lens.utilities.tensor_utils as tensor_utils
+import transformer_lens.utilities.tensors as tensor_utils
 
 
-class FactoredMatrix(tensor_utils.BaseTransformerLensMatrix):
+class FactoredMatrix:
     """
     Class to represent low rank factored matrices, where the matrix is represented as a product of two matrices. Has utilities for efficient calculation of eigenvalues, norm and SVD.
     """
+
+    def __init__(
+        self,
+        A: Float[torch.Tensor, "... ldim mdim"],
+        B: Float[torch.Tensor, "... mdim rdim"],
+    ):
+        self.A = A
+        self.B = B
+        assert self.A.size(-1) == self.B.size(
+            -2
+        ), f"Factored matrix must match on inner dimension, shapes were a: {self.A.shape}, b:{self.B.shape}"
+        self.ldim = self.A.size(-2)
+        self.rdim = self.B.size(-1)
+        self.mdim = self.B.size(-2)
+        self.has_leading_dims = (self.A.ndim > 2) or (self.B.ndim > 2)
+        self.shape = torch.broadcast_shapes(self.A.shape[:-2], self.B.shape[:-2]) + (
+            self.ldim,
+            self.rdim,
+        )
+        self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
+        self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
 
     @overload
     def __matmul__(
