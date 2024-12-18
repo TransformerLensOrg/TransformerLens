@@ -1,47 +1,16 @@
-"""tensor_utils.
+"""tensors.
 
-This module contains utility functions related to tensors
+This module contains utility functions related to raw tensors
 """
 
 from __future__ import annotations
 
-from typing import Tuple, Union, cast
+from typing import Tuple, cast
 
 import einops
 import numpy as np
 import torch
 from jaxtyping import Float, Int
-
-
-class BaseTransformerLensMatrix:
-    def __init__(
-        self,
-        A: Float[torch.Tensor, "... ldim mdim"],
-        B: Float[torch.Tensor, "... mdim rdim"],
-    ):
-        self.A = A
-        self.B = B
-        assert self.A.size(-1) == self.B.size(
-            -2
-        ), f"Factored matrix must match on inner dimension, shapes were a: {self.A.shape}, b:{self.B.shape}"
-        self.ldim = self.A.size(-2)
-        self.rdim = self.B.size(-1)
-        self.mdim = self.B.size(-2)
-        self.has_leading_dims = (self.A.ndim > 2) or (self.B.ndim > 2)
-        self.shape = torch.broadcast_shapes(self.A.shape[:-2], self.B.shape[:-2]) + (
-            self.ldim,
-            self.rdim,
-        )
-        self.A = self.A.broadcast_to(self.shape[:-2] + (self.ldim, self.mdim))
-        self.B = self.B.broadcast_to(self.shape[:-2] + (self.mdim, self.rdim))
-
-
-def get_corner(tensor, n=3):
-    # Prints the top left corner of the tensor
-    if isinstance(tensor, torch.Tensor):
-        return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
-    elif isinstance(tensor, BaseTransformerLensMatrix):
-        return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
 
 
 def to_numpy(tensor):
@@ -133,33 +102,6 @@ def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False
     elif col_mismatch:
         print(f"column mismatch: {col_mismatch}")
 
-
-def composition_scores(
-    left: BaseTransformerLensMatrix, right: BaseTransformerLensMatrix, broadcast_dims=True
-) -> Union[
-    Float[torch.Tensor, "*leading_dims"],
-    Float[torch.Tensor, "*leading_dims_left_and_right"],
-]:
-    """
-    See `HookedTransformer.all_composition_scores` for documentation.
-    """
-    if broadcast_dims:
-        r_leading = right.ndim - 2
-        l_leading = left.ndim - 2
-        for i in range(l_leading):
-            right = right.unsqueeze(i)
-        for i in range(r_leading):
-            left = left.unsqueeze(i + l_leading)
-    assert (
-        left.rdim == right.ldim
-    ), f"Composition scores require left.rdim==right.ldim, shapes were left: {left.shape}, right:{right.shape}"
-
-    new_right = right.collapse_r()
-    new_left = left.collapse_l()
-    r_norms = new_right.norm(dim=[-2, -1])
-    l_norms = new_left.norm(dim=[-2, -1])
-    comp_norms = (new_left @ new_right).norm(dim=[-2, -1])
-    return comp_norms / r_norms / l_norms
 
 
 def get_offset_position_ids(
