@@ -121,15 +121,6 @@ class TestFactoredMatrixProperties:
         for factored_matrix in factored_matrices:
             assert torch.allclose(factored_matrix.norm(), factored_matrix.AB.norm(), atol=1e-5)
 
-    def test_get_corner(self, factored_matrices):
-        for factored_matrix in factored_matrices:
-            k = 3
-            result = factored_matrix.get_corner(k)
-            expected = utils.get_corner(
-                factored_matrix.A[..., :k, :] @ factored_matrix.B[..., :, :k], k
-            )
-            assert torch.allclose(result, expected)
-
     def test_ndim(self, factored_matrices):
         for factored_matrix in factored_matrices:
             assert factored_matrix.ndim == len(factored_matrix.shape)

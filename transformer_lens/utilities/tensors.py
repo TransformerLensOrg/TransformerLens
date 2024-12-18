@@ -103,7 +103,6 @@ def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False
         print(f"column mismatch: {col_mismatch}")
 
 
-
 def get_offset_position_ids(
     past_kv_pos_offset: int,
     attention_mask: Int[torch.Tensor, "batch offset_pos"],

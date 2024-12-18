@@ -3,9 +3,11 @@
 This module contains utility functions related to the transformer lens implementation of factored
 matrices.
 """
+from typing import Union
+
 import torch
-from typing import Tuple, Union, cast
-from jaxtyping import Float, Int
+from jaxtyping import Float
+
 from transformer_lens.FactoredMatrix import FactoredMatrix
 
 
@@ -15,7 +17,8 @@ def get_corner(tensor, n=3):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
     elif isinstance(tensor, FactoredMatrix):
         return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
-    
+
+
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
 ) -> Union[
