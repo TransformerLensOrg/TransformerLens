@@ -1,12 +1,13 @@
 import pytest
 import torch
-from torch import randn
 
 from transformer_lens import FactoredMatrix, utils
+
 
 @pytest.fixture(scope="module")
 def factored_matrices(random_matrices):
     return [FactoredMatrix(a, b) for a, b in random_matrices]
+
 
 def test_get_corner(factored_matrices):
     for factored_matrix in factored_matrices:
