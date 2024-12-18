@@ -10,6 +10,8 @@ from jaxtyping import Float
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
 
+from .tensors import get_corner
+
 
 def composition_scores(
     left: FactoredMatrix, right: FactoredMatrix, broadcast_dims=True
@@ -37,3 +39,10 @@ def composition_scores(
     l_norms = new_left.norm(dim=[-2, -1])
     comp_norms = (new_left @ new_right).norm(dim=[-2, -1])
     return comp_norms / r_norms / l_norms
+
+
+def get_matrix_corner(matrix: FactoredMatrix, n=3):
+    # Prints the top left corner of the tensor
+    result = get_corner(matrix[tuple(slice(n) for _ in range(matrix.ndim))])
+
+    return result.AB

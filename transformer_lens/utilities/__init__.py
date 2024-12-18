@@ -41,6 +41,7 @@ from .tokenize_utils import (
 )
 from .matrix import (
     composition_scores,
+    get_matrix_corner,
 )
 from .logits_utils import sample_logits
 from .slice import SliceInput, Slice
