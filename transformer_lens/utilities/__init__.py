@@ -21,6 +21,7 @@ from .tensors import (
     get_offset_position_ids,
     get_cumsum_along_dim,
     repeat_along_head_dimension,
+    get_corner,
 )
 from .lm_utils import lm_cross_entropy_loss, lm_accuracy
 from .activation_utils import gelu_new, gelu_fast, solu
@@ -39,7 +40,6 @@ from .tokenize_utils import (
     get_attention_mask,
 )
 from .matrix import (
-    get_corner,
     composition_scores,
 )
 from .logits_utils import sample_logits
