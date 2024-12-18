@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from transformer_lens import utils
+import transformer_lens.utilities.devices as device_utils
 from transformer_lens.utilities.activation_functions import SUPPORTED_ACTIVATIONS
 
 
@@ -327,7 +327,7 @@ class HookedTransformerConfig:
             self.n_params += self.n_layers * mlp_params_per_layer
 
         if self.device is None:
-            self.device = utils.get_device()
+            self.device = device_utils.get_device()
 
         if self.n_devices > 1:
             assert (

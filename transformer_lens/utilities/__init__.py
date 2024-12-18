@@ -1,3 +1,8 @@
+from .devices import (
+    get_device,
+    get_device_for_block_index,
+    move_to_and_update_config,
+)
 from transformer_lens.utilities.hf_utils import (
     download_file_from_hf,
     clear_huggingface_cache,
@@ -5,7 +10,7 @@ from transformer_lens.utilities.hf_utils import (
     get_dataset,
     select_compatible_kwargs,
 )
-from transformer_lens.utilities.gpu_utils import print_gpu_mem, get_device
+from transformer_lens.utilities.gpu_utils import print_gpu_mem
 from transformer_lens.utilities.tensor_utils import (
     get_corner,
     to_numpy,
