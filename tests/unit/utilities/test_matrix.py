@@ -3,6 +3,14 @@ import torch
 
 from transformer_lens import FactoredMatrix, utils
 
+@pytest.fixture(scope="module")
+def random_matrices():
+    return [
+        (randn(3, 2), randn(2, 3)),
+        (randn(4, 5), randn(5, 4)),
+        (randn(6, 7), randn(7, 6)),
+        (randn(6, 7), randn(7, 3)),
+    ]
 
 @pytest.fixture(scope="module")
 def factored_matrices(random_matrices):
