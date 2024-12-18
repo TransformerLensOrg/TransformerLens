@@ -16,7 +16,7 @@ from datasets.arrow_dataset import Dataset
 from transformers import AutoTokenizer
 
 from transformer_lens.utilities.hf_utils import keep_single_column
-from transformer_lens.utilities.tensor_utils import get_cumsum_along_dim
+from transformer_lens.utilities.tensors import get_cumsum_along_dim
 
 
 def tokenize_and_concatenate(
