@@ -243,7 +243,7 @@ class FactoredMatrix:
         )
 
     def get_corner(self, k=3):
-        return tensor_utils.get_corner(self.A[..., :k, :] @ self.B[..., :, :k])
+        return tensor_utils.get_corner(self.A[..., :k, :] @ self.B[..., :, :k], k)
 
     @property
     def ndim(self) -> int:
