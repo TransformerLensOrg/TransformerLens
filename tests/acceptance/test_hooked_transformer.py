@@ -553,3 +553,45 @@ def test_all_pythia_models_exist():
                 f"Could not download model '{model}' from Huggingface."
                 " Maybe the name was changed or the model has been removed."
             )
+
+
+@pytest.mark.parametrize("input_type,return_type", [("string", "str"), ("string", "input"),
+                                                    ("tokens", "str"), ("tokens", "input"),
+                                                    ("embeddings", "str"), ("embeddings", "input")])
+def test_different_inputs_for_generation(input_type, return_type):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    hooked_llm = HookedTransformer.from_pretrained("gpt2", device=device)
+
+    hooked_llm.eval()
+    text_input = "What is the meaning of life?"
+    tokens_input = hooked_llm.to_tokens(text_input)
+    embeddings_input = hooked_llm.embed(tokens_input)
+
+    if input_type == "string":
+        model_input = text_input
+    elif input_type == "tokens":
+        model_input = tokens_input
+    elif input_type == "embeddings":
+        model_input = embeddings_input
+    else:
+        raise ValueError(f"Unknown input_type: {input_type}")
+
+    output = hooked_llm.generate(
+        input=model_input,
+        max_new_tokens=5,
+        return_type=return_type,
+        verbose=False
+    )
+
+    if return_type == "str":
+        assert isinstance(output, str), f"Expected string output but got {type(output)}"
+    elif return_type == "input":
+        if input_type == "string":
+            assert isinstance(output, str), f"Expected string output but got {type(output)}"
+        else:
+            assert isinstance(output, torch.Tensor), f"Expected tensor output but got {type(output)}"
+            if input_type == "tokens":
+                assert output.ndim == 2, f"Expected 2D tensor but got {output.ndim}D"
+            else:  # input_type is embeddings
+                assert output.ndim == 3, f"Expected 3D tensor but got {output.ndim}D"
+                

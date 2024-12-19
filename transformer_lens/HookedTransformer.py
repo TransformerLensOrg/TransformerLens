@@ -2032,7 +2032,7 @@ class HookedTransformer(HookedRootModule):
     @torch.inference_mode()
     def generate(
         self,
-        input: Union[str, Float[torch.Tensor, "batch pos"]] = "",
+        input: Union[str, Float[torch.Tensor, "batch pos"], Float[torch.Tensor, "batch pos hidden_size"]] = "",
         max_new_tokens: int = 10,
         stop_at_eos: bool = True,
         eos_token_id: Optional[int] = None,
@@ -2060,9 +2060,9 @@ class HookedTransformer(HookedRootModule):
         convert them to a batch of tokens and input that instead.
 
         Args:
-            input (Union[str, Int[torch.Tensor, "batch pos"])]): Either a batch of tokens ([batch,
-                pos]) or a text string (this will be converted to a batch of tokens with batch size
-                1).
+            input (Union[str, Int[torch.Tensor, "batch pos"], Float[torch.Tensor, "batch pos hidden_size"]]): A
+                batch of tokens ([batch, pos]), a text string (this will be converted to a batch of tokens with batch
+                size 1) or a tensor of precomputed embeddings of shape [batch, pos, hidden_size].
             max_new_tokens (int): Maximum number of tokens to generate.
             stop_at_eos (bool): If True, stop generating tokens when the model outputs eos_token.
             eos_token_id (Optional[Union[int, Sequence]]): The token ID to use for end
@@ -2088,37 +2088,37 @@ class HookedTransformer(HookedRootModule):
             padding_side (Union[Literal["left", "right"], None], optional): Overrides
                 self.tokenizer.padding_side. Specifies which side to pad when tokenizing multiple
                 strings of different lengths.
-            return_type (Optional[str]): The type of the output to return - either a string (str),
-                a tensor of tokens (tensor) or whatever the format of the input was (input).
+            return_type (Optional[str]): The type of the output to return - a string (str),
+                a tensor of tokens (tensor or tokens) or whatever the format of the input was (input).
             verbose (bool): If True, show tqdm progress bars for generation.
 
         Returns:
             outputs (torch.Tensor): [batch, pos + max_new_tokens], generated sequence of new tokens
-                (by default returns same type as input).
+                (by default returns same type as input). If input is embeddings and return type is tokens,
+                returns only new generated tokens. If input is embeddings and return type is tensor,
+                returns all sequence of embeddings.
         """
 
         with utils.LocallyOverridenDefaults(
             self, prepend_bos=prepend_bos, padding_side=padding_side
         ):
-            if type(input) == str:
-                # If text, convert to tokens (batch_size=1)
-                assert (
-                    self.tokenizer is not None
-                ), "Must provide a tokenizer if passing a string to the model"
-                tokens = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
-            else:
-                tokens = input
-
             if return_type == "input":
                 if type(input) == str:
                     return_type = "str"
                 else:
                     return_type = "tensor"
 
-            assert isinstance(tokens, torch.Tensor)
-            batch_size, ctx_length = tokens.shape
+            if type(input) == str:
+                # If text, convert to tokens (batch_size=1)
+                assert (
+                    self.tokenizer is not None
+                ), "Must provide a tokenizer if passing a string to the model"
+                input = self.to_tokens(input, prepend_bos=prepend_bos, padding_side=padding_side)
+
+            assert isinstance(input, torch.Tensor)
+            batch_size, ctx_length = input.shape[0], input.shape[1]
             device = devices.get_device_for_block_index(0, self.cfg)
-            tokens = tokens.to(device)
+            input = input.to(device)
             if use_past_kv_cache:
                 past_kv_cache = HookedTransformerKeyValueCache.init_cache(
                     self.cfg, self.cfg.device, batch_size
@@ -2156,36 +2156,41 @@ class HookedTransformer(HookedRootModule):
             # Currently nothing in HookedTransformer changes with eval, but this is here in case
             # that changes in the future.
             self.eval()
+            output_tokens_list = []
             for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 # While generating, we keep generating logits, throw away all but the final logits,
                 # and then use those logits to sample from the distribution We keep adding the
                 # sampled tokens to the end of tokens.
                 if use_past_kv_cache:
                     # We just take the final tokens, as a [batch, 1] tensor
+                    start_at_layer = 0 if len(input.shape) == 3 else None
                     if index > 0:
                         logits = self.forward(
-                            tokens[:, -1:],
+                            input[:, -1:],
                             return_type="logits",
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
+                            start_at_layer=start_at_layer,
                         )
                     else:
                         logits = self.forward(
-                            tokens,
+                            input,
                             return_type="logits",
                             prepend_bos=prepend_bos,
                             padding_side=padding_side,
                             past_kv_cache=past_kv_cache,
+                            start_at_layer=start_at_layer,
                         )
                 else:
                     # We input the entire sequence, as a [batch, pos] tensor, since we aren't using
                     # the cache.
                     logits = self.forward(
-                        tokens,
+                        input,
                         return_type="logits",
                         prepend_bos=prepend_bos,
                         padding_side=padding_side,
+                        start_at_layer=start_at_layer,
                     )
                 final_logits = logits[:, -1, :]
 
@@ -2196,13 +2201,14 @@ class HookedTransformer(HookedRootModule):
                         top_p=top_p,
                         temperature=temperature,
                         freq_penalty=freq_penalty,
-                        tokens=tokens,
+                        tokens=input,
                     ).to(devices.get_device_for_block_index(0, self.cfg))
                 else:
                     sampled_tokens = final_logits.argmax(-1).to(
                         devices.get_device_for_block_index(0, self.cfg)
                     )
 
+                output_tokens_list.append(sampled_tokens)
                 if stop_at_eos:
                     # For all unfinished sequences, add on the next token. If a sequence was
                     # finished, throw away the generated token and add eos_token_for_padding
@@ -2215,20 +2221,30 @@ class HookedTransformer(HookedRootModule):
                         )
                     )
 
-                tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
+                if len(input.shape) == 3:  # case of embeddings as input
+                    input = torch.hstack([input, self.embed(sampled_tokens).unsqueeze(0)])
+                else:
+                    input = torch.cat([input, sampled_tokens.unsqueeze(-1)], dim=-1)
 
                 if stop_at_eos and finished_sequences.all():
                     break
 
+            output_tokens = torch.tensor(output_tokens_list, device=device)
             if return_type == "str":
                 if self.cfg.default_prepend_bos:
                     # If we prepended a BOS token, remove it when returning output.
-                    return self.tokenizer.decode(tokens[0, 1:])
+                    if len(input.shape) == 2:
+                        return self.tokenizer.decode(input[0, 1:])
+                    return self.tokenizer.decode(output_tokens[1:])
                 else:
-                    return self.tokenizer.decode(tokens[0])
+                    if len(input.shape) == 2:
+                        return self.tokenizer.decode(input[0])
+                    return self.tokenizer.decode(output_tokens)
 
-            else:
-                return tokens
+            if return_type == 'tokens':
+                return output_tokens
+
+            return input
 
     # Give access to all weights as properties.
     @property
