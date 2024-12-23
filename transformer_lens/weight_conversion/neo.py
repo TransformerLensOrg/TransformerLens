@@ -3,6 +3,7 @@ import torch
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
+
 def convert_neo_weights(neo, cfg: HookedTransformerConfig):
     state_dict = {}
 
@@ -49,7 +50,7 @@ def convert_neo_weights(neo, cfg: HookedTransformerConfig):
 
 
 # class NEOConverter(BaseWeightConversion):
-    
+
 #     def __init__(self):
 #         super().__init__({
 #             "embed.W_E": "transformer.wte.weight",
@@ -61,7 +62,7 @@ def convert_neo_weights(neo, cfg: HookedTransformerConfig):
 #             }
 #             f"blocks.{l}.attn.W_Q": {
 #                 "key": "transformer.h[l].attn.attention.q_proj.weight",
-#                 "transform": 
+#                 "transform":
 #             },
 #             f"blocks.{l}.attn.b_Q": torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype)
 #         })

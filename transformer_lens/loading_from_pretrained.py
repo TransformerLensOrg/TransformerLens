@@ -23,24 +23,8 @@ import transformer_lens.utils as utils
 from transformer_lens.factories import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.weight_conversion import (
-    convert_bert_weights,
-    convert_bloom_weights,
-    convert_coder_weights,
-    convert_gemma_weights,
-    convert_gpt2_weights,
-    convert_gptj_weights,
-    convert_llama_weights,
     convert_mingpt_weights,
-    convert_mistral_weights,
     convert_neel_solu_old_weights,
-    convert_neo_weights,
-    convert_neox_weights,
-    convert_opt_weights,
-    convert_phi3_weights,
-    convert_phi_weights,
-    convert_qwen2_weights,
-    convert_qwen_weights,
-    convert_t5_weights,
 )
 
 OFFICIAL_MODEL_NAMES = [
@@ -1818,7 +1802,7 @@ def get_pretrained_state_dict(
 
         for param in hf_model.parameters():
             param.requires_grad = False
-            
+
         weight_conversion_config = WeightConversionFactory.select_weight_conversion_config(cfg)
 
         return weight_conversion_config.convert(hf_model)
