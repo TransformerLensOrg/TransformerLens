@@ -1,26 +1,16 @@
-"""tensor_utils.
+"""tensors.
 
-This module contains utility functions related to tensors
+This module contains utility functions related to raw tensors
 """
 
 from __future__ import annotations
 
-from typing import Tuple, Union, cast
+from typing import Tuple, cast
 
 import einops
 import numpy as np
 import torch
 from jaxtyping import Float, Int
-
-from transformer_lens.FactoredMatrix import FactoredMatrix
-
-
-def get_corner(tensor, n=3):
-    # Prints the top left corner of the tensor
-    if isinstance(tensor, torch.Tensor):
-        return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
-    elif isinstance(tensor, FactoredMatrix):
-        return tensor[tuple(slice(n) for _ in range(tensor.ndim))].AB
 
 
 def to_numpy(tensor):
@@ -38,6 +28,11 @@ def to_numpy(tensor):
         return np.array(tensor)
     else:
         raise ValueError(f"Input to to_numpy has invalid type: {type(tensor)}")
+
+
+def get_corner(tensor, n=3):
+    # Prints the top left corner of the tensor
+    return tensor[tuple(slice(n) for _ in range(tensor.ndim))]
 
 
 def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor, "..."]:
@@ -111,34 +106,6 @@ def check_structure(t1: torch.Tensor, t2: torch.Tensor, *, verbose: bool = False
         print(f"row mismatch: {row_mismatch}")
     elif col_mismatch:
         print(f"column mismatch: {col_mismatch}")
-
-
-def composition_scores(
-    left: "FactoredMatrix", right: "FactoredMatrix", broadcast_dims=True
-) -> Union[
-    Float[torch.Tensor, "*leading_dims"],
-    Float[torch.Tensor, "*leading_dims_left_and_right"],
-]:
-    """
-    See `HookedTransformer.all_composition_scores` for documentation.
-    """
-    if broadcast_dims:
-        r_leading = right.ndim - 2
-        l_leading = left.ndim - 2
-        for i in range(l_leading):
-            right = right.unsqueeze(i)
-        for i in range(r_leading):
-            left = left.unsqueeze(i + l_leading)
-    assert (
-        left.rdim == right.ldim
-    ), f"Composition scores require left.rdim==right.ldim, shapes were left: {left.shape}, right:{right.shape}"
-
-    new_right = right.collapse_r()
-    new_left = left.collapse_l()
-    r_norms = new_right.norm(dim=[-2, -1])
-    l_norms = new_left.norm(dim=[-2, -1])
-    comp_norms = (new_left @ new_right).norm(dim=[-2, -1])
-    return comp_norms / r_norms / l_norms
 
 
 def get_offset_position_ids(
