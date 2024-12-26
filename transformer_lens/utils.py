@@ -1040,6 +1040,8 @@ def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> to
 
     # Initialize the attention mask with ones (indicating all tokens should be attended to)
     attention_mask = torch.ones_like(tokens)
+    if tokenizer is None:
+        return attention_mask
     is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
 
     if tokenizer.padding_side == "right":
