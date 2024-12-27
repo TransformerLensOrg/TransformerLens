@@ -32,7 +32,6 @@ import torch.nn.functional as F
 import tqdm.auto as tqdm
 from jaxtyping import Float, Int
 from packaging import version
-from torch import device
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
 from typing_extensions import Literal
 
@@ -1042,7 +1041,7 @@ class HookedTransformer(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self, device: int | device | None = None):
+    def cuda(self, device: Union[int, torch.device, None] = None):
         """Wrapper around cuda that also changes `self.cfg.device`."""
         return self.to("cuda")
 
