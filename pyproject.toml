@@ -28,7 +28,7 @@
         python=">=3.9,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
-        torch=">=2.2"
+        torch=">=2.2,<2.5"
         tqdm=">=4.64.1"
         transformers=">=4.37.2,<4.43"
         typing-extensions="*"
