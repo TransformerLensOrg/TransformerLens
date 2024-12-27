@@ -44,7 +44,7 @@
             circuitsvis=">=1.38.1"
             isort="5.8.0"
             jupyter=">=1.0.0"
-            mypy=">=1.8.0"
+            mypy=">=1.8.0,<1.12"
             nbval="^0.10.0"
             plotly=">=5.12.0"
             pycln="^2.1.3"
