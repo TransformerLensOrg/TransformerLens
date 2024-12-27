@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Tuple, Union, cast, overload
 import torch
 from einops import repeat
 from jaxtyping import Float, Int
-from torch import nn
+from torch import device, nn
 from transformers import AutoTokenizer
 from typing_extensions import Literal
 
@@ -208,7 +208,7 @@ class HookedEncoderDecoder(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self, device: Optional = None):
+    def cuda(self, device: int | device | None = None):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cuda")
 
