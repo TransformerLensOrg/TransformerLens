@@ -40,6 +40,7 @@ class TestMatchHuggingFace:
                 past_kv_cache_entry=None,
                 attention_mask=None,
             )
-            hf_out, _, _ = hf_model.transformer.h[layer_n].attn(hidden_states=input)
+            hf_out = hf_model.transformer.h[layer_n].attn(hidden_states=input)
+            print(hf_out)
 
             assert torch.sum(tl_out == hf_out) == math.prod(tl_out.shape)
