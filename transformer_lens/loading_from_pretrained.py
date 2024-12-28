@@ -961,7 +961,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
         }
-    elif "Llama-3.3-3B" in official_model_name:
+    elif "Llama-3.3-70B" in official_model_name:
         cfg_dict = {
             "d_model": 8192,
             "d_head": 128,
