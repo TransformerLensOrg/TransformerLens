@@ -1969,6 +1969,9 @@ class HookedTransformer(HookedRootModule):
         """
         Toggles whether to allow editing of inputs to each attention head.
         """
+        assert (
+            self.cfg.n_key_value_heads is None
+        ), "Can't use attn_in with GroupedQueryAttention, please use split_qkv_input instead"
         self.cfg.use_attn_in = use_attn_in
 
     def set_ungroup_grouped_query_attention(self, ungroup_grouped_query_attention: bool):
