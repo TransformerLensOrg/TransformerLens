@@ -109,14 +109,15 @@
 | meta-llama/Meta-Llama-3-8B-Instruct  | 7.8B       |         32 |      4096 |        32 | silu              |    8192 |    128256 |      128 |   14336 | 8                   |
 | meta-llama/Meta-Llama-3-70B          | 78B        |         80 |      8192 |        64 | silu              |    8192 |    128256 |      128 |   28672 | 8                   |
 | meta-llama/Meta-Llama-3-70B-Instruct | 78B        |         80 |      8192 |        64 | silu              |    8192 |    128256 |      128 |   28672 | 8                   |
-| meta-llama/Llama-3.2-1B              | 1.1B       |         16 |      2048 |        32 | silu              |    2048 |    128256 |       64 |    8192 | 8                   |
-| meta-llama/Llama-3.2-3B              | 3.2B       |         28 |      3072 |        24 | silu              |    2048 |    128256 |      128 |    8192 | 8                   |
-| meta-llama/Llama-3.2-1B-Instruct     | 1.1B       |         16 |      2048 |        32 | silu              |    2048 |    128256 |       64 |    8192 | 8                   |
-| meta-llama/Llama-3.2-3B-Instruct     | 3.2B       |         28 |      3072 |        24 | silu              |    2048 |    128256 |      128 |    8192 | 8                   |
 | meta-llama/Llama-3.1-70B             | 78B        |         80 |      8192 |        64 | silu              |    2048 |    128256 |      128 |   28672 | 8                   |
 | meta-llama/Llama-3.1-8B              | 7.8B       |         32 |      4096 |        32 | silu              |    2048 |    128256 |      128 |   14336 | 8                   |
 | meta-llama/Llama-3.1-8B-Instruct     | 7.8B       |         32 |      4096 |        32 | silu              |    2048 |    128256 |      128 |   14336 | 8                   |
 | meta-llama/Llama-3.1-70B-Instruct    | 78B        |         80 |      8192 |        64 | silu              |    2048 |    128256 |      128 |   28672 | 8                   |
+| meta-llama/Llama-3.2-1B              | 1.1B       |         16 |      2048 |        32 | silu              |    2048 |    128256 |       64 |    8192 | 8                   |
+| meta-llama/Llama-3.2-3B              | 3.2B       |         28 |      3072 |        24 | silu              |    2048 |    128256 |      128 |    8192 | 8                   |
+| meta-llama/Llama-3.2-1B-Instruct     | 1.1B       |         16 |      2048 |        32 | silu              |    2048 |    128256 |       64 |    8192 | 8                   |
+| meta-llama/Llama-3.2-3B-Instruct     | 3.2B       |         28 |      3072 |        24 | silu              |    2048 |    128256 |      128 |    8192 | 8                   |
+| meta-llama/Llama-3.3-70B-Instruct    | 78B        |         80 |      8192 |        64 | silu              |    2048 |    128256 |      128 |   28672 | 8                   |
 | othello-gpt                          | 25M        |          8 |       512 |         8 | gelu              |      59 |        61 |       64 |    2048 |                     |
 | bert-base-cased                      | 85M        |         12 |       768 |        12 | gelu              |     512 |     28996 |       64 |    3072 |                     |
 | tiny-stories-1M                      | 393K       |          8 |        64 |        16 | gelu              |    2048 |     50257 |        4 |     256 |                     |

@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for transformer_lens/components/transformer_block.py: 78%</title>
+    <title>Coverage for transformer_lens/components/transformer_block.py: 80%</title>
     <link rel="icon" sizes="32x32" href="favicon_32.png">
     <link rel="stylesheet" href="style.css" type="text/css">
     <script type="text/javascript" src="coverage_html.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>transformer_lens/components/transformer_block.py</b>:
-            <span class="pc_cov">78%</span>
+            <span class="pc_cov">80%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -56,10 +56,10 @@
         </aside>
         <h2>
             <span class="text">101 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">86<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">15<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">87<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">14<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
-            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">10<span class="text"> partial</span></button>
+            <button type="button" class="par run show_par button_toggle_par" value="par" data-shortcut="p" title="Toggle lines partially run">9<span class="text"> partial</span></button>
         </h2>
         <p class="text">
             <a id="prevFileLink" class="nav" href="d_db46118ef83ad831_token_typed_embed_py.html">&#xab; prev</a> &nbsp; &nbsp;
@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="d_db46118ef83ad831_unembed_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.4.4">coverage.py v7.4.4</a>,
-            created at 2024-12-14 00:54 +0000
+            created at 2024-12-31 02:13 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"/>
@@ -130,8 +130,8 @@
     <p class="run"><span class="n"><a id="t46" href="#t46">46</a></span><span class="t">            <span class="nam">normalization_layer</span> <span class="op">=</span> <span class="nam">LayerNormPre</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t47" href="#t47">47</a></span><span class="t">        <span class="key">elif</span> <span class="nam">self</span><span class="op">.</span><span class="nam">normalization_type</span> <span class="op">==</span> <span class="str">"RMS"</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">47&#x202F;&#x219B;&#x202F;48</span><span class="annotate long">line 47 didn't jump to line 48, because the condition on line 47 was never true</span></span></p>
     <p class="mis show_mis"><span class="n"><a id="t48" href="#t48">48</a></span><span class="t">            <span class="nam">normalization_layer</span> <span class="op">=</span> <span class="nam">RMSNorm</span>&nbsp;</span><span class="r"></span></p>
-    <p class="par run show_par"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">        <span class="key">elif</span> <span class="nam">self</span><span class="op">.</span><span class="nam">normalization_type</span> <span class="op">==</span> <span class="str">"RMSPre"</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">49&#x202F;&#x219B;&#x202F;50</span><span class="annotate long">line 49 didn't jump to line 50, because the condition on line 49 was never true</span></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">            <span class="nam">normalization_layer</span> <span class="op">=</span> <span class="nam">RMSNormPre</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t49" href="#t49">49</a></span><span class="t">        <span class="key">elif</span> <span class="nam">self</span><span class="op">.</span><span class="nam">normalization_type</span> <span class="op">==</span> <span class="str">"RMSPre"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t50" href="#t50">50</a></span><span class="t">            <span class="nam">normalization_layer</span> <span class="op">=</span> <span class="nam">RMSNormPre</span>&nbsp;</span><span class="r"></span></p>
     <p class="par run show_par"><span class="n"><a id="t51" href="#t51">51</a></span><span class="t">        <span class="key">elif</span> <span class="nam">self</span><span class="op">.</span><span class="nam">normalization_type</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"><span class="annotate short">51&#x202F;&#x219B;&#x202F;56</span><span class="annotate long">line 51 didn't jump to line 56, because the condition on line 51 was never false</span></span></p>
     <p class="pln"><span class="n"><a id="t52" href="#t52">52</a></span><span class="t">            <span class="com"># This should just be the identity.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t53" href="#t53">53</a></span><span class="t">            <span class="com"># We need to make this a lambda so we can call it on the config, just like the others</span>&nbsp;</span><span class="r"></span></p>
@@ -300,7 +300,7 @@
             <a id="nextFileLink" class="nav" href="d_db46118ef83ad831_unembed_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.4.4">coverage.py v7.4.4</a>,
-            created at 2024-12-14 00:54 +0000
+            created at 2024-12-31 02:13 +0000
         </p>
     </div>
 </footer>
