@@ -151,14 +151,15 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "meta-llama/Meta-Llama-3-70B",
     "meta-llama/Meta-Llama-3-70B-Instruct",
-    "meta-llama/Llama-3.2-1B",
-    "meta-llama/Llama-3.2-3B",
-    "meta-llama/Llama-3.2-1B-Instruct",
-    "meta-llama/Llama-3.2-3B-Instruct",
     "meta-llama/Llama-3.1-70B",
     "meta-llama/Llama-3.1-8B",
     "meta-llama/Llama-3.1-8B-Instruct",
     "meta-llama/Llama-3.1-70B-Instruct",
+    "meta-llama/Llama-3.2-1B",
+    "meta-llama/Llama-3.2-3B",
+    "meta-llama/Llama-3.2-1B-Instruct",
+    "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.3-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
     "roneneldan/TinyStories-1M",
@@ -960,6 +961,30 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_high_freq_factor": 4.0,
             "NTK_by_parts_factor": 32.0,
         }
+    elif "Llama-3.3-70B" in official_model_name:
+        cfg_dict = {
+            "d_model": 8192,
+            "d_head": 128,
+            "n_heads": 64,
+            "d_mlp": 28672,
+            "n_layers": 80,
+            "n_ctx": 2048,  # capped due to memory issues
+            "eps": 1e-5,
+            "d_vocab": 128256,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 32,
+            "final_rms": True,
+            "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
+        }
     elif "Llama-3.1-8B" in official_model_name:
         cfg_dict = {
             "d_model": 4096,
@@ -1241,6 +1266,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "trust_remote_code": True,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": False,
         }
     elif architecture == "Qwen2ForCausalLM":
         # Note that Qwen1.5 models have architecture type Qwen2ForCausalLM.
@@ -1259,12 +1285,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": int(hf_config.rope_theta),
             "rotary_adjacent_pairs": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "tokenizer_prepends_bos": True,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": False,
         }
     elif architecture == "PhiForCausalLM":
         # Architecture for microsoft/phi models
@@ -1325,7 +1352,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "gelu_new",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
-            "rotary_base": 10000.0,
+            "rotary_base": 10000,
             "rotary_dim": 256,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
