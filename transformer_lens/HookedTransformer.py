@@ -1358,7 +1358,7 @@ class HookedTransformer(HookedRootModule):
                 center_writing_weights = False
         if center_unembed and cfg.output_logits_soft_cap > 0.0:
             logging.warning(
-                "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant"
+                "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant "
                 "Setting center_unembed=False instead."
             )
             center_unembed = False
@@ -2016,6 +2016,9 @@ class HookedTransformer(HookedRootModule):
         """
         Toggles whether to allow editing of inputs to each attention head.
         """
+        assert (
+            self.cfg.n_key_value_heads is None
+        ), "Can't use attn_in with GroupedQueryAttention, please use split_qkv_input instead"
         self.cfg.use_attn_in = use_attn_in
 
     def set_ungroup_grouped_query_attention(self, ungroup_grouped_query_attention: bool):
