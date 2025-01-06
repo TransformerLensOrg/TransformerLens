@@ -53,13 +53,12 @@ def convert_bert_weights(bert, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.ln2.b"] = block.output.LayerNorm.bias
 
     mlm_head = bert.cls.predictions
-    state_dict["mlm_head.W"] = mlm_head.transform.dense.weight
+    state_dict["mlm_head.W"] = mlm_head.transform.dense.weight.T
     state_dict["mlm_head.b"] = mlm_head.transform.dense.bias
     state_dict["mlm_head.ln.w"] = mlm_head.transform.LayerNorm.weight
     state_dict["mlm_head.ln.b"] = mlm_head.transform.LayerNorm.bias
     # Note: BERT uses tied embeddings
-    state_dict["unembed.W_U"] = embeddings.word_embeddings.weight.T
-    # "unembed.W_U": mlm_head.decoder.weight.T,
-    state_dict["unembed.b_U"] = mlm_head.bias
+    state_dict["unembed.W_U"] = mlm_head.decoder.weight.T
+    state_dict["unembed.b_U"] = mlm_head.decoder.bias
 
     return state_dict

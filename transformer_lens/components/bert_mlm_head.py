@@ -1,4 +1,4 @@
-"""Hooked Transformer Bert MLM Head Component.
+"""Hooked Encoder Bert MLM Head Component.
 
 This module contains all the component :class:`BertMLMHead`.
 """
@@ -27,15 +27,7 @@ class BertMLMHead(nn.Module):
         self.ln = LayerNorm(self.cfg)
 
     def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:
-        # Add singleton dimension for broadcasting
-        resid = einops.rearrange(resid, "batch pos d_model_in -> batch pos 1 d_model_in")
-
-        # Element-wise multiplication of W and resid
-        resid = resid * self.W
-
-        # Sum over d_model_in dimension and add bias
-        resid = resid.sum(-1) + self.b
-
+        resid = torch.matmul(resid, self.W) + self.b
         resid = self.act_fn(resid)
         resid = self.ln(resid)
         return resid
