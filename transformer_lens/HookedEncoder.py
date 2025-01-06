@@ -38,12 +38,10 @@ class HookedEncoder(HookedRootModule):
     This class implements a BERT-style encoder using the components in ./components.py, with HookPoints on every interesting activation. It inherits from HookedRootModule.
 
     Limitations:
-    - The current MVP implementation supports only the masked language modelling (MLM) task. Next sentence prediction (NSP), causal language modelling, and other tasks are not yet supported.
-    - Also note that model does not include dropouts, which may lead to inconsistent results from training or fine-tuning.
+    - The model does not include dropouts, which may lead to inconsistent results from training or fine-tuning.
 
     Like HookedTransformer, it can have a pretrained Transformer's weights loaded via `.from_pretrained`. There are a few features you might know from HookedTransformer which are not yet supported:
         - There is no preprocessing (e.g. LayerNorm folding) when loading a pretrained model
-        - The model only accepts tokens as inputs, and not strings, or lists of strings
     """
 
     def __init__(self, cfg, tokenizer=None, move_to_device=True, **kwargs):
@@ -198,18 +196,27 @@ class HookedEncoder(HookedRootModule):
         if isinstance(input, str) or isinstance(input, list):
             assert self.tokenizer is not None, "Must provide a tokenizer if input is a string"
             if task == "NSP":
-                if (isinstance(input, str) or len(input) != 2):
+                if isinstance(input, str) or len(input) != 2:
                     raise ValueError(
                         "Next sentence prediction task requires exactly two sentences, please provide a list of strings with each sentence as an element."
                     )
                 
                 # We need to input the two sentences separately for NSP
                 encodings = self.tokenizer(
-                    input[0], input[1], return_tensors="pt", padding=True, truncation=True, max_length=self.cfg.n_ctx
+                    input[0],
+                    input[1],
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=self.cfg.n_ctx,
                 )
             else:
                 encodings = self.tokenizer(
-                    input, return_tensors="pt", padding=True, truncation=True, max_length=self.cfg.n_ctx
+                    input,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=self.cfg.n_ctx,
                 )
 
             tokens = encodings.input_ids
@@ -220,7 +227,9 @@ class HookedEncoder(HookedRootModule):
         else:
             if task == "NSP" and token_type_ids is None:
                 raise ValueError(
-                    "You are using the NSP task without specifying token_type_ids. This means that the model will treat the input as a single sequence which will lead to incorrect results."
+                    "You are using the NSP task without specifying token_type_ids."
+                    "This means that the model will treat the input as a single sequence which will lead to incorrect results."
+                    "Please provide token_type_ids or use a string input."
                 )
             tokens = input
 
