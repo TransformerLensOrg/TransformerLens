@@ -19,7 +19,14 @@ from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
+from transformer_lens.components import (
+    BertBlock,
+    BertEmbed,
+    BertMLMHead,
+    BertNSPHead,
+    BertPooler,
+    Unembed,
+)
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -70,7 +77,9 @@ class HookedEncoder(HookedRootModule):
 
         self.embed = BertEmbed(self.cfg)
         self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
-        self.mlm_head = BertMLMHead(cfg)
+        self.pooler = BertPooler(self.cfg)
+        self.mlm_head = BertMLMHead(self.cfg)
+        self.nsp_head = BertNSPHead(self.cfg)
         self.unembed = Unembed(self.cfg)
 
         self.hook_full_embed = HookPoint()
@@ -85,6 +94,7 @@ class HookedEncoder(HookedRootModule):
         self,
         input: Int[torch.Tensor, "batch pos"],
         return_type: Literal["logits"],
+        task: str = "MLM",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos d_vocab"]:
@@ -95,6 +105,7 @@ class HookedEncoder(HookedRootModule):
         self,
         input: Int[torch.Tensor, "batch pos"],
         return_type: Literal[None],
+        task: str = "MLM",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
@@ -104,17 +115,65 @@ class HookedEncoder(HookedRootModule):
         self,
         input: Int[torch.Tensor, "batch pos"],
         return_type: Optional[str] = "logits",
+        task: str = "MLM",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
-        """Input must be a batch of tokens. Strings and lists of strings are not yet supported.
+    ) -> Optional[
+        Union[
+            Float[torch.Tensor, "batch pos d_vocab"],
+            Float[torch.Tensor, "batch 2"],
+            str,
+            List[str],
+        ]
+    ]:
+        """Forward pass through the HookedEncoder.
 
-        return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), or 'logits' (return logits).
+        Args:
+            input: The input to process. Can be one of:
+                - str: A single text string
+                - List[str]: A list of text strings
+                - torch.Tensor: Input tokens as integers with shape (batch, position)
+                - torch.Tensor: Input embeddings as floats with shape (batch, position, d_model)
+            return_type: Optional[str]: The type of output to return. Can be one of:
+                - None: Return nothing, don't calculate logits
+                - 'logits': Return logits tensor
+                - 'predictions': Return human-readable predictions
+            task: str: The task to perform. Can be one of:
+                - 'MLM': Masked Language Modeling (default if None)
+                - 'NSP': Next Sentence Prediction
+            token_type_ids: Optional[torch.Tensor]: Binary ids indicating whether a token belongs
+                to sequence A or B. For example, for two sentences:
+                "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be
+                [0, 0, ..., 0, 1, ..., 1, 1]. `0` represents tokens from Sentence A,
+                `1` from Sentence B. If not provided, BERT assumes a single sequence input.
+                This parameter gets inferred from the the tokenizer if input is a string or list of strings.
+                Shape is (batch_size, sequence_length).
+            one_zero_attention_mask: Optional[torch.Tensor]: A binary mask which indicates
+                which tokens should be attended to (1) and which should be ignored (0).
+                Primarily used for padding variable-length sentences in a batch.
+                For instance, in a batch with sentences of differing lengths, shorter
+                sentences are padded with 0s on the right. If not provided, the model
+                assumes all tokens should be attended to.
+                This parameter gets inferred from the tokenizer if input is a string or list of strings.
+                Shape is (batch_size, sequence_length).
 
-        token_type_ids Optional[torch.Tensor]: Binary ids indicating whether a token belongs to sequence A or B. For example, for two sentences: "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be [0, 0, ..., 0, 1, ..., 1, 1]. `0` represents tokens from Sentence A, `1` from Sentence B. If not provided, BERT assumes a single sequence input. Typically, shape is (batch_size, sequence_length).
+        Returns:
+            Optional[torch.Tensor]: Depending on return_type:
+                - None: Returns None if return_type is None
+                - torch.Tensor: Returns logits if return_type is 'logits' (or if return_type is not explicitly provided)
+                    - For MLM: Shape is (batch_size, sequence_length, d_vocab)
+                    - For NSP: Shape is (batch_size, 2)
+                - str or List[str]: Returns human-readable predictions if return_type is 'predictions'
+                    - For MLM: Returns predicted words for masked tokens
+                    - For NSP: Returns string indicating if sentences are sequential
 
-        one_zero_attention_mask: Optional[torch.Tensor]: A binary mask which indicates which tokens should be attended to (1) and which should be ignored (0). Primarily used for padding variable-length sentences in a batch. For instance, in a batch with sentences of differing lengths, shorter sentences are padded with 0s on the right. If not provided, the model assumes all tokens should be attended to.
+        Raises:
+            ValueError: If using NSP task without proper input format or token_type_ids
+            AssertionError: If using string input without a tokenizer
         """
+
+        if return_type == None:
+            return None
 
         tokens = input
 
@@ -137,12 +196,24 @@ class HookedEncoder(HookedRootModule):
 
         for block in self.blocks:
             resid = block(resid, additive_attention_mask)
-        resid = self.mlm_head(resid)
 
-        if return_type is None:
-            return None
+        if task == "MLM":
+            # MLM requires an unembedding step
+            resid = self.mlm_head(resid)
+            logits = self.unembed(resid)
+        elif task == "NSP":
+            # NSP requires pooling (for more information see BertPooler)
+            resid = self.pooler(resid)
+            logits = self.nsp_head(resid)
 
-        logits = self.unembed(resid)
+            if return_type == "predictions":
+                logprobs = logits.log_softmax(dim=-1)
+                predictions = [
+                    "The sentences are sequential",
+                    "The sentences are NOT sequential",
+                ]
+                return predictions[logprobs.argmax(dim=-1).item()]
+
         return logits
 
     @overload

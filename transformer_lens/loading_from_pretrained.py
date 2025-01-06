@@ -1125,6 +1125,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
         rotary_pct = hf_config.rotary_pct
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
     elif architecture == "BertForMaskedLM":
+        # All supported Bert architectures have the same config,
+        # so we can use the BertForMaskedLM config for all of them
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
