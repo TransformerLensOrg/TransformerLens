@@ -212,7 +212,7 @@ class HookedEncoder(HookedRootModule):
                     raise ValueError(
                         "Next sentence prediction task requires exactly two sentences, please provide a list of strings with each sentence as an element."
                     )
-                
+
                 # We need to input the two sentences separately for NSP
                 encodings = self.tokenizer(
                     input[0],
@@ -235,7 +235,11 @@ class HookedEncoder(HookedRootModule):
 
             # If token_type_ids or attention mask are not provided, use the ones from the tokenizer
             token_type_ids = encodings.token_type_ids if token_type_ids is None else token_type_ids
-            one_zero_attention_mask = encodings.attention_mask if one_zero_attention_mask is None else one_zero_attention_mask
+            one_zero_attention_mask = (
+                encodings.attention_mask
+                if one_zero_attention_mask is None
+                else one_zero_attention_mask
+            )
         else:
             if task == "NSP" and token_type_ids is None:
                 raise ValueError(

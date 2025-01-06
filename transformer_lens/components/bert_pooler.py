@@ -14,7 +14,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 class BertPooler(nn.Module):
     """
-    Transforms the [CLS] token representation into a fixed-size sequence embedding. 
+    Transforms the [CLS] token representation into a fixed-size sequence embedding.
     The purpose of this module is to convert variable-length sequence inputs into a single vector representation suitable for downstream tasks.
     (e.g. Next Sentence Prediction)
     """
