@@ -92,7 +92,12 @@ class HookedEncoder(HookedRootModule):
     @overload
     def forward(
         self,
-        input: Int[torch.Tensor, "batch pos"],
+        input: Union[
+            str,
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+            Float[torch.Tensor, "batch pos d_model"],
+        ],
         return_type: Literal["logits"],
         task: str = "MLM",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -103,7 +108,12 @@ class HookedEncoder(HookedRootModule):
     @overload
     def forward(
         self,
-        input: Int[torch.Tensor, "batch pos"],
+        input: Union[
+            str,
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+            Float[torch.Tensor, "batch pos d_model"],
+        ],
         return_type: Literal[None],
         task: str = "MLM",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
@@ -113,9 +123,14 @@ class HookedEncoder(HookedRootModule):
 
     def forward(
         self,
-        input: Int[torch.Tensor, "batch pos"],
+        input: Union[
+            str,
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+            Float[torch.Tensor, "batch pos d_model"],
+        ],
         return_type: Optional[str] = "logits",
-        task: str = "MLM",
+        task: str = None,
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[
@@ -175,7 +190,39 @@ class HookedEncoder(HookedRootModule):
         if return_type == None:
             return None
 
-        tokens = input
+        if task is None:
+            logging.warning("Task not provided, defaulting to masked language modelling (MLM)")
+            task = "MLM"
+
+        # Tokenize input if it's a string
+        if isinstance(input, str) or isinstance(input, list):
+            assert self.tokenizer is not None, "Must provide a tokenizer if input is a string"
+            if task == "NSP":
+                if (isinstance(input, str) or len(input) != 2):
+                    raise ValueError(
+                        "Next sentence prediction task requires exactly two sentences, please provide a list of strings with each sentence as an element."
+                    )
+                
+                # We need to input the two sentences separately for NSP
+                encodings = self.tokenizer(
+                    input[0], input[1], return_tensors="pt", padding=True, truncation=True, max_length=self.cfg.n_ctx
+                )
+            else:
+                encodings = self.tokenizer(
+                    input, return_tensors="pt", padding=True, truncation=True, max_length=self.cfg.n_ctx
+                )
+
+            tokens = encodings.input_ids
+
+            # If token_type_ids or attention mask are not provided, use the ones from the tokenizer
+            token_type_ids = encodings.token_type_ids if token_type_ids is None else token_type_ids
+            one_zero_attention_mask = encodings.attention_mask if one_zero_attention_mask is None else one_zero_attention_mask
+        else:
+            if task == "NSP" and token_type_ids is None:
+                raise ValueError(
+                    "You are using the NSP task without specifying token_type_ids. This means that the model will treat the input as a single sequence which will lead to incorrect results."
+                )
+            tokens = input
 
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
@@ -201,6 +248,19 @@ class HookedEncoder(HookedRootModule):
             # MLM requires an unembedding step
             resid = self.mlm_head(resid)
             logits = self.unembed(resid)
+
+            if return_type == "predictions":
+                # Get predictions for masked tokens
+                logprobs = logits[tokens == self.tokenizer.mask_token_id].log_softmax(dim=-1)
+                predictions = self.tokenizer.decode(logprobs.argmax(dim=-1))
+
+                # If input was a list of strings, split predictions into a list
+                if " " in predictions:
+                    # Split along space
+                    predictions = predictions.split(" ")
+                    predictions = [f"Prediction {i}: {p}" for i, p in enumerate(predictions)]
+                return predictions
+
         elif task == "NSP":
             # NSP requires pooling (for more information see BertPooler)
             resid = self.pooler(resid)
