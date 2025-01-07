@@ -96,11 +96,16 @@ class HookedEncoder(HookedRootModule):
             Int[torch.Tensor, "batch pos"],
             Float[torch.Tensor, "batch pos d_model"],
         ],
-        return_type: Literal["logits"],
-        task: str = "MLM",
+        return_type: Union[Literal["logits"], Literal["predictions"]],
+        task: Optional[str] = None,
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Float[torch.Tensor, "batch pos d_vocab"]:
+    ) -> Union[
+        Float[torch.Tensor, "batch pos d_vocab"],
+        Float[torch.Tensor, "batch 2"],
+        str,
+        List[str],
+    ]:
         ...
 
     @overload
@@ -113,10 +118,17 @@ class HookedEncoder(HookedRootModule):
             Float[torch.Tensor, "batch pos d_model"],
         ],
         return_type: Literal[None],
-        task: str = "MLM",
+        task: Optional[str] = None,
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
+    ) -> Optional[
+        Union[
+            Float[torch.Tensor, "batch pos d_vocab"],
+            Float[torch.Tensor, "batch 2"],
+            str,
+            List[str],
+        ]
+    ]:
         ...
 
     def forward(
@@ -128,7 +140,7 @@ class HookedEncoder(HookedRootModule):
             Float[torch.Tensor, "batch pos d_model"],
         ],
         return_type: Optional[str] = "logits",
-        task: str = None,
+        task: Optional[str] = None,
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[
@@ -151,7 +163,7 @@ class HookedEncoder(HookedRootModule):
                 - None: Return nothing, don't calculate logits
                 - 'logits': Return logits tensor
                 - 'predictions': Return human-readable predictions
-            task: str: The task to perform. Can be one of:
+            task: Optional[str]: The task to perform. Can be one of:
                 - 'MLM': Masked Language Modeling (default if None)
                 - 'NSP': Next Sentence Prediction
             token_type_ids: Optional[torch.Tensor]: Binary ids indicating whether a token belongs
@@ -288,13 +300,19 @@ class HookedEncoder(HookedRootModule):
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[True] = True, **kwargs
-    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], ActivationCache]:
+    ) -> Tuple[
+        Union[Float[torch.Tensor, "batch pos d_vocab"], Float[torch.Tensor, "batch 2"]],
+        ActivationCache,
+    ]:
         ...
 
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[False], **kwargs
-    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Dict[str, torch.Tensor]]:
+    ) -> Tuple[
+        Union[Float[torch.Tensor, "batch pos d_vocab"], Float[torch.Tensor, "batch 2"]],
+        Dict[str, torch.Tensor],
+    ]:
         ...
 
     def run_with_cache(
@@ -304,7 +322,7 @@ class HookedEncoder(HookedRootModule):
         remove_batch_dim: bool = False,
         **kwargs,
     ) -> Tuple[
-        Float[torch.Tensor, "batch pos d_vocab"],
+        Union[Float[torch.Tensor, "batch pos d_vocab"], Float[torch.Tensor, "batch 2"]],
         Union[ActivationCache, Dict[str, torch.Tensor]],
     ]:
         """

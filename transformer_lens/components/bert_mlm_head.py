@@ -26,7 +26,7 @@ class BertMLMHead(nn.Module):
         self.act_fn = nn.GELU()
         self.ln = LayerNorm(self.cfg)
 
-    def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> torch.Tensor:
+    def forward(self, resid: Float[torch.Tensor, "batch pos d_model"]) -> Float[torch.Tensor, "batch pos d_model"]:
         resid = torch.matmul(resid, self.W) + self.b
         resid = self.act_fn(resid)
         resid = self.ln(resid)
