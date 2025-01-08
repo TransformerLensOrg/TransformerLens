@@ -102,7 +102,6 @@ from transformer_lens.weight_conversion.conversion_utils.conversion_steps import
     FIELD_SET,
     ArithmeticWeightConversion,
     CallableWeightConversion,
-    DirectWeightConversion,
     OperationTypes,
     RearrangeWeightConversion,
     WeightConversionSet,
@@ -127,7 +126,7 @@ class GemmalWeightConversion(ArchitectureConversion):
                         torch.tensor(cfg.d_model**0.5, dtype=cfg.dtype),
                     ),
                 ),
-                "unembed.W_U": ("lm_head.weight.T", DirectWeightConversion()),
+                "unembed.W_U": "lm_head.weight.T",
                 "unembed.b_U": torch.zeros(cfg.d_vocab),
                 "blocks": ("layers", self.blocks_conversions(cfg)),
             }

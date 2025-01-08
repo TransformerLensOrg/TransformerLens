@@ -2,6 +2,7 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.weight_conversion.conversion_utils.architecture_conversion import (
     ArchitectureConversion,
 )
+from transformer_lens.weight_conversion.gemma import GemmalWeightConversion
 from transformer_lens.weight_conversion.mixtral import MixtralWeightConversion
 
 
@@ -11,6 +12,8 @@ class WeightConversionFactory:
         match cfg.original_architecture:
             case "MixtralForCausalLM":
                 return MixtralWeightConversion(cfg)
+            case "Gemma2ForCausalLM":
+                return GemmalWeightConversion(cfg)
             case _:
                 raise NotImplementedError(
                     f"{cfg.original_architecture} is not currently supported."

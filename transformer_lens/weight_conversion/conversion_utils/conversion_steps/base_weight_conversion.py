@@ -9,4 +9,4 @@ class BaseWeightConversion:
 
 
 CONVERSION = tuple[str, BaseWeightConversion]
-FIELD_SET = dict[str, torch.Tensor | CONVERSION]
+FIELD_SET = dict[str, torch.Tensor | str | CONVERSION]

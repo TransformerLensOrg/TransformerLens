@@ -21,9 +21,11 @@ class WeightConversionSet(BaseWeightConversion):
 
         return result
 
-    def process_weight_conversion(self, input_value, conversion_details: torch.Tensor | CONVERSION):
+    def process_weight_conversion(self, input_value, conversion_details: torch.Tensor | str | CONVERSION):
         if isinstance(conversion_details, torch.Tensor):
             return conversion_details
+        elif isinstance(conversion_details, str):
+            return find_property(conversion_details, input_value)
         else:
             (remote_field, conversion) = conversion_details
             weight = find_property(remote_field, input_value)
