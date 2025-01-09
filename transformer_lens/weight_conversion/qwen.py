@@ -7,12 +7,12 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
     state_dict = {}
     model = qwen.transformer
-    state_dict["embed.W_E"] = model.wte.weight
+    # state_dict["embed.W_E"] = model.wte.weight
 
     assert cfg.d_mlp is not None  # keep mypy happy
 
     for l in range(cfg.n_layers):
-        state_dict[f"blocks.{l}.ln1.w"] = model.h[l].ln_1.weight
+        # state_dict[f"blocks.{l}.ln1.w"] = model.h[l].ln_1.weight
 
         W_Q, W_K, W_V = model.h[l].attn.c_attn.weight.split(split_size=cfg.d_model, dim=0)
         W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
@@ -57,9 +57,44 @@ def convert_qwen_weights(qwen, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_out"] = model.h[l].mlp.c_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
-    state_dict["ln_final.w"] = model.ln_f.weight
+    # state_dict["ln_final.w"] = model.ln_f.weight
 
-    state_dict["unembed.W_U"] = qwen.lm_head.weight.T
-    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
+    # state_dict["unembed.W_U"] = qwen.lm_head.weight.T
+    # state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
     return state_dict
+
+import torch
+from torch import nn
+
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
+
+class QwenWeightConversion(ArchitectureConversion):
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        super().__init__(
+            {
+                "embed.W_E": "wte.weight",
+                "ln_final.w": "ln_f.weight",
+                "unembed.W_U": "lm_head.weight.T",
+                "unembed.b_U": torch.zeros(cfg.d_vocab, dtype=cfg.dtype),
+                "blocks": ("h", WeightConversionSet({
+                    "ln1.w": "ln_1.weight",
+                }))
+            }
+        )
+        
+    def get_model(self, remote_module: nn.Module) -> dict:
+        """The weights for this model are in a variable named transformer
+
+        Args:
+            remote_module nn.Module: The module from hugging face
+
+        Returns:
+            dict: The model
+        """
+        return remote_module.transformer
