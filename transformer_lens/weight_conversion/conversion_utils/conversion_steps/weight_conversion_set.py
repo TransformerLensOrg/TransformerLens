@@ -8,10 +8,11 @@ from .base_weight_conversion import CONVERSION, FIELD_SET, BaseWeightConversion
 
 
 class WeightConversionSet(BaseWeightConversion):
-    def __init__(self, weights: FIELD_SET):
+    def __init__(self, weights: FIELD_SET, input_filter: callable|None = None):
+        super().__init__(input_filter=input_filter)
         self.weights = weights
 
-    def convert(self, input_value):
+    def handle_conversion(self, input_value):
         result = {}
         for weight_name in self.weights:
             result[weight_name] = self.process_weight_conversion(

@@ -4,6 +4,7 @@ from transformer_lens.weight_conversion.conversion_utils.architecture_conversion
 )
 from transformer_lens.weight_conversion.gemma import GemmaWeightConversion
 from transformer_lens.weight_conversion.mixtral import MixtralWeightConversion
+from transformer_lens.weight_conversion.qwen import QwenWeightConversion
 from transformer_lens.weight_conversion.qwen2 import Qwen2WeightConversion
 
 
@@ -17,6 +18,8 @@ class WeightConversionFactory:
                 return GemmaWeightConversion(cfg)
             case "Qwen2ForCausalLM":
                 return Qwen2WeightConversion(cfg)
+            case "QWenLMHeadModel":
+                return QwenWeightConversion(cfg)
             case _:
                 raise NotImplementedError(
                     f"{cfg.original_architecture} is not currently supported."

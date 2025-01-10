@@ -13,11 +13,12 @@ class OperationTypes(Enum):
 
 
 class ArithmeticWeightConversion(BaseWeightConversion):
-    def __init__(self, operation: OperationTypes, value: float | int | torch.Tensor):
+    def __init__(self, operation: OperationTypes, value: float | int | torch.Tensor, input_filter: callable|None = None):
+        super().__init__(input_filter=input_filter)
         self.operation = operation
         self.value = value
 
-    def convert(self, input_value):
+    def handle_conversion(self, input_value):
         match self.operation:
             case OperationTypes.ADDITION:
                 return input_value + self.value
