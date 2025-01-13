@@ -3,4 +3,5 @@ from .composite_weight_conversion import CompositeWeightConversion
 from .callable_weight_conversion import CallableWeightConversion
 from .arithmetic_weight_conversion import ArithmeticWeightConversion, OperationTypes
 from .rearrange_weight_conversion import RearrangeWeightConversion
+from .repeat_weight_conversion import RepeatWeightConversion
 from .weight_conversion_set import WeightConversionSet

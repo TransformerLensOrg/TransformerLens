@@ -18,7 +18,7 @@ class GemmaWeightConversion(ArchitectureConversion):
         super().__init__(
             {
                 "ln_final.w": (
-                    "gemma.model.norm.weight",
+                    "model.norm.weight",
                     CallableWeightConversion(
                         lambda weight: weight.float() + torch.ones_like(weight, dtype=torch.float32)
                     ),
@@ -30,9 +30,9 @@ class GemmaWeightConversion(ArchitectureConversion):
                         torch.tensor(cfg.d_model**0.5, dtype=cfg.dtype),
                     ),
                 ),
-                "unembed.W_U": "lm_head.weight.T",
+                "unembed.W_U": "model.lm_head.weight.T",
                 "unembed.b_U": torch.zeros(cfg.d_vocab),
-                "blocks": ("layers", self.blocks_conversions(cfg)),
+                "blocks": ("model.layers", self.blocks_conversions(cfg)),
             }
         )
 
