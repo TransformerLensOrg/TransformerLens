@@ -6,7 +6,6 @@ Module for getting the singular vectors of the OV, w_in, and w_out matrices of a
 
 from typing import Optional, Union
 
-import fancy_einsum as einsum
 import torch
 from typeguard import typechecked
 from typing_extensions import Literal
@@ -148,7 +147,7 @@ class SVDInterpreter:
 
         if f"blocks.{layer_index}.ln2.w" in self.params:  # If fold_ln == False
             ln_2 = self.params[f"blocks.{layer_index}.ln2.w"]
-            return einsum.einsum("out in, in -> out in", w_in, ln_2)
+            return w_in * ln_2
 
         return w_in
 

@@ -1,3 +1,4 @@
+import math
 from abc import ABC
 from typing import Dict, Optional, Tuple, Union
 
@@ -228,8 +229,9 @@ class AbstractAttention(ABC, nn.Module):
                     self.cfg.n_heads, key_ctx, self.cfg.device
                 )
 
+            # Take the last query_ctx positions so it also works with past_kv_cache
             attn_scores += self.alibi[
-                :, :query_ctx, :key_ctx
+                :, -query_ctx:, :key_ctx
             ]  # [batch, head_index, query_pos, key_pos]
         elif self.cfg.positional_embedding_type == "relative_positional_bias":
             if position_bias is None:
@@ -295,17 +297,19 @@ class AbstractAttention(ABC, nn.Module):
                     )
                 )
             else:
+                # Add singleton dimensions to make shapes compatible for broadcasting:
                 w = einops.rearrange(
                     self.W_O,
-                    "head_index d_head d_model -> d_model head_index d_head",
+                    "head_index d_head d_model -> 1 1 head_index d_head d_model",
                 )
-                result = self.hook_result(
-                    einops.einsum(
-                        z,
-                        w,
-                        "... head_index d_head, d_model head_index d_head -> ... head_index d_model",
-                    )
-                )  # [batch, pos, head_index, d_model]
+                z = einops.rearrange(
+                    z, "batch pos head_index d_head -> batch pos head_index d_head 1"
+                )
+
+                # Multiply the z tensor by the W_O tensor, summing over the d_head dimension
+                unhooked_result = (z * w).sum(-2)
+
+                result = self.hook_result(unhooked_result)  # [batch, pos, head_index, d_model]
             out = (
                 einops.reduce(result, "batch position index model->batch position model", "sum")
                 + self.b_O
@@ -454,9 +458,16 @@ class AbstractAttention(ABC, nn.Module):
         final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
-            einsum_str = "batch head pos offset_pos, batch offset_pos -> batch head pos offset_pos"
+
+            # Add singleton dimensions to the attention mask to match the shape of the final mask
+            attention_mask = einops.rearrange(
+                attention_mask, "batch offset_pos -> batch 1 1 offset_pos"
+            )
+
             final_mask = final_mask.to(attention_mask.device)
-            final_mask = einops.einsum(final_mask, attention_mask, einsum_str).bool()
+
+            # Element-wise multiplication of the final mask and the attention mask and cast to boolean
+            final_mask = (final_mask * attention_mask).bool()  # [batch, head, pos, offset_pos]
 
         attn_scores = attn_scores.to(final_mask.device)
         return torch.where(final_mask, attn_scores, self.IGNORE)
@@ -478,8 +489,33 @@ class AbstractAttention(ABC, nn.Module):
         pos = torch.arange(n_ctx, dtype=high_precision)
         dim = torch.arange(rotary_dim // 2, dtype=high_precision)
 
-        # A set of frequencies evenly spaced in log space
-        freq = base ** (dim / (rotary_dim / 2))
+        # Llama-3.1 uses NTK-by-Parts Rotary Embedding introduced in Section 3.2 in https://arxiv.org/pdf/2309.00071
+        # Implementation copied from https://github.com/huggingface/transformers/blob/v4.46.0/src/transformers/modeling_rope_utils.py#L310
+        if self.cfg.use_NTK_by_parts_rope:
+            inv_freq = 1.0 / (
+                base ** (torch.arange(0, rotary_dim, 2, dtype=torch.int64).float() / rotary_dim)
+            )
+            factor = self.cfg.NTK_by_parts_factor
+            low_freq_factor = self.cfg.NTK_by_parts_low_freq_factor
+            high_freq_factor = self.cfg.NTK_by_parts_high_freq_factor
+            old_context_len = n_ctx
+
+            low_freq_wavelen = old_context_len / low_freq_factor
+            high_freq_wavelen = old_context_len / high_freq_factor
+
+            wavelen = 2 * math.pi / inv_freq
+            inv_freq_llama = torch.where(wavelen > low_freq_wavelen, inv_freq / factor, inv_freq)
+            smooth_factor = (old_context_len / wavelen - low_freq_factor) / (
+                high_freq_factor - low_freq_factor
+            )
+            smoothed_inv_freq = (
+                1 - smooth_factor
+            ) * inv_freq_llama / factor + smooth_factor * inv_freq_llama
+            is_medium_freq = ~(wavelen < high_freq_wavelen) * ~(wavelen > low_freq_wavelen)
+            inv_freq_llama = torch.where(is_medium_freq, smoothed_inv_freq, inv_freq_llama)
+            freq = 1 / inv_freq_llama
+        else:
+            freq = base ** (dim / (rotary_dim / 2))
         if self.cfg.rotary_adjacent_pairs:
             freq = einops.repeat(freq, "d -> (d 2)")
         else:
@@ -663,7 +699,11 @@ class AbstractAttention(ABC, nn.Module):
             n_heads, device
         )
 
-        # The ALiBi bias is then m * slope_matrix
-        alibi_bias = torch.einsum("ij,k->kij", slope, multipliers)
+        # Add singleton dimensions to make shapes compatible for broadcasting:
+        slope = einops.rearrange(slope, "query key -> 1 query key")
+        multipliers = einops.rearrange(multipliers, "head_idx -> head_idx 1 1")
+
+        # Element-wise multiplication of the slope and multipliers
+        alibi_bias = multipliers * slope
 
         return alibi_bias

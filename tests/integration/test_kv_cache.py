@@ -213,6 +213,28 @@ def test_freeze_cache(pretrained):
     assert not t.allclose(with_cache_logits_1, with_cache_2_logits_1, atol=atol)
 
 
+def test_kv_cache_with_custom_attention_mask(pretrained):
+    model, atol = pretrained
+    prompt_pre = "An apple"
+    prompt_post = " a day keeps junk the"
+    prompt_whole = "An apple a day keeps the"
+    tokens_pre = model.to_tokens(prompt_pre)
+    tokens_post = model.to_tokens(prompt_post, prepend_bos=False)
+    tokens_whole = model.to_tokens(prompt_whole)
+    correct_logits = model(tokens_whole)
+
+    past_kv_cache = HookedTransformerKeyValueCache.init_cache(
+        model.cfg, model.cfg.device, tokens_pre.shape[0]
+    )
+    model(tokens_pre, past_kv_cache=past_kv_cache)
+    exp_logits = model(
+        tokens_post,
+        attention_mask=t.tensor([[1, 1, 1, 0, 1]], device=model.cfg.device),
+        past_kv_cache=past_kv_cache,
+    )
+    assert t.allclose(correct_logits[:, -1], exp_logits[:, -1], atol=atol)
+
+
 def test_kv_cache_and_start_at_layer(pretrained):
     model, atol = pretrained
     pre_prompt = "I went to Staten Island,"

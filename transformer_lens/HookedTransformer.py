@@ -8,6 +8,7 @@ attaching hooks to every notable activation within the model. This enables the i
 alteration of activations in individual components like attention heads and MLP layers, facilitating
 a deeper understanding of the internal workings of transformers like GPT-2.
 """
+
 import logging
 import os
 from typing import (
@@ -29,7 +30,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import tqdm.auto as tqdm
-from fancy_einsum import einsum
 from jaxtyping import Float, Int
 from packaging import version
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizerBase
@@ -297,23 +297,25 @@ class HookedTransformer(HookedRootModule):
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
-        if attention_mask is not None:
+        if (
+            (self.tokenizer and self.tokenizer.padding_side == "left")
+            or attention_mask is not None
+            or past_kv_cache is not None
+        ):
+            # This means we need to have an explicit attention mask.
+            if attention_mask is None:
+                # If the padding side is left or we are using caching, we need to compute the attention
+                # mask for the adjustment of absolute positional embeddings and attention masking so
+                # that pad tokens are not attended.
+                if prepend_bos is USE_DEFAULT_VALUE:
+                    prepend_bos = self.cfg.default_prepend_bos
+                attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
+
             assert attention_mask.shape == tokens.shape, (
                 f"Attention mask shape {attention_mask.shape} does not match tokens shape "
                 f"{tokens.shape}"
             )
             attention_mask = attention_mask.to(devices.get_device_for_block_index(0, self.cfg))
-        elif (
-            self.tokenizer and self.tokenizer.padding_side == "left"
-        ) or past_kv_cache is not None:
-            # If the padding side is left or we are using caching, we need to compute the attention
-            # mask for the adjustment of absolute positional embeddings and attention masking so
-            # that pad tokens are not attended.
-
-            if prepend_bos is USE_DEFAULT_VALUE:
-                prepend_bos = self.cfg.default_prepend_bos
-            attention_mask = utils.get_attention_mask(self.tokenizer, tokens, prepend_bos)
-
             if past_kv_cache is not None:
                 # past_kv_cache is not None, so we're doing caching.
                 # We need to extend the previous attention_mask.
@@ -1080,7 +1082,7 @@ class HookedTransformer(HookedRootModule):
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
         move_to_device: bool = True,
         fold_value_biases: bool = True,
-        default_prepend_bos: bool = True,
+        default_prepend_bos: Optional[bool] = None,
         default_padding_side: Literal["left", "right"] = "right",
         dtype="float32",
         first_n_layers: Optional[int] = None,
@@ -1202,11 +1204,15 @@ class HookedTransformer(HookedRootModule):
                 remains exactly the same, and so is just broadcast across the destination positions.
             default_prepend_bos: Default behavior of whether to prepend the BOS
                 token when the methods of HookedTransformer process input text to tokenize (only
-                when input is a string). Defaults to True - even for models not explicitly trained
-                with this, heads often use the first position as a resting position and accordingly
-                lose information from the first token, so this empirically seems to give better
-                results. To change the default behavior to False, pass in default_prepend_bos=False.
-                Note that you can also locally override the default behavior by passing in
+                when input is a string).
+                Resolution order for default_prepend_bos:
+                1. If user passes value explicitly, use that value
+                2. Model-specific default from cfg_dict if it exists (e.g. for bloom models it's False)
+                3. Global default (True)
+
+                Even for models not explicitly trained with the BOS token, heads often use the first position as a resting position
+                and accordingly lose information from the first token, so this empirically seems to give better
+                results. Note that you can also locally override the default behavior by passing in
                 prepend_bos=True/False when you call a method that processes the input string.
             from_pretrained_kwargs: Any other optional argument passed to
                 HuggingFace's from_pretrained (e.g. "cache_dir" or "torch_dtype"). Also passed to
@@ -1305,7 +1311,7 @@ class HookedTransformer(HookedRootModule):
                 center_writing_weights = False
         if center_unembed and cfg.output_logits_soft_cap > 0.0:
             logging.warning(
-                "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant"
+                "You tried to specify center_unembed=True for a model using logit softcap, but this can't be done! Softcapping is not invariant upon adding a constant "
                 "Setting center_unembed=False instead."
             )
             center_unembed = False
@@ -1350,7 +1356,7 @@ class HookedTransformer(HookedRootModule):
         refactor_factored_attn_matrices=False,
         fold_value_biases=False,
         dtype=torch.float32,
-        default_prepend_bos=True,
+        default_prepend_bos=None,
         default_padding_side="right",
         **from_pretrained_kwargs,
     ):
@@ -1918,9 +1924,17 @@ class HookedTransformer(HookedRootModule):
             # Factors the bias to be consistent.
             b_V = state_dict[f"blocks.{l}.attn.b_V"]
             b_O = state_dict[f"blocks.{l}.attn.b_O"]
-            effective_bias = b_O + einsum(
-                "head_index d_head, head_index d_head d_model -> d_model", b_V, W_O
-            )
+
+            # Add singleton dimension for broadcasting
+            b_V_expanded = einops.rearrange(b_V, "head_index d_head -> head_index d_head 1")
+
+            # Element-wise multiplication of b_V and W_O
+            b_V_times_W_O = b_V_expanded * W_O
+
+            # Sum over d_head and head_index dimensions
+            b_V_contribution = b_V_times_W_O.sum(1).sum(0)
+
+            effective_bias = b_O + b_V_contribution
             state_dict[f"blocks.{l}.attn.b_V"] = torch.zeros_like(b_V)
             state_dict[f"blocks.{l}.attn.b_O"] = effective_bias
 
@@ -1955,6 +1969,9 @@ class HookedTransformer(HookedRootModule):
         """
         Toggles whether to allow editing of inputs to each attention head.
         """
+        assert (
+            self.cfg.n_key_value_heads is None
+        ), "Can't use attn_in with GroupedQueryAttention, please use split_qkv_input instead"
         self.cfg.use_attn_in = use_attn_in
 
     def set_ungroup_grouped_query_attention(self, ungroup_grouped_query_attention: bool):

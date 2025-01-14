@@ -151,10 +151,15 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "meta-llama/Meta-Llama-3-70B",
     "meta-llama/Meta-Llama-3-70B-Instruct",
+    "meta-llama/Llama-3.1-70B",
+    "meta-llama/Llama-3.1-8B",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "meta-llama/Llama-3.1-70B-Instruct",
     "meta-llama/Llama-3.2-1B",
     "meta-llama/Llama-3.2-3B",
     "meta-llama/Llama-3.2-1B-Instruct",
     "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.3-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
     "roneneldan/TinyStories-1M",
@@ -208,6 +213,21 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen2-1.5B-Instruct",
     "Qwen/Qwen2-7B",
     "Qwen/Qwen2-7B-Instruct",
+    "Qwen/Qwen2.5-0.5B",
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-1.5B",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-3B",
+    "Qwen/Qwen2.5-3B-Instruct",
+    "Qwen/Qwen2.5-7B",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "Qwen/Qwen2.5-14B",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "Qwen/Qwen2.5-32B",
+    "Qwen/Qwen2.5-32B-Instruct",
+    "Qwen/Qwen2.5-72B",
+    "Qwen/Qwen2.5-72B-Instruct",
+    "Qwen/QwQ-32B-Preview",
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
@@ -871,6 +891,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
         }
     elif "Meta-Llama-3-70B" in official_model_name:
         cfg_dict = {
@@ -890,6 +911,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
         }
     elif "Llama-3.2-1B" in official_model_name:
         cfg_dict = {
@@ -909,6 +931,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 64,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 32.0,
         }
     elif "Llama-3.2-3B" in official_model_name:
         cfg_dict = {
@@ -928,14 +955,19 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 32.0,
         }
-    elif "Llama-3.2-1B-Instruct" in official_model_name:
+    elif "Llama-3.3-70B" in official_model_name:
         cfg_dict = {
-            "d_model": 2048,
-            "d_head": 64,
-            "n_heads": 32,
-            "d_mlp": 8192,
-            "n_layers": 16,
+            "d_model": 8192,
+            "d_head": 128,
+            "n_heads": 64,
+            "d_mlp": 28672,
+            "n_layers": 80,
             "n_ctx": 2048,  # capped due to memory issues
             "eps": 1e-5,
             "d_vocab": 128256,
@@ -944,17 +976,22 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
-            "rotary_dim": 64,
+            "rotary_dim": 32,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
         }
-    elif "Llama-3.2-3B-Instruct" in official_model_name:
+    elif "Llama-3.1-8B" in official_model_name:
         cfg_dict = {
-            "d_model": 3072,
+            "d_model": 4096,
             "d_head": 128,
-            "n_heads": 24,
-            "d_mlp": 8192,
-            "n_layers": 28,
+            "n_heads": 32,
+            "d_mlp": 14336,
+            "n_layers": 32,
             "n_ctx": 2048,  # capped due to memory issues
             "eps": 1e-5,
             "d_vocab": 128256,
@@ -966,6 +1003,35 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
+        }
+    elif "Llama-3.1-70B" in official_model_name:
+        cfg_dict = {
+            "d_model": 8192,
+            "d_head": 128,
+            "n_heads": 64,
+            "d_mlp": 28672,
+            "n_layers": 80,
+            "n_ctx": 2048,  # capped due to memory issues
+            "eps": 1e-5,
+            "d_vocab": 128256,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 128,
+            "final_rms": True,
+            "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
         }
     elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
@@ -1132,6 +1198,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "LN",
             "post_embedding_ln": True,
             "positional_embedding_type": "alibi",
+            "default_prepend_bos": False,
         }
     elif architecture == "GPT2LMHeadCustomModel":
         # santacoder
@@ -1199,6 +1266,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "trust_remote_code": True,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": False,
         }
     elif architecture == "Qwen2ForCausalLM":
         # Note that Qwen1.5 models have architecture type Qwen2ForCausalLM.
@@ -1217,12 +1285,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": int(hf_config.rope_theta),
             "rotary_adjacent_pairs": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "tokenizer_prepends_bos": True,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": False,
         }
     elif architecture == "PhiForCausalLM":
         # Architecture for microsoft/phi models
@@ -1283,7 +1352,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "gelu_new",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
-            "rotary_base": 10000.0,
+            "rotary_base": 10000,
             "rotary_dim": 256,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
@@ -1472,7 +1541,7 @@ def get_pretrained_model_config(
     fold_ln: bool = False,
     device: Optional[Union[str, torch.device]] = None,
     n_devices: int = 1,
-    default_prepend_bos: bool = True,
+    default_prepend_bos: Optional[bool] = None,
     dtype: torch.dtype = torch.float32,
     first_n_layers: Optional[int] = None,
     **kwargs,
@@ -1503,11 +1572,15 @@ def get_pretrained_model_config(
         n_devices (int, optional): The number of devices to split the model across. Defaults to 1.
         default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
             methods of HookedTransformer process input text to tokenize (only when input is a string).
-            Defaults to True - even for models not explicitly trained with this, heads often use the
+            Resolution order for default_prepend_bos:
+            1. If user passes value explicitly, use that value
+            2. Model-specific default from cfg_dict if it exists (e.g. for bloom models it's False)
+            3. Global default (True)
+
+            Even for models not explicitly trained with the BOS token, heads often use the
             first position as a resting position and accordingly lose information from the first token,
-            so this empirically seems to give better results. To change the default behavior to False, pass in
-            default_prepend_bos=False. Note that you can also locally override the default behavior by passing
-            in prepend_bos=True/False when you call a method that processes the input string.
+            so this empirically seems to give better results. Note that you can also locally override the default behavior
+            by passing in prepend_bos=True/False when you call a method that processes the input string.
         dtype (torch.dtype, optional): The dtype to load the TransformerLens model in.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
             Also given to other HuggingFace functions when compatible.
@@ -1584,7 +1657,14 @@ def get_pretrained_model_config(
 
     cfg_dict["device"] = device
     cfg_dict["n_devices"] = n_devices
-    cfg_dict["default_prepend_bos"] = default_prepend_bos
+
+    if default_prepend_bos is not None:
+        # User explicitly set prepend_bos behavior, override config/default value
+        cfg_dict["default_prepend_bos"] = default_prepend_bos
+    elif "default_prepend_bos" not in cfg_dict:
+        # No config value or user override, set default value (True)
+        cfg_dict["default_prepend_bos"] = True
+
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
     if first_n_layers is not None:
