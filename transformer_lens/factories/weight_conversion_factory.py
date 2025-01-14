@@ -3,6 +3,7 @@ from transformer_lens.weight_conversion.conversion_utils.architecture_conversion
     ArchitectureConversion,
 )
 from transformer_lens.weight_conversion.gemma import GemmaWeightConversion
+from transformer_lens.weight_conversion.gpt2_lm_head_custom import GPT2LMHeadCustomWeightConversion
 from transformer_lens.weight_conversion.mixtral import MixtralWeightConversion
 from transformer_lens.weight_conversion.qwen import QwenWeightConversion
 from transformer_lens.weight_conversion.qwen2 import Qwen2WeightConversion
@@ -20,6 +21,8 @@ class WeightConversionFactory:
                 return Qwen2WeightConversion(cfg)
             case "QWenLMHeadModel":
                 return QwenWeightConversion(cfg)
+            case "GPT2LMHeadCustomModel":
+                return GPT2LMHeadCustomWeightConversion(cfg)
             case _:
                 raise NotImplementedError(
                     f"{cfg.original_architecture} is not currently supported."

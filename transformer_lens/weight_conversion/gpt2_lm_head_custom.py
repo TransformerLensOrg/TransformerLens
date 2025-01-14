@@ -9,7 +9,7 @@ from transformer_lens.weight_conversion.conversion_utils.conversion_steps import
 )
 
 
-class CoderWeightConversion(ArchitectureConversion):
+class GPT2LMHeadCustomWeightConversion(ArchitectureConversion):
     def __init__(self, cfg: HookedTransformerConfig) -> None:
         super().__init__({
             "embed.W_E": "transformer.wte.weight",
