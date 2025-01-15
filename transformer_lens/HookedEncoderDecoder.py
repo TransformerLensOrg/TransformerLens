@@ -135,6 +135,34 @@ class HookedEncoderDecoder(HookedRootModule):
             tokens = tokens.to(self.cfg.device)
             attention_mask = attention_mask.to(self.cfg.device)
         return tokens, attention_mask
+    
+    @overload
+    def forward(
+        self,
+        input: Union[
+            str,
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+        ],
+        decoder_input: Optional[Int[torch.Tensor, "batch decoder_pos"]] = None,
+        return_type: Literal["logits"] = "logits",
+        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ) -> Float[torch.Tensor, "batch pos d_vocab"]:
+        ...
+
+    @overload
+    def forward(
+        self,
+        input: Union[
+            str,
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+        ],
+        decoder_input: Optional[Int[torch.Tensor, "batch decoder_pos"]] = None,
+        return_type: Literal[None] = None,
+        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ) -> Optional[Float[torch.Tensor, "batch pos d_vocab"]]:
+        ...
 
     def forward(
         self,
@@ -329,6 +357,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 attention_mask if one_zero_attention_mask is None else one_zero_attention_mask
             )
         else:
+            assert isinstance(input, torch.Tensor) # keep mypy happy
             encoder_input = input
 
             # If tokens are provided, user should be aware that attention mask will not be inferred
