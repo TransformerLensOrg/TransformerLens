@@ -135,7 +135,7 @@ class HookedEncoderDecoder(HookedRootModule):
             tokens = tokens.to(self.cfg.device)
             attention_mask = attention_mask.to(self.cfg.device)
         return tokens, attention_mask
-    
+
     @overload
     def forward(
         self,
@@ -224,13 +224,15 @@ class HookedEncoderDecoder(HookedRootModule):
                 logging.warning(
                     "No attention mask provided. Assuming all tokens should be attended to."
                 )
-            
+
             if decoder_input is None:
-                raise ValueError("Must provide decoder_input if input is not a string or list of strings")
+                raise ValueError(
+                    "Must provide decoder_input if input is not a string or list of strings"
+                )
 
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
-            
+
         if one_zero_attention_mask is not None:
             one_zero_attention_mask = one_zero_attention_mask.to(self.cfg.device)
 
@@ -357,7 +359,7 @@ class HookedEncoderDecoder(HookedRootModule):
                 attention_mask if one_zero_attention_mask is None else one_zero_attention_mask
             )
         else:
-            assert isinstance(input, torch.Tensor) # keep mypy happy
+            assert isinstance(input, torch.Tensor)  # keep mypy happy
             encoder_input = input
 
             # If tokens are provided, user should be aware that attention mask will not be inferred
