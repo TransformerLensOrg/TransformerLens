@@ -15,8 +15,7 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
-from transformer_lens.utils import get_offset_position_ids
-
+from transformer_lens.factories.rotary_embedding_factory import RotaryEmbeddingFactory
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
     from bitsandbytes.nn.modules import Params4bit
@@ -123,14 +122,7 @@ class AbstractAttention(ABC, nn.Module):
             self.hook_rot_q = HookPoint()
             if self.cfg.rotary_dim is None:  # keep mypy happy
                 raise ValueError("Rotary dim must be provided for rotary positional embeddings")
-            sin, cos = self.calculate_sin_cos_rotary(
-                self.cfg.rotary_dim,
-                self.cfg.n_ctx,
-                base=self.cfg.rotary_base,
-                dtype=self.cfg.dtype,
-            )
-            self.register_buffer("rotary_sin", sin)
-            self.register_buffer("rotary_cos", cos)
+            self.rotary_module = RotaryEmbeddingFactory.create_rotary(self.cfg)            
         elif self.cfg.positional_embedding_type == "alibi":
             # ALiBi bias wil be constructed on the first forward pass.
             # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
@@ -204,10 +196,12 @@ class AbstractAttention(ABC, nn.Module):
             kv_cache_pos_offset = 0
 
         if self.cfg.positional_embedding_type == "rotary":
-            q = self.hook_rot_q(self.apply_rotary(q, kv_cache_pos_offset, attention_mask))
+            q = self.hook_rot_q(
+                self.rotary_module(q, kv_cache_pos_offset, attention_mask)
+            )
             k = self.hook_rot_k(
-                self.apply_rotary(k, 0, attention_mask)
-            )  # keys are cached so no offset
+                self.rotary_module(k, 0, attention_mask)
+            )
 
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             # If using 16 bits, increase the precision to avoid numerical instabilities
