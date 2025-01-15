@@ -10,7 +10,7 @@ def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
     state_dict = {}
     state_dict["embed.W_E"] = phi.model.embed_tokens.weight
 
-   # Some models with the Llama architecture use Grouped Query Attention, and so for these we need to modify
+    # Some models with the Llama architecture use Grouped Query Attention, and so for these we need to modify
     # the state dict keys for the K/V attention weight/biases, prepending "_" to the key names.
     using_gqa = cfg.n_key_value_heads is not None
     gqa_uscore = "_" if using_gqa else ""
@@ -23,20 +23,17 @@ def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
 
         W = phi.model.layers[l].self_attn.qkv_proj.weight
         q_dim = cfg.n_heads * cfg.d_head
-        kv_dim = n_kv_heads * cfg.d_head 
+        kv_dim = n_kv_heads * cfg.d_head
         W_Q, W_K, W_V = W.split([q_dim, kv_dim, kv_dim], dim=0)
 
         W_Q = einops.rearrange(
-            W_Q, "(n_head d_head) d_model -> n_head d_model d_head", 
-            n_head=cfg.n_heads
+            W_Q, "(n_head d_head) d_model -> n_head d_model d_head", n_head=cfg.n_heads
         )
         W_K = einops.rearrange(
-            W_K, "(n_kv_head d_head) d_model -> n_kv_head d_model d_head", 
-            n_kv_head=n_kv_heads
+            W_K, "(n_kv_head d_head) d_model -> n_kv_head d_model d_head", n_kv_head=n_kv_heads
         )
         W_V = einops.rearrange(
-            W_V, "(n_kv_head d_head) d_model -> n_kv_head d_model d_head", 
-            n_kv_head=n_kv_heads
+            W_V, "(n_kv_head d_head) d_model -> n_kv_head d_model d_head", n_kv_head=n_kv_heads
         )
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn.{gqa_uscore}W_K"] = W_K
