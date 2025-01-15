@@ -89,7 +89,8 @@ class RotaryEmbedding(nn.Module):
             n = x.size(-1) // 2
             rot_x[..., :n] = -x[..., n:]
             rot_x[..., n:] = x[..., :n]
-        return rot_x    
+        return rot_x
+
 
 class DynamicNTKScalingRotary(RotaryEmbedding):
     def calculate_sin_cos_rotary(

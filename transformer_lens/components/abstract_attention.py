@@ -515,8 +515,6 @@ class AbstractAttention(ABC, nn.Module):
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
 
-
-
     @staticmethod
     def create_alibi_slope(
         n_ctx: int, device: Optional[Union[str, torch.device]] = None
