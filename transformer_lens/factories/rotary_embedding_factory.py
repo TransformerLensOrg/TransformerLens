@@ -1,4 +1,7 @@
-from transformer_lens.components.rotary_embeddings import RotaryEmbedding, DynamicNTKScalingRotary
+from transformer_lens.components.rotary_embeddings import (
+    DynamicNTKScalingRotary,
+    RotaryEmbedding,
+)
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 

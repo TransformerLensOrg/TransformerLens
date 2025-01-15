@@ -1,20 +1,21 @@
+import math
+from typing import Optional, Tuple
+
+import einops
 import torch
 import torch.nn as nn
-from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from jaxtyping import Float, Int
-from typing import Dict, Optional, Tuple, Union
+
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utils import get_offset_position_ids
-import einops
+
 
 class RotaryEmbedding(nn.Module):
     def __init__(self, cfg: HookedTransformerConfig):
         super().__init__()
         self.cfg = cfg
         sin, cos = self.calculate_sin_cos_rotary(
-            rotary_dim=cfg.rotary_dim,
-            n_ctx=cfg.n_ctx,
-            base=cfg.rotary_base,
-            dtype=cfg.dtype
+            rotary_dim=cfg.rotary_dim, n_ctx=cfg.n_ctx, base=cfg.rotary_base, dtype=cfg.dtype
         )
         self.register_buffer("rotary_sin", sin)
         self.register_buffer("rotary_cos", cos)
@@ -36,14 +37,11 @@ class RotaryEmbedding(nn.Module):
         pos = torch.arange(n_ctx, dtype=high_precision)
         dim = torch.arange(rotary_dim // 2, dtype=high_precision)
         freq = base ** (dim / (rotary_dim / 2))
-        if self.cfg.rotary_adjacent_pairs:
-            freq = einops.repeat(freq, "d -> (d 2)")
-        else:
-            freq = einops.repeat(freq, "d -> (2 d)")
+        freq = einops.repeat(freq, "d -> (d 2)")
         # Create a n_ctx x rotary_dim tensor, where each column is an arithmetic sequence of angles in that frequency
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
-    
+
     def forward(
         self,
         x: Float[torch.Tensor, "batch pos head_index d_head"],
@@ -73,35 +71,40 @@ class RotaryEmbedding(nn.Module):
 
         return torch.cat([x_rotated, x_pass], dim=-1)
 
-
     def rotate_every_two(
-            self, x: Float[torch.Tensor, "... rotary_dim"]
-        ) -> Float[torch.Tensor, "... rotary_dim"]:
-            """
-            Rotary helper function, splits x into blocks of size 2 along the final axis and maps [x0, x1] to [-x1, x0]
+        self, x: Float[torch.Tensor, "... rotary_dim"]
+    ) -> Float[torch.Tensor, "... rotary_dim"]:
+        """
+        Rotary helper function, splits x into blocks of size 2 along the final axis and maps [x0, x1] to [-x1, x0]
 
-            The final axis of x must have even length.
+        The final axis of x must have even length.
 
-            GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
-            """
-            rot_x = x.clone()
-            if self.cfg.rotary_adjacent_pairs:
-                rot_x[..., ::2] = -x[..., 1::2]
-                rot_x[..., 1::2] = x[..., ::2]
-            else:
-                n = x.size(-1) // 2
-                rot_x[..., :n] = -x[..., n:]
-                rot_x[..., n:] = x[..., :n]
-
-            return rot_x
-
-   
+        GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
+        """
+        rot_x = x.clone()
+        if self.cfg.rotary_adjacent_pairs:
+            rot_x[..., ::2] = -x[..., 1::2]
+            rot_x[..., 1::2] = x[..., ::2]
+        else:
+            n = x.size(-1) // 2
+            rot_x[..., :n] = -x[..., n:]
+            rot_x[..., n:] = x[..., :n]
+        return rot_x    
 
 class DynamicNTKScalingRotary(RotaryEmbedding):
-
-    def calculate_sin_cos(self, rotary_dim, n_ctx, base, dtype, factor, low_freq_factor, high_freq_factor):
-             # Llama-3.1 uses NTK-by-Parts Rotary Embedding introduced in Section 3.2 in https://arxiv.org/pdf/2309.00071
+    def calculate_sin_cos_rotary(
+        self,
+        rotary_dim: int,
+        n_ctx: int,
+        base: int = 10000,
+        dtype: torch.dtype = torch.float32,
+    ):
+        # Llama-3.1 uses NTK-by-Parts Rotary Embedding introduced in Section 3.2 in https://arxiv.org/pdf/2309.00071
         # Implementation copied from https://github.com/huggingface/transformers/blob/v4.46.0/src/transformers/modeling_rope_utils.py#L310
+        print("Using NTK-by-Parts Rotary Embedding")
+        high_precision = torch.float32 if dtype != torch.float64 else torch.float64
+        pos = torch.arange(n_ctx, dtype=high_precision)
+
         inv_freq = 1.0 / (
             base ** (torch.arange(0, rotary_dim, 2, dtype=torch.int64).float() / rotary_dim)
         )
@@ -124,9 +127,6 @@ class DynamicNTKScalingRotary(RotaryEmbedding):
         is_medium_freq = ~(wavelen < high_freq_wavelen) * ~(wavelen > low_freq_wavelen)
         inv_freq_llama = torch.where(is_medium_freq, smoothed_inv_freq, inv_freq_llama)
         freq = 1 / inv_freq_llama
-        if self.cfg.rotary_adjacent_pairs:
-            freq = einops.repeat(freq, "d -> (d 2)")
+        freq = einops.repeat(freq, "d -> (d 2)")
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
-    
-

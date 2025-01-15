@@ -11,11 +11,12 @@ from jaxtyping import Float, Int
 from transformers.utils import is_bitsandbytes_available
 
 from transformer_lens.FactoredMatrix import FactoredMatrix
+from transformer_lens.factories.rotary_embedding_factory import RotaryEmbeddingFactory
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.past_key_value_caching import HookedTransformerKeyValueCacheEntry
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
-from transformer_lens.factories.rotary_embedding_factory import RotaryEmbeddingFactory
+
 if is_bitsandbytes_available():
     import bitsandbytes as bnb
     from bitsandbytes.nn.modules import Params4bit
@@ -122,7 +123,7 @@ class AbstractAttention(ABC, nn.Module):
             self.hook_rot_q = HookPoint()
             if self.cfg.rotary_dim is None:  # keep mypy happy
                 raise ValueError("Rotary dim must be provided for rotary positional embeddings")
-            self.rotary_module = RotaryEmbeddingFactory.create_rotary(self.cfg)            
+            self.rotary_module = RotaryEmbeddingFactory.create_rotary(self.cfg)
         elif self.cfg.positional_embedding_type == "alibi":
             # ALiBi bias wil be constructed on the first forward pass.
             # Note: While computationally efficient, initializing an bias with max n_ctx (16, 1024, 1024) of float32 will occupy ~256MiB of contiguous GPU memory, which may not be optimal for memory usage.
@@ -196,12 +197,8 @@ class AbstractAttention(ABC, nn.Module):
             kv_cache_pos_offset = 0
 
         if self.cfg.positional_embedding_type == "rotary":
-            q = self.hook_rot_q(
-                self.rotary_module(q, kv_cache_pos_offset, attention_mask)
-            )
-            k = self.hook_rot_k(
-                self.rotary_module(k, 0, attention_mask)
-            )
+            q = self.hook_rot_q(self.rotary_module(q, kv_cache_pos_offset, attention_mask))
+            k = self.hook_rot_k(self.rotary_module(k, 0, attention_mask))
 
         if self.cfg.dtype not in [torch.float32, torch.float64]:
             # If using 16 bits, increase the precision to avoid numerical instabilities
@@ -518,55 +515,7 @@ class AbstractAttention(ABC, nn.Module):
         angles = pos[:, None] / freq[None, :]
         return torch.sin(angles).to(dtype), torch.cos(angles).to(dtype)
 
-    def rotate_every_two(
-        self, x: Float[torch.Tensor, "... rotary_dim"]
-    ) -> Float[torch.Tensor, "... rotary_dim"]:
-        """
-        Rotary helper function, splits x into blocks of size 2 along the final axis and maps [x0, x1] to [-x1, x0]
 
-        The final axis of x must have even length.
-
-        GPT-NeoX and GPT-J do rotary subtly differently, see calculate_sin_cos_rotary for details.
-        """
-        rot_x = x.clone()
-        if self.cfg.rotary_adjacent_pairs:
-            rot_x[..., ::2] = -x[..., 1::2]
-            rot_x[..., 1::2] = x[..., ::2]
-        else:
-            n = x.size(-1) // 2
-            rot_x[..., :n] = -x[..., n:]
-            rot_x[..., n:] = x[..., :n]
-
-        return rot_x
-
-    def apply_rotary(
-        self,
-        x: Float[torch.Tensor, "batch pos head_index d_head"],
-        past_kv_pos_offset=0,
-        attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
-    ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
-        # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
-        x_pos = x.size(1)
-        x_rot = x[..., : self.cfg.rotary_dim]
-        x_pass = x[..., self.cfg.rotary_dim :]
-        x_flip = self.rotate_every_two(x_rot)
-
-        if attention_mask is None:
-            rotary_cos = self.rotary_cos[
-                None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
-            ]
-            rotary_sin = self.rotary_sin[
-                None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
-            ]
-            x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
-        else:
-            offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
-            offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
-            mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
-            mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
-            x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
-
-        return torch.cat([x_rotated, x_pass], dim=-1)
 
     @staticmethod
     def create_alibi_slope(
