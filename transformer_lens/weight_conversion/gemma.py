@@ -6,7 +6,6 @@ from transformer_lens.weight_conversion.conversion_utils.conversion_steps import
     BaseWeightConversion,
     FIELD_SET,
     ArithmeticWeightConversion,
-    CallableWeightConversion,
     OperationTypes,
     RearrangeWeightConversion,
     WeightConversionSet,

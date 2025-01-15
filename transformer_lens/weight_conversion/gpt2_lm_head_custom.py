@@ -12,12 +12,12 @@ from transformer_lens.weight_conversion.conversion_utils.conversion_steps import
 class GPT2LMHeadCustomWeightConversion(ArchitectureConversion):
     def __init__(self, cfg: HookedTransformerConfig) -> None:
         super().__init__({
-            "embed.W_E": "transformer.wte.weight",
-            "unembed.W_U": "lm_head.weight.T",
-            "pos_embed.W_pos": "transformer.wpe.weight",
-            "ln_final.w": "transformer.ln_f.weight",
-            "ln_final.b": "transformer.ln_f.bias",
-            "blocks": ("transformer.h", WeightConversionSet({
+            "embed.W_E": "model.transformer.wte.weight",
+            "unembed.W_U": "model.lm_head.weight.T",
+            "pos_embed.W_pos": "model.transformer.wpe.weight",
+            "ln_final.w": "model.transformer.ln_f.weight",
+            "ln_final.b": "model.transformer.ln_f.bias",
+            "blocks": ("model.transformer.h", WeightConversionSet({
                 "ln1.w": "ln_1.weight",
                 "ln1.b": "ln_1.bias",
                 "attn.W_Q": ("attn.q_attn.weight", RearrangeWeightConversion("m h -> i m h", i=cfg.n_heads)),

@@ -12,11 +12,11 @@ class QwenWeightConversion(ArchitectureConversion):
     def __init__(self, cfg: HookedTransformerConfig) -> None:
         super().__init__(
             {
-                "embed.W_E": "wte.weight",
-                "ln_final.w": "ln_f.weight",
-                "unembed.W_U": "lm_head.weight.T",
+                "embed.W_E": "transformer.wte.weight",
+                "ln_final.w": "transformer.ln_f.weight",
+                "unembed.W_U": "transformer.lm_head.weight.T",
                 "unembed.b_U": torch.zeros(cfg.d_vocab, dtype=cfg.dtype),
-                "blocks": ("h", WeightConversionSet({
+                "blocks": ("transformer.h", WeightConversionSet({
                     "ln1.w": "ln_1.weight",
                     "attn.W_Q": ("attn.c_attn.weight", RearrangeWeightConversion(
                         "(n h) m->n m h",
@@ -62,14 +62,3 @@ class QwenWeightConversion(ArchitectureConversion):
                 }))
             }
         )
-        
-    def get_model(self, remote_module: nn.Module) -> dict:
-        """The weights for this model are in a variable named transformer
-
-        Args:
-            remote_module nn.Module: The module from hugging face
-
-        Returns:
-            dict: The model
-        """
-        return remote_module.transformer
