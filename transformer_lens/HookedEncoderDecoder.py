@@ -97,20 +97,106 @@ class HookedEncoderDecoder(HookedRootModule):
 
         self.setup()
 
+    def to_tokens(
+        self,
+        input: Union[str, List[str]],
+        move_to_device: bool = True,
+        truncate: bool = True,
+    ) -> Tuple[Int[torch.Tensor, "batch pos"], Int[torch.Tensor, "batch pos"]]:
+        """Converts a string to a tensor of tokens.
+        Taken mostly from the HookedTransformer implementation, but does not support default padding
+        sides or prepend_bos.
+
+        Args:
+            input (Union[str, List[str]]): The input to tokenize.
+            move_to_device (bool): Whether to move the output tensor of tokens to the device the
+                model lives on. Defaults to True
+            truncate (bool): If the output tokens are too long, whether to truncate the output
+                tokens to the model's max context window. Does nothing for shorter inputs.
+                Defaults to True.
+        """
+
+        assert self.tokenizer is not None, "Cannot use to_tokens without a tokenizer"
+
+        encodings = self.tokenizer(
+            input,
+            return_tensors="pt",
+            padding=True,
+            truncation=truncate,
+            max_length=self.cfg.n_ctx if truncate else None,
+        )
+
+        tokens = encodings.input_ids
+        attention_mask = encodings.attention_mask
+
+        if move_to_device:
+            tokens = tokens.to(self.cfg.device)
+            attention_mask = attention_mask.to(self.cfg.device)
+        return tokens, attention_mask
+
     def forward(
         self,
-        input: Int[torch.Tensor, "batch pos"],
-        decoder_input: Int[torch.Tensor, "batch decoder_pos"],
+        input: Union[
+            str,
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+        ],
+        decoder_input: Optional[Int[torch.Tensor, "batch decoder_pos"]] = None,
         return_type: Optional[str] = "logits",
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Float[torch.Tensor, "batch decoder_pos d_vocab"]]:
-        """Input must be a batch of tokens. Strings and lists of strings are not yet supported.
-        decoder_input: Int[torch.Tensor, "batch decoder_pos"]: The input to the decoder. This is the sequence of tokens that the model will generate, usually with a start token at the beginning
-        return_type Optional[str]: The type of output to return. Can be one of: None (return nothing, don't calculate logits), or 'logits' (return logits).
-        one_zero_attention_mask: Optional[torch.Tensor]: A binary mask which indicates which tokens should be attended to (1) and which should be ignored (0). Primarily used for padding variable-length sentences in a batch. For instance, in a batch with sentences of differing lengths, shorter sentences are padded with 0s on the right. If not provided, the model assumes all tokens should be attended to.
+        """Forward pass of the T5 model.
+
+        Args:
+            input: Input to be processed. Can be one of:
+                - str: A single string input
+                - List[str]: A batch of string inputs
+                - Int[torch.Tensor, "batch pos"]: A batch of token IDs
+            decoder_input: Tensor of shape (batch, decoder_pos) containing the decoder input sequence.
+                If None and input is of type str or List[str], starts with batch of beginning-of-sequence (BOS) tokens.
+            return_type: Specifies the model output type:
+                - "logits": Return logits tensor
+                - None: Returns nothing
+            one_zero_attention_mask: A binary mask which indicates
+                which tokens should be attended to (1) and which should be ignored (0).
+                Primarily used for padding variable-length sentences in a batch.
+                For instance, in a batch with sentences of differing lengths, shorter
+                sentences are padded with 0s on the right. If not provided, the model
+                assumes all tokens should be attended to.
+                This parameter gets inferred from the tokenizer if input is a string or list of strings.
+                Shape is (batch_size, sequence_length).
+
+        Returns:
+            Optional[Float[torch.Tensor, "batch decoder_pos d_vocab"]]:
+                If return_type="logits": Returns logits tensor of shape (batch, decoder_pos, vocab_size)
+                If return_type=None: Returns None
         """
 
-        tokens = input
+        if isinstance(input, str) or isinstance(input, list):
+            tokens, attention_mask = self.to_tokens(input)
+
+            # If attention mask is not provided, use the ones from the tokenizer
+            one_zero_attention_mask = (
+                attention_mask if one_zero_attention_mask is None else one_zero_attention_mask
+            )
+
+            # If decoder_input is not provided, start with tensor of PAD tokens of shape (batch, 1)
+            if decoder_input is None:
+                decoder_input = torch.full(
+                    (tokens.shape[0], 1),
+                    self.tokenizer.pad_token_id,
+                    device=self.cfg.device,
+                )
+        else:
+            tokens = input
+
+            if one_zero_attention_mask is None:
+                logging.warning(
+                    "No attention mask provided. Assuming all tokens should be attended to."
+                )
+            
+            if decoder_input is None:
+                raise ValueError("Must provide decoder_input if input is not a string or list of strings")
 
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
@@ -126,7 +212,7 @@ class HookedEncoderDecoder(HookedRootModule):
         else:
             additive_attention_mask = None
 
-        query_len = key_len = input.shape[1]
+        query_len = key_len = tokens.shape[1]
 
         encoder_positional_bias = self.encoder[0].attn.compute_relative_attention_bias(
             query_len, key_len, device=self.cfg.device
