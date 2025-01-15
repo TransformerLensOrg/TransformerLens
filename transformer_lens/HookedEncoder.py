@@ -94,7 +94,6 @@ class HookedEncoder(HookedRootModule):
             str,
             List[str],
             Int[torch.Tensor, "batch pos"],
-            Float[torch.Tensor, "batch pos d_model"],
         ],
         return_type: Union[Literal["logits"], Literal["predictions"]],
         task: Optional[str] = None,
@@ -115,7 +114,6 @@ class HookedEncoder(HookedRootModule):
             str,
             List[str],
             Int[torch.Tensor, "batch pos"],
-            Float[torch.Tensor, "batch pos d_model"],
         ],
         return_type: Literal[None],
         task: Optional[str] = None,
@@ -137,7 +135,6 @@ class HookedEncoder(HookedRootModule):
             str,
             List[str],
             Int[torch.Tensor, "batch pos"],
-            Float[torch.Tensor, "batch pos d_model"],
         ],
         return_type: Optional[str] = "logits",
         task: Optional[str] = None,
@@ -158,7 +155,6 @@ class HookedEncoder(HookedRootModule):
                 - str: A single text string
                 - List[str]: A list of text strings
                 - torch.Tensor: Input tokens as integers with shape (batch, position)
-                - torch.Tensor: Input embeddings as floats with shape (batch, position, d_model)
             return_type: Optional[str]: The type of output to return. Can be one of:
                 - None: Return nothing, don't calculate logits
                 - 'logits': Return logits tensor
