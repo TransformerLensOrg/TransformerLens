@@ -3,6 +3,7 @@ import torch
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
 from transformer_lens.weight_conversion.conversion_utils.conversion_steps import (
+    BaseWeightConversion,
     FIELD_SET,
     ArithmeticWeightConversion,
     CallableWeightConversion,
@@ -10,6 +11,10 @@ from transformer_lens.weight_conversion.conversion_utils.conversion_steps import
     RearrangeWeightConversion,
     WeightConversionSet,
 )
+
+class GemmaWeightNormalizationConversion(BaseWeightConversion):
+    def convert(self, input_value):
+        return  input_value.float() + torch.ones_like(input_value, dtype=torch.float32)
 
 
 class GemmaWeightConversion(ArchitectureConversion):
@@ -19,9 +24,7 @@ class GemmaWeightConversion(ArchitectureConversion):
             {
                 "ln_final.w": (
                     "model.norm.weight",
-                    CallableWeightConversion(
-                        lambda weight: weight.float() + torch.ones_like(weight, dtype=torch.float32)
-                    ),
+                    GemmaWeightNormalizationConversion(),
                 ),
                 "embed.W_E": (
                     "model.embed_tokens.weight",
@@ -56,9 +59,7 @@ class GemmaWeightConversion(ArchitectureConversion):
                 "attn.b_O": torch.zeros(cfg.d_model, dtype=cfg.dtype),
                 "ln1.w": (
                     "input_layernorm.weight",
-                    CallableWeightConversion(
-                        lambda weight: weight.float() + torch.ones_like(weight, dtype=torch.float32)
-                    ),
+                    GemmaWeightNormalizationConversion(),
                 ),
                 "attn.W_Q": (
                     "self_attn.q_proj.weight",
@@ -84,21 +85,15 @@ class GemmaWeightConversion(ArchitectureConversion):
         return {
             "ln1_post.w": (
                 "post_attention_layernorm.weight",
-                CallableWeightConversion(
-                    lambda weight: weight.float() + torch.ones_like(weight, dtype=torch.float32)
-                ),
+                GemmaWeightNormalizationConversion(),
             ),
             "ln2.w": (
                 "pre_feedforward_layernorm.weight",
-                CallableWeightConversion(
-                    lambda weight: weight.float() + torch.ones_like(weight, dtype=torch.float32)
-                ),
+                GemmaWeightNormalizationConversion(),
             ),
             "ln2_post.w": (
                 "post_feedforward_layernorm.weight",
-                CallableWeightConversion(
-                    lambda weight: weight.float() + torch.ones_like(weight, dtype=torch.float32)
-                ),
+                GemmaWeightNormalizationConversion(),
             ),
         }
 
@@ -106,8 +101,6 @@ class GemmaWeightConversion(ArchitectureConversion):
         return {
             "ln2.w": (
                 "pre_feedforward_layernorm.weight",
-                CallableWeightConversion(
-                    lambda weight, model: weight.float() + torch.ones_like(model.norm.weight, dtype=torch.float32)
-                )
+                GemmaWeightNormalizationConversion()
             )
         }
