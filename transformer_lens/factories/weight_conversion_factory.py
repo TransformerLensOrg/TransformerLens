@@ -3,6 +3,7 @@ from transformer_lens.weight_conversion.conversion_utils.architecture_conversion
     ArchitectureConversion,
 )
 from transformer_lens.weight_conversion.bert import BertWeightConversion
+from transformer_lens.weight_conversion.bloom import BloomWeightConversion
 from transformer_lens.weight_conversion.gemma import GemmaWeightConversion
 from transformer_lens.weight_conversion.gpt2_lm_head_custom import GPT2LMHeadCustomWeightConversion
 from transformer_lens.weight_conversion.mixtral import MixtralWeightConversion
@@ -16,6 +17,8 @@ class WeightConversionFactory:
         match cfg.original_architecture:
             case "BertForMaskedLM":
                 return BertWeightConversion(cfg)
+            case "BloomForCausalLM":
+                return BloomWeightConversion(cfg)
             case "MixtralForCausalLM":
                 return MixtralWeightConversion(cfg)
             case "Gemma2ForCausalLM":

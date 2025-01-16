@@ -1,5 +1,4 @@
 import torch
-from torch import nn
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
