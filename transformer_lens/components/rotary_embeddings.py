@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Tuple
+from typing import Optional, Tuple, cast
 
 import einops
 import torch
@@ -13,9 +13,10 @@ from transformer_lens.utils import get_offset_position_ids
 class RotaryEmbedding(nn.Module):
     def __init__(self, cfg: HookedTransformerConfig):
         super().__init__()
-        self.cfg = cfg
+        self.cfg: HookedTransformerConfig = cfg
+        rotary_dim = cast(int, self.cfg.rotary_dim)
         sin, cos = self.calculate_sin_cos_rotary(
-            rotary_dim=cfg.rotary_dim, n_ctx=cfg.n_ctx, base=cfg.rotary_base, dtype=cfg.dtype
+            rotary_dim=rotary_dim, n_ctx=cfg.n_ctx, base=cfg.rotary_base, dtype=cfg.dtype
         )
         self.register_buffer("rotary_sin", sin)
         self.register_buffer("rotary_cos", cos)
