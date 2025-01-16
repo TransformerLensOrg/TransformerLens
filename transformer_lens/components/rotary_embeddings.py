@@ -103,7 +103,6 @@ class DynamicNTKScalingRotary(RotaryEmbedding):
     ):
         # Llama-3.1 uses NTK-by-Parts Rotary Embedding introduced in Section 3.2 in https://arxiv.org/pdf/2309.00071
         # Implementation copied from https://github.com/huggingface/transformers/blob/v4.46.0/src/transformers/modeling_rope_utils.py#L310
-        print("Using NTK-by-Parts Rotary Embedding")
         high_precision = torch.float32 if dtype != torch.float64 else torch.float64
         pos = torch.arange(n_ctx, dtype=high_precision)
 
