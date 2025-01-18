@@ -10,7 +10,7 @@ def convert_phi3_weights(phi, cfg: HookedTransformerConfig):
     state_dict = {}
     state_dict["embed.W_E"] = phi.model.embed_tokens.weight
 
-    # Some models with the Llama architecture use Grouped Query Attention, and so for these we need to modify
+    # Some models with this architecture use Grouped Query Attention, and so for these we need to modify
     # the state dict keys for the K/V attention weight/biases, prepending "_" to the key names.
     using_gqa = cfg.n_key_value_heads is not None
     gqa_uscore = "_" if using_gqa else ""
