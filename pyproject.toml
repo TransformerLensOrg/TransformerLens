@@ -30,8 +30,8 @@
         rich=">=12.6.0"
         sentencepiece="*"
         torch=[
-            {platform="!=linux", version=">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
-            {platform="linux", version=">=1.10"},                 # We can use any torch version on Linux (e.g colab)
+            {platform="!=linux", version=">=1.10,!=2.0,!=2.1.0,<2.4"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
+            {platform="linux", version=">=1.10,<2.4"},                 # We can use any torch version on Linux (e.g colab)
         ]
         tqdm=">=4.64.1"
         transformers=">=4.41.2"
