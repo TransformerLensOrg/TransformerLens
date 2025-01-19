@@ -2091,7 +2091,6 @@ class HookedTransformer(HookedRootModule):
                 (by default returns same type as input).
         """
 
-        from jax.tree_util import tree_map, tree_map_with_path
         with utils.LocallyOverridenDefaults(
             self, prepend_bos=prepend_bos, padding_side=padding_side
         ):
@@ -2156,7 +2155,7 @@ class HookedTransformer(HookedRootModule):
             token_tape = None
 
             if return_cache:
-                # defaults from https://github.com/japhba/TransformerLens/blob/bf64ede92220166471ff259fa6a8193297253dea/transformer_lens/hook_points.py#L510
+                # defaults from hook_points.py#L510
                 names_filter = None
                 device = None
                 remove_batch_dim: bool = False
@@ -2262,11 +2261,9 @@ class HookedTransformer(HookedRootModule):
                 # APPEND – we need to clone on the first pass to prevent overwrite
                 token_tape = torch.cat([token_tape, sampled_tokens.unsqueeze(-1)], dim=-1) if token_tape is not None else torch.clone(tokens[:, -ctx_length:])  # appends to the prompt tokens
                 if return_cache:
-                    # tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict)
-                    def cat_cache_var(kp, var_tape, var):
-                        if not any(key in kp[0].key for key in ['attn_scores', 'hook_pattern']):  # only for the vector-valued vars
+                    def cat_cache_var(key, var_tape, var):
+                        if not any(key_ in key for key_ in ['attn_scores', 'hook_pattern']):  # only for the vector-valued vars
                             cat_var = torch.cat([var_tape, var[:, -1:]], dim=1)
-                            # print(var_tape.shape, var[:, -1:].shape, cat_var.shape)
                             return cat_var
                         else:
                             var_tape = torch.nn.functional.pad(var_tape, (0,1,0,1), value=0)  # right-pads the last two dimensions
@@ -2278,13 +2275,12 @@ class HookedTransformer(HookedRootModule):
                             slice2 = var[:, :, :, -1:]
                             var_tape[..., -T:, -1:] = slice2
                             return var_tape
-                    # if cache_dict_tape is not None:
-                    #     tree_map_with_path(lambda kp, v: print(kp, '\n', v.shape), cache_dict_tape)
+
                     cache_dict_tape = (
-                        tree_map_with_path(cat_cache_var, cache_dict_tape, cache_dict)
+                        {k: cat_cache_var(k, cache_dict_tape[k], cache_dict[k]) for k in cache_dict}
                         if cache_dict_tape is not None
-                        else tree_map_with_path(lambda kp, var: torch.clone(var), cache_dict)  # initializes the dict with the initial cache
-                    )  # tree_map(lambda var: var[:, :], cache_dict)
+                        else {k: torch.clone(v) for k, v in cache_dict.items()}   # initializes the dict with the initial cache
+                    )
 
                 logits_tape = (
                     torch.cat([logits_tape, logits[:, -1:]], dim=1)
