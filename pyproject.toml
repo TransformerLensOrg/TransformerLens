@@ -19,7 +19,7 @@
         datasets=">=2.7.1"
         einops=">=0.6.0"
         fancy-einsum=">=0.0.3"
-        jaxtyping=">=0.2.11"
+        jaxtyping=">=0.2.11,<0.2.20"
         numpy=[
             {version=">=1.20,<1.25", python=">=3.8,<3.9"},
             {version=">=1.24,<2", python=">=3.9,<3.12"},
