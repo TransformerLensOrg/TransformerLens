@@ -22,7 +22,6 @@ class Attention(AbstractAttention):
         cfg: Union[Dict, HookedTransformerConfig],
         attn_type: str = "global",
         layer_id: Optional[int] = None,
-        zero_pos_embed: bool = False,
     ):
         """Attention Block - params have shape [head_index, d_model, d_head] (or [head_index, d_head, d_model] for W_O) and multiply on the right. attn_scores refers to query key dot product immediately before attention softmax
 
@@ -33,7 +32,7 @@ class Attention(AbstractAttention):
             attn_type (str, optional): "global" or "local", used by GPT-Neo. Local attention means the model can only attend back cfg.window_size tokens (here, 256). Not used by any other model at the moment. Defaults to "global".
             layer_id (int, optional): The index of the current layer. Used by the Mistal models (labelled here as stanford-gpt2) to scale down attention scores pre softmax for numerical stability reasons by 1/(layer_id+1). Defaults to None.
         """
-        super().__init__(cfg, attn_type, layer_id, zero_pos_embed)
+        super().__init__(cfg, attn_type, layer_id)
         self.cfg = HookedTransformerConfig.unwrap(cfg)
 
         if self.cfg.load_in_4bit:

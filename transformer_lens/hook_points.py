@@ -439,8 +439,7 @@ class HookedRootModule(nn.Module):
             clear_contexts (bool): If True, clears hook contexts whenever hooks are reset. Default is
                 False.
             *model_args: Positional arguments for the model.
-            **model_kwargs: Keyword arguments for the model's forward function. See your related
-                models forward pass for details as to what sort of arguments you can pass through.
+            **model_kwargs: Keyword arguments for the model.
 
         Note:
             If you want to use backward hooks, set `reset_hooks_end` to False, so the backward hooks
@@ -541,8 +540,7 @@ class HookedRootModule(nn.Module):
                 Defaults to False.
             pos_slice:
                 The slice to apply to the cache output. Defaults to None, do nothing.
-            **model_kwargs: Keyword arguments for the model's forward function. See your related
-                models forward pass for details as to what sort of arguments you can pass through.
+            **model_kwargs: Keyword arguments for the model.
 
         Returns:
             tuple: A tuple containing the model output and a Cache object.
