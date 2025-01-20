@@ -34,7 +34,10 @@
             {platform="linux", version=">=1.10"},                 # We can use any torch version on Linux (e.g colab)
         ]
         tqdm=">=4.64.1"
-        transformers=">=4.37.2"
+        transformers=[
+            {version=">=4.37", python=">=3.8,<3.9"},
+            {version=">=4.41", python=">=3.9,<4"},
+        ]
         typing-extensions="*"
         wandb=">=0.13.5"
         typeguard = "^4.2"
