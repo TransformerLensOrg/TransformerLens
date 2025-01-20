@@ -26,7 +26,7 @@
             {version=">=1.26", python=">=3.12,<3.13"},
         ]
         pandas=">=1.1.5"
-        python=">=3.9,<4.0"
+        python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
         torch=[
@@ -34,7 +34,7 @@
             {platform="linux", version=">=1.10"},                 # We can use any torch version on Linux (e.g colab)
         ]
         tqdm=">=4.64.1"
-        transformers="^4.48.1"
+        transformers=">=4.37.2"
         typing-extensions="*"
         wandb=">=0.13.5"
         typeguard = "^4.2"
