@@ -658,6 +658,7 @@ MODEL_ALIASES = {
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
     "microsoft/Phi-3-mini-4k-instruct": ["phi-3"],
+    "microsoft/phi-4": ["phi-4"],
     "google/gemma-2b": ["gemma-2b"],
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
@@ -697,6 +698,7 @@ NEED_REMOTE_CODE_MODELS = (
     "Qwen/Qwen-",
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
+    "microsoft/phi-4",
 )
 
 
