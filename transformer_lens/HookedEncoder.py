@@ -186,7 +186,7 @@ class HookedEncoder(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self):
+    def cuda(self, device: Union[int, torch.device, None] = None):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cuda")
 

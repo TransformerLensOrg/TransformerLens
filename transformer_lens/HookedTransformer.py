@@ -1041,7 +1041,7 @@ class HookedTransformer(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self):
+    def cuda(self, device: Union[int, torch.device, None] = None):
         """Wrapper around cuda that also changes `self.cfg.device`."""
         return self.to("cuda")
 
@@ -1229,6 +1229,11 @@ class HookedTransformer(HookedRootModule):
         if model_name.lower().startswith("t5"):
             raise RuntimeError(
                 "Execution stopped: Please use HookedEncoderDecoder to load T5 models instead of HookedTransformer."
+            )
+
+        if model_name.lower().startswith("bert"):
+            raise RuntimeError(
+                "Execution stopped: Please use HookedEncoder to load BERT-style models instead of HookedTransformer."
             )
 
         assert not (
