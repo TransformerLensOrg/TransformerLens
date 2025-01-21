@@ -331,6 +331,67 @@ def test_predictions(our_model, huggingface_model, tokenizer, decoder_input_ids)
     assert our_prediction == huggingface_prediction
 
 
+def test_predictions_string_input(our_model, huggingface_model, tokenizer):
+    prompt = "translate English to German: Hello, do you like bananas?"
+
+    encodings = tokenizer(prompt, return_tensors="pt")
+    tokens = encodings.input_ids
+    batch_size, seq_len = tokens.shape
+    decoder_input_ids = torch.full((batch_size, 1), tokenizer.pad_token_id)
+
+    our_model_logits = our_model(prompt)
+
+    huggingface_model_logits = huggingface_model(
+        input_ids=tokens,
+        attention_mask=encodings.attention_mask,
+        decoder_input_ids=decoder_input_ids,
+    ).logits
+
+    assert_close(our_model_logits, huggingface_model_logits, rtol=1e-5, atol=1e-5)
+
+
+def test_predictions_string_list_input(our_model, huggingface_model, tokenizer):
+    prompt = [
+        "translate English to German: Hello, do you like bananas?",
+        "translate English to French: Hello, do you like bananas?",
+        "translate English to Spanish: Hello, do you like bananas?",
+    ]
+
+    encodings = tokenizer(prompt, return_tensors="pt")
+    tokens = encodings.input_ids
+    batch_size, seq_len = tokens.shape
+    decoder_input_ids = torch.full((batch_size, 1), tokenizer.pad_token_id)
+
+    our_model_logits = our_model(prompt)
+
+    huggingface_model_logits = huggingface_model(
+        input_ids=tokens,
+        attention_mask=encodings.attention_mask,
+        decoder_input_ids=decoder_input_ids,
+    ).logits
+
+    assert_close(our_model_logits, huggingface_model_logits, rtol=1e-5, atol=1e-5)
+
+
+def test_generate(our_model, huggingface_model, tokenizer):
+    prompt = "translate English to German: Hello, do you like bananas?"
+
+    encodings = tokenizer(prompt, return_tensors="pt")
+
+    our_generation = our_model.generate(prompt, do_sample=False, max_new_tokens=20)
+    huggingface_generated_tokens = huggingface_model.generate(
+        input_ids=encodings.input_ids,
+        attention_mask=encodings.attention_mask,
+        do_sample=False,
+    )[0]
+
+    huggingface_generation = tokenizer.decode(
+        huggingface_generated_tokens, skip_special_tokens=True
+    )
+
+    assert our_generation.lower() == huggingface_generation.lower()
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires a CUDA device")
 def test_cuda(hello_world_tokens, decoder_input_ids):
     model = HookedEncoderDecoder.from_pretrained(MODEL_NAME)
