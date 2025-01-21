@@ -250,6 +250,14 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-base",
     "google-t5/t5-large",
     "ai-forever/mGPT",
+    "apple/OpenELM-270M",
+    "apple/OpenELM-450M",
+    "apple/OpenELM-1_1B",
+    "apple/OpenELM-3B",
+    "apple/OpenELM-270M-Instruct",
+    "apple/OpenELM-450M-Instruct",
+    "apple/OpenELM-1_1B-Instruct",
+    "apple/OpenELM-3B-Instruct",
 ]
 """Official model names for models on HuggingFace."""
 
