@@ -46,6 +46,7 @@ jobs:
         python-version:
           - "3.9"
           - "3.10"
+          - "3.11"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -65,7 +66,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Unit Test
         run: make unit-test
@@ -86,7 +87,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "poetry"
       - name: Cache Models used with Tests
         uses: actions/cache@v3
@@ -98,7 +99,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Check format
         run: make check-format
@@ -156,7 +157,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev,jupyter
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
