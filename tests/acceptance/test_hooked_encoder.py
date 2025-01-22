@@ -7,7 +7,7 @@ from jaxtyping import Float
 from torch.testing import assert_close
 from transformers import AutoTokenizer, BertForMaskedLM, BertForNextSentencePrediction
 
-from transformer_lens import HookedEncoder
+from transformer_lens import HookedEncoder, NextSentencePrediction
 
 MODEL_NAME = "bert-base-cased"
 
@@ -15,6 +15,11 @@ MODEL_NAME = "bert-base-cased"
 @pytest.fixture(scope="module")
 def our_bert():
     return HookedEncoder.from_pretrained(MODEL_NAME, device="cpu")
+
+
+@pytest.fixture(scope="module")
+def our_bert_nsp():
+    return NextSentencePrediction.from_pretrained(MODEL_NAME, device="cpu")
 
 
 @pytest.fixture(scope="module")
@@ -99,21 +104,21 @@ def test_bert_block(our_bert, huggingface_bert_mlm, hello_world_tokens):
     assert_close(our_block_out, huggingface_block_out)
 
 
-def test_bert_pooler(our_bert, huggingface_bert_nsp, hello_world_tokens):
+def test_bert_pooler(our_bert_nsp, huggingface_bert_nsp, hello_world_tokens):
     huggingface_bert_core_outputs = huggingface_bert_nsp.bert(hello_world_tokens).last_hidden_state
 
-    our_pooler_out = our_bert.pooler(huggingface_bert_core_outputs)
+    our_pooler_out = our_bert_nsp.pooler(huggingface_bert_core_outputs)
     huggingface_pooler_out = huggingface_bert_nsp.bert.pooler(huggingface_bert_core_outputs)
     assert_close(our_pooler_out, huggingface_pooler_out)
 
 
-def test_nsp_head(our_bert, huggingface_bert_nsp, hello_world_tokens):
+def test_nsp_head(our_bert_nsp, huggingface_bert_nsp, hello_world_tokens):
     huggingface_bert_core_outputs = huggingface_bert_nsp.bert(hello_world_tokens).last_hidden_state
 
-    our_pooler_out = our_bert.pooler(huggingface_bert_core_outputs)
+    our_pooler_out = our_bert_nsp.pooler(huggingface_bert_core_outputs)
     huggingface_pooler_out = huggingface_bert_nsp.bert.pooler(huggingface_bert_core_outputs)
 
-    our_nsp_head_out = our_bert.nsp_head(our_pooler_out)
+    our_nsp_head_out = our_bert_nsp.nsp_head(our_pooler_out)
     huggingface_nsp_head_out = huggingface_bert_nsp.cls.seq_relationship(huggingface_pooler_out)
 
     assert_close(our_nsp_head_out, huggingface_nsp_head_out)
@@ -156,9 +161,9 @@ def test_run_with_cache_mlm(our_bert, huggingface_bert_mlm, hello_world_tokens):
 
 
 def test_run_with_cache_nsp():
-    model = HookedEncoder.from_pretrained("bert-base-cased")
+    model = NextSentencePrediction.from_pretrained("bert-base-cased")
     sentences = ["She went to the grocery store.", "She bought a loaf of bread."]
-    logits, cache = model.run_with_cache(sentences, task="NSP")
+    logits, cache = model.run_with_cache(sentences)
 
     # check that an arbitrary subset of the keys exist
     assert "embed.hook_embed" in cache
@@ -230,12 +235,12 @@ def test_predictions_from_forward_function_mlm(our_bert, huggingface_bert_mlm, t
     assert our_prediction == huggingface_prediction
 
 
-def test_predictions_from_forward_function_nsp(our_bert, huggingface_bert_nsp, tokenizer):
+def test_predictions_from_forward_function_nsp(our_bert_nsp, huggingface_bert_nsp, tokenizer):
     sentence_a = "The cat sat on the mat"
     sentence_b = "The dog sat on the mat"
     input_ids = tokenizer(sentence_a, sentence_b, return_tensors="pt")["input_ids"]
 
-    our_prediction = our_bert([sentence_a, sentence_b], task="NSP")
+    our_prediction = our_bert_nsp([sentence_a, sentence_b])
     huggingface_bert_out = huggingface_bert_nsp(input_ids).logits
 
     our_logprobs = our_prediction.log_softmax(dim=-1)
@@ -256,6 +261,15 @@ def test_input_list_of_strings_mlm(our_bert, huggingface_bert_mlm, tokenizer):
     huggingface_bert_out = huggingface_bert_mlm(**encodings).logits
 
     assert_close(our_bert_out, huggingface_bert_out, rtol=1.3e-6, atol=4e-5)
+
+
+def test_wrong_sentence_input_causes_error_nsp(our_bert_nsp):
+    sentence_a = "The cat sat on the mat"
+    sentence_b = "The dog sat on the mat"
+    sentence_c = "The bird sat on the mat"
+    sentences = [sentence_a, sentence_b, sentence_c]
+    with pytest.raises(ValueError):
+        our_bert_nsp(sentences)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires a CUDA device")
