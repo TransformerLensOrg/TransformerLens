@@ -9,6 +9,7 @@ from transformer_lens.weight_conversion.gpt2 import GPT2WeightConversion
 from transformer_lens.weight_conversion.gpt2_lm_head_custom import GPT2LMHeadCustomWeightConversion
 from transformer_lens.weight_conversion.mixtral import MixtralWeightConversion
 from transformer_lens.weight_conversion.neo import NEOWeightConversion
+from transformer_lens.weight_conversion.neox import NEOXWeightConversion
 from transformer_lens.weight_conversion.qwen import QwenWeightConversion
 from transformer_lens.weight_conversion.qwen2 import Qwen2WeightConversion
 
@@ -29,6 +30,8 @@ class WeightConversionFactory:
                 return GPT2LMHeadCustomWeightConversion(cfg)
             case "GPTNeoForCausalLM":
                 return NEOWeightConversion(cfg)
+            case "GPTNeoXForCausalLM":
+                return NEOXWeightConversion(cfg)
             case "MixtralForCausalLM":
                 return MixtralWeightConversion(cfg)
             case "Qwen2ForCausalLM":
