@@ -57,3 +57,18 @@ def convert_neox_weights(neox, cfg: HookedTransformerConfig):
     state_dict["unembed.W_U"] = neox.embed_out.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
     return state_dict
+
+import torch
+
+from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
+
+class NEOXWeightConversion(ArchitectureConversion):
+
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        super().__init__({
+        })
