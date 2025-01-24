@@ -150,19 +150,21 @@ class HookedTransformer(HookedRootModule):
             else:
                 # Hugging Face defaults to use_fast to True
                 use_fast = True
-                # Phi model's fast tokenizer does not support adding a BOS token, use_fast
+                # Phi & Baichuan model's fast tokenizer does not support adding a BOS token, use_fast
                 # should be False
-                if "phi" in self.cfg.tokenizer_name.lower():
+                tokenizer_name = self.cfg.tokenizer_name.lower()
+                if "phi" in tokenizer_name:
                     use_fast = False
                 huggingface_token = os.environ.get("HF_TOKEN", None)
+                tokenizer = AutoTokenizer.from_pretrained(
+                    self.cfg.tokenizer_name,
+                    # add_bos_token=True,
+                    trust_remote_code=self.cfg.trust_remote_code,
+                    use_fast=use_fast,
+                    token=huggingface_token,
+                )
                 self.set_tokenizer(
-                    AutoTokenizer.from_pretrained(
-                        self.cfg.tokenizer_name,
-                        add_bos_token=True,
-                        trust_remote_code=self.cfg.trust_remote_code,
-                        use_fast=use_fast,
-                        token=huggingface_token,
-                    ),
+                    tokenizer,
                     default_padding_side=default_padding_side,
                 )
         else:
