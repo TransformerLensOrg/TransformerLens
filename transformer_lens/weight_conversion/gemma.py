@@ -40,6 +40,7 @@ class GemmaWeightConversion(ArchitectureConversion):
 
     def blocks_conversions(self, cfg: HookedTransformerConfig) -> WeightConversionSet:
         number_key_value_heads = cfg.n_key_value_heads if cfg.n_key_value_heads is not None else 0
+        laynorm_conversion = {}
         if cfg.use_normalization_before_and_after:
             laynorm_conversion = self.normalization_before_and_after_conversions()
         else:
@@ -76,8 +77,7 @@ class GemmaWeightConversion(ArchitectureConversion):
                     "self_attn.o_proj.weight",
                     RearrangeWeightConversion("m (n h)->n h m", n=cfg.n_heads),
                 ),
-            }
-            | laynorm_conversion
+            }.update(laynorm_conversion)
         )
 
     def normalization_before_and_after_conversions(self) -> FIELD_SET:

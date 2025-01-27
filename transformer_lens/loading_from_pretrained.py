@@ -1726,40 +1726,13 @@ def get_checkpoint_labels(model_name: str, **kwargs):
         raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
 
-# %% Loading state dicts
-def get_pretrained_state_dict(
+def load_hugging_face_model(
     official_model_name: str,
     cfg: HookedTransformerConfig,
     hf_model=None,
     dtype: torch.dtype = torch.float32,
     **kwargs,
 ) -> Dict[str, torch.Tensor]:
-    """
-    Loads in the model weights for a pretrained model, and processes them to
-    have the HookedTransformer parameter names and shapes. Supports checkpointed
-    models (and expects the checkpoint info to be stored in the config object)
-
-    hf_model: Optionally, a HuggingFace model object. If provided, we will use
-        these weights rather than reloading the model.
-    dtype: The dtype to load the HuggingFace model in.
-    kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
-        Also given to other HuggingFace functions when compatible.
-    """
-    if "torch_dtype" in kwargs:
-        dtype = kwargs["torch_dtype"]
-        del kwargs["torch_dtype"]
-    if Path(official_model_name).exists():
-        official_model_name = str(Path(official_model_name).resolve())
-        logging.info(f"Loading model from local path {official_model_name}")
-    else:
-        official_model_name = get_official_model_name(official_model_name)
-    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
-        "trust_remote_code", False
-    ):
-        logging.warning(
-            f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
-        )
-        kwargs["trust_remote_code"] = True
     if (
         official_model_name.startswith("NeelNanda")
         or official_model_name.startswith("ArthurConmy")
@@ -1776,16 +1749,10 @@ def get_pretrained_state_dict(
             )[0]
         else:
             file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
-        state_dict = utils.download_file_from_hf(official_model_name, file_name, **kwargs)
+        hf_model = utils.download_file_from_hf(official_model_name, file_name, **kwargs)
 
         # Convert to dtype
-        state_dict = {k: v.to(dtype) for k, v in state_dict.items()}
-
-        if cfg.original_architecture == "neel-solu-old":
-            state_dict = convert_neel_solu_old_weights(state_dict, cfg)
-        elif cfg.original_architecture == "mingpt":
-            state_dict = convert_mingpt_weights(state_dict, cfg)
-        return state_dict
+        hf_model = {k: v.to(dtype) for k, v in hf_model.items()}
     else:
         if cfg.from_checkpoint:
             huggingface_token = os.environ.get("HF_TOKEN", None)
@@ -1832,15 +1799,60 @@ def get_pretrained_state_dict(
                     token=huggingface_token,
                     **kwargs,
                 )
+            
+    return hf_model
 
-            # Load model weights, and fold in layer norm weights
 
-        for param in hf_model.parameters():
-            param.requires_grad = False
+# %% Loading state dicts
+def get_pretrained_state_dict(
+    official_model_name: str,
+    cfg: HookedTransformerConfig,
+    hf_model=None,
+    dtype: torch.dtype = torch.float32,
+    **kwargs,
+) -> Dict[str, torch.Tensor]:
+    """
+    Loads in the model weights for a pretrained model, and processes them to
+    have the HookedTransformer parameter names and shapes. Supports checkpointed
+    models (and expects the checkpoint info to be stored in the config object)
 
-        weight_conversion_config = WeightConversionFactory.select_weight_conversion_config(cfg)
+    hf_model: Optionally, a HuggingFace model object. If provided, we will use
+        these weights rather than reloading the model.
+    dtype: The dtype to load the HuggingFace model in.
+    kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
+        Also given to other HuggingFace functions when compatible.
+    """
+    if "torch_dtype" in kwargs:
+        dtype = kwargs["torch_dtype"]
+        del kwargs["torch_dtype"]
+    if Path(official_model_name).exists():
+        official_model_name = str(Path(official_model_name).resolve())
+        logging.info(f"Loading model from local path {official_model_name}")
+    else:
+        official_model_name = get_official_model_name(official_model_name)
+    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
+        "trust_remote_code", False
+    ):
+        logging.warning(
+            f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
+        )
+        kwargs["trust_remote_code"] = True
+    
 
-        return weight_conversion_config.convert(hf_model)
+    hf_model = load_hugging_face_model(
+        official_model_name,
+        cfg=cfg,
+        hf_model=hf_model,
+        dtype=dtype,
+        **kwargs
+    )
+
+    for param in hf_model.parameters():
+        param.requires_grad = False
+
+    weight_conversion_config = WeightConversionFactory.select_weight_conversion_config(cfg)
+
+    return weight_conversion_config.convert(hf_model)
 
 
 def fill_missing_keys(model, state_dict):
