@@ -9,6 +9,7 @@ from transformer_lens.utilities.architectures import SUPPORTED_ARCHITECTURES
 def test_select_weight_conversion_config_provides_all(architecture: str):
     config = HookedTransformerConfig.unwrap(
         {
+            "original_architecture": architecture,
             "n_layers": 12,
             "n_ctx": 1024,
             "d_head": 64,
@@ -19,4 +20,4 @@ def test_select_weight_conversion_config_provides_all(architecture: str):
             "act_fn": "silu",
         }
     )
-    WeightConversionFactory.select_weight_conversion_config(config, architecture)
+    WeightConversionFactory.select_weight_conversion_config(config)
