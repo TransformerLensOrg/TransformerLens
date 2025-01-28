@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Callable
 
 import torch
 
@@ -13,7 +14,13 @@ class OperationTypes(Enum):
 
 
 class ArithmeticWeightConversion(BaseWeightConversion):
-    def __init__(self, operation: OperationTypes, value: float | int | torch.Tensor, input_filter: callable|None = None, output_filter: callable|None = None):
+    def __init__(
+        self,
+        operation: OperationTypes,
+        value: float | int | torch.Tensor,
+        input_filter: Callable | None = None,
+        output_filter: Callable | None = None,
+    ):
         super().__init__(input_filter=input_filter, output_filter=output_filter)
         self.operation = operation
         self.value = value
@@ -28,3 +35,6 @@ class ArithmeticWeightConversion(BaseWeightConversion):
                 return input_value * self.value
             case OperationTypes.DIVISION:
                 return input_value / self.value
+
+    def __repr__(self):
+        return f"Is the following arithmetic operation: {self.operation} and value: {self.value}"

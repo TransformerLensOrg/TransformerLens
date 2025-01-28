@@ -22,10 +22,6 @@ from transformers import (
 import transformer_lens.utils as utils
 from transformer_lens.factories import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.weight_conversion import (
-    convert_mingpt_weights,
-    convert_neel_solu_old_weights,
-)
 
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
@@ -1799,7 +1795,7 @@ def load_hugging_face_model(
                     token=huggingface_token,
                     **kwargs,
                 )
-            
+
     return hf_model
 
 
@@ -1837,14 +1833,9 @@ def get_pretrained_state_dict(
             f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
         )
         kwargs["trust_remote_code"] = True
-    
 
     hf_model = load_hugging_face_model(
-        official_model_name,
-        cfg=cfg,
-        hf_model=hf_model,
-        dtype=dtype,
-        **kwargs
+        official_model_name, cfg=cfg, hf_model=hf_model, dtype=dtype, **kwargs
     )
 
     for param in hf_model.parameters():

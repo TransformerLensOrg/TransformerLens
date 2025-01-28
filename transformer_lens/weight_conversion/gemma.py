@@ -3,22 +3,25 @@ import torch
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
 from transformer_lens.weight_conversion.conversion_utils.conversion_steps import (
-    BaseWeightConversion,
     FIELD_SET,
     ArithmeticWeightConversion,
+    BaseWeightConversion,
     OperationTypes,
     RearrangeWeightConversion,
     WeightConversionSet,
 )
 
+
 class GemmaWeightNormalizationConversion(BaseWeightConversion):
     def convert(self, input_value):
-        return  input_value.float() + torch.ones_like(input_value, dtype=torch.float32)
+        return input_value.float() + torch.ones_like(input_value, dtype=torch.float32)
+
+    def __repr__(self):
+        return "Is an addition of 1 to the input tensor\n"
 
 
 class GemmaWeightConversion(ArchitectureConversion):
     def __init__(self, cfg: HookedTransformerConfig) -> None:
-
         super().__init__(
             {
                 "ln_final.w": (
@@ -48,7 +51,7 @@ class GemmaWeightConversion(ArchitectureConversion):
 
         return WeightConversionSet(
             {
-                "mlp.W_in": "mlp.up_proj.weight.T", 
+                "mlp.W_in": "mlp.up_proj.weight.T",
                 "mlp.W_gate": "mlp.gate_proj.weight.T",
                 "mlp.b_in": torch.zeros(cfg.d_mlp, dtype=cfg.dtype),
                 "mlp.W_out": "mlp.down_proj.weight.T",
@@ -63,19 +66,19 @@ class GemmaWeightConversion(ArchitectureConversion):
                 ),
                 "attn.W_Q": (
                     "self_attn.q_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_heads),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=cfg.n_heads),
                 ),
                 "attn._W_K": (
                     "self_attn.k_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_key_value_heads),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=cfg.n_key_value_heads),
                 ),
                 "attn._W_V": (
                     "self_attn.v_proj.weight",
-                    RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_key_value_heads),
+                    RearrangeWeightConversion("(n h) m -> n m h", n=cfg.n_key_value_heads),
                 ),
                 "attn.W_O": (
                     "self_attn.o_proj.weight",
-                    RearrangeWeightConversion("m (n h)->n h m", n=cfg.n_heads),
+                    RearrangeWeightConversion("m (n h) -> n h m", n=cfg.n_heads),
                 ),
             }.update(laynorm_conversion)
         )
@@ -97,9 +100,4 @@ class GemmaWeightConversion(ArchitectureConversion):
         }
 
     def standard_normalization_conversions(self) -> FIELD_SET:
-        return {
-            "ln2.w": (
-                "pre_feedforward_layernorm.weight",
-                GemmaWeightNormalizationConversion()
-            )
-        }
+        return {"ln2.w": ("pre_feedforward_layernorm.weight", GemmaWeightNormalizationConversion())}
