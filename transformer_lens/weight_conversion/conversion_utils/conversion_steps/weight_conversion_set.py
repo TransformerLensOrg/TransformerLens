@@ -32,8 +32,8 @@ class WeightConversionSet(BaseWeightConversion):
             "Is composed of a set of nested conversions with the following details {\n\t"
         )
         # This is a bit of a hack to get the string representation of nested conversions
-        conversion_string += WeightConversionUtils.create_conversion_string(self.weights)[:-1].replace(
-            "\n", "\n\t"
-        )
+        conversion_string += WeightConversionUtils.create_conversion_string(self.weights)[
+            :-1
+        ].replace("\n", "\n\t")
         conversion_string += "\n}"
         return conversion_string

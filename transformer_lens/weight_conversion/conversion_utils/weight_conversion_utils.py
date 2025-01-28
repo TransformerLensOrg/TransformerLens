@@ -1,5 +1,6 @@
 import torch
 
+
 class WeightConversionUtils:
     """
     Utility class for visualizing how model weights are converted between HuggingFace and TransformerLens formats.
@@ -29,10 +30,6 @@ class WeightConversionUtils:
             # Case 1: Nested conversion, call __repr__ for the nested conversion
             if isinstance(hugging_face_weight, tuple):
                 weight_name, conversion = hugging_face_weight
-
-                if "WeightConversionSet" in str(type(conversion)):
-
-                    print(weight_name, conversion.weights)
                 conversion_string += (
                     f'"{transformer_lens_weight}" -> "{weight_name}", {conversion.__repr__()}\n'
                 )
