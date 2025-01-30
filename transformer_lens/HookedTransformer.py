@@ -11,6 +11,7 @@ a deeper understanding of the internal workings of transformers like GPT-2.
 
 import logging
 import os
+from collections.abc import Generator
 from typing import (
     Dict,
     List,
@@ -2044,7 +2045,12 @@ class HookedTransformer(HookedRootModule):
         padding_side: Optional[Literal["left", "right"]] = USE_DEFAULT_VALUE,
         return_type: Optional[str] = "input",
         verbose: bool = True,
-    ) -> Union[Int[torch.Tensor, "batch pos_plus_new_tokens"], str]:
+        stream_output: bool = False,
+    ) -> Union[
+        Int[torch.Tensor, "batch pos_plus_new_tokens"],
+        str,
+        Generator[Union[Int[torch.Tensor, "batch"], str], None, None],
+    ]:
         """Sample Tokens from the Model.
 
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -2213,7 +2219,18 @@ class HookedTransformer(HookedRootModule):
                         )
                     )
 
-                tokens = torch.cat([tokens, sampled_tokens.unsqueeze(-1)], dim=-1)
+                new_tokens = sampled_tokens.unsqueeze(-1)
+                if stream_output:
+                    if return_type == "str":
+                        tokens_to_return = self.tokenizer.decode(new_tokens)
+                        if self.cfg.default_prepend_bos and index == 0:
+                            yield tokens_to_return[1:]
+                        else:
+                            yield tokens_to_return
+                    else:
+                        yield new_tokens
+
+                tokens = torch.cat([tokens, new_tokens], dim=-1)
 
                 if stop_at_eos and finished_sequences.all():
                     break
