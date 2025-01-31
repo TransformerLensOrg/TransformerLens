@@ -32,10 +32,10 @@
         torch=">=2.2,<2.5"
         tqdm=">=4.64.1"
         transformers=">=4.43"
+        transformers-stream-generator="^0.0.5"
+        typeguard="^4.2"
         typing-extensions="*"
         wandb=">=0.13.5"
-        typeguard = "^4.2"
-        transformers-stream-generator = "^0.0.5"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
@@ -128,10 +128,7 @@
     # All rules apart from base are shown explicitly below
     deprecateTypingAliases=true
     disableBytesTypePromotions=true
-    exclude = [
-        "*/**/*.py",
-        "!/transformer_lens/hook_points.py"
-    ]
+    exclude=["!/transformer_lens/hook_points.py", "*/**/*.py"]
     reportAssertAlwaysTrue=true
     reportConstantRedefinition=true
     reportDeprecated=true
@@ -187,4 +184,3 @@
     strictListInference=true
     strictParameterNoneValue=true
     strictSetInference=true
-    
