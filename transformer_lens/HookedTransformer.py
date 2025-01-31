@@ -2417,12 +2417,8 @@ class HookedTransformer(HookedRootModule):
 
                 new_tokens = sampled_tokens.unsqueeze(-1)
 
-                if return_type == "str":
-                    tokens_to_return = self.tokenizer.decode(new_tokens)
-                    if self.cfg.default_prepend_bos and index == 0:
-                        yield tokens_to_return[1:]
-                    else:
-                        yield tokens_to_return
+                if index == 0:
+                    yield torch.cat([tokens, new_tokens], dim=-1)
                 else:
                     yield new_tokens
 
