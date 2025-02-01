@@ -141,9 +141,10 @@ class AbstractAttention(ABC, nn.Module):
             # will be overwritten by the child T5Attention class
             self.has_relative_attention_bias = False
 
-        if self.cfg.original_architecture == "OlmoeForCausalLM":
-            self.q_norm = RMSNorm(cfg, cfg.d_model)
-            self.k_norm = RMSNorm(cfg, cfg.d_head * cfg.n_key_value_heads)
+        if self.cfg.original_architecture == "OlmoeForCausalLM" or self.cfg.original_architecture == "Olmo2ForCausalLM":
+            self.q_norm = RMSNorm(self.cfg, self.cfg.d_model)
+            k_norm_dim = self.cfg.d_model if self.cfg.original_architecture == "Olmo2ForCausalLM" else self.cfg.d_head * self.cfg.n_key_value_heads
+            self.k_norm = RMSNorm(self.cfg, k_norm_dim)
 
     @property
     def OV(self) -> FactoredMatrix:
@@ -201,7 +202,7 @@ class AbstractAttention(ABC, nn.Module):
         q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
 
         # OLMoE uses QK-norm.
-        if self.cfg.original_architecture == "OlmoeForCausalLM":
+        if self.cfg.original_architecture == "OlmoeForCausalLM" or self.cfg.original_architecture == "Olmo2ForCausalLM":
             q = einops.rearrange(
                 self.q_norm(
                     einops.rearrange(

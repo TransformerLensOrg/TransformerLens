@@ -16,6 +16,7 @@ from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     BertForPreTraining,
+    PretrainedConfig,
     T5ForConditionalGeneration,
 )
 
@@ -35,6 +36,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_neel_solu_old_weights,
     convert_neo_weights,
     convert_neox_weights,
+    convert_olmo2_weights,
     convert_olmo_weights,
     convert_olmoe_weights,
     convert_opt_weights,
@@ -266,6 +268,7 @@ OFFICIAL_MODEL_NAMES = [
     "allenai/OLMoE-1B-7B-0924",
     "allenai/OLMoE-1B-7B-0924-SFT",
     "allenai/OLMoE-1B-7B-0924-Instruct",
+    "allenai/OLMo-2-1124-7B"
 ]
 """Official model names for models on HuggingFace."""
 
@@ -1523,6 +1526,24 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "positional_embedding_type": "rotary",
             "gated_mlp": True,
         }
+    elif official_model_name == "allenai/OLMo-2-1124-7B":
+        cfg_dict = {
+            "d_model": 4096,
+            "d_head": 128,
+            "n_heads": 32,
+            "d_mlp": 11008,
+            "n_layers": 32,
+            "n_ctx": 4096,
+            "eps": 1e-06,
+            "d_vocab": 100352,
+            "act_fn": "silu",
+            "initializer_range": 0.02,
+            "normalization_type": "RMSPre",
+            "rotary_base": 500000.0,
+            "attn_types": ["global"] * 32,
+            "positional_embedding_type": "rotary",
+            "gated_mlp": True,
+        }
     elif architecture == "OlmoeForCausalLM":
         cfg_dict = {
             "d_model": hf_config.hidden_size,
@@ -1968,6 +1989,8 @@ def get_pretrained_state_dict(
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "OlmoForCausalLM":
             state_dict = convert_olmo_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Olmo2ForCausalLM":
+            state_dict = convert_olmo2_weights(hf_model, cfg)
         elif cfg.original_architecture == "OlmoeForCausalLM":
             state_dict = convert_olmoe_weights(hf_model, cfg)
         else:

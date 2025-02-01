@@ -157,6 +157,7 @@ class HookedTransformer(HookedRootModule):
                 add_bos_token = self.cfg.original_architecture not in [
                     "OlmoForCausalLM",
                     "OlmoeForCausalLM",
+                    "Olmo2ForCausalLM",
                 ]
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
@@ -732,6 +733,7 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.original_architecture not in [
             "OlmoForCausalLM",
             "OlmoeForCausalLM",
+            "Olmo2ForCausalLM",
         ]:
             tokenizer_with_bos = utils.get_tokenizer_with_bos(tokenizer)
         else:
@@ -1818,13 +1820,17 @@ class HookedTransformer(HookedRootModule):
         W_out. This is done by subtracting the mean of the weights from the weights themselves. This
         is done in-place. See fold_layer_norm for more details.
         """
-        state_dict["embed.W_E"] = state_dict["embed.W_E"] - state_dict["embed.W_E"].mean(
-            -1, keepdim=True
-        )
-        if self.cfg.positional_embedding_type != "rotary":
-            state_dict["pos_embed.W_pos"] = state_dict["pos_embed.W_pos"] - state_dict[
-                "pos_embed.W_pos"
-            ].mean(-1, keepdim=True)
+        if self.cfg.original_architecture == "Olmo2ForCausalLM":
+            print("Not centering embedding weights for Olmo2ForCausalLM")
+            pass # should not because input of attn of 1st layer is not normed
+        else:
+            state_dict["embed.W_E"] = state_dict["embed.W_E"] - state_dict["embed.W_E"].mean(
+                -1, keepdim=True
+            )
+            if self.cfg.positional_embedding_type != "rotary":
+                state_dict["pos_embed.W_pos"] = state_dict["pos_embed.W_pos"] - state_dict[
+                    "pos_embed.W_pos"
+                ].mean(-1, keepdim=True)
         for l in range(self.cfg.n_layers):
             state_dict[f"blocks.{l}.attn.W_O"] = state_dict[f"blocks.{l}.attn.W_O"] - state_dict[
                 f"blocks.{l}.attn.W_O"
