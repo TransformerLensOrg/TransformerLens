@@ -2156,8 +2156,8 @@ class HookedTransformer(HookedRootModule):
             # Currently nothing in HookedTransformer changes with eval, but this is here in case
             # that changes in the future.
             self.eval()
-            logits_tape = None
             cache_dict_tape = None
+            logits_tape = None
             token_tape = None
 
             if return_cache:
