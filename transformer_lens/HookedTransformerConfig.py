@@ -243,7 +243,7 @@ class HookedTransformerConfig:
     default_prepend_bos: bool = True
     dtype: torch.dtype = torch.float32
     tokenizer_prepends_bos: Optional[bool] = None
-    n_key_value_heads: Optional[int] = None
+    n_key_value_heads: Optional[List[int]] = None
     post_embedding_ln: bool = False
     rotary_base: int = 10000
     trust_remote_code: bool = False
@@ -262,6 +262,8 @@ class HookedTransformerConfig:
     NTK_by_parts_low_freq_factor: float = 1.0
     NTK_by_parts_high_freq_factor: float = 4.0
     NTK_by_parts_factor: float = 8.0
+    n_query_heads: Optional[List[int]] = None
+    d_mlps: Optional[List[int]] = None
 
     def __post_init__(self):
         if self.n_heads == -1:
