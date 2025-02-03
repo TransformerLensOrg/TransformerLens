@@ -35,6 +35,7 @@
         typing-extensions="*"
         wandb=">=0.13.5"
         typeguard = "^4.2"
+    transformers-stream-generator = "^0.0.5"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]

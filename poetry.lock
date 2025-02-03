@@ -4835,6 +4835,19 @@ video = ["av (==9.2.0)"]
 vision = ["Pillow (>=10.0.1,<=15.0)"]
 
 [[package]]
+name = "transformers-stream-generator"
+version = "0.0.5"
+description = "This is a text generation method which returns a generator, streaming out each token in real-time during inference, based on Huggingface/Transformers."
+optional = false
+python-versions = ">=3.5"
+files = [
+    {file = "transformers-stream-generator-0.0.5.tar.gz", hash = "sha256:271deace0abf9c0f83b36db472c8ba61fdc7b04d1bf89d845644acac2795ed57"},
+]
+
+[package.dependencies]
+transformers = ">=4.26.1"
+
+[[package]]
 name = "triton"
 version = "3.0.0"
 description = "A language and compiler for custom Deep Learning operations"
@@ -5321,4 +5334,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<4.0"
-content-hash = "270a63e19ba47035a566ac883ac3f718125b387c3a07454e90f4cd4890d6d88c"
+content-hash = "75dd3ec2f60fdd5804cca6418da83d7ed56cec155f694623350fe17122bb176b"
