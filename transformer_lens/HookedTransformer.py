@@ -11,6 +11,7 @@ a deeper understanding of the internal workings of transformers like GPT-2.
 
 import logging
 import os
+from collections.abc import Generator
 from typing import (
     Dict,
     List,
@@ -23,7 +24,6 @@ from typing import (
     cast,
     overload,
 )
-from collections.abc import Generator
 
 import einops
 import numpy as np
