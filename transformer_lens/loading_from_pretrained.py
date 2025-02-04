@@ -1838,14 +1838,14 @@ def get_pretrained_state_dict(
                 hf_model = T5ForConditionalGeneration.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
 
