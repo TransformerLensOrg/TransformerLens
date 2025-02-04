@@ -65,7 +65,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Unit Test
         run: make unit-test
@@ -98,7 +98,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Check format
         run: make check-format
@@ -113,7 +113,7 @@ jobs:
       - name: Build check
         run: poetry build
       - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-coverage
           path: htmlcov
@@ -156,7 +156,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev,jupyter
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -192,7 +192,7 @@ jobs:
       - name: Install dependencies
         run: poetry install --with docs
       - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: test-coverage
           path: docs/source/_static/coverage
@@ -201,7 +201,7 @@ jobs:
         env:
           HF_TOKEN:  ${{ vars.HF_TOKEN }}
       - name: Upload Docs Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: documentation
           path: docs/build
@@ -215,7 +215,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download Docs Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: documentation
           path: docs/build
