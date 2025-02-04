@@ -69,8 +69,8 @@ jobs:
           poetry install --with dev
       - name: Unit Test
         run: make unit-test
-        # env:
-        #   HF_TOKEN:  ${{ vars.HF_TOKEN }}
+        env:
+          HF_TOKEN:  ${{ vars.HF_TOKEN }}
       - name: Acceptance Test
         run: make acceptance-test
       - name: Build check
