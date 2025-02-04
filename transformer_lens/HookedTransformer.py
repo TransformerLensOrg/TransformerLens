@@ -154,14 +154,14 @@ class HookedTransformer(HookedRootModule):
                 # should be False
                 if "phi" in self.cfg.tokenizer_name.lower():
                     use_fast = False
-                huggingface_token = os.environ.get("HF_TOKEN", None)
+                huggingface_token = os.environ.get("HF_TOKEN", "")
                 self.set_tokenizer(
                     AutoTokenizer.from_pretrained(
                         self.cfg.tokenizer_name,
                         add_bos_token=True,
                         trust_remote_code=self.cfg.trust_remote_code,
                         use_fast=use_fast,
-                        token=huggingface_token,
+                        token=huggingface_token if len(huggingface_token) > 0 else None,
                     ),
                     default_padding_side=default_padding_side,
                 )
