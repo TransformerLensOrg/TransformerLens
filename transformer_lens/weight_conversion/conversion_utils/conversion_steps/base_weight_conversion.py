@@ -1,20 +1,17 @@
-from typing import Callable, Optional, TypeAlias, Union
-
+from collections.abc import Callable
 import torch
 
 from transformer_lens.weight_conversion.conversion_utils.model_search import (
     find_property,
 )
 
-CONVERSION: TypeAlias = tuple[str, "BaseWeightConversion"]
-CONVERSION_ACTION: TypeAlias = Union[torch.Tensor | str | CONVERSION]
-FIELD_SET: TypeAlias = dict[str, Union[torch.Tensor | str | CONVERSION]]
+CONVERSION = tuple[str, "BaseWeightConversion"]
+CONVERSION_ACTION = torch.Tensor | str | CONVERSION
+FIELD_SET = torch.Tensor | str | CONVERSION
 
 
 class BaseWeightConversion:
-    def __init__(
-        self, input_filter: Optional[Callable] = None, output_filter: Optional[Callable] = None
-    ):
+    def __init__(self, input_filter: Callable | None = None, output_filter: Callable | None = None):
         self.input_filter = input_filter
         self.output_filter = output_filter
 
