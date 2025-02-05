@@ -122,7 +122,8 @@ def test_relative_attention_bias(our_model, huggingface_model, hello_world_token
 
     embed_out = huggingface_embed(hello_world_tokens)
 
-    huggingface_attn_out = huggingface_attn(embed_out)[0]
+    cache_position = torch.arange(input_len)
+    huggingface_attn_out = huggingface_attn(embed_out, cache_position=cache_position)[0]
     our_attn_out = our_attn(embed_out, embed_out, embed_out, position_bias=our_bias)
 
     assert_close(our_attn_out, huggingface_attn_out, rtol=7.4e-4, atol=1e-5)
@@ -139,7 +140,8 @@ def test_relative_attention_layer(our_model, huggingface_model, hello_world_toke
     resid_norm = our_block.ln1(resid)
     our_out = resid + our_block.attn(resid_norm, resid_norm, resid_norm, position_bias=our_bias)
 
-    hf_out = hf_block(resid)[0]
+    cache_position = torch.arange(input_len)
+    hf_out = hf_block(resid, cache_position=cache_position)[0]
     assert_close(our_out, hf_out, rtol=1.3e-6, atol=4e-5)
 
 
@@ -151,7 +153,10 @@ def test_attention(our_model, huggingface_model, hello_world_tokens):
     our_attn = our_model.encoder[1].attn
 
     our_attn_out = our_attn(embed_out, embed_out, embed_out)
-    huggingface_attn_out = huggingface_attn(embed_out)[0]
+
+    input_len = hello_world_tokens.shape[1]
+    cache_position = torch.arange(input_len)
+    huggingface_attn_out = huggingface_attn(embed_out, cache_position=cache_position)[0]
 
     assert_close(our_attn_out, huggingface_attn_out, rtol=5e-4, atol=1e-5)
 
@@ -164,7 +169,10 @@ def test_decoder_attention(our_model, huggingface_model, hello_world_tokens):
     our_attn = our_model.decoder[1].attn
 
     our_attn_out = our_attn(embed_out, embed_out, embed_out)
-    huggingface_attn_out = huggingface_attn(embed_out)[0]
+
+    input_len = hello_world_tokens.shape[1]
+    cache_position = torch.arange(input_len)
+    huggingface_attn_out = huggingface_attn(embed_out, cache_position=cache_position)[0]
     assert_close(our_attn_out, huggingface_attn_out, rtol=3e-4, atol=1e-5)
 
 
@@ -177,7 +185,9 @@ def test_attention_layer(our_model, huggingface_model, hello_world_tokens):
     norm_embed = our_model.encoder[1].ln1(embed_out)
     our_attn_out = our_attn(norm_embed, norm_embed, norm_embed) + embed_out
 
-    huggingface_attn_out = huggingface_attn(embed_out)[0]
+    input_len = hello_world_tokens.shape[1]
+    cache_position = torch.arange(input_len)
+    huggingface_attn_out = huggingface_attn(embed_out, cache_position=cache_position)[0]
     assert_close(our_attn_out, huggingface_attn_out, rtol=2e-4, atol=1e-5)
 
 
@@ -190,7 +200,9 @@ def test_decoder_attention_layer(our_model, huggingface_model, hello_world_token
     norm_embed = our_model.decoder[1].ln1(embed_out)
     our_attn_out = our_attn(norm_embed, norm_embed, norm_embed) + embed_out
 
-    huggingface_attn_out = huggingface_attn(embed_out)[0]
+    input_len = hello_world_tokens.shape[1]
+    cache_position = torch.arange(input_len)
+    huggingface_attn_out = huggingface_attn(embed_out, cache_position=cache_position)[0]
     assert_close(our_attn_out, huggingface_attn_out, rtol=3e-4, atol=4e-5)
 
 
@@ -203,7 +215,7 @@ def test_cross_attention(our_model, huggingface_model, hello_world_tokens, decod
 
     our_cross_attn_out = our_cross_attn(decoder_hidden, encoder_hidden, encoder_hidden)
     huggingface_cross_attn_out = huggingface_cross_attn(
-        decoder_hidden, key_value_states=encoder_hidden
+        decoder_hidden, key_value_states=encoder_hidden, cache_position=encoder_hidden
     )[0]
     assert_close(our_cross_attn_out, huggingface_cross_attn_out, rtol=2e-4, atol=1e-5)
 
@@ -221,7 +233,9 @@ def test_cross_attention_layer(our_model, huggingface_model, hello_world_tokens,
         our_layer.cross_attn(our_layer.ln2(decoder_hidden), encoder_hidden, encoder_hidden)
         + decoder_hidden
     )
-    huggingface_cross_attn_out = hf_layer(decoder_hidden, key_value_states=encoder_hidden)[0]
+    huggingface_cross_attn_out = hf_layer(
+        decoder_hidden, key_value_states=encoder_hidden, cache_position=encoder_hidden
+    )[0]
     assert_close(our_cross_attn_out, huggingface_cross_attn_out, rtol=2e-4, atol=1e-5)
 
 
@@ -232,7 +246,9 @@ def test_encoder_block(our_model, huggingface_model, hello_world_tokens):
 
     embed_out = huggingface_embed(hello_world_tokens)
 
-    hf_out = huggingface_block(embed_out)[0]
+    input_len = hello_world_tokens.shape[1]
+    cache_position = torch.arange(input_len)
+    hf_out = huggingface_block(embed_out, cache_position=cache_position)[0]
     our_out = our_block(embed_out)
 
     assert_close(our_out, hf_out, rtol=2e-4, atol=2e-5)
@@ -244,10 +260,17 @@ def test_decoder_block(our_model, huggingface_model, hello_world_tokens, decoder
     our_block = our_model.decoder[1]
 
     encoder_hidden = huggingface_model.encoder(hello_world_tokens)[0]
-    decoder_hidden = huggingface_model.decoder.block[0](huggingface_embed(decoder_input_ids))[0]
+
+    input_len = decoder_input_ids.shape[1]
+    cache_position = torch.arange(input_len)
+    decoder_hidden = huggingface_model.decoder.block[0](
+        huggingface_embed(decoder_input_ids), cache_position=cache_position
+    )[0]
 
     our_out = our_block(decoder_hidden, encoder_hidden_states=encoder_hidden)
-    hf_out = huggingface_block(decoder_hidden, encoder_hidden_states=encoder_hidden)[0]
+    hf_out = huggingface_block(
+        decoder_hidden, encoder_hidden_states=encoder_hidden, cache_position=encoder_hidden
+    )[0]
 
     assert_close(hf_out, our_out, rtol=2e-4, atol=2e-5)
 

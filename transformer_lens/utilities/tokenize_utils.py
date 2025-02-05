@@ -126,11 +126,11 @@ def get_tokenizer_with_bos(tokenizer):
     if add_bos_token:
         tokenizer_with_bos = tokenizer
     else:
-        huggingface_token = os.environ.get("HF_TOKEN", None)
+        huggingface_token = os.environ.get("HF_TOKEN", "")
         tokenizer_with_bos = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path,
             add_bos_token=True,
-            token=huggingface_token,
+            token=huggingface_token if len(huggingface_token) > 0 else None,
             **init_kwargs,
         )
 
@@ -203,6 +203,8 @@ def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> to
 
     # Initialize the attention mask with ones (indicating all tokens should be attended to)
     attention_mask = torch.ones_like(tokens)
+    if tokenizer is None:
+        return attention_mask
     is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
 
     if tokenizer.padding_side == "right":
