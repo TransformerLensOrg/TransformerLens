@@ -36,15 +36,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
           cache: 'poetry'
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.4.0
       - name: Poetry config
         run: poetry self add 'poethepoet[poetry_plugin]'
       - name: Install dependencies
