@@ -21,12 +21,12 @@ def convert_qwen2_weights(qwen, cfg: HookedTransformerConfig):
         W_K = qwen.model.layers[l].self_attn.k_proj.weight
         W_V = qwen.model.layers[l].self_attn.v_proj.weight
         W_Q = einops.rearrange(W_Q, "(n h) m->n m h", n=cfg.n_heads)
-        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_heads)
-        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_heads)
+        W_K = einops.rearrange(W_K, "(n h) m->n m h", n=cfg.n_key_value_heads)
+        W_V = einops.rearrange(W_V, "(n h) m->n m h", n=cfg.n_key_value_heads)
 
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
-        state_dict[f"blocks.{l}.attn.W_K"] = W_K
-        state_dict[f"blocks.{l}.attn.W_V"] = W_V
+        state_dict[f"blocks.{l}.attn._W_K"] = W_K
+        state_dict[f"blocks.{l}.attn._W_V"] = W_V
 
         b_Q = qwen.model.layers[l].self_attn.q_proj.bias
         b_Q = einops.rearrange(
@@ -39,19 +39,19 @@ def convert_qwen2_weights(qwen, cfg: HookedTransformerConfig):
         b_K = einops.rearrange(
             b_K,
             "(n_head d_head) -> n_head d_head",
-            n_head=cfg.n_heads,
+            n_head=cfg.n_key_value_heads,
         )
 
         b_V = qwen.model.layers[l].self_attn.v_proj.bias
         b_V = einops.rearrange(
             b_V,
             "(n_head d_head) -> n_head d_head",
-            n_head=cfg.n_heads,
+            n_head=cfg.n_key_value_heads,
         )
 
         state_dict[f"blocks.{l}.attn.b_Q"] = b_Q
-        state_dict[f"blocks.{l}.attn.b_K"] = b_K
-        state_dict[f"blocks.{l}.attn.b_V"] = b_V
+        state_dict[f"blocks.{l}.attn._b_K"] = b_K
+        state_dict[f"blocks.{l}.attn._b_V"] = b_V
 
         W_O = qwen.model.layers[l].self_attn.o_proj.weight
         W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)

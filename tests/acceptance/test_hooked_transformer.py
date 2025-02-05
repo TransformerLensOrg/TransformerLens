@@ -66,7 +66,7 @@ loss_store = {
     "redwood_attn_2l": 10.530948638916016,
     "solu-1l": 5.256411552429199,
     "tiny-stories-33M": 12.203617095947266,
-    "bloom-560m": 4.1953,
+    "bloom-560m": 5.237126350402832,
 }
 
 no_processing = [
@@ -173,6 +173,26 @@ def test_from_pretrained_revision():
         pass
     else:
         raise AssertionError("Should have raised an error")
+
+
+def test_bloom_similarity_with_hf_model_with_kv_cache_activated():
+    tf_model = HookedTransformer.from_pretrained(
+        "bigscience/bloom-560m", default_prepend_bos=False, device="cpu"
+    )
+    hf_model = AutoModelForCausalLM.from_pretrained("bigscience/bloom-560m")
+    hf_tokenizer = AutoTokenizer.from_pretrained("bigscience/bloom-560m")
+
+    output_tf = tf_model.generate(
+        text, do_sample=False, use_past_kv_cache=True, verbose=False, max_new_tokens=10
+    )
+    output_hf_tokens = hf_model.generate(
+        hf_tokenizer(text, return_tensors="pt").input_ids,
+        do_sample=False,
+        max_new_tokens=10,
+    )
+    output_hf_str = hf_tokenizer.decode(output_hf_tokens[0], skip_special_tokens=True)
+
+    assert output_tf == output_hf_str
 
 
 def check_norm_folding(
@@ -533,3 +553,77 @@ def test_all_pythia_models_exist():
                 f"Could not download model '{model}' from Huggingface."
                 " Maybe the name was changed or the model has been removed."
             )
+
+
+@pytest.mark.parametrize(
+    "input_type,return_type",
+    [
+        ("str", "input"),
+        ("str", "str"),
+        ("str", "tokens"),
+        ("str", "embeds"),
+        ("tokens", "input"),
+        ("tokens", "str"),
+        ("tokens", "tokens"),
+        ("tokens", "embeds"),
+        ("embeds", "input"),
+        ("embeds", "str"),
+        ("embeds", "tokens"),
+        ("embeds", "embeds"),
+    ],
+)
+def test_different_inputs_for_generation(
+    input_type, return_type, print_output=False, max_new_tokens=3
+):
+    from typing import List
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    hooked_llm = HookedTransformer.from_pretrained("gpt2", device=device)
+
+    hooked_llm.eval()
+    for text_input in [
+        "What is the meaning of life?",
+        ["AI will destroy world", "AI will save us"],
+    ]:
+        is_batched = False if isinstance(text_input, str) else True
+
+        tokens_input = hooked_llm.to_tokens(text_input)
+        embeddings_input = hooked_llm.embed(tokens_input)
+
+        if input_type == "str":
+            model_input = text_input
+        elif input_type == "tokens":
+            model_input = tokens_input
+        elif input_type == "embeds":
+            model_input = embeddings_input
+        else:
+            raise ValueError(f"Unknown input_type: {input_type}")
+
+        output = hooked_llm.generate(
+            input=model_input, max_new_tokens=max_new_tokens, return_type=return_type, verbose=False
+        )
+
+        if return_type == "str" or (return_type == "input" and input_type == "str"):
+            if is_batched:
+                assert isinstance(output, List), f"Expected list output but got {type(output)}"
+                assert isinstance(
+                    output[0], str
+                ), f"Expected list of strings but got list of {type(output[0])}"
+            else:
+                assert isinstance(output, str), f"Expected string output but got {type(output)}"
+        elif return_type == "tokens" or (return_type == "input" and input_type == "tokens"):
+            assert isinstance(
+                output, torch.Tensor
+            ), f"Expected tensor output but got {type(output)}"
+            assert output.ndim == 2, f"Expected 2D tensor but got {output.ndim}D"
+        elif return_type == "embeds" or (return_type == "input" and input_type == "embeds"):
+            assert isinstance(
+                output, torch.Tensor
+            ), f"Expected tensor output but got {type(output)}"
+            assert output.ndim == 3, f"Expected 3D tensor but got {output.ndim}D"
+
+        if print_output:
+            print(f"Input type: {input_type}, return type: {return_type}, output:\n{output}")
+
+    if print_output:
+        print()

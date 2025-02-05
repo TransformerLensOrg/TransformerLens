@@ -1,6 +1,6 @@
 """Hooked Transformer Embed Component.
 
-This module contains all the component :class:`BertMLMHead`.
+This module contains all the component :class:`Embed`.
 """
 from typing import Dict, Union
 

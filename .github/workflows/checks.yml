@@ -44,7 +44,6 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "3.8"
           - "3.9"
           - "3.10"
     steps:
@@ -66,10 +65,12 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Unit Test
         run: make unit-test
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Acceptance Test
         run: make acceptance-test
       - name: Build check
@@ -97,7 +98,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Check format
         run: make check-format
@@ -107,10 +108,12 @@ jobs:
         run: poetry run mypy .
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
+        env:
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Build check
         run: poetry build
       - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-coverage
           path: htmlcov
@@ -123,6 +126,8 @@ jobs:
         notebook:
           # - "Activation_Patching_in_TL_Demo"
           # - "Attribution_Patching_Demo"
+          - "ARENA_Content"
+          - "Colab_Compatibility"
           - "BERT"
           - "Exploratory_Analysis_Demo"
           # - "Grokking_Demo"
@@ -133,6 +138,7 @@ jobs:
           - "Main_Demo"
           # - "No_Position_Experiment"
           - "Othello_GPT"
+          - "Patchscopes_Generation_Demo"
           # - "T5"
     steps:
       - uses: actions/checkout@v3
@@ -150,7 +156,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev,jupyter
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -186,7 +192,7 @@ jobs:
       - name: Install dependencies
         run: poetry install --with docs
       - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: test-coverage
           path: docs/source/_static/coverage
@@ -195,7 +201,7 @@ jobs:
         env:
           HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: documentation
           path: docs/build
@@ -209,7 +215,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download Docs Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: documentation
           path: docs/build
