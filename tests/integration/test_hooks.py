@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 import torch
 
@@ -69,6 +71,24 @@ def test_context_manager_run_with_cache():
         model.run_with_cache(prompt)
         assert len(model.hook_dict["hook_embed"].fwd_hooks) == 1
     assert len(model.hook_dict["hook_embed"].fwd_hooks) == 0
+    assert c.count == 1
+    model.remove_all_hook_fns(including_permanent=True)
+
+
+def test_backward_hook_runs_successfully():
+    c = Counter()
+
+    def skip_grad(output_grad: torch.Tensor, hook: Any):
+        c.inc()
+        return (output_grad,)
+
+    with model.hooks(bwd_hooks=[(embed, skip_grad)]):
+        assert len(model.hook_dict["hook_embed"].bwd_hooks) == 1
+        out = model(prompt)
+        assert c.count == 0
+        out.sum().backward()  # this should run the hook
+        assert len(model.hook_dict["hook_embed"].bwd_hooks) == 1
+    assert len(model.hook_dict["hook_embed"].bwd_hooks) == 0
     assert c.count == 1
     model.remove_all_hook_fns(including_permanent=True)
 
@@ -214,3 +234,10 @@ def test_prepending_hooks(zero_attach_pos, prepend):
     # exactly when the zero hook is attached last XOR it is prepended
 
     assert torch.allclose(logits, model.unembed.b_U[None, :]) == logits_are_unembed_bias
+
+
+def test_use_attn_in_with_gqa_raises_error():
+    # Create model that uses GroupedQueryAttention
+    model = HookedTransformer.from_pretrained("Qwen/Qwen2-0.5B")
+    with pytest.raises(AssertionError):
+        model.set_use_attn_in(True)

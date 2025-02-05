@@ -59,7 +59,7 @@ def download_file_from_hf(
     )
 
     if file_path.endswith(".pth") or force_is_torch:
-        return torch.load(file_path, map_location="cpu")
+        return torch.load(file_path, map_location="cpu", weights_only=False)
     elif file_path.endswith(".json"):
         return json.load(open(file_path, "r"))
     else:
@@ -115,6 +115,7 @@ def to_numpy(tensor):
 def lm_cross_entropy_loss(
     logits: Float[torch.Tensor, "batch pos d_vocab"],
     tokens: Int[torch.Tensor, "batch pos"],
+    attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     per_token: bool = False,
 ) -> Union[Float[torch.Tensor, ""], Float[torch.Tensor, "batch pos"]]:
     """Cross entropy loss for the language model, gives the loss for predicting the NEXT token.
@@ -122,6 +123,8 @@ def lm_cross_entropy_loss(
     Args:
         logits (torch.Tensor): Logits. Shape [batch, pos, d_vocab]
         tokens (torch.Tensor[int64]): Input tokens. Shape [batch, pos]
+        attention_mask (torch.Tensor[int64], optional): Attention mask. Shape [batch, pos]. Used to
+            mask out padding tokens. Defaults to None.
         per_token (bool, optional): Whether to return the log probs predicted for the correct token, or the loss (ie mean of the predicted log probs). Note that the returned array has shape [batch, seq-1] as we cannot predict the first token (alternately, we ignore the final logit). Defaults to False.
     """
     log_probs = F.log_softmax(logits, dim=-1)
@@ -129,10 +132,20 @@ def lm_cross_entropy_loss(
     # Offsets needed because we're predicting the NEXT token (this means the final logit is meaningless)
     # None and [..., 0] needed because the tensor used in gather must have the same rank.
     predicted_log_probs = log_probs[..., :-1, :].gather(dim=-1, index=tokens[..., 1:, None])[..., 0]
+
+    if attention_mask is not None:
+        # Ignore token positions which are masked out or where the next token is masked out
+        # (generally padding tokens)
+        next_token_mask = torch.logical_and(attention_mask[:, :-1], attention_mask[:, 1:])
+        predicted_log_probs *= next_token_mask
+        n_tokens = next_token_mask.sum().item()
+    else:
+        n_tokens = predicted_log_probs.numel()
+
     if per_token:
         return -predicted_log_probs
     else:
-        return -predicted_log_probs.mean()
+        return -predicted_log_probs.sum() / n_tokens
 
 
 def lm_accuracy(
@@ -177,6 +190,18 @@ def solu(input: Float[torch.Tensor, "batch pos d_mlp"]) -> Float[torch.Tensor, "
     LayerNorm implemented by the MLP class.
     """
     return input * F.softmax(input, dim=-1)
+
+
+ACTIVATION_FN_DICT = {
+    "solu": solu,
+    "solu_ln": solu,
+    "gelu_new": gelu_new,
+    "gelu_fast": gelu_fast,
+    "silu": F.silu,
+    "relu": F.relu,
+    "gelu": F.gelu,
+    "gelu_pytorch_tanh": lambda tensor: F.gelu(tensor, approximate="tanh"),
+}
 
 
 def calc_fan_in_and_fan_out(tensor):
@@ -287,8 +312,6 @@ def tokenize_and_concatenate(
 
     Returns:
         Dataset: Returns the tokenized dataset, as a dataset of tensors, with a single column called "tokens"
-
-    Note: There is a bug when inputting very small datasets (eg, <1 batch per process) where it just outputs nothing. I'm not super sure why
     """
     dataset = keep_single_column(dataset, column_name)
     if tokenizer.pad_token is None:
@@ -304,6 +327,11 @@ def tokenize_and_concatenate(
         text = examples[column_name]
         # Concatenate it all into an enormous string, separated by eos_tokens
         full_text = tokenizer.eos_token.join(text)
+
+        # Handle the case when full_text is empty
+        if not full_text.strip():
+            return {"tokens": np.array([], dtype=np.int64)}
+
         # Divide into 20 chunks of ~ equal length
         num_chunks = 20
         chunk_length = (len(full_text) - 1) // num_chunks + 1
@@ -313,9 +341,21 @@ def tokenize_and_concatenate(
         # Drop padding tokens
         tokens = tokens[tokens != tokenizer.pad_token_id]
         num_tokens = len(tokens)
-        num_batches = num_tokens // (seq_len)
-        # Drop the final tokens if not enough to make a full sequence
-        tokens = tokens[: seq_len * num_batches]
+
+        # Handle cases where num_tokens is less than seq_len
+        if num_tokens < seq_len:
+            num_batches = 1
+            # Pad tokens if necessary
+            tokens = tokens[:seq_len]
+            if len(tokens) < seq_len:
+                padding_length = seq_len - len(tokens)
+                padding = np.full(padding_length, tokenizer.pad_token_id)
+                tokens = np.concatenate([tokens, padding], axis=0)
+        else:
+            num_batches = num_tokens // seq_len
+            # Drop the final tokens if not enough to make a full sequence
+            tokens = tokens[: seq_len * num_batches]
+
         tokens = einops.rearrange(
             tokens, "(batch seq) -> batch seq", batch=num_batches, seq=seq_len
         )
@@ -365,6 +405,9 @@ def sample_logits(
         final_logits = final_logits / temperature
         if freq_penalty > 0:
             assert tokens is not None, "Must provide input_tokens if applying a frequency penalty"
+            assert (
+                len(tokens.shape) == 2
+            ), "Frequency penalty do not support input in the form of embeddings"
             for batch_index in range(final_logits.shape[0]):
                 # torch.bincount returns a tensor of length d_vocab, with the number of occurences of each token in the tokens.
                 final_logits[batch_index] = final_logits[
@@ -656,7 +699,7 @@ def remove_batch_dim(tensor: Float[torch.Tensor, "1 ..."]) -> Float[torch.Tensor
 
 def test_prompt(
     prompt: str,
-    answer: str,
+    answer: Union[str, list[str]],
     model,  # Can't give type hint due to circular imports
     prepend_space_to_answer: bool = True,
     print_details: bool = True,
@@ -703,7 +746,9 @@ def test_prompt(
         answer:
             The answer, e.g. "road". Note that if you set prepend_space_to_answer to False, you need
             to think about if you have a space before the answer here (as e.g. in this example the
-            answer may really be " road" if the prompt ends without a trailing space).
+            answer may really be " road" if the prompt ends without a trailing space). If this is a
+            list of strings, then we only look at the next-token completion, and we compare them all
+            as possible model answers.
         model:
             The model.
         prepend_space_to_answer:
@@ -723,44 +768,80 @@ def test_prompt(
     Returns:
         None (just prints the results directly).
     """
-    if prepend_space_to_answer and not answer.startswith(" "):
-        answer = " " + answer
+    answers = [answer] if isinstance(answer, str) else answer
+    n_answers = len(answers)
+    using_multiple_answers = n_answers > 1
+
+    if prepend_space_to_answer:
+        answers = [answer if answer.startswith(" ") else " " + answer for answer in answers]
+
     # GPT-2 often treats the first token weirdly, so lets give it a resting position
     prompt_tokens = model.to_tokens(prompt, prepend_bos=prepend_bos)
-    answer_tokens = model.to_tokens(answer, prepend_bos=False)
+    answer_tokens = model.to_tokens(answers, prepend_bos=False)
+
+    # If we have multiple answers, we're only allowed a single token generation
+    if using_multiple_answers:
+        answer_tokens = answer_tokens[:, :1]
+
+    # Deal with case where answers is a list of strings
+    prompt_tokens = prompt_tokens.repeat(answer_tokens.shape[0], 1)
     tokens = torch.cat((prompt_tokens, answer_tokens), dim=1)
+
     prompt_str_tokens = model.to_str_tokens(prompt, prepend_bos=prepend_bos)
-    answer_str_tokens = model.to_str_tokens(answer, prepend_bos=False)
+    answer_str_tokens_list = [model.to_str_tokens(answer, prepend_bos=False) for answer in answers]
     prompt_length = len(prompt_str_tokens)
-    answer_length = len(answer_str_tokens)
+    answer_length = 1 if using_multiple_answers else len(answer_str_tokens_list[0])
     if print_details:
         print("Tokenized prompt:", prompt_str_tokens)
-        print("Tokenized answer:", answer_str_tokens)
-    logits = remove_batch_dim(model(tokens))
+        if using_multiple_answers:
+            print("Tokenized answers:", answer_str_tokens_list)
+        else:
+            print("Tokenized answer:", answer_str_tokens_list[0])
+    logits = model(tokens)
     probs = logits.softmax(dim=-1)
     answer_ranks = []
+
     for index in range(prompt_length, prompt_length + answer_length):
-        answer_token = tokens[0, index]
-        answer_str_token = answer_str_tokens[index - prompt_length]
+        # Get answer tokens for this sequence position
+        answer_tokens = tokens[:, index]
+        answer_str_tokens = [a[index - prompt_length] for a in answer_str_tokens_list]
         # Offset by 1 because models predict the NEXT token
-        token_probs = probs[index - 1]
-        sorted_token_probs, sorted_token_values = token_probs.sort(descending=True)
-        # Janky way to get the index of the token in the sorted list - I couldn't find a better way?
-        correct_rank = torch.arange(len(sorted_token_values))[
-            (sorted_token_values == answer_token).cpu()
-        ].item()
-        answer_ranks.append((answer_str_token, correct_rank))
+        token_probs = probs[:, index - 1]
+        sorted_token_probs, sorted_token_positions = token_probs.sort(descending=True)
+        answer_token_ranks = sorted_token_positions.argsort(-1)[
+            range(n_answers), answer_tokens.cpu()
+        ].tolist()
+        answer_ranks.append(
+            [
+                (answer_str_token, answer_token_rank)
+                for answer_str_token, answer_token_rank in zip(
+                    answer_str_tokens, answer_token_ranks
+                )
+            ]
+        )
         if print_details:
             # String formatting syntax - the first number gives the number of characters to pad to, the second number gives the number of decimal places.
             # rprint gives rich text printing
             rprint(
-                f"Performance on answer token:\n[b]Rank: {correct_rank: <8} Logit: {logits[index-1, answer_token].item():5.2f} Prob: {token_probs[answer_token].item():6.2%} Token: |{answer_str_token}|[/b]"
+                f"Performance on answer token{'s' if n_answers > 1 else ''}:\n"
+                + "\n".join(
+                    [
+                        f"[b]Rank: {answer_token_ranks[i]: <8} Logit: {logits[i, index-1, answer_tokens[i]].item():5.2f} Prob: {token_probs[i, answer_tokens[i]].item():6.2%} Token: |{answer_str_tokens[i]}|[/b]"
+                        for i in range(n_answers)
+                    ]
+                )
             )
             for i in range(top_k):
                 print(
-                    f"Top {i}th token. Logit: {logits[index-1, sorted_token_values[i]].item():5.2f} Prob: {sorted_token_probs[i].item():6.2%} Token: |{model.to_string(sorted_token_values[i])}|"
+                    f"Top {i}th token. Logit: {logits[0, index-1, sorted_token_positions[0, i]].item():5.2f} Prob: {sorted_token_probs[0, i].item():6.2%} Token: |{model.to_string(sorted_token_positions[0, i])}|"
                 )
-    rprint(f"[b]Ranks of the answer tokens:[/b] {answer_ranks}")
+
+    # If n_answers = 1 then unwrap answer ranks, so printed output matches original version of function
+    if not using_multiple_answers:
+        single_answer_ranks = [r[0] for r in answer_ranks]
+        rprint(f"[b]Ranks of the answer tokens:[/b] {single_answer_ranks}")
+    else:
+        rprint(f"[b]Ranks of the answer tokens:[/b] {answer_ranks}")
 
 
 def transpose(tensor: Float[torch.Tensor, "... a b"]) -> Float[torch.Tensor, "... b a"]:
@@ -959,6 +1040,8 @@ def get_attention_mask(tokenizer, tokens: torch.Tensor, prepend_bos: bool) -> to
 
     # Initialize the attention mask with ones (indicating all tokens should be attended to)
     attention_mask = torch.ones_like(tokens)
+    if tokenizer is None:
+        return attention_mask
     is_not_pad_token = tokens.ne(tokenizer.pad_token_id)
 
     if tokenizer.padding_side == "right":
@@ -1143,11 +1226,11 @@ def get_tokenizer_with_bos(tokenizer):
     if add_bos_token:
         tokenizer_with_bos = tokenizer
     else:
-        huggingface_token = os.environ.get("HF_TOKEN", None)
+        huggingface_token = os.environ.get("HF_TOKEN", "")
         tokenizer_with_bos = AutoTokenizer.from_pretrained(
             pretrained_model_name_or_path,
             add_bos_token=True,
-            token=huggingface_token,
+            token=huggingface_token if len(huggingface_token) > 0 else None,
             **init_kwargs,
         )
 

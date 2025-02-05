@@ -20,7 +20,6 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 import einops
 import numpy as np
 import torch
-from fancy_einsum import einsum
 from jaxtyping import Float, Int
 from typing_extensions import Literal
 
@@ -557,10 +556,8 @@ class ActivationCache:
             has_batch_dim=has_batch_dim,
         )
 
-        logit_attrs = einsum(
-            "... d_model, ... d_model -> ...", scaled_residual_stack, logit_directions
-        )
-
+        # Element-wise multiplication and sum over the d_model dimension
+        logit_attrs = (scaled_residual_stack * logit_directions).sum(dim=-1)
         return logit_attrs
 
     def decompose_resid(
@@ -666,14 +663,21 @@ class ActivationCache:
         if "blocks.0.attn.hook_result" in self.cache_dict:
             logging.warning("Tried to compute head results when they were already cached")
             return
-        for l in range(self.model.cfg.n_layers):
+        for layer in range(self.model.cfg.n_layers):
             # Note that we haven't enabled set item on this object so we need to edit the underlying
             # cache_dict directly.
-            self.cache_dict[f"blocks.{l}.attn.hook_result"] = einsum(
-                "... head_index d_head, head_index d_head d_model -> ... head_index d_model",
-                self[("z", l, "attn")],
-                self.model.blocks[l].attn.W_O,
+
+            # Add singleton dimension to match W_O's shape for broadcasting
+            z = einops.rearrange(
+                self[("z", layer, "attn")],
+                "... head_index d_head -> ... head_index d_head 1",
             )
+
+            # Element-wise multiplication of z and W_O (with shape [head_index, d_head, d_model])
+            result = z * self.model.blocks[layer].attn.W_O
+
+            # Sum over d_head to get the contribution of each head to the residual stream
+            self.cache_dict[f"blocks.{layer}.attn.hook_result"] = result.sum(dim=-2)
 
     def stack_head_results(
         self,
@@ -682,7 +686,10 @@ class ActivationCache:
         incl_remainder: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         apply_ln: bool = False,
-    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
+    ) -> Union[
+        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
+    ]:
         """Stack Head Results.
 
         Returns a stack of all head results (ie residual stream contribution) up to layer L. A good
@@ -736,7 +743,10 @@ class ActivationCache:
                 labels.append("remainder")
         elif incl_remainder:
             # There are no components, so the remainder is the entire thing.
-            components = [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)]
+            components = torch.cat(
+                [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)[None]], dim=0
+            )
+            labels.append("remainder")
         else:
             # If this is called with layer 0, we return an empty tensor of the right shape to be
             # stacked correctly. This uses the shape of hook_embed, which is pretty janky since it
@@ -752,7 +762,7 @@ class ActivationCache:
             components = self.apply_ln_to_stack(components, layer, pos_slice=pos_slice)
 
         if return_labels:
-            return components, labels  # type: ignore # TODO: fix this properly
+            return components, labels
         else:
             return components
 
@@ -896,11 +906,16 @@ class ActivationCache:
             )
 
             if incl_remainder:
-                remainder = self[("resid_post", layer - 1)] - components.sum(dim=0)
+                remainder = pos_slice.apply(
+                    self[("resid_post", layer - 1)], dim=-2
+                ) - components.sum(dim=0)
                 components = torch.cat([components, remainder[None]], dim=0)
                 labels.append("remainder")
         elif incl_remainder:
-            components = [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)]
+            components = torch.cat(
+                [pos_slice.apply(self[("resid_post", layer - 1)], dim=-2)[None]], dim=0
+            )
+            labels.append("remainder")
         else:
             # Returning empty, give it the right shape to stack properly
             components = torch.zeros(
@@ -937,7 +952,7 @@ class ActivationCache:
         element and position, which is why we need to use the cached scale factors rather than just
         applying a new LayerNorm.
 
-        If the model does not use LayerNorm, it returns the residual stack unchanged.
+        If the model does not use LayerNorm or RMSNorm, it returns the residual stack unchanged.
 
         Args:
             residual_stack:
@@ -961,7 +976,7 @@ class ActivationCache:
                 Whether residual_stack has a batch dimension.
 
         """
-        if self.model.cfg.normalization_type not in ["LN", "LNPre"]:
+        if self.model.cfg.normalization_type not in ["LN", "LNPre", "RMS", "RMSPre"]:
             # The model does not use LayerNorm, so we don't need to do anything.
             return residual_stack
         if not isinstance(pos_slice, Slice):
@@ -977,8 +992,9 @@ class ActivationCache:
             # Apply batch slice to the stack
             residual_stack = batch_slice.apply(residual_stack, dim=1)
 
-        # Center the stack
-        residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
+        # Center the stack onlny if the model uses LayerNorm
+        if self.model.cfg.normalization_type in ["LN", "LNPre"]:
+            residual_stack = residual_stack - residual_stack.mean(dim=-1, keepdim=True)
 
         if layer == self.model.cfg.n_layers or layer is None:
             scale = self["ln_final.hook_scale"]
@@ -1004,7 +1020,10 @@ class ActivationCache:
         apply_ln: bool = False,
         pos_slice: Union[Slice, SliceInput] = None,
         return_labels: bool = False,
-    ) -> Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"]:
+    ) -> Union[
+        Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"],
+        Tuple[Float[torch.Tensor, "num_components *batch_and_pos_dims d_model"], List[str]],
+    ]:
         """Get the full Residual Decomposition.
 
         Returns the full decomposition of the residual stream into embed, pos_embed, each head
@@ -1081,6 +1100,6 @@ class ActivationCache:
             )
 
         if return_labels:
-            return residual_stack, labels  # type: ignore # TODO: fix this properly
+            return residual_stack, labels
         else:
             return residual_stack

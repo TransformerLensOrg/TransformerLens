@@ -2,11 +2,11 @@ from typing import Dict, Tuple, Union
 
 import torch
 import torch.nn as nn
-from fancy_einsum import einsum
 from jaxtyping import Float
 
 from transformer_lens.components import AbstractAttention
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
 
 class GroupedQueryAttention(AbstractAttention):
@@ -17,7 +17,7 @@ class GroupedQueryAttention(AbstractAttention):
         layer_id: Union[int, None] = None,
     ):
         """Grouped Query Attention Block - see https://arxiv.org/abs/2305.13245 for details.
-        Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head] and W_Q has shape [head_index, d_head, d_model].
+        Similar to regular attention, W_Q, W_K, and W_V all have shape [head_index, d_model, d_head].
         However, under the hood the key and value weights _W_K and _W_V are stored with shape [n_key_value_heads, d_model, d_head] and are expanded when the corresponding properties' getter is called.
         Similarly, during a forward pass, initially K and V are kept in shapes [batch, pos, n_key_value_heads, d_head] and will only be expanded to shapes [batch, pos, n_heads, d_head]
         using torch.repeat_interleave when the attention pattern and z-scores are calculated.
@@ -117,38 +117,25 @@ class GroupedQueryAttention(AbstractAttention):
         Tuple[Float[torch.Tensor, "batch pos head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"]]:
         A tuple containing the Q, K, and V matrices with the specified shapes.
         """
-        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
-            kv_einops_string = "batch pos kv_head_index d_model"
-            q_einops_string = "batch pos head_index d_model"
-        else:
-            kv_einops_string = q_einops_string = "batch pos d_model"
+        attn_fn = (
+            complex_attn_linear
+            if self.cfg.use_split_qkv_input or self.cfg.use_attn_in
+            else simple_attn_linear
+        )
 
         q = self.hook_q(
-            einsum(
-                f"{q_einops_string}, head_index d_model d_head \
-                -> batch pos head_index d_head",
-                query_input,
-                self.W_Q,
-            )
-            + self.b_Q
+            attn_fn(query_input, self.W_Q, self.b_Q)
         )  # [batch, pos, head_index, d_head]
+
         k = self.hook_k(
-            einsum(
-                f"{kv_einops_string}, kv_head_index d_model d_head \
-                -> batch pos kv_head_index d_head",
-                key_input,
-                self._W_K,
-            )
-            + self._b_K
+            attn_fn(key_input, self.W_K, self.b_K)
+            if self.cfg.ungroup_grouped_query_attention
+            else attn_fn(key_input, self._W_K, self._b_K)
         )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
-            einsum(
-                f"{kv_einops_string}, kv_head_index d_model d_head \
-                -> batch pos kv_head_index d_head",
-                value_input,
-                self._W_V,
-            )
-            + self._b_V
+            attn_fn(value_input, self.W_V, self.b_V)
+            if self.cfg.ungroup_grouped_query_attention
+            else attn_fn(value_input, self._W_V, self._b_V)
         )  # [batch, pos, head_index, d_head]
         return q, k, v
 
@@ -167,7 +154,8 @@ class GroupedQueryAttention(AbstractAttention):
         Returns:
             Float[torch.Tensor, "batch head_index query_pos key_pos"]: The attention scores.
         """
-        k = torch.repeat_interleave(k, dim=2, repeats=self.repeat_kv_heads)
+        if not self.cfg.ungroup_grouped_query_attention:
+            k = torch.repeat_interleave(k, dim=2, repeats=self.repeat_kv_heads)
         return super().calculate_attention_scores(q, k)
 
     def calculate_z_scores(
@@ -185,5 +173,6 @@ class GroupedQueryAttention(AbstractAttention):
         Returns:
             Float[torch.Tensor, "batch head_index query_pos key_pos"]: The z scores.
         """
-        v = torch.repeat_interleave(v, dim=2, repeats=self.repeat_kv_heads)
+        if not self.cfg.ungroup_grouped_query_attention:
+            v = torch.repeat_interleave(v, dim=2, repeats=self.repeat_kv_heads)
         return super().calculate_z_scores(v, pattern)

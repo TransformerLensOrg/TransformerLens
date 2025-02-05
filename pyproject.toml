@@ -29,14 +29,13 @@
         python=">=3.8,<4.0"
         rich=">=12.6.0"
         sentencepiece="*"
-        torch=[
-            {platform="!=linux", version=">=1.10,!=2.0,!=2.1.0"}, # Pin >=2.1.1 on Apple devices due to known MPS errors on 2.1.0
-            {platform="linux", version=">=1.10"},                 # We can use any torch version on Linux (e.g colab)
-        ]
+        torch=">=2.2,<2.5"
         tqdm=">=4.64.1"
-        transformers=">=4.37.2"
+        transformers=">=4.43"
         typing-extensions="*"
         wandb=">=0.13.5"
+        typeguard = "^4.2"
+        transformers-stream-generator = "^0.0.5"
 
     [tool.poetry.group]
         [tool.poetry.group.dev.dependencies]
@@ -124,3 +123,68 @@
 [build-system]
     build-backend="poetry.core.masonry.api"
     requires=["poetry-core"]
+
+[tool.pyright]
+    # All rules apart from base are shown explicitly below
+    deprecateTypingAliases=true
+    disableBytesTypePromotions=true
+    exclude = [
+        "*/**/*.py",
+        "!/transformer_lens/hook_points.py"
+    ]
+    reportAssertAlwaysTrue=true
+    reportConstantRedefinition=true
+    reportDeprecated=true
+    reportDuplicateImport=true
+    reportFunctionMemberAccess=true
+    reportGeneralTypeIssues=true
+    reportIncompatibleMethodOverride=true
+    reportIncompatibleVariableOverride=true
+    reportIncompleteStub=true
+    reportInconsistentConstructor=true
+    reportInvalidStringEscapeSequence=true
+    reportInvalidStubStatement=true
+    reportInvalidTypeVarUse=true
+    reportMatchNotExhaustive=true
+    reportMissingParameterType=true
+    reportMissingTypeArgument=false
+    reportMissingTypeStubs=false
+    reportOptionalCall=true
+    reportOptionalContextManager=true
+    reportOptionalIterable=true
+    reportOptionalMemberAccess=true
+    reportOptionalOperand=true
+    reportOptionalSubscript=true
+    reportOverlappingOverload=true
+    reportPrivateImportUsage=true
+    reportPrivateUsage=true
+    reportSelfClsParameterName=true
+    reportTypeCommentUsage=true
+    reportTypedDictNotRequiredAccess=true
+    reportUnboundVariable=true
+    reportUnknownArgumentType=false
+    reportUnknownLambdaType=true
+    reportUnknownMemberType=false
+    reportUnknownParameterType=false
+    reportUnknownVariableType=false
+    reportUnnecessaryCast=true
+    reportUnnecessaryComparison=true
+    reportUnnecessaryContains=true
+    reportUnnecessaryIsInstance=true
+    reportUnsupportedDunderAll=true
+    reportUntypedBaseClass=true
+    reportUntypedClassDecorator=true
+    reportUntypedFunctionDecorator=true
+    reportUntypedNamedTuple=true
+    reportUnusedClass=true
+    reportUnusedCoroutine=true
+    reportUnusedExpression=true
+    reportUnusedFunction=true
+    reportUnusedImport=true
+    reportUnusedVariable=true
+    reportWildcardImportFromLibrary=true
+    strictDictionaryInference=true
+    strictListInference=true
+    strictParameterNoneValue=true
+    strictSetInference=true
+    

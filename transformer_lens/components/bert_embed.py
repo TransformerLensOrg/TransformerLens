@@ -22,10 +22,10 @@ class BertEmbed(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig]):
         super().__init__()
         self.cfg = HookedTransformerConfig.unwrap(cfg)
-        self.embed = Embed(cfg)
-        self.pos_embed = PosEmbed(cfg)
-        self.token_type_embed = TokenTypeEmbed(cfg)
-        self.ln = LayerNorm(cfg)
+        self.embed = Embed(self.cfg)
+        self.pos_embed = PosEmbed(self.cfg)
+        self.token_type_embed = TokenTypeEmbed(self.cfg)
+        self.ln = LayerNorm(self.cfg)
 
         self.hook_embed = HookPoint()
         self.hook_pos_embed = HookPoint()
