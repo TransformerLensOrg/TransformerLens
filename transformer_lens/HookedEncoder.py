@@ -53,10 +53,10 @@ class HookedEncoder(HookedRootModule):
         if tokenizer is not None:
             self.tokenizer = tokenizer
         elif self.cfg.tokenizer_name is not None:
-            huggingface_token = os.environ.get("HF_TOKEN", None)
+            huggingface_token = os.environ.get("HF_TOKEN", "")
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.cfg.tokenizer_name,
-                token=huggingface_token,
+                token=huggingface_token if len(huggingface_token) > 0 else None,
             )
         else:
             self.tokenizer = None
@@ -186,7 +186,7 @@ class HookedEncoder(HookedRootModule):
     ):
         return devices.move_to_and_update_config(self, device_or_dtype, print_details)
 
-    def cuda(self):
+    def cuda(self, device: Union[int, torch.device, None] = None):
         # Wrapper around cuda that also changes self.cfg.device
         return self.to("cuda")
 
