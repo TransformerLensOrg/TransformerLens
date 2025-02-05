@@ -46,6 +46,7 @@ jobs:
         python-version:
           - "3.9"
           - "3.10"
+          - "3.11"
     steps:
       - uses: actions/checkout@v3
       - name: Install Poetry
@@ -65,12 +66,12 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Unit Test
         run: make unit-test
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Acceptance Test
         run: make acceptance-test
       - name: Build check
@@ -86,7 +87,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "poetry"
       - name: Cache Models used with Tests
         uses: actions/cache@v3
@@ -98,7 +99,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev
       - name: Check format
         run: make check-format
@@ -109,11 +110,11 @@ jobs:
       - name: Test Suite with Coverage Report
         run: make coverage-report-test
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Build check
         run: poetry build
       - name: Upload Coverage Report Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-coverage
           path: htmlcov
@@ -156,7 +157,7 @@ jobs:
           key: ${{ runner.os }}-huggingface-models
       - name: Install dependencies
         run: |
-          poetry lock --check
+          poetry check --lock
           poetry install --with dev,jupyter
       - name: Install pandoc
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -192,16 +193,16 @@ jobs:
       - name: Install dependencies
         run: poetry install --with docs
       - name: Download Test Coverage Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: test-coverage
           path: docs/source/_static/coverage
       - name: Build Docs
         run: poetry run build-docs
         env:
-          HF_TOKEN:  ${{ vars.HF_TOKEN }}
+          HF_TOKEN:  ${{ secrets.HF_TOKEN }}
       - name: Upload Docs Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: documentation
           path: docs/build
@@ -215,7 +216,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download Docs Artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: documentation
           path: docs/build
