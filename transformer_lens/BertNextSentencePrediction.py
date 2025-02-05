@@ -10,14 +10,13 @@ from typing import Dict, List, Optional, Tuple, Union, overload
 
 import torch
 from jaxtyping import Float, Int
-from typing_extensions import Literal, override
+from typing_extensions import Literal
 
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.components import BertNSPHead, BertPooler
 from transformer_lens.HookedEncoder import HookedEncoder
 
 
-class NextSentencePrediction(HookedEncoder):
+class BertNextSentencePrediction:
     """A BERT-style model for Next Sentence Prediction (NSP) that extends HookedEncoder.
 
     This class implements a BERT model specifically designed for the Next Sentence Prediction task,
@@ -33,20 +32,34 @@ class NextSentencePrediction(HookedEncoder):
         or inputs without proper sentence separation will raise errors.
     """
 
-    def __init__(self, cfg, tokenizer=None, move_to_device=True, **kwargs):
-        super().__init__(cfg, tokenizer, move_to_device, **kwargs)
-        self.nsp_head = BertNSPHead(self.cfg)
-        self.pooler = BertPooler(self.cfg)
+    def __init__(self, model: HookedEncoder):
+        self.model = model
 
-        if move_to_device:
-            self.to(self.cfg.device)
+    def __call__(
+        self,
+        input: Union[
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+        ],
+        return_type: Optional[Union[Literal["logits"], Literal["predictions"]]] = "logits",
+        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ) -> Optional[Union[Float[torch.Tensor, "batch 2"], str]]:
+        """Makes the NextSentencePrediction instance callable.
 
-        self.setup()
+        This method delegates to the forward method, allowing the model to be called directly.
+        The arguments and return types match the forward method exactly.
+        """
+        return self.forward(
+            input,
+            return_type=return_type,
+            token_type_ids=token_type_ids,
+            one_zero_attention_mask=one_zero_attention_mask,
+        )
 
-    @override
     def to_tokens(
         self,
-        input: Union[str, List[str]],
+        input: List[str],
         move_to_device: bool = True,
         truncate: bool = True,
     ) -> Tuple[
@@ -58,7 +71,7 @@ class NextSentencePrediction(HookedEncoder):
         Taken mostly from the HookedTransformer implementation, but does not support default padding
         sides or prepend_bos.
         Args:
-            input (Union[str, List[str]]): The input to tokenize.
+            input: List[str]]: The input to tokenize.
             move_to_device (bool): Whether to move the output tensor of tokens to the device the
                 model lives on. Defaults to True
             truncate (bool): If the output tokens are too long, whether to truncate the output
@@ -66,38 +79,63 @@ class NextSentencePrediction(HookedEncoder):
                 Defaults to True.
         """
 
-        if isinstance(input, str) or len(input) != 2:
+        if len(input) != 2:
             raise ValueError(
                 "Next sentence prediction task requires exactly two sentences, please provide a list of strings with each sentence as an element."
             )
 
         # We need to input the two sentences separately for NSP
-        encodings = self.tokenizer(
+        encodings = self.model.tokenizer(
             input[0],
             input[1],
             return_tensors="pt",
             padding=True,
             truncation=truncate,
-            max_length=self.cfg.n_ctx if truncate else None,
+            max_length=self.model.cfg.n_ctx if truncate else None,
         )
 
-        tokens = encodings.input_ids
+        tokens = encodings["input_ids"]
 
         if move_to_device:
-            tokens = tokens.to(self.cfg.device)
-            token_type_ids = encodings.token_type_ids.to(self.cfg.device)
-            attention_mask = encodings.attention_mask.to(self.cfg.device)
+            tokens = tokens.to(self.model.cfg.device)
+            token_type_ids = encodings["token_type_ids"].to(self.model.cfg.device)
+            attention_mask = encodings["attention_mask"].to(self.model.cfg.device)
 
         return tokens, token_type_ids, attention_mask
 
-    @override  # type: ignore[override]
+    @overload
     def forward(
         self,
         input: Union[
             List[str],
             Int[torch.Tensor, "batch pos"],
         ],
-        return_type: Optional[str] = "logits",
+        return_type: Union[Literal["logits"], Literal["predictions"]],
+        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ) -> Union[Float[torch.Tensor, "batch 2"], str]:
+        ...
+
+    @overload
+    def forward(
+        self,
+        input: Union[
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+        ],
+        return_type: Literal[None],
+        token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
+        one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
+    ) -> Optional[Union[Float[torch.Tensor, "batch 2"], str]]:
+        ...
+
+    def forward(
+        self,
+        input: Union[
+            List[str],
+            Int[torch.Tensor, "batch pos"],
+        ],
+        return_type: Optional[Union[Literal["logits"], Literal["predictions"]]] = "logits",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Union[Float[torch.Tensor, "batch 2"], str]]:
@@ -140,18 +178,31 @@ class NextSentencePrediction(HookedEncoder):
             AssertionError: If using string input without a tokenizer
         """
 
-        if token_type_ids == None and isinstance(input, torch.Tensor):
+        if isinstance(input, list):
+            assert self.model.tokenizer is not None, "Must provide a tokenizer if input is a string"
+            tokens, token_type_ids_from_tokenizer, attention_mask = self.to_tokens(input)
+
+            # If token_type_ids or attention mask are not provided, use the ones from the tokenizer
+            token_type_ids = (
+                token_type_ids_from_tokenizer if token_type_ids is None else token_type_ids
+            )
+            one_zero_attention_mask = (
+                attention_mask if one_zero_attention_mask is None else one_zero_attention_mask
+            )
+        elif token_type_ids == None and isinstance(input, torch.Tensor):
             raise ValueError(
                 "You are using the NSP task without specifying token_type_ids."
                 "This means that the model will treat the input as a single sequence which will lead to incorrect results."
                 "Please provide token_type_ids or use a string input."
             )
+        else:
+            tokens = input
 
-        resid, _ = self.encoder_output(input, token_type_ids, one_zero_attention_mask)
+        resid = self.model.encoder_output(tokens, token_type_ids, one_zero_attention_mask)
 
         # NSP requires pooling (for more information see BertPooler)
-        resid = self.pooler(resid)
-        logits = self.nsp_head(resid)
+        resid = self.model.pooler(resid)
+        logits = self.model.nsp_head(resid)
 
         if return_type == "predictions":
             logprobs = logits.log_softmax(dim=-1)
@@ -166,21 +217,18 @@ class NextSentencePrediction(HookedEncoder):
 
         return logits
 
-    @override
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[True] = True, **kwargs
     ) -> Tuple[Float[torch.Tensor, "batch 2"], ActivationCache,]:
         ...
 
-    @override
     @overload
     def run_with_cache(
         self, *model_args, return_cache_object: Literal[False], **kwargs
     ) -> Tuple[Float[torch.Tensor, "batch 2"], Dict[str, torch.Tensor],]:
         ...
 
-    @override
     def run_with_cache(
         self,
         *model_args,
@@ -194,12 +242,33 @@ class NextSentencePrediction(HookedEncoder):
         otherwise it will return a dictionary of activations as in HookedRootModule.
         This function was copied directly from HookedTransformer.
         """
-        out, cache_dict = super(HookedEncoder, self).run_with_cache(
-            *model_args, remove_batch_dim=remove_batch_dim, **kwargs
-        )
 
-        if return_cache_object:
-            cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)
-            return out, cache
-        else:
-            return out, cache_dict
+        # Create wrapper for forward function, such that run_with_cache uses
+        # the forward function of this class and not HookedEncoder
+
+        class ForwardWrapper:
+            def __init__(self, nsp):
+                self.nsp = nsp
+                self.original_forward = nsp.model.forward
+
+            def __enter__(self):
+                # Store reference to wrapper function
+                def wrapped_forward(*fargs, **fkwargs):
+                    return self.nsp.forward(*fargs, **fkwargs)
+
+                self.nsp.model.forward = wrapped_forward
+                return self
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                # Restore original forward
+                self.nsp.model.forward = self.original_forward
+
+        with ForwardWrapper(self):
+            out, cache_dict = self.model.run_with_cache(
+                *model_args, remove_batch_dim=remove_batch_dim, **kwargs
+            )
+            if return_cache_object:
+                cache = ActivationCache(cache_dict, self, has_batch_dim=not remove_batch_dim)
+                return out, cache
+            else:
+                return out, cache_dict

@@ -19,7 +19,14 @@ from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.components import BertBlock, BertEmbed, BertMLMHead, Unembed
+from transformer_lens.components import (
+    BertBlock,
+    BertEmbed,
+    BertMLMHead,
+    BertNSPHead,
+    BertPooler,
+    Unembed,
+)
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -70,6 +77,8 @@ class HookedEncoder(HookedRootModule):
         self.blocks = nn.ModuleList([BertBlock(self.cfg) for _ in range(self.cfg.n_layers)])
         self.mlm_head = BertMLMHead(self.cfg)
         self.unembed = Unembed(self.cfg)
+        self.nsp_head = BertNSPHead(self.cfg)
+        self.pooler = BertPooler(self.cfg)
 
         self.hook_full_embed = HookPoint()
 
@@ -121,17 +130,14 @@ class HookedEncoder(HookedRootModule):
 
     def encoder_output(
         self,
-        input: Union[str, List[str], Int[torch.Tensor, "batch pos"]],
+        tokens: Int[torch.Tensor, "batch pos"],
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
-    ) -> Tuple[Float[torch.Tensor, "batch pos d_vocab"], Int[torch.Tensor, "batch pos"]]:
+    ) -> Float[torch.Tensor, "batch pos d_vocab"]:
         """Processes input through the encoder layers and returns the resulting residual stream.
 
         Args:
-            input: The input to process. Can be one of:
-                - str: A single text string
-                - List[str]: A list of text strings
-                - torch.Tensor: Input tokens as integers with shape (batch, position)
+            input: Input tokens as integers with shape (batch, position)
             token_type_ids: Optional binary ids indicating segment membership.
                 Shape (batch_size, sequence_length). For example, with input
                 "[CLS] Sentence A [SEP] Sentence B [SEP]", token_type_ids would be
@@ -142,28 +148,11 @@ class HookedEncoder(HookedRootModule):
                 Used primarily for handling padding in batched inputs.
 
         Returns:
-            Tuple containing:
-                - resid: Final residual stream tensor of shape (batch, position, d_model)
-                - tokens: Input tokens after processing and device placement
+            resid: Final residual stream tensor of shape (batch, position, d_model)
 
         Raises:
             AssertionError: If using string input without a tokenizer
         """
-
-        if isinstance(input, str) or isinstance(input, list):
-            assert self.tokenizer is not None, "Must provide a tokenizer if input is a string"
-            tokens, token_type_ids_from_tokenizer, attention_mask = self.to_tokens(input)
-
-            # If token_type_ids or attention mask are not provided, use the ones from the tokenizer
-            token_type_ids = (
-                token_type_ids_from_tokenizer if token_type_ids is None else token_type_ids
-            )
-            one_zero_attention_mask = (
-                attention_mask if one_zero_attention_mask is None else one_zero_attention_mask
-            )
-
-        else:
-            tokens = input
 
         if tokens.device.type != self.cfg.device:
             tokens = tokens.to(self.cfg.device)
@@ -185,7 +174,7 @@ class HookedEncoder(HookedRootModule):
         for block in self.blocks:
             resid = block(resid, additive_attention_mask)
 
-        return resid, tokens
+        return resid
 
     @overload
     def forward(
@@ -222,7 +211,7 @@ class HookedEncoder(HookedRootModule):
             List[str],
             Int[torch.Tensor, "batch pos"],
         ],
-        return_type: Optional[str] = "logits",
+        return_type: Optional[Union[Literal["logits"], Literal["predictions"]]] = "logits",
         token_type_ids: Optional[Int[torch.Tensor, "batch pos"]] = None,
         one_zero_attention_mask: Optional[Int[torch.Tensor, "batch pos"]] = None,
     ) -> Optional[Union[Float[torch.Tensor, "batch pos d_vocab"], str, List[str],]]:
@@ -265,7 +254,22 @@ class HookedEncoder(HookedRootModule):
             AssertionError: If using string input without a tokenizer
         """
 
-        resid, tokens = self.encoder_output(input, token_type_ids, one_zero_attention_mask)
+        if isinstance(input, str) or isinstance(input, list):
+            assert self.tokenizer is not None, "Must provide a tokenizer if input is a string"
+            tokens, token_type_ids_from_tokenizer, attention_mask = self.to_tokens(input)
+
+            # If token_type_ids or attention mask are not provided, use the ones from the tokenizer
+            token_type_ids = (
+                token_type_ids_from_tokenizer if token_type_ids is None else token_type_ids
+            )
+            one_zero_attention_mask = (
+                attention_mask if one_zero_attention_mask is None else one_zero_attention_mask
+            )
+
+        else:
+            tokens = input
+
+        resid = self.encoder_output(tokens, token_type_ids, one_zero_attention_mask)
 
         # MLM requires an unembedding step
         resid = self.mlm_head(resid)
