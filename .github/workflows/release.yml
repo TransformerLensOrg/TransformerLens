@@ -21,7 +21,7 @@ jobs:
        id: semver_parser 
        uses: booxmedialtd/ws-action-parse-semver@v1.4.7
        with:
-         input_string: ${{ github.event.release.tag_name }}
+         input_string: "2.13.0"
     outputs:
       major: "${{ steps.semver_parser.outputs.major }}"
       minor: "${{ steps.semver_parser.outputs.minor }}"
