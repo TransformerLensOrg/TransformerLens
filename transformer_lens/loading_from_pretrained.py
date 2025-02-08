@@ -144,13 +144,22 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Llama-2-13b-hf",
     "meta-llama/Llama-2-13b-chat-hf",
     "meta-llama/Llama-2-70b-chat-hf",
-    "CodeLlama-7b-hf",
-    "CodeLlama-7b-Python-hf",
-    "CodeLlama-7b-Instruct-hf",
+    "codellama/CodeLlama-7b-hf",
+    "codellama/CodeLlama-7b-Python-hf",
+    "codellama/CodeLlama-7b-Instruct-hf",
     "meta-llama/Meta-Llama-3-8B",
     "meta-llama/Meta-Llama-3-8B-Instruct",
     "meta-llama/Meta-Llama-3-70B",
     "meta-llama/Meta-Llama-3-70B-Instruct",
+    "meta-llama/Llama-3.1-70B",
+    "meta-llama/Llama-3.1-8B",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "meta-llama/Llama-3.1-70B-Instruct",
+    "meta-llama/Llama-3.2-1B",
+    "meta-llama/Llama-3.2-3B",
+    "meta-llama/Llama-3.2-1B-Instruct",
+    "meta-llama/Llama-3.2-3B-Instruct",
+    "meta-llama/Llama-3.3-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
     "bert-base-cased",
     "roneneldan/TinyStories-1M",
@@ -173,6 +182,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mistral-Nemo-Base-2407",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
     "bigscience/bloom-560m",
@@ -203,10 +213,26 @@ OFFICIAL_MODEL_NAMES = [
     "Qwen/Qwen2-1.5B-Instruct",
     "Qwen/Qwen2-7B",
     "Qwen/Qwen2-7B-Instruct",
+    "Qwen/Qwen2.5-0.5B",
+    "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen/Qwen2.5-1.5B",
+    "Qwen/Qwen2.5-1.5B-Instruct",
+    "Qwen/Qwen2.5-3B",
+    "Qwen/Qwen2.5-3B-Instruct",
+    "Qwen/Qwen2.5-7B",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "Qwen/Qwen2.5-14B",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "Qwen/Qwen2.5-32B",
+    "Qwen/Qwen2.5-32B-Instruct",
+    "Qwen/Qwen2.5-72B",
+    "Qwen/Qwen2.5-72B-Instruct",
+    "Qwen/QwQ-32B-Preview",
     "microsoft/phi-1",
     "microsoft/phi-1_5",
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
+    "microsoft/phi-4",
     "google/gemma-2b",
     "google/gemma-7b",
     "google/gemma-2b-it",
@@ -558,12 +584,12 @@ MODEL_ALIASES = {
         "meta-llama/Llama-2-13b-chat-hf",
     ],
     "meta-llama/Llama-2-70b-chat-hf": ["Llama-2-70b-chat", "meta-llama-2-70b-chat-hf"],
-    "CodeLlama-7b-hf": ["CodeLlamallama-2-7b", "codellama/CodeLlama-7b-hf"],
-    "CodeLlama-7b-Python-hf": [
+    "codellama/CodeLlama-7b-hf": ["CodeLlamallama-2-7b", "codellama/CodeLlama-7b-hf"],
+    "codellama/CodeLlama-7b-Python-hf": [
         "CodeLlama-7b-python",
         "codellama/CodeLlama-7b-Python-hf",
     ],
-    "CodeLlama-7b-Instruct-hf": [
+    "codellama/CodeLlama-7b-Instruct-hf": [
         "CodeLlama-7b-instruct",
         "codellama/CodeLlama-7b-Instruct-hf",
     ],
@@ -600,6 +626,7 @@ MODEL_ALIASES = {
     ],
     "mistralai/Mistral-7B-v0.1": ["mistral-7b"],
     "mistralai/Mistral-7B-Instruct-v0.1": ["mistral-7b-instruct"],
+    "mistralai/Mistral-Nemo-Base-2407": ["mistral-nemo-base-2407"],
     "mistralai/Mixtral-8x7B-v0.1": ["mixtral", "mixtral-8x7b"],
     "mistralai/Mixtral-8x7B-Instruct-v0.1": [
         "mixtral-instruct",
@@ -631,6 +658,7 @@ MODEL_ALIASES = {
     "microsoft/phi-1_5": ["phi-1_5"],
     "microsoft/phi-2": ["phi-2"],
     "microsoft/Phi-3-mini-4k-instruct": ["phi-3"],
+    "microsoft/phi-4": ["phi-4"],
     "google/gemma-2b": ["gemma-2b"],
     "google/gemma-7b": ["gemma-7b"],
     "google/gemma-2b-it": ["gemma-2b-it"],
@@ -670,6 +698,7 @@ NEED_REMOTE_CODE_MODELS = (
     "Qwen/Qwen-",
     "microsoft/phi-2",
     "microsoft/Phi-3-mini-4k-instruct",
+    "microsoft/phi-4",
 )
 
 
@@ -723,10 +752,10 @@ def convert_hf_model_config(model_name: str, **kwargs):
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
-        huggingface_token = os.environ.get("HF_TOKEN", None)
+        huggingface_token = os.environ.get("HF_TOKEN", "")
         hf_config = AutoConfig.from_pretrained(
             official_model_name,
-            token=huggingface_token,
+            token=huggingface_token if len(huggingface_token) > 0 else None,
             **kwargs,
         )
         architecture = hf_config.architectures[0]
@@ -751,7 +780,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "gated_mlp": True,
         }
-    elif official_model_name.startswith("CodeLlama-7b"):  # same architecture CodeLlama and Llama-2
+    elif official_model_name.startswith("codellama"):  # same architecture CodeLlama and Llama-2
         cfg_dict = {
             "d_model": 4096,
             "d_head": 4096 // 32,
@@ -865,6 +894,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
         }
     elif "Meta-Llama-3-70B" in official_model_name:
         cfg_dict = {
@@ -884,6 +914,127 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
+            "rotary_base": 500000.0,
+        }
+    elif "Llama-3.2-1B" in official_model_name:
+        cfg_dict = {
+            "d_model": 2048,
+            "d_head": 64,
+            "n_heads": 32,
+            "d_mlp": 8192,
+            "n_layers": 16,
+            "n_ctx": 2048,  # capped due to memory issues
+            "eps": 1e-5,
+            "d_vocab": 128256,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 64,
+            "final_rms": True,
+            "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 32.0,
+        }
+    elif "Llama-3.2-3B" in official_model_name:
+        cfg_dict = {
+            "d_model": 3072,
+            "d_head": 128,
+            "n_heads": 24,
+            "d_mlp": 8192,
+            "n_layers": 28,
+            "n_ctx": 2048,  # capped due to memory issues
+            "eps": 1e-5,
+            "d_vocab": 128256,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 128,
+            "final_rms": True,
+            "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 32.0,
+        }
+    elif "Llama-3.3-70B" in official_model_name:
+        cfg_dict = {
+            "d_model": 8192,
+            "d_head": 128,
+            "n_heads": 64,
+            "d_mlp": 28672,
+            "n_layers": 80,
+            "n_ctx": 2048,  # capped due to memory issues
+            "eps": 1e-5,
+            "d_vocab": 128256,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 32,
+            "final_rms": True,
+            "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
+        }
+    elif "Llama-3.1-8B" in official_model_name:
+        cfg_dict = {
+            "d_model": 4096,
+            "d_head": 128,
+            "n_heads": 32,
+            "d_mlp": 14336,
+            "n_layers": 32,
+            "n_ctx": 2048,  # capped due to memory issues
+            "eps": 1e-5,
+            "d_vocab": 128256,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 128,
+            "final_rms": True,
+            "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
+        }
+    elif "Llama-3.1-70B" in official_model_name:
+        cfg_dict = {
+            "d_model": 8192,
+            "d_head": 128,
+            "n_heads": 64,
+            "d_mlp": 28672,
+            "n_layers": 80,
+            "n_ctx": 2048,  # capped due to memory issues
+            "eps": 1e-5,
+            "d_vocab": 128256,
+            "act_fn": "silu",
+            "n_key_value_heads": 8,
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary",
+            "rotary_adjacent_pairs": False,
+            "rotary_dim": 128,
+            "final_rms": True,
+            "gated_mlp": True,
+            "rotary_base": 500000.0,
+            "use_NTK_by_parts_rope": True,
+            "NTK_by_parts_low_freq_factor": 1.0,
+            "NTK_by_parts_high_freq_factor": 4.0,
+            "NTK_by_parts_factor": 8.0,
         }
     elif architecture == "GPTNeoForCausalLM":
         cfg_dict = {
@@ -990,24 +1141,27 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attention_dir": "bidirectional",
         }
     elif architecture == "MistralForCausalLM":
+        use_local_attn = True if hf_config.sliding_window else False
         cfg_dict = {
-            "d_model": 4096,
-            "d_head": 4096 // 32,
-            "n_heads": 32,
-            "d_mlp": 14336,
-            "n_layers": 32,
+            "d_model": hf_config.hidden_size,
+            "d_head": hf_config.head_dim
+            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "n_heads": hf_config.num_attention_heads,
+            "d_mlp": hf_config.intermediate_size,
+            "n_layers": hf_config.num_hidden_layers,
             "n_ctx": 2048,  # Capped due to memory issues
-            "d_vocab": 32000,
-            "act_fn": "silu",
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": hf_config.hidden_act,
+            "window_size": hf_config.sliding_window,  # None if no sliding window was used
+            "attn_types": ["local"] * hf_config.num_hidden_layers if use_local_attn else None,
+            "eps": hf_config.rms_norm_eps,
+            "rotary_base": hf_config.rope_theta,
+            "n_key_value_heads": hf_config.num_key_value_heads,
+            "use_local_attn": use_local_attn,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "window_size": 4096,
-            "attn_types": ["local"] * 32,
-            "eps": 1e-05,
-            "n_key_value_heads": 8,
             "gated_mlp": True,
-            "use_local_attn": True,
-            "rotary_dim": 4096 // 32,
         }
     elif architecture == "MixtralForCausalLM":
         cfg_dict = {
@@ -1047,6 +1201,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "LN",
             "post_embedding_ln": True,
             "positional_embedding_type": "alibi",
+            "default_prepend_bos": False,
         }
     elif architecture == "GPT2LMHeadCustomModel":
         # santacoder
@@ -1114,6 +1269,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "trust_remote_code": True,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": False,
         }
     elif architecture == "Qwen2ForCausalLM":
         # Note that Qwen1.5 models have architecture type Qwen2ForCausalLM.
@@ -1132,12 +1288,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "initializer_range": hf_config.initializer_range,
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
-            "rotary_base": hf_config.rope_theta,
+            "rotary_base": int(hf_config.rope_theta),
             "rotary_adjacent_pairs": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
             "tokenizer_prepends_bos": True,
             "final_rms": True,
             "gated_mlp": True,
+            "default_prepend_bos": False,
         }
     elif architecture == "PhiForCausalLM":
         # Architecture for microsoft/phi models
@@ -1169,6 +1326,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
+            "n_key_value_heads": (
+                hf_config.num_key_value_heads
+                if hf_config.num_key_value_heads != hf_config.num_attention_heads
+                else None
+            ),
             "n_ctx": hf_config.max_position_embeddings,
             "eps": hf_config.rms_norm_eps,
             "d_vocab": hf_config.vocab_size,
@@ -1198,7 +1360,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "gelu_new",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
-            "rotary_base": 10000.0,
+            "rotary_base": 10000,
             "rotary_dim": 256,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
@@ -1387,8 +1549,9 @@ def get_pretrained_model_config(
     fold_ln: bool = False,
     device: Optional[Union[str, torch.device]] = None,
     n_devices: int = 1,
-    default_prepend_bos: bool = True,
+    default_prepend_bos: Optional[bool] = None,
     dtype: torch.dtype = torch.float32,
+    first_n_layers: Optional[int] = None,
     **kwargs,
 ):
     """Returns the pretrained model config as an HookedTransformerConfig object.
@@ -1417,11 +1580,15 @@ def get_pretrained_model_config(
         n_devices (int, optional): The number of devices to split the model across. Defaults to 1.
         default_prepend_bos (bool, optional): Default behavior of whether to prepend the BOS token when the
             methods of HookedTransformer process input text to tokenize (only when input is a string).
-            Defaults to True - even for models not explicitly trained with this, heads often use the
+            Resolution order for default_prepend_bos:
+            1. If user passes value explicitly, use that value
+            2. Model-specific default from cfg_dict if it exists (e.g. for bloom models it's False)
+            3. Global default (True)
+
+            Even for models not explicitly trained with the BOS token, heads often use the
             first position as a resting position and accordingly lose information from the first token,
-            so this empirically seems to give better results. To change the default behavior to False, pass in
-            default_prepend_bos=False. Note that you can also locally override the default behavior by passing
-            in prepend_bos=True/False when you call a method that processes the input string.
+            so this empirically seems to give better results. Note that you can also locally override the default behavior
+            by passing in prepend_bos=True/False when you call a method that processes the input string.
         dtype (torch.dtype, optional): The dtype to load the TransformerLens model in.
         kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
             Also given to other HuggingFace functions when compatible.
@@ -1498,9 +1665,19 @@ def get_pretrained_model_config(
 
     cfg_dict["device"] = device
     cfg_dict["n_devices"] = n_devices
-    cfg_dict["default_prepend_bos"] = default_prepend_bos
+
+    if default_prepend_bos is not None:
+        # User explicitly set prepend_bos behavior, override config/default value
+        cfg_dict["default_prepend_bos"] = default_prepend_bos
+    elif "default_prepend_bos" not in cfg_dict:
+        # No config value or user override, set default value (True)
+        cfg_dict["default_prepend_bos"] = True
+
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
+        cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
+    if first_n_layers is not None:
+        cfg_dict["n_layers"] = first_n_layers
 
     cfg = HookedTransformerConfig.from_dict(cfg_dict)
     return cfg
@@ -1628,13 +1805,13 @@ def get_pretrained_state_dict(
         return state_dict
     else:
         if cfg.from_checkpoint:
-            huggingface_token = os.environ.get("HF_TOKEN", None)
+            huggingface_token = os.environ.get("HF_TOKEN", "")
             if official_model_name.startswith("stanford-crfm"):
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif official_model_name.startswith("EleutherAI/pythia"):
@@ -1648,28 +1825,28 @@ def get_pretrained_state_dict(
             else:
                 raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
-            huggingface_token = os.environ.get("HF_TOKEN", None)
+            huggingface_token = os.environ.get("HF_TOKEN", "")
             if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
                 raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "t5" in official_model_name:
                 hf_model = T5ForConditionalGeneration.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
 
