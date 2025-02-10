@@ -22,10 +22,6 @@ from transformers import (
 import transformer_lens.utils as utils
 from transformer_lens.factories import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.weight_conversion import (
-    convert_mingpt_weights,
-    convert_neel_solu_old_weights,
-)
 
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
@@ -1799,7 +1795,7 @@ def load_hugging_face_model(
                     token=huggingface_token,
                     **kwargs,
                 )
-            
+
     return hf_model
 
 
@@ -1837,14 +1833,9 @@ def get_pretrained_state_dict(
             f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
         )
         kwargs["trust_remote_code"] = True
-    
 
     hf_model = load_hugging_face_model(
-        official_model_name,
-        cfg=cfg,
-        hf_model=hf_model,
-        dtype=dtype,
-        **kwargs
+        official_model_name, cfg=cfg, hf_model=hf_model, dtype=dtype, **kwargs
     )
 
     for param in hf_model.parameters():
@@ -1852,7 +1843,43 @@ def get_pretrained_state_dict(
 
     weight_conversion_config = WeightConversionFactory.select_weight_conversion_config(cfg)
 
-    return weight_conversion_config.convert(hf_model)
+    weight_conversion = weight_conversion_config.convert(hf_model)
+    return flatten_nested_dict(weight_conversion)
+
+
+def flatten_nested_dict(input, parent_key="", sep="."):
+    """
+    Flattens a nested dictionary/list structure into a flat dictionary with dot notation.
+
+    Args:
+        input: The input structure (can be dict, list, or a value)
+        parent_key: The parent key for the current item (used in recursion)
+        sep: Separator to use between nested keys (default '.')
+
+    Returns:
+        dict: Flattened dictionary with dot notation keys
+    """
+    items = {}
+
+    if isinstance(input, dict):
+        for k, v in input.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            if isinstance(v, (dict, list)):
+                items.update(flatten_nested_dict(v, new_key, sep=sep))
+            else:
+                items[new_key] = v
+
+    elif isinstance(input, list):
+        for i, v in enumerate(input):
+            new_key = f"{parent_key}{sep}{i}" if parent_key else str(i)
+            if isinstance(v, (dict, list)):
+                items.update(flatten_nested_dict(v, new_key, sep=sep))
+            else:
+                items[new_key] = v
+    else:
+        items[parent_key] = input
+
+    return items
 
 
 def fill_missing_keys(model, state_dict):
