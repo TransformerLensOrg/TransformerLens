@@ -1,101 +1,104 @@
-import einops
-
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
 
 
-def convert_t5_weights(t5, cfg: HookedTransformerConfig):
-    state_dict = {
-        "embed.W_E": t5.encoder.embed_tokens.weight,
-        "unembed.W_U": t5.encoder.embed_tokens.weight.T,
-        "encoder.0.attn.rel_pos_bias.weight": t5.encoder.block[0]
-        .layer[0]
-        .SelfAttention.relative_attention_bias.weight,
-    }
-
-    for l in range(cfg.n_layers):
-        block = t5.encoder.block[l]
-        state_dict[f"encoder.{l}.attn.W_Q"] = einops.rearrange(
-            block.layer[0].SelfAttention.q.weight, "(i h) m -> i m h", i=cfg.n_heads
+class T5WeightConversion(ArchitectureConversion):
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        super().__init__(
+            {
+                "embed.W_E": "encoder.embed_tokens.weight",
+                "unembed.W_U": "encoder.embed_tokens.weight.T",
+                "encoder.0.attn.rel_pos_bias.weight": "encoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
+                "encoder": (
+                    "encoder.block",
+                    WeightConversionSet(
+                        {
+                            "attn.W_Q": (
+                                "layer.0.SelfAttention.q.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "attn.W_K": (
+                                "layer.0.SelfAttention.k.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "attn.W_V": (
+                                "layer.0.SelfAttention.v.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "attn.W_O": (
+                                "layer.0.SelfAttention.o.weight",
+                                RearrangeWeightConversion("m (i h) -> i h m", i=cfg.n_heads),
+                            ),
+                            "ln1.w": "layer.0.layer_norm.weight",
+                            "mlp.W_in": (
+                                "layer.1.DenseReluDense.wi.weight",
+                                RearrangeWeightConversion("mlp model -> model mlp"),
+                            ),
+                            "mlp.W_out": (
+                                "layer.1.DenseReluDense.wo.weight",
+                                RearrangeWeightConversion("model mlp -> mlp model"),
+                            ),
+                            "ln2.w": "layer.1.layer_norm.weight",
+                        }
+                    ),
+                ),
+                "encoder_final_ln.w": "encoder.final_layer_norm.weight",
+                "decoder.0.attn.rel_pos_bias.weight": "decoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
+                "decoder": (
+                    "decoder.block",
+                    WeightConversionSet(
+                        {
+                            "attn.W_Q": (
+                                "layer.0.SelfAttention.q.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "attn.W_K": (
+                                "layer.0.SelfAttention.k.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "attn.W_V": (
+                                "layer.0.SelfAttention.v.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "attn.W_O": (
+                                "layer.0.SelfAttention.o.weight",
+                                RearrangeWeightConversion("m (i h) -> i h m", i=cfg.n_heads),
+                            ),
+                            "ln1.w": "layer.0.layer_norm.weight",
+                            "cross_attn.W_Q": (
+                                "layer.1.EncDecAttention.q.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "cross_attn.W_K": (
+                                "layer.1.EncDecAttention.k.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "cross_attn.W_V": (
+                                "layer.1.EncDecAttention.v.weight",
+                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                            ),
+                            "cross_attn.W_O": (
+                                "layer.1.EncDecAttention.o.weight",
+                                RearrangeWeightConversion("m (i h) -> i h m", i=cfg.n_heads),
+                            ),
+                            "ln2.w": "layer.1.layer_norm.weight",
+                            "mlp.W_in": (
+                                "layer.2.DenseReluDense.wi.weight",
+                                RearrangeWeightConversion("mlp model -> model mlp"),
+                            ),
+                            "mlp.W_out": (
+                                "layer.2.DenseReluDense.wo.weight",
+                                RearrangeWeightConversion("model mlp -> mlp model"),
+                            ),
+                            "ln3.w": "layer.2.layer_norm.weight",
+                        }
+                    ),
+                ),
+                "decoder_final_ln.w": "decoder.final_layer_norm.weight",
+            }
         )
-        state_dict[f"encoder.{l}.attn.W_K"] = einops.rearrange(
-            block.layer[0].SelfAttention.k.weight, "(i h) m -> i m h", i=cfg.n_heads
-        )
-
-        state_dict[f"encoder.{l}.attn.W_V"] = einops.rearrange(
-            block.layer[0].SelfAttention.v.weight, "(i h) m -> i m h", i=cfg.n_heads
-        )
-
-        state_dict[f"encoder.{l}.attn.W_O"] = einops.rearrange(
-            block.layer[0].SelfAttention.o.weight,
-            "m (i h) -> i h m",
-            i=cfg.n_heads,
-        )
-        state_dict[f"encoder.{l}.ln1.w"] = block.layer[0].layer_norm.weight
-
-        # fixme DenseReluDense may be T5DenseGatedActDense instead
-        state_dict[f"encoder.{l}.mlp.W_in"] = einops.rearrange(
-            block.layer[1].DenseReluDense.wi.weight, "mlp model -> model mlp"
-        )
-
-        state_dict[f"encoder.{l}.mlp.W_out"] = einops.rearrange(
-            block.layer[1].DenseReluDense.wo.weight, "model mlp -> mlp model"
-        )
-        state_dict[f"encoder.{l}.ln2.w"] = block.layer[1].layer_norm.weight
-
-    state_dict["encoder_final_ln.w"] = t5.encoder.final_layer_norm.weight
-
-    state_dict["decoder.0.attn.rel_pos_bias.weight"] = (
-        t5.decoder.block[0].layer[0].SelfAttention.relative_attention_bias.weight
-    )
-
-    for l in range(cfg.n_layers):
-        block = t5.decoder.block[l]
-        state_dict[f"decoder.{l}.attn.W_Q"] = einops.rearrange(
-            block.layer[0].SelfAttention.q.weight, "(i h) m -> i m h", i=cfg.n_heads
-        )
-
-        state_dict[f"decoder.{l}.attn.W_K"] = einops.rearrange(
-            block.layer[0].SelfAttention.k.weight, "(i h) m -> i m h", i=cfg.n_heads
-        )
-        state_dict[f"decoder.{l}.attn.W_V"] = einops.rearrange(
-            block.layer[0].SelfAttention.v.weight, "(i h) m -> i m h", i=cfg.n_heads
-        )
-
-        state_dict[f"decoder.{l}.attn.W_O"] = einops.rearrange(
-            block.layer[0].SelfAttention.o.weight,
-            "m (i h) -> i h m",
-            i=cfg.n_heads,
-        )
-
-        state_dict[f"decoder.{l}.ln1.w"] = block.layer[0].layer_norm.weight
-
-        state_dict[f"decoder.{l}.cross_attn.W_Q"] = einops.rearrange(
-            block.layer[1].EncDecAttention.q.weight, "(i h) m -> i m h", i=cfg.n_heads
-        )
-
-        state_dict[f"decoder.{l}.cross_attn.W_K"] = einops.rearrange(
-            block.layer[1].EncDecAttention.k.weight, "(i h) m -> i m h", i=cfg.n_heads
-        )
-
-        state_dict[f"decoder.{l}.cross_attn.W_V"] = einops.rearrange(
-            block.layer[1].EncDecAttention.v.weight, "(i h) m -> i m h", i=cfg.n_heads
-        )
-        state_dict[f"decoder.{l}.cross_attn.W_O"] = einops.rearrange(
-            block.layer[1].EncDecAttention.o.weight,
-            "m (i h) -> i h m",
-            i=cfg.n_heads,
-        )
-        state_dict[f"decoder.{l}.ln2.w"] = block.layer[1].layer_norm.weight
-
-        # fixme DenseReluDense may be T5DenseGatedActDense instead
-        state_dict[f"decoder.{l}.mlp.W_in"] = einops.rearrange(
-            block.layer[2].DenseReluDense.wi.weight, "mlp model -> model mlp"
-        )
-        state_dict[f"decoder.{l}.mlp.W_out"] = einops.rearrange(
-            block.layer[2].DenseReluDense.wo.weight, "model mlp -> mlp model"
-        )
-        state_dict[f"decoder.{l}.ln3.w"] = block.layer[2].layer_norm.weight
-
-    state_dict["decoder_final_ln.w"] = t5.decoder.final_layer_norm.weight
-
-    return state_dict
+        
