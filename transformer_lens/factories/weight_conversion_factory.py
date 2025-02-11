@@ -14,6 +14,7 @@ from transformer_lens.weight_conversion.neo import NEOWeightConversion
 from transformer_lens.weight_conversion.neox import NEOXWeightConversion
 from transformer_lens.weight_conversion.qwen import QwenWeightConversion
 from transformer_lens.weight_conversion.qwen2 import Qwen2WeightConversion
+from transformer_lens.weight_conversion.phi import PhiWeightConversion
 
 
 class WeightConversionFactory:
@@ -44,6 +45,8 @@ class WeightConversionFactory:
                 return Qwen2WeightConversion(cfg)
             case "QWenLMHeadModel":
                 return QwenWeightConversion(cfg)
+            case "PhiForCausalLM":
+                return PhiWeightConversion(cfg)
             case _:
                 raise NotImplementedError(
                     f"{cfg.original_architecture} is not currently supported."
