@@ -280,10 +280,10 @@ class AbstractAttention(ABC, nn.Module):
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
                 
-                if z.device != w.device:
-                    w = w.to(z.device)
-                if z.device != self.b_O.device:
-                    self.b_O.to(z.device)
+                if self.b_O.device != w.device:
+                    w = w.to(self.b_O.device)
+                if self.b_O.device != z.device:
+                    z = z.to(self.b_O.device)
                 
                 out = F.linear(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
