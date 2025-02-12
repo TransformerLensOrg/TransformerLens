@@ -553,8 +553,10 @@ class AbstractAttention(ABC, nn.Module):
     ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
         
-        if x.device != self.device:
-            self.to(x.device)
+        if x.device != self.rotary_cos.device:
+            self.rotary_cos.to(x.device)
+        if x.device != self.rotary_sin.device:
+            self.rotary_sin.to(x.device)
 
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
