@@ -279,6 +279,12 @@ class AbstractAttention(ABC, nn.Module):
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
+                
+                if z.device != w.device:
+                    w = w.to(z.device)
+                if z.device != self.b_O.device:
+                    self.b_O = self.b_O.to(z.device)
+                
                 out = F.linear(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                     w,
