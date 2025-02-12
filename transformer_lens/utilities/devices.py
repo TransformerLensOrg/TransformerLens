@@ -35,14 +35,14 @@ def calculate_available_device_cuda_memory(i: int) -> int:
     return total - allocated
 
 
-def determine_available_memory_for_available_devices() -> AvailableDeviceMemory:
+def determine_available_memory_for_available_devices(max_devices: int) -> AvailableDeviceMemory:
     """Gets all available CUDA devices with their current memory calculated
 
     Returns:
         AvailableDeviceMemory: The list of all available devices with memory precalculated
     """
     devices = []
-    for i in range(torch.cuda.device_count()):
+    for i in range(max_devices):
         devices.append((i, calculate_available_device_cuda_memory(i)))
 
     return devices
@@ -61,7 +61,7 @@ def sort_devices_based_on_available_memory(devices: AvailableDeviceMemory) -> Av
     return sorted(devices, key=lambda x: x[1], reverse=True)
 
 
-def get_best_available_cuda_device() -> torch.device:
+def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.device:
     """Gets whichever cuda device has the most available amount of memory for use
 
     Raises:
@@ -70,7 +70,8 @@ def get_best_available_cuda_device() -> torch.device:
     Returns:
         torch.device: The specific device that should be used
     """
-    devices = determine_available_memory_for_available_devices()
+    max_devices = max_devices if max_devices is not None else torch.cuda.device_count()
+    devices = determine_available_memory_for_available_devices(max_devices)
 
     if len(devices) <= 0:
         raise EnvironmentError(
@@ -82,7 +83,7 @@ def get_best_available_cuda_device() -> torch.device:
     return torch.device("cuda", sorted_devices[0][0])
 
 
-def get_best_available_device(device: Union[torch.device, str]) -> torch.device:
+def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
     Args:
@@ -91,10 +92,11 @@ def get_best_available_device(device: Union[torch.device, str]) -> torch.device:
     Returns:
         torch.device: The best available device
     """
-    device = torch.device(device) if isinstance(device, str) else device
+    assert cfg.device is not None
+    device = torch.device(cfg.device)
 
     if device.type == "cuda":
-        get_best_available_cuda_device()
+        get_best_available_cuda_device(cfg.n_devices)
     else:
         return device
 
