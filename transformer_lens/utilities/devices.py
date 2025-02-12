@@ -75,7 +75,7 @@ def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.d
 
     if len(devices) <= 0:
         raise EnvironmentError(
-            "TransformerLens has been configured to use CUDA, but not available devices are present"
+            "TransformerLens has been configured to use CUDA, but no available devices are present"
         )
 
     sorted_devices = sort_devices_based_on_available_memory(devices=devices)
@@ -96,7 +96,7 @@ def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -
     device = torch.device(cfg.device)
 
     if device.type == "cuda":
-        get_best_available_cuda_device(cfg.n_devices)
+        return get_best_available_cuda_device(cfg.n_devices)
     else:
         return device
 
