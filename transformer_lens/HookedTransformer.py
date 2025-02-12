@@ -1101,6 +1101,7 @@ class HookedTransformer(HookedRootModule):
             self.pos_embed.to(devices.get_best_available_device(self.cfg))
             self.hook_pos_embed.to(devices.get_best_available_device(self.cfg))
 
+        if hasattr(self, "ln_final"):
             self.ln_final.to(devices.get_best_available_device(self.cfg))
         self.unembed.to(devices.get_best_available_device(self.cfg))
         for i, block in enumerate(self.blocks):
