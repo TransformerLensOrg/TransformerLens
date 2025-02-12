@@ -15,13 +15,14 @@ def simple_attn_linear(
     b: Float[torch.Tensor, "head_index d_head"],
 ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
     """Linear layer for attention calculation."""
-    w = einops.rearrange(w, "head_index d_model d_head -> (head_index d_head) d_model")
-    b_ = einops.rearrange(b, "head_index d_head -> (head_index d_head)")
 
     if (input.device != w.device):
-        w.to(input.device)
-    if (input.device != b_.device):
-        b_.to(input.device)
+        w = w.to(input.device)
+    if (input.device != b.device):
+        b = b.to(input.device)
+
+    w = einops.rearrange(w, "head_index d_model d_head -> (head_index d_head) d_model")
+    b_ = einops.rearrange(b, "head_index d_head -> (head_index d_head)")
 
     return F.linear(input, w, b_).reshape(input.shape[0], input.shape[1], b.shape[0], b.shape[1])
 
