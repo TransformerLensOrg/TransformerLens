@@ -16,9 +16,9 @@ def simple_attn_linear(
 ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
     """Linear layer for attention calculation."""
 
-    if (input.device != w.device):
+    if input.device != w.device:
         w = w.to(input.device)
-    if (input.device != b.device):
+    if input.device != b.device:
         b = b.to(input.device)
 
     w = einops.rearrange(w, "head_index d_model d_head -> (head_index d_head) d_model")
