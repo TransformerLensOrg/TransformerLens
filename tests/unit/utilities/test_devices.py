@@ -41,7 +41,7 @@ def test_determine_available_memory_for_available_devices():
         ]
     )
 
-    result = determine_available_memory_for_available_devices()
+    result = determine_available_memory_for_available_devices(3)
 
     assert result == [
         (0, 20),
