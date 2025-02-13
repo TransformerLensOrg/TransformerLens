@@ -2395,10 +2395,6 @@ class HookedTransformer(HookedRootModule):
                         if cache_dict_tape is not None
                         else {k: torch.clone(v) for k, v in cache_dict.items()}   # initializes the dict with the initial cache
                     )
-                    cache_dict_tape['tokens'] = token_tape
-                    cache_dict_tape['logits'] = logits_tape
-                    cache_dict_tape['embeds'] = embeds
-                    cache_dict_tape
 
                 logits_tape = (
                     torch.cat([logits_tape, logits[:, -1:]], dim=1)
@@ -2416,23 +2412,24 @@ class HookedTransformer(HookedRootModule):
                 output_tokens = sampled_tokens
 
             # compute return objects as requested
+            result = dict()
             if "str" in return_types:
                 decoded_texts = [
                     self.tokenizer.decode(tokens, skip_special_tokens=True)
                     for tokens in output_tokens
                 ]
-                result_text = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
+                result['str'] = decoded_texts[0] if len(decoded_texts) == 1 else decoded_texts
             if "tokens" in return_types:
-                result_tokens = output_tokens
+                result['tokens'] = output_tokens
             if "cache" in return_types:
-                result_cache = cache_dict_tape
+                result['cache'] = cache_dict_tape
             if "embeds" in return_types:
-                result_embeds = embeds
+                result['embeds'] = embeds
                 
-            if isinstance(return_type, list):
-                return {rt: locals()[f"result_{rt}"] for rt in return_type}
+            if not isinstance(return_type, list):
+                return result[return_type]
             else:
-                return locals()[f"result_{return_type}"]
+                return result
 
     # Give access to all weights as properties.
     @property
