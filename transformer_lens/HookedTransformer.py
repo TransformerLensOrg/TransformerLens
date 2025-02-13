@@ -370,7 +370,6 @@ class HookedTransformer(HookedRootModule):
             # If tokens are a rank 1 tensor, add a dummy batch dimension to avoid things breaking.
             tokens = tokens[None]
         if tokens.device.type != self.cfg.device:
-            print(" tokens = " + str(self.cfg.device))
             tokens = tokens.to(devices.get_device_for_block_index(0, self.cfg))
 
         if (
@@ -604,10 +603,8 @@ class HookedTransformer(HookedRootModule):
                 # Note that each block includes skip connections, so we don't need
                 # residual + block(residual)
                 # If we're using multiple GPUs, we need to send the residual and shortformer_pos_embed to the correct GPU
-                print(" residual = " + str(self.cfg.device))
                 residual = residual.to(devices.get_device_for_block_index(i, self.cfg))
                 if shortformer_pos_embed is not None:
-                    print(" shortformer_pos_embed = " + str(self.cfg.device))
                     shortformer_pos_embed = shortformer_pos_embed.to(
                         devices.get_device_for_block_index(i, self.cfg)
                     )
