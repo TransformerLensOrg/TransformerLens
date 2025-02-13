@@ -301,6 +301,80 @@
 <p>Devices.</p>
 <p>Utilities to get the correct device, and assist in distributing model layers across multiple
 devices.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="transformer_lens.utilities.devices.AvailableDeviceMemory">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">AvailableDeviceMemory</span></span><a class="headerlink" href="#transformer_lens.utilities.devices.AvailableDeviceMemory" title="Permalink to this definition">#</a></dt>
+<dd><p>This type is passed around between different CUDA memory operations.
+The first entry of each tuple will be the device index.
+The second entry will be how much memory is currently available.</p>
+<p>alias of <code class="xref py py-class docutils literal notranslate"><span class="pre">list</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code>]]</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.devices.calculate_available_device_cuda_memory">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">calculate_available_device_cuda_memory</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#transformer_lens.utilities.devices.calculate_available_device_cuda_memory" title="Permalink to this definition">#</a></dt>
+<dd><p>Calculates how much memory is available at this moment for the device at the indicated index</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>i</strong> (<em>int</em>) – The index we are looking at</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>How memory is available</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.devices.determine_available_memory_for_available_devices">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">determine_available_memory_for_available_devices</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utilities.devices.determine_available_memory_for_available_devices" title="Permalink to this definition">#</a></dt>
+<dd><p>Gets all available CUDA devices with their current memory calculated</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The list of all available devices with memory precalculated</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>AvailableDeviceMemory</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.devices.get_best_available_cuda_device">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">get_best_available_cuda_device</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">max_devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">device</span></span></span><a class="headerlink" href="#transformer_lens.utilities.devices.get_best_available_cuda_device" title="Permalink to this definition">#</a></dt>
+<dd><p>Gets whichever cuda device has the most available amount of memory for use</p>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>EnvironmentError</strong> – If there are no available devices, this will error out</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The specific device that should be used</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.device</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.devices.get_best_available_device">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">get_best_available_device</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig" title="transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><span class="pre">HookedTransformerConfig</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">device</span></span></span><a class="headerlink" href="#transformer_lens.utilities.devices.get_best_available_device" title="Permalink to this definition">#</a></dt>
+<dd><p>Gets the best available device to be used based on the passed in arguments</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>device</strong> (<em>Union</em><em>[</em><em>torch.device</em><em>, </em><em>str</em><em>]</em>) – Either the existing torch device or the string identifier</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The best available device</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>torch.device</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utilities.devices.get_device_for_block_index">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">get_device_for_block_index</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="transformer_lens.HookedTransformerConfig.html#transformer_lens.HookedTransformerConfig.HookedTransformerConfig" title="transformer_lens.HookedTransformerConfig.HookedTransformerConfig"><span class="pre">HookedTransformerConfig</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">device</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utilities.devices.get_device_for_block_index" title="Permalink to this definition">#</a></dt>
@@ -323,12 +397,36 @@ If not provided, the function uses the device specified in the configuration (cf
 <dd class="field-odd"><p>torch.device</p>
 </dd>
 </dl>
+<dl class="simple">
+<dt>Deprecated:</dt><dd><p>This function did not take into account a few factors for multi-GPU support. You should now
+use get_best_available_device in order to properly run models on multiple devices.
+This will be removed in 3.0</p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="transformer_lens.utilities.devices.move_to_and_update_config">
 <span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">move_to_and_update_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer" title="transformer_lens.HookedTransformer.HookedTransformer"><span class="pre">HookedTransformer</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.HookedEncoder.html#transformer_lens.HookedEncoder.HookedEncoder" title="transformer_lens.HookedEncoder.HookedEncoder"><span class="pre">HookedEncoder</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="transformer_lens.HookedEncoderDecoder.html#transformer_lens.HookedEncoderDecoder.HookedEncoderDecoder" title="transformer_lens.HookedEncoderDecoder.HookedEncoderDecoder"><span class="pre">HookedEncoderDecoder</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_or_dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">device</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dtype</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_details</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#transformer_lens.utilities.devices.move_to_and_update_config" title="Permalink to this definition">#</a></dt>
 <dd><p>Wrapper around <cite>to</cite> that also updates <cite>model.cfg</cite>.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="transformer_lens.utilities.devices.sort_devices_based_on_available_memory">
+<span class="sig-prename descclassname"><span class="pre">transformer_lens.utilities.devices.</span></span><span class="sig-name descname"><span class="pre">sort_devices_based_on_available_memory</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">devices</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#transformer_lens.utilities.devices.sort_devices_based_on_available_memory" title="Permalink to this definition">#</a></dt>
+<dd><p>Sorts all available devices with devices with the most available memory returned first</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>devices</strong> (<em>AvailableDeviceMemory</em>) – All available devices with memory calculated</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The same list of passed through devices sorted with devices with most
+available memory first</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>AvailableDeviceMemory</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -389,8 +487,14 @@ If not provided, the function uses the device specified in the configuration (cf
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">transformer_lens.utilities.devices</a><ul>
+<li><a class="reference internal" href="#transformer_lens.utilities.devices.AvailableDeviceMemory"><code class="docutils literal notranslate"><span class="pre">AvailableDeviceMemory</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.devices.calculate_available_device_cuda_memory"><code class="docutils literal notranslate"><span class="pre">calculate_available_device_cuda_memory()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.devices.determine_available_memory_for_available_devices"><code class="docutils literal notranslate"><span class="pre">determine_available_memory_for_available_devices()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.devices.get_best_available_cuda_device"><code class="docutils literal notranslate"><span class="pre">get_best_available_cuda_device()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.devices.get_best_available_device"><code class="docutils literal notranslate"><span class="pre">get_best_available_device()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.devices.get_device_for_block_index"><code class="docutils literal notranslate"><span class="pre">get_device_for_block_index()</span></code></a></li>
 <li><a class="reference internal" href="#transformer_lens.utilities.devices.move_to_and_update_config"><code class="docutils literal notranslate"><span class="pre">move_to_and_update_config()</span></code></a></li>
+<li><a class="reference internal" href="#transformer_lens.utilities.devices.sort_devices_based_on_available_memory"><code class="docutils literal notranslate"><span class="pre">sort_devices_based_on_available_memory()</span></code></a></li>
 </ul>
 </li>
 </ul>
