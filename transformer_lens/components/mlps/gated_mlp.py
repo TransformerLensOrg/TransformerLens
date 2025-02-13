@@ -51,7 +51,7 @@ class GatedMLP(CanBeUsedAsMLP):
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         # Technically, all these einsums could be done with a single matmul, but this is more readable.
         if self.W_gate.device != x.device:
-            self.to(x.device)
+            x = x.to(self.W_gate.device)
         pre_act = self.hook_pre(
             torch.matmul(x, self.W_gate)  # batch pos d_model, d_model d_mlp -> batch pos d_mlp
         )  # [batch, pos, d_mlp]
