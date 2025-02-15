@@ -153,33 +153,49 @@ class TransformerBlock(nn.Module):
             key_input = attn_in
             value_input = attn_in
 
-        attn_out = (
-            # hook the residual stream states that are used to calculate the
-            # queries, keys and values, independently.
-            # Then take the layer norm of these inputs, and pass these to the attention module.
-            self.attn(
-                query_input=self.ln1(query_input)
-                + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                key_input=self.ln1(key_input)
-                + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                value_input=self.ln1(value_input),
-                past_kv_cache_entry=past_kv_cache_entry,
-                attention_mask=attention_mask,
-            )
-        )  # [batch, pos, d_model]
+        if self.cfg.original_architecture == "Olmo2ForCausalLM":
+            attn_out = self.attn(
+            query_input=query_input,
+            key_input=key_input,
+            value_input=value_input,
+            past_kv_cache_entry=past_kv_cache_entry,
+            attention_mask=attention_mask,
+        )
+        else:
+            attn_out = (
+                # hook the residual stream states that are used to calculate the
+                # queries, keys and values, independently.
+                # Then take the layer norm of these inputs, and pass these to the attention module.
+                self.attn(
+                    query_input=self.ln1(query_input)
+                    + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                    key_input=self.ln1(key_input)
+                    + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
+                    value_input=self.ln1(value_input),
+                    past_kv_cache_entry=past_kv_cache_entry,
+                    attention_mask=attention_mask,
+                )
+            )  # [batch, pos, d_model]
         if self.cfg.use_normalization_before_and_after:
             # If we use LayerNorm both before and after, then apply the second LN after the layer
             # and before the hook. We do it before the hook so hook_attn_out captures "that which
             # is added to the residual stream"
             attn_out = self.ln1_post(attn_out)
         attn_out = self.hook_attn_out(attn_out)
+        if self.cfg.original_architecture == "Olmo2ForCausalLM":
+            attn_out = self.ln1(attn_out)
+
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             mlp_in = (
                 resid_mid if not self.cfg.use_hook_mlp_in else self.hook_mlp_in(resid_mid.clone())
             )
-            normalized_resid_mid = self.ln2(mlp_in)
-            mlp_out = self.apply_mlp(normalized_resid_mid)
+            if self.cfg.original_architecture == "Olmo2ForCausalLM":
+                mlp_out = self.apply_mlp(mlp_in) 
+                mlp_out = self.ln2(mlp_out)
+            else:
+                normalized_resid_mid = self.ln2(mlp_in)
+                mlp_out = self.apply_mlp(normalized_resid_mid)
             resid_post = self.hook_resid_post(resid_mid + mlp_out)  # [batch, pos, d_model]
         elif self.cfg.parallel_attn_mlp:
             # Dumb thing done by GPT-J, both MLP and Attn read from resid_pre and write to resid_post, no resid_mid used.
