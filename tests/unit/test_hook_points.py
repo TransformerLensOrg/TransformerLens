@@ -1,6 +1,4 @@
 from unittest import mock
-from collections import OrderedDict
-from torch.utils.hooks import RemovableHandle
 
 from transformer_lens.hook_points import HookPoint
 
