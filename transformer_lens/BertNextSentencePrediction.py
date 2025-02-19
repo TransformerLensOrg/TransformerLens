@@ -72,11 +72,10 @@ class BertNextSentencePrediction:
         sides or prepend_bos.
         Args:
             input: List[str]]: The input to tokenize.
-            move_to_device (bool): Whether to move the output tensor of tokens to the device the
-                model lives on. Defaults to True
+            move_to_device (bool): Whether to move the output tensor of tokens to the device the model lives on. Defaults to True
             truncate (bool): If the output tokens are too long, whether to truncate the output
-                tokens to the model's max context window. Does nothing for shorter inputs.
-                Defaults to True.
+            tokens to the model's max context window. Does nothing for shorter inputs. Defaults to
+            True.
         """
 
         if len(input) != 2:
