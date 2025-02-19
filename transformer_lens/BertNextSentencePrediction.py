@@ -143,8 +143,7 @@ class BertNextSentencePrediction:
 
         Args:
             input: The input to process. Can be one of:
-                - List[str]: A list of two strings representing the two sentences NSP
-                                should be performed on
+                - List[str]: A list of two strings representing the two sentences NSP should be performed on
                 - torch.Tensor: Input tokens as integers with shape (batch, position)
             return_type: Optional[str]: The type of output to return. Can be one of:
                 - None: Return nothing, don't calculate logits
