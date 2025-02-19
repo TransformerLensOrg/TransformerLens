@@ -1092,17 +1092,17 @@ class HookedTransformer(HookedRootModule):
         return self.to("mps")
 
     def move_model_modules_to_device(self):
-        self.embed.to(devices.get_device_for_block_index(0, self.cfg))
-        self.hook_embed.to(devices.get_device_for_block_index(0, self.cfg))
+        self.embed.to(devices.get_best_available_device(self.cfg))
+        self.hook_embed.to(devices.get_best_available_device(self.cfg))
         if self.cfg.positional_embedding_type != "rotary":
-            self.pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
-            self.hook_pos_embed.to(devices.get_device_for_block_index(0, self.cfg))
+            self.pos_embed.to(devices.get_best_available_device(self.cfg))
+            self.hook_pos_embed.to(devices.get_best_available_device(self.cfg))
 
         if hasattr(self, "ln_final"):
-            self.ln_final.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
-        self.unembed.to(devices.get_device_for_block_index(self.cfg.n_layers - 1, self.cfg))
+            self.ln_final.to(devices.get_best_available_device(self.cfg))
+        self.unembed.to(devices.get_best_available_device(self.cfg))
         for i, block in enumerate(self.blocks):
-            block.to(devices.get_device_for_block_index(i, self.cfg))
+            block.to(devices.get_best_available_device(self.cfg))
 
     @classmethod
     def from_pretrained(
