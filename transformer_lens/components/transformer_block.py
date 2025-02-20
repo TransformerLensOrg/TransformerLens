@@ -173,6 +173,10 @@ class TransformerBlock(nn.Module):
             # is added to the residual stream"
             attn_out = self.ln1_post(attn_out)
         attn_out = self.hook_attn_out(attn_out)
+
+        if resid_pre.device != attn_out.device:
+            resid_pre = resid_pre.to(attn_out.device)
+
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]
             mlp_in = (
