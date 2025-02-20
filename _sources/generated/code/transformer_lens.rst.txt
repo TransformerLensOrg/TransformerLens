@@ -8,6 +8,7 @@ Submodules
    :maxdepth: 1
 
    transformer_lens.ActivationCache
+   transformer_lens.BertNextSentencePrediction
    transformer_lens.FactoredMatrix
    transformer_lens.HookedEncoder
    transformer_lens.HookedEncoderDecoder

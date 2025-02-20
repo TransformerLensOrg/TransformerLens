@@ -1,0 +1,7 @@
+transformer\_lens.BertNextSentencePrediction
+============================================
+
+.. automodule:: transformer_lens.BertNextSentencePrediction
+   :members:
+   :undoc-members:
+   :show-inheritance:

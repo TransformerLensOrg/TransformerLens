@@ -168,6 +168,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="code/modules.html">Transformer Lens API</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2 has-children"><a class="reference internal" href="code/transformer_lens.html">transformer_lens</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.ActivationCache.html">transformer_lens.ActivationCache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.BertNextSentencePrediction.html">transformer_lens.BertNextSentencePrediction</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder</a></li>
 <li class="toctree-l3"><a class="reference internal" href="code/transformer_lens.HookedEncoderDecoder.html">transformer_lens.HookedEncoderDecoder</a></li>
@@ -188,6 +189,8 @@
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.bert_block.html">transformer_lens.components.bert_block</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.bert_embed.html">transformer_lens.components.bert_embed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.bert_mlm_head.html">transformer_lens.components.bert_mlm_head</a></li>
+<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.bert_nsp_head.html">transformer_lens.components.bert_nsp_head</a></li>
+<li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.bert_pooler.html">transformer_lens.components.bert_pooler</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.embed.html">transformer_lens.components.embed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.grouped_query_attention.html">transformer_lens.components.grouped_query_attention</a></li>
 <li class="toctree-l4"><a class="reference internal" href="code/transformer_lens.components.layer_norm.html">transformer_lens.components.layer_norm</a></li>
@@ -1731,7 +1734,43 @@
 <td class="text-right"><p>3072</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>tiny-stories-1M</p></td>
+<tr class="row-even"><td class="text-left"><p>bert-base-uncased</p></td>
+<td class="text-left"><p>85M</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-right"><p>768</p></td>
+<td class="text-right"><p>12</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>30522</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>3072</p></td>
+<td class="text-left"><p></p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>bert-large-cased</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>28996</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+<td class="text-left"><p></p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p>bert-large-uncased</p></td>
+<td class="text-left"><p>302M</p></td>
+<td class="text-right"><p>24</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>16</p></td>
+<td class="text-left"><p>gelu</p></td>
+<td class="text-right"><p>512</p></td>
+<td class="text-right"><p>30522</p></td>
+<td class="text-right"><p>64</p></td>
+<td class="text-right"><p>4096</p></td>
+<td class="text-left"><p></p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>tiny-stories-1M</p></td>
 <td class="text-left"><p>393K</p></td>
 <td class="text-right"><p>8</p></td>
 <td class="text-right"><p>64</p></td>
@@ -1743,7 +1782,7 @@
 <td class="text-right"><p>256</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>tiny-stories-3M</p></td>
+<tr class="row-even"><td class="text-left"><p>tiny-stories-3M</p></td>
 <td class="text-left"><p>1.6M</p></td>
 <td class="text-right"><p>8</p></td>
 <td class="text-right"><p>128</p></td>
@@ -1755,7 +1794,7 @@
 <td class="text-right"><p>512</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>tiny-stories-8M</p></td>
+<tr class="row-odd"><td class="text-left"><p>tiny-stories-8M</p></td>
 <td class="text-left"><p>6.3M</p></td>
 <td class="text-right"><p>8</p></td>
 <td class="text-right"><p>256</p></td>
@@ -1767,7 +1806,7 @@
 <td class="text-right"><p>1024</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>tiny-stories-28M</p></td>
+<tr class="row-even"><td class="text-left"><p>tiny-stories-28M</p></td>
 <td class="text-left"><p>25M</p></td>
 <td class="text-right"><p>8</p></td>
 <td class="text-right"><p>512</p></td>
@@ -1779,7 +1818,7 @@
 <td class="text-right"><p>2048</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>tiny-stories-33M</p></td>
+<tr class="row-odd"><td class="text-left"><p>tiny-stories-33M</p></td>
 <td class="text-left"><p>28M</p></td>
 <td class="text-right"><p>4</p></td>
 <td class="text-right"><p>768</p></td>
@@ -1791,7 +1830,7 @@
 <td class="text-right"><p>3072</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>tiny-stories-instruct-1M</p></td>
+<tr class="row-even"><td class="text-left"><p>tiny-stories-instruct-1M</p></td>
 <td class="text-left"><p>393K</p></td>
 <td class="text-right"><p>8</p></td>
 <td class="text-right"><p>64</p></td>
@@ -1803,7 +1842,7 @@
 <td class="text-right"><p>256</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>tiny-stories-instruct-3M</p></td>
+<tr class="row-odd"><td class="text-left"><p>tiny-stories-instruct-3M</p></td>
 <td class="text-left"><p>1.6M</p></td>
 <td class="text-right"><p>8</p></td>
 <td class="text-right"><p>128</p></td>
@@ -1815,7 +1854,7 @@
 <td class="text-right"><p>512</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>tiny-stories-instruct-8M</p></td>
+<tr class="row-even"><td class="text-left"><p>tiny-stories-instruct-8M</p></td>
 <td class="text-left"><p>6.3M</p></td>
 <td class="text-right"><p>8</p></td>
 <td class="text-right"><p>256</p></td>
@@ -1827,7 +1866,7 @@
 <td class="text-right"><p>1024</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>tiny-stories-instruct-28M</p></td>
+<tr class="row-odd"><td class="text-left"><p>tiny-stories-instruct-28M</p></td>
 <td class="text-left"><p>25M</p></td>
 <td class="text-right"><p>8</p></td>
 <td class="text-right"><p>512</p></td>
@@ -1839,7 +1878,7 @@
 <td class="text-right"><p>2048</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>tiny-stories-instruct-33M</p></td>
+<tr class="row-even"><td class="text-left"><p>tiny-stories-instruct-33M</p></td>
 <td class="text-left"><p>28M</p></td>
 <td class="text-right"><p>4</p></td>
 <td class="text-right"><p>768</p></td>
@@ -1851,7 +1890,7 @@
 <td class="text-right"><p>3072</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>tiny-stories-1L-21M</p></td>
+<tr class="row-odd"><td class="text-left"><p>tiny-stories-1L-21M</p></td>
 <td class="text-left"><p>13M</p></td>
 <td class="text-right"><p>1</p></td>
 <td class="text-right"><p>1024</p></td>
@@ -1863,7 +1902,7 @@
 <td class="text-right"><p>4096</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>tiny-stories-2L-33M</p></td>
+<tr class="row-even"><td class="text-left"><p>tiny-stories-2L-33M</p></td>
 <td class="text-left"><p>25M</p></td>
 <td class="text-right"><p>2</p></td>
 <td class="text-right"><p>1024</p></td>
@@ -1875,7 +1914,7 @@
 <td class="text-right"><p>4096</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>tiny-stories-instruct-1L-21M</p></td>
+<tr class="row-odd"><td class="text-left"><p>tiny-stories-instruct-1L-21M</p></td>
 <td class="text-left"><p>13M</p></td>
 <td class="text-right"><p>1</p></td>
 <td class="text-right"><p>1024</p></td>
@@ -1887,7 +1926,7 @@
 <td class="text-right"><p>4096</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>tiny-stories-instruct-2L-33M</p></td>
+<tr class="row-even"><td class="text-left"><p>tiny-stories-instruct-2L-33M</p></td>
 <td class="text-left"><p>25M</p></td>
 <td class="text-right"><p>2</p></td>
 <td class="text-right"><p>1024</p></td>
@@ -1899,7 +1938,7 @@
 <td class="text-right"><p>4096</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>stablelm-base-alpha-3b</p></td>
+<tr class="row-odd"><td class="text-left"><p>stablelm-base-alpha-3b</p></td>
 <td class="text-left"><p>3.2B</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>4096</p></td>
@@ -1911,7 +1950,7 @@
 <td class="text-right"><p>16384</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>stablelm-base-alpha-7b</p></td>
+<tr class="row-even"><td class="text-left"><p>stablelm-base-alpha-7b</p></td>
 <td class="text-left"><p>7.2B</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>6144</p></td>
@@ -1923,7 +1962,7 @@
 <td class="text-right"><p>24576</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>stablelm-tuned-alpha-3b</p></td>
+<tr class="row-odd"><td class="text-left"><p>stablelm-tuned-alpha-3b</p></td>
 <td class="text-left"><p>3.2B</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>4096</p></td>
@@ -1935,7 +1974,7 @@
 <td class="text-right"><p>16384</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>stablelm-tuned-alpha-7b</p></td>
+<tr class="row-even"><td class="text-left"><p>stablelm-tuned-alpha-7b</p></td>
 <td class="text-left"><p>7.2B</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>6144</p></td>
@@ -1947,7 +1986,7 @@
 <td class="text-right"><p>24576</p></td>
 <td class="text-left"><p></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p>mistral-7b</p></td>
+<tr class="row-odd"><td class="text-left"><p>mistral-7b</p></td>
 <td class="text-left"><p>7.8B</p></td>
 <td class="text-right"><p>32</p></td>
 <td class="text-right"><p>4096</p></td>
@@ -1959,7 +1998,7 @@
 <td class="text-right"><p>14336</p></td>
 <td class="text-left"><p>8</p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p>mistral-7b-instruct</p></td>
+<tr class="row-even"><td class="text-left"><p>mistral-7b-instruct</p></td>
 <td class="text-left"><p>7.8B</p></td>
 <td class="text-right"><p>32</p></td>
 <td class="text-right"><p>4096</p></td>
@@ -1969,6 +2008,18 @@
 <td class="text-right"><p>32000</p></td>
 <td class="text-right"><p>128</p></td>
 <td class="text-right"><p>14336</p></td>
+<td class="text-left"><p>8</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p>mistralai/Mistral-Small-24B-Base-2501</p></td>
+<td class="text-left"><p>23B</p></td>
+<td class="text-right"><p>40</p></td>
+<td class="text-right"><p>5120</p></td>
+<td class="text-right"><p>32</p></td>
+<td class="text-left"><p>silu</p></td>
+<td class="text-right"><p>2048</p></td>
+<td class="text-right"><p>131072</p></td>
+<td class="text-right"><p>128</p></td>
+<td class="text-right"><p>32768</p></td>
 <td class="text-left"><p>8</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p>mistral-nemo-base-2407</p></td>

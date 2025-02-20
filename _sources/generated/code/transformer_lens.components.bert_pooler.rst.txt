@@ -1,0 +1,7 @@
+transformer\_lens.components.bert\_pooler
+=========================================
+
+.. automodule:: transformer_lens.components.bert_pooler
+   :members:
+   :undoc-members:
+   :show-inheritance:

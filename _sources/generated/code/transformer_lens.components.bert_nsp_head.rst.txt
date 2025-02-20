@@ -1,0 +1,7 @@
+transformer\_lens.components.bert\_nsp\_head
+============================================
+
+.. automodule:: transformer_lens.components.bert_nsp_head
+   :members:
+   :undoc-members:
+   :show-inheritance:

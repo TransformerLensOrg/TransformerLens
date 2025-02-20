@@ -67,7 +67,7 @@
             <a id="nextFileLink" class="nav" href="d_db46118ef83ad831_bert_mlm_head_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.4.4">coverage.py v7.4.4</a>,
-            created at 2025-02-18 01:48 +0000
+            created at 2025-02-20 00:46 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"/>
@@ -91,7 +91,7 @@
     <p class="run"><span class="n"><a id="t7" href="#t7">7</a></span><span class="t"><span class="key">import</span> <span class="nam">einops</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t8" href="#t8">8</a></span><span class="t"><span class="key">import</span> <span class="nam">torch</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t9" href="#t9">9</a></span><span class="t"><span class="key">import</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">nn</span> <span class="key">as</span> <span class="nam">nn</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t10" href="#t10">10</a></span><span class="t"><span class="key">from</span> <span class="nam">jaxtyping</span> <span class="key">import</span> <span class="nam">Int</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t10" href="#t10">10</a></span><span class="t"><span class="key">from</span> <span class="nam">jaxtyping</span> <span class="key">import</span> <span class="nam">Float</span><span class="op">,</span> <span class="nam">Int</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t11" href="#t11">11</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t12" href="#t12">12</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">components</span> <span class="key">import</span> <span class="nam">Embed</span><span class="op">,</span> <span class="nam">LayerNorm</span><span class="op">,</span> <span class="nam">PosEmbed</span><span class="op">,</span> <span class="nam">TokenTypeEmbed</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t13" href="#t13">13</a></span><span class="t"><span class="key">from</span> <span class="nam">transformer_lens</span><span class="op">.</span><span class="nam">hook_points</span> <span class="key">import</span> <span class="nam">HookPoint</span>&nbsp;</span><span class="r"></span></p>
@@ -119,7 +119,7 @@
     <p class="pln"><span class="n"><a id="t35" href="#t35">35</a></span><span class="t">        <span class="nam">self</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t36" href="#t36">36</a></span><span class="t">        <span class="nam">input_ids</span><span class="op">:</span> <span class="nam">Int</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos"</span><span class="op">]</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t37" href="#t37">37</a></span><span class="t">        <span class="nam">token_type_ids</span><span class="op">:</span> <span class="nam">Optional</span><span class="op">[</span><span class="nam">Int</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos"</span><span class="op">]</span><span class="op">]</span> <span class="op">=</span> <span class="key">None</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t">    <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t38" href="#t38">38</a></span><span class="t">    <span class="op">)</span> <span class="op">-></span> <span class="nam">Float</span><span class="op">[</span><span class="nam">torch</span><span class="op">.</span><span class="nam">Tensor</span><span class="op">,</span> <span class="str">"batch pos d_model"</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t39" href="#t39">39</a></span><span class="t">        <span class="nam">base_index_id</span> <span class="op">=</span> <span class="nam">torch</span><span class="op">.</span><span class="nam">arange</span><span class="op">(</span><span class="nam">input_ids</span><span class="op">.</span><span class="nam">shape</span><span class="op">[</span><span class="num">1</span><span class="op">]</span><span class="op">,</span> <span class="nam">device</span><span class="op">=</span><span class="nam">input_ids</span><span class="op">.</span><span class="nam">device</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t40" href="#t40">40</a></span><span class="t">        <span class="nam">index_ids</span> <span class="op">=</span> <span class="nam">einops</span><span class="op">.</span><span class="nam">repeat</span><span class="op">(</span><span class="nam">base_index_id</span><span class="op">,</span> <span class="str">"pos -> batch pos"</span><span class="op">,</span> <span class="nam">batch</span><span class="op">=</span><span class="nam">input_ids</span><span class="op">.</span><span class="nam">shape</span><span class="op">[</span><span class="num">0</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t41" href="#t41">41</a></span><span class="t">        <span class="key">if</span> <span class="nam">token_type_ids</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -143,7 +143,7 @@
             <a id="nextFileLink" class="nav" href="d_db46118ef83ad831_bert_mlm_head_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.4.4">coverage.py v7.4.4</a>,
-            created at 2025-02-18 01:48 +0000
+            created at 2025-02-20 00:46 +0000
         </p>
     </div>
 </footer>

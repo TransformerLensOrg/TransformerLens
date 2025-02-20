@@ -166,6 +166,7 @@
 <li class="toctree-l1 has-children"><a class="reference internal" href="generated/code/modules.html">Transformer Lens API</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l2 has-children"><a class="reference internal" href="generated/code/transformer_lens.html">transformer_lens</a><input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
 <li class="toctree-l3"><a class="reference internal" href="generated/code/transformer_lens.ActivationCache.html">transformer_lens.ActivationCache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="generated/code/transformer_lens.BertNextSentencePrediction.html">transformer_lens.BertNextSentencePrediction</a></li>
 <li class="toctree-l3"><a class="reference internal" href="generated/code/transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix</a></li>
 <li class="toctree-l3"><a class="reference internal" href="generated/code/transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder</a></li>
 <li class="toctree-l3"><a class="reference internal" href="generated/code/transformer_lens.HookedEncoderDecoder.html">transformer_lens.HookedEncoderDecoder</a></li>
@@ -186,6 +187,8 @@
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.components.bert_block.html">transformer_lens.components.bert_block</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.components.bert_embed.html">transformer_lens.components.bert_embed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.components.bert_mlm_head.html">transformer_lens.components.bert_mlm_head</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.components.bert_nsp_head.html">transformer_lens.components.bert_nsp_head</a></li>
+<li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.components.bert_pooler.html">transformer_lens.components.bert_pooler</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.components.embed.html">transformer_lens.components.embed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.components.grouped_query_attention.html">transformer_lens.components.grouped_query_attention</a></li>
 <li class="toctree-l4"><a class="reference internal" href="generated/code/transformer_lens.components.layer_norm.html">transformer_lens.components.layer_norm</a></li>
@@ -484,6 +487,12 @@
 </li>
         <li><a href="generated/code/transformer_lens.components.bert_mlm_head.html#transformer_lens.components.bert_mlm_head.BertMLMHead">BertMLMHead (class in transformer_lens.components.bert_mlm_head)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.BertNextSentencePrediction.html#transformer_lens.BertNextSentencePrediction.BertNextSentencePrediction">BertNextSentencePrediction (class in transformer_lens.BertNextSentencePrediction)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.components.bert_nsp_head.html#transformer_lens.components.bert_nsp_head.BertNSPHead">BertNSPHead (class in transformer_lens.components.bert_nsp_head)</a>
+</li>
+        <li><a href="generated/code/transformer_lens.components.bert_pooler.html#transformer_lens.components.bert_pooler.BertPooler">BertPooler (class in transformer_lens.components.bert_pooler)</a>
+</li>
     </ul></td>
   </tr></table>
 </section>
@@ -672,6 +681,8 @@
 </li>
         <li><a href="generated/code/transformer_lens.components.embed.html#transformer_lens.components.embed.Embed">Embed (class in transformer_lens.components.embed)</a>
 </li>
+        <li><a href="generated/code/transformer_lens.HookedEncoder.html#transformer_lens.HookedEncoder.HookedEncoder.encoder_output">encoder_output() (transformer_lens.HookedEncoder.HookedEncoder method)</a>
+</li>
         <li><a href="generated/code/transformer_lens.past_key_value_caching.html#transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache.entries">entries (transformer_lens.past_key_value_caching.HookedTransformerKeyValueCache attribute)</a>
 </li>
     </ul></td>
@@ -700,14 +711,20 @@
 </li>
         <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.fold_value_biases">fold_value_biases() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
-        <li><a href="generated/code/transformer_lens.components.abstract_attention.html#transformer_lens.components.abstract_attention.AbstractAttention.forward">forward() (transformer_lens.components.abstract_attention.AbstractAttention method)</a>
+        <li><a href="generated/code/transformer_lens.BertNextSentencePrediction.html#transformer_lens.BertNextSentencePrediction.BertNextSentencePrediction.forward">forward() (transformer_lens.BertNextSentencePrediction.BertNextSentencePrediction method)</a>
 
         <ul>
+          <li><a href="generated/code/transformer_lens.components.abstract_attention.html#transformer_lens.components.abstract_attention.AbstractAttention.forward">(transformer_lens.components.abstract_attention.AbstractAttention method)</a>
+</li>
           <li><a href="generated/code/transformer_lens.components.bert_block.html#transformer_lens.components.bert_block.BertBlock.forward">(transformer_lens.components.bert_block.BertBlock method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.components.bert_embed.html#transformer_lens.components.bert_embed.BertEmbed.forward">(transformer_lens.components.bert_embed.BertEmbed method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.components.bert_mlm_head.html#transformer_lens.components.bert_mlm_head.BertMLMHead.forward">(transformer_lens.components.bert_mlm_head.BertMLMHead method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.components.bert_nsp_head.html#transformer_lens.components.bert_nsp_head.BertNSPHead.forward">(transformer_lens.components.bert_nsp_head.BertNSPHead method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.components.bert_pooler.html#transformer_lens.components.bert_pooler.BertPooler.forward">(transformer_lens.components.bert_pooler.BertPooler method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.components.embed.html#transformer_lens.components.embed.Embed.forward">(transformer_lens.components.embed.Embed method)</a>
 </li>
@@ -1092,6 +1109,8 @@
         <ul>
           <li><a href="generated/code/transformer_lens.ActivationCache.html#module-transformer_lens.ActivationCache">transformer_lens.ActivationCache</a>
 </li>
+          <li><a href="generated/code/transformer_lens.BertNextSentencePrediction.html#module-transformer_lens.BertNextSentencePrediction">transformer_lens.BertNextSentencePrediction</a>
+</li>
           <li><a href="generated/code/transformer_lens.components.abstract_attention.html#module-transformer_lens.components.abstract_attention">transformer_lens.components.abstract_attention</a>
 </li>
           <li><a href="generated/code/transformer_lens.components.attention.html#module-transformer_lens.components.attention">transformer_lens.components.attention</a>
@@ -1101,6 +1120,10 @@
           <li><a href="generated/code/transformer_lens.components.bert_embed.html#module-transformer_lens.components.bert_embed">transformer_lens.components.bert_embed</a>
 </li>
           <li><a href="generated/code/transformer_lens.components.bert_mlm_head.html#module-transformer_lens.components.bert_mlm_head">transformer_lens.components.bert_mlm_head</a>
+</li>
+          <li><a href="generated/code/transformer_lens.components.bert_nsp_head.html#module-transformer_lens.components.bert_nsp_head">transformer_lens.components.bert_nsp_head</a>
+</li>
+          <li><a href="generated/code/transformer_lens.components.bert_pooler.html#module-transformer_lens.components.bert_pooler">transformer_lens.components.bert_pooler</a>
 </li>
           <li><a href="generated/code/transformer_lens.components.embed.html#module-transformer_lens.components.embed">transformer_lens.components.embed</a>
 </li>
@@ -1397,9 +1420,11 @@
 </li>
         <li><a href="generated/code/transformer_lens.components.abstract_attention.html#transformer_lens.components.abstract_attention.AbstractAttention.rotate_every_two">rotate_every_two() (transformer_lens.components.abstract_attention.AbstractAttention method)</a>
 </li>
-        <li><a href="generated/code/transformer_lens.hook_points.html#transformer_lens.hook_points.HookedRootModule.run_with_cache">run_with_cache() (transformer_lens.hook_points.HookedRootModule method)</a>
+        <li><a href="generated/code/transformer_lens.BertNextSentencePrediction.html#transformer_lens.BertNextSentencePrediction.BertNextSentencePrediction.run_with_cache">run_with_cache() (transformer_lens.BertNextSentencePrediction.BertNextSentencePrediction method)</a>
 
         <ul>
+          <li><a href="generated/code/transformer_lens.hook_points.html#transformer_lens.hook_points.HookedRootModule.run_with_cache">(transformer_lens.hook_points.HookedRootModule method)</a>
+</li>
           <li><a href="generated/code/transformer_lens.HookedEncoder.html#transformer_lens.HookedEncoder.HookedEncoder.run_with_cache">(transformer_lens.HookedEncoder.HookedEncoder method)</a>
 </li>
           <li><a href="generated/code/transformer_lens.HookedEncoderDecoder.html#transformer_lens.HookedEncoderDecoder.HookedEncoderDecoder.run_with_cache">(transformer_lens.HookedEncoderDecoder.HookedEncoderDecoder method)</a>
@@ -1519,9 +1544,13 @@
 </li>
         <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.to_string">to_string() (transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
-        <li><a href="generated/code/transformer_lens.HookedEncoderDecoder.html#transformer_lens.HookedEncoderDecoder.HookedEncoderDecoder.to_tokens">to_tokens() (transformer_lens.HookedEncoderDecoder.HookedEncoderDecoder method)</a>
+        <li><a href="generated/code/transformer_lens.BertNextSentencePrediction.html#transformer_lens.BertNextSentencePrediction.BertNextSentencePrediction.to_tokens">to_tokens() (transformer_lens.BertNextSentencePrediction.BertNextSentencePrediction method)</a>
 
         <ul>
+          <li><a href="generated/code/transformer_lens.HookedEncoder.html#transformer_lens.HookedEncoder.HookedEncoder.to_tokens">(transformer_lens.HookedEncoder.HookedEncoder method)</a>
+</li>
+          <li><a href="generated/code/transformer_lens.HookedEncoderDecoder.html#transformer_lens.HookedEncoderDecoder.HookedEncoderDecoder.to_tokens">(transformer_lens.HookedEncoderDecoder.HookedEncoderDecoder method)</a>
+</li>
           <li><a href="generated/code/transformer_lens.HookedTransformer.html#transformer_lens.HookedTransformer.HookedTransformer.to_tokens">(transformer_lens.HookedTransformer.HookedTransformer method)</a>
 </li>
         </ul></li>
@@ -1544,6 +1573,13 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.ActivationCache.html#module-transformer_lens.ActivationCache">module</a>
+</li>
+        </ul></li>
+        <li>
+    transformer_lens.BertNextSentencePrediction
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.BertNextSentencePrediction.html#module-transformer_lens.BertNextSentencePrediction">module</a>
 </li>
         </ul></li>
         <li>
@@ -1579,6 +1615,20 @@
 
         <ul>
           <li><a href="generated/code/transformer_lens.components.bert_mlm_head.html#module-transformer_lens.components.bert_mlm_head">module</a>
+</li>
+        </ul></li>
+        <li>
+    transformer_lens.components.bert_nsp_head
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.components.bert_nsp_head.html#module-transformer_lens.components.bert_nsp_head">module</a>
+</li>
+        </ul></li>
+        <li>
+    transformer_lens.components.bert_pooler
+
+        <ul>
+          <li><a href="generated/code/transformer_lens.components.bert_pooler.html#module-transformer_lens.components.bert_pooler">module</a>
 </li>
         </ul></li>
         <li>
@@ -1686,6 +1736,8 @@
           <li><a href="generated/code/transformer_lens.head_detector.html#module-transformer_lens.head_detector">module</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     transformer_lens.hook_points
 
@@ -1700,8 +1752,6 @@
           <li><a href="generated/code/transformer_lens.HookedEncoder.html#module-transformer_lens.HookedEncoder">module</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     transformer_lens.HookedEncoderDecoder
 

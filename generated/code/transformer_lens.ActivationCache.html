@@ -3,7 +3,7 @@
   <head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width,initial-scale=1"/>
     <meta name="color-scheme" content="light dark"><meta name="generator" content="Docutils 0.19: https://docutils.sourceforge.io/" />
-<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.FactoredMatrix" href="transformer_lens.FactoredMatrix.html" /><link rel="prev" title="transformer_lens" href="transformer_lens.html" />
+<link rel="index" title="Index" href="../../genindex.html" /><link rel="search" title="Search" href="../../search.html" /><link rel="next" title="transformer_lens.BertNextSentencePrediction" href="transformer_lens.BertNextSentencePrediction.html" /><link rel="prev" title="transformer_lens" href="transformer_lens.html" />
 
     <link rel="shortcut icon" href="../../_static/favicon.ico"/><!-- Generated with Sphinx 5.2.3 and Furo 2023.03.27 -->
         <title>transformer_lens.ActivationCache - TransformerLens Documentation</title>
@@ -168,6 +168,7 @@
 <li class="toctree-l1 current has-children"><a class="reference internal" href="modules.html">Transformer Lens API</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l2 current has-children"><a class="reference internal" href="transformer_lens.html">transformer_lens</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle child pages in navigation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
 <li class="toctree-l3 current current-page"><a class="current reference internal" href="#">transformer_lens.ActivationCache</a></li>
+<li class="toctree-l3"><a class="reference internal" href="transformer_lens.BertNextSentencePrediction.html">transformer_lens.BertNextSentencePrediction</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.FactoredMatrix.html">transformer_lens.FactoredMatrix</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoder.html">transformer_lens.HookedEncoder</a></li>
 <li class="toctree-l3"><a class="reference internal" href="transformer_lens.HookedEncoderDecoder.html">transformer_lens.HookedEncoderDecoder</a></li>
@@ -188,6 +189,8 @@
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_block.html">transformer_lens.components.bert_block</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_embed.html">transformer_lens.components.bert_embed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_mlm_head.html">transformer_lens.components.bert_mlm_head</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_nsp_head.html">transformer_lens.components.bert_nsp_head</a></li>
+<li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.bert_pooler.html">transformer_lens.components.bert_pooler</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.embed.html">transformer_lens.components.embed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.grouped_query_attention.html">transformer_lens.components.grouped_query_attention</a></li>
 <li class="toctree-l4"><a class="reference internal" href="transformer_lens.components.layer_norm.html">transformer_lens.components.layer_norm</a></li>
@@ -318,7 +321,7 @@ important activations from a forward pass of the model, and provides a variety o
 functions to investigate them. The common way to access it is to run the model with
 <code class="xref py py-meth docutils literal notranslate"><span class="pre">transformer_lens.HookedTransformer.run_with_cache()</span></code>.</p>
 <p>Examples:</p>
-<p>When investigating a particular behaviour of a modal, a very common first step is to try and
+<p>When investigating a particular behaviour of a model, a very common first step is to try and
 understand which components of the model are most responsible for that behaviour. For example,
 if you’re investigating the prompt “Why did the chicken cross the” -&gt; “ road”, you might want to
 understand if there is a specific sublayer (mlp or multi-head attention) that is responsible for
@@ -838,12 +841,12 @@ or decorator achieves similar effects:</p>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="transformer_lens.FactoredMatrix.html">
+          <a class="next-page" href="transformer_lens.BertNextSentencePrediction.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">transformer_lens.FactoredMatrix</div>
+                <div class="title">transformer_lens.BertNextSentencePrediction</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

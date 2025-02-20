@@ -12,6 +12,8 @@ Submodules
    transformer_lens.components.bert_block
    transformer_lens.components.bert_embed
    transformer_lens.components.bert_mlm_head
+   transformer_lens.components.bert_nsp_head
+   transformer_lens.components.bert_pooler
    transformer_lens.components.embed
    transformer_lens.components.grouped_query_attention
    transformer_lens.components.layer_norm
