@@ -41,6 +41,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_qwen2_weights,
     convert_qwen_weights,
     convert_t5_weights,
+    convert_openelm_weights,
 )
 
 OFFICIAL_MODEL_NAMES = [
@@ -255,6 +256,14 @@ OFFICIAL_MODEL_NAMES = [
     "google-t5/t5-base",
     "google-t5/t5-large",
     "ai-forever/mGPT",
+    "apple/OpenELM-270M",
+    "apple/OpenELM-450M",
+    "apple/OpenELM-1_1B",
+    "apple/OpenELM-3B",
+    "apple/OpenELM-270M-Instruct",
+    "apple/OpenELM-450M-Instruct",
+    "apple/OpenELM-1_1B-Instruct",
+    "apple/OpenELM-3B-Instruct",
 ]
 """Official model names for models on HuggingFace."""
 
@@ -1355,6 +1364,49 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "parallel_attn_mlp": False,
             "rotary_dim": hf_config.hidden_size // hf_config.num_attention_heads,
         }
+    elif architecture == "OpenELMForCausalLM":
+        def make_divisible(
+            v: Union[float, int],
+            divisor: Optional[int] = 8,
+            min_value: Optional[Union[float, int]] = None,
+        ) -> Union[float, int]:
+            """
+            This function is taken from the original tf repo.
+            It ensures that all layers have a channel number that is divisible by the divisor
+            It can be seen at:
+            https://github.com/tensorflow/models/blob/2cfc99eff5e5eb729c6793d2f3d03aa1c9be2b15/research/slim/nets/mobilenet/mobilenet.py#L62
+            Args:
+                v: input value
+                divisor: default to 8
+                min_value: minimum divisor value
+            Returns:
+                new_v: new divisible value
+            """
+            if min_value is None:
+                min_value = divisor
+            new_v = max(min_value, int(v + divisor / 2) // divisor * divisor)
+            # Make sure that round down does not go down by more than 10%.
+            if new_v < 0.9 * v:
+                new_v += divisor
+            return new_v
+            
+        cfg_dict = {
+            "d_model": hf_config.model_dim,
+            "d_head": hf_config.head_dim,
+            "n_heads": 64,# is this variable too? ,
+            "n_layers": hf_config.num_transformer_layers,
+            "n_ctx": hf_config.max_context_length,
+            "eps": 23, # what is going on here?? 
+            "d_vocab": hf_config.vocab_size,
+            "act_fn": "silu",
+            "initializer_range": hf_config.initializer_range, 
+            "normalization_type": "RMS",
+            "positional_embedding_type": "rotary", 
+            "trust_remote_code": True,
+            "n_key_value_heads": hf_config.num_kv_heads,
+            "n_query_heads": hf_config.num_query_heads,
+            "d_mlps": [(2 *  int(make_divisible(val * hf_config.model_dim, hf_config.ffn_dim_divisor))) for val in hf_config.ffn_multipliers], 
+        }
 
     elif official_model_name.startswith("google/gemma-2b"):
         # Architecture for Gemma 2b and Gemma 2b Instruct models
@@ -1506,7 +1558,10 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # All of these models use LayerNorm
     cfg_dict["original_architecture"] = architecture
     # The name such that AutoTokenizer.from_pretrained works
-    cfg_dict["tokenizer_name"] = official_model_name
+    if architecture == "OpenELMForCausalLM":
+        cfg_dict["tokenizer_name"] = "meta-llama/Llama-2-7b-hf"
+    else:
+        cfg_dict["tokenizer_name"] = official_model_name
     if kwargs.get("trust_remote_code", False):
         cfg_dict["trust_remote_code"] = True
     return cfg_dict
@@ -1901,6 +1956,8 @@ def get_pretrained_state_dict(
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma2ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "OpenELMForCausalLM":
+            state_dict = convert_openelm_weights(hf_model, cfg)
         else:
             raise ValueError(
                 f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
