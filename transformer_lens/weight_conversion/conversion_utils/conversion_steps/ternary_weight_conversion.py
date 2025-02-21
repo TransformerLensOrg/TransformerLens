@@ -1,4 +1,6 @@
+from collections.abc import Callable
 import torch
+from typing import Optional
 
 from .base_weight_conversion import BaseWeightConversion, CONVERSION_ACTION
 
@@ -7,7 +9,7 @@ PRIMARY_CONVERSION = torch.Tensor | BaseWeightConversion | None
 
 class TernaryWeightConversion(BaseWeightConversion):
     # TODO add none as fallback
-    def __init__(self, fallback_conversion: CONVERSION_ACTION, primary_conversion: PRIMARY_CONVERSION = None, input_filter: callable|None = None, output_filter: callable|None = None):
+    def __init__(self, fallback_conversion: CONVERSION_ACTION, primary_conversion: PRIMARY_CONVERSION = None, input_filter: Optional[Callable] = None, output_filter: Optional[Callable] = None):
         super().__init__(input_filter=input_filter, output_filter=output_filter)
         self.primary_conversion = primary_conversion
         self.fallback_conversion = fallback_conversion

@@ -1,8 +1,10 @@
+from collections.abc import Callable
+from typing import Optional
 from .base_weight_conversion import FIELD_SET, BaseWeightConversion
 
 
 class WeightConversionSet(BaseWeightConversion):
-    def __init__(self, weights: FIELD_SET, input_filter: callable|None = None, output_filter: callable|None = None):
+    def __init__(self, weights: FIELD_SET, input_filter: Optional[Callable] = None, output_filter: Optional[Callable] = None):
         super().__init__(input_filter=input_filter, output_filter=output_filter)
         self.weights = weights
 

@@ -1,8 +1,9 @@
+from collections.abc import Callable
 from .base_weight_conversion import BaseWeightConversion
 
 
 class CallableWeightConversion(BaseWeightConversion):
-    def __init__(self, convert_callable: callable):
+    def __init__(self, convert_callable: Callable):
         super().__init__()
         self.convert_callable = convert_callable
 

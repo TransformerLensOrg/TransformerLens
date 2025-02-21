@@ -11,8 +11,6 @@ from typing import Optional, Union
 import torch
 from torch import nn
 
-import transformer_lens
-
 AvailableDeviceMemory = list[tuple[int, int]]
 """
 This type is passed around between different CUDA memory operations.
@@ -83,7 +81,7 @@ def get_best_available_cuda_device(max_devices: Optional[int] = None) -> torch.d
     return torch.device("cuda", sorted_devices[0][0])
 
 
-def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -> torch.device:
+def get_best_available_device(cfg: "HookedTransformerConfig") -> torch.device:
     """Gets the best available device to be used based on the passed in arguments
 
     Args:
@@ -103,7 +101,7 @@ def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -
 
 def get_device_for_block_index(
     index: int,
-    cfg: "transformer_lens.HookedTransformerConfig",
+    cfg: "HookedTransformerConfig",
     device: Optional[Union[torch.device, str]] = None,
 ):
     """
@@ -152,9 +150,9 @@ def get_device():
 
 def move_to_and_update_config(
     model: Union[
-        "transformer_lens.HookedTransformer",
-        "transformer_lens.HookedEncoder",
-        "transformer_lens.HookedEncoderDecoder",
+        "HookedTransformer",
+        "HookedEncoder",
+        "HookedEncoderDecoder",
     ],
     device_or_dtype: Union[torch.device, str, torch.dtype],
     print_details=True,
