@@ -22,10 +22,6 @@ from transformers import (
 import transformer_lens.utils as utils
 from transformer_lens.factories import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.weight_conversion import (
-    convert_mingpt_weights,
-    convert_neel_solu_old_weights,
-)
 
 OFFICIAL_MODEL_NAMES = [
     "gpt2",

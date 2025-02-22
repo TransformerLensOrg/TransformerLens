@@ -10,8 +10,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.components.layer_norm import LayerNorm
-from transformer_lens.components.layer_norm_pre import LayerNormPre
+from transformer_lens.components import LayerNorm, LayerNormPre
 from transformer_lens.factories.activation_function_factory import (
     ActivationFunctionFactory,
 )
