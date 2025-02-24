@@ -20,6 +20,7 @@ from typing import (
     Tuple,
     Union,
     runtime_checkable,
+    cast,
 )
 
 import torch
@@ -347,7 +348,8 @@ class HookedRootModule(nn.Module):
             raise TypeError(
                 "Module set as Tensor for some reason!"
             )  # mypy seems to think these could be tensors after a torch update no idea why, or if this is possible
-        hook_point_module.add_hook(hook, dir=dir, level=self.context_level)
+        module_with_hook = cast(HookPoint, hook_point_module)
+        module_with_hook.add_hook(hook, dir=dir, level=self.context_level)
 
     def _enable_hooks_for_points(
         self,
