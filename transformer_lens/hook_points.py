@@ -220,7 +220,8 @@ class HookedRootModule(nn.Module):
             if name == "":
                 continue
             module.name = name
-            self.mod_dict[name] = module
+            if isinstance(module, nn.Module):
+                self.mod_dict[name] = module
             # TODO: is the bottom line the same as "if "HookPoint" in str(type(module)):"
             if isinstance(module, HookPoint):
                 self.hook_dict[name] = module
