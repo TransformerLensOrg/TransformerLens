@@ -1,3 +1,3 @@
-from .activation_function_factory import ActivationFunction, ActivationFunctionFactory
 from .mlp_factory import MLPFactory
+from .activation_function_factory import ActivationFunction, ActivationFunctionFactory
 from .weight_conversion_factory import WeightConversionFactory

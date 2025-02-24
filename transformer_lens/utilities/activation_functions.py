@@ -7,7 +7,7 @@ from typing import Callable, Dict
 import torch
 import torch.nn.functional as F
 
-from transformer_lens.utils import gelu_fast, gelu_new, solu
+from transformer_lens.utilities import gelu_fast, gelu_new, solu
 
 # Convenient type for the format of each activation function
 ActivationFunction = Callable[..., torch.Tensor]
