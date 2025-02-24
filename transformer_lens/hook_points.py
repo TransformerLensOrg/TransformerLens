@@ -220,8 +220,7 @@ class HookedRootModule(nn.Module):
             if name == "":
                 continue
             module.name = name
-            if isinstance(module, nn.Module):
-                self.mod_dict[name] = module
+            self.mod_dict[name] = module
             # TODO: is the bottom line the same as "if "HookPoint" in str(type(module)):"
             if isinstance(module, HookPoint):
                 self.hook_dict[name] = module
@@ -344,6 +343,10 @@ class HookedRootModule(nn.Module):
         hook_point_module = self.mod_dict[name]
         if not hasattr(hook_point_module, "add_hook"):
             raise TypeError(f"Expected a module with add_hook, got {type(hook_point_module)}")
+        if isinstance(hook_point_module, torch.Tensor):
+            raise TypeError(
+                "Module set as Tensor for some reason!"
+            )  # mypy seems to think these could be tensors after a torch update no idea why, or if this is possible
         hook_point_module.add_hook(hook, dir=dir, level=self.context_level)
 
     def _enable_hooks_for_points(
