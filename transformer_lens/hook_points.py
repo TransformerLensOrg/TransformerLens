@@ -341,10 +341,10 @@ class HookedRootModule(nn.Module):
             hook (Callable): The hook to add
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
         """
-        module = self.mod_dict[name]
-        if not hasattr(module, "add_hook"):
+        hook_point_module = self.mod_dict[name]
+        if not hasattr(hook_point_module, "add_hook"):
             raise TypeError(f"Expected a module with add_hook, got {type(obj)}")
-        self.module.add_hook(hook, dir=dir, level=self.context_level)
+        hook_point_module.add_hook(hook, dir=dir, level=self.context_level)
 
     def _enable_hooks_for_points(
         self,
