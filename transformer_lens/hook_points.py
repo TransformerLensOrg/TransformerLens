@@ -342,7 +342,7 @@ class HookedRootModule(nn.Module):
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
         """
         hook_point_module = self.mod_dict[name]
-        if not hasattr(hook_point_module, "add_hook"):
+        if not isinstance(hook_point_module, nn.Module):
             raise TypeError(f"Expected a module with add_hook, got {type(hook_point_module)}")
         hook_point_module.add_hook(hook, dir=dir, level=self.context_level)
 
