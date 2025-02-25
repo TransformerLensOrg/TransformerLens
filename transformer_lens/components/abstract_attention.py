@@ -1,6 +1,6 @@
 import math
 from abc import ABC
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, cast
 
 import einops
 import torch
@@ -23,7 +23,7 @@ if is_bitsandbytes_available():
 
 
 class AbstractAttention(ABC, nn.Module):
-    alibi: Union[torch.Tensor, None]
+    alibi: Optional[torch.Tensor] = None
 
     def __init__(
         self,
@@ -230,9 +230,12 @@ class AbstractAttention(ABC, nn.Module):
                 )
 
             # Take the last query_ctx positions so it also works with past_kv_cache
-            attn_scores += self.alibi[
-                :, -query_ctx:, :key_ctx
-            ]  # [batch, head_index, query_pos, key_pos]
+            if isinstance(self.alibi, torch.Tensor):
+                attn_scores += self.alibi[:, -query_ctx:, :key_ctx]
+            else:
+                raise TypeError(
+                    f"Expected self.alibi to be a Tensor, but got {type(self.alibi)}"
+                )  # [batch, head_index, query_pos, key_pos]
         elif self.cfg.positional_embedding_type == "relative_positional_bias":
             if position_bias is None:
                 if self.has_relative_attention_bias:
@@ -257,6 +260,8 @@ class AbstractAttention(ABC, nn.Module):
 
         attn_scores = self.hook_attn_scores(attn_scores)
         pattern = F.softmax(attn_scores, dim=-1)
+        if not isinstance(pattern, torch.Tensor):
+            raise TypeError(f"Expected 'pattern' to be a Tensor, got {type(pattern)}")
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
@@ -279,6 +284,12 @@ class AbstractAttention(ABC, nn.Module):
                 w = einops.rearrange(
                     self.W_O, "head_index d_head d_model -> d_model (head_index d_head)"
                 )
+
+                if self.b_O.device != w.device:
+                    w = w.to(self.b_O.device)
+                if self.b_O.device != z.device:
+                    z = z.to(self.b_O.device)
+
                 out = F.linear(
                     z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
                     w,
@@ -455,7 +466,9 @@ class AbstractAttention(ABC, nn.Module):
             )
 
         # Index back to front to ensure local attention works
-        final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
+        final_mask = cast(torch.Tensor, self.mask)[
+            None, None, -query_ctx_length:, -key_ctx_length:
+        ]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
 
@@ -470,7 +483,7 @@ class AbstractAttention(ABC, nn.Module):
             final_mask = (final_mask * attention_mask).bool()  # [batch, head, pos, offset_pos]
 
         attn_scores = attn_scores.to(final_mask.device)
-        return torch.where(final_mask, attn_scores, self.IGNORE)
+        return torch.where(final_mask, attn_scores, cast(torch.Tensor, self.IGNORE))
 
     def calculate_sin_cos_rotary(
         self,
@@ -552,24 +565,28 @@ class AbstractAttention(ABC, nn.Module):
         attention_mask: Optional[Int[torch.Tensor, "batch offset_pos"]] = None,
     ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
         # Only apply rotary to first rotary_dim dimensions (eg, if rotary_dim=64 and d_head=256, only apply to first 1/4 of dimensions)
+
+        if x.device != self.rotary_sin.device:
+            x = x.to(cast(torch.device, self.rotary_sin.device))
+
         x_pos = x.size(1)
         x_rot = x[..., : self.cfg.rotary_dim]
         x_pass = x[..., self.cfg.rotary_dim :]
         x_flip = self.rotate_every_two(x_rot)
 
         if attention_mask is None:
-            rotary_cos = self.rotary_cos[
+            rotary_cos = cast(torch.Tensor, self.rotary_cos)[
                 None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
             ]
-            rotary_sin = self.rotary_sin[
+            rotary_sin = cast(torch.Tensor, self.rotary_sin)[
                 None, past_kv_pos_offset : past_kv_pos_offset + x_pos, None, :
             ]
             x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
         else:
             offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
-            offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
-            mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
-            mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
+            offset_position_ids = offset_position_ids.to(cast(torch.device, self.rotary_cos.device))
+            mask_rotary_cos = cast(torch.Tensor, self.rotary_cos)[offset_position_ids, None, :]
+            mask_rotary_sin = cast(torch.Tensor, self.rotary_sin)[offset_position_ids, None, :]
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin
 
         return torch.cat([x_rotated, x_pass], dim=-1)
