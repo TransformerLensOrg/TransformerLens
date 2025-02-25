@@ -260,6 +260,8 @@ class AbstractAttention(ABC, nn.Module):
 
         attn_scores = self.hook_attn_scores(attn_scores)
         pattern = F.softmax(attn_scores, dim=-1)
+        if not isinstance(pattern, torch.Tensor):
+            raise TypeError(f"Expected 'pattern' to be a Tensor, got {type(pattern)}")
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)  # [batch, head_index, query_pos, key_pos]
         pattern = pattern.to(self.cfg.dtype)
