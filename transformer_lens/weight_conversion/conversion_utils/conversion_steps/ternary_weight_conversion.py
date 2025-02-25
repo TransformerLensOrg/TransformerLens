@@ -36,3 +36,6 @@ class TernaryWeightConversion(BaseWeightConversion):
             return super().process_weight_conversion(
                 input_value=input_value, conversion_details=self.fallback_conversion
             )
+
+    def __repr__(self):
+        return f"Is a ternary operation with the following primary conversion: {self.primary_conversion} and fallback conversion: {self.fallback_conversion}"

@@ -16,6 +16,9 @@ class GemmaWeightNormalizationConversion(BaseWeightConversion):
     def convert(self, input_value):
         return input_value.float() + torch.ones_like(input_value, dtype=torch.float32)
 
+    def __repr__(self):
+        return "Is an addition of 1 to the input tensor\n"
+
 
 class GemmaWeightConversion(ArchitectureConversion):
     def __init__(self, cfg: HookedTransformerConfig) -> None:

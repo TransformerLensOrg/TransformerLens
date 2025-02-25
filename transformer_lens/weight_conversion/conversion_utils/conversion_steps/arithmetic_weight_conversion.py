@@ -36,3 +36,6 @@ class ArithmeticWeightConversion(BaseWeightConversion):
                 return input_value * self.value
             case OperationTypes.DIVISION:
                 return input_value / self.value
+
+    def __repr__(self):
+        return f"Is the following arithmetic operation: {self.operation} and value: {self.value}"

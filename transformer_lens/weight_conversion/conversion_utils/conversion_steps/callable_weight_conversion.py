@@ -10,3 +10,6 @@ class CallableWeightConversion(BaseWeightConversion):
 
     def handle_conversion(self, input_value: dict):
         return self.convert_callable(input_value)
+
+    def __repr__(self):
+        return f"Is the following callable operation: {self.convert_callable}"
