@@ -24,7 +24,13 @@ from .tensors import (
     get_corner,
 )
 from .lm_utils import lm_cross_entropy_loss, lm_accuracy
-from .activation_utils import gelu_new, gelu_fast, solu
+from .activation_functions import (
+    gelu_new,
+    gelu_fast,
+    solu,
+    ActivationFunction,
+    SUPPORTED_ACTIVATIONS,
+)
 from .initialization_utils import (
     calc_fan_in_and_fan_out,
     init_xavier_uniform_,
