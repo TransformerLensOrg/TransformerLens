@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev*
+      - refactor*
     paths:
       - "**" # Include all files by default
       - "!.devcontainer/**"

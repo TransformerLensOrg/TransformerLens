@@ -20,28 +20,8 @@ from transformers import (
 )
 
 import transformer_lens.utils as utils
+from transformer_lens.factories.weight_conversion_factory import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.pretrained.weight_conversions import (
-    convert_bert_weights,
-    convert_bloom_weights,
-    convert_coder_weights,
-    convert_gemma_weights,
-    convert_gpt2_weights,
-    convert_gptj_weights,
-    convert_llama_weights,
-    convert_mingpt_weights,
-    convert_mistral_weights,
-    convert_mixtral_weights,
-    convert_neel_solu_old_weights,
-    convert_neo_weights,
-    convert_neox_weights,
-    convert_opt_weights,
-    convert_phi3_weights,
-    convert_phi_weights,
-    convert_qwen2_weights,
-    convert_qwen_weights,
-    convert_t5_weights,
-)
 
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
@@ -1754,40 +1734,13 @@ def get_checkpoint_labels(model_name: str, **kwargs):
         raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
 
-# %% Loading state dicts
-def get_pretrained_state_dict(
+def load_hugging_face_model(
     official_model_name: str,
     cfg: HookedTransformerConfig,
     hf_model=None,
     dtype: torch.dtype = torch.float32,
     **kwargs,
 ) -> Dict[str, torch.Tensor]:
-    """
-    Loads in the model weights for a pretrained model, and processes them to
-    have the HookedTransformer parameter names and shapes. Supports checkpointed
-    models (and expects the checkpoint info to be stored in the config object)
-
-    hf_model: Optionally, a HuggingFace model object. If provided, we will use
-        these weights rather than reloading the model.
-    dtype: The dtype to load the HuggingFace model in.
-    kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
-        Also given to other HuggingFace functions when compatible.
-    """
-    if "torch_dtype" in kwargs:
-        dtype = kwargs["torch_dtype"]
-        del kwargs["torch_dtype"]
-    if Path(official_model_name).exists():
-        official_model_name = str(Path(official_model_name).resolve())
-        logging.info(f"Loading model from local path {official_model_name}")
-    else:
-        official_model_name = get_official_model_name(official_model_name)
-    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
-        "trust_remote_code", False
-    ):
-        logging.warning(
-            f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
-        )
-        kwargs["trust_remote_code"] = True
     if (
         official_model_name.startswith("NeelNanda")
         or official_model_name.startswith("ArthurConmy")
@@ -1804,16 +1757,10 @@ def get_pretrained_state_dict(
             )[0]
         else:
             file_name = list(filter(lambda x: x.endswith("final.pth"), repo_files))[0]
-        state_dict = utils.download_file_from_hf(official_model_name, file_name, **kwargs)
+        hf_model = utils.download_file_from_hf(official_model_name, file_name, **kwargs)
 
         # Convert to dtype
-        state_dict = {k: v.to(dtype) for k, v in state_dict.items()}
-
-        if cfg.original_architecture == "neel-solu-old":
-            state_dict = convert_neel_solu_old_weights(state_dict, cfg)
-        elif cfg.original_architecture == "mingpt":
-            state_dict = convert_mingpt_weights(state_dict, cfg)
-        return state_dict
+        hf_model = {k: v.to(dtype) for k, v in hf_model.items()}
     else:
         if cfg.from_checkpoint:
             huggingface_token = os.environ.get("HF_TOKEN", "")
@@ -1861,53 +1808,54 @@ def get_pretrained_state_dict(
                     **kwargs,
                 )
 
-            # Load model weights, and fold in layer norm weights
+    return hf_model
 
-        for param in hf_model.parameters():
-            param.requires_grad = False
 
-        if cfg.original_architecture == "GPT2LMHeadModel":
-            state_dict = convert_gpt2_weights(hf_model, cfg)
-        elif cfg.original_architecture == "GPTNeoForCausalLM":
-            state_dict = convert_neo_weights(hf_model, cfg)
-        elif cfg.original_architecture == "OPTForCausalLM":
-            state_dict = convert_opt_weights(hf_model, cfg)
-        elif cfg.original_architecture == "GPTJForCausalLM":
-            state_dict = convert_gptj_weights(hf_model, cfg)
-        elif cfg.original_architecture == "GPTNeoXForCausalLM":
-            state_dict = convert_neox_weights(hf_model, cfg)
-        elif cfg.original_architecture == "LlamaForCausalLM":
-            state_dict = convert_llama_weights(hf_model, cfg)
-        elif cfg.original_architecture == "BertForMaskedLM":
-            state_dict = convert_bert_weights(hf_model, cfg)
-        elif cfg.original_architecture == "T5ForConditionalGeneration":
-            state_dict = convert_t5_weights(hf_model, cfg)
-        elif cfg.original_architecture == "MistralForCausalLM":
-            state_dict = convert_mistral_weights(hf_model, cfg)
-        elif cfg.original_architecture == "MixtralForCausalLM":
-            state_dict = convert_mixtral_weights(hf_model, cfg)
-        elif cfg.original_architecture == "BloomForCausalLM":
-            state_dict = convert_bloom_weights(hf_model, cfg)
-        elif cfg.original_architecture == "GPT2LMHeadCustomModel":
-            state_dict = convert_coder_weights(hf_model, cfg)
-        elif cfg.original_architecture == "QWenLMHeadModel":
-            state_dict = convert_qwen_weights(hf_model, cfg)
-        elif cfg.original_architecture == "Qwen2ForCausalLM":
-            state_dict = convert_qwen2_weights(hf_model, cfg)
-        elif cfg.original_architecture == "PhiForCausalLM":
-            state_dict = convert_phi_weights(hf_model, cfg)
-        elif cfg.original_architecture == "Phi3ForCausalLM":
-            state_dict = convert_phi3_weights(hf_model, cfg)
-        elif cfg.original_architecture == "GemmaForCausalLM":
-            state_dict = convert_gemma_weights(hf_model, cfg)
-        elif cfg.original_architecture == "Gemma2ForCausalLM":
-            state_dict = convert_gemma_weights(hf_model, cfg)
-        else:
-            raise ValueError(
-                f"Loading weights from the architecture is not currently supported: {cfg.original_architecture}, generated from model name {cfg.model_name}. Feel free to open an issue on GitHub to request this feature."
-            )
+# %% Loading state dicts
+def get_pretrained_state_dict(
+    official_model_name: str,
+    cfg: HookedTransformerConfig,
+    hf_model=None,
+    dtype: torch.dtype = torch.float32,
+    **kwargs,
+) -> Dict[str, torch.Tensor]:
+    """
+    Loads in the model weights for a pretrained model, and processes them to
+    have the HookedTransformer parameter names and shapes. Supports checkpointed
+    models (and expects the checkpoint info to be stored in the config object)
 
-        return state_dict
+    hf_model: Optionally, a HuggingFace model object. If provided, we will use
+        these weights rather than reloading the model.
+    dtype: The dtype to load the HuggingFace model in.
+    kwargs: Other optional arguments passed to HuggingFace's from_pretrained.
+        Also given to other HuggingFace functions when compatible.
+    """
+    if "torch_dtype" in kwargs:
+        dtype = kwargs["torch_dtype"]
+        del kwargs["torch_dtype"]
+    if Path(official_model_name).exists():
+        official_model_name = str(Path(official_model_name).resolve())
+        logging.info(f"Loading model from local path {official_model_name}")
+    else:
+        official_model_name = get_official_model_name(official_model_name)
+    if official_model_name.startswith(NEED_REMOTE_CODE_MODELS) and not kwargs.get(
+        "trust_remote_code", False
+    ):
+        logging.warning(
+            f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
+        )
+        kwargs["trust_remote_code"] = True
+
+    hf_model = load_hugging_face_model(
+        official_model_name, cfg=cfg, hf_model=hf_model, dtype=dtype, **kwargs
+    )
+
+    for param in hf_model.parameters():
+        param.requires_grad = False
+
+    weight_conversion_config = WeightConversionFactory.select_weight_conversion_config(cfg)
+
+    return weight_conversion_config.convert(hf_model)
 
 
 def fill_missing_keys(model, state_dict):

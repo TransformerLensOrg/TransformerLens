@@ -48,6 +48,7 @@ notebook-test:
 
 test:
 	make unit-test
+	make integration-test
 	make acceptance-test
 	make docstring-test
 	make notebook-test
