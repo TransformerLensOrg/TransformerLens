@@ -42,4 +42,8 @@ class RMSNorm(nn.Module):
             (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
         )
         x = self.hook_normalized(x / scale).to(self.cfg.dtype)  # [batch, pos, length]
+
+        if x.device != self.w.device:
+            self.to(x.device)
+
         return x * self.w
