@@ -39,6 +39,7 @@ import transformer_lens.loading_from_pretrained as loading
 import transformer_lens.utils as utils
 from transformer_lens.ActivationCache import ActivationCache
 from transformer_lens.components import (
+    AbstractAttention,
     Embed,
     LayerNorm,
     LayerNormPre,
@@ -2489,12 +2490,15 @@ class HookedTransformer(HookedRootModule):
         accumulated_bias = torch.zeros(self.cfg.d_model, device=self.cfg.device)
 
         for i in range(layer):
-            accumulated_bias += self.blocks[i].attn.b_O
+            accumulated_bias += cast(AbstractAttention, self.blocks[i].attn).b_O
             if include_mlp_biases:
-                accumulated_bias += self.blocks[i].mlp.b_out
+                mlp = cast(nn.Module, self.blocks[i].mlp)
+                if not hasattr(mlp, "b_out"):
+                    raise AttributeError("self.blocks[i].mlp does not have an attribute 'b_out'")
+                accumulated_bias += cast(torch.Tensor, mlp.b_out)
         if mlp_input:
             assert layer < self.cfg.n_layers, "Cannot include attn_bias from beyond the final layer"
-            accumulated_bias += self.blocks[layer].attn.b_O
+            accumulated_bias += cast(AbstractAttention, self.blocks[layer].attn).b_O
         return accumulated_bias
 
     def all_composition_scores(
