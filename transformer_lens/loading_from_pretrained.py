@@ -20,7 +20,7 @@ from transformers import (
 )
 
 import transformer_lens.utils as utils
-from transformer_lens.factories import WeightConversionFactory
+from transformer_lens.factories.weight_conversion_factory import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 OFFICIAL_MODEL_NAMES = [
