@@ -16,7 +16,8 @@ from transformer_lens.weight_conversion.neo import NEOWeightConversion
 from transformer_lens.weight_conversion.neox import NEOXWeightConversion
 from transformer_lens.weight_conversion.qwen import QwenWeightConversion
 from transformer_lens.weight_conversion.qwen2 import Qwen2WeightConversion
-
+from transformer_lens.weight_conversion.t5 import T5WeightConversion
+from transformer_lens.weight_conversion.phi import PhiWeightConversion
 
 class WeightConversionFactory:
     @staticmethod
@@ -42,10 +43,14 @@ class WeightConversionFactory:
                 return MistralWeightConversion(cfg)
             case "MixtralForCausalLM":
                 return MixtralWeightConversion(cfg)
+            case "PhiForCausalLM":
+                return PhiWeightConversion(cfg)
             case "Qwen2ForCausalLM":
                 return Qwen2WeightConversion(cfg)
             case "QWenLMHeadModel":
                 return QwenWeightConversion(cfg)
+            case "T5ForConditionalGeneration":
+                return T5WeightConversion(cfg)
             case _:
                 raise NotImplementedError(
                     f"{cfg.original_architecture} is not currently supported."
