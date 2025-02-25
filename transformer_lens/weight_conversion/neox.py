@@ -26,7 +26,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                             "attn.W_Q": (
                                 "attention.query_key_value.weight",
                                 RearrangeWeightConversion(
-                                    "(i qkv h) m -> qkv i m h",
+                                    "(i qkv h) m->qkv i m h",
                                     output_filter=lambda result: result[0],
                                     i=cfg.n_heads,
                                     qkv=3,
@@ -35,7 +35,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                             "attn.W_k": (
                                 "attention.query_key_value.weight",
                                 RearrangeWeightConversion(
-                                    "(i qkv h) m -> qkv i m h",
+                                    "(i qkv h) m->qkv i m h",
                                     output_filter=lambda result: result[1],
                                     i=cfg.n_heads,
                                     qkv=3,
@@ -44,7 +44,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                             "attn.W_V": (
                                 "attention.query_key_value.weight",
                                 RearrangeWeightConversion(
-                                    "(i qkv h) m -> qkv i m h",
+                                    "(i qkv h) m->qkv i m h",
                                     output_filter=lambda result: result[2],
                                     i=cfg.n_heads,
                                     qkv=3,
@@ -53,7 +53,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                             "attn.b_Q": (
                                 "attention.query_key_value.bias",
                                 RearrangeWeightConversion(
-                                    "(index qkv head) -> qkv index head",
+                                    "(index qkv head)->qkv index head",
                                     output_filter=lambda result: result[0],
                                     qkv=3,
                                     index=cfg.n_heads,
@@ -63,7 +63,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                             "attn.b_K": (
                                 "attention.query_key_value.bias",
                                 RearrangeWeightConversion(
-                                    "(index qkv head) -> qkv index head",
+                                    "(index qkv head)->qkv index head",
                                     output_filter=lambda result: result[1],
                                     qkv=3,
                                     index=cfg.n_heads,
@@ -73,7 +73,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                             "attn.b_V": (
                                 "attention.query_key_value.bias",
                                 RearrangeWeightConversion(
-                                    "(index qkv head) -> qkv index head",
+                                    "(index qkv head)->qkv index head",
                                     output_filter=lambda result: result[2],
                                     qkv=3,
                                     index=cfg.n_heads,
@@ -82,7 +82,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                             ),
                             "attn.W_O": (
                                 "attention.dense.weight",
-                                RearrangeWeightConversion("m (i h) -> i h m", i=cfg.n_heads),
+                                RearrangeWeightConversion("m (i h)->i h m", i=cfg.n_heads),
                             ),
                             "attn.b_O": "attention.dense.bias",
                             "ln2.w": "post_attention_layernorm.weight",

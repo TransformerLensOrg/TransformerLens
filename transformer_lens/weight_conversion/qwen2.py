@@ -22,18 +22,18 @@ class Qwen2WeightConversion(ArchitectureConversion):
                         {
                             "attn.W_Q": (
                                 "self_attn.q_proj.weight",
-                                RearrangeWeightConversion("(n h) m -> n m h", n=cfg.n_heads),
+                                RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_heads),
                             ),
                             "attn._W_K": (
                                 "self_attn.k_proj.weight",
                                 RearrangeWeightConversion(
-                                    "(n h) m -> n m h", n=cfg.n_key_value_heads
+                                    "(n h) m->n m h", n=cfg.n_key_value_heads
                                 ),
                             ),
                             "attn._W_V": (
                                 "self_attn.v_proj.weight",
                                 RearrangeWeightConversion(
-                                    "(n h) m -> n m h", n=cfg.n_key_value_heads
+                                    "(n h) m->n m h", n=cfg.n_key_value_heads
                                 ),
                             ),
                             "attn.b_Q": (
@@ -56,7 +56,7 @@ class Qwen2WeightConversion(ArchitectureConversion):
                             ),
                             "attn.W_O": (
                                 "self_attn.v_proj.bias",
-                                RearrangeWeightConversion("m (n h) -> n h m", n=cfg.n_heads),
+                                RearrangeWeightConversion("m (n h)->n h m", n=cfg.n_heads),
                             ),
                             "attn.b_O": torch.zeros(cfg.d_model, dtype=cfg.dtype),
                             "ln2.w": "post_attention_layernorm.weight",

@@ -18,6 +18,7 @@ on:
     branches:
       - main
       - dev*
+      - refactor*
     paths:
       - "**"
       - "!.devcontainer/**"

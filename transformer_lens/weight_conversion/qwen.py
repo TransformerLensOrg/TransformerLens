@@ -24,7 +24,7 @@ class QwenWeightConversion(ArchitectureConversion):
                             "attn.W_Q": (
                                 "attn.c_attn.weight",
                                 RearrangeWeightConversion(
-                                    "(n h) m -> n m h",
+                                    "(n h) m->n m h",
                                     input_filter=lambda weight: weight.split(
                                         split_size=cfg.d_model, dim=0
                                     )[0],
@@ -34,7 +34,7 @@ class QwenWeightConversion(ArchitectureConversion):
                             "attn.W_K": (
                                 "attn.c_attn.weight",
                                 RearrangeWeightConversion(
-                                    "(n h) m -> n m h",
+                                    "(n h) m->n m h",
                                     input_filter=lambda weight: weight.split(
                                         split_size=cfg.d_model, dim=0
                                     )[1],
@@ -44,7 +44,7 @@ class QwenWeightConversion(ArchitectureConversion):
                             "attn.W_V": (
                                 "attn.c_attn.weight",
                                 RearrangeWeightConversion(
-                                    "(n h) m -> n m h",
+                                    "(n h) m->n m h",
                                     input_filter=lambda weight: weight.split(
                                         split_size=cfg.d_model, dim=0
                                     )[2],
@@ -84,7 +84,7 @@ class QwenWeightConversion(ArchitectureConversion):
                             "attn.W_O": (
                                 "attn.c_proj.weight",
                                 RearrangeWeightConversion(
-                                    "m (n h) -> n h m",
+                                    "m (n h)->n h m",
                                     n=cfg.n_heads,
                                 ),
                             ),

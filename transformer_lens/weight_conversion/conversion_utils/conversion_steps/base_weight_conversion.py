@@ -34,7 +34,7 @@ class BaseWeightConversion:
         else:
             (remote_field, conversion) = conversion_details
             weight = find_property(remote_field, input_value)
-            if "WeightConversionSet" in str(type(conversion)):
+            if isinstance(conversion, "WeightConversionSet"):
                 result = []
                 for layer in weight:
                     result.append(conversion.convert(layer))

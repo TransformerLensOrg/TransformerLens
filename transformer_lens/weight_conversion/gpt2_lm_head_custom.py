@@ -51,7 +51,7 @@ class GPT2LMHeadCustomWeightConversion(ArchitectureConversion):
                             "attn.b_Q": (
                                 "attn.q_attn.bias",
                                 RearrangeWeightConversion(
-                                    "(index head) -> index head",
+                                    "(index head)-> index head",
                                     index=cfg.n_heads,
                                     head=cfg.d_head,
                                 ),
@@ -78,7 +78,7 @@ class GPT2LMHeadCustomWeightConversion(ArchitectureConversion):
                             ),
                             "attn.W_O": (
                                 "attn.c_proj.weight",
-                                RearrangeWeightConversion("(i h) m -> i h m", i=cfg.n_heads),
+                                RearrangeWeightConversion("(i h) m->i h m", i=cfg.n_heads),
                             ),
                             "attn.b_O": "attn.c_proj.bias",
                             "ln2.w": "ln_2.weight",

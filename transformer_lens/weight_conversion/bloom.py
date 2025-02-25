@@ -25,7 +25,7 @@ class BloomWeightConversion(ArchitectureConversion):
                             "attn.W_Q": (
                                 "self_attention.query_key_value.weight.T",
                                 RearrangeWeightConversion(
-                                    "m n h -> n m h",
+                                    "m n h ->n m h",
                                     input_filter=lambda weight: weight.reshape(
                                         cfg.d_model, cfg.n_heads, 3, cfg.d_head
                                     )[..., 0, :],
@@ -35,7 +35,7 @@ class BloomWeightConversion(ArchitectureConversion):
                             "attn.W_K": (
                                 "self_attention.query_key_value.weight.T",
                                 RearrangeWeightConversion(
-                                    "m n h -> n m h",
+                                    "m n h ->n m h",
                                     input_filter=lambda weight: weight.reshape(
                                         cfg.d_model, cfg.n_heads, 3, cfg.d_head
                                     )[..., 1, :],
@@ -45,7 +45,7 @@ class BloomWeightConversion(ArchitectureConversion):
                             "attn.W_V": (
                                 "self_attention.query_key_value.weight.T",
                                 RearrangeWeightConversion(
-                                    "m n h -> n m h",
+                                    "m n h ->n m h",
                                     input_filter=lambda weight: weight.reshape(
                                         cfg.d_model, cfg.n_heads, 3, cfg.d_head
                                     )[..., 2, :],
@@ -78,7 +78,7 @@ class BloomWeightConversion(ArchitectureConversion):
                             ),
                             "attn.W_O": (
                                 "self_attention.dense.weight.T",
-                                RearrangeWeightConversion("(n h) m -> n h m", n=cfg.n_heads),
+                                RearrangeWeightConversion("(n h) m->n h m", n=cfg.n_heads),
                             ),
                             "attn.b_O": "self_attention.dense.bias",
                             "ln2.w": "post_attention_layernorm.weight",

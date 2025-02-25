@@ -27,22 +27,22 @@ class GPTJWeightConversion(ArchitectureConversion):
                             "ln2.b": "ln_1.bias",
                             "attn.W_Q": (
                                 "attn.q_proj.weight",
-                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                                RearrangeWeightConversion("(i h) m->i m h", i=cfg.n_heads),
                             ),
                             "attn.W_K": (
                                 "attn.k_proj.weight",
-                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                                RearrangeWeightConversion("(i h) m->i m h", i=cfg.n_heads),
                             ),
                             "attn.W_V": (
                                 "attn.v_proj.weight",
-                                RearrangeWeightConversion("(i h) m -> i m h", i=cfg.n_heads),
+                                RearrangeWeightConversion("(i h) m->i m h", i=cfg.n_heads),
                             ),
                             "attn.b_Q": torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype),
                             "attn.b_K": torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype),
                             "attn.b_V": torch.zeros(cfg.n_heads, cfg.d_head, dtype=cfg.dtype),
                             "attn.W_O": (
                                 "attn.out_proj.weight",
-                                RearrangeWeightConversion("m (i h) -> i h m", i=cfg.n_heads),
+                                RearrangeWeightConversion("m (i h)->i h m", i=cfg.n_heads),
                             ),
                             "attn.b_O": torch.zeros(cfg.d_model, dtype=cfg.dtype),
                             "mlp.W_in": "mlp.fc_in.weight.T",

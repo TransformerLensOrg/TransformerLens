@@ -26,7 +26,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                             "attn.W_Q": (
                                 "attn.c_attn.weight",
                                 RearrangeWeightConversion(
-                                    "m (i h) -> i m h",
+                                    "m (i h)->i m h",
                                     input_filter=lambda weight: torch.tensor_split(
                                         weight, 3, dim=1
                                     )[0],
@@ -36,7 +36,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                             "attn.W_K": (
                                 "attn.c_attn.weight",
                                 RearrangeWeightConversion(
-                                    "m (i h) -> i m h",
+                                    "m (i h)->i m h",
                                     input_filter=lambda weight: torch.tensor_split(
                                         weight, 3, dim=1
                                     )[1],
@@ -46,7 +46,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                             "attn.W_V": (
                                 "attn.c_attn.weight",
                                 RearrangeWeightConversion(
-                                    "m (i h) -> i m h",
+                                    "m (i h)->i m h",
                                     input_filter=lambda weight: torch.tensor_split(
                                         weight, 3, dim=1
                                     )[2],
@@ -56,7 +56,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                             "attn.b_Q": (
                                 "attn.c_attn.bias",
                                 RearrangeWeightConversion(
-                                    "(qkv index head) -> qkv index head",
+                                    "(qkv index head)->qkv index head",
                                     output_filter=lambda qkv_bias: qkv_bias[0],
                                     qkv=3,
                                     index=cfg.n_heads,
@@ -66,7 +66,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                             "attn.b_K": (
                                 "attn.c_attn.bias",
                                 RearrangeWeightConversion(
-                                    "(qkv index head) -> qkv index head",
+                                    "(qkv index head)->qkv index head",
                                     output_filter=lambda qkv_bias: qkv_bias[1],
                                     qkv=3,
                                     index=cfg.n_heads,
@@ -76,7 +76,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                             "attn.b_V": (
                                 "attn.c_attn.bias",
                                 RearrangeWeightConversion(
-                                    "(qkv index head) -> qkv index head",
+                                    "(qkv index head)->qkv index head",
                                     output_filter=lambda qkv_bias: qkv_bias[2],
                                     qkv=3,
                                     index=cfg.n_heads,
@@ -86,7 +86,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                             "attn.W_O": (
                                 "attn.c_proj.weight",
                                 RearrangeWeightConversion(
-                                    "(i h) m -> i h m",
+                                    "(i h) m->i h m",
                                     i=cfg.n_heads,
                                 ),
                             ),
