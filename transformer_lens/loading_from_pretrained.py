@@ -8,7 +8,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 from huggingface_hub import HfApi
@@ -20,12 +20,8 @@ from transformers import (
 )
 
 import transformer_lens.utils as utils
-from transformer_lens.factories import WeightConversionFactory
+from transformer_lens.factories.weight_conversion_factory import WeightConversionFactory
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
-from transformer_lens.weight_conversion import (
-    convert_mingpt_weights,
-    convert_neel_solu_old_weights,
-)
 
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
@@ -145,7 +141,10 @@ OFFICIAL_MODEL_NAMES = [
     "meta-llama/Llama-3.2-3B-Instruct",
     "meta-llama/Llama-3.3-70B-Instruct",
     "Baidicoot/Othello-GPT-Transformer-Lens",
-    "bert-base-cased",
+    "google-bert/bert-base-cased",
+    "google-bert/bert-base-uncased",
+    "google-bert/bert-large-cased",
+    "google-bert/bert-large-uncased",
     "roneneldan/TinyStories-1M",
     "roneneldan/TinyStories-3M",
     "roneneldan/TinyStories-8M",
@@ -166,6 +165,7 @@ OFFICIAL_MODEL_NAMES = [
     "stabilityai/stablelm-tuned-alpha-7b",
     "mistralai/Mistral-7B-v0.1",
     "mistralai/Mistral-7B-Instruct-v0.1",
+    "mistralai/Mistral-Small-24B-Base-2501",
     "mistralai/Mistral-Nemo-Base-2407",
     "mistralai/Mixtral-8x7B-v0.1",
     "mistralai/Mixtral-8x7B-Instruct-v0.1",
@@ -578,6 +578,10 @@ MODEL_ALIASES = {
         "codellama/CodeLlama-7b-Instruct-hf",
     ],
     "Baidicoot/Othello-GPT-Transformer-Lens": ["othello-gpt"],
+    "google-bert/bert-base-cased": ["bert-base-cased"],
+    "google-bert/bert-base-uncased": ["bert-base-uncased"],
+    "google-bert/bert-large-cased": ["bert-large-cased"],
+    "google-bert/bert-large-uncased": ["bert-large-uncased"],
     "roneneldan/TinyStories-1M": ["tiny-stories-1M"],
     "roneneldan/TinyStories-3M": ["tiny-stories-3M"],
     "roneneldan/TinyStories-8M": ["tiny-stories-8M"],
@@ -736,14 +740,15 @@ def convert_hf_model_config(model_name: str, **kwargs):
     elif "gemma" in official_model_name.lower():
         architecture = "GemmaForCausalLM"
     else:
-        huggingface_token = os.environ.get("HF_TOKEN", None)
+        huggingface_token = os.environ.get("HF_TOKEN", "")
         hf_config = AutoConfig.from_pretrained(
             official_model_name,
-            token=huggingface_token,
+            token=huggingface_token if len(huggingface_token) > 0 else None,
             **kwargs,
         )
         architecture = hf_config.architectures[0]
 
+    cfg_dict: Dict[str, Any] = {}
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -963,7 +968,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "normalization_type": "RMS",
             "positional_embedding_type": "rotary",
             "rotary_adjacent_pairs": False,
-            "rotary_dim": 32,
+            "rotary_dim": 128,
             "final_rms": True,
             "gated_mlp": True,
             "rotary_base": 500000.0,
@@ -1112,6 +1117,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
         rotary_pct = hf_config.rotary_pct
         cfg_dict["rotary_dim"] = round(rotary_pct * cfg_dict["d_head"])
     elif architecture == "BertForMaskedLM":
+        # All supported Bert architectures have the same config,
+        # so we can use the BertForMaskedLM config for all of them
         cfg_dict = {
             "d_model": hf_config.hidden_size,
             "d_head": hf_config.hidden_size // hf_config.num_attention_heads,
@@ -1659,6 +1666,7 @@ def get_pretrained_model_config(
 
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
+        cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
     if first_n_layers is not None:
         cfg_dict["n_layers"] = first_n_layers
 
@@ -1755,13 +1763,13 @@ def load_hugging_face_model(
         hf_model = {k: v.to(dtype) for k, v in hf_model.items()}
     else:
         if cfg.from_checkpoint:
-            huggingface_token = os.environ.get("HF_TOKEN", None)
+            huggingface_token = os.environ.get("HF_TOKEN", "")
             if official_model_name.startswith("stanford-crfm"):
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     revision=f"checkpoint-{cfg.checkpoint_value}",
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif official_model_name.startswith("EleutherAI/pythia"):
@@ -1775,31 +1783,31 @@ def load_hugging_face_model(
             else:
                 raise ValueError(f"Checkpoints for model {official_model_name} are not supported")
         elif hf_model is None:
-            huggingface_token = os.environ.get("HF_TOKEN", None)
+            huggingface_token = os.environ.get("HF_TOKEN", "")
             if official_model_name in NON_HF_HOSTED_MODEL_NAMES:
                 raise NotImplementedError("Model not hosted on HuggingFace, must pass in hf_model")
             elif "bert" in official_model_name:
                 hf_model = BertForPreTraining.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             elif "t5" in official_model_name:
                 hf_model = T5ForConditionalGeneration.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
             else:
                 hf_model = AutoModelForCausalLM.from_pretrained(
                     official_model_name,
                     torch_dtype=dtype,
-                    token=huggingface_token,
+                    token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
-            
+
     return hf_model
 
 
@@ -1837,14 +1845,9 @@ def get_pretrained_state_dict(
             f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
         )
         kwargs["trust_remote_code"] = True
-    
 
     hf_model = load_hugging_face_model(
-        official_model_name,
-        cfg=cfg,
-        hf_model=hf_model,
-        dtype=dtype,
-        **kwargs
+        official_model_name, cfg=cfg, hf_model=hf_model, dtype=dtype, **kwargs
     )
 
     for param in hf_model.parameters():

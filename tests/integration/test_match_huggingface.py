@@ -24,8 +24,6 @@ class TestMatchHuggingFace:
             tl_out = tl_model.blocks[layer_n].mlp(test_tensor)
             hf_out = hf_model.transformer.h[layer_n].mlp(test_tensor)
 
-            print(torch.sum(tl_out == hf_out))
-            print(math.prod(tensor_shape))
             assert torch.sum(tl_out == hf_out) == math.prod(tensor_shape)
 
     def test_compare_huggingface_attention_match_local_implementation(self, model_name):
@@ -42,6 +40,8 @@ class TestMatchHuggingFace:
                 past_kv_cache_entry=None,
                 attention_mask=None,
             )
-            hf_out, _, _ = hf_model.transformer.h[layer_n].attn(hidden_states=input)
+            hf_out, _, _ = hf_model.transformer.h[layer_n].attn(
+                hidden_states=input, output_attentions=True
+            )
 
-            # assert torch.sum(tl_out == hf_out) == math.prod(tl_out.shape)
+            assert torch.sum(tl_out == hf_out) == math.prod(tl_out.shape)

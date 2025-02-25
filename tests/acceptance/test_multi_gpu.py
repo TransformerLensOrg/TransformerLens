@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from transformer_lens.HookedTransformer import HookedTransformer
-from transformer_lens.utilities.devices import get_device_for_block_index
+from transformer_lens.utilities.devices import get_best_available_device
 
 
 @pytest.fixture
@@ -17,36 +17,6 @@ def gpt2_medium_on_1_device():
 def gpt2_medium_on_4_devices():
     model = HookedTransformer.from_pretrained("gpt2-medium", fold_ln=False, n_devices=4)
     return model
-
-
-@pytest.mark.skipif(torch.cuda.device_count() < 4, reason="Requires at least 4 CUDA devices")
-def test_get_device_for_block_index(gpt2_medium_on_4_devices):
-    config = gpt2_medium_on_4_devices.cfg
-    n_layers = config.n_layers
-    n_devices = config.n_devices
-    layers_per_device = n_layers // n_devices
-    config_device = torch.device(config.device)
-
-    # Test with default device (config.device)
-    for i in range(n_layers):
-        expected_device = torch.device(config_device.type, i // layers_per_device)
-        assert get_device_for_block_index(i, config) == expected_device
-
-    # Test with explicit device
-    device_override = "cuda"
-    for i in range(n_layers):
-        expected_device = torch.device(device_override, i // layers_per_device)
-        assert get_device_for_block_index(i, config, device_override) == expected_device
-
-    # Test with explicit torch.device object
-    device_override_obj = torch.device("cuda")
-    for i in range(n_layers):
-        expected_device = torch.device(device_override_obj.type, i // layers_per_device)
-        assert get_device_for_block_index(i, config, device_override_obj) == expected_device
-
-    # Test when index is out of bounds
-    # with pytest.raises(IndexError):
-    # get_device_for_block_index(n_layers, config)
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 4, reason="Requires at least 4 CUDA devices")
@@ -85,7 +55,7 @@ def test_device_separation_and_cache(gpt2_medium_on_1_device, n_devices):
 
     # Make sure the tensors in cache remain on their respective devices
     for i in range(model_n_devices.cfg.n_layers):
-        expected_device = get_device_for_block_index(i, cfg=model_n_devices.cfg)
+        expected_device = get_best_available_device(model_n_devices.cfg.device)
         cache_device = gpt2_cache_n_devices[f"blocks.{i}.mlp.hook_post"].device
         assert cache_device == expected_device
 
