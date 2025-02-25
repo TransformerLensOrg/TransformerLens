@@ -1,4 +1,5 @@
 from collections.abc import Callable
+
 from .base_weight_conversion import BaseWeightConversion
 
 

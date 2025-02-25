@@ -1,4 +1,4 @@
-"""activation_utils.
+"""components_utils.
 
 This module contains utility functions related to model components
 """

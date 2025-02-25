@@ -19,6 +19,7 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
     runtime_checkable,
 )
 
@@ -340,7 +341,15 @@ class HookedRootModule(nn.Module):
             hook (Callable): The hook to add
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
         """
-        self.mod_dict[name].add_hook(hook, dir=dir, level=self.context_level)
+        hook_point_module = self.mod_dict[name]
+        if not hasattr(hook_point_module, "add_hook"):
+            raise TypeError(f"Expected a module with add_hook, got {type(hook_point_module)}")
+        if isinstance(hook_point_module, torch.Tensor):
+            raise TypeError(
+                "Module set as Tensor for some reason!"
+            )  # mypy seems to think these could be tensors after a torch update no idea why, or if this is possible
+        module_with_hook = cast(HookPoint, hook_point_module)
+        module_with_hook.add_hook(hook, dir=dir, level=self.context_level)
 
     def _enable_hooks_for_points(
         self,

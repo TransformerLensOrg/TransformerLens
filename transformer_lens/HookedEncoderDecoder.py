@@ -22,7 +22,7 @@ from typing_extensions import Literal
 
 import transformer_lens.loading_from_pretrained as loading
 from transformer_lens.ActivationCache import ActivationCache
-from transformer_lens.components import Embed, RMSNorm, T5Block, Unembed
+from transformer_lens.components import Embed, RMSNorm, T5Attention, T5Block, Unembed
 from transformer_lens.FactoredMatrix import FactoredMatrix
 from transformer_lens.hook_points import HookedRootModule, HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
@@ -247,9 +247,9 @@ class HookedEncoderDecoder(HookedRootModule):
 
         query_len = key_len = tokens.shape[1]
 
-        encoder_positional_bias = self.encoder[0].attn.compute_relative_attention_bias(
-            query_len, key_len, device=self.cfg.device
-        )
+        encoder_positional_bias = cast(
+            T5Attention, self.encoder[0].attn
+        ).compute_relative_attention_bias(query_len, key_len, device=self.cfg.device)
 
         for encoder_block in self.encoder:
             resid = encoder_block(
@@ -262,7 +262,9 @@ class HookedEncoderDecoder(HookedRootModule):
 
         decoder_resid = self.embed(decoder_input)
         decoder_query_len = decoder_key_len = decoder_input.shape[1]
-        decoder_positional_bias = self.decoder[0].attn.compute_relative_attention_bias(
+        decoder_positional_bias = cast(
+            T5Attention, self.decoder[0].attn
+        ).compute_relative_attention_bias(
             decoder_query_len, decoder_key_len, device=self.cfg.device
         )
 
@@ -644,14 +646,22 @@ class HookedEncoderDecoder(HookedRootModule):
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).mlp.W_in for block in chain(self.encoder, self.decoder)], dim=0
+            [
+                cast(torch.Tensor, cast(T5Block, block).mlp.W_in)
+                for block in chain(self.encoder, self.decoder)
+            ],
+            dim=0,
         )
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
         return torch.stack(
-            [cast(T5Block, block).mlp.W_out for block in chain(self.encoder, self.decoder)], dim=0
+            [
+                cast(torch.Tensor, cast(T5Block, block).mlp.W_out)
+                for block in chain(self.encoder, self.decoder)
+            ],
+            dim=0,
         )
 
     @property
@@ -687,14 +697,22 @@ class HookedEncoderDecoder(HookedRootModule):
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).mlp.b_in for block in chain(self.encoder, self.decoder)], dim=0
+            [
+                cast(torch.Tensor, cast(T5Block, block).mlp.b_in)
+                for block in chain(self.encoder, self.decoder)
+            ],
+            dim=0,
         )
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
         return torch.stack(
-            [cast(T5Block, block).mlp.b_out for block in chain(self.encoder, self.decoder)], dim=0
+            [
+                cast(torch.Tensor, cast(T5Block, block).mlp.b_out)
+                for block in chain(self.encoder, self.decoder)
+            ],
+            dim=0,
         )
 
     @property

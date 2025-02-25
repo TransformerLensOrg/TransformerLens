@@ -8,7 +8,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 from huggingface_hub import HfApi
@@ -748,6 +748,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
         )
         architecture = hf_config.architectures[0]
 
+    cfg_dict: Dict[str, Any] = {}
     if official_model_name.startswith(
         ("llama-7b", "meta-llama/Llama-2-7b")
     ):  # same architecture for LLaMA and Llama-2
@@ -1806,7 +1807,7 @@ def load_hugging_face_model(
                     token=huggingface_token if len(huggingface_token) > 0 else None,
                     **kwargs,
                 )
-            
+
     return hf_model
 
 
@@ -1844,14 +1845,9 @@ def get_pretrained_state_dict(
             f"Loading model {official_model_name} state dict requires setting trust_remote_code=True"
         )
         kwargs["trust_remote_code"] = True
-    
 
     hf_model = load_hugging_face_model(
-        official_model_name,
-        cfg=cfg,
-        hf_model=hf_model,
-        dtype=dtype,
-        **kwargs
+        official_model_name, cfg=cfg, hf_model=hf_model, dtype=dtype, **kwargs
     )
 
     for param in hf_model.parameters():
