@@ -19,6 +19,7 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
     runtime_checkable,
 )
 
@@ -117,12 +118,10 @@ class HookPoint(nn.Module):
             full_hook.__name__ = hook.__repr__()
 
         if dir == "fwd":
-            pt_handle = self.register_forward_hook(full_hook)
-            _internal_hooks = self._forward_hooks
+            pt_handle = self.register_forward_hook(full_hook, prepend=prepend)
             visible_hooks = self.fwd_hooks
         elif dir == "bwd":
-            pt_handle = self.register_full_backward_hook(full_hook)
-            _internal_hooks = self._backward_hooks
+            pt_handle = self.register_full_backward_hook(full_hook, prepend=prepend)
             visible_hooks = self.bwd_hooks
         else:
             raise ValueError(f"Invalid direction {dir}")
@@ -131,7 +130,6 @@ class HookPoint(nn.Module):
 
         if prepend:
             # we could just pass this as an argument in PyTorch 2.0, but for now we manually do this...
-            _internal_hooks.move_to_end(handle.hook.id, last=False)  # type: ignore # TODO: this type error could signify a bug
             visible_hooks.insert(0, handle)
 
         else:
@@ -343,7 +341,15 @@ class HookedRootModule(nn.Module):
             hook (Callable): The hook to add
             dir (Literal[&quot;fwd&quot;, &quot;bwd&quot;]): The direction for the hook
         """
-        self.mod_dict[name].add_hook(hook, dir=dir, level=self.context_level)
+        hook_point_module = self.mod_dict[name]
+        if not hasattr(hook_point_module, "add_hook"):
+            raise TypeError(f"Expected a module with add_hook, got {type(hook_point_module)}")
+        if isinstance(hook_point_module, torch.Tensor):
+            raise TypeError(
+                "Module set as Tensor for some reason!"
+            )  # mypy seems to think these could be tensors after a torch update no idea why, or if this is possible
+        module_with_hook = cast(HookPoint, hook_point_module)
+        module_with_hook.add_hook(hook, dir=dir, level=self.context_level)
 
     def _enable_hooks_for_points(
         self,

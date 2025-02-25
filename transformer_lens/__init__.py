@@ -14,6 +14,7 @@ from .HookedTransformer import HookedTransformer
 from .SVDInterpreter import SVDInterpreter
 from .HookedEncoder import HookedEncoder
 from .HookedEncoderDecoder import HookedEncoderDecoder
+from .BertNextSentencePrediction import BertNextSentencePrediction
 from . import head_detector
 from . import loading_from_pretrained as loading
 from . import patching
