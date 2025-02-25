@@ -1,17 +1,31 @@
 import pytest
 import torch
+
 from transformer_lens.weight_conversion.conversion_utils.conversion_steps.arithmetic_weight_conversion import (
     ArithmeticWeightConversion,
-    OperationTypes
+    OperationTypes,
 )
 
 
-@pytest.mark.parametrize("operation, value, input_tensor, expected_output", [
-    (OperationTypes.ADDITION, 2, torch.tensor([1.0, 2.0, 3.0]), torch.tensor([3.0, 4.0, 5.0])),
-    (OperationTypes.SUBTRACTION, 1, torch.tensor([5.0, 6.0, 7.0]), torch.tensor([4.0, 5.0, 6.0])),
-    (OperationTypes.MULTIPLICATION, 3, torch.tensor([1.0, 2.0, 3.0]), torch.tensor([3.0, 6.0, 9.0])),
-    (OperationTypes.DIVISION, 2, torch.tensor([4.0, 6.0, 8.0]), torch.tensor([2.0, 3.0, 4.0])),
-])
+@pytest.mark.parametrize(
+    "operation, value, input_tensor, expected_output",
+    [
+        (OperationTypes.ADDITION, 2, torch.tensor([1.0, 2.0, 3.0]), torch.tensor([3.0, 4.0, 5.0])),
+        (
+            OperationTypes.SUBTRACTION,
+            1,
+            torch.tensor([5.0, 6.0, 7.0]),
+            torch.tensor([4.0, 5.0, 6.0]),
+        ),
+        (
+            OperationTypes.MULTIPLICATION,
+            3,
+            torch.tensor([1.0, 2.0, 3.0]),
+            torch.tensor([3.0, 6.0, 9.0]),
+        ),
+        (OperationTypes.DIVISION, 2, torch.tensor([4.0, 6.0, 8.0]), torch.tensor([2.0, 3.0, 4.0])),
+    ],
+)
 def test_arithmetic_operations(operation, value, input_tensor, expected_output):
     conversion = ArithmeticWeightConversion(operation, value)
     output = conversion.handle_conversion(input_tensor)

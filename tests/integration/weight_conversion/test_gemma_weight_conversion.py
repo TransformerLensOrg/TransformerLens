@@ -22,5 +22,3 @@ def test_small_model_weight_conversion(model_id):
     )
     weight_convertor = GemmaWeightConversion(model_config)
     tl_model = weight_convertor.convert(hf_model)
-    
-    
