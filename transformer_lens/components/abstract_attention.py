@@ -1,6 +1,6 @@
 import math
 from abc import ABC
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, cast
 
 import einops
 import torch
@@ -466,7 +466,7 @@ class AbstractAttention(ABC, nn.Module):
             )
 
         # Index back to front to ensure local attention works
-        final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
+        final_mask = cast(torch.Tensor, self.mask)[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
 
