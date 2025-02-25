@@ -463,12 +463,16 @@ class HookedEncoder(HookedRootModule):
     @property
     def W_in(self) -> Float[torch.Tensor, "n_layers d_model d_mlp"]:
         """Stacks the MLP input weights across all layers"""
-        return torch.stack([cast(BertBlock, block).mlp.W_in for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(torch.Tensor, cast(BertBlock, block).mlp.W_in) for block in self.blocks], dim=0
+        )
 
     @property
     def W_out(self) -> Float[torch.Tensor, "n_layers d_mlp d_model"]:
         """Stacks the MLP output weights across all layers"""
-        return torch.stack([cast(BertBlock, block).mlp.W_out for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(torch.Tensor, cast(BertBlock, block).mlp.W_out) for block in self.blocks], dim=0
+        )
 
     @property
     def b_K(self) -> Float[torch.Tensor, "n_layers n_heads d_head"]:
@@ -493,12 +497,16 @@ class HookedEncoder(HookedRootModule):
     @property
     def b_in(self) -> Float[torch.Tensor, "n_layers d_mlp"]:
         """Stacks the MLP input biases across all layers"""
-        return torch.stack([cast(BertBlock, block).mlp.b_in for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(torch.Tensor, cast(BertBlock, block).mlp.b_in) for block in self.blocks], dim=0
+        )
 
     @property
     def b_out(self) -> Float[torch.Tensor, "n_layers d_model"]:
         """Stacks the MLP output biases across all layers"""
-        return torch.stack([cast(BertBlock, block).mlp.b_out for block in self.blocks], dim=0)
+        return torch.stack(
+            [cast(torch.Tensor, cast(BertBlock, block).mlp.b_out) for block in self.blocks], dim=0
+        )
 
     @property
     def QK(self) -> FactoredMatrix:  # [n_layers, n_heads, d_model, d_model]
