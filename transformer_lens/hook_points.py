@@ -19,8 +19,8 @@ from typing import (
     Sequence,
     Tuple,
     Union,
-    runtime_checkable,
     cast,
+    runtime_checkable,
 )
 
 import torch
