@@ -13,6 +13,7 @@ small_models = [
     "google/gemma-2-2b-it",
 ]
 
+
 @pytest.mark.parametrize("model_id", small_models)
 def test_small_model_weight_conversion(model_id):
     model_config = convert_hf_model_config(model_id)
@@ -22,5 +23,3 @@ def test_small_model_weight_conversion(model_id):
     )
     weight_convertor = GemmaWeightConversion(model_config)
     tl_model = weight_convertor.convert(hf_model)
-    
-    

@@ -1,4 +1,6 @@
 from collections.abc import Callable
+from typing import Optional
+
 import torch
 
 from transformer_lens.weight_conversion.conversion_utils.model_search import (
@@ -11,7 +13,9 @@ FIELD_SET = torch.Tensor | str | CONVERSION
 
 
 class BaseWeightConversion:
-    def __init__(self, input_filter: Callable | None = None, output_filter: Callable | None = None):
+    def __init__(
+        self, input_filter: Optional[Callable] = None, output_filter: Optional[Callable] = None
+    ):
         self.input_filter = input_filter
         self.output_filter = output_filter
 
@@ -40,6 +44,6 @@ class BaseWeightConversion:
                 return conversion.convert(weight)
 
     def handle_conversion(self, input_value):
-        raise Exception(
+        raise NotImplementedError(
             f"The conversion function for {type(self).__name__} needs to be implemented."
         )

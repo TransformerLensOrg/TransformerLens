@@ -1,4 +1,5 @@
-from typing import Callable
+from collections.abc import Callable
+from typing import Optional
 
 import einops
 import torch
@@ -10,9 +11,9 @@ class RearrangeWeightConversion(BaseWeightConversion):
     def __init__(
         self,
         pattern: str,
-        input_filter: Callable | None = None,
-        output_filter: Callable | None = None,
-        **axes_lengths,
+        input_filter: Optional[Callable] = None,
+        output_filter: Optional[Callable] = None,
+        **axes_lengths
     ):
         super().__init__(input_filter=input_filter, output_filter=output_filter)
         self.pattern = pattern

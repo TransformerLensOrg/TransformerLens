@@ -1,4 +1,5 @@
-from typing import Callable
+from collections.abc import Callable
+from typing import Optional
 
 import torch
 
@@ -13,8 +14,8 @@ class TernaryWeightConversion(BaseWeightConversion):
         self,
         fallback_conversion: CONVERSION_ACTION,
         primary_conversion: PRIMARY_CONVERSION = None,
-        input_filter: Callable | None = None,
-        output_filter: Callable | None = None,
+        input_filter: Optional[Callable] = None,
+        output_filter: Optional[Callable] = None,
     ):
         super().__init__(input_filter=input_filter, output_filter=output_filter)
         self.primary_conversion = primary_conversion
