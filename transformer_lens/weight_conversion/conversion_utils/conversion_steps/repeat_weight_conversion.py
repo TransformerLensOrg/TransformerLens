@@ -13,7 +13,7 @@ class RepeatWeightConversion(BaseWeightConversion):
         pattern: str,
         input_filter: Optional[Callable] = None,
         output_filter: Optional[Callable] = None,
-        **axes_lengths
+        **axes_lengths,
     ):
         super().__init__(input_filter=input_filter, output_filter=output_filter)
         self.pattern = pattern
