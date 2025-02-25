@@ -23,7 +23,7 @@ if is_bitsandbytes_available():
 
 
 class AbstractAttention(ABC, nn.Module):
-    alibi: Union[torch.Tensor, None]
+    alibi: Optional[torch.Tensor] = None
 
     def __init__(
         self,
@@ -230,9 +230,12 @@ class AbstractAttention(ABC, nn.Module):
                 )
 
             # Take the last query_ctx positions so it also works with past_kv_cache
-            attn_scores += self.alibi[
-                :, -query_ctx:, :key_ctx
-            ]  # [batch, head_index, query_pos, key_pos]
+            if isinstance(self.alibi, torch.Tensor):
+                attn_scores += self.alibi[:, -query_ctx:, :key_ctx]
+            else:
+                raise TypeError(
+                    f"Expected self.alibi to be a Tensor, but got {type(self.alibi)}"
+                )  # [batch, head_index, query_pos, key_pos]
         elif self.cfg.positional_embedding_type == "relative_positional_bias":
             if position_bias is None:
                 if self.has_relative_attention_bias:
