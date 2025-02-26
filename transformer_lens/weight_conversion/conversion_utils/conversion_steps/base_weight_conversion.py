@@ -9,7 +9,7 @@ from transformer_lens.weight_conversion.conversion_utils.model_search import (
 
 CONVERSION = tuple[str, "BaseWeightConversion"]
 CONVERSION_ACTION = torch.Tensor | str | CONVERSION
-FIELD_SET = torch.Tensor | str | CONVERSION
+FIELD_SET = dict[CONVERSION_ACTION]
 
 
 class BaseWeightConversion:
