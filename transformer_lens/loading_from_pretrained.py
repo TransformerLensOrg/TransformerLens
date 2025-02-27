@@ -1154,9 +1154,11 @@ def convert_hf_model_config(model_name: str, **kwargs):
         use_local_attn = True if hf_config.sliding_window else False
         cfg_dict = {
             "d_model": hf_config.hidden_size,
-            "d_head": hf_config.head_dim
-            if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
-            else hf_config.hidden_size // hf_config.num_attention_heads,
+            "d_head": (
+                hf_config.head_dim
+                if hasattr(hf_config, "head_dim") and hf_config.head_dim > 0
+                else hf_config.hidden_size // hf_config.num_attention_heads
+            ),
             "n_heads": hf_config.num_attention_heads,
             "d_mlp": hf_config.intermediate_size,
             "n_layers": hf_config.num_hidden_layers,
@@ -1686,6 +1688,8 @@ def get_pretrained_model_config(
     if hf_cfg is not None:
         cfg_dict["load_in_4bit"] = hf_cfg.get("quantization_config", {}).get("load_in_4bit", False)
         cfg_dict["d_vocab"] = hf_cfg.get("vocab_size", cfg_dict["d_vocab"])
+        if cfg_dict["original_architecture"] == "Qwen2ForCausalLM":
+            cfg_dict["rotary_base"] = hf_cfg.get("rope_theta", cfg_dict["rotary_base"])
     if first_n_layers is not None:
         cfg_dict["n_layers"] = first_n_layers
 
