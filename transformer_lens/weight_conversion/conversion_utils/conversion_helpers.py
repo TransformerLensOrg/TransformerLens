@@ -1,3 +1,5 @@
+
+
 def find_property(needle: str, haystack):
     needle_levels = needle.split(".")
     first_key = needle_levels.pop(0)
@@ -8,3 +10,4 @@ def find_property(needle: str, haystack):
         return find_property(".".join(needle_levels), current_level)
 
     return current_level
+

@@ -4,7 +4,7 @@ from typing import Optional
 
 import torch
 
-from .base_weight_conversion import BaseWeightConversion
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps.base_weight_conversion import BaseWeightConversion
 
 
 class OperationTypes(Enum):

@@ -2,7 +2,7 @@ from unittest import mock
 
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.model_search import (
+from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import (
     find_property,
 )
 

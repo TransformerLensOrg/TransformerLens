@@ -3,7 +3,8 @@ from typing import Optional
 
 import torch
 
-from .base_weight_conversion import CONVERSION_ACTION, BaseWeightConversion
+from .types import CONVERSION_ACTION
+from .base_weight_conversion import BaseWeightConversion
 
 PRIMARY_CONVERSION = torch.Tensor | BaseWeightConversion | None
 
