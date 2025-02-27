@@ -28,20 +28,20 @@ from transformer_lens.weight_conversion.conversion_utils.conversion_steps.arithm
 )
 def test_arithmetic_operations(operation, value, input_tensor, expected_output):
     conversion = ArithmeticWeightConversion(operation, value)
-    output = conversion.handle_conversion(input_tensor)
+    output = conversion.convert(input_tensor)
     assert torch.allclose(output, expected_output), f"Expected {expected_output}, but got {output}"
 
 
 def test_scalar_operations():
     conversion = ArithmeticWeightConversion(OperationTypes.MULTIPLICATION, 10)
-    assert conversion.handle_conversion(5) == 50
+    assert conversion.convert(5) == 50
 
 
 def test_tensor_operations():
     input_tensor = torch.tensor([1.0, 2.0, 3.0])
     conversion = ArithmeticWeightConversion(OperationTypes.ADDITION, torch.tensor([1.0, 1.0, 1.0]))
     expected_output = torch.tensor([2.0, 3.0, 4.0])
-    assert torch.allclose(conversion.handle_conversion(input_tensor), expected_output)
+    assert torch.allclose(conversion.convert(input_tensor), expected_output)
 
 
 def test_input_filter():
@@ -49,7 +49,7 @@ def test_input_filter():
         return x * 2  # Double the input before applying the operation
 
     conversion = ArithmeticWeightConversion(OperationTypes.ADDITION, 3, input_filter=input_filter)
-    assert conversion.handle_conversion(torch.tensor(2.0)) == 7.0  # (2 * 2) + 3 = 7
+    assert conversion.convert(torch.tensor(2.0)) == 7.0  # (2 * 2) + 3 = 7
 
 
 def test_output_filter():
@@ -57,4 +57,4 @@ def test_output_filter():
         return x / 2  # Halve the result after applying the operation
 
     conversion = ArithmeticWeightConversion(OperationTypes.ADDITION, 3, output_filter=output_filter)
-    assert conversion.handle_conversion(torch.tensor(2.0)) == 2.5  # (2 + 3) / 2 = 2.5
+    assert conversion.convert(torch.tensor(2.0)) == 2.5  # (2 + 3) / 2 = 2.5
