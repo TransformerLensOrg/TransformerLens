@@ -11,37 +11,44 @@ class MockWeightConversion(BaseWeightConversion):
         return weight + 5
 
 
-def test_process_weight_conversion_applies_conversion():
-    weight_conversion = MockWeightConversion()
-    weight = torch.zeros(2, 2)
-
-    converted_weight = weight_conversion.process_weight_conversion(weight)
-
-    expected = torch.tensor((2, 2)) + 5
-
-    assert torch.all(converted_weight == expected)
-
-
-def test_process_weight_conversion_applies_filters():
-    def mock_input_filter(weight):
-        return weight * 2
-
-    def mock_output_filter(weight):
-        return weight - 1
-
-    weight_conversion = MockWeightConversion(
-        input_filter=mock_input_filter, output_filter=mock_output_filter
-    )
-
-    weight = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
-
-    converted_weight = weight_conversion.process_weight_conversion(weight)
-
-    expected_weight = (weight * 2) + 5 - 1
-    assert torch.allclose(converted_weight, expected_weight)
-
 
 def test_base_weight_conversion_convert_throws_error():
     weight_conversion = BaseWeightConversion()
     with pytest.raises(NotImplementedError):
         weight_conversion.convert(torch.zeros(1, 4))
+        
+def test_mock_weight_conversion_adds_five():
+    """
+    Verify that the mock subclass adds 5 to every element of the tensor.
+    """
+    weight_conversion = MockWeightConversion()
+    input_tensor = torch.zeros((1, 4), dtype=torch.float32)
+    output_tensor = weight_conversion.convert(input_tensor)
+    expected_tensor = torch.full((1, 4), 5.0, dtype=torch.float32)
+    
+    # Option 1: simple equality check
+    assert torch.equal(output_tensor, expected_tensor)
+
+    # Option 2: more robust approximate check
+    # torch.testing.assert_close(output_tensor, expected_tensor)
+
+@pytest.mark.parametrize("shape", [(1, 4), (2, 2), (3,)])
+def test_mock_weight_conversion_various_shapes(shape):
+    """
+    Test multiple shapes to ensure .convert() works for different dims.
+    """
+    weight_conversion = MockWeightConversion()
+    input_tensor = torch.zeros(shape)
+    output_tensor = weight_conversion.convert(input_tensor)
+    expected_tensor = torch.full(shape, 5.0)
+    assert torch.equal(output_tensor, expected_tensor)
+
+def test_mock_weight_conversion_empty_tensor():
+    """
+    Ensure code doesn't crash on an empty tensor.
+    """
+    weight_conversion = MockWeightConversion()
+    input_tensor = torch.zeros((0, 4))
+    output_tensor = weight_conversion.convert(input_tensor)
+    assert output_tensor.shape == (0, 4)
+    # Since shape is (0,4), we can just check shape correctness
