@@ -1,13 +1,19 @@
 import torch
+from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import find_property
 
-from .base_weight_conversion import BaseWeightConversion 
+class WeightConversionInterface:
+    def convert(self, input_value):
+        raise NotImplementedError(
+            f"WeightConversionInterface called directly!"
+        )
+        
 
 # This type is used to indicate the position of a field in the remote model
 REMOTE_FIELD = str
 # This is the typing for a weight conversion when operations are needed on the REMOTE_FIELD. 
-# The BaseWeightConversion will be the instructions on the operations needed to bring the field
-# into TransformerLens
-CONVERSION = tuple[REMOTE_FIELD, BaseWeightConversion]
+# The WeightConversionInterface will be the instructions on the operations needed to bring the
+# field into TransformerLens
+CONVERSION = tuple[REMOTE_FIELD, WeightConversionInterface]
 # This is the full range of actions that can be taken to bring a field into TransformerLens
 # These can be configured as a predefined tensor, or a direction copy of the REMOTE_FIELD into
 # TransformerLens, or a more in depth CONVERSION

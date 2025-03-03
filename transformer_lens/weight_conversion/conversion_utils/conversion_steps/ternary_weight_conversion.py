@@ -10,7 +10,6 @@ PRIMARY_CONVERSION = torch.Tensor | BaseWeightConversion | None
 
 
 class TernaryWeightConversion(BaseWeightConversion):
-    # TODO add none as fallback
     def __init__(
         self,
         fallback_conversion: CONVERSION_ACTION,
@@ -25,7 +24,7 @@ class TernaryWeightConversion(BaseWeightConversion):
     def handle_primary_conversion(self, input_value: torch.Tensor) -> torch.Tensor:
         if self.primary_conversion is None:
             return input_value
-        if isinstance(self.primary_conversion, torch.Tensor):
+        elif isinstance(self.primary_conversion, torch.Tensor):
             return self.primary_conversion
         else:
             return self.primary_conversion.convert(input_value=input_value)
@@ -34,7 +33,8 @@ class TernaryWeightConversion(BaseWeightConversion):
         if input_value is not None:
             return self.handle_primary_conversion(input_value=input_value)
         else:
-            return super().process_weight_conversion(
+            self.fallback_conversion.convert()
+            return super().process_conversion_action(
                 input_value=input_value, conversion_details=self.fallback_conversion
             )
 
