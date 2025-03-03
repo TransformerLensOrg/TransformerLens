@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from transformer_lens.weight_conversion.conversion_utils.conversion_steps.callable_weight_conversion import (
