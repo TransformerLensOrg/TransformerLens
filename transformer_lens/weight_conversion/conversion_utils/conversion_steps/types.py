@@ -1,8 +1,7 @@
 import torch
-from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import find_property
 
 class WeightConversionInterface:
-    def convert(self, input_value):
+    def convert(self, input_value, *full_context):
         raise NotImplementedError(
             f"WeightConversionInterface called directly!"
         )

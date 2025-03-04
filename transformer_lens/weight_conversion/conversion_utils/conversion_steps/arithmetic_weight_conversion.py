@@ -26,7 +26,7 @@ class ArithmeticWeightConversion(BaseWeightConversion):
         self.operation = operation
         self.value = value
 
-    def handle_conversion(self, input_value):
+    def handle_conversion(self, input_value, *full_context):
         match self.operation:
             case OperationTypes.ADDITION:
                 return input_value + self.value
