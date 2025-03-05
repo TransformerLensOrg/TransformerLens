@@ -1,14 +1,14 @@
-import pytest
 import torch
-from unittest.mock import MagicMock
+
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps.base_weight_conversion import (
+    BaseWeightConversion,
+)
 
 # These imports reflect your code structure
 from transformer_lens.weight_conversion.conversion_utils.conversion_steps.weight_conversion_set import (
     WeightConversionSet,
 )
-from transformer_lens.weight_conversion.conversion_utils.conversion_steps.base_weight_conversion import (
-    BaseWeightConversion,
-)
+
 
 class MockSubConversion(BaseWeightConversion):
     """
@@ -16,6 +16,7 @@ class MockSubConversion(BaseWeightConversion):
     For demonstration, it just adds 10 to each element if given a tensor,
     or returns a known tensor if input is None.
     """
+
     def __init__(self):
         super().__init__()
         self.was_called = False
@@ -35,17 +36,15 @@ def test_weight_conversion_set_basic_tensor_and_str():
     """
     # We'll pass 'pos_embed.weight' as a string property to find in an input structure
     field_set = {
-        "embed.W_E": torch.ones(2, 2),            # direct tensor
-        "pos_embed": "pos_embed.weight",          # property to look up in input_value
+        "embed.W_E": torch.ones(2, 2),  # direct tensor
+        "pos_embed": "pos_embed.weight",  # property to look up in input_value
     }
 
     conversion_set = WeightConversionSet(weights=field_set)
-    
+
     # Suppose the input_value is a dictionary or object that find_property can parse
     input_value = {
-        "pos_embed": {
-            "weight": torch.tensor([3.0, 4.0])  # the property we want to find
-        }
+        "pos_embed": {"weight": torch.tensor([3.0, 4.0])}  # the property we want to find
     }
 
     output = conversion_set.convert(input_value)
@@ -65,29 +64,21 @@ def test_weight_conversion_set_tuple_subconversion():
     The sub-conversion is a mock that we ensure gets called with the correct input.
     """
     mock_sub = MockSubConversion()
-    field_set = {
-        "layer_0_attn": ("attn_proj.weight", mock_sub)
-    }
+    field_set = {"layer_0_attn": ("attn_proj.weight", mock_sub)}
     conversion_set = WeightConversionSet(weights=field_set)
 
     # We'll store "attn_proj.weight" in our input_value so find_property can retrieve it
-    input_value = {
-        "attn_proj": {
-            "weight": torch.tensor([1.0, 2.0])
-        }
-    }
+    input_value = {"attn_proj": {"weight": torch.tensor([1.0, 2.0])}}
 
     output = conversion_set.convert(input_value)
     assert "layer_0_attn" in output, "Expected output key for the field set."
-    
+
     # The sub-conversion 'MockSubConversion' adds 10
     expected_tensor = torch.tensor([1.0, 2.0]) + 10
     result_tensor = output["layer_0_attn"]
 
     assert mock_sub.was_called, "Expected mock_sub to be invoked."
-    assert torch.allclose(result_tensor, expected_tensor), (
-        f"Expected [11, 12], got {result_tensor}"
-    )
+    assert torch.allclose(result_tensor, expected_tensor), f"Expected [11, 12], got {result_tensor}"
 
 
 def test_weight_conversion_set_process_conversion_action_tensor():
@@ -111,11 +102,7 @@ def test_weight_conversion_set_process_conversion_action_str_property():
     field_set = {"some_str_key": "my_field.data"}
     conversion_set = WeightConversionSet(field_set)
 
-    input_value = {
-        "my_field": {
-            "data": torch.tensor([42.0])
-        }
-    }
+    input_value = {"my_field": {"data": torch.tensor([42.0])}}
     output = conversion_set.convert(input_value)
     assert torch.allclose(output["some_str_key"], torch.tensor([42.0]))
 
@@ -129,9 +116,7 @@ def test_weight_conversion_set_process_conversion_action_tuple():
     field_set = {"my_tuple_key": ("fieldA", mock_sub)}
     conversion_set = WeightConversionSet(field_set)
 
-    input_value = {
-        "fieldA": torch.tensor([0.0])
-    }
+    input_value = {"fieldA": torch.tensor([0.0])}
     output = conversion_set.convert(input_value)
 
     assert mock_sub.was_called, "Expected the sub-conversion to be used."
@@ -148,15 +133,15 @@ def test_weight_conversion_set_repr():
     field_set = {
         "embed.W_E": torch.zeros(2, 2),
         "pos_embed": "pos_embed.weight",
-        "layer_0_attn": ("attn_proj.weight", mock_sub)
+        "layer_0_attn": ("attn_proj.weight", mock_sub),
     }
 
     conversion_set = WeightConversionSet(field_set)
     rep_str = repr(conversion_set).lower()
 
-    assert "is composed of a set of nested conversions" in rep_str, (
-        f"Expected reference to 'nested conversions', got {rep_str}"
-    )
+    assert (
+        "is composed of a set of nested conversions" in rep_str
+    ), f"Expected reference to 'nested conversions', got {rep_str}"
     assert "embed.w_e" in rep_str, "Expected mention of embed.W_E key."
     assert "pos_embed" in rep_str, "Expected mention of pos_embed key."
     assert "layer_0_attn" in rep_str, "Expected mention of layer_0_attn key."

@@ -1,11 +1,7 @@
 from collections.abc import Callable
 from typing import Optional
 
-from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import (
-    find_property,
-)
-
-from .types import CONVERSION, WeightConversionInterface
+from .types import WeightConversionInterface
 
 
 class BaseWeightConversion(WeightConversionInterface):
