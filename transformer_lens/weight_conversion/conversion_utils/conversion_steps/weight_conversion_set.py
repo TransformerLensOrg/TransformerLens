@@ -39,8 +39,6 @@ class WeightConversionSet(BaseWeightConversion):
             return find_property(conversion_details, input_value)
         else:
             (remote_field, conversion) = conversion_details
-            # print("remote_field", remote_field)
-            # print("input_value", input_value)
             return self.process_conversion(input_value, remote_field, conversion, *full_context)
 
     def process_conversion(
