@@ -1,15 +1,14 @@
 import torch
 
+
 class WeightConversionInterface:
     def convert(self, input_value, *full_context):
-        raise NotImplementedError(
-            f"WeightConversionInterface called directly!"
-        )
-        
+        raise NotImplementedError(f"WeightConversionInterface called directly!")
+
 
 # This type is used to indicate the position of a field in the remote model
 REMOTE_FIELD = str
-# This is the typing for a weight conversion when operations are needed on the REMOTE_FIELD. 
+# This is the typing for a weight conversion when operations are needed on the REMOTE_FIELD.
 # The WeightConversionInterface will be the instructions on the operations needed to bring the
 # field into TransformerLens
 CONVERSION = tuple[REMOTE_FIELD, WeightConversionInterface]

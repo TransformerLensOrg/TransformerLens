@@ -3,10 +3,12 @@ from typing import Optional, Union
 
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import find_property
+from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import (
+    find_property,
+)
 
-from .types import CONVERSION_ACTION
 from .base_weight_conversion import BaseWeightConversion
+from .types import CONVERSION_ACTION
 
 PRIMARY_CONVERSION = torch.Tensor | BaseWeightConversion | None
 
@@ -23,7 +25,9 @@ class TernaryWeightConversion(BaseWeightConversion):
         self.primary_conversion = primary_conversion
         self.fallback_conversion = fallback_conversion
 
-    def handle_conversion(self, input_value: Union[torch.Tensor|None], *full_context) -> torch.Tensor|None:
+    def handle_conversion(
+        self, input_value: Union[torch.Tensor | None], *full_context
+    ) -> torch.Tensor | None:
         if input_value is not None:
             return self.handle_primary_conversion(input_value, *full_context)
         else:
@@ -36,8 +40,8 @@ class TernaryWeightConversion(BaseWeightConversion):
             return self.primary_conversion
         else:
             return self.primary_conversion.convert(input_value=input_value, *full_context)
-        
-    def handle_fallback_conversion(self, *full_context) -> torch.Tensor|None:
+
+    def handle_fallback_conversion(self, *full_context) -> torch.Tensor | None:
         if isinstance(self.fallback_conversion, torch.Tensor):
             return self.fallback_conversion
         elif isinstance(self.fallback_conversion, str):
@@ -46,13 +50,13 @@ class TernaryWeightConversion(BaseWeightConversion):
             (backup_field, conversion) = self.fallback_conversion
             backup_input = self.find_context_field(backup_field, *full_context)
             return conversion.convert(backup_input, *full_context)
-        
+
     def find_context_field(self, field_key: str, *full_context):
         for context in full_context:
             maybe_field = find_property(field_key, context)
             if maybe_field is not None:
                 return maybe_field
-            
+
         return None
 
     def __repr__(self):

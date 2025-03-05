@@ -14,10 +14,11 @@ from transformer_lens.weight_conversion.mistral import MistralWeightConversion
 from transformer_lens.weight_conversion.mixtral import MixtralWeightConversion
 from transformer_lens.weight_conversion.neo import NEOWeightConversion
 from transformer_lens.weight_conversion.neox import NEOXWeightConversion
+from transformer_lens.weight_conversion.phi import PhiWeightConversion
 from transformer_lens.weight_conversion.qwen import QwenWeightConversion
 from transformer_lens.weight_conversion.qwen2 import Qwen2WeightConversion
 from transformer_lens.weight_conversion.t5 import T5WeightConversion
-from transformer_lens.weight_conversion.phi import PhiWeightConversion
+
 
 class WeightConversionFactory:
     @staticmethod

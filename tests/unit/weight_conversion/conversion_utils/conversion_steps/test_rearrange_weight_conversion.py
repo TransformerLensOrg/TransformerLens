@@ -39,15 +39,12 @@ def test_rearrange_weight_conversion_input_filter():
     """
     Tests that the input_filter is applied correctly before rearrange.
     """
+
     def input_filter(tensor):
         # E.g., multiply by 2
         return tensor * 2
 
-    conversion = RearrangeWeightConversion(
-        "(n h) m->n m h",
-        input_filter=input_filter,
-        n=8
-    )
+    conversion = RearrangeWeightConversion("(n h) m->n m h", input_filter=input_filter, n=8)
     starting = torch.arange(80 * 5, dtype=torch.float32).reshape(80, 5)
     result = conversion.convert(starting)
 
@@ -68,15 +65,12 @@ def test_rearrange_weight_conversion_output_filter():
     """
     Tests that the output_filter is applied to the rearranged output.
     """
+
     def output_filter(tensor):
         # E.g., add 10
         return tensor + 10
 
-    conversion = RearrangeWeightConversion(
-        "(n h) m->n m h",
-        output_filter=output_filter,
-        n=8
-    )
+    conversion = RearrangeWeightConversion("(n h) m->n m h", output_filter=output_filter, n=8)
     starting = torch.arange(80 * 5, dtype=torch.float32).reshape(80, 5)
     result = conversion.convert(starting)
 
@@ -100,6 +94,7 @@ def test_rearrange_weight_conversion_input_output_filters():
     """
     Tests that both input_filter and output_filter are applied in sequence.
     """
+
     def input_filter(tensor):
         return tensor * 2  # Double
 
@@ -107,10 +102,7 @@ def test_rearrange_weight_conversion_input_output_filters():
         return tensor + 3  # Then add 3
 
     conversion = RearrangeWeightConversion(
-        "(n h) m->n m h",
-        input_filter=input_filter,
-        output_filter=output_filter,
-        n=8
+        "(n h) m->n m h", input_filter=input_filter, output_filter=output_filter, n=8
     )
     starting = torch.arange(80 * 5, dtype=torch.float32).reshape(80, 5)
     result = conversion.convert(starting)
@@ -122,6 +114,6 @@ def test_rearrange_weight_conversion_input_output_filters():
             base_val = float(i * 5 + j)
             expected_value = (base_val * 2) + 3
             new_val = result[i // 10, j, i % 10].item()
-            assert new_val == pytest.approx(expected_value), (
-                f"Incorrect arrangement or filter chain: expected {expected_value}, got {new_val}"
-            )
+            assert new_val == pytest.approx(
+                expected_value
+            ), f"Incorrect arrangement or filter chain: expected {expected_value}, got {new_val}"

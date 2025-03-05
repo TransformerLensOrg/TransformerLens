@@ -1,7 +1,11 @@
 from collections.abc import Callable
 from typing import Optional
-from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import find_property
-from .types import WeightConversionInterface, CONVERSION
+
+from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import (
+    find_property,
+)
+
+from .types import CONVERSION, WeightConversionInterface
 
 
 class BaseWeightConversion(WeightConversionInterface):
@@ -18,13 +22,14 @@ class BaseWeightConversion(WeightConversionInterface):
         output = self.handle_conversion(input_value, *full_context)
         return self.output_filter(output) if self.output_filter is not None else output
 
-
     def handle_conversion(self, input_value, *full_context):
         raise NotImplementedError(
             f"The conversion function for {type(self).__name__} needs to be implemented."
         )
-            
-    def process_conversion(self, input_value, remote_field: str, conversion: CONVERSION, *full_context):
+
+    def process_conversion(
+        self, input_value, remote_field: str, conversion: CONVERSION, *full_context
+    ):
         field = find_property(remote_field, input_value)
         if isinstance(field, WeightConversionSet):
             result = []

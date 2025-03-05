@@ -4,11 +4,13 @@ from transformer_lens.weight_conversion.conversion_utils.conversion_steps.callab
     CallableWeightConversion,
 )
 
+
 def test_callable_weight_conversion_basic():
     """
     Verifies that the given callable is invoked on a dict of tensors
     and the result is returned as expected.
     """
+
     def my_callable(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         # Example transformation: add 1 to each tensor value
         new_dict = {}
@@ -42,6 +44,7 @@ def test_callable_weight_conversion_input_filter():
     Ensures BaseWeightConversion's input_filter is applied
     to the dict of tensors before the main callable runs.
     """
+
     def my_callable(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         new_dict = {}
         for k, v in tensor_dict.items():
@@ -75,10 +78,11 @@ def test_callable_weight_conversion_output_filter():
     Ensures BaseWeightConversion's output_filter is applied
     to the dict of tensors after the main callable runs.
     """
+
     def my_callable(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         new_dict = {}
         for k, v in tensor_dict.items():
-            new_dict[k] = v ** 2
+            new_dict[k] = v**2
         return new_dict
 
     def my_output_filter(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
@@ -107,6 +111,7 @@ def test_callable_weight_conversion_input_and_output_filters():
     Tests that input_filter and output_filter both run in the correct order
     around the callable, for a dict of tensors.
     """
+
     def my_callable(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         new_dict = {}
         for k, v in tensor_dict.items():
@@ -149,11 +154,12 @@ def test_callable_weight_conversion_repr():
     Simple test confirming __repr__ returns the expected info
     about the callable operation.
     """
+
     def my_callable(tensor_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         return tensor_dict
 
     conversion = CallableWeightConversion(my_callable)
     rep = repr(conversion).lower()
-    assert "callable operation" in rep, (
-        f"Expected '__repr__' to mention 'callable operation', got '{rep}'"
-    )
+    assert (
+        "callable operation" in rep
+    ), f"Expected '__repr__' to mention 'callable operation', got '{rep}'"
