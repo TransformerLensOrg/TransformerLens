@@ -45,7 +45,7 @@ class WeightConversionSet(BaseWeightConversion):
         self, input_value, remote_field: str, conversion: BaseWeightConversion, *full_context
     ):
         field = find_property(remote_field, input_value)
-        if isinstance(field, WeightConversionSet):
+        if isinstance(conversion, WeightConversionSet):
             result = []
             for layer in field:
                 result.append(conversion.convert(layer, input_value, *full_context))

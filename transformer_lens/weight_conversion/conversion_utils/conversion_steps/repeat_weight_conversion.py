@@ -19,7 +19,7 @@ class RepeatWeightConversion(BaseWeightConversion):
         self.pattern = pattern
         self.axes_lengths = axes_lengths
 
-    def handle_conversion(self, input_value: torch.Tensor) -> torch.Tensor:
+    def handle_conversion(self, input_value: torch.Tensor, *full_context) -> torch.Tensor:
         return einops.repeat(input_value, self.pattern, **self.axes_lengths)
 
     def __repr__(self):
