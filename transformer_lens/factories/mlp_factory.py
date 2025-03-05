@@ -13,7 +13,6 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 class MLPFactory:
     @staticmethod
     def create_mlp(cfg: HookedTransformerConfig) -> CanBeUsedAsMLP:
-
         if cfg.num_experts:
             return MoE(cfg)
         elif cfg.gated_mlp:

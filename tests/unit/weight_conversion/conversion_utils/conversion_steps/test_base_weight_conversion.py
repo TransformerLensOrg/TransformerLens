@@ -11,12 +11,12 @@ class MockWeightConversion(BaseWeightConversion):
         return weight + 5
 
 
-
 def test_base_weight_conversion_convert_throws_error():
     weight_conversion = BaseWeightConversion()
     with pytest.raises(NotImplementedError):
         weight_conversion.convert(torch.zeros(1, 4))
-        
+
+
 def test_mock_weight_conversion_adds_five():
     """
     Verify that the mock subclass adds 5 to every element of the tensor.
@@ -25,12 +25,13 @@ def test_mock_weight_conversion_adds_five():
     input_tensor = torch.zeros((1, 4), dtype=torch.float32)
     output_tensor = weight_conversion.convert(input_tensor)
     expected_tensor = torch.full((1, 4), 5.0, dtype=torch.float32)
-    
+
     # Option 1: simple equality check
     assert torch.equal(output_tensor, expected_tensor)
 
     # Option 2: more robust approximate check
     # torch.testing.assert_close(output_tensor, expected_tensor)
+
 
 @pytest.mark.parametrize("shape", [(1, 4), (2, 2), (3,)])
 def test_mock_weight_conversion_various_shapes(shape):
@@ -42,6 +43,7 @@ def test_mock_weight_conversion_various_shapes(shape):
     output_tensor = weight_conversion.convert(input_tensor)
     expected_tensor = torch.full(shape, 5.0)
     assert torch.equal(output_tensor, expected_tensor)
+
 
 def test_mock_weight_conversion_empty_tensor():
     """
