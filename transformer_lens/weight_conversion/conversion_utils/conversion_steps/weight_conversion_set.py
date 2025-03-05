@@ -41,6 +41,19 @@ class WeightConversionSet(BaseWeightConversion):
             (remote_field, conversion) = conversion_details
             return self.process_conversion(input_value, remote_field, conversion, *full_context)
 
+    def process_conversion(
+        self, input_value, remote_field: str, conversion: BaseWeightConversion, *full_context
+    ):
+        field = find_property(remote_field, input_value)
+        if isinstance(field, WeightConversionSet):
+            result = []
+            for layer in field:
+                result.append(conversion.convert(layer, input_value, *full_context))
+            return result
+
+        else:
+            return conversion.convert(field, *[input_value, *full_context])
+
     def __repr__(self):
         conversion_string = (
             "Is composed of a set of nested conversions with the following details {\n\t"

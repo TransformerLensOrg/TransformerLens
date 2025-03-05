@@ -26,16 +26,3 @@ class BaseWeightConversion(WeightConversionInterface):
         raise NotImplementedError(
             f"The conversion function for {type(self).__name__} needs to be implemented."
         )
-
-    def process_conversion(
-        self, input_value, remote_field: str, conversion: CONVERSION, *full_context
-    ):
-        field = find_property(remote_field, input_value)
-        if isinstance(field, WeightConversionSet):
-            result = []
-            for layer in field:
-                result.append(conversion.convert(layer, input_value, *full_context))
-            return result
-
-        else:
-            return conversion.convert(field, input_value, *full_context)
