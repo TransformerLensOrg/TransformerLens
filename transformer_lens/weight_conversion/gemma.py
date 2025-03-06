@@ -13,7 +13,7 @@ from transformer_lens.weight_conversion.conversion_utils.conversion_steps import
 
 
 class GemmaWeightNormalizationConversion(BaseWeightConversion):
-    def convert(self, input_value):
+    def convert(self, input_value, *full_context):
         return input_value.float() + torch.ones_like(input_value, dtype=torch.float32)
 
     def __repr__(self):
@@ -24,7 +24,7 @@ class GemmaWeightConversion(ArchitectureConversion):
     def __init__(self, cfg: HookedTransformerConfig) -> None:
         super().__init__(
             {
-                "unembed.W_U": "model.lm_head.weight.T",
+                "unembed.W_U": "lm_head.weight.T",
                 "unembed.b_U": torch.zeros(cfg.d_vocab),
                 "ln_final.w": (
                     "model.norm.weight",
@@ -100,4 +100,4 @@ class GemmaWeightConversion(ArchitectureConversion):
         }
 
     def standard_normalization_conversions(self) -> FIELD_SET:
-        return {"ln2.w": ("pre_feedforward_layernorm.weight", GemmaWeightNormalizationConversion())}
+        return {"ln2.w": ("post_attention_layernorm.weight", GemmaWeightNormalizationConversion())}
