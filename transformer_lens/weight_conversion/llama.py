@@ -1,15 +1,35 @@
-from typing import cast
-
-import einops
 import torch
 
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
+from transformer_lens.weight_conversion.conversion_utils import ArchitectureConversion
+from transformer_lens.weight_conversion.conversion_utils.conversion_steps import (
+    RearrangeWeightConversion,
+    WeightConversionSet,
+)
 
+
+class LLAMAWeightConversion(ArchitectureConversion):
+    def __init__(self, cfg: HookedTransformerConfig) -> None:
+        n_kv_heads = cfg.n_key_value_heads if cfg.n_key_value_heads is not None else cfg.n_heads
+        using_gqa = cfg.n_key_value_heads is not None
+        gqa_uscore = "_" if using_gqa else ""
+        
+        super().__init__(
+            {
+                "embed.W_E": "model.embed_tokens.weight",
+                "ln_final.w": "model.norm.weight",
+                "unembed.W_U": "lm_head.weight.T",
+                "unembed.b_U": torch.zeros(cfg.d_vocab, dtype=cfg.dtype, device=cfg.device),
+                "blocks": ("model.layers", WeightConversionSet({
+                    "ln1.w": "input_layernorm.weight",
+                }))
+            }
+        )
 
 def convert_llama_weights(llama, cfg: HookedTransformerConfig):
     state_dict = {}
 
-    state_dict["embed.W_E"] = llama.model.embed_tokens.weight
+    # state_dict["embed.W_E"] = llama.model.embed_tokens.weight
 
     # Some models with the Llama architecture use Grouped Query Attention, and so for these we need to modify
     # the state dict keys for the K/V attention weight/biases, prepending "_" to the key names.
@@ -24,7 +44,7 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
     assert cfg.d_mlp is not None  # keep mypy happy
 
     for l in range(cfg.n_layers):
-        state_dict[f"blocks.{l}.ln1.w"] = llama.model.layers[l].input_layernorm.weight
+        # state_dict[f"blocks.{l}.ln1.w"] = llama.model.layers[l].input_layernorm.weight
 
         W_Q = llama.model.layers[l].self_attn.q_proj.weight
         W_K = llama.model.layers[l].self_attn.k_proj.weight
@@ -88,9 +108,9 @@ def convert_llama_weights(llama, cfg: HookedTransformerConfig):
             cfg.d_model, dtype=cfg.dtype, device=cfg.device
         )
 
-    state_dict["ln_final.w"] = llama.model.norm.weight
+    # state_dict["ln_final.w"] = llama.model.norm.weight
 
-    state_dict["unembed.W_U"] = llama.lm_head.weight.T
-    state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype, device=cfg.device)
+    # state_dict["unembed.W_U"] = llama.lm_head.weight.T
+    # state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype, device=cfg.device)
 
     return state_dict
