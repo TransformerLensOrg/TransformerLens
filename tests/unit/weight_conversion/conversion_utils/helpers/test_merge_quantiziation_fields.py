@@ -4,9 +4,6 @@ import torch
 from transformer_lens.weight_conversion.conversion_utils.conversion_steps.weight_conversion_set import (
     WeightConversionSet,
 )
-from transformer_lens.weight_conversion.conversion_utils.conversion_steps.types import (
-    FIELD_SET,
-)
 from transformer_lens.weight_conversion.conversion_utils.helpers.merge_quantiziation_fields import (
     merge_quantiziation_fields,
 )
@@ -14,7 +11,7 @@ from transformer_lens.weight_conversion.conversion_utils.helpers.merge_quantizia
 
 def test_merge_quantization_fields_simple_overwrite():
     """
-    If the new field is a non-tuple (like torch.Tensor) and 
+    If the new field is a non-tuple (like torch.Tensor) and
     there is an existing field, we simply overwrite the existing field.
     """
     original_fields = {
@@ -49,7 +46,10 @@ def test_merge_quantization_fields_missing_original_field():
     }
     conversion_set = WeightConversionSet(original_fields)
 
-    with pytest.raises(RuntimeError, match="Attempted to merge quantization field into existing conversion without original field configured"):
+    with pytest.raises(
+        RuntimeError,
+        match="Attempted to merge quantization field into existing conversion without original field configured",
+    ):
         merge_quantiziation_fields(conversion_set, new_fields)
 
 
@@ -85,7 +85,9 @@ def test_merge_quantization_fields_complex_subfield_structure():
 
     merged_field = conversion_set.fields["layer_0"]
     assert isinstance(merged_field, tuple), "Expected the merged field to remain a tuple."
-    assert isinstance(merged_field[1], WeightConversionSet), "Expected the merged field to remain a tuple."
+    assert isinstance(
+        merged_field[1], WeightConversionSet
+    ), "Expected the merged field to remain a tuple."
     assert merged_field[0] == "new_remote", "Remote field should be updated."
 
     merged_sub_wcs = merged_field[1]
@@ -99,7 +101,7 @@ def test_merge_quantization_fields_complex_subfield_structure():
 
 def test_merge_quantization_fields_new_field_tuple_existing_not_tuple():
     """
-    If new_field is (str, WeightConversionSet), but the existing field 
+    If new_field is (str, WeightConversionSet), but the existing field
     is not also a tuple with a WeightConversionSet, raise RuntimeError.
     """
     original_fields = {
@@ -112,13 +114,16 @@ def test_merge_quantization_fields_new_field_tuple_existing_not_tuple():
 
     conversion_set = WeightConversionSet(original_fields)
 
-    with pytest.raises(RuntimeError, match="Attempted to merge WeightConversionSet into a field that is not configured as a WeightConversionSet"):
+    with pytest.raises(
+        RuntimeError,
+        match="Attempted to merge WeightConversionSet into a field that is not configured as a WeightConversionSet",
+    ):
         merge_quantiziation_fields(conversion_set, new_fields)
 
 
 def test_merge_quantization_fields_existing_tuple_new_is_not_tuple():
     """
-    If the existing field is a tuple with WeightConversionSet, but the new field 
+    If the existing field is a tuple with WeightConversionSet, but the new field
     isn't a tuple with a WeightConversionSet, we simply overwrite the entire field.
     """
     existing_sub = WeightConversionSet({"old_sub": torch.tensor([3.0])})
