@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import (
+from transformer_lens.weight_conversion.conversion_utils.helpers.find_property import (
     find_property,
 )
 

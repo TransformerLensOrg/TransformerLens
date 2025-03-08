@@ -1,6 +1,6 @@
 import torch
 
-from transformer_lens.weight_conversion.conversion_utils.conversion_helpers import (
+from transformer_lens.weight_conversion.conversion_utils.helpers.find_property import (
     find_property,
 )
 from transformer_lens.weight_conversion.conversion_utils.weight_conversion_utils import (
@@ -14,16 +14,16 @@ from .types import CONVERSION_ACTION, FIELD_SET
 class WeightConversionSet(BaseWeightConversion):
     def __init__(
         self,
-        weights: FIELD_SET,
+        fields: FIELD_SET,
     ):
         super().__init__()
-        self.weights = weights
+        self.fields = fields
 
     def handle_conversion(self, input_value, *full_context):
         result = {}
-        for weight_name in self.weights:
-            conversion_action = self.weights[weight_name]
-            result[weight_name] = self.process_conversion_action(
+        for fields_name in self.fields:
+            conversion_action = self.fields[fields_name]
+            result[fields_name] = self.process_conversion_action(
                 input_value,
                 conversion_details=conversion_action,
             )
@@ -59,7 +59,7 @@ class WeightConversionSet(BaseWeightConversion):
             "Is composed of a set of nested conversions with the following details {\n\t"
         )
         # This is a bit of a hack to get the string representation of nested conversions
-        conversion_string += WeightConversionUtils.create_conversion_string(self.weights)[
+        conversion_string += WeightConversionUtils.create_conversion_string(self.fields)[
             :-1
         ].replace("\n", "\n\t")
         conversion_string += "\n}"
