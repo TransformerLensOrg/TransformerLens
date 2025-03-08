@@ -23,21 +23,21 @@ class LLAMAWeightConversion(ArchitectureConversion):
                 "blocks": ("model.layers", WeightConversionSet({
                     "ln1.w": "input_layernorm.weight",
                     "attn.W_Q": ("self_attn.q_proj.weight", RearrangeWeightConversion("(n h) m->n m h", n=cfg.n_heads)),
-                    "attn.{gqa_uscore}W_K": ("self_attn.k_proj.weight", RearrangeWeightConversion("(n h) m->n m h", n=n_kv_heads)),
-                    "attn.{gqa_uscore}W_V": ("self_attn.v_proj.weight", RearrangeWeightConversion("(n h) m->n m h", n=n_kv_heads)),
+                    f"attn.{gqa_uscore}W_K": ("self_attn.k_proj.weight", RearrangeWeightConversion("(n h) m->n m h", n=n_kv_heads)),
+                    f"attn.{gqa_uscore}W_V": ("self_attn.v_proj.weight", RearrangeWeightConversion("(n h) m->n m h", n=n_kv_heads)),
                     "attn.b_Q": torch.zeros(
                         n_kv_heads,
                         cfg.d_head,
                         dtype=cfg.dtype,
                         device=cfg.device,
                     ),
-                    "attn.{gqa_uscore}b_K": torch.zeros(
+                    f"attn.{gqa_uscore}b_K": torch.zeros(
                         n_kv_heads,
                         cfg.d_head,
                         dtype=cfg.dtype,
                         device=cfg.device,
                     ),
-                    "attn.{gqa_uscore}b_V": torch.zeros(
+                    f"attn.{gqa_uscore}b_V": torch.zeros(
                         n_kv_heads,
                         cfg.d_head,
                         dtype=cfg.dtype,
@@ -63,8 +63,8 @@ class LLAMAWeightConversion(ArchitectureConversion):
         self.enable_quantiziation(cfg, {
             "blocks": ("model.layers", WeightConversionSet({
                 "attn.W_Q": "self_attn.q_proj.weight",
-                "attn.{gqa_uscore}W_K": "self_attn.k_proj.weight",
-                "attn.{gqa_uscore}W_V": "self_attn.v_proj.weight",
+                f"attn.{gqa_uscore}W_K": "self_attn.k_proj.weight",
+                f"attn.{gqa_uscore}W_V": "self_attn.v_proj.weight",
                 "attn.W_O": "self_attn.o_proj.weight",
                 "mlp.W_in": "mlp.up_proj.weight",
                 "mlp.W_gate": "mlp.gate_proj.weight",
