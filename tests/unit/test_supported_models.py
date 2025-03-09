@@ -15,6 +15,4 @@ def test_model_aliases_is_alphabetical():
     expected_keys = sorted(actual_keys, key=str.casefold)
 
     # Compare the actual insertion order to the expected alphabetical order
-    assert actual_keys == expected_keys, (
-        "MODEL_ALIASES keys are not in alphabetical order. "
-    )
+    assert actual_keys == expected_keys, "MODEL_ALIASES keys are not in alphabetical order. "
