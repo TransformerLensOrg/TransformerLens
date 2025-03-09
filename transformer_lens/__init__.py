@@ -1,3 +1,4 @@
+from . import supported_models
 from . import utils
 from . import hook_points
 from . import evals
