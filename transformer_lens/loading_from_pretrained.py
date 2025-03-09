@@ -19,10 +19,6 @@ from transformers import (
     T5ForConditionalGeneration,
 )
 
-from transformer_lens.supported_models import (
-    OFFICIAL_MODEL_NAMES,
-    MODEL_ALIASES
-)
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.pretrained.weight_conversions import (
@@ -46,7 +42,7 @@ from transformer_lens.pretrained.weight_conversions import (
     convert_qwen_weights,
     convert_t5_weights,
 )
-
+from transformer_lens.supported_models import MODEL_ALIASES, OFFICIAL_MODEL_NAMES
 
 NON_HF_HOSTED_MODEL_NAMES = [
     "llama-7b-hf",
