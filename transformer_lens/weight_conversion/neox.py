@@ -32,7 +32,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                                     qkv=3,
                                 ),
                             ),
-                            "attn.W_k": (
+                            "attn.W_K": (
                                 "attention.query_key_value.weight",
                                 RearrangeWeightConversion(
                                     "(i qkv h) m->qkv i m h",
