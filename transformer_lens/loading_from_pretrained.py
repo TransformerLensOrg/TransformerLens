@@ -895,7 +895,7 @@ def get_pretrained_model_config(
     dtype: torch.dtype = torch.float32,
     first_n_layers: Optional[int] = None,
     **kwargs,
-):
+) -> HookedTransformerConfig:
     """Returns the pretrained model config as an HookedTransformerConfig object.
 
     There are two types of pretrained models: HuggingFace models (where
