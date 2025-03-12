@@ -90,5 +90,7 @@ class GPT2LMHeadCustomWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )

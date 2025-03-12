@@ -62,5 +62,7 @@ class MixtralWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )

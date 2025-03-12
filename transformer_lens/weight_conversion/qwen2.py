@@ -68,5 +68,7 @@ class Qwen2WeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )

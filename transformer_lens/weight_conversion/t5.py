@@ -99,5 +99,7 @@ class T5WeightConversion(ArchitectureConversion):
                     ),
                 ),
                 "decoder_final_ln.w": "decoder.final_layer_norm.weight",
+            },
+            {
             }
         )

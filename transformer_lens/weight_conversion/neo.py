@@ -52,5 +52,7 @@ class NEOWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )

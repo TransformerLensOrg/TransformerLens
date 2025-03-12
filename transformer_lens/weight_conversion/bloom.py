@@ -90,5 +90,7 @@ class BloomWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )

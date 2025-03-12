@@ -165,6 +165,8 @@ class NanoGPTWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )
 

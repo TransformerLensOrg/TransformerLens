@@ -80,5 +80,7 @@ class PhiWeightConversion(ArchitectureConversion):
                 "ln_final.b": "model.final_layernorm.bias",
                 "unembed.W_U": "lm_head.weight.T",
                 "unembed.b_U": "lm_head.bias",
+            },
+            {
             }
         )

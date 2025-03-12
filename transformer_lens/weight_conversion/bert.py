@@ -77,5 +77,7 @@ class BertWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )

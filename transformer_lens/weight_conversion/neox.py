@@ -94,5 +94,9 @@ class NEOXWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
+                "embed": "gpt_neox.embed_in",
+                "ln_final": "gpt_neox.final_layer_norm"
             }
         )

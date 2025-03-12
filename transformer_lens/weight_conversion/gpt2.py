@@ -100,5 +100,7 @@ class GPT2WeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )

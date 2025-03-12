@@ -70,6 +70,8 @@ class LLAMAWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )
         self.enable_quantiziation(

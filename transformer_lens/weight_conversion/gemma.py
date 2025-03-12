@@ -38,6 +38,8 @@ class GemmaWeightConversion(ArchitectureConversion):
                     ),
                 ),
                 "blocks": ("model.layers", self.blocks_conversions(cfg)),
+            },
+            {
             }
         )
 

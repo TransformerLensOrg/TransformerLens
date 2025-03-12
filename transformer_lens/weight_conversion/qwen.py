@@ -98,5 +98,7 @@ class QwenWeightConversion(ArchitectureConversion):
                         }
                     ),
                 ),
+            },
+            {
             }
         )

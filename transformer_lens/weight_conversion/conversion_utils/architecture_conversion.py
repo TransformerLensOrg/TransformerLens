@@ -10,7 +10,7 @@ from .conversion_steps.weight_conversion_set import WeightConversionSet
 
 
 class ArchitectureConversion:
-    def __init__(self, fields: FIELD_SET) -> None:
+    def __init__(self, fields: FIELD_SET, modules: FIELD_SET) -> None:
         self.field_set = WeightConversionSet(fields)
 
     def enable_quantiziation(
