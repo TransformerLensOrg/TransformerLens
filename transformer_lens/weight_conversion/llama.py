@@ -72,6 +72,10 @@ class LLAMAWeightConversion(ArchitectureConversion):
                 ),
             },
             {
+                "blocks": (
+                    "model.layers",
+                    WeightConversionSet({})
+                )
             }
         )
         self.enable_quantiziation(

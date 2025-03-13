@@ -29,10 +29,13 @@ class TransformersModelCompare:
         #     0, inputs_embeds.shape[1], device=inputs_embeds.device
         # )
         # position_ids = cache_position.unsqueeze(0)
-        self.compare_outputs(text, weight_conversion_config.field_set.fields, transformer_lens_model, transformers_model, tokenizer)
+        tokens = transformer_lens_model.to_tokens(text)
+        input = tokenizer(text, return_tensors="pt")
+        logit_difference = self.compare_model_logits(tokens, transformer_lens_model, input, transformers_model)
+        print("logit_difference", logit_difference)
+        self.compare_modules(weight_conversion_config.modules, tokens, transformer_lens_model, input, transformers_model)
         
         text = "Hello my name is, "
-        
         # transformer_lens_model.generate(text, max_new_tokens=50)
         # output = transformers_model.generate(**inputs, max_new_tokens=50, return_dict_in_generate=True, output_logits=True)
         # print("output", output.shape())
@@ -43,14 +46,12 @@ class TransformersModelCompare:
         # print("block0", transformer_lens_model.blocks[0].attn.W_Q)
         # print("layers0", transformers_model.model.layers[0].self_attn.q_proj.weight)
         
-    def compare_outputs(self, text: str, fields: FIELD_SET, transformer_lens_model: HookedTransformer, transformers_model, tokenizer):
+    def compare_model_logits(self, transformer_lens_tokens, transformer_lens_model: HookedTransformer, transformers_input, transformers_model) -> float:
         
-        tokens = transformer_lens_model.to_tokens(text)
-        input = tokenizer(text, return_tensors="pt")
-        print("tokens", tokens)
-        print("input",  input)
-        transformer_lens_logits = transformer_lens_model(tokens)[:, -1, :]
-        transformers_logits = self.get_transformers_logits(transformers_model, input)[:, -1, :]
+        transformer_lens_logits = transformer_lens_model(transformer_lens_tokens)[:, -1, :]
+        with torch.no_grad():
+            outputs = transformers_model(**transformers_input)
+        transformers_logits = outputs.logits
         # print("transformer_lens_logits", transformer_lens_logits)
         # print("transformers_logits", transformers_logits)
         if not torch.equal(transformer_lens_logits, transformers_logits):
@@ -61,39 +62,52 @@ class TransformersModelCompare:
                 iterations+=1
                 if iterations >= 20:
                     break
-            print(f"Logics are close until {atol}")
+            return atol
         else:
-            print("Logits are equal")
+           return 0
+        
+        
+    def compare_modules(self, modules: FIELD_SET, transformer_lens_tokens, transformer_lens_modules, transformers_input, transformers_modules):
+        
         # # print("diff", transformer_lens_output - transformers_output[0])
         # # print("transformers_output", transformers_output)
-        # # for transformer_lens_field_name in fields:
-        # #     remote_field = fields[transformer_lens_field_name]
-        # #     if isinstance(remote_field, tuple) and isinstance(remote_field[1], WeightConversionSet):
-        # #         remote_field_name, remote_field_conversion = remote_field
-        # #         transformer_lens_layers = find_property(transformer_lens_field_name, transformer_lens_model)
-        # #         transformers_layers = find_property(remote_field_name, transformers_model)
-        # #         self.compare_layers(test_tensor, transformer_lens_field_name, transformer_lens_layers, transformers_layers)
+        for transformer_lens_module_name in modules:
+            remote_module_details = modules[transformer_lens_module_name]
+            remote_module_name = remote_module_details[0] if isinstance(remote_module_details, tuple) else remote_module_details
+
+            transformer_lens_module = find_property(transformer_lens_module_name, transformer_lens_modules)
+            transformers_module = find_property(remote_module_name, transformers_modules)
+            if isinstance(remote_module_details, tuple) and isinstance(remote_module_details[1], WeightConversionSet):
+                layer_conversion_details = remote_module_details[1]
+                self.compare_layers(layer_conversion_details.fields, transformer_lens_tokens, transformer_lens_module, transformers_input, transformers_module)
+            # else:
+                
+            #     if isinstance(remote_module_name, tuple):
+            #         output_conversion = remote_module_details[1]
+            #     diff = self.compare_module(transformer_lens_tokens, transformer_lens_module, transformers_input, transformers_module)
+                # print("module diff", diff)
+                # todo compare individual module
+                # remote_module_name, remote_module_conversion = remote_module
+                # transformer_lens_layers = find_property(transformer_lens_field_name, transformer_lens_model)
+                # t
+                # self.compare_layers(test_tensor, transformer_lens_field_name, transformer_lens_layers, transformers_layers)
                 
                 
-    def get_transformers_logits(self, transformers_model, test_tensor):
-        # Generate the logits
-        with torch.no_grad():
-            outputs = transformers_model(**test_tensor)
+    def compare_layers(self, sub_modules: FIELD_SET, transformer_lens_tokens, transformer_lens_layers, transformers_input, transformers_layers):
         
-        # Get the logits for all tokens
-        return outputs.logits
-                
-    def compare_layers(self, test_tensor: torch.Tensor, transformer_lens_field_name: str, transformer_lens_layers, transformers_layers, position_ids):
-        
-        
-        
-        
+        test_tensor = torch.randn((1, 1, 768,))
         layer_number = 0
         for transformer_lens_layer in transformer_lens_layers:
-            layer_number+=1
             transformers_layer = transformers_layers[layer_number]
-            transformer_lens_output = transformer_lens_layer(test_tensor)
-            print("transformer_lens_output", transformer_lens_output)
-            print("transformers_layer", transformers_layer)
-            transformers_output = transformers_layer(test_tensor, position_ids=position_ids)
-            print("diff", transformer_lens_output - transformers_output)
+            layer_diff = self.compare_module(test_tensor, transformer_lens_layer, test_tensor, transformers_layer)
+            print("layer_diff", layer_diff)
+            self.compare_modules(sub_modules, test_tensor, transformer_lens_layer, test_tensor, transformers_layer)
+            layer_number+=1
+            
+    def compare_module(self, transformer_lens_tokens, transformer_lens_module, transformers_input, transformers_module):
+        transformer_lens_output = transformer_lens_module(transformer_lens_tokens)
+        position_ids = torch.arange(0, 1, dtype=torch.long, device=transformers_input.device)
+        position_ids = position_ids.unsqueeze(0).expand(1, 1)  # (B, L)
+        transformers_output = transformers_module(transformers_input, position_ids=position_ids)[0]
+        return transformer_lens_output - transformers_output
+        

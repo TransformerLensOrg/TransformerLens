@@ -12,6 +12,7 @@ from .conversion_steps.weight_conversion_set import WeightConversionSet
 class ArchitectureConversion:
     def __init__(self, fields: FIELD_SET, modules: FIELD_SET) -> None:
         self.field_set = WeightConversionSet(fields)
+        self.modules = modules
 
     def enable_quantiziation(
         self, cfg: HookedTransformerConfig, quantiziation_fields: FIELD_SET

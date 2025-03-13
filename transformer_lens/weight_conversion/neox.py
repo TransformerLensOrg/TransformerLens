@@ -97,6 +97,18 @@ class NEOXWeightConversion(ArchitectureConversion):
             },
             {
                 "embed": "gpt_neox.embed_in",
-                "ln_final": "gpt_neox.final_layer_norm"
+                "ln_final": "gpt_neox.final_layer_norm",
+                "unembed": "embed_out",
+                "blocks": (
+                    "gpt_neox.layers",
+                    WeightConversionSet(
+                        {
+                            "ln1": "input_layernorm",
+                            "attn": "attn",
+                            "ln2": "post_attention_layernorm",
+                            "mlp": "mlp",
+                        }
+                    )
+                )
             }
         )
