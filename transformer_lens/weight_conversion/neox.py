@@ -104,7 +104,7 @@ class NEOXWeightConversion(ArchitectureConversion):
                     WeightConversionSet(
                         {
                             "ln1": "input_layernorm",
-                            "attn": "attn",
+                            "attn": "attention",
                             "ln2": "post_attention_layernorm",
                             "mlp": "mlp",
                         }
