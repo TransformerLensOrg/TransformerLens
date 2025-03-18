@@ -1205,44 +1205,7 @@ def get_pretrained_state_dict(
         param.requires_grad = False
 
     weight_conversion_config = WeightConversionFactory.select_weight_conversion_config(cfg)
-
-    weight_conversion = weight_conversion_config.convert(hf_model)
-    return flatten_nested_dict(weight_conversion)
-
-
-def flatten_nested_dict(input, parent_key="", sep="."):
-    """
-    Flattens a nested dictionary/list structure into a flat dictionary with dot notation.
-
-    Args:
-        input: The input structure (can be dict, list, or a value)
-        parent_key: The parent key for the current item (used in recursion)
-        sep: Separator to use between nested keys (default '.')
-
-    Returns:
-        dict: Flattened dictionary with dot notation keys
-    """
-    items = {}
-
-    if isinstance(input, dict):
-        for k, v in input.items():
-            new_key = f"{parent_key}{sep}{k}" if parent_key else k
-            if isinstance(v, (dict, list)):
-                items.update(flatten_nested_dict(v, new_key, sep=sep))
-            else:
-                items[new_key] = v
-
-    elif isinstance(input, list):
-        for i, v in enumerate(input):
-            new_key = f"{parent_key}{sep}{i}" if parent_key else str(i)
-            if isinstance(v, (dict, list)):
-                items.update(flatten_nested_dict(v, new_key, sep=sep))
-            else:
-                items[new_key] = v
-    else:
-        items[parent_key] = input
-
-    return items
+    return weight_conversion_config.convert(hf_model)
 
 
 def fill_missing_keys(model, state_dict):
