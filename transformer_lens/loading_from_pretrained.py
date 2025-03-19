@@ -247,6 +247,8 @@ OFFICIAL_MODEL_NAMES = [
     "google/gemma-2-9b-it",
     "google/gemma-2-27b",
     "google/gemma-2-27b-it",
+    "google/gemma-3-1b-pt",
+    "google/gemma-3-1b-it",
     "01-ai/Yi-6B",
     "01-ai/Yi-34B",
     "01-ai/Yi-6B-Chat",
@@ -677,6 +679,8 @@ MODEL_ALIASES = {
     "google/gemma-2-2b-it": ["gemma-2-2b-it"],
     "google/gemma-2-9b-it": ["gemma-2-9b-it"],
     "google/gemma-2-27b-it": ["gemma-2-27b-it"],
+    "google/gemma-3-1b-pt": ["gemma-3-1b", "gemma-3-1b-pt"],
+    "google/gemma-3-1b-it": ["gemma-3-1b-it"],
     "01-ai/Yi-6B": ["yi-6b", "Yi-6B"],
     "01-ai/Yi-34B": ["yi-34b", "Yi-34B"],
     "01-ai/Yi-6B-Chat": ["yi-6b-chat", "Yi-6B-Chat"],
@@ -755,6 +759,8 @@ def convert_hf_model_config(model_name: str, **kwargs):
     # Load HuggingFace model config
     if "llama" in official_model_name.lower():
         architecture = "LlamaForCausalLM"
+    elif "gemma-3" in official_model_name.lower():
+        architecture = "Gemma3ForCausalLM"
     elif "gemma-2" in official_model_name.lower():
         architecture = "Gemma2ForCausalLM"
     elif "gemma" in official_model_name.lower():
@@ -1482,6 +1488,31 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "use_normalization_before_and_after": True,
         }
+    elif official_model_name.startswith("google/gemma-3-1b"):
+        cfg_dict = {
+            "d_model": 1152,
+            "d_head": 256,
+            "n_heads": 4,
+            "d_mlp": 6912,
+            "n_layers": 26,
+            "n_ctx": 2048, # Capped due to memory needs originally 32768
+            "eps": 1e-06,
+            "d_vocab": 262144,
+            "act_fn": "gelu_pytorch_tanh",
+            "initializer_range": 0.02,
+            "normalization_type": "RMS",
+            "rotary_base": 1000000.0,
+            "positional_embedding_type": "rotary",
+            "use_attn_scale": True,
+            "n_key_value_heads": 1,
+            "window_size": 512,
+            "sliding_window_pattern": 6,
+            "use_local_attn": False,
+            "attn_types": "global",
+            "gated_mlp": True,
+            "final_rms": True,
+            "use_normalization_before_and_after": True,
+        }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
             "d_model": hf_config.d_model,
@@ -1900,6 +1931,8 @@ def get_pretrained_state_dict(
         elif cfg.original_architecture == "GemmaForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
         elif cfg.original_architecture == "Gemma2ForCausalLM":
+            state_dict = convert_gemma_weights(hf_model, cfg)
+        elif cfg.original_architecture == "Gemma3ForCausalLM":
             state_dict = convert_gemma_weights(hf_model, cfg)
         else:
             raise ValueError(

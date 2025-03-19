@@ -221,6 +221,7 @@ class HookedTransformerConfig:
     checkpoint_value: Optional[int] = None
     tokenizer_name: Optional[str] = None
     window_size: Optional[int] = None
+    sliding_window_pattern: Optional[int] = None
     attn_types: Optional[List] = None
     init_mode: str = "gpt2"
     normalization_type: Optional[str] = "LN"
