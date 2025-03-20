@@ -1495,7 +1495,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_heads": 4,
             "d_mlp": 6912,
             "n_layers": 26,
-            "n_ctx": 2048, # Capped due to memory needs originally 32768
+            "n_ctx": 32768, # Capped due to memory needs originally 32768
             "eps": 1e-06,
             "d_vocab": 262144,
             "act_fn": "gelu_pytorch_tanh",
@@ -1508,7 +1508,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "window_size": 512,
             "sliding_window_pattern": 6,
             "use_local_attn": False,
-            "attn_types": "global",
+            "attn_types": "sliding_window",
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,

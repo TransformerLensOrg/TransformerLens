@@ -75,7 +75,7 @@ class TransformerBlock(nn.Module):
 
         attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
         if not self.cfg.use_local_attn:
-            self.attn = attention(self.cfg, "global", block_index)
+            self.attn = attention(self.cfg, self.cfg.attn_types if not None else "global", block_index)
         else:
             if self.cfg.attn_types is None:
                 raise ValueError("attn_types must be set when using local attention")

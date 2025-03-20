@@ -78,13 +78,15 @@ class AbstractAttention(ABC, nn.Module):
 
         self.layer_id = layer_id
         
-        if self.cfg.sliding_window_pattern is not None:
-            if self.layer_id % self.cfg.sliding_window_pattern == 0:
-                attn_type = "global"
+        if attn_type == "sliding_window" and self.cfg.sliding_window_pattern is not None:
+            if not bool((self.layer_id + 1) % self.cfg.sliding_window_pattern):
+                self.attn_type = "global"
             else:
-                attn_type = "local"
+                self.attn_type = "local"
+        else: 
+            self.attn_type = attn_type
         
-        self.attn_type = attn_type
+        print("attn_type", attn_type, self.attn_type, layer_id, self.cfg.sliding_window_pattern)
         # Create a max_ctx x max_ctx mask, with True iff that query position
         # can attend to that key position (query is first axis, key is second axis)
         causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
