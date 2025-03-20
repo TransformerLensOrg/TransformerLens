@@ -86,7 +86,6 @@ class AbstractAttention(ABC, nn.Module):
         else: 
             self.attn_type = attn_type
         
-        print("attn_type", attn_type, self.attn_type, layer_id, self.cfg.sliding_window_pattern)
         # Create a max_ctx x max_ctx mask, with True iff that query position
         # can attend to that key position (query is first axis, key is second axis)
         causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
