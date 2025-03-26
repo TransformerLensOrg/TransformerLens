@@ -76,11 +76,7 @@ class AbstractAttention(ABC, nn.Module):
         self.b_V: nn.Parameter = abstract_attribute()
         self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
 
-        self.layer_id = layer_id
-        
-
         self.attn_type = attn_type
-        
         # Create a max_ctx x max_ctx mask, with True iff that query position
         # can attend to that key position (query is first axis, key is second axis)
         causal_mask = torch.tril(torch.ones((self.cfg.n_ctx, self.cfg.n_ctx)).bool())
@@ -97,6 +93,7 @@ class AbstractAttention(ABC, nn.Module):
 
         self.register_buffer("IGNORE", torch.tensor(-torch.inf))
 
+        self.layer_id = layer_id
 
         # attn_scale is a constant that we divide the attention scores by pre-softmax. I'm not entirely sure why it matters, but it's probably a mix of softmax not being scale invariant and numerical stability?
         if self.cfg.use_attn_scale:

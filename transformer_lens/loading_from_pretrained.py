@@ -1507,7 +1507,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 1,
             "window_size": 512,
             "use_local_attn": True,
-            "attn_types": ["local", "local", "local", "local", "local", "global"] * 4 + ["local", "local"],
+            "attn_types": ["local", "local", "local", "local", "local", "global"] * 5,
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
