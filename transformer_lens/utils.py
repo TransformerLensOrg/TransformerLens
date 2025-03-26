@@ -601,30 +601,25 @@ def get_act_name(
 
     Args:
          name (str): Takes in the name of the activation. This can be used to specify any activation name by itself.
-         The code assumes the first sequence of digits passed to it (if any) is the layer number, and anything after
-         that is the layer type.
+            The code assumes the first sequence of digits passed to it (if any) is the layer number, and anything after
+            that is the layer type.
 
-         Given only a word and number, it leaves layer_type as is.
-         Given only a word, it leaves layer and layer_type as is.
-
-         Examples:
-             get_act_name('embed') = get_act_name('embed', None, None)
-             get_act_name('k6') = get_act_name('k', 6, None)
-             get_act_name('scale4ln1') = get_act_name('scale', 4, 'ln1')
+            Given only a word and number, it leaves layer_type as is.
+            Given only a word, it leaves layer and layer_type as is.
 
          layer (int, optional): Takes in the layer number. Used for activations that appear in every block.
 
          layer_type (string, optional): Used to distinguish between activations that appear multiple times in one block.
 
-    Full Examples:
+    Examples::
 
-    get_act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
-    get_act_name('pre', 2)=='blocks.2.mlp.hook_pre'
-    get_act_name('embed')=='hook_embed'
-    get_act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
-    get_act_name('k6')=='blocks.6.attn.hook_k'
-    get_act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
-    get_act_name('pre5')=='blocks.5.mlp.hook_pre'
+        get_act_name('k', 6, 'a')=='blocks.6.attn.hook_k'
+        get_act_name('pre', 2)=='blocks.2.mlp.hook_pre'
+        get_act_name('embed')=='hook_embed'
+        get_act_name('normalized', 27, 'ln2')=='blocks.27.ln2.hook_normalized'
+        get_act_name('k6')=='blocks.6.attn.hook_k'
+        get_act_name('scale4ln1')=='blocks.4.ln1.hook_scale'
+        get_act_name('pre5')=='blocks.5.mlp.hook_pre'
     """
     if ("." in name or name.startswith("hook_")) and layer is None and layer_type is None:
         # If this was called on a full name, just return it
