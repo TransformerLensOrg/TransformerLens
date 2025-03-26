@@ -78,13 +78,8 @@ class AbstractAttention(ABC, nn.Module):
 
         self.layer_id = layer_id
         
-        if attn_type == "sliding_window" and self.cfg.sliding_window_pattern is not None:
-            if not bool((self.layer_id + 1) % self.cfg.sliding_window_pattern):
-                self.attn_type = "global"
-            else:
-                self.attn_type = "local"
-        else: 
-            self.attn_type = attn_type
+
+        self.attn_type = attn_type
         
         # Create a max_ctx x max_ctx mask, with True iff that query position
         # can attend to that key position (query is first axis, key is second axis)
