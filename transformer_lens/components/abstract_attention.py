@@ -495,6 +495,10 @@ class AbstractAttention(ABC, nn.Module):
         pos = torch.arange(n_ctx, dtype=high_precision)
         dim = torch.arange(rotary_dim // 2, dtype=high_precision)
 
+        # Handle hybrid RoPE configuration for local vs global attention
+        if hasattr(self.cfg, 'rope_local_base_freq') and self.attn_type == 'local':
+            base = self.cfg.rope_local_base_freq
+
         # Llama-3.1 uses NTK-by-Parts Rotary Embedding introduced in Section 3.2 in https://arxiv.org/pdf/2309.00071
         # Implementation copied from https://github.com/huggingface/transformers/blob/v4.46.0/src/transformers/modeling_rope_utils.py#L310
         if self.cfg.use_NTK_by_parts_rope:
