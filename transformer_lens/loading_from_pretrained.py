@@ -1524,36 +1524,42 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_layers": 26,
             "n_ctx": 32768,
             "eps": 1e-06,
-            "d_vocab": hf_config.vocab_size,
+            "d_vocab": 262144,  # Gemma 3 has a larger vocabulary
             "act_fn": "gelu_pytorch_tanh",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
-            "rotary_base": 1000000.0,
+            "rotary_base": 1000000.0,  # Using the global attention base frequency
             "rope_local_base_freq": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": 256.0,
+            "attn_scale": 256.0,  # query_pre_attn_scalar
             "n_key_value_heads": 1,
             "window_size": 512,
             "use_local_attn": True,
-            "attn_types": ["local", "local", "local", "local", "local", "global"] * 4 + ["local", "local", "local", "local", "local", "global"],
+            "attn_types": ["local", "local", "local", "local", "local", "global"] * 4 + ["local", "local", "local", "local", "local", "global"],  # 5:1 pattern as specified by sliding_window_pattern
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
             "attn_scores_soft_cap": 50.0,
             "output_logits_soft_cap": 30.0,
             "dtype": torch.bfloat16,
+            "tokenizer_prepends_bos": True,  # Gemma 3 tokenizer prepends BOS token
+            "default_prepend_bos": True,  # Default to prepending BOS token
+            "trust_remote_code": True,  # Trust remote code for tokenizer
+            "bos_token_id": 2,  # Gemma 3 specific token IDs
+            "eos_token_id": 1,
+            "pad_token_id": 0,
         }
     elif official_model_name.startswith("google/gemma-3-4b"):
         cfg_dict = {
             "d_model": 2560,
             "d_head": 256,
-            "n_heads": 10,
+            "n_heads": 10,  # 2560/256
             "d_mlp": 10240,
             "n_layers": 34,
             "n_ctx": 32768,
             "eps": 1e-06,
-            "d_vocab": hf_config.vocab_size,
+            "d_vocab": 262144,
             "act_fn": "gelu_pytorch_tanh",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
@@ -1598,12 +1604,17 @@ def convert_hf_model_config(model_name: str, **kwargs):
     if kwargs.get("trust_remote_code", False):
         cfg_dict["trust_remote_code"] = True
     if "gemma" in model_name.lower():
-        cfg_dict.update({
-            "d_vocab": hf_config.vocab_size,
-            "use_normalization_before_and_after": True,
-            "attn_scores_soft_cap": 20.0,
-            "output_logits_soft_cap": 20.0,
-        })
+        cfg_dict.update(
+            {
+                "d_vocab": 262144,  # Gemma vocab size
+                "default_prepend_bos": True,  # Control BOS token prepending
+                "tokenizer_prepends_bos": False,  # Tokenizer doesn't automatically prepend BOS
+                "trust_remote_code": True,
+                "use_normalization_before_and_after": True,
+                "attn_scores_soft_cap": 20.0,
+                "output_logits_soft_cap": 20.0,
+            }
+        )
     return cfg_dict
 
 
