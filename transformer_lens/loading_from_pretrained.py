@@ -1603,18 +1603,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
     cfg_dict["tokenizer_name"] = official_model_name
     if kwargs.get("trust_remote_code", False):
         cfg_dict["trust_remote_code"] = True
-    if "gemma" in model_name.lower():
-        cfg_dict.update(
-            {
-                "d_vocab": 262144,  # Gemma vocab size
-                "default_prepend_bos": True,  # Control BOS token prepending
-                "tokenizer_prepends_bos": False,  # Tokenizer doesn't automatically prepend BOS
-                "trust_remote_code": True,
-                "use_normalization_before_and_after": True,
-                "attn_scores_soft_cap": 20.0,
-                "output_logits_soft_cap": 20.0,
-            }
-        )
     return cfg_dict
 
 
