@@ -252,6 +252,10 @@ OFFICIAL_MODEL_NAMES = [
     "google/gemma-3-1b-it",
     "google/gemma-3-4b-pt",
     "google/gemma-3-4b-it",
+    "google/gemma-3-12b-pt",
+    "google/gemma-3-12b-it",
+    "google/gemma-3-27b-pt",
+    "google/gemma-3-27b-it",
     "01-ai/Yi-6B",
     "01-ai/Yi-34B",
     "01-ai/Yi-6B-Chat",
@@ -1612,42 +1616,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "NTK_by_parts_low_freq_factor": 1.0,
             "NTK_by_parts_high_freq_factor": 4.0,
             "rotary_dim": 3840 // 16,  # hidden_size / num_attention_heads
-            "dtype": torch.bfloat16,  # From torch_dtype
-            "tokenizer_prepends_bos": True,
-            "default_prepend_bos": True,
-            "trust_remote_code": True,
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
-        }
-    elif official_model_name.startswith("google/gemma-3-27b"):
-        cfg_dict = {
-            "d_model": 5376,  # From text_config.hidden_size
-            "d_head": 128,  # From text_config.head_dim
-            "n_heads": 32,  # From text_config.num_attention_heads
-            "d_mlp": 21504,  # From text_config.intermediate_size
-            "n_layers": 62,  # From text_config.num_hidden_layers
-            "n_ctx": 32768,  # Using same context length as other models
-            "eps": 1e-06,
-            "d_vocab": 262208,  # Same as other models
-            "act_fn": "gelu_pytorch_tanh",
-            "initializer_range": 0.02,
-            "normalization_type": "RMS",
-            "rotary_base": 10000.0,
-            "positional_embedding_type": "rotary",
-            "use_attn_scale": True,
-            "attn_scale": 168.0,  # From text_config.query_pre_attn_scalar
-            "n_key_value_heads": 16,  # From text_config.num_key_value_heads
-            "window_size": 1024,  # From text_config.sliding_window
-            "use_local_attn": True,
-            "attn_types": ["local", "local", "local", "local", "local", "global"] * 10 + ["local", "local"],  # 5:1 pattern for 62 layers
-            "gated_mlp": True,
-            "final_rms": True,
-            "use_normalization_before_and_after": True,
-            "use_NTK_by_parts_rope": True,
-            "NTK_by_parts_factor": 8.0,  # From rope_scaling.factor
-            "NTK_by_parts_low_freq_factor": 1.0,
-            "NTK_by_parts_high_freq_factor": 4.0,
-            "rotary_dim": 128,  # From text_config.head_dim
             "dtype": torch.bfloat16,  # From torch_dtype
             "tokenizer_prepends_bos": True,
             "default_prepend_bos": True,
