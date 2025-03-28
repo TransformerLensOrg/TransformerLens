@@ -1546,9 +1546,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "tokenizer_prepends_bos": True,  # Gemma 3 tokenizer prepends BOS token
             "default_prepend_bos": True,  # Default to prepending BOS token
             "trust_remote_code": True,  # Trust remote code for tokenizer
-            "bos_token_id": 2,  # Gemma 3 specific token IDs
-            "eos_token_id": 1,
-            "pad_token_id": 0,
         }
     elif official_model_name.startswith("google/gemma-3-4b"):
         cfg_dict = {
