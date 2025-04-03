@@ -10,8 +10,7 @@ import torch.nn as nn
 from jaxtyping import Float, Int
 
 from transformer_lens.components import (
-    Attention,
-    GroupedQueryAttention,
+    AlternatingAttention,
     LayerNorm,
     LayerNormPre,
     RMSNorm,
@@ -73,14 +72,14 @@ class TransformerBlock(nn.Module):
             if self.cfg.use_normalization_before_and_after:
                 self.ln2_post = normalization_layer_after(cfg)
 
-        attention = Attention if self.cfg.n_key_value_heads is None else GroupedQueryAttention
+        # Always use AlternatingAttention, which handles both regular and grouped query attention
         if not self.cfg.use_local_attn:
-            self.attn = attention(self.cfg, self.cfg.attn_types if not None else "global", block_index)
+            self.attn = AlternatingAttention(self.cfg, self.cfg.attn_types if not None else "global", block_index)
         else:
             if self.cfg.attn_types is None:
                 raise ValueError("attn_types must be set when using local attention")
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = attention(self.cfg, attn_type, block_index)
+            self.attn = AlternatingAttention(self.cfg, attn_type, block_index)
         if not self.cfg.attn_only:
             self.mlp = MLPFactory.create_mlp(self.cfg)
 
