@@ -139,16 +139,17 @@ class TransformerBlock(nn.Module):
                 and not self.cfg.ungroup_grouped_query_attention
                 else self.cfg.n_heads
             )
-            query_input = self.hook_q_input(
+            query_input = self.ln1(self.hook_q_input(
                 repeat_along_head_dimension(resid_pre, n_heads=self.cfg.n_heads)
-            )
-            key_input = self.hook_k_input(
+            ))
+            key_input = self.ln1(self.hook_k_input(
                 repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
-            )
-            value_input = self.hook_v_input(
+            ))
+            value_input = self.ln1(self.hook_v_input(
                 repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
-            )
+            ))
         else:
+            attn_in = self.ln1(attn_in)
             query_input = attn_in
             key_input = attn_in
             value_input = attn_in
@@ -158,11 +159,11 @@ class TransformerBlock(nn.Module):
             # queries, keys and values, independently.
             # Then take the layer norm of these inputs, and pass these to the attention module.
             self.attn(
-                query_input=self.ln1(query_input)
+                query_input=query_input
                 + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                key_input=self.ln1(key_input)
+                key_input=key_input
                 + (0.0 if shortformer_pos_embed is None else shortformer_pos_embed),
-                value_input=self.ln1(value_input),
+                value_input=value_input,
                 past_kv_cache_entry=past_kv_cache_entry,
                 attention_mask=attention_mask,
             )

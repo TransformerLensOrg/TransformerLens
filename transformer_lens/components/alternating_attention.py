@@ -284,6 +284,7 @@ class AlternatingAttention(nn.Module):
         Returns:
             Float[torch.Tensor, "batch pos d_model"]: The output tensor
         """
+        print("Running forward in", self.__class__.__name__)
         q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
 
         if self.cfg.positional_embedding_type == "rotary":

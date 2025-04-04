@@ -192,6 +192,7 @@ class AbstractAttention(ABC, nn.Module):
         additive_attention_mask is an optional mask to add to the attention weights. Defaults to None.
         attention_mask is the attention mask for padded tokens. Defaults to None.
         """
+        print("Running forward in", self.__class__.__name__)
 
         q, k, v = self.calculate_qkv_matrices(query_input, key_input, value_input)
 
