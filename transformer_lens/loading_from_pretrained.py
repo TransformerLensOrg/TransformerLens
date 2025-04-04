@@ -1543,6 +1543,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attn_types":(["local"] * 5 + ["global"]) * 4 + ["local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
             "gated_mlp": True,
             "final_rms": True,
+            "use_split_qkv_input": True,
             "use_normalization_before_and_after": True,
             "attn_scores_soft_cap": 3.5,
             "output_logits_soft_cap": 3.5,
@@ -1576,6 +1577,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attn_types": (["local"] * 5 + ["global"]) * 3 + ["local", "local"],
             "gated_mlp": True,
             "final_rms": True,
+            "use_split_qkv_input": True,
             "use_normalization_before_and_after": True,
             "attn_scores_soft_cap": 3.5,
             "output_logits_soft_cap": 3.5,
@@ -1609,6 +1611,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attn_types": (["local"] * 5 + ["global"]) * 4 + ["local", "local"],
             "gated_mlp": True,
             "final_rms": True,
+            "use_split_qkv_input": True,
             "use_normalization_before_and_after": True,
             "attn_scores_soft_cap": 3.5,
             "output_logits_soft_cap": 3.5,
