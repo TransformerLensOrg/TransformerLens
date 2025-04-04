@@ -59,10 +59,7 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         # Apply normalization to query and key states
         W_Q = W_Q * (1.0 + q_norm)
         W_K = W_K * (1.0 + k_norm)
-        
-        # Store the attention scaling factor for use in the forward pass
-        state_dict[f"blocks.{l}.attn.scaling"] = model.model.layers[l].self_attn.scaling
-        
+           
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn._W_K"] = W_K
         state_dict[f"blocks.{l}.attn._W_V"] = W_V
