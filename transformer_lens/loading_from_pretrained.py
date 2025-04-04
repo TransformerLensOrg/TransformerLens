@@ -1554,75 +1554,69 @@ def convert_hf_model_config(model_name: str, **kwargs):
         }
     elif official_model_name.startswith("google/gemma-3-4b"):
         cfg_dict = {
-            "d_model": 2560,
+            "d_model": 2048,
             "d_head": 256,
             "n_heads": 8,
-            "d_mlp": 10240,
-            "n_layers": 34,
-            "n_ctx": 32768,
+            "d_mlp": 16384,
+            "n_layers": 18,
+            "n_ctx": 8192,
             "eps": 1e-06,
-            "d_vocab": 262208,  # Matches checkpoint
-            "act_fn": "gelu_pytorch_tanh",
+            "d_vocab": 256000,
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
-            "rotary_base": 10000.0,
+            "rotary_base": 1000000.0,
+            "rope_local_base_freq": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": 256.0,  # Added attention scale
-            "n_key_value_heads": 4,
-            "window_size": 1024,
+            "attn_scale": 1.0 / (256 ** 0.5),
+            "n_key_value_heads": 1,
+            "window_size": 512,
             "use_local_attn": True,
-            "attn_types": ["local", "local", "local", "local", "local", "global"] * 5 + ["local", "local", "local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
+            "attn_types": (["local"] * 5 + ["global"]) * 3 + ["local", "local"],
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
-            "use_NTK_by_parts_rope": True,
-            "NTK_by_parts_factor": 8.0,
-            "NTK_by_parts_low_freq_factor": 1.0,
-            "NTK_by_parts_high_freq_factor": 4.0,
-            "rotary_dim": 256,
+            "attn_scores_soft_cap": 3.5,
+            "output_logits_soft_cap": 3.5,
             "dtype": torch.bfloat16,
+            "rotary_adjacent_pairs": True,
             "tokenizer_prepends_bos": True,
             "default_prepend_bos": True,
             "trust_remote_code": True,
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
         }
     elif official_model_name.startswith("google/gemma-3-12b"):
         cfg_dict = {
-            "d_model": 3840,  # From text_config.hidden_size
-            "d_head": 3840 // 16,  # hidden_size / num_attention_heads
-            "n_heads": 16,  # From text_config.num_attention_heads
-            "d_mlp": 15360,  # From text_config.intermediate_size
-            "n_layers": 48,  # From text_config.num_hidden_layers
-            "n_ctx": 32768,  # Using same context length as 4B
+            "d_model": 3072,
+            "d_head": 256,
+            "n_heads": 16,
+            "d_mlp": 24576,
+            "n_layers": 28,
+            "n_ctx": 8192,
             "eps": 1e-06,
-            "d_vocab": 262208,  # Same as 4B model
-            "act_fn": "gelu_pytorch_tanh",
+            "d_vocab": 256000,
+            "act_fn": "gelu",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
-            "rotary_base": 10000.0,
+            "rotary_base": 1000000.0,
+            "rope_local_base_freq": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": 256.0,
-            "n_key_value_heads": 8,  # From text_config.num_key_value_heads
-            "window_size": 1024,  # From text_config.sliding_window
+            "attn_scale": 1.0 / (256 ** 0.5),
+            "n_key_value_heads": 1,
+            "window_size": 512,
             "use_local_attn": True,
-            "attn_types": ["local", "local", "local", "local", "local", "global"] * 8,  # 5:1 pattern for 48 layers
+            "attn_types": (["local"] * 5 + ["global"]) * 4 + ["local", "local"],
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
-            "use_NTK_by_parts_rope": True,
-            "NTK_by_parts_factor": 8.0,  # From rope_scaling.factor
-            "NTK_by_parts_low_freq_factor": 1.0,
-            "NTK_by_parts_high_freq_factor": 4.0,
-            "rotary_dim": 3840 // 16,  # hidden_size / num_attention_heads
-            "dtype": torch.bfloat16,  # From torch_dtype
+            "attn_scores_soft_cap": 3.5,
+            "output_logits_soft_cap": 3.5,
+            "dtype": torch.bfloat16,
+            "rotary_adjacent_pairs": True,
             "tokenizer_prepends_bos": True,
             "default_prepend_bos": True,
             "trust_remote_code": True,
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
         }
     elif architecture == "T5ForConditionalGeneration":
         cfg_dict = {
