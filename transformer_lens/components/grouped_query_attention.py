@@ -47,12 +47,6 @@ class GroupedQueryAttention(AbstractAttention):
                 dtype=cfg.dtype,
             )
         )
-        self._b_K = nn.Parameter(
-            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
-        self._b_V = nn.Parameter(
-            torch.zeros(cfg.n_key_value_heads, self.cfg.d_head, dtype=cfg.dtype)
-        )
 
     @property
     def W_K(self):
@@ -69,22 +63,6 @@ class GroupedQueryAttention(AbstractAttention):
     @W_V.setter
     def W_V(self, value):
         self._W_V = value
-
-    @property
-    def b_K(self):
-        return torch.repeat_interleave(self._b_K, dim=0, repeats=self.repeat_kv_heads)
-
-    @b_K.setter
-    def b_K(self, value):
-        self._b_K = value
-
-    @property
-    def b_V(self):
-        return torch.repeat_interleave(self._b_V, dim=0, repeats=self.repeat_kv_heads)
-
-    @b_V.setter
-    def b_V(self, value):
-        self._b_V = value
 
     def calculate_qkv_matrices(
         self,
@@ -124,18 +102,18 @@ class GroupedQueryAttention(AbstractAttention):
         )
 
         q = self.hook_q(
-            attn_fn(query_input, self.W_Q, self.b_Q)
+            attn_fn(query_input, self.W_Q)
         )  # [batch, pos, head_index, d_head]
 
         k = self.hook_k(
-            attn_fn(key_input, self.W_K, self.b_K)
+            attn_fn(key_input, self.W_K)
             if self.cfg.ungroup_grouped_query_attention
-            else attn_fn(key_input, self._W_K, self._b_K)
+            else attn_fn(key_input, self._W_K)
         )  # [batch, pos, head_index, d_head]
         v = self.hook_v(
-            attn_fn(value_input, self.W_V, self.b_V)
+            attn_fn(value_input, self.W_V)
             if self.cfg.ungroup_grouped_query_attention
-            else attn_fn(value_input, self._W_V, self._b_V)
+            else attn_fn(value_input, self._W_V)
         )  # [batch, pos, head_index, d_head]
         return q, k, v
 

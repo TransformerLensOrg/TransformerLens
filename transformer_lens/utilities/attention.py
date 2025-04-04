@@ -12,25 +12,26 @@ from jaxtyping import Float
 def simple_attn_linear(
     input: Float[torch.Tensor, "batch pos d_model"],
     w: Float[torch.Tensor, "head_index d_model d_head"],
-    b: Float[torch.Tensor, "head_index d_head"],
 ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
     """Linear layer for attention calculation."""
 
     if input.device != w.device:
         w = w.to(input.device)
-    if input.device != b.device:
-        b = b.to(input.device)
 
+    # Keep track of original shape for reshaping
+    n_heads = w.shape[0]
+    d_head = w.shape[2]
+    
+    # Rearrange weight matrix
     w = einops.rearrange(w, "head_index d_model d_head -> (head_index d_head) d_model")
-    b_ = einops.rearrange(b, "head_index d_head -> (head_index d_head)")
-
-    return F.linear(input, w, b_).reshape(input.shape[0], input.shape[1], b.shape[0], b.shape[1])
+    
+    # Use torch.matmul and reshape to [batch, pos, n_heads, d_head]
+    return torch.matmul(input, w.T).reshape(input.shape[0], input.shape[1], n_heads, d_head)
 
 
 def complex_attn_linear(
     input: Float[torch.Tensor, "batch pos head_index d_model"],
     w: Float[torch.Tensor, "head_index d_model d_head"],
-    b: Float[torch.Tensor, "head_index d_head"],
 ) -> Float[torch.Tensor, "batch pos head_index d_head"]:
     """Linear layer for attention calculation.
 
@@ -46,4 +47,4 @@ def complex_attn_linear(
     # Element-wise multiplication and sum over the d_model dimension
     result = input * w
     result = result.sum(dim=-2)
-    return result + b
+    return result

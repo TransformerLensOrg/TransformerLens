@@ -21,11 +21,8 @@ class Unembed(nn.Module):
         self.W_U: Float[torch.Tensor, "d_model d_vocab_out"] = nn.Parameter(
             torch.empty(self.cfg.d_model, self.cfg.d_vocab_out, dtype=self.cfg.dtype)
         )
-        self.b_U: Float[torch.Tensor, "d_vocab_out"] = nn.Parameter(
-            torch.zeros(self.cfg.d_vocab_out, dtype=self.cfg.dtype)
-        )
 
     def forward(
         self, residual: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_vocab_out"]:
-        return batch_addmm(self.b_U, self.W_U, residual)
+        return torch.matmul(residual, self.W_U)
