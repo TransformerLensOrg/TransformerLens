@@ -1547,6 +1547,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "attn_scores_soft_cap": 3.5,
             "output_logits_soft_cap": 3.5,
             "dtype": torch.bfloat16,
+            "rotary_adjacent_pairs": True,
             "tokenizer_prepends_bos": True,  # Gemma 3 tokenizer prepends BOS token
             "default_prepend_bos": True,  # Default to prepending BOS token
             "trust_remote_code": True,  # Trust remote code for tokenizer
