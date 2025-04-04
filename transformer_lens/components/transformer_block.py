@@ -11,6 +11,7 @@ from jaxtyping import Float, Int
 
 from transformer_lens.components import (
     AlternatingAttention,
+    GroupedQueryAttention,
     LayerNorm,
     LayerNormPre,
     RMSNorm,
@@ -74,12 +75,12 @@ class TransformerBlock(nn.Module):
 
         # Always use AlternatingAttention, which handles both regular and grouped query attention
         if not self.cfg.use_local_attn:
-            self.attn = AlternatingAttention(self.cfg, self.cfg.attn_types if not None else "global", block_index)
+            self.attn = GroupedQueryAttention(self.cfg, self.cfg.attn_types if not None else "global", block_index)
         else:
             if self.cfg.attn_types is None:
                 raise ValueError("attn_types must be set when using local attention")
             attn_type = self.cfg.attn_types[block_index]
-            self.attn = AlternatingAttention(self.cfg, attn_type, block_index)
+            self.attn = GroupedQueryAttention(self.cfg, attn_type, block_index)
         if not self.cfg.attn_only:
             self.mlp = MLPFactory.create_mlp(self.cfg)
 

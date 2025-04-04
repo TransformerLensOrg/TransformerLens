@@ -1536,16 +1536,16 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rope_local_base_freq": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": 256.0,  # query_pre_attn_scalar
+            "attn_scale": 1.0 / (256 ** 0.5),  # query_pre_attn_scalar
             "n_key_value_heads": 1,
             "window_size": 512,
             "use_local_attn": True,
-            "attn_types": ["local", "local", "local", "local", "local", "global"] * 4 + ["local", "local", "local", "local", "local", "global"],  # 5:1 pattern as specified by sliding_window_pattern
+            "attn_types":(["global"] + ["local"] * 5) * 4 + ["global", "local"],  # 5:1 pattern as specified by sliding_window_pattern
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
-            "attn_scores_soft_cap": 50.0,
-            "output_logits_soft_cap": 30.0,
+            "attn_scores_soft_cap": 3.5,
+            "output_logits_soft_cap": 3.5,
             "dtype": torch.bfloat16,
             "tokenizer_prepends_bos": True,  # Gemma 3 tokenizer prepends BOS token
             "default_prepend_bos": True,  # Default to prepending BOS token
@@ -1571,7 +1571,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 4,
             "window_size": 1024,
             "use_local_attn": True,
-            "attn_types": ["local", "local", "local", "local", "local", "global"] * 5 + ["local", "local", "local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
+            "attn_types": ["global", "local", "local", "local", "local", "local"] * 5 + ["global", "local", "local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
@@ -1607,7 +1607,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 8,  # From text_config.num_key_value_heads
             "window_size": 1024,  # From text_config.sliding_window
             "use_local_attn": True,
-            "attn_types": ["local", "local", "local", "local", "local", "global"] * 8,  # 5:1 pattern for 48 layers
+            "attn_types": ["global", "local", "local", "local", "local", "local"] * 8,  # 5:1 pattern for 48 layers
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
