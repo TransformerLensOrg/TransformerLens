@@ -6,7 +6,6 @@ needed to create many different types of generative language models. They are us
 """
 
 # Independent classes
-from .alternating_attention import AlternatingAttention
 from .abstract_attention import AbstractAttention
 from .layer_norm import LayerNorm
 from .layer_norm_pre import LayerNormPre
