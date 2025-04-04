@@ -1540,7 +1540,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 1,
             "window_size": 512,
             "use_local_attn": True,
-            "attn_types":(["global"] + ["local"] * 5) * 4 + ["global", "local"],  # 5:1 pattern as specified by sliding_window_pattern
+            "attn_types":(["local"] * 5 + ["global"]) * 4 + ["local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
@@ -1572,7 +1572,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 4,
             "window_size": 1024,
             "use_local_attn": True,
-            "attn_types": ["global", "local", "local", "local", "local", "local"] * 5 + ["global", "local", "local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
+            "attn_types": ["local", "local", "local", "local", "local", "global"] * 5 + ["local", "local", "local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
@@ -1608,7 +1608,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 8,  # From text_config.num_key_value_heads
             "window_size": 1024,  # From text_config.sliding_window
             "use_local_attn": True,
-            "attn_types": ["global", "local", "local", "local", "local", "local"] * 8,  # 5:1 pattern for 48 layers
+            "attn_types": ["local", "local", "local", "local", "local", "global"] * 8,  # 5:1 pattern for 48 layers
             "gated_mlp": True,
             "final_rms": True,
             "use_normalization_before_and_after": True,
