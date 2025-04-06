@@ -95,7 +95,7 @@ def get_best_available_device(cfg: "transformer_lens.HookedTransformerConfig") -
     assert cfg.device is not None
     device = torch.device(cfg.device)
 
-    if device.type == "cuda":
+    if device.type == "cuda" and cfg.n_devices > 1:
         return get_best_available_cuda_device(cfg.n_devices)
     else:
         return device
