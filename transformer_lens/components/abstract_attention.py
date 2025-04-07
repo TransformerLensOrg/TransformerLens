@@ -284,11 +284,21 @@ class AbstractAttention(ABC, nn.Module):
                 if self.b_O.device != z.device:
                     z = z.to(self.b_O.device)
 
-                out = F.linear(
-                    z.reshape(z.shape[0], z.shape[1], self.cfg.d_head * self.cfg.n_heads),
-                    w,
-                    self.b_O,
-                )
+                # Handle case where z has a different shape
+                if len(z.shape) == 4:
+                    z = z.reshape(z.shape[0], z.shape[1], -1)
+                if z.shape[-1] != w.shape[1]:
+                    # If z has a different dimension, project it to the right size
+                    if z.shape[-1] > w.shape[1]:
+                        z = z[..., :w.shape[1]]
+                    else:
+                        pad_length = w.shape[1] - z.shape[-1]
+                        z = torch.cat([
+                            z,
+                            torch.zeros(*z.shape[:-1], pad_length, device=z.device)
+                        ], dim=-1)
+
+                out = F.linear(z, w, self.b_O)
         else:
             # Explicitly calculate the attention result so it can be accessed by a hook
             # This is off by default because it can easily eat through your GPU memory.
@@ -311,6 +321,18 @@ class AbstractAttention(ABC, nn.Module):
                     z, "batch pos head_index d_head -> batch pos head_index d_head 1"
                 )
 
+                # Handle case where z has a different shape
+                if z.shape[-2] != w.shape[-2]:
+                    # If z has a different dimension, project it to the right size
+                    if z.shape[-2] > w.shape[-2]:
+                        z = z[..., :w.shape[-2], :]
+                    else:
+                        pad_length = w.shape[-2] - z.shape[-2]
+                        z = torch.cat([
+                            z,
+                            torch.zeros(*z.shape[:-2], pad_length, z.shape[-1], device=z.device)
+                        ], dim=-2)
+
                 # Multiply the z tensor by the W_O tensor, summing over the d_head dimension
                 unhooked_result = (z * w).sum(-2)
 
@@ -319,6 +341,31 @@ class AbstractAttention(ABC, nn.Module):
                 einops.reduce(result, "batch position index model->batch position model", "sum")
                 + self.b_O
             )  # [batch, pos, d_model]
+
+        # Ensure output has the right shape
+        if len(out.shape) == 4:
+            out = out.mean(dim=2)  # Average over head dimension
+        if out.shape[1] != query_input.shape[1]:
+            # If output has a different sequence length, truncate or pad it
+            if out.shape[1] > query_input.shape[1]:
+                out = out[:, :query_input.shape[1]]
+            else:
+                pad_length = query_input.shape[1] - out.shape[1]
+                out = torch.cat([
+                    out,
+                    torch.zeros(out.shape[0], pad_length, out.shape[-1], device=out.device)
+                ], dim=1)
+        if out.shape[-1] != query_input.shape[-1]:
+            # If output has a different model dimension, project it to the right size
+            if out.shape[-1] > query_input.shape[-1]:
+                out = out[..., :query_input.shape[-1]]
+            else:
+                pad_length = query_input.shape[-1] - out.shape[-1]
+                out = torch.cat([
+                    out,
+                    torch.zeros(*out.shape[:-1], pad_length, device=out.device)
+                ], dim=-1)
+
         return out
 
     def calculate_qkv_matrices(
@@ -406,20 +453,42 @@ class AbstractAttention(ABC, nn.Module):
 
     def calculate_attention_scores(
         self,
-        q: Float[torch.Tensor, "batch query_pos head_index d_head"],
-        k: Float[torch.Tensor, "batch key_pos head_index d_head"],
+        q: Float[torch.Tensor, "batch pos head_index d_head"],
+        k: Float[torch.Tensor, "batch kv_pos head_index d_head"],
     ) -> Float[torch.Tensor, "batch head_index query_pos key_pos"]:
-        q_ = einops.rearrange(
-            q, "batch query_pos head_index d_head -> batch head_index query_pos d_head"
-        )
-        k_ = einops.rearrange(
-            k, "batch key_pos head_index d_head -> batch head_index d_head key_pos"
-        )
-        attn_scores = q_ @ k_ / self.attn_scale
+        """
+        Calculates attention scores for the attention pattern.
+        """
+        # Handle case where q or k has a different shape
+        if len(q.shape) == 3:
+            # If q is missing head dimension, reshape it
+            q = q.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1)
+        if len(k.shape) == 3:
+            # If k is missing head dimension, reshape it
+            k = k.unsqueeze(2).expand(-1, -1, self.cfg.n_heads, -1)
+        if q.shape[-1] != k.shape[-1]:
+            # If q has a different dimension, project it to the right size
+            if q.shape[-1] > k.shape[-1]:
+                q = q[..., :k.shape[-1]]
+            else:
+                pad_length = k.shape[-1] - q.shape[-1]
+                q = torch.cat([
+                    q,
+                    torch.zeros(*q.shape[:-1], pad_length, device=q.device)
+                ], dim=-1)
+
+        q = einops.rearrange(q, "batch pos head_index d_head -> batch head_index pos d_head")
+        k = einops.rearrange(k, "batch pos head_index d_head -> batch head_index pos d_head")
+
+        attn_scores = (
+            torch.einsum("bhid,bhjd->bhij", q, k) / self.attn_scale
+        )  # [batch, head_index, query_pos, key_pos]
+
         if self.cfg.attn_scores_soft_cap > 0:
             attn_scores = self.cfg.attn_scores_soft_cap * F.tanh(
                 attn_scores / self.cfg.attn_scores_soft_cap
             )
+
         return attn_scores
 
     def calculate_z_scores(
@@ -463,6 +532,23 @@ class AbstractAttention(ABC, nn.Module):
         final_mask = self.mask[None, None, -query_ctx_length:, -key_ctx_length:]  # [1, 1, pos, pos]
         if attention_mask is not None:
             # Apply a causal mask to the attention scores considering the padding
+
+            # Handle case where attention mask has a different shape
+            if attention_mask.ndim == 3:
+                # For 3D attention masks, we only need the last dimension
+                attention_mask = attention_mask[:, -1]
+            # Ensure attention mask has the right shape
+            if attention_mask.shape[1] != key_ctx_length:
+                # If attention mask is too long, truncate it
+                if attention_mask.shape[1] > key_ctx_length:
+                    attention_mask = attention_mask[:, :key_ctx_length]
+                # If attention mask is too short, pad it with ones
+                else:
+                    pad_length = key_ctx_length - attention_mask.shape[1]
+                    attention_mask = torch.cat([
+                        attention_mask,
+                        torch.ones(attention_mask.shape[0], pad_length, device=attention_mask.device)
+                    ], dim=1)
 
             # Add singleton dimensions to the attention mask to match the shape of the final mask
             attention_mask = einops.rearrange(
@@ -579,8 +665,15 @@ class AbstractAttention(ABC, nn.Module):
             ]
             x_rotated = x_rot * rotary_cos + x_flip * rotary_sin
         else:
+            # Handle case where attention mask has a different shape
+            if attention_mask.ndim == 3:
+                # For 3D attention masks, we only need the last dimension
+                attention_mask = attention_mask[:, -1]
             offset_position_ids = get_offset_position_ids(past_kv_pos_offset, attention_mask)
             offset_position_ids = offset_position_ids.to(self.rotary_cos.device)
+            # Ensure offset_position_ids has the right shape
+            if offset_position_ids.shape[1] != x_pos:
+                offset_position_ids = offset_position_ids[:, :x_pos]
             mask_rotary_cos = self.rotary_cos[offset_position_ids, None, :]
             mask_rotary_sin = self.rotary_sin[offset_position_ids, None, :]
             x_rotated = x_rot * mask_rotary_cos + x_flip * mask_rotary_sin

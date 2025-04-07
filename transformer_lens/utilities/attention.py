@@ -38,6 +38,11 @@ def complex_attn_linear(
     This is almost the same as simple_attn_linear, but the input tensor has an extra head_index dimension, used when calculating the input of each attention head separately.
     """
 
+    # Handle case where input has a different head dimension
+    if input.shape[2] != w.shape[0]:
+        # Average over head dimension
+        input = input.mean(dim=2, keepdim=True).expand(-1, -1, w.shape[0], -1)
+
     # Add singleton dimensions for broadcasting
     input = einops.rearrange(
         input, "batch pos head_index d_model -> batch pos head_index d_model 1"

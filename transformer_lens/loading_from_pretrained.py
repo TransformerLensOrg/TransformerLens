@@ -1540,7 +1540,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "n_key_value_heads": 1,
             "window_size": 512,
             "use_local_attn": True,
-            "attn_types":(["local"] * 5 + ["global"]) * 4 + ["local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
+            "attn_types": (["local"] * 5 + ["global"]) * 4 + ["local", "local"],  # 5:1 pattern as specified by sliding_window_pattern
             "gated_mlp": True,
             "final_rms": True,
             "use_split_qkv_input": True,
@@ -1552,6 +1552,13 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "tokenizer_prepends_bos": True,  # Gemma 3 tokenizer prepends BOS token
             "default_prepend_bos": True,  # Default to prepending BOS token
             "trust_remote_code": True,  # Trust remote code for tokenizer
+            "attention_dir": "causal",  # Explicitly set causal attention
+            "use_hook_tokens": True,  # Enable token hooks for better debugging
+            "use_attn_result": True,  # Enable attention result hooks
+            "use_split_qkv_input": True,  # Enable split QKV input hooks
+            "use_hook_mlp_in": True,  # Enable MLP input hooks
+            "use_attn_in": True,  # Enable attention input hooks
+            "ungroup_grouped_query_attention": False,  # Keep GQA grouped
         }
     elif official_model_name.startswith("google/gemma-3-4b"):
         cfg_dict = {

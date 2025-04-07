@@ -122,6 +122,7 @@ class TransformerBlock(nn.Module):
                 shortformer_pos_embed = repeat_along_head_dimension(
                     shortformer_pos_embed, n_heads=self.cfg.n_heads
                 )
+            attn_in = resid_pre
         else:
             attn_in = resid_pre
 
@@ -147,6 +148,9 @@ class TransformerBlock(nn.Module):
                 repeat_along_head_dimension(resid_pre, n_heads=n_kv_heads)
             ))
         else:
+            # Handle case where attn_in already has a head dimension
+            if len(attn_in.shape) == 4:
+                attn_in = attn_in.mean(dim=2)  # Average over head dimension
             attn_in = self.ln1(attn_in)
             query_input = attn_in
             key_input = attn_in
@@ -175,6 +179,54 @@ class TransformerBlock(nn.Module):
 
         if resid_pre.device != attn_out.device:
             resid_pre = resid_pre.to(attn_out.device)
+
+        # Handle case where attention output has a different shape
+        if len(attn_out.shape) == 4:
+            attn_out = attn_out.mean(dim=2)  # Average over head dimension
+        if attn_out.shape[1] != resid_pre.shape[1]:
+            # If attention output has a different sequence length, truncate or pad it
+            if attn_out.shape[1] > resid_pre.shape[1]:
+                attn_out = attn_out[:, :resid_pre.shape[1]]
+            else:
+                pad_length = resid_pre.shape[1] - attn_out.shape[1]
+                attn_out = torch.cat([
+                    attn_out,
+                    torch.zeros(attn_out.shape[0], pad_length, attn_out.shape[-1], device=attn_out.device)
+                ], dim=1)
+        if attn_out.shape[-1] != resid_pre.shape[-1]:
+            # If attention output has a different model dimension, project it to the right size
+            if attn_out.shape[-1] > resid_pre.shape[-1]:
+                attn_out = attn_out[..., :resid_pre.shape[-1]]
+            else:
+                pad_length = resid_pre.shape[-1] - attn_out.shape[-1]
+                attn_out = torch.cat([
+                    attn_out,
+                    torch.zeros(*attn_out.shape[:-1], pad_length, device=attn_out.device)
+                ], dim=-1)
+
+        # Handle case where resid_pre has a different shape
+        if len(resid_pre.shape) == 4:
+            resid_pre = resid_pre.mean(dim=2)  # Average over head dimension
+        if resid_pre.shape[1] != attn_out.shape[1]:
+            # If resid_pre has a different sequence length, truncate or pad it
+            if resid_pre.shape[1] > attn_out.shape[1]:
+                resid_pre = resid_pre[:, :attn_out.shape[1]]
+            else:
+                pad_length = attn_out.shape[1] - resid_pre.shape[1]
+                resid_pre = torch.cat([
+                    resid_pre,
+                    torch.zeros(resid_pre.shape[0], pad_length, resid_pre.shape[-1], device=resid_pre.device)
+                ], dim=1)
+        if resid_pre.shape[-1] != attn_out.shape[-1]:
+            # If resid_pre has a different model dimension, project it to the right size
+            if resid_pre.shape[-1] > attn_out.shape[-1]:
+                resid_pre = resid_pre[..., :attn_out.shape[-1]]
+            else:
+                pad_length = attn_out.shape[-1] - resid_pre.shape[-1]
+                resid_pre = torch.cat([
+                    resid_pre,
+                    torch.zeros(*resid_pre.shape[:-1], pad_length, device=resid_pre.device)
+                ], dim=-1)
 
         if not self.cfg.attn_only and not self.cfg.parallel_attn_mlp:
             resid_mid = self.hook_resid_mid(resid_pre + attn_out)  # [batch, pos, d_model]

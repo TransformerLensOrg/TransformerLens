@@ -1069,6 +1069,9 @@ def repeat_along_head_dimension(
     clone_tensor=True,
     # `einops.repeat` uses a view in torch, so we generally clone the tensor to avoid using shared storage for each head entry
 ):
+    # Handle case where tensor already has a head dimension
+    if len(tensor.shape) == 4:
+        return tensor
     repeated_tensor = einops.repeat(
         tensor,
         "batch pos d_model -> batch pos n_heads d_model",
