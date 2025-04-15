@@ -46,4 +46,4 @@ class RMSNorm(nn.Module):
         if x.device != self.w.device:
             self.to(x.device)
 
-        return x * self.w
+        return x * (1.0 + self.w)

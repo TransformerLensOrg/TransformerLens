@@ -47,6 +47,8 @@ class GroupedQueryAttention(AbstractAttention):
                 dtype=cfg.dtype,
             )
         )
+        self.q_norm = nn.Parameter(torch.ones(cfg.d_head, dtype=cfg.dtype))
+        self.k_norm = nn.Parameter(torch.ones(cfg.d_head, dtype=cfg.dtype))
 
     @property
     def W_K(self):
@@ -110,6 +112,9 @@ class GroupedQueryAttention(AbstractAttention):
             if self.cfg.ungroup_grouped_query_attention
             else attn_fn(key_input, self._W_K)
         )  # [batch, pos, head_index, d_head]
+        # q_norm: [d_head]
+        q = q * (1.0 + self.q_norm.view(1, 1, 1, -1))  # Broadcast
+        k = k * (1.0 + self.k_norm.view(1, 1, 1, -1))
         v = self.hook_v(
             attn_fn(value_input, self.W_V)
             if self.cfg.ungroup_grouped_query_attention

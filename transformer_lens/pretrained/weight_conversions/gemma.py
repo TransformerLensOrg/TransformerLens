@@ -20,22 +20,13 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
     state_dict["embed.W_E"] = model.model.embed_tokens.weight * torch.tensor(
         cfg.d_model**0.5, dtype=cfg.dtype
     )
-
+    
     # Gemma 3 has no biases anywhere
     for l in range(cfg.n_layers):
         # Gemma 3 RMSNorm adds 1 to weights before multiplying by input
-        state_dict[f"blocks.{l}.ln1.w"] = model.model.layers[
-            l
-        ].input_layernorm.weight.float() + torch.ones_like(
-            model.model.layers[l].input_layernorm.weight, dtype=torch.float32
-        )
+        state_dict[f"blocks.{l}.ln1.w"] = model.model.layers[l].input_layernorm.weight.float()
+        state_dict[f"blocks.{l}.ln1_post.w"] = model.model.layers[l].post_attention_layernorm.weight.float()
 
-        # Gemma 3 has pre and post attention norms
-        state_dict[f"blocks.{l}.ln1_post.w"] = model.model.layers[
-            l
-        ].post_attention_layernorm.weight.float() + torch.ones_like(
-            model.model.layers[l].post_attention_layernorm.weight, dtype=torch.float32
-        )
 
         # Gemma 3 has different attention patterns with query/key normalization
         W_Q = model.model.layers[l].self_attn.q_proj.weight
@@ -53,12 +44,8 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         
         # Reshape normalization weights to match the rearranged dimensions
         # W_Q shape is [n_heads, d_model, d_head]
-        q_norm = q_norm.view(1, 1, -1)  # Shape: [1, 1, d_head]
-        k_norm = k_norm.view(1, 1, -1)  # Shape: [1, 1, d_head]
-        
-        # Apply normalization to query and key states
-        W_Q = W_Q * (1.0 + q_norm)
-        W_K = W_K * (1.0 + k_norm)
+        state_dict[f"blocks.{l}.attn.q_norm"]  = q_norm
+        state_dict[f"blocks.{l}.attn.k_norm"]  = k_norm
            
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn._W_K"] = W_K
@@ -75,20 +62,14 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
 
         W_O = model.model.layers[l].self_attn.o_proj.weight
         W_O = einops.rearrange(W_O, "m (n h)->n h m", n=cfg.n_heads)
+        
         state_dict[f"blocks.{l}.attn.W_O"] = W_O
         state_dict[f"blocks.{l}.attn.b_O"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
         # Gemma 3 has pre and post feedforward norms
-        state_dict[f"blocks.{l}.ln2.w"] = model.model.layers[
-            l
-        ].pre_feedforward_layernorm.weight.float() + torch.ones_like(
-            model.model.layers[l].pre_feedforward_layernorm.weight, dtype=torch.float32
-        )
-        state_dict[f"blocks.{l}.ln2_post.w"] = model.model.layers[
-            l
-        ].post_feedforward_layernorm.weight.float() + torch.ones_like(
-            model.model.layers[l].post_feedforward_layernorm.weight, dtype=torch.float32
-        )
+        state_dict[f"blocks.{l}.ln2.w"] = model.model.layers[l].pre_feedforward_layernorm.weight.float()
+        state_dict[f"blocks.{l}.ln2_post.w"] = model.model.layers[l].post_feedforward_layernorm.weight.float()
+
 
         # Gemma 3 MLP structure with up_proj, gate_proj, and down_proj
         state_dict[f"blocks.{l}.mlp.W_in"] = model.model.layers[l].mlp.up_proj.weight.T
@@ -98,9 +79,7 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
     # Final norm
-    state_dict["ln_final.w"] = model.model.norm.weight.float() + torch.ones_like(
-        model.model.norm.weight, dtype=torch.float32
-    )
+    state_dict["ln_final.w"] = model.model.norm.weight.float()
 
     # Output embedding with logit softcapping
     if hasattr(gemma, 'language_model'):
@@ -109,6 +88,9 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         state_dict["unembed.W_U"] = gemma.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
+    for k in state_dict:
+        if k.startswith("blocks.25"):
+            print(f"{k:35} {state_dict[k].shape} norm={state_dict[k].float().norm():.4f}")
     return state_dict
 
 
