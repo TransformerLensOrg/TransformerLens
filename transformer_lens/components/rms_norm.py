@@ -26,6 +26,7 @@ class RMSNorm(nn.Module):
             self.length = self.cfg.d_model
         else:
             self.length = length
+        self.scale = self.length ** -0.5 
 
         self.w = nn.Parameter(torch.ones(self.length, dtype=self.cfg.dtype))
 
@@ -36,14 +37,6 @@ class RMSNorm(nn.Module):
     def forward(
         self, x: Float[torch.Tensor, "batch pos length"]
     ) -> Float[torch.Tensor, "batch pos length"]:
-        if self.cfg.dtype not in [torch.float32, torch.float64]:
-            x = x.to(torch.float32)
-        scale: Float[torch.Tensor, "batch pos 1"] = self.hook_scale(
-            (x.pow(2).mean(-1, keepdim=True) + self.eps).sqrt()
-        )
-        x = self.hook_normalized(x / scale).to(self.cfg.dtype)  # [batch, pos, length]
-
-        if x.device != self.w.device:
-            self.to(x.device)
-
-        return x * (1.0 + self.w)
+        variance = x.pow(2).mean(-1, keepdim=True)
+        x = x * torch.rsqrt(variance + self.eps)
+        return self.scale * x * self.w
