@@ -1547,15 +1547,9 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "use_normalization_before_and_after": True,
             "dtype": torch.bfloat16,
             "rotary_adjacent_pairs": True,
-            "tokenizer_prepends_bos": True,  # Gemma 3 tokenizer prepends BOS token
-            "default_prepend_bos": True,  # Default to prepending BOS token
-            "trust_remote_code": True,  # Trust remote code for tokenizer
-            "attention_dir": "causal",  # Explicitly set causal attention
-            "use_hook_tokens": True,  # Enable token hooks for better debugging
-            "use_attn_result": False,  # Enable attention result hooks
-            "use_hook_mlp_in": True,  # Enable MLP input hooks
-            "use_attn_in": True,  # Enable attention input hooks
-            "ungroup_grouped_query_attention": False,  # Keep GQA grouped
+            "tokenizer_prepends_bos": True,
+            "default_prepend_bos": True,
+            "trust_remote_code": True,
         }
     elif official_model_name.startswith("google/gemma-3-4b"):
         cfg_dict = {
