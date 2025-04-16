@@ -15,11 +15,11 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         model = gemma.language_model
     else:
         model = gemma
-
-    # Gemma 3 scales embeddings by multiplying by sqrt(d_model)
-    state_dict["embed.W_E"] = model.model.embed_tokens.weight * torch.tensor(
-        cfg.d_model**0.5, dtype=cfg.dtype
-    )
+        
+    embed_weight = model.model.embed_tokens.weight.float()
+    scale = torch.tensor(cfg.d_model**0.5, dtype=embed_weight.dtype)
+    state_dict["embed.W_E"] = embed_weight * scale
+    state_dict["unembed.W_U"] = (embed_weight.T / scale)
     
     # Gemma 3 has no biases anywhere
     for l in range(cfg.n_layers):
@@ -82,15 +82,8 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
     state_dict["ln_final.w"] = model.model.norm.weight.float()
 
     # Output embedding with logit softcapping
-    if hasattr(gemma, 'language_model'):
-        state_dict["unembed.W_U"] = gemma.language_model.lm_head.weight.T
-    else:
-        state_dict["unembed.W_U"] = gemma.lm_head.weight.T
     state_dict["unembed.b_U"] = torch.zeros(cfg.d_vocab, dtype=cfg.dtype)
 
-    for k in state_dict:
-        if k.startswith("blocks.25"):
-            print(f"{k:35} {state_dict[k].shape} norm={state_dict[k].float().norm():.4f}")
     return state_dict
 
 
