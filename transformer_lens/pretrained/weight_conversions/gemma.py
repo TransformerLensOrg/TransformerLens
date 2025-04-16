@@ -18,7 +18,7 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         
     embed_weight = model.model.embed_tokens.weight.float()
     state_dict["embed.W_E"] = embed_weight
-    state_dict["unembed.W_U"] = embed_weight.T
+    state_dict["unembed.W_U"] = embed_weight.T.clone()
     
     # Gemma 3 has no biases anywhere
     for l in range(cfg.n_layers):
