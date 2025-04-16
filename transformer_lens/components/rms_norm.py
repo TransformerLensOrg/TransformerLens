@@ -39,4 +39,4 @@ class RMSNorm(nn.Module):
     ) -> Float[torch.Tensor, "batch pos length"]:
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
-        return self.scale * x * self.w
+        return x * self.w

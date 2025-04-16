@@ -24,6 +24,7 @@ from typing import (
     overload,
 )
 
+import math
 import einops
 import numpy as np
 import torch
@@ -192,7 +193,7 @@ class HookedTransformer(HookedRootModule):
         if self.cfg.normalization_type == "RMS":
             self.ln_final = RMSNorm(self.cfg)
         elif self.cfg.normalization_type == "RMSPre":
-            self.ln_final = RMSNormPre(self.cfg)
+            self.ln_final = RMSNorm(self.cfg)
         elif self.cfg.normalization_type == "LN":
             if self.cfg.final_rms:
                 self.ln_final = RMSNorm(self.cfg)
@@ -607,6 +608,7 @@ class HookedTransformer(HookedRootModule):
         # Get logits and normalize
         residual = self.ln_final(residual)
         logits = self.unembed(residual)
+        logits = logits / math.sqrt(self.cfg.d_model)
 
         # Apply logit softcapping if configured
         if hasattr(self.cfg, "output_logits_soft_cap") and self.cfg.output_logits_soft_cap > 0:
@@ -1769,8 +1771,8 @@ class HookedTransformer(HookedRootModule):
             ).sum(dim=-2)
             del state_dict[f"ln_final.b"]
 
-        state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
-        del state_dict[f"ln_final.w"]
+        # state_dict[f"unembed.W_U"] = state_dict[f"unembed.W_U"] * state_dict[f"ln_final.w"][:, None]
+        # del state_dict[f"ln_final.w"]
 
         if center_weights:
             # Center the weights that read in from the LayerNormPre

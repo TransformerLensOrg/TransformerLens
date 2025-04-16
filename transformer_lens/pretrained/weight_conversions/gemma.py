@@ -17,9 +17,8 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         model = gemma
         
     embed_weight = model.model.embed_tokens.weight.float()
-    scale = torch.tensor(cfg.d_model**0.5, dtype=embed_weight.dtype)
-    state_dict["embed.W_E"] = embed_weight * scale
-    state_dict["unembed.W_U"] = (embed_weight.T / scale)
+    state_dict["embed.W_E"] = embed_weight
+    state_dict["unembed.W_U"] = embed_weight.T
     
     # Gemma 3 has no biases anywhere
     for l in range(cfg.n_layers):

@@ -1545,8 +1545,6 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "use_split_qkv_input": True,
             "use_normalization_before_and_after": True,
-            "attn_scores_soft_cap": 3.5,
-            "output_logits_soft_cap": 3.5,
             "dtype": torch.bfloat16,
             "rotary_adjacent_pairs": True,
             "tokenizer_prepends_bos": True,  # Gemma 3 tokenizer prepends BOS token
@@ -1554,8 +1552,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "trust_remote_code": True,  # Trust remote code for tokenizer
             "attention_dir": "causal",  # Explicitly set causal attention
             "use_hook_tokens": True,  # Enable token hooks for better debugging
-            "use_attn_result": True,  # Enable attention result hooks
-            "use_split_qkv_input": True,  # Enable split QKV input hooks
+            "use_attn_result": False,  # Enable attention result hooks
             "use_hook_mlp_in": True,  # Enable MLP input hooks
             "use_attn_in": True,  # Enable attention input hooks
             "ungroup_grouped_query_attention": False,  # Keep GQA grouped
