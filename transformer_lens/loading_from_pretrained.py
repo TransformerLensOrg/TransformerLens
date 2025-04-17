@@ -1550,6 +1550,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "tokenizer_prepends_bos": True,
             "default_prepend_bos": True,
             "trust_remote_code": True,
+            "use_hook_mlp_in": True,
         }
     elif official_model_name.startswith("google/gemma-3-4b"):
         cfg_dict = {

@@ -9,6 +9,16 @@ from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
 
+class RMSNorm(nn.Module):
+    def __init__(self, d_model: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(d_model))
+
+    def forward(self, x):
+        norm = x.norm(2, dim=-1, keepdim=True)
+        return self.weight * x / (norm + self.eps)
+
 class GroupedQueryAttention(AbstractAttention):
     def __init__(
         self,
@@ -47,8 +57,8 @@ class GroupedQueryAttention(AbstractAttention):
                 dtype=cfg.dtype,
             )
         )
-        self.q_norm = nn.Parameter(torch.ones(cfg.d_head, dtype=cfg.dtype))
-        self.k_norm = nn.Parameter(torch.ones(cfg.d_head, dtype=cfg.dtype))
+        self.q_norm = RMSNorm(cfg.d_head)
+        self.k_norm = RMSNorm(cfg.d_head)
 
     @property
     def W_K(self):
@@ -113,8 +123,8 @@ class GroupedQueryAttention(AbstractAttention):
             else attn_fn(key_input, self._W_K)
         )  # [batch, pos, head_index, d_head]
         # q_norm: [d_head]
-        q = q * (1.0 + self.q_norm.view(1, 1, 1, -1))  # Broadcast
-        k = k * (1.0 + self.k_norm.view(1, 1, 1, -1))
+        q = self.q_norm(q)
+        k = self.k_norm(k)
         v = self.hook_v(
             attn_fn(value_input, self.W_V)
             if self.cfg.ungroup_grouped_query_attention
