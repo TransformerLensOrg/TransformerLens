@@ -2029,12 +2029,12 @@ class HookedTransformer(HookedRootModule):
         elif fold_ln and self.cfg.normalization_type == "RMS":
             # We do the same for RMSNorm if used
             self.cfg.normalization_type = "RMSPre"
-            self.ln_final = RMSNormPre(self.cfg)
+            self.ln_final = RMSNorm(self.cfg)
             for layer in self.blocks:
-                layer.ln1 = RMSNormPre(self.cfg)
-                layer.ln2 = RMSNormPre(self.cfg)
+                layer.ln1 = RMSNorm(self.cfg)
+                layer.ln2 = RMSNorm(self.cfg)
                 if self.cfg.is_layer_norm_activation():
-                    layer.mlp.ln = RMSNormPre(self.cfg)
+                    layer.mlp.ln = RMSNorm(self.cfg)
 
         self.load_and_process_state_dict(
             state_dict,

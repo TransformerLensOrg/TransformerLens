@@ -36,9 +36,6 @@ class GatedMLP(CanBeUsedAsMLP):
         self.W_out = nn.Parameter(torch.empty(self.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype))
         self.W_gate = nn.Parameter(torch.empty(self.cfg.d_model, self.d_mlp, dtype=self.cfg.dtype))
         
-        self.norm = RMSNorm(cfg.d_model, eps=cfg.layer_norm_eps)
-
-
         # hook on gate output but before act_fn
         self.hook_pre = HookPoint()  # [batch, pos, d_mlp]
         # hook on the linear component of the input

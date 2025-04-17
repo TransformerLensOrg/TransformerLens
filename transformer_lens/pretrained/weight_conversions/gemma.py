@@ -77,6 +77,7 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         state_dict[f"blocks.{l}.mlp.W_out"] = model.model.layers[l].mlp.down_proj.weight.T
         state_dict[f"blocks.{l}.mlp.b_out"] = torch.zeros(cfg.d_model, dtype=cfg.dtype)
 
+
     # Final norm
     state_dict["ln_final.w"] = model.model.norm.weight.float()
 

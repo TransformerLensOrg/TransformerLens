@@ -1532,6 +1532,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "act_fn": "gelu_pytorch_tanh",
             "initializer_range": 0.02,
             "normalization_type": "RMS",
+            "rotary_dim": 256,
             "rotary_base": 1000000.0,  # Using the global attention base frequency
             "rope_local_base_freq": 10000.0,
             "positional_embedding_type": "rotary",
@@ -1551,6 +1552,9 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "default_prepend_bos": True,
             "trust_remote_code": True,
             "use_hook_mlp_in": True,
+            "use_attn_result": False,
+            "use_NTK_by_parts_rope": False,
+            "scale_attn_by_inverse_layer_idx": False,
         }
     elif official_model_name.startswith("google/gemma-3-4b"):
         cfg_dict = {

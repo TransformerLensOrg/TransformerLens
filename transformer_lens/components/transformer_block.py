@@ -46,7 +46,7 @@ class TransformerBlock(nn.Module):
         elif self.normalization_type == "RMS":
             normalization_layer = RMSNorm
         elif self.normalization_type == "RMSPre":
-            normalization_layer = RMSNormPre
+            normalization_layer = RMSNorm
         elif self.normalization_type is None:
             # This should just be the identity.
             # We need to make this a lambda so we can call it on the config, just like the others
@@ -73,7 +73,7 @@ class TransformerBlock(nn.Module):
                 self.ln2_post = normalization_layer_after(cfg)
 
         if not self.cfg.use_local_attn:
-            self.attn = GroupedQueryAttention(self.cfg, self.cfg.attn_types if not None else "global", block_index)
+            self.attn = GroupedQueryAttention(self.cfg, self.cfg.attn_types if self.cfg.attn_types is not None else "global", block_index)
         else:
             if self.cfg.attn_types is None:
                 raise ValueError("attn_types must be set when using local attention")
