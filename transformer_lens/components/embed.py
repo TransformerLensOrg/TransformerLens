@@ -30,7 +30,7 @@ class Embed(nn.Module):
         # If A has shape [a, b] and B has shape [c, d], then A[:, B] has shape [a, c, d]
         # B acts as a tensor of indices into the second dimension (so >=0 and <b)
         embed = self.W_E[tokens, :]
-        embed = embed * (self.cfg.d_model ** 0.5)
+        # embed = embed * (self.cfg.d_model ** 0.5)
         if self.cfg.post_embedding_ln:
             embed = self.ln(embed)
         return embed
