@@ -4,20 +4,10 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.components import AbstractAttention
+from transformer_lens.components import AbstractAttention, RMSNorm
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
-
-class RMSNorm(nn.Module):
-    def __init__(self, d_model: int, eps: float = 1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(d_model))
-
-    def forward(self, x):
-        variance = x.pow(2).mean(-1, keepdim=True)
-        return self.weight * x / torch.sqrt(variance + self.eps)
 
 class GroupedQueryAttention(AbstractAttention):
     def __init__(
@@ -57,8 +47,8 @@ class GroupedQueryAttention(AbstractAttention):
                 dtype=cfg.dtype,
             )
         )
-        self.q_norm = RMSNorm(cfg.d_head)
-        self.k_norm = RMSNorm(cfg.d_head)
+        self.q_norm = RMSNorm(cfg, cfg.d_head)
+        self.k_norm = RMSNorm(cfg, cfg.d_head)
 
     @property
     def W_K(self):
@@ -95,41 +85,31 @@ class GroupedQueryAttention(AbstractAttention):
         Float[torch.Tensor, "batch pos kv_head_index d_head"],
         Float[torch.Tensor, "batch pos kv_head_index d_head"],
     ]:
-        """Calculate the Q, K, and V matrices for grouped query attention.
-        This function uses the unexpanded weights _W_K and _W_V to calculate K and V.
-
-        Args:
-        query_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos head_index d_model"]]): The input tensor for the query projection.
-        key_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]): The input tensor for the key projection. Note that is has as many head dimensions as the GPA block has key-value heads.
-        value_input (Union[Float[torch.Tensor, "batch pos d_model"], Float[torch.Tensor, "batch pos kv_head_index d_model"]]): The input tensor for the value projection. Note that is has as many head dimensions as the GPA block has key-value heads.
-
-        Returns:
-        Tuple[Float[torch.Tensor, "batch pos head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"], Float[torch.Tensor, "batch pos kv_head_index d_head"]]:
-        A tuple containing the Q, K, and V matrices with the specified shapes.
-        """
+        """Calculate the Q, K, and V matrices for grouped query attention."""
         attn_fn = (
             complex_attn_linear
             if self.cfg.use_split_qkv_input or self.cfg.use_attn_in
             else simple_attn_linear
         )
 
-        q = self.hook_q(
-            attn_fn(query_input, self.W_Q)
-        )  # [batch, pos, head_index, d_head]
-
+        q = self.hook_q(attn_fn(query_input, self.W_Q))  # [batch, pos, head_index, d_head]
         k = self.hook_k(
             attn_fn(key_input, self.W_K)
             if self.cfg.ungroup_grouped_query_attention
             else attn_fn(key_input, self._W_K)
-        )  # [batch, pos, head_index, d_head]
-        # q_norm: [d_head]
-        q = self.q_norm(q)
-        k = self.k_norm(k)
+        )  # [batch, pos, kv_head_index, d_head]
+
+        # Apply per-head RMSNorm and rescale by sqrt(d_head)
+        scale = self.cfg.d_head ** 0.5
+        q = self.q_norm(q) * scale
+        k = self.k_norm(k) * scale
+
         v = self.hook_v(
             attn_fn(value_input, self.W_V)
             if self.cfg.ungroup_grouped_query_attention
             else attn_fn(value_input, self._W_V)
-        )  # [batch, pos, head_index, d_head]
+        )  # [batch, pos, kv_head_index, d_head]
+
         return q, k, v
 
     def calculate_attention_scores(
