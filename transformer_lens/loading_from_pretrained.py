@@ -1537,8 +1537,9 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "rope_local_base_freq": 10000.0,
             "positional_embedding_type": "rotary",
             "use_attn_scale": True,
-            "attn_scale": 1.0 / (256 ** 0.5),  # query_pre_attn_scalar
+            "attn_scale": (256 ** 0.5),  # query_pre_attn_scalar
             "n_key_value_heads": 1,
+            "attn_scores_soft_cap": 0,
             "window_size": 512,
             "use_local_attn": True,
             "attn_types": (["local"] * 5 + ["global"]) * 4 + ["local", "local"],  # 5:1 pattern as specified by sliding_window_pattern

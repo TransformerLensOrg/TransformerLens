@@ -16,8 +16,8 @@ class RMSNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(d_model))
 
     def forward(self, x):
-        norm = x.norm(2, dim=-1, keepdim=True)
-        return self.weight * x / (norm + self.eps)
+        variance = x.pow(2).mean(-1, keepdim=True)
+        return self.weight * x / torch.sqrt(variance + self.eps)
 
 class GroupedQueryAttention(AbstractAttention):
     def __init__(
