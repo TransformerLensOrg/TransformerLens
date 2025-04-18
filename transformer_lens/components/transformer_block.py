@@ -14,6 +14,7 @@ from transformer_lens.components import (
     LayerNorm,
     LayerNormPre,
     RMSNorm,
+    RMSNormScaled,
     RMSNormPre,
 )
 from transformer_lens.components.mlps.can_be_used_as_mlp import CanBeUsedAsMLP
@@ -44,9 +45,9 @@ class TransformerBlock(nn.Module):
             # We've folded in LayerNorm weights, so just need the center + scale parts
             normalization_layer = LayerNormPre
         elif self.normalization_type == "RMS":
-            normalization_layer = RMSNorm
+            normalization_layer = RMSNormScaled
         elif self.normalization_type == "RMSPre":
-            normalization_layer = RMSNorm
+            normalization_layer = RMSNormScaled
         elif self.normalization_type is None:
             # This should just be the identity.
             # We need to make this a lambda so we can call it on the config, just like the others
@@ -60,7 +61,7 @@ class TransformerBlock(nn.Module):
             if self.normalization_type is None:
                 normalization_layer_after = lambda cfg: nn.Identity()
             elif self.normalization_type.startswith("RMS"):
-                normalization_layer_after = RMSNorm
+                normalization_layer_after = RMSNormScaled
             elif self.normalization_type.startswith("LayerNorm"):
                 normalization_layer_after = LayerNorm
 

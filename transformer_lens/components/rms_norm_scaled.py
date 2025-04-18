@@ -12,7 +12,7 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
 
-class RMSNorm(nn.Module):
+class RMSNormScaled(nn.Module):
     def __init__(self, cfg: Union[Dict, HookedTransformerConfig], length: Optional[int] = None):
         """
         RMSNorm - LayerNorm without the centering and bias (RMS = Root Mean Square)
@@ -40,6 +40,6 @@ class RMSNorm(nn.Module):
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
         x = self.hook_normalized(x)
-        x = x * self.w.to(x.dtype)
+        x = self.scale * x * self.w.to(x.dtype)
         x = self.hook_scale(x)
         return x

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.components import AbstractAttention, RMSNorm
+from transformer_lens.components import AbstractAttention, RMSNorm, RMSNormScaled
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
@@ -47,8 +47,8 @@ class GroupedQueryAttention(AbstractAttention):
                 dtype=cfg.dtype,
             )
         )
-        self.q_norm = RMSNorm(cfg, cfg.d_head)
-        self.k_norm = RMSNorm(cfg, cfg.d_head)
+        # self.q_norm = RMSNormScaled(cfg, cfg.d_head)
+        # self.k_norm = RMSNormScaled(cfg, cfg.d_head)
 
     @property
     def W_K(self):
@@ -100,9 +100,9 @@ class GroupedQueryAttention(AbstractAttention):
         )  # [batch, pos, kv_head_index, d_head]
 
         # Apply per-head RMSNorm and rescale by sqrt(d_head)
-        scale = self.cfg.d_head ** 0.5
-        q = self.q_norm(q) * scale
-        k = self.k_norm(k) * scale
+        # scale = self.cfg.d_head ** 0.5
+        # q = self.q_norm(q) * scale
+        # k = self.k_norm(k) * scale
 
         v = self.hook_v(
             attn_fn(value_input, self.W_V)
