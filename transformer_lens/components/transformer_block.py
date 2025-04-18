@@ -45,9 +45,9 @@ class TransformerBlock(nn.Module):
             # We've folded in LayerNorm weights, so just need the center + scale parts
             normalization_layer = LayerNormPre
         elif self.normalization_type == "RMS":
-            normalization_layer = RMSNormScaled
+            normalization_layer = RMSNorm
         elif self.normalization_type == "RMSPre":
-            normalization_layer = RMSNormScaled
+            normalization_layer = RMSNorm
         elif self.normalization_type is None:
             # This should just be the identity.
             # We need to make this a lambda so we can call it on the config, just like the others

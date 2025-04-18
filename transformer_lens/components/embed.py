@@ -23,6 +23,7 @@ class Embed(nn.Module):
         # Some models (e.g. Bloom) need post embedding layer norm
         if self.cfg.post_embedding_ln:
             self.ln = LayerNorm(self.cfg)
+        self.embed_scale = self.cfg.d_model ** 0.5
 
     def forward(
         self, tokens: Int[torch.Tensor, "batch pos"]
@@ -33,4 +34,4 @@ class Embed(nn.Module):
         # embed = embed * (self.cfg.d_model ** 0.5)
         if self.cfg.post_embedding_ln:
             embed = self.ln(embed)
-        return embed
+        return embed * self.embed_scale
