@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from jaxtyping import Float
 
-from transformer_lens.components import AbstractAttention, RMSNorm, RMSNormScaled
+from transformer_lens.components import AbstractAttention, RMSNorm
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 from transformer_lens.utilities.attention import complex_attn_linear, simple_attn_linear
 
@@ -30,25 +30,19 @@ class GroupedQueryAttention(AbstractAttention):
         cfg = HookedTransformerConfig.unwrap(cfg)
         assert cfg.n_key_value_heads is not None
         super().__init__(cfg, attn_type, layer_id)
+
         self.repeat_kv_heads = cfg.n_heads // cfg.n_key_value_heads
+
         self._W_K = nn.Parameter(
-            torch.empty(
-                cfg.n_key_value_heads,
-                self.cfg.d_model,
-                self.cfg.d_head,
-                dtype=cfg.dtype,
-            )
+            torch.empty(cfg.n_key_value_heads, cfg.d_model, cfg.d_head, dtype=cfg.dtype)
         )
         self._W_V = nn.Parameter(
-            torch.empty(
-                cfg.n_key_value_heads,
-                self.cfg.d_model,
-                self.cfg.d_head,
-                dtype=cfg.dtype,
-            )
+            torch.empty(cfg.n_key_value_heads, cfg.d_model, cfg.d_head, dtype=cfg.dtype)
         )
-        # self.q_norm = RMSNormScaled(cfg, cfg.d_head)
-        # self.k_norm = RMSNormScaled(cfg, cfg.d_head)
+
+        # Per-vector RMSNorm (matches HF Gemma-3)
+        self.q_norm = RMSNorm(cfg, cfg.d_head)
+        self.k_norm = RMSNorm(cfg, cfg.d_head)
 
     @property
     def W_K(self):
@@ -92,23 +86,21 @@ class GroupedQueryAttention(AbstractAttention):
             else simple_attn_linear
         )
 
-        q = self.hook_q(attn_fn(query_input, self.W_Q))  # [batch, pos, head_index, d_head]
+        q = self.hook_q(attn_fn(query_input, self.W_Q))
         k = self.hook_k(
             attn_fn(key_input, self.W_K)
             if self.cfg.ungroup_grouped_query_attention
             else attn_fn(key_input, self._W_K)
-        )  # [batch, pos, kv_head_index, d_head]
-
-        # Apply per-head RMSNorm and rescale by sqrt(d_head)
-        # scale = self.cfg.d_head ** 0.5
-        # q = self.q_norm(q) * scale
-        # k = self.k_norm(k) * scale
-
+        )
         v = self.hook_v(
             attn_fn(value_input, self.W_V)
             if self.cfg.ungroup_grouped_query_attention
             else attn_fn(value_input, self._W_V)
-        )  # [batch, pos, kv_head_index, d_head]
+        )
+
+        # Apply full per-vector RMSNorm to q/k (matches HF Gemma 3)
+        q = self.q_norm(q)
+        k = self.k_norm(k)
 
         return q, k, v
 

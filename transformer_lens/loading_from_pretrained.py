@@ -1533,6 +1533,7 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "initializer_range": 0.02,
             "normalization_type": "RMS",
             "rotary_dim": 256,
+            "attention_dir": "casual",
             "rotary_base": 1000000.0,  # Using the global attention base frequency
             "rope_local_base_freq": 10000.0,
             "positional_embedding_type": "rotary",
@@ -1547,13 +1548,12 @@ def convert_hf_model_config(model_name: str, **kwargs):
             "final_rms": True,
             "use_split_qkv_input": True,
             "use_normalization_before_and_after": True,
-            "dtype": torch.bfloat16,
             "rotary_adjacent_pairs": True,
             "tokenizer_prepends_bos": True,
             "default_prepend_bos": True,
             "trust_remote_code": True,
             "use_hook_mlp_in": True,
-            "use_attn_result": False,
+            "use_attn_result": True,
             "use_NTK_by_parts_rope": False,
             "scale_attn_by_inverse_layer_idx": False,
         }

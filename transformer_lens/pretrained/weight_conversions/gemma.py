@@ -43,8 +43,9 @@ def convert_gemma3_weights(gemma, cfg: HookedTransformerConfig):
         
         # Reshape normalization weights to match the rearranged dimensions
         # W_Q shape is [n_heads, d_model, d_head]
-        state_dict[f"blocks.{l}.attn.q_norm.weight"]  = q_norm
-        state_dict[f"blocks.{l}.attn.k_norm.weight"]  = k_norm
+        state_dict[f"blocks.{l}.attn.q_norm.w"]  = q_norm
+        state_dict[f"blocks.{l}.attn.k_norm.w"]  = k_norm #.view(cfg.n_key_value_heads, -1).mean(dim=1)  # [4]
+
            
         state_dict[f"blocks.{l}.attn.W_Q"] = W_Q
         state_dict[f"blocks.{l}.attn._W_K"] = W_K
