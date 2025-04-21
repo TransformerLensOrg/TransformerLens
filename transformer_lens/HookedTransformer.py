@@ -821,9 +821,9 @@ class HookedTransformer(HookedRootModule):
         # it's set, then tokenization is no longer invertible, and some tokens
         # with a bunch of whitespace get collapsed together
         if len(tokens.shape) == 2:
-            return self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False)
+            return self.tokenizer.batch_decode(tokens, clean_up_tokenization_spaces=False, skip_special_tokens=True)
         elif len(tokens.shape) <= 1:
-            return self.tokenizer.decode(tokens, clean_up_tokenization_spaces=False)
+            return self.tokenizer.decode(tokens, clean_up_tokenization_spaces=False, skip_special_tokens=True)
         else:
             raise ValueError(f"Invalid shape passed in: {tokens.shape}")
 

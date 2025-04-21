@@ -40,6 +40,6 @@ class RMSNorm(nn.Module):
         variance = x.pow(2).mean(-1, keepdim=True)
         x = x * torch.rsqrt(variance + self.eps)
         x = self.hook_normalized(x)
-        x = x * self.w.to(x.dtype)
+        x = x * (1 + self.w.to(x.dtype))
         x = self.hook_scale(x)
         return x
